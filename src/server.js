@@ -30,7 +30,7 @@ const ROUTE_MAP = {
   },
   get_product_detail: {
     method: 'GET',
-    path: '/agent/v1/products/{merchant_id}/{product_id}',
+    path: '/agent/v1/products/merchants/{merchant_id}/product/{product_id}',
     paramType: 'path'
   },
   create_order: {
@@ -232,7 +232,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           order_id: payload.payment?.order_id,
           amount: payload.payment?.expected_amount,
           currency: payload.payment?.currency,
-          payment_method: payload.payment?.payment_method_hint,
+          // payment_method expects an object, not a string
+          payment_method: payload.payment?.payment_method_hint ? {
+            type: payload.payment.payment_method_hint,
+            // Add default fields for different payment types
+            ...(payload.payment.payment_method_hint === 'card' && {
+              card: {
+                // Placeholder for card details if needed
+              }
+            })
+          } : undefined,
           redirect_url: payload.payment?.return_url,
           ...(payload.ap2_state && { ap2_state: payload.ap2_state })
         };
