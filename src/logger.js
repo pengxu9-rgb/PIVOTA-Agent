@@ -1,0 +1,8 @@
+const pino = require('pino');
+
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  base: null, // keep logs lean; infra can enrich if needed
+});
+
+module.exports = logger;

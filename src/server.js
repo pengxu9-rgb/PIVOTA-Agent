@@ -1,0 +1,369 @@
+/*
+ * Pivota Agent gateway.
+ * Exposes /agent/shop/v1/invoke and forwards to Pivota internal API based on operation.
+ */
+require('dotenv').config();
+const express = require('express');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const OpenAI = require('openai');
+const { InvokeRequestSchema, OperationEnum } = require('./schema');
+const logger = require('./logger');
+
+const PORT = process.env.PORT || 3000;
+const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
+const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
+const USE_MOCK = process.env.USE_MOCK === 'true';
+
+// Load tool schema once for chat endpoint.
+const toolSchemaPath = path.join(__dirname, '..', 'docs', 'tool-schema.json');
+const toolSchema = JSON.parse(fs.readFileSync(toolSchemaPath, 'utf-8'));
+
+// Routing map for real Pivota API endpoints
+const ROUTE_MAP = {
+  find_products: {
+    method: 'GET',
+    path: '/agent/v1/products/search',
+    paramType: 'query'
+  },
+  get_product_detail: {
+    method: 'GET',
+    path: '/agent/v1/products/{merchant_id}/{product_id}',
+    paramType: 'path'
+  },
+  create_order: {
+    method: 'POST',
+    path: '/agent/v1/orders/create',
+    paramType: 'body'
+  },
+  submit_payment: {
+    method: 'POST',
+    path: '/agent/v1/payments',
+    paramType: 'body'
+  },
+  get_order_status: {
+    method: 'GET',
+    path: '/agent/v1/orders/{order_id}/track',
+    paramType: 'path'
+  },
+  request_after_sales: {
+    method: 'POST',
+    path: '/agent/v1/orders/{order_id}/refund',
+    paramType: 'mixed' // path params + optional body
+  }
+};
+
+let openaiClient;
+function getOpenAIClient() {
+  if (!openaiClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required for /ui/chat');
+    }
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+}
+
+const app = express();
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Lightweight request logging.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    logger.info({
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      duration_ms: Date.now() - start,
+    });
+  });
+  next();
+});
+
+app.get('/healthz', (req, res) => {
+  res.json({ ok: true });
+});
+
+app.post('/agent/shop/v1/invoke', async (req, res) => {
+  const parsed = InvokeRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    logger.warn({ error: parsed.error.format() }, 'Invalid request body');
+    return res.status(400).json({
+      error: 'INVALID_REQUEST',
+      details: parsed.error.format(),
+    });
+  }
+
+  const { operation, payload } = parsed.data;
+
+  // Redundant allowlist check for semantics clarity.
+  if (!OperationEnum.options.includes(operation)) {
+    return res.status(400).json({
+      error: 'UNSUPPORTED_OPERATION',
+      operation,
+    });
+  }
+
+  // Use mock API if configured
+  if (USE_MOCK) {
+    const mockUrl = `${PIVOTA_API_BASE}/agent/shop/v1/${operation}`;
+    logger.info({ operation, mock: true }, 'Forwarding to mock API');
+    
+    try {
+      const response = await axios.post(mockUrl, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(PIVOTA_API_KEY ? { Authorization: `Bearer ${PIVOTA_API_KEY}` } : {}),
+        },
+        timeout: 10000,
+      });
+      return res.status(response.status).json(response.data);
+    } catch (err) {
+      if (err.response) {
+        logger.warn({ status: err.response.status, data: err.response.data }, 'Mock upstream error');
+        return res
+          .status(err.response.status || 502)
+          .json(err.response.data || { error: 'UPSTREAM_ERROR' });
+      }
+      logger.error({ err: err.message }, 'Mock upstream error');
+      return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+    }
+  }
+
+  // Use real API routing
+  const route = ROUTE_MAP[operation];
+  if (!route) {
+    return res.status(400).json({
+      error: 'UNSUPPORTED_OPERATION',
+      operation,
+    });
+  }
+
+  try {
+    // Build URL with path parameters
+    let url = `${PIVOTA_API_BASE}${route.path}`;
+    let requestBody = {};
+    let queryParams = {};
+
+    // Handle different parameter types
+    switch (operation) {
+      case 'find_products': {
+        // Convert body params to query params
+        const search = payload.search || {};
+        queryParams = {
+          ...(search.query && { query: search.query }),
+          ...(search.price_min && { min_price: search.price_min }),
+          ...(search.price_max && { max_price: search.price_max }),
+          ...(search.city && { merchant_id: search.city }), // temporary mapping
+          ...(search.page && search.page_size && { offset: (search.page - 1) * search.page_size }),
+          ...(search.page_size && { limit: Math.min(search.page_size, 100) }),
+          in_stock_only: true
+        };
+        break;
+      }
+      
+      case 'get_product_detail': {
+        // Extract path parameters
+        if (!payload.product?.merchant_id || !payload.product?.product_id) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'merchant_id and product_id are required'
+          });
+        }
+        url = url.replace('{merchant_id}', payload.product.merchant_id);
+        url = url.replace('{product_id}', payload.product.product_id);
+        break;
+      }
+      
+      case 'create_order': {
+        // Pass through with structure adjustment
+        requestBody = {
+          items: payload.order?.items || [],
+          shipping_address: payload.order?.shipping_address,
+          customer_notes: payload.order?.notes,
+          ...(payload.acp_state && { acp_state: payload.acp_state })
+        };
+        break;
+      }
+      
+      case 'submit_payment': {
+        // Map payment fields
+        requestBody = {
+          order_id: payload.payment?.order_id,
+          amount: payload.payment?.expected_amount,
+          currency: payload.payment?.currency,
+          payment_method: payload.payment?.payment_method_hint,
+          redirect_url: payload.payment?.return_url,
+          ...(payload.ap2_state && { ap2_state: payload.ap2_state })
+        };
+        break;
+      }
+      
+      case 'get_order_status': {
+        // Extract order_id from path
+        if (!payload.status?.order_id) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'order_id is required'
+          });
+        }
+        url = url.replace('{order_id}', payload.status.order_id);
+        break;
+      }
+      
+      case 'request_after_sales': {
+        // Extract order_id and prepare optional body
+        if (!payload.status?.order_id) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'order_id is required'
+          });
+        }
+        url = url.replace('{order_id}', payload.status.order_id);
+        if (payload.status.reason) {
+          requestBody = { reason: payload.status.reason };
+        }
+        break;
+      }
+    }
+
+    logger.info({ operation, method: route.method, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
+
+    // Make the upstream request
+    const axiosConfig = {
+      method: route.method,
+      url,
+      headers: {
+        ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
+        ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+      },
+      timeout: 10000,
+      ...(Object.keys(queryParams).length > 0 && { params: queryParams }),
+      ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
+    };
+
+    const response = await axios(axiosConfig);
+    return res.status(response.status).json(response.data);
+
+  } catch (err) {
+    if (err.response) {
+      logger.warn({ status: err.response.status, data: err.response.data }, 'Upstream error');
+      return res
+        .status(err.response.status || 502)
+        .json(err.response.data || { error: 'UPSTREAM_ERROR' });
+    }
+
+    if (err.code === 'ECONNABORTED') {
+      logger.error({ url: err.config?.url }, 'Upstream timeout');
+      return res.status(504).json({ error: 'UPSTREAM_TIMEOUT' });
+    }
+
+    logger.error({ err: err.message }, 'Unexpected upstream error');
+    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+  }
+});
+
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    logger.info(`Pivota Agent gateway listening on port ${PORT}, proxying to ${PIVOTA_API_BASE}`);
+  });
+}
+
+async function callPivotaToolViaGateway(args) {
+  const res = await axios.post(UI_GATEWAY_URL, args, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 10000,
+  });
+  return res.data;
+}
+
+async function runAgentWithTools(messages) {
+  // messages already contain system message
+  const openai = getOpenAIClient();
+  while (true) {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-5.1',
+      messages,
+      tools: [
+        {
+          type: 'function',
+          function: toolSchema,
+        },
+      ],
+      tool_choice: 'auto',
+    });
+
+    const msg = completion.choices[0].message;
+
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      for (const toolCall of msg.tool_calls) {
+        if (toolCall.type !== 'function') continue;
+        const { name, arguments: argStr } = toolCall.function;
+        if (name !== 'pivota_shopping_tool') continue;
+
+        let args;
+        try {
+          args = JSON.parse(argStr || '{}');
+        } catch (e) {
+          logger.error({ err: e, argStr }, 'Failed to parse tool args');
+          throw e;
+        }
+
+        logger.info({ tool: name, args }, 'Calling Pivota tool via gateway');
+
+        const toolResult = await callPivotaToolViaGateway(args);
+
+        messages.push(msg);
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          name,
+          content: JSON.stringify(toolResult),
+        });
+      }
+      continue;
+    }
+
+    return msg;
+  }
+}
+
+app.post('/ui/chat', async (req, res) => {
+  try {
+    const clientMessages = req.body.messages;
+
+    if (!Array.isArray(clientMessages)) {
+      return res.status(400).json({
+        error: 'INVALID_REQUEST',
+        message: 'Body must have a messages array',
+      });
+    }
+
+    const systemPrompt = 'You are the Pivota Shopping Agent. Use the `pivota_shopping_tool` for any shopping, ordering, payment, order-status, or after-sales task.';
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...clientMessages,
+    ];
+
+    const assistantMsg = await runAgentWithTools(messages);
+
+    res.json({
+      assistantMessage: assistantMsg,
+    });
+  } catch (err) {
+    logger.error({ err }, 'Error in /ui/chat');
+    res.status(500).json({
+      error: 'INTERNAL_ERROR',
+      message: 'Failed to run agent',
+    });
+  }
+});

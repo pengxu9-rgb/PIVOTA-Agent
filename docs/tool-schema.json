@@ -1,0 +1,143 @@
+{
+  "name": "pivota_shopping_tool",
+  "version": "1.0",
+  "description": "Unified shopping tool backed by Pivota, ACP, and AP2. Use it for product search, order creation, payments, order tracking, and after-sales. Version 1.0 - Reference implementation for LLM integrations.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "description": "Which shopping operation to perform.",
+        "enum": [
+          "find_products",
+          "get_product_detail",
+          "create_order",
+          "submit_payment",
+          "get_order_status",
+          "request_after_sales"
+        ]
+      },
+      "payload": {
+        "type": "object",
+        "description": "Operation-specific payload plus opaque ACP/AP2 state.",
+        "properties": {
+          "acp_state": {
+            "type": "object",
+            "description": "Opaque ACP state returned from previous calls. Always pass through unchanged.",
+            "additionalProperties": true
+          },
+          "ap2_state": {
+            "type": "object",
+            "description": "Opaque AP2 state / payment mandate context. Always pass through unchanged.",
+            "additionalProperties": true
+          },
+          "search": {
+            "type": "object",
+            "description": "Used when operation = find_products",
+            "properties": {
+              "query": { "type": "string", "description": "Natural language description of what the user wants to buy." },
+              "price_min": { "type": "number" },
+              "price_max": { "type": "number" },
+              "currency": { "type": "string", "description": "ISO currency code, e.g. CNY, USD, EUR." },
+              "country": { "type": "string" },
+              "city": { "type": "string" },
+              "page": { "type": "integer", "minimum": 1 },
+              "page_size": { "type": "integer", "minimum": 1, "maximum": 50 }
+            },
+            "additionalProperties": true
+          },
+          "product": {
+            "type": "object",
+            "description": "Used when operation = get_product_detail",
+            "properties": {
+              "product_id": { "type": "string" },
+              "sku_id": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "order": {
+            "type": "object",
+            "description": "Used when operation = create_order",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "product_id": { "type": "string" },
+                    "sku_id": { "type": "string" },
+                    "quantity": { "type": "integer", "minimum": 1 }
+                  },
+                  "required": ["sku_id", "quantity"],
+                  "additionalProperties": true
+                }
+              },
+              "shipping_address": {
+                "type": "object",
+                "properties": {
+                  "country": { "type": "string" },
+                  "city": { "type": "string" },
+                  "postal_code": { "type": "string" },
+                  "address_line1": { "type": "string" },
+                  "address_line2": { "type": "string" },
+                  "recipient_name": { "type": "string" },
+                  "phone": { "type": "string" }
+                },
+                "required": ["country", "city", "address_line1", "recipient_name"],
+                "additionalProperties": true
+              },
+              "delivery_preferences": {
+                "type": "object",
+                "properties": {
+                  "max_eta_days": { "type": "integer", "minimum": 1 },
+                  "preferred_carriers": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                },
+                "additionalProperties": true
+              },
+              "notes": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "payment": {
+            "type": "object",
+            "description": "Used when operation = submit_payment",
+            "properties": {
+              "order_id": { "type": "string" },
+              "expected_amount": { "type": "number" },
+              "currency": { "type": "string" },
+              "payment_method_hint": {
+                "type": "string",
+                "description": "Optional hint like 'card', 'wallet', 'bank_transfer', 'pay_later'."
+              },
+              "return_url": {
+                "type": "string",
+                "description": "Where to redirect the user back after AP2 auth, if applicable."
+              }
+            },
+            "required": ["order_id", "expected_amount", "currency"],
+            "additionalProperties": true
+          },
+          "status": {
+            "type": "object",
+            "description": "Used when operation = get_order_status or request_after_sales.",
+            "properties": {
+              "order_id": { "type": "string" },
+              "reason": { "type": "string" },
+              "requested_action": {
+                "type": "string",
+                "enum": ["refund", "return", "exchange", "support"]
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "required": ["operation", "payload"],
+    "additionalProperties": false
+  }
+}

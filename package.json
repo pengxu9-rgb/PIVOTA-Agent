@@ -1,0 +1,35 @@
+{
+  "name": "pivota-agent-gateway",
+  "version": "0.1.0",
+  "description": "Thin gateway for Pivota Shopping Agent: routes /agent/shop/v1/invoke to internal Pivota API operations.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test": "jest --runInBand",
+    "demo:openai": "node scripts/demo-openai-pivota.mjs",
+    "mock:pivota": "node scripts/mock-pivota-api.js",
+    "demo:status": "node scripts/demo-openai-status.mjs"
+  },
+  "keywords": [
+    "pivota",
+    "agent",
+    "acp",
+    "ap2",
+    "gateway"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "openai": "^6.9.1",
+    "pino": "^10.1.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0",
+    "nock": "^14.0.10",
+    "supertest": "^7.1.4"
+  }
+}
