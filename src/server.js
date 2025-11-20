@@ -157,13 +157,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         // Convert body params to query params
         const search = payload.search || {};
         queryParams = {
+          ...(search.merchant_id && { merchant_id: search.merchant_id }),
           ...(search.query && { query: search.query }),
           ...(search.price_min && { min_price: search.price_min }),
           ...(search.price_max && { max_price: search.price_max }),
-          ...(search.city && { merchant_id: search.city }), // temporary mapping
+          ...(search.category && { category: search.category }),
           ...(search.page && search.page_size && { offset: (search.page - 1) * search.page_size }),
           ...(search.page_size && { limit: Math.min(search.page_size, 100) }),
-          in_stock_only: true
+          in_stock_only: search.in_stock_only !== false
         };
         break;
       }
@@ -182,11 +183,44 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
       
       case 'create_order': {
-        // Pass through with structure adjustment
+        // Map to real API requirements
+        const order = payload.order || {};
+        const items = order.items || [];
+        
+        // Calculate totals if not provided
+        const subtotal = items.reduce((sum, item) => sum + (item.unit_price || item.price || 0) * item.quantity, 0);
+        
+        // Extract merchant_id from first item (assuming single merchant order)
+        const merchant_id = items[0]?.merchant_id;
+        if (!merchant_id) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'merchant_id is required in items'
+          });
+        }
+        
+        // Build request body with all required fields
         requestBody = {
-          items: payload.order?.items || [],
-          shipping_address: payload.order?.shipping_address,
-          customer_notes: payload.order?.notes,
+          merchant_id,
+          customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
+          items: items.map(item => ({
+            merchant_id: item.merchant_id,
+            product_id: item.product_id,
+            product_title: item.product_title || item.title || 'Product',
+            quantity: item.quantity,
+            unit_price: item.unit_price || item.price,
+            subtotal: (item.unit_price || item.price) * item.quantity
+          })),
+          shipping_address: {
+            name: order.shipping_address?.recipient_name || order.shipping_address?.name,
+            address_line1: order.shipping_address?.address_line1,
+            address_line2: order.shipping_address?.address_line2 || '',
+            city: order.shipping_address?.city,
+            country: order.shipping_address?.country,
+            postal_code: order.shipping_address?.postal_code,
+            phone: order.shipping_address?.phone || ''
+          },
+          customer_notes: order.notes || '',
           ...(payload.acp_state && { acp_state: payload.acp_state })
         };
         break;

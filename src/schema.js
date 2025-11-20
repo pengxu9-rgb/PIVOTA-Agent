@@ -21,7 +21,7 @@ const InvokeRequestSchema = z.object({
     // Business payload fields; different operations use different keys.
     // See docs/pivota-api-mapping.md for detailed field requirements.
     
-    // find_products: { query?, price_min?, price_max?, city?, page?, page_size? }
+    // find_products: { merchant_id?, query?, price_min?, price_max?, category?, in_stock_only?, page?, page_size? }
     search: z.any().optional(),
     
     // get_product_detail: { merchant_id, product_id, sku_id? }

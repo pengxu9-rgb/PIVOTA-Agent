@@ -35,12 +35,13 @@
             "type": "object",
             "description": "Used when operation = find_products",
             "properties": {
+              "merchant_id": { "type": "string", "description": "Optional: specific merchant to search. Omit to search all merchants." },
               "query": { "type": "string", "description": "Natural language description of what the user wants to buy." },
               "price_min": { "type": "number" },
               "price_max": { "type": "number" },
               "currency": { "type": "string", "description": "ISO currency code, e.g. CNY, USD, EUR." },
-              "country": { "type": "string" },
-              "city": { "type": "string" },
+              "category": { "type": "string", "description": "Product category filter" },
+              "in_stock_only": { "type": "boolean", "description": "Filter for in-stock items only. Default: true" },
               "page": { "type": "integer", "minimum": 1 },
               "page_size": { "type": "integer", "minimum": 1, "maximum": 50 }
             },
