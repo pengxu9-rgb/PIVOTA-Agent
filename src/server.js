@@ -16,7 +16,15 @@ const PORT = process.env.PORT || 3000;
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
-const USE_MOCK = process.env.USE_MOCK !== 'false'; // Default to true unless explicitly disabled
+
+// API Mode: MOCK (default), HYBRID, or REAL
+// MOCK: Use internal mock data
+// HYBRID: Real product search, mock payment
+// REAL: All real API calls (requires API key)
+const API_MODE = process.env.API_MODE || 'MOCK';
+const USE_MOCK = API_MODE === 'MOCK';
+const USE_HYBRID = API_MODE === 'HYBRID';
+const REAL_API_ENABLED = API_MODE === 'REAL' && PIVOTA_API_KEY;
 
 // Load tool schema once for chat endpoint.
 const toolSchemaPath = path.join(__dirname, '..', 'docs', 'tool-schema.json');
@@ -90,10 +98,24 @@ app.use((req, res, next) => {
 app.get('/healthz', (req, res) => {
   res.json({ 
     ok: true,
-    mode: 'FORCE_MOCK_ENABLED',
-    use_mock_env: process.env.USE_MOCK,
+    api_mode: API_MODE,
+    modes: {
+      mock: USE_MOCK,
+      hybrid: USE_HYBRID,
+      real_api_enabled: REAL_API_ENABLED
+    },
+    backend: {
+      api_base: PIVOTA_API_BASE,
+      api_key_configured: !!PIVOTA_API_KEY
+    },
     products_available: true,
-    message: 'Using internal mock products with water bottles, electronics, etc.'
+    features: {
+      product_search: true,
+      order_creation: true,
+      payment: USE_MOCK || USE_HYBRID ? 'mock' : 'real',
+      tracking: true
+    },
+    message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
   });
 });
 
@@ -117,14 +139,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     });
   }
 
-  // TEMPORARY: Force mock mode until real backend has products
-  const FORCE_MOCK = true;
-  
   // Log which mode we're using
-  logger.info({ USE_MOCK, FORCE_MOCK, operation }, `Mode: ${FORCE_MOCK || USE_MOCK ? 'MOCK' : 'REAL API'}`);
+  logger.info({ API_MODE, operation }, `API Mode: ${API_MODE}, Operation: ${operation}`);
   
-  // Use mock API if configured
-  if (FORCE_MOCK || USE_MOCK) {
+  // HYBRID mode: Use real API for product search, mock for payments
+  if (USE_HYBRID) {
+    const hybridMockOperations = ['submit_payment', 'request_after_sales'];
+    if (hybridMockOperations.includes(operation)) {
+      logger.info({ operation }, 'Hybrid mode: Using mock for this operation');
+      // Fall through to mock handler
+    } else {
+      logger.info({ operation }, 'Hybrid mode: Using real API for this operation');
+      // Fall through to real API handler
+    }
+  }
+  
+  // Use mock API if configured or in hybrid mode for certain operations
+  const shouldUseMock = USE_MOCK || (USE_HYBRID && ['submit_payment', 'request_after_sales'].includes(operation));
+  
+  if (shouldUseMock) {
     logger.info({ operation, mock: true }, 'Using internal mock data with rich product catalog');
     
     try {
@@ -143,8 +176,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           
           mockResponse = {
             status: 'success',
+            success: true,
             products: products,
+            results: products, // Alternative field name
+            data: { products: products }, // Alternative structure
             total: products.length,
+            count: products.length, // Alternative count field
             page: 1,
             page_size: products.length
           };
