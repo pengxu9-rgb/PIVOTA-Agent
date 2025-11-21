@@ -24,27 +24,22 @@ app.post('/agent/shop/v1/find_products', async (req, res) => {
   const query = req.body?.search?.query || '';
   const city = req.body?.search?.city || 'unknown city';
 
+  // Import mock products
+  const { searchProducts } = require('../src/mockProducts');
+  const products = searchProducts(
+    req.body?.search?.merchant_id || 'merch_208139f7600dbf42',
+    query,
+    req.body?.search?.price_max,
+    req.body?.search?.price_min,
+    req.body?.search?.category
+  );
+
   res.json({
-    products: [
-      {
-        product_id: 'p_001',
-        sku_id: 'sku_001_42',
-        title: `Nike Pegasus Running Shoes 42 - black (${query || 'default'})`,
-        price: 759,
-        currency: 'CNY',
-        eta_days: 2,
-        city,
-      },
-      {
-        product_id: 'p_002',
-        sku_id: 'sku_002_42',
-        title: 'Nike Revolution Running Shoes 42 - white',
-        price: 699,
-        currency: 'CNY',
-        eta_days: 3,
-        city,
-      },
-    ],
+    status: 'success',
+    products: products,
+    total: products.length,
+    page: 1,
+    page_size: products.length,
     acp_state: {
       acp_session_id: 'mock_acp_s_123',
     },
