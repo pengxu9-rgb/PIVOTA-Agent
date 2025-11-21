@@ -58,11 +58,14 @@ if [ ! -z "$ORDER_ID" ]; then
       }
     }")
   
-  if echo "$PAYMENT_RESP" | grep -q "total_amount"; then
-    echo -e "${RED}❌ Payment API: Still broken${NC}"
+  if echo "$PAYMENT_RESP" | grep -q "'total_amount'"; then
+    echo -e "${RED}❌ Payment API: Still broken (field error)${NC}"
     echo "   Error: Payment processing failed: 'total_amount'"
+  elif echo "$PAYMENT_RESP" | grep -q "All PSPs failed"; then
+    echo -e "${GREEN}✅ Payment API: Field issue FIXED!${NC}"
+    echo "   Note: PSP configuration needed for full payment flow"
   elif echo "$PAYMENT_RESP" | grep -q "payment_id"; then
-    echo -e "${GREEN}✅ Payment API: FIXED!${NC}"
+    echo -e "${GREEN}✅ Payment API: Fully working!${NC}"
   else
     echo -e "${YELLOW}⚠️  Payment API: Unknown status${NC}"
     echo "   Response: $PAYMENT_RESP"
@@ -86,10 +89,13 @@ PRODUCT_RESP=$(curl -s -X POST "$GATEWAY/agent/shop/v1/invoke" \
   }')
 
 if echo "$PRODUCT_RESP" | grep -q "store_info"; then
-  echo -e "${RED}❌ Product Detail API: Still broken${NC}"
+  echo -e "${RED}❌ Product Detail API: Still broken (NameError)${NC}"
   echo "   Error: name 'store_info' is not defined"
+elif echo "$PRODUCT_RESP" | grep -q "Product not found"; then
+  echo -e "${YELLOW}⚠️  Product Detail API: Code error fixed, but API not working${NC}"
+  echo "   Note: NameError fixed, but product lookup still failing"
 elif echo "$PRODUCT_RESP" | grep -q '"id"'; then
-  echo -e "${GREEN}✅ Product Detail API: FIXED!${NC}"
+  echo -e "${GREEN}✅ Product Detail API: Fully working!${NC}"
 else
   echo -e "${YELLOW}⚠️  Product Detail API: Unknown status${NC}"
 fi
