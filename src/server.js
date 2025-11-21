@@ -10,6 +10,7 @@ const path = require('path');
 const OpenAI = require('openai');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
+const { searchProducts, getProductById } = require('./mockProducts');
 
 const PORT = process.env.PORT || 3000;
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
@@ -112,27 +113,101 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
   // Use mock API if configured
   if (USE_MOCK) {
-    const mockUrl = `${PIVOTA_API_BASE}/agent/shop/v1/${operation}`;
-    logger.info({ operation, mock: true }, 'Forwarding to mock API');
+    logger.info({ operation, mock: true }, 'Using internal mock data');
     
     try {
-      const response = await axios.post(mockUrl, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(PIVOTA_API_KEY ? { Authorization: `Bearer ${PIVOTA_API_KEY}` } : {}),
-        },
-        timeout: 10000,
-      });
-      return res.status(response.status).json(response.data);
-    } catch (err) {
-      if (err.response) {
-        logger.warn({ status: err.response.status, data: err.response.data }, 'Mock upstream error');
-        return res
-          .status(err.response.status || 502)
-          .json(err.response.data || { error: 'UPSTREAM_ERROR' });
+      let mockResponse;
+      
+      switch (operation) {
+        case 'find_products': {
+          const search = payload.search || {};
+          const products = searchProducts(
+            search.merchant_id || 'merch_208139f7600dbf42',
+            search.query,
+            search.price_max,
+            search.price_min,
+            search.category
+          );
+          
+          mockResponse = {
+            status: 'success',
+            products: products,
+            total: products.length,
+            page: 1,
+            page_size: products.length
+          };
+          break;
+        }
+        
+        case 'get_product_detail': {
+          const product = getProductById(
+            payload.product?.merchant_id || 'merch_208139f7600dbf42',
+            payload.product?.product_id
+          );
+          
+          if (product) {
+            mockResponse = {
+              status: 'success',
+              product: product
+            };
+          } else {
+            return res.status(404).json({
+              error: 'PRODUCT_NOT_FOUND',
+              message: 'Product not found'
+            });
+          }
+          break;
+        }
+        
+        case 'create_order': {
+          // Mock order creation
+          mockResponse = {
+            status: 'success',
+            order_id: `ORD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase(),
+            total: payload.order?.items?.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0) || 0,
+            currency: 'USD',
+            status: 'pending'
+          };
+          break;
+        }
+        
+        case 'submit_payment': {
+          // Mock payment submission
+          mockResponse = {
+            status: 'success',
+            payment_id: `PAY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase(),
+            status: 'processing',
+            message: 'Payment is being processed'
+          };
+          break;
+        }
+        
+        case 'get_order_status': {
+          // Mock order status
+          mockResponse = {
+            status: 'success',
+            order: {
+              order_id: payload.order?.order_id,
+              status: 'processing',
+              created_at: new Date().toISOString(),
+              total: 50.00,
+              currency: 'USD'
+            }
+          };
+          break;
+        }
+        
+        default:
+          return res.status(400).json({
+            error: 'UNSUPPORTED_OPERATION',
+            message: `Operation ${operation} not implemented in mock mode`
+          });
       }
-      logger.error({ err: err.message }, 'Mock upstream error');
-      return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+      
+      return res.json(mockResponse);
+    } catch (err) {
+      logger.error({ err: err.message }, 'Mock handler error');
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE' });
     }
   }
 

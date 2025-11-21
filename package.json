@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "start:mock": "USE_MOCK=true node src/server.js",
     "dev": "node src/server.js",
+    "dev:mock": "USE_MOCK=true node src/server.js",
     "test": "jest --runInBand",
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
     "mock:pivota": "node scripts/mock-pivota-api.js",
