@@ -53,7 +53,8 @@ if [ ! -z "$ORDER_ID" ]; then
         \"payment\": {
           \"order_id\": \"$ORDER_ID\",
           \"expected_amount\": 9.99,
-          \"currency\": \"USD\"
+          \"currency\": \"USD\",
+          \"payment_method_hint\": \"card\"
         }
       }
     }")
