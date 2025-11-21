@@ -1,0 +1,242 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Pivota Shopping Assistant API",
+    "version": "1.0.0",
+    "description": "API for shopping operations including product search, order creation, payment processing, and order management"
+  },
+  "servers": [
+    {
+      "url": "https://pivota-agent-production.up.railway.app"
+    }
+  ],
+  "paths": {
+    "/agent/shop/v1/invoke": {
+      "post": {
+        "summary": "Execute shopping operation",
+        "description": "Unified endpoint for all shopping operations",
+        "operationId": "invokeShoppingOperation",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShoppingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShoppingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ShoppingRequest": {
+        "type": "object",
+        "required": ["operation", "payload"],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "find_products",
+              "get_product_detail",
+              "create_order",
+              "submit_payment",
+              "get_order_status",
+              "request_after_sales"
+            ],
+            "description": "The shopping operation to perform"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Operation-specific payload",
+            "properties": {
+              "acp_state": {
+                "type": "object",
+                "description": "Opaque ACP state from previous calls"
+              },
+              "ap2_state": {
+                "type": "object",
+                "description": "Opaque AP2 payment state"
+              },
+              "search": {
+                "type": "object",
+                "description": "Product search parameters",
+                "properties": {
+                  "merchant_id": {
+                    "type": "string",
+                    "description": "Optional merchant ID filter"
+                  },
+                  "query": {
+                    "type": "string",
+                    "description": "Search query"
+                  },
+                  "price_min": {
+                    "type": "number",
+                    "description": "Minimum price"
+                  },
+                  "price_max": {
+                    "type": "number",
+                    "description": "Maximum price"
+                  },
+                  "category": {
+                    "type": "string",
+                    "description": "Product category"
+                  },
+                  "in_stock_only": {
+                    "type": "boolean",
+                    "description": "Filter for in-stock items",
+                    "default": true
+                  },
+                  "page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "page_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  }
+                }
+              },
+              "product": {
+                "type": "object",
+                "description": "Product detail parameters",
+                "properties": {
+                  "merchant_id": {
+                    "type": "string",
+                    "description": "Merchant ID"
+                  },
+                  "product_id": {
+                    "type": "string",
+                    "description": "Product ID"
+                  }
+                }
+              },
+              "order": {
+                "type": "object",
+                "description": "Order creation parameters",
+                "properties": {
+                  "customer_email": {
+                    "type": "string",
+                    "description": "Customer email address"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "merchant_id": {
+                          "type": "string"
+                        },
+                        "product_id": {
+                          "type": "string"
+                        },
+                        "product_title": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "unit_price": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  },
+                  "shipping_address": {
+                    "type": "object",
+                    "properties": {
+                      "recipient_name": {
+                        "type": "string"
+                      },
+                      "address_line1": {
+                        "type": "string"
+                      },
+                      "address_line2": {
+                        "type": "string"
+                      },
+                      "city": {
+                        "type": "string"
+                      },
+                      "country": {
+                        "type": "string"
+                      },
+                      "postal_code": {
+                        "type": "string"
+                      },
+                      "phone": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                }
+              },
+              "payment": {
+                "type": "object",
+                "description": "Payment submission parameters",
+                "properties": {
+                  "order_id": {
+                    "type": "string"
+                  },
+                  "expected_amount": {
+                    "type": "number"
+                  },
+                  "currency": {
+                    "type": "string"
+                  },
+                  "payment_method_hint": {
+                    "type": "string",
+                    "enum": ["card", "wallet", "bank_transfer", "pay_later"]
+                  }
+                }
+              },
+              "status": {
+                "type": "object",
+                "description": "Order status/after-sales parameters",
+                "properties": {
+                  "order_id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "requested_action": {
+                    "type": "string",
+                    "enum": ["refund", "return", "exchange", "support"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "ShoppingResponse": {
+        "type": "object",
+        "description": "Response varies by operation type"
+      }
+    }
+  }
+}
