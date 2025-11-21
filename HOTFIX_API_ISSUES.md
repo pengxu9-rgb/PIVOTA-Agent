@@ -20,10 +20,14 @@
 - **尝试修复**: 更改 API 路径为 `/agent/v1/products/merchants/{merchant_id}/product/{product_id}`
 - **状态**: 需要部署后验证
 
-### 5. ⚠️ 支付提交 - 待验证
-- **问题**: payment_method 参数格式错误
-- **修复**: 将字符串转换为对象格式 `{type: "card"}`
-- **状态**: 需要部署后验证
+### 5. ✅ 支付提交 - 已修复
+- **问题**: 
+  - payment_method 参数格式错误
+  - 字段名不匹配：发送 `amount` 但后端期望 `total_amount`
+- **修复**: 
+  - 将字符串转换为对象格式 `{type: "card"}`
+  - 将 `amount` 改为 `total_amount`（符合 Pivota Infra 标准）
+- **状态**: 已修复，待部署验证
 
 ### 6. ✅ 售后退款 - 逻辑正确
 - **响应**: "Cannot refund unpaid order"

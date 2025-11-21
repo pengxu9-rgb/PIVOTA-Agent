@@ -227,10 +227,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
       
       case 'submit_payment': {
-        // Map payment fields
+        // Map payment fields - Pivota uses 'total_amount' not 'amount'
         requestBody = {
           order_id: payload.payment?.order_id,
-          amount: payload.payment?.expected_amount,
+          total_amount: payload.payment?.expected_amount,  // Changed from 'amount' to 'total_amount'
           currency: payload.payment?.currency,
           // payment_method expects an object, not a string
           payment_method: payload.payment?.payment_method_hint ? {

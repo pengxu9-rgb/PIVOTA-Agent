@@ -68,9 +68,9 @@ For each operation, align required/optional fields and note any differences.
 - Upstream expects: Request body (POST)
 - Parameter mapping:
   - `payload.payment.order_id` → `order_id` (required)
-  - `payload.payment.expected_amount` → `amount` (required)
+  - `payload.payment.expected_amount` → `total_amount` (required) ⚠️ Note: Pivota uses 'total_amount' not 'amount'
   - `payload.payment.currency` → `currency` (required)
-  - `payload.payment.payment_method_hint` → `payment_method` (optional, e.g., "card", "bank_transfer")
+  - `payload.payment.payment_method_hint` → `payment_method` (object format: `{type: "card"}`)
   - `payload.payment.return_url` → `redirect_url` (for 3DS/redirects)
   - `payload.ap2_state` → Pass through as-is
 - Response handling:
