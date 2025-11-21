@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 3000;
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
-const USE_MOCK = process.env.USE_MOCK === 'true';
+const USE_MOCK = process.env.USE_MOCK !== 'false'; // Default to true unless explicitly disabled
 
 // Load tool schema once for chat endpoint.
 const toolSchemaPath = path.join(__dirname, '..', 'docs', 'tool-schema.json');
@@ -88,7 +88,13 @@ app.use((req, res, next) => {
 });
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true });
+  res.json({ 
+    ok: true,
+    mode: 'FORCE_MOCK_ENABLED',
+    use_mock_env: process.env.USE_MOCK,
+    products_available: true,
+    message: 'Using internal mock products with water bottles, electronics, etc.'
+  });
 });
 
 app.post('/agent/shop/v1/invoke', async (req, res) => {
@@ -111,9 +117,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     });
   }
 
+  // TEMPORARY: Force mock mode until real backend has products
+  const FORCE_MOCK = true;
+  
+  // Log which mode we're using
+  logger.info({ USE_MOCK, FORCE_MOCK, operation }, `Mode: ${FORCE_MOCK || USE_MOCK ? 'MOCK' : 'REAL API'}`);
+  
   // Use mock API if configured
-  if (USE_MOCK) {
-    logger.info({ operation, mock: true }, 'Using internal mock data');
+  if (FORCE_MOCK || USE_MOCK) {
+    logger.info({ operation, mock: true }, 'Using internal mock data with rich product catalog');
     
     try {
       let mockResponse;
