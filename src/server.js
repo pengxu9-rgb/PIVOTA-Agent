@@ -78,7 +78,19 @@ function getOpenAIClient() {
 }
 
 const app = express();
-app.use(express.json());
+
+// Body parser with error handling
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf, encoding) => {
+    try {
+      JSON.parse(buf);
+    } catch(e) {
+      res.status(400).json({ error: 'Invalid JSON' });
+      throw new Error('Invalid JSON');
+    }
+  }
+}));
 
 // CORS configuration - allow UI to call Gateway
 app.use((req, res, next) => {
@@ -92,6 +104,16 @@ app.use((req, res, next) => {
   }
   
   next();
+});
+
+// Global error handler - prevent crashes
+app.use((err, req, res, next) => {
+  logger.error({ err: err.message, stack: err.stack }, 'Unhandled error');
+  res.status(500).json({
+    error: 'INTERNAL_ERROR',
+    message: 'An unexpected error occurred',
+    service: 'pivota-agent-gateway'
+  });
 });
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
