@@ -37,6 +37,12 @@ const ROUTE_MAP = {
     path: '/agent/v1/products/search',
     paramType: 'query'
   },
+  // Cross-merchant product search via backend shopping gateway
+  find_products_multi: {
+    method: 'POST',
+    path: '/agent/shop/v1/invoke',
+    paramType: 'body'
+  },
   get_product_detail: {
     method: 'GET',
     path: '/agent/v1/products/merchants/{merchant_id}/product/{product_id}',
@@ -223,6 +229,34 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           };
           break;
         }
+
+        case 'find_products_multi': {
+          const search = payload.search || {};
+          const products = searchProducts(
+            search.merchant_id || 'merch_208139f7600dbf42',
+            search.query,
+            search.price_max,
+            search.price_min,
+            search.category
+          );
+
+          mockResponse = {
+            status: 'success',
+            success: true,
+            products,
+            results: products,
+            data: { products },
+            total: products.length,
+            count: products.length,
+            page: 1,
+            page_size: products.length,
+            metadata: {
+              query_source: 'mock_multi',
+              merchants_searched: 1
+            }
+          };
+          break;
+        }
         
         case 'get_product_detail': {
           const product = getProductById(
@@ -325,6 +359,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ...(search.page && search.page_size && { offset: (search.page - 1) * search.page_size }),
           ...(search.page_size && { limit: Math.min(search.page_size, 100) }),
           in_stock_only: search.in_stock_only !== false
+        };
+        break;
+      }
+
+      case 'find_products_multi': {
+        // Pass through to backend shopping gateway which understands this operation
+        requestBody = {
+          operation,
+          payload,
         };
         break;
       }

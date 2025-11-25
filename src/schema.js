@@ -2,6 +2,8 @@ const { z } = require('zod');
 
 const OperationEnum = z.enum([
   'find_products',
+  // Cross-merchant search (backend gateway)
+  'find_products_multi',
   'get_product_detail',
   'create_order',
   'submit_payment',
