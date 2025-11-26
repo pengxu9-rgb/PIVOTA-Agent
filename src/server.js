@@ -495,7 +495,65 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     };
 
     const response = await axios(axiosConfig);
-    return res.status(response.status).json(response.data);
+    const upstreamData = response.data;
+
+    // Normalize submit_payment responses so frontends always see a unified
+    // payment object with PSP + payment_action, regardless of PSP type.
+    if (operation === 'submit_payment') {
+      const p = upstreamData || {};
+      const psp =
+        p.psp ||
+        p.psp_used ||
+        (p.payment && (p.payment.psp || p.payment.psp_used)) ||
+        null;
+
+      let paymentAction =
+        p.payment_action ||
+        (p.payment && p.payment.payment_action) ||
+        null;
+
+      // Derive payment_action when backend only returns flat fields
+      if (!paymentAction) {
+        if (psp === 'adyen' && p.client_secret) {
+          paymentAction = {
+            type: 'adyen_session',
+            client_secret: p.client_secret,
+            url: null,
+            raw: null,
+          };
+        } else if (psp === 'stripe' && p.client_secret) {
+          paymentAction = {
+            type: 'stripe_client_secret',
+            client_secret: p.client_secret,
+            url: null,
+            raw: null,
+          };
+        } else if (p.next_action && p.next_action.redirect_url) {
+          paymentAction = {
+            type: 'redirect_url',
+            client_secret: p.client_secret || null,
+            url: p.next_action.redirect_url,
+            raw: null,
+          };
+        }
+      }
+
+      const wrapped = {
+        ...p,
+        psp: psp || null,
+        payment_action: paymentAction || null,
+        payment: {
+          psp: psp || null,
+          client_secret: p.client_secret || null,
+          payment_intent_id: p.payment_intent_id || null,
+          payment_action: paymentAction || null,
+        },
+      };
+
+      return res.status(response.status).json(wrapped);
+    }
+
+    return res.status(response.status).json(upstreamData);
 
   } catch (err) {
     if (err.response) {
