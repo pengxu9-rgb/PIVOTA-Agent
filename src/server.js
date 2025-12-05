@@ -438,21 +438,33 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       
       case 'submit_payment': {
         // Map payment fields - Pivota uses 'total_amount' not 'amount'
+        const payment = payload.payment || {};
+        // 支持两种调用格式：
+        // 1) payment_method_hint: "stripe_checkout"
+        // 2) payment_method: "stripe_checkout"
+        const methodHint =
+          payment.payment_method_hint ||
+          (typeof payment.payment_method === 'string'
+            ? payment.payment_method
+            : undefined);
+
         requestBody = {
-          order_id: payload.payment?.order_id,
-          total_amount: payload.payment?.expected_amount,  // Changed from 'amount' to 'total_amount'
-          currency: payload.payment?.currency,
+          order_id: payment.order_id,
+          total_amount: payment.expected_amount, // Changed from 'amount' to 'total_amount'
+          currency: payment.currency,
           // payment_method expects an object, not a string
-          payment_method: payload.payment?.payment_method_hint ? {
-            type: payload.payment.payment_method_hint,
+          payment_method: methodHint
+            ? {
+                type: methodHint,
             // Add default fields for different payment types
-            ...(payload.payment.payment_method_hint === 'card' && {
-              card: {
-                // Placeholder for card details if needed
+                ...(methodHint === 'card' && {
+                  card: {
+                    // Placeholder for card details if needed
+                  },
+                }),
               }
-            })
-          } : undefined,
-          redirect_url: payload.payment?.return_url,
+            : undefined,
+          redirect_url: payment.return_url,
           ...(payload.ap2_state && { ap2_state: payload.ap2_state })
         };
         break;
