@@ -67,6 +67,11 @@ const ROUTE_MAP = {
     method: 'POST',
     path: '/agent/v1/orders/{order_id}/refund',
     paramType: 'mixed' // path params + optional body
+  },
+  track_product_click: {
+    method: 'POST',
+    path: '/agent/v1/events/product-click',
+    paramType: 'body'
   }
 };
 
@@ -424,6 +429,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             phone: order.shipping_address?.phone || ''
           },
           customer_notes: order.notes || '',
+          // Pass through arbitrary order-level metadata (e.g. creator_id / creator_slug / creator_name)
+          metadata: order.metadata || {},
           ...(payload.acp_state && { acp_state: payload.acp_state })
         };
         break;
@@ -474,6 +481,35 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         url = url.replace('{order_id}', payload.status.order_id);
         if (payload.status.reason) {
           requestBody = { reason: payload.status.reason };
+        }
+        break;
+      }
+
+      case 'track_product_click': {
+        // Directly forward structured click payload to backend
+        // Expected payload shape:
+        // {
+        //   product: {
+        //     merchant_id, platform, product_id,
+        //     position, ranking_score, cq, mr, query
+        //   }
+        // }
+        const p = payload.product || {};
+        requestBody = {
+          merchant_id: p.merchant_id,
+          platform: p.platform,
+          platform_product_id: p.product_id,
+          position: p.position,
+          ranking_score: p.ranking_score,
+          quality_content_score: p.cq,
+          quality_model_readiness: p.mr,
+          query: p.query,
+        };
+        if (!requestBody.merchant_id || !requestBody.platform_product_id) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'merchant_id and product_id are required for track_product_click'
+          });
         }
         break;
       }
