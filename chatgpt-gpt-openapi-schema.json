@@ -57,13 +57,14 @@
             "type": "string",
             "enum": [
               "find_products",
+              "find_products_multi",
               "get_product_detail",
               "create_order",
               "submit_payment",
               "get_order_status",
               "request_after_sales"
             ],
-            "description": "The shopping operation to perform"
+            "description": "The shopping operation to perform. Use find_products_multi when you want to search across all merchants in Pivota Infra."
           },
           "payload": {
             "type": "object",
@@ -79,11 +80,11 @@
               },
               "search": {
                 "type": "object",
-                "description": "Product search parameters",
+                "description": "Product search parameters. If merchant_id is omitted, the backend will search across all available merchants that the current Pivota environment exposes.",
                 "properties": {
                   "merchant_id": {
                     "type": "string",
-                    "description": "Optional merchant ID filter"
+                    "description": "Optional merchant ID filter. Omit to let Pivota automatically route across all merchants."
                   },
                   "query": {
                     "type": "string",

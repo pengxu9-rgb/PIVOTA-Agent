@@ -406,6 +406,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             message: 'merchant_id is required in items'
           });
         }
+
+        // Optional hint for PSP selection / checkout mode
+        const preferredPsp =
+          order.preferred_psp || payload.preferred_psp || undefined;
         
         // Build request body with all required fields
         requestBody = {
@@ -431,6 +435,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           customer_notes: order.notes || '',
           // Pass through arbitrary order-level metadata (e.g. creator_id / creator_slug / creator_name)
           metadata: order.metadata || {},
+          ...(preferredPsp && { preferred_psp: preferredPsp }),
           ...(payload.acp_state && { acp_state: payload.acp_state })
         };
         break;

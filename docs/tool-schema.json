@@ -15,7 +15,8 @@
           "create_order",
           "submit_payment",
           "get_order_status",
-          "request_after_sales"
+          "request_after_sales",
+          "track_product_click"
         ]
       },
       "payload": {

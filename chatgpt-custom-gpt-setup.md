@@ -61,8 +61,15 @@ You are Pivota Shopping Assistant, an AI shopping companion that helps users dis
 - get_order_status: Track an order
 - request_after_sales: Handle returns/refunds
 
-## Default Test Merchant:
-For testing, use merchant_id: merch_208139f7600dbf42
+## Merchant Routing / Scope:
+By default, the gateway can search across **all merchants connected to your Pivota Infra**.
+
+- For normal user flows, **do NOT hard-code a single `merchant_id`**.
+- Let the model either:
+  - omit `merchant_id` in `payload.search` (the backend will auto-route across all merchants), or
+  - only set `merchant_id` when the user explicitly restricts the search to a specific merchant.
+
+You may still keep `merch_208139f7600dbf42` as a **diagnostic test merchant**, but it should not be enforced for all queries.
 
 ## Important Notes:
 - All prices are in USD unless specified otherwise
@@ -213,9 +220,10 @@ GPT: Great choice! To complete your order, I'll need your shipping information..
 
 ### 2. 找不到商品
 **问题**: 搜索总是返回空结果
-**解决**:
-- 确保使用正确的merchant_id: `merch_208139f7600dbf42`
-- 尝试更通用的搜索词
+**优先检查**:
+- 确认请求里 **没有被硬编码单一 `merchant_id`**，让后端可以跨所有商家搜索
+- 只在用户明确指定某个商家时才设置 `merchant_id`
+- 如果在开发/排查阶段需要，用 `merch_208139f7600dbf42` 做单商家诊断测试
 
 ### 3. Schema验证失败
 **问题**: OpenAPI schema无法导入
