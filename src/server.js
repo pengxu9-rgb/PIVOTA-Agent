@@ -302,6 +302,17 @@ function pickSimilarProducts(products, baseProductId, limit = 8, excludeIds = []
   return candidates.slice(0, limit);
 }
 
+function deriveQueryFromProduct(product) {
+  if (!product) return '';
+  const title = (product.title || '').trim();
+  if (title) return title;
+  const ptype = (product.product_type || product.category || '').trim();
+  if (ptype) return ptype;
+  const desc = (product.description || '').trim();
+  if (desc) return desc.slice(0, 60);
+  return String(product.product_id || product.id || '').trim();
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
@@ -599,11 +610,36 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       });
     }
 
+    // Prefer explicit query; otherwise fall back to productId, and best-effort refine via product detail.
+    let derivedQuery = (sim.query || '').trim() || String(productId);
+
+    if (!sim.query) {
+      try {
+        const detailUrl = `${PIVOTA_API_BASE}/agent/v1/products/${merchantId}/${productId}`;
+        const detailResp = await axios.get(detailUrl, {
+          headers: {
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          },
+          timeout: 3000,
+        });
+        const baseProduct = detailResp.data?.product || detailResp.data;
+        const maybeQuery = deriveQueryFromProduct(baseProduct);
+        if (maybeQuery) {
+          derivedQuery = maybeQuery;
+        }
+      } catch (e) {
+        logger.warn(
+          { err: e.message, merchantId, productId },
+          'Failed to fetch base product for similar query derivation'
+        );
+      }
+    }
+
     const search = {
       merchant_id: merchantId,
-      query: sim.query || '',
+      query: derivedQuery,
       page: 1,
-      page_size: Math.min(limit * 3, 100),
+      page_size: Math.min(Math.max(limit * 3, limit), 50),
       in_stock_only: sim.in_stock_only !== false,
     };
 
