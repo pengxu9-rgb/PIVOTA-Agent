@@ -287,10 +287,14 @@ function pickSimilarProducts(products, baseProductId, limit = 8, excludeIds = []
   if (basePrice && basePrice > 0) {
     const min = basePrice * 0.7;
     const max = basePrice * 1.3;
-    candidates = candidates.filter((p) => {
+    const priced = candidates.filter((p) => {
       const price = Number(p.price || p.unit_price || 0);
       return price >= min && price <= max;
     });
+
+    if (priced.length) {
+      candidates = priced;
+    }
 
     candidates.sort((a, b) => {
       const pa = Math.abs(Number(a.price || a.unit_price || 0) - basePrice);
@@ -615,7 +619,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     if (!sim.query) {
       try {
-        const detailUrl = `${PIVOTA_API_BASE}/agent/v1/products/merchants/${merchantId}/product/${productId}`;
+        // Use correct product detail path: /agent/v1/products/{merchant_id}/{product_id}
+        const detailUrl = `${PIVOTA_API_BASE}/agent/v1/products/${merchantId}/${productId}`;
         const detailResp = await axios.get(detailUrl, {
           headers: {
             ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
