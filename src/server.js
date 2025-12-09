@@ -625,7 +625,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         headers: {
           ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
         },
-        timeout: 10000,
+        timeout: 15000,
         params: queryParams,
       };
 
@@ -653,7 +653,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
       if (err.code === 'ECONNABORTED') {
         logger.error({ url: err.config?.url }, 'Upstream timeout in find_similar_products');
-        return res.status(504).json({ error: 'UPSTREAM_TIMEOUT' });
+        // Graceful fallback: avoid 504 to frontend; return empty list
+        return res.status(200).json({
+          status: 'success',
+          products: [],
+          total: 0,
+          page: 1,
+          page_size: 0,
+          warning: 'UPSTREAM_TIMEOUT',
+        });
       }
       logger.error({ err: err.message }, 'Unexpected error in find_similar_products');
       return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
