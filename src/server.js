@@ -14,6 +14,7 @@ const { searchProducts, getProductById } = require('./mockProducts');
 const { getActivePromotions } = require('./promotions');
 
 const PORT = process.env.PORT || 3000;
+const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
@@ -425,7 +426,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         case 'find_products': {
           const search = payload.search || {};
           const products = searchProducts(
-            search.merchant_id || 'merch_208139f7600dbf42',
+            search.merchant_id || DEFAULT_MERCHANT_ID,
             search.query,
             search.price_max,
             search.price_min,
@@ -454,7 +455,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             payload.product_id;
           const limit = sim.limit || 8;
           const merchantId =
-            sim.merchant_id || payload.search?.merchant_id || 'merch_208139f7600dbf42';
+            sim.merchant_id || payload.search?.merchant_id || DEFAULT_MERCHANT_ID;
           const excludeIds = sim.exclude_ids || [productId].filter(Boolean);
 
           const all = searchProducts(merchantId, sim.query, undefined, undefined, undefined);
@@ -589,8 +590,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     const limit = sim.limit || 8;
     const excludeIds = sim.exclude_ids || [productId].filter(Boolean);
+    const merchantId =
+      sim.merchant_id || payload.product?.merchant_id || payload.search?.merchant_id;
+    if (!merchantId) {
+      return res.status(400).json({
+        error: 'MISSING_PARAMETERS',
+        message: 'merchant_id is required for find_similar_products; pass similar.merchant_id',
+      });
+    }
+
     const search = {
-      merchant_id: sim.merchant_id || payload.search?.merchant_id,
+      merchant_id: merchantId,
       query: sim.query || '',
       page: 1,
       page_size: Math.min(limit * 3, 100),
