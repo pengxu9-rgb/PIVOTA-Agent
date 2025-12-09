@@ -11,6 +11,7 @@ const OpenAI = require('openai');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { searchProducts, getProductById } = require('./mockProducts');
+const { getActivePromotions } = require('./promotions');
 
 const PORT = process.env.PORT || 3000;
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
@@ -89,6 +90,177 @@ function getOpenAIClient() {
 }
 
 const app = express();
+
+// ---------------- Promotion / deals enrichment helpers ----------------
+
+function isPromoActive(promo, nowTs) {
+  const start = new Date(promo.startAt).getTime();
+  const end = new Date(promo.endAt).getTime();
+  return nowTs >= start && nowTs <= end;
+}
+
+function matchesScope(promo, product) {
+  const scope = promo.scope || {};
+  if (scope.global) return true;
+
+  const pid = String(product.product_id || product.id || '');
+  if (scope.productIds && scope.productIds.includes(pid)) return true;
+
+  const category = (product.category || product.product_type || '').toLowerCase();
+  if (
+    scope.categoryIds &&
+    scope.categoryIds.some((c) => category && category.includes(String(c).toLowerCase()))
+  ) {
+    return true;
+  }
+
+  const brand = (product.vendor || product.brand || '').toLowerCase();
+  if (
+    scope.brandIds &&
+    scope.brandIds.some((b) => brand && brand.includes(String(b).toLowerCase()))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function findApplicablePromotionsForProduct(product, now, promotions) {
+  const nowTs = now.getTime();
+  return promotions.filter(
+    (promo) => isPromoActive(promo, nowTs) && matchesScope(promo, product)
+  );
+}
+
+function computeUrgency(endAt) {
+  if (!endAt) return 'LOW';
+  const end = new Date(endAt).getTime();
+  const now = Date.now();
+  const diffMs = end - now;
+  if (diffMs <= 0) return 'LOW';
+  const diffHours = diffMs / (1000 * 60 * 60);
+  if (diffHours <= 1) return 'HIGH';
+  if (diffHours <= 24) return 'MEDIUM';
+  return 'LOW';
+}
+
+function promotionToDealPayload(promo, productPrice) {
+  const base = {
+    id: promo.id,
+    type: promo.type,
+    label: promo.humanReadableRule || promo.name || 'Deal',
+  };
+
+  if (promo.config?.kind === 'FLASH_SALE') {
+    const flashPrice = promo.config.flashPrice || null;
+    const originalPrice =
+      promo.config.originalPrice || productPrice || (productPrice === 0 ? 0 : null);
+    const discountPercent =
+      originalPrice && originalPrice > 0 && flashPrice
+        ? Math.round((1 - flashPrice / originalPrice) * 100)
+        : undefined;
+
+    return {
+      ...base,
+      discount_percent: discountPercent,
+      flash_price: flashPrice || undefined,
+      end_at: promo.endAt,
+      urgency_level: computeUrgency(promo.endAt),
+    };
+  }
+
+  if (promo.config?.kind === 'MULTI_BUY_DISCOUNT') {
+    return {
+      ...base,
+      discount_percent: promo.config.discountPercent,
+      end_at: promo.endAt,
+      urgency_level: computeUrgency(promo.endAt),
+    };
+  }
+
+  return base;
+}
+
+function enrichProductsWithDeals(products, promotions, now = new Date()) {
+  if (!Array.isArray(products) || !products.length) return products;
+  return products.map((product) => {
+    const applicablePromos = findApplicablePromotionsForProduct(product, now, promotions);
+    const allDeals = applicablePromos.map((p) =>
+      promotionToDealPayload(p, product.price || product.price_cents || product.unit_price)
+    );
+
+    let bestDeal = null;
+    if (allDeals.length) {
+      bestDeal = allDeals.reduce((best, current) => {
+        if (!best) return current;
+        const bestDiscount = best.discount_percent || 0;
+        const currentDiscount = current.discount_percent || 0;
+        if (currentDiscount > bestDiscount) return current;
+        if (currentDiscount === bestDiscount) {
+          const rank = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+          const bestUrgency = rank[best.urgency_level || 'LOW'];
+          const currentUrgency = rank[current.urgency_level || 'LOW'];
+          return currentUrgency > bestUrgency ? current : best;
+        }
+        return best;
+      }, null);
+    }
+
+    return {
+      ...product,
+      best_deal: bestDeal || product.best_deal || null,
+      all_deals: allDeals.length ? allDeals : product.all_deals,
+    };
+  });
+}
+
+/**
+ * Apply deal enrichment to various response shapes:
+ * - { products: [...] }
+ * - { groups: [{ products: [...] }]}
+ * - { results: { key: [...] } }
+ */
+function applyDealsToResponse(upstreamData, promotions, now = new Date()) {
+  if (!upstreamData || !promotions || !promotions.length) {
+    return upstreamData;
+  }
+
+  const clone = JSON.parse(JSON.stringify(upstreamData));
+
+  // Flat products
+  if (Array.isArray(clone.products)) {
+    clone.products = enrichProductsWithDeals(clone.products, promotions, now);
+  }
+
+  // groups: [{ products: [...] }]
+  if (Array.isArray(clone.groups)) {
+    clone.groups = clone.groups.map((g) => {
+      if (Array.isArray(g.products)) {
+        return { ...g, products: enrichProductsWithDeals(g.products, promotions, now) };
+      }
+      return g;
+    });
+  }
+
+  // results: { key: [...] }
+  if (clone.results && typeof clone.results === 'object') {
+    const newResults = {};
+    for (const key of Object.keys(clone.results)) {
+      const arr = clone.results[key];
+      newResults[key] = Array.isArray(arr)
+        ? enrichProductsWithDeals(arr, promotions, now)
+        : arr;
+    }
+    clone.results = newResults;
+  }
+
+  // data.products (nested)
+  if (clone.data && Array.isArray(clone.data.products)) {
+    clone.data.products = enrichProductsWithDeals(clone.data.products, promotions, now);
+  }
+
+  return clone;
+}
 
 // Body parser with error handling
 app.use(express.json({
@@ -328,7 +500,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           });
       }
       
-      return res.json(mockResponse);
+      const promotions = getActivePromotions(new Date());
+      const enriched = applyDealsToResponse(mockResponse, promotions);
+      return res.json(enriched);
     } catch (err) {
       logger.error({ err: err.message }, 'Mock handler error');
       return res.status(503).json({ error: 'SERVICE_UNAVAILABLE' });
@@ -549,6 +723,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     const response = await axios(axiosConfig);
     const upstreamData = response.data;
+    const promotions = getActivePromotions(new Date());
 
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
@@ -606,7 +781,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       return res.status(response.status).json(wrapped);
     }
 
-    return res.status(response.status).json(upstreamData);
+    const enriched = applyDealsToResponse(upstreamData, promotions);
+    return res.status(response.status).json(enriched);
 
   } catch (err) {
     if (err.response) {
