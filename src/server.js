@@ -640,7 +640,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       query: derivedQuery,
       page: 1,
       page_size: Math.min(Math.max(limit * 3, limit), 50),
-      in_stock_only: sim.in_stock_only !== false,
+      // For similarity we default to include OOS items to avoid empty results; allow override.
+      in_stock_only: sim.in_stock_only === true,
     };
 
     try {
