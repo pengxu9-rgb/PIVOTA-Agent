@@ -615,7 +615,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     if (!sim.query) {
       try {
-        const detailUrl = `${PIVOTA_API_BASE}/agent/v1/products/${merchantId}/${productId}`;
+        const detailUrl = `${PIVOTA_API_BASE}/agent/v1/products/merchants/${merchantId}/product/${productId}`;
         const detailResp = await axios.get(detailUrl, {
           headers: {
             ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
