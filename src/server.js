@@ -38,6 +38,12 @@ const ROUTE_MAP = {
     path: '/agent/v1/products/search',
     paramType: 'query'
   },
+  find_similar_products: {
+    // We will internally call find_products; kept here for completeness (unused for direct routing)
+    method: 'GET',
+    path: '/agent/v1/products/search',
+    paramType: 'query'
+  },
   // Cross-merchant product search via backend shopping gateway
   find_products_multi: {
     method: 'POST',
@@ -262,6 +268,39 @@ function applyDealsToResponse(upstreamData, promotions, now = new Date()) {
   return clone;
 }
 
+// Helper: compute similar products (simple heuristic: price band, exclude ids)
+function pickSimilarProducts(products, baseProductId, limit = 8, excludeIds = []) {
+  if (!Array.isArray(products)) return [];
+  const excludes = new Set(excludeIds || []);
+  excludes.add(baseProductId);
+
+  const base = products.find(
+    (p) => String(p.product_id || p.id) === String(baseProductId)
+  );
+  const basePrice = base ? Number(base.price || base.unit_price || 0) : null;
+
+  let candidates = products.filter(
+    (p) => !excludes.has(String(p.product_id || p.id))
+  );
+
+  if (basePrice && basePrice > 0) {
+    const min = basePrice * 0.7;
+    const max = basePrice * 1.3;
+    candidates = candidates.filter((p) => {
+      const price = Number(p.price || p.unit_price || 0);
+      return price >= min && price <= max;
+    });
+
+    candidates.sort((a, b) => {
+      const pa = Math.abs(Number(a.price || a.unit_price || 0) - basePrice);
+      const pb = Math.abs(Number(b.price || b.unit_price || 0) - basePrice);
+      return pa - pb;
+    });
+  }
+
+  return candidates.slice(0, limit);
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
@@ -407,6 +446,30 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           break;
         }
 
+        case 'find_similar_products': {
+          const sim = payload.similar || {};
+          const productId =
+            sim.product_id ||
+            payload.product?.product_id ||
+            payload.product_id;
+          const limit = sim.limit || 8;
+          const merchantId =
+            sim.merchant_id || payload.search?.merchant_id || 'merch_208139f7600dbf42';
+          const excludeIds = sim.exclude_ids || [productId].filter(Boolean);
+
+          const all = searchProducts(merchantId, sim.query, undefined, undefined, undefined);
+          const picked = pickSimilarProducts(all, productId, limit, excludeIds);
+
+          mockResponse = {
+            status: 'success',
+            products: picked,
+            total: picked.length,
+            page: 1,
+            page_size: picked.length,
+          };
+          break;
+        }
+
         case 'find_products_multi': {
           const search = payload.search || {};
           const products = searchProducts(
@@ -510,6 +573,83 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   }
 
   // Use real API routing
+  // Custom handling for find_similar_products (leverages find_products upstream)
+  if (operation === 'find_similar_products') {
+    const sim = payload.similar || {};
+    const productId =
+      sim.product_id ||
+      payload.product?.product_id ||
+      payload.product_id;
+    if (!productId) {
+      return res.status(400).json({
+        error: 'MISSING_PARAMETERS',
+        message: 'product_id is required for find_similar_products',
+      });
+    }
+
+    const limit = sim.limit || 8;
+    const excludeIds = sim.exclude_ids || [productId].filter(Boolean);
+    const search = {
+      merchant_id: sim.merchant_id || payload.search?.merchant_id,
+      query: sim.query || '',
+      page: 1,
+      page_size: Math.min(limit * 3, 100),
+      in_stock_only: sim.in_stock_only !== false,
+    };
+
+    try {
+      // Reuse find_products upstream to fetch a candidate pool
+      const queryParams = {
+        ...(search.merchant_id && { merchant_id: search.merchant_id }),
+        ...(search.query && { query: search.query }),
+        ...(search.price_min && { min_price: search.price_min }),
+        ...(search.price_max && { max_price: search.price_max }),
+        ...(search.page && search.page_size && { offset: (search.page - 1) * search.page_size }),
+        ...(search.page_size && { limit: Math.min(search.page_size, 100) }),
+        in_stock_only: search.in_stock_only !== false
+      };
+
+      const axiosConfig = {
+        method: 'GET',
+        url: `${PIVOTA_API_BASE}/agent/v1/products/search`,
+        headers: {
+          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+        },
+        timeout: 10000,
+        params: queryParams,
+      };
+
+      const response = await axios(axiosConfig);
+      const upstreamData = response.data || {};
+      const candidates = upstreamData.products || [];
+
+      const picked = pickSimilarProducts(candidates, productId, limit, excludeIds);
+      const promotions = getActivePromotions(new Date());
+      const enriched = enrichProductsWithDeals(picked, promotions);
+
+      return res.status(200).json({
+        status: 'success',
+        products: enriched,
+        total: enriched.length,
+        page: 1,
+        page_size: enriched.length,
+      });
+    } catch (err) {
+      if (err.response) {
+        logger.warn({ status: err.response.status, data: err.response.data }, 'Upstream error in find_similar_products');
+        return res
+          .status(err.response.status || 502)
+          .json(err.response.data || { error: 'UPSTREAM_ERROR' });
+      }
+      if (err.code === 'ECONNABORTED') {
+        logger.error({ url: err.config?.url }, 'Upstream timeout in find_similar_products');
+        return res.status(504).json({ error: 'UPSTREAM_TIMEOUT' });
+      }
+      logger.error({ err: err.message }, 'Unexpected error in find_similar_products');
+      return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+    }
+  }
+
   const route = ROUTE_MAP[operation];
   if (!route) {
     return res.status(400).json({

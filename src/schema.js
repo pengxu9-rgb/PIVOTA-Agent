@@ -4,6 +4,7 @@ const OperationEnum = z.enum([
   'find_products',
   // Cross-merchant search (backend gateway)
   'find_products_multi',
+  'find_similar_products',
   'get_product_detail',
   'create_order',
   'submit_payment',
@@ -28,6 +29,9 @@ const InvokeRequestSchema = z.object({
     
     // get_product_detail: { merchant_id, product_id, sku_id? }
     product: z.any().optional(),
+
+    // find_similar_products: { product_id, creator_id?, limit?, exclude_ids?, query? }
+    similar: z.any().optional(),
     
     // create_order: { items[], shipping_address, notes? }
     order: z.any().optional(),
