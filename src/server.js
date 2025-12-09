@@ -632,6 +632,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           { err: e.message, merchantId, productId },
           'Failed to fetch base product for similar query derivation'
         );
+        // If we couldn't fetch detail, prefer an empty query to pull a general pool
+        // instead of using a numeric product_id which yields zero matches.
+        if (!sim.query) {
+          derivedQuery = '';
+        }
       }
     }
 
