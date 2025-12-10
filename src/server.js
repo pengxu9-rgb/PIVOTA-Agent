@@ -553,6 +553,40 @@ function extractCreatorId(payload) {
   );
 }
 
+function normalizeMetadata(rawMetadata = {}, payload = {}) {
+  const creatorId =
+    rawMetadata.creator_id ||
+    rawMetadata.creatorId ||
+    payload.creator_id ||
+    payload.creatorId ||
+    payload.search?.creator_id ||
+    null;
+
+  const creatorName =
+    rawMetadata.creator_name ||
+    rawMetadata.creatorName ||
+    payload.creator_name ||
+    payload.creatorName ||
+    null;
+
+  const traceId =
+    rawMetadata.trace_id ||
+    rawMetadata.traceId ||
+    payload.trace_id ||
+    payload.traceId ||
+    null;
+
+  const source = rawMetadata.source || payload.source || 'creator-agent-ui';
+
+  return {
+    ...rawMetadata,
+    ...(creatorId && { creator_id: creatorId }),
+    ...(creatorName && { creator_name: creatorName }),
+    ...(traceId && { trace_id: traceId }),
+    ...(source && { source }),
+  };
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
@@ -728,7 +762,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   }
 
   const { operation, payload } = parsed.data;
-  const creatorId = extractCreatorId(payload);
+  const metadata = normalizeMetadata(req.body.metadata, payload);
+  const creatorId = extractCreatorId({ ...payload, metadata });
   const now = new Date();
 
   // Redundant allowlist check for semantics clarity.
@@ -1078,6 +1113,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         requestBody = {
           operation,
           payload,
+          metadata,
         };
         break;
       }
