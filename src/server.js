@@ -59,9 +59,11 @@ const ROUTE_MAP = {
     paramType: 'body'
   },
   get_product_detail: {
-    method: 'GET',
-    path: '/agent/v1/products/merchants/{merchant_id}/product/{product_id}',
-    paramType: 'path'
+    // Route via the shopping gateway so that product detail uses the same
+    // cache + live fallback logic as find_products_multi.
+    method: 'POST',
+    path: '/agent/shop/v1/invoke',
+    paramType: 'body'
   },
   create_order: {
     method: 'POST',
@@ -1110,15 +1112,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
       
       case 'get_product_detail': {
-        // Extract path parameters
+        // Delegate to backend shopping gateway get_product_detail operation
         if (!payload.product?.merchant_id || !payload.product?.product_id) {
           return res.status(400).json({
             error: 'MISSING_PARAMETERS',
             message: 'merchant_id and product_id are required'
           });
         }
-        url = url.replace('{merchant_id}', payload.product.merchant_id);
-        url = url.replace('{product_id}', payload.product.product_id);
+        requestBody = {
+          operation,
+          payload,
+          metadata,
+        };
         break;
       }
       
