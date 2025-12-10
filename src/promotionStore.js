@@ -4,6 +4,10 @@ const { randomUUID } = require('crypto');
 
 const STORE_PATH = path.join(__dirname, '..', 'data', 'promotions.json');
 
+const DEFAULT_MERCHANT_ID = 'default_merchant';
+
+// Note: Each promotion belongs to exactly one merchant (merchantId at root).
+// Scope only targets products/categories/brands; it should not carry merchantIds.
 const DEFAULT_PROMOTIONS = [
   {
     id: 'promo_flash_demo_001',
@@ -13,9 +17,9 @@ const DEFAULT_PROMOTIONS = [
     startAt: '2024-01-01T00:00:00Z',
     endAt: '2026-12-31T23:59:59Z',
     channels: ['creator_agents'],
+    merchantId: DEFAULT_MERCHANT_ID,
     scope: {
       productIds: [],
-      merchantIds: [],
       categoryIds: [],
       brandIds: [],
       global: true,
@@ -41,9 +45,9 @@ const DEFAULT_PROMOTIONS = [
     startAt: '2024-01-01T00:00:00Z',
     endAt: '2026-12-31T23:59:59Z',
     channels: ['creator_agents'],
+    merchantId: DEFAULT_MERCHANT_ID,
     scope: {
       productIds: [],
-      merchantIds: [],
       categoryIds: [],
       brandIds: [],
       global: true,
@@ -79,7 +83,7 @@ function loadPromotions() {
     const raw = fs.readFileSync(STORE_PATH, 'utf-8');
     const data = JSON.parse(raw);
     if (!Array.isArray(data)) return [];
-    return data;
+    return data.map(normalizePromotionRecord);
   } catch (e) {
     return [];
   }
@@ -87,7 +91,15 @@ function loadPromotions() {
 
 function savePromotions(promos) {
   ensureStoreDir();
-  fs.writeFileSync(STORE_PATH, JSON.stringify(promos, null, 2), 'utf-8');
+  // strip any legacy scope.merchantIds before persisting
+  const cleaned = promos.map((p) => ({
+    ...p,
+    scope: {
+      ...(p.scope || {}),
+      merchantIds: undefined,
+    },
+  }));
+  fs.writeFileSync(STORE_PATH, JSON.stringify(cleaned, null, 2), 'utf-8');
 }
 
 function getAllPromotions() {
@@ -103,9 +115,16 @@ function upsertPromotion(promo) {
   const promos = loadPromotions();
   const idx = promos.findIndex((p) => p.id === promo.id);
   if (idx >= 0) {
-    promos[idx] = { ...promos[idx], ...promo, updatedAt: now };
+    promos[idx] = normalizePromotionRecord({ ...promos[idx], ...promo, updatedAt: now });
   } else {
-    promos.push({ ...promo, id: promo.id || randomUUID(), createdAt: now, updatedAt: now });
+    promos.push(
+      normalizePromotionRecord({
+        ...promo,
+        id: promo.id || randomUUID(),
+        createdAt: now,
+        updatedAt: now,
+      })
+    );
   }
   savePromotions(promos);
   return promo.id;
@@ -122,6 +141,35 @@ function softDeletePromotion(id) {
   return false;
 }
 
+function normalizePromotionRecord(promo) {
+  if (!promo || typeof promo !== 'object') return promo;
+  const scopedMerchant =
+    promo.merchantId ||
+    promo.merchant_id ||
+    (promo.scope?.merchantIds && promo.scope.merchantIds[0]) ||
+    null;
+
+  const normalizedScope = {
+    productIds: promo.scope?.productIds || promo.scope?.product_ids || [],
+    categoryIds: promo.scope?.categoryIds || promo.scope?.category_ids || [],
+    brandIds: promo.scope?.brandIds || promo.scope?.brand_ids || [],
+    global: promo.scope?.global === true,
+  };
+
+  if (!scopedMerchant) {
+    console.warn(
+      '[promotionStore] promotion missing merchantId; assigning default_merchant',
+      promo.id
+    );
+  }
+
+  return {
+    ...promo,
+    merchantId: scopedMerchant || DEFAULT_MERCHANT_ID,
+    scope: normalizedScope,
+  };
+}
+
 module.exports = {
   getAllPromotions,
   getPromotionById,
@@ -130,4 +178,6 @@ module.exports = {
   savePromotions,
   loadPromotions,
   STORE_PATH,
+  DEFAULT_MERCHANT_ID,
+  normalizePromotionRecord,
 };

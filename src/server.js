@@ -134,14 +134,6 @@ function matchesScope(promo, product) {
   const pid = String(product.product_id || product.id || '');
   if (scope.productIds && scope.productIds.includes(pid)) return true;
 
-  const merchantId = (product.merchant_id || product.merchantId || '').toString();
-  if (
-    scope.merchantIds &&
-    scope.merchantIds.some((m) => merchantId && merchantId === String(m))
-  ) {
-    return true;
-  }
-
   const category = (product.category || product.product_type || '').toLowerCase();
   if (
     scope.categoryIds &&
@@ -175,9 +167,14 @@ function allowedForCreator(promo, creatorId) {
 
 function findApplicablePromotionsForProduct(product, now, promotions, creatorId) {
   const nowTs = now.getTime();
+  const productMerchant = String(product.merchant_id || product.merchantId || '');
   return promotions.filter(
     (promo) =>
       isPromoActive(promo, nowTs) &&
+      // Merchant ownership: promo.merchantId is the owner, scope is only targeting.
+      (!promo.merchantId ||
+        !productMerchant ||
+        String(promo.merchantId) === productMerchant) &&
       matchesScope(promo, product) &&
       Array.isArray(promo.channels) &&
       promo.channels.includes(CHANNEL_CREATOR) &&
@@ -425,10 +422,19 @@ function validateAndNormalizePromotion(payload, existing = {}, { requireAll = fa
     errors.push('channels must be a non-empty array');
   }
 
+  const merchantId =
+    merged.merchantId ||
+    merged.merchant_id ||
+    merged.scope?.merchantIds?.[0] ||
+    merged.scope?.merchant_ids?.[0] ||
+    null;
+  if (requireAll && !merchantId) {
+    errors.push('merchantId is required');
+  }
+
   const scope = merged.scope || {};
   const normalizedScope = {
     productIds: scope.productIds || [],
-    merchantIds: scope.merchantIds || [],
     categoryIds: scope.categoryIds || [],
     brandIds: scope.brandIds || [],
     global: scope.global === true,
@@ -473,6 +479,7 @@ function validateAndNormalizePromotion(payload, existing = {}, { requireAll = fa
     description: merged.description || '',
     startAt: merged.startAt,
     endAt: merged.endAt,
+    merchantId: merchantId,
     channels: channels.length ? channels : merged.channels || [],
     scope: normalizedScope,
     config: merged.config,
