@@ -47,10 +47,10 @@ const ROUTE_MAP = {
     paramType: 'query'
   },
   find_similar_products: {
-    // We will internally call find_products; kept here for completeness (unused for direct routing)
-    method: 'GET',
-    path: '/agent/v1/products/search',
-    paramType: 'query'
+    // Delegate to Python shopping gateway for multi-merchant similarity.
+    method: 'POST',
+    path: '/agent/shop/v1/invoke',
+    paramType: 'body'
   },
   // Cross-merchant product search via backend shopping gateway
   find_products_multi: {
@@ -943,132 +943,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   }
 
   // Use real API routing
-  // Custom handling for find_similar_products (leverages find_products upstream)
-  if (operation === 'find_similar_products') {
-    const sim = payload.similar || {};
-    const productId =
-      sim.product_id ||
-      payload.product?.product_id ||
-      payload.product_id;
-    if (!productId) {
-      return res.status(400).json({
-        error: 'MISSING_PARAMETERS',
-        message: 'product_id is required for find_similar_products',
-      });
-    }
-
-    const limit = sim.limit || 8;
-    const excludeIds = sim.exclude_ids || [productId].filter(Boolean);
-    const merchantId =
-      sim.merchant_id || payload.product?.merchant_id || payload.search?.merchant_id;
-    if (!merchantId) {
-      return res.status(400).json({
-        error: 'MISSING_PARAMETERS',
-        message: 'merchant_id is required for find_similar_products; pass similar.merchant_id',
-      });
-    }
-
-    // Prefer explicit query; otherwise fall back to productId, and best-effort refine via product detail.
-    let derivedQuery = (sim.query || '').trim() || String(productId);
-
-    if (!sim.query) {
-      try {
-        // Use correct product detail path: /agent/v1/products/{merchant_id}/{product_id}
-        const detailUrl = `${PIVOTA_API_BASE}/agent/v1/products/${merchantId}/${productId}`;
-        const detailResp = await axios.get(detailUrl, {
-          headers: {
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          },
-          timeout: 3000,
-        });
-        const baseProduct = detailResp.data?.product || detailResp.data;
-        const maybeQuery = deriveQueryFromProduct(baseProduct);
-        if (maybeQuery) {
-          derivedQuery = maybeQuery;
-        }
-      } catch (e) {
-        logger.warn(
-          { err: e.message, merchantId, productId },
-          'Failed to fetch base product for similar query derivation'
-        );
-        // If we couldn't fetch detail, prefer an empty query to pull a general pool
-        // instead of using a numeric product_id which yields zero matches.
-        if (!sim.query) {
-          derivedQuery = '';
-        }
-      }
-    }
-
-    const search = {
-      merchant_id: merchantId,
-      query: derivedQuery,
-      page: 1,
-      page_size: Math.min(Math.max(limit * 3, limit), 50),
-      // For similarity we default to include OOS items to avoid empty results; allow override.
-      in_stock_only: sim.in_stock_only === true,
-    };
-
-    try {
-      // Reuse find_products upstream to fetch a candidate pool
-      const queryParams = {
-        ...(search.merchant_id && { merchant_id: search.merchant_id }),
-        ...(search.query && { query: search.query }),
-        ...(search.price_min && { min_price: search.price_min }),
-        ...(search.price_max && { max_price: search.price_max }),
-        ...(search.page && search.page_size && { offset: (search.page - 1) * search.page_size }),
-        ...(search.page_size && { limit: Math.min(search.page_size, 100) }),
-        in_stock_only: search.in_stock_only !== false
-      };
-
-      const axiosConfig = {
-        method: 'GET',
-        url: `${PIVOTA_API_BASE}/agent/v1/products/search`,
-        headers: {
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        },
-        timeout: 15000,
-        params: queryParams,
-      };
-
-      const response = await axios(axiosConfig);
-      const upstreamData = response.data || {};
-      const candidates = upstreamData.products || [];
-
-      const picked = pickSimilarProducts(candidates, productId, limit, excludeIds);
-      const promotions = getActivePromotions(now, creatorId);
-      const enriched = enrichProductsWithDeals(picked, promotions, now, creatorId);
-
-      return res.status(200).json({
-        status: 'success',
-        products: enriched,
-        total: enriched.length,
-        page: 1,
-        page_size: enriched.length,
-      });
-    } catch (err) {
-      if (err.response) {
-        logger.warn({ status: err.response.status, data: err.response.data }, 'Upstream error in find_similar_products');
-        return res
-          .status(err.response.status || 502)
-          .json(err.response.data || { error: 'UPSTREAM_ERROR' });
-      }
-      if (err.code === 'ECONNABORTED') {
-        logger.error({ url: err.config?.url }, 'Upstream timeout in find_similar_products');
-        // Graceful fallback: avoid 504 to frontend; return empty list
-        return res.status(200).json({
-          status: 'success',
-          products: [],
-          total: 0,
-          page: 1,
-          page_size: 0,
-          warning: 'UPSTREAM_TIMEOUT',
-        });
-      }
-      logger.error({ err: err.message }, 'Unexpected error in find_similar_products');
-      return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
-    }
-  }
-
   const route = ROUTE_MAP[operation];
   if (!route) {
     return res.status(400).json({
@@ -1106,6 +980,32 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         requestBody = {
           operation,
           payload,
+          metadata,
+        };
+        break;
+      }
+      
+      case 'find_similar_products': {
+        // Delegate to backend shopping gateway which owns the similarity logic.
+        // Accept both the legacy nested shape (payload.similar) and the
+        // flat shape (payload.product_id, payload.merchant_id, etc.).
+        const sim = payload.similar || {};
+        const normalizedPayload = {
+          product_id: sim.product_id || payload.product_id,
+          merchant_id: sim.merchant_id || payload.merchant_id,
+          limit: sim.limit || payload.limit,
+          strategy: sim.strategy || payload.strategy,
+          user: sim.user || payload.user,
+          creator_id:
+            payload.creator_id ||
+            sim.creator_id ||
+            metadata.creator_id ||
+            undefined,
+          metadata,
+        };
+        requestBody = {
+          operation,
+          payload: normalizedPayload,
           metadata,
         };
         break;

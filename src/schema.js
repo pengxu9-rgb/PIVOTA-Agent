@@ -48,7 +48,7 @@ const InvokeRequestSchema = z.object({
     
     // get_order_status / request_after_sales: { order_id, requested_action?, reason? }
     status: z.any().optional(),
-  }),
+  }).passthrough(),
 });
 
 module.exports = {
