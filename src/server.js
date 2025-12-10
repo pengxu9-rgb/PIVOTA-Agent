@@ -386,6 +386,27 @@ function computeHumanReadableRule(promo) {
   return promo.name || 'Deal';
 }
 
+function sanitizePromotionForResponse(promo) {
+  if (!promo) return promo;
+  const scope = promo.scope || {};
+  return {
+    ...promo,
+    // Ensure merchantId is always present at root
+    merchantId:
+      promo.merchantId ||
+      promo.merchant_id ||
+      scope.merchantIds?.[0] ||
+      scope.merchant_ids?.[0] ||
+      null,
+    scope: {
+      productIds: scope.productIds || scope.product_ids || [],
+      categoryIds: scope.categoryIds || scope.category_ids || [],
+      brandIds: scope.brandIds || scope.brand_ids || [],
+      global: scope.global === true,
+    },
+  };
+}
+
 function computePromotionStatus(promo, nowTs) {
   if (promo.deletedAt) return 'ENDED';
   const start = new Date(promo.startAt).getTime();
@@ -635,7 +656,7 @@ app.get('/api/merchant/promotions', requireAdmin, (req, res) => {
       return true;
     })
     .map((p) => ({
-      ...p,
+      ...sanitizePromotionForResponse(p),
       humanReadableRule: computeHumanReadableRule(p),
       status: computePromotionStatus(p, nowTs),
     }));
@@ -651,7 +672,7 @@ app.get('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
   const nowTs = Date.now();
   return res.json({
     promotion: {
-      ...promo,
+      ...sanitizePromotionForResponse(promo),
       humanReadableRule: computeHumanReadableRule(promo),
       status: computePromotionStatus(promo, nowTs),
     },
@@ -667,7 +688,7 @@ app.post('/api/merchant/promotions', requireAdmin, (req, res) => {
   upsertPromotion(promotion);
   return res.status(201).json({
     promotion: {
-      ...promotion,
+      ...sanitizePromotionForResponse(promotion),
       status: computePromotionStatus(promotion, nowTs),
     },
   });
@@ -690,7 +711,7 @@ app.patch('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
   upsertPromotion(promotion);
   return res.json({
     promotion: {
-      ...promotion,
+      ...sanitizePromotionForResponse(promotion),
       status: computePromotionStatus(promotion, nowTs),
     },
   });
