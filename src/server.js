@@ -321,6 +321,29 @@ function applyDealsToResponse(upstreamData, promotions, now = new Date(), creato
     );
   }
 
+  // Similar-products style payloads:
+  // { base_product_id, strategy_used, items: [{ product: {...}, best_deal, all_deals, ... }] }
+  if (Array.isArray(clone.items)) {
+    clone.items = clone.items.map((item) => {
+      if (!item || !item.product) return item;
+
+      const enrichedList = enrichProductsWithDeals(
+        [item.product],
+        promotions,
+        now,
+        creatorId
+      );
+      const enrichedProduct = enrichedList && enrichedList[0] ? enrichedList[0] : item.product;
+
+      return {
+        ...item,
+        product: enrichedProduct,
+        best_deal: enrichedProduct.best_deal || item.best_deal || null,
+        all_deals: enrichedProduct.all_deals || item.all_deals || [],
+      };
+    });
+  }
+
   return clone;
 }
 
