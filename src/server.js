@@ -580,9 +580,9 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
 
   return {
     ...rawMetadata,
-    ...(creatorId && { creator_id: creatorId }),
-    ...(creatorName && { creator_name: creatorName }),
-    ...(traceId && { trace_id: traceId }),
+    ...(creatorId && { creator_id: creatorId, creatorId }),
+    ...(creatorName && { creator_name: creatorName, creatorName }),
+    ...(traceId && { trace_id: traceId, traceId }),
     ...(source && { source }),
   };
 }
