@@ -560,7 +560,6 @@ app.use(express.json({
     try {
       JSON.parse(buf);
     } catch(e) {
-      res.status(400).json({ error: 'Invalid JSON' });
       throw new Error('Invalid JSON');
     }
   }
@@ -580,15 +579,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Global error handler - prevent crashes
-app.use((err, req, res, next) => {
-  logger.error({ err: err.message, stack: err.stack }, 'Unhandled error');
-  res.status(500).json({
-    error: 'INTERNAL_ERROR',
-    message: 'An unexpected error occurred',
-    service: 'pivota-agent-gateway'
-  });
-});
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Lightweight request logging.
@@ -1341,6 +1331,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     logger.error({ err: err.message }, 'Unexpected upstream error');
     return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
   }
+});
+
+// Global error handler - prevent crashes and avoid double sends
+app.use((err, req, res, next) => {
+  if (err.message === 'Invalid JSON') {
+    if (res.headersSent) return next(err);
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  logger.error({ err: err.message, stack: err.stack }, 'Unhandled error');
+  return res.status(500).json({
+    error: 'INTERNAL_ERROR',
+    message: 'An unexpected error occurred',
+    service: 'pivota-agent-gateway'
+  });
 });
 
 module.exports = app;
