@@ -105,6 +105,28 @@ function getOpenAIClient() {
   return openaiClient;
 }
 
+// Helper: call upstream Pivota API with a slightly longer timeout and a
+// single retry for key read-heavy operations when we hit a timeout.
+// This keeps the gateway responsive while being more tolerant of
+// occasional slow product/search slowness.
+async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
+  try {
+    return await axios(axiosConfig);
+  } catch (err) {
+    const retryableOps = ['find_products', 'find_products_multi', 'find_similar_products'];
+    if (err.code === 'ECONNABORTED' && retryableOps.includes(operation)) {
+      logger.warn(
+        { url: axiosConfig.url, operation },
+        'Upstream timeout, retrying once'
+      );
+      // One quick retry with the same config; if this also times out,
+      // the error will be handled by the outer catch as usual.
+      return await axios(axiosConfig);
+    }
+    throw err;
+  }
+}
+
 const app = express();
 
 // ---------------- Promotion / deals enrichment helpers ----------------
@@ -1240,12 +1262,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
         ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
       },
-      timeout: 10000,
+      // Slightly relaxed timeout to reduce flakiness on heavy searches.
+      timeout: 15000,
       ...(Object.keys(queryParams).length > 0 && { params: queryParams }),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
 
-    const response = await axios(axiosConfig);
+    const response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
     const upstreamData = response.data;
     const promotions = await getActivePromotions(now, creatorId);
 
@@ -1356,7 +1379,7 @@ if (require.main === module) {
 async function callPivotaToolViaGateway(args) {
   const res = await axios.post(UI_GATEWAY_URL, args, {
     headers: { 'Content-Type': 'application/json' },
-    timeout: 10000,
+    timeout: 15000,
   });
   return res.data;
 }
