@@ -542,8 +542,15 @@ function validateAndNormalizePromotion(payload, existing = {}, { requireAll = fa
   return { promotion: normalized };
 }
 
-function getActivePromotions(now = new Date(), creatorId = null) {
-  const promos = getAllPromotions();
+async function getActivePromotions(now = new Date(), creatorId = null) {
+  let promos = [];
+  try {
+    promos = await getAllPromotions();
+  } catch (err) {
+    logger.error({ err: err.message }, 'Failed to load promotions');
+    promos = [];
+  }
+
   // Temporary: keep filtering logic simple and permissive so that
   // promotions reliably apply while we iterate on console flows.
   // Each promotion already carries merchantId and channels; matching
@@ -671,10 +678,11 @@ app.get('/healthz', (req, res) => {
 
 // ---------------- Merchant promotions admin API (v0, admin-key protected) ----------------
 
-app.get('/api/merchant/promotions', requireAdmin, (req, res) => {
+app.get('/api/merchant/promotions', requireAdmin, async (req, res) => {
   const { status, type, channel, creatorId, search } = req.query;
   const nowTs = Date.now();
-  const promotions = getAllPromotions()
+  const allPromos = await getAllPromotions();
+  const promotions = allPromos
     .filter((p) => !p.deletedAt)
     .filter((p) => {
       if (type && p.type !== type) return false;
@@ -704,8 +712,8 @@ app.get('/api/merchant/promotions', requireAdmin, (req, res) => {
   res.json({ promotions, total: promotions.length });
 });
 
-app.get('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
-  const promo = getPromotionById(req.params.id);
+app.get('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
+  const promo = await getPromotionById(req.params.id);
   if (!promo || promo.deletedAt) {
     return res.status(404).json({ error: 'NOT_FOUND' });
   }
@@ -719,13 +727,13 @@ app.get('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
   });
 });
 
-app.post('/api/merchant/promotions', requireAdmin, (req, res) => {
+app.post('/api/merchant/promotions', requireAdmin, async (req, res) => {
   const { promotion, error } = validateAndNormalizePromotion(req.body, {}, { requireAll: true });
   if (error) {
     return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
   }
   const nowTs = Date.now();
-  upsertPromotion(promotion);
+  await upsertPromotion(promotion);
   return res.status(201).json({
     promotion: {
       ...sanitizePromotionForResponse(promotion),
@@ -734,8 +742,8 @@ app.post('/api/merchant/promotions', requireAdmin, (req, res) => {
   });
 });
 
-app.patch('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
-  const existing = getPromotionById(req.params.id);
+app.patch('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
+  const existing = await getPromotionById(req.params.id);
   if (!existing || existing.deletedAt) {
     return res.status(404).json({ error: 'NOT_FOUND' });
   }
@@ -748,7 +756,7 @@ app.patch('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
   }
   const nowTs = Date.now();
-  upsertPromotion(promotion);
+  await upsertPromotion(promotion);
   return res.json({
     promotion: {
       ...sanitizePromotionForResponse(promotion),
@@ -757,8 +765,8 @@ app.patch('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
   });
 });
 
-app.delete('/api/merchant/promotions/:id', requireAdmin, (req, res) => {
-  const ok = softDeletePromotion(req.params.id);
+app.delete('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
+  const ok = await softDeletePromotion(req.params.id);
   if (!ok) {
     return res.status(404).json({ error: 'NOT_FOUND' });
   }
@@ -956,7 +964,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           });
       }
       
-      const promotions = getActivePromotions(now, creatorId);
+      const promotions = await getActivePromotions(now, creatorId);
       const enriched = applyDealsToResponse(mockResponse, promotions, now, creatorId);
       return res.json(enriched);
     } catch (err) {
@@ -1209,7 +1217,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     const response = await axios(axiosConfig);
     const upstreamData = response.data;
-    const promotions = getActivePromotions(now, creatorId);
+    const promotions = await getActivePromotions(now, creatorId);
 
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
