@@ -676,6 +676,24 @@ app.get('/healthz', (req, res) => {
   });
 });
 
+// Lightweight debug endpoint to inspect promotions configuration on the gateway.
+// Safe for now: does NOT return any secrets, only booleans and mode.
+app.get('/debug/promotions-config', (req, res) => {
+  const promoBackendBase =
+    process.env.PROMOTIONS_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '';
+  const promoMode = process.env.PROMOTIONS_MODE || 'local';
+  const useRemotePromo = !!promoBackendBase && promoMode !== 'local';
+  const promoAdminKeyPresent =
+    !!(process.env.PROMOTIONS_ADMIN_KEY || process.env.ADMIN_API_KEY);
+
+  res.json({
+    promoMode,
+    promoBackendBase,
+    useRemotePromo,
+    promoAdminKeyPresent,
+  });
+});
+
 // ---------------- Merchant promotions admin API (v0, admin-key protected) ----------------
 
 app.get('/api/merchant/promotions', requireAdmin, async (req, res) => {
