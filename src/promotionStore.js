@@ -1,10 +1,22 @@
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 const { randomUUID } = require('crypto');
 
 const STORE_PATH = path.join(__dirname, '..', 'data', 'promotions.json');
 
 const DEFAULT_MERCHANT_ID = 'default_merchant';
+
+// Remote backend configuration (pivota-backend internal API)
+const PROMO_BACKEND_BASE =
+  process.env.PROMOTIONS_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '';
+const PROMO_ADMIN_KEY =
+  process.env.PROMOTIONS_ADMIN_KEY || process.env.ADMIN_API_KEY || '';
+const PROMO_MODE = process.env.PROMOTIONS_MODE || 'local'; // 'local' | 'remote'
+const USE_REMOTE_PROMO = !!PROMO_BACKEND_BASE && PROMO_MODE !== 'local';
+
+// Simple in-memory cache used when remote calls fail.
+let lastKnownPromotions = [];
 
 // Note: Each promotion belongs to exactly one merchant (merchantId at root).
 // Scope only targets products/categories/brands; it should not carry merchantIds.
@@ -73,11 +85,16 @@ function ensureStoreDir() {
   }
 }
 
-function loadPromotions() {
+function loadPromotionsLocal() {
   ensureStoreDir();
   if (!fs.existsSync(STORE_PATH)) {
-    fs.writeFileSync(STORE_PATH, JSON.stringify(DEFAULT_PROMOTIONS, null, 2), 'utf-8');
-    return [...DEFAULT_PROMOTIONS];
+    // Only seed demo data when explicitly running in local mode; production
+    // should not silently create demo promotions.
+    if (PROMO_MODE === 'local') {
+      fs.writeFileSync(STORE_PATH, JSON.stringify(DEFAULT_PROMOTIONS, null, 2), 'utf-8');
+      return [...DEFAULT_PROMOTIONS];
+    }
+    return [];
   }
   try {
     const raw = fs.readFileSync(STORE_PATH, 'utf-8');
@@ -85,11 +102,12 @@ function loadPromotions() {
     if (!Array.isArray(data)) return [];
     return data.map(normalizePromotionRecord);
   } catch (e) {
+    console.error('[promotionStore] Failed to load local promotions:', e.message);
     return [];
   }
 }
 
-function savePromotions(promos) {
+function savePromotionsLocal(promos) {
   ensureStoreDir();
   // strip any legacy scope.merchantIds before persisting
   const cleaned = promos.map((p) => ({
@@ -102,43 +120,138 @@ function savePromotions(promos) {
   fs.writeFileSync(STORE_PATH, JSON.stringify(cleaned, null, 2), 'utf-8');
 }
 
-function getAllPromotions() {
-  return loadPromotions();
+async function fetchRemote(path, method = 'GET', body) {
+  if (!USE_REMOTE_PROMO) {
+    throw new Error('Remote promotions not enabled');
+  }
+  const url = `${PROMO_BACKEND_BASE.replace(/\/$/, '')}${path}`;
+  const config = {
+    method,
+    url,
+    headers: {
+      'X-ADMIN-KEY': PROMO_ADMIN_KEY,
+      'Content-Type': 'application/json',
+    },
+    timeout: 5000,
+  };
+  if (body && method !== 'GET') {
+    config.data = body;
+  }
+  const res = await axios(config);
+  return res.data;
 }
 
-function getPromotionById(id) {
-  return loadPromotions().find((p) => p.id === id && !p.deletedAt);
-}
-
-function upsertPromotion(promo) {
-  const now = new Date().toISOString();
-  const promos = loadPromotions();
-  const idx = promos.findIndex((p) => p.id === promo.id);
-  if (idx >= 0) {
-    promos[idx] = normalizePromotionRecord({ ...promos[idx], ...promo, updatedAt: now });
-  } else {
-    promos.push(
-      normalizePromotionRecord({
-        ...promo,
-        id: promo.id || randomUUID(),
-        createdAt: now,
-        updatedAt: now,
-      })
+async function getAllPromotions() {
+  console.log(
+    '[promotionStore] getAllPromotions mode=%s backendBase=%s useRemote=%s',
+    PROMO_MODE,
+    PROMO_BACKEND_BASE,
+    USE_REMOTE_PROMO
+  );
+  if (!USE_REMOTE_PROMO) {
+    const promos = loadPromotionsLocal();
+    lastKnownPromotions = promos;
+    return promos;
+  }
+  try {
+    const data = await fetchRemote('/agent/internal/promotions', 'GET');
+    const promos = (data.promotions || []).map(normalizePromotionRecord);
+    lastKnownPromotions = promos;
+    return promos;
+  } catch (err) {
+    console.error(
+      '[promotionStore] Failed to fetch remote promotions, falling back to cache:',
+      err.message
     );
+    return lastKnownPromotions;
   }
-  savePromotions(promos);
-  return promo.id;
 }
 
-function softDeletePromotion(id) {
-  const promos = loadPromotions();
-  const idx = promos.findIndex((p) => p.id === id);
-  if (idx >= 0) {
-    promos[idx].deletedAt = new Date().toISOString();
-    savePromotions(promos);
-    return true;
+async function getPromotionById(id) {
+  if (!USE_REMOTE_PROMO) {
+    return loadPromotionsLocal().find((p) => p.id === id && !p.deletedAt);
   }
-  return false;
+  try {
+    const data = await fetchRemote(`/agent/internal/promotions/${id}`, 'GET');
+    return normalizePromotionRecord(data.promotion);
+  } catch (err) {
+    if (err.response && err.response.status === 404) {
+      return null;
+    }
+    console.error('[promotionStore] Failed to fetch remote promotion:', err.message);
+    return null;
+  }
+}
+
+async function upsertPromotion(promo) {
+  const now = new Date().toISOString();
+
+  if (!USE_REMOTE_PROMO) {
+    const promos = loadPromotionsLocal();
+    const idx = promos.findIndex((p) => p.id === promo.id);
+    if (idx >= 0) {
+      promos[idx] = normalizePromotionRecord({ ...promos[idx], ...promo, updatedAt: now });
+    } else {
+      promos.push(
+        normalizePromotionRecord({
+          ...promo,
+          id: promo.id || randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+        })
+      );
+    }
+    savePromotionsLocal(promos);
+    lastKnownPromotions = promos;
+    return promo.id;
+  }
+
+  const payload = promo.id ? { ...promo } : { ...promo };
+  try {
+    const path = promo.id
+      ? `/agent/internal/promotions/${promo.id}`
+      : '/agent/internal/promotions';
+    const method = promo.id ? 'PATCH' : 'POST';
+    const data = await fetchRemote(path, method, payload);
+    const saved = normalizePromotionRecord(data.promotion);
+    // Update cache optimistically
+    const idx = lastKnownPromotions.findIndex((p) => p.id === saved.id);
+    if (idx >= 0) {
+      lastKnownPromotions[idx] = saved;
+    } else {
+      lastKnownPromotions.push(saved);
+    }
+    return saved.id;
+  } catch (err) {
+    console.error('[promotionStore] Failed to upsert remote promotion:', err.message);
+    throw err;
+  }
+}
+
+async function softDeletePromotion(id) {
+  if (!USE_REMOTE_PROMO) {
+    const promos = loadPromotionsLocal();
+    const idx = promos.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      promos[idx].deletedAt = new Date().toISOString();
+      savePromotionsLocal(promos);
+      lastKnownPromotions = promos;
+      return true;
+    }
+    return false;
+  }
+
+  try {
+    await fetchRemote(`/agent/internal/promotions/${id}`, 'DELETE');
+    lastKnownPromotions = lastKnownPromotions.filter((p) => p.id !== id);
+    return true;
+  } catch (err) {
+    if (err.response && err.response.status === 404) {
+      return false;
+    }
+    console.error('[promotionStore] Failed to delete remote promotion:', err.message);
+    return false;
+  }
 }
 
 function normalizePromotionRecord(promo) {
@@ -175,8 +288,9 @@ module.exports = {
   getPromotionById,
   upsertPromotion,
   softDeletePromotion,
-  savePromotions,
-  loadPromotions,
+  // Local helpers are exported for migration / debugging only
+  savePromotions: savePromotionsLocal,
+  loadPromotions: loadPromotionsLocal,
   STORE_PATH,
   DEFAULT_MERCHANT_ID,
   normalizePromotionRecord,
