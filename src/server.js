@@ -694,6 +694,18 @@ app.get('/debug/promotions-config', (req, res) => {
   });
 });
 
+// Debug endpoint: inspect the raw promotions as seen by the gateway.
+// Protected by the same admin key as /api/merchant/promotions.
+app.get('/debug/promotions', requireAdmin, async (req, res) => {
+  try {
+    const promos = await getAllPromotions();
+    res.json(promos);
+  } catch (err) {
+    logger.error({ err: err.message }, 'Failed to load promotions in debug endpoint');
+    res.status(500).json({ error: 'FAILED_TO_LOAD_PROMOTIONS', message: err.message });
+  }
+});
+
 // ---------------- Merchant promotions admin API (v0, admin-key protected) ----------------
 
 app.get('/api/merchant/promotions', requireAdmin, async (req, res) => {
