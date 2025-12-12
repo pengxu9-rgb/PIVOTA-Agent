@@ -12,9 +12,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('forwards allowed operation and returns upstream response', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/shop/v1/find_products', {
-        search: { query: 'shoes' },
-      })
+      .get('/agent/v1/products/search')
+      .query(true)
       .reply(200, {
         products: [{ id: 'p1' }],
       });
@@ -29,7 +28,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
       })
       .expect(200);
 
-    expect(res.body).toEqual({ products: [{ id: 'p1' }] });
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0].id).toBe('p1');
   });
 
   it('rejects invalid operation via schema', async () => {

@@ -18,6 +18,10 @@ const {
   upsertPromotion,
   softDeletePromotion,
 } = require('./promotionStore');
+const {
+  buildCreatorCategoryTree,
+  getCreatorCategoryProducts,
+} = require('./services/categories');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -30,7 +34,9 @@ const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
 // MOCK: Use internal mock data
 // HYBRID: Real product search, mock payment
 // REAL: All real API calls (requires API key)
-const API_MODE = process.env.API_MODE || 'MOCK';
+// If API_MODE is not explicitly provided but an API key is configured,
+// default to REAL so tests and production behave sensibly.
+const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? 'REAL' : 'MOCK');
 const USE_MOCK = API_MODE === 'MOCK';
 const USE_HYBRID = API_MODE === 'HYBRID';
 const REAL_API_ENABLED = API_MODE === 'REAL' && PIVOTA_API_KEY;
@@ -696,6 +702,56 @@ app.get('/healthz', (req, res) => {
     },
     message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
   });
+});
+
+// ---------------- Creator-scoped category APIs ----------------
+
+app.get('/creator/:creatorId/categories', async (req, res) => {
+  const creatorId = req.params.creatorId;
+  const includeCounts =
+    req.query.includeCounts === undefined ? true : req.query.includeCounts !== 'false';
+  const dealsOnly = req.query.dealsOnly === 'true';
+
+  try {
+    const tree = await buildCreatorCategoryTree(creatorId, {
+      includeCounts,
+      dealsOnly,
+    });
+    return res.json(tree);
+  } catch (err) {
+    if (err.code === 'UNKNOWN_CREATOR') {
+      return res.status(404).json({ error: 'Unknown creator' });
+    }
+    logger.error({ err: err.message, creatorId }, 'Failed to build creator category tree');
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/creator/:creatorId/categories/:categorySlug/products', async (req, res) => {
+  const creatorId = req.params.creatorId;
+  const categorySlug = req.params.categorySlug;
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+
+  try {
+    const result = await getCreatorCategoryProducts(creatorId, categorySlug, {
+      page,
+      limit,
+    });
+    return res.json(result);
+  } catch (err) {
+    if (err.code === 'UNKNOWN_CREATOR') {
+      return res.status(404).json({ error: 'Unknown creator' });
+    }
+    if (err.code === 'UNKNOWN_CATEGORY') {
+      return res.status(404).json({ error: 'Unknown category' });
+    }
+    logger.error(
+      { err: err.message, creatorId, categorySlug },
+      'Failed to load creator category products'
+    );
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
 });
 
 // Lightweight debug endpoint to inspect promotions configuration on the gateway.

@@ -1,0 +1,60 @@
+[
+  {
+    "id": "promo_flash_demo_001",
+    "name": "Flash deal - Winter picks",
+    "type": "FLASH_SALE",
+    "description": "Limited-time flash sale on featured items",
+    "startAt": "2024-01-01T00:00:00Z",
+    "endAt": "2026-12-31T23:59:59Z",
+    "channels": [
+      "creator_agents"
+    ],
+    "merchantId": "default_merchant",
+    "scope": {
+      "productIds": [],
+      "categoryIds": [],
+      "brandIds": [],
+      "global": true
+    },
+    "config": {
+      "kind": "FLASH_SALE",
+      "flashPrice": 0,
+      "originalPrice": 0
+    },
+    "exposeToCreators": true,
+    "allowedCreatorIds": [],
+    "humanReadableRule": "Flash deal",
+    "createdAt": "2025-12-11T07:17:36.196Z",
+    "updatedAt": "2025-12-11T07:17:36.201Z",
+    "deletedAt": null
+  },
+  {
+    "id": "promo_bundle_demo_001",
+    "name": "Bundle & Save 3+",
+    "type": "MULTI_BUY_DISCOUNT",
+    "description": "Buy 3 items, get 15% off",
+    "startAt": "2024-01-01T00:00:00Z",
+    "endAt": "2026-12-31T23:59:59Z",
+    "channels": [
+      "creator_agents"
+    ],
+    "merchantId": "default_merchant",
+    "scope": {
+      "productIds": [],
+      "categoryIds": [],
+      "brandIds": [],
+      "global": true
+    },
+    "config": {
+      "kind": "MULTI_BUY_DISCOUNT",
+      "thresholdQuantity": 3,
+      "discountPercent": 15
+    },
+    "exposeToCreators": true,
+    "allowedCreatorIds": [],
+    "humanReadableRule": "Bundle & save",
+    "createdAt": "2025-12-11T07:17:36.201Z",
+    "updatedAt": "2025-12-11T07:17:36.201Z",
+    "deletedAt": null
+  }
+]
