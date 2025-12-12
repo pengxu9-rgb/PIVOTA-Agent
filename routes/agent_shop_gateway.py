@@ -1075,7 +1075,21 @@ async def _handle_find_similar_products(
 
     # Rank and trim
     chosen_candidates.sort(key=lambda x: x["final_score"], reverse=True)
-    top = chosen_candidates[:limit]
+
+    # Prefer same product_type as the base product where possible.
+    base_type = (base_product.product_type or "").lower()
+    same_type_bucket: List[Dict[str, Any]] = []
+    other_type_bucket: List[Dict[str, Any]] = []
+    for entry in chosen_candidates:
+        sp: StandardProduct = entry["product"]
+        cand_type = (sp.product_type or "").lower() if getattr(sp, "product_type", None) else ""
+        if base_type and cand_type == base_type:
+            same_type_bucket.append(entry)
+        else:
+            other_type_bucket.append(entry)
+
+    ordered_candidates = same_type_bucket + other_type_bucket
+    top = ordered_candidates[:limit]
 
     items = []
     include_debug_scores = DEV_MODE and bool(payload.debug)
