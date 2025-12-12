@@ -352,8 +352,8 @@ async function loadCreatorProducts(creatorId) {
           price_min: null,
           price_max: null,
           page: 1,
-          // Increase pool size so category browsing has more products to work with.
-          limit: 1000,
+          // Increase pool size while respecting backend validation (max 500).
+          limit: 500,
           in_stock_only: false,
         },
         metadata: {
