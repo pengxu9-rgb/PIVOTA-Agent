@@ -16,9 +16,10 @@
 const CREATOR_CONFIGS = [
   {
     creatorId: 'nina-studio',
-    // For now we map Nina to the same demo merchant used elsewhere in this
-    // gateway so that creator flows work out of the box in MOCK mode.
-    merchantIds: ['merch_208139f7600dbf42'],
+    // NOTE: Currently mapped to the live "Chydan" merchant so that
+    // creator flows have real products in production.
+    // This can be adjusted later or driven from DB.
+    merchantIds: ['merch_efbc46b4619cfbdf'],
   },
 ];
 
@@ -37,4 +38,3 @@ module.exports = {
   CREATOR_CONFIGS,
   getCreatorConfig,
 };
-
