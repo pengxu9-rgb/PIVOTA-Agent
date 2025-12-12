@@ -349,7 +349,8 @@ async function loadCreatorProducts(creatorId) {
           price_min: null,
           price_max: null,
           page: 1,
-          limit: 200,
+          // Increase pool size so category browsing has more products to work with.
+          limit: 1000,
           in_stock_only: false,
         },
         metadata: {
@@ -631,4 +632,3 @@ module.exports = {
   getCreatorCategoryProducts,
   suggestCategoriesFromQuery,
 };
-
