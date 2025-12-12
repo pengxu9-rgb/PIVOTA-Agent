@@ -1194,6 +1194,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           items: items.map(item => ({
             merchant_id: item.merchant_id,
             product_id: item.product_id,
+            // Optional variant / SKU information for multi-variant products.
+            ...(item.variant_id ? { variant_id: item.variant_id } : {}),
+            ...(item.sku ? { sku: item.sku } : {}),
+            ...(item.selected_options ? { selected_options: item.selected_options } : {}),
             product_title: item.product_title || item.title || 'Product',
             quantity: item.quantity,
             unit_price: item.unit_price || item.price,
