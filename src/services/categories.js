@@ -369,12 +369,27 @@ async function loadCreatorProducts(creatorId) {
     });
 
     const products = Array.isArray(resp.data?.products) ? resp.data.products : [];
-    const filtered = products.filter((p) => {
+    let filtered = products.filter((p) => {
       const mid = String(p.merchant_id || p.merchantId || '').trim();
       if (!mid) return false;
       if (!merchantIds.length) return true;
       return merchantIds.includes(mid);
     });
+
+    // Safety net: if creator merchant mapping is stale or empty in production
+    // and filtering yields no products, fall back to all products so that
+    // the Categories page still has meaningful content.
+    if (!filtered.length && merchantIds.length && products.length) {
+      logger.warn(
+        {
+          creatorId,
+          expectedMerchants: merchantIds,
+          totalProducts: products.length,
+        },
+        'No products matched creator merchants; falling back to all products for categories'
+      );
+      filtered = products;
+    }
 
     const indexedProducts = filtered.map((product) => {
       const path = deriveCategoryPathFromProduct(product);
