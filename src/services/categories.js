@@ -4,7 +4,10 @@ const { getCreatorConfig } = require('../creatorConfig');
 const { getAllPromotions } = require('../promotionStore');
 const { mockProducts } = require('../mockProducts');
 
-const API_MODE = process.env.API_MODE || 'MOCK';
+// Keep API mode resolution consistent with src/server.js so that
+// categories behave the same way as the main invoke endpoint.
+const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
+const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? 'REAL' : 'MOCK');
 const USE_MOCK = API_MODE === 'MOCK';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 
