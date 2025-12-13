@@ -842,7 +842,7 @@ function stripCounts(nodes) {
 }
 
 async function buildCreatorCategoryTree(creatorId, options = {}) {
-  const { dealsOnly = false, includeCounts = true } = options;
+  const { dealsOnly = false, includeCounts = true, includeEmpty = false } = options;
   const { indexedProducts } = await loadCreatorProducts(creatorId);
 
   const taxonomy = await getTaxonomyView({
@@ -984,7 +984,12 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
         const hasDeals = Array.isArray(node.category.deals) && node.category.deals.length > 0;
         const visibleByCount = (node.category.productCount || 0) >= minCount;
         const shouldInclude =
-          !node._hidden && (node._pinned || visibleByCount || hasDeals || liftedChildren.length > 0);
+          !node._hidden &&
+          (node._pinned ||
+            includeEmpty ||
+            visibleByCount ||
+            hasDeals ||
+            liftedChildren.length > 0);
 
         if (shouldInclude) {
           out.push({

@@ -731,6 +731,7 @@ app.get('/creator/:creatorId/categories', async (req, res) => {
   const creatorId = req.params.creatorId;
   const includeCounts =
     req.query.includeCounts === undefined ? true : req.query.includeCounts !== 'false';
+  const includeEmpty = req.query.includeEmpty === 'true';
   const dealsOnly = req.query.dealsOnly === 'true';
   const locale = req.query.locale ? String(req.query.locale) : undefined;
   const viewId = req.query.view ? String(req.query.view) : undefined;
@@ -738,6 +739,7 @@ app.get('/creator/:creatorId/categories', async (req, res) => {
   try {
     const tree = await buildCreatorCategoryTree(creatorId, {
       includeCounts,
+      includeEmpty,
       dealsOnly,
       ...(locale ? { locale } : {}),
       ...(viewId ? { viewId } : {}),
