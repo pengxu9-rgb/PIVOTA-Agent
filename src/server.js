@@ -11,6 +11,7 @@ const OpenAI = require('openai');
 const { randomUUID } = require('crypto');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
+const { query } = require('./db');
 const { searchProducts, getProductById } = require('./mockProducts');
 const {
   getAllPromotions,
@@ -683,6 +684,8 @@ app.use((req, res, next) => {
 });
 
 app.get('/healthz', (req, res) => {
+  const dbConfigured = Boolean(process.env.DATABASE_URL);
+  const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
   res.json({ 
     ok: true,
     api_mode: API_MODE,
@@ -693,7 +696,11 @@ app.get('/healthz', (req, res) => {
     },
     backend: {
       api_base: PIVOTA_API_BASE,
-      api_key_configured: !!PIVOTA_API_KEY
+      api_key_configured: !!PIVOTA_API_KEY,
+      db_configured: dbConfigured,
+      taxonomy_enabled: taxonomyEnabled,
+      taxonomy_view_id: process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION',
+      taxonomy_version: process.env.TAXONOMY_VERSION || null,
     },
     products_available: true,
     features: {
@@ -704,6 +711,18 @@ app.get('/healthz', (req, res) => {
     },
     message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
   });
+});
+
+app.get('/healthz/db', async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    return res.status(200).json({ ok: true, db_ready: false, reason: 'DATABASE_URL not configured' });
+  }
+  try {
+    await query('SELECT 1');
+    return res.status(200).json({ ok: true, db_ready: true });
+  } catch (err) {
+    return res.status(200).json({ ok: true, db_ready: false, error: err.message });
+  }
 });
 
 // ---------------- Creator-scoped category APIs ----------------

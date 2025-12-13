@@ -881,6 +881,11 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
 
     return {
       creatorId,
+      taxonomyVersion: taxonomy.version,
+      market: taxonomy.market,
+      locale: taxonomy.locale,
+      viewId: taxonomy.viewId,
+      source: 'canonical',
       roots: finalRoots,
       hotDeals,
     };
@@ -889,6 +894,7 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
   if (!indexedProducts.length) {
     return {
       creatorId,
+      source: 'legacy',
       roots: [],
       hotDeals: [],
     };
@@ -915,6 +921,7 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
 
   return {
     creatorId,
+    source: 'legacy',
     roots: finalRoots,
     hotDeals,
   };

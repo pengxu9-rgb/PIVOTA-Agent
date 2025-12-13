@@ -5,6 +5,7 @@ const { ensureSeededGlobalFashion } = require('../db/seed');
 
 const DEFAULT_VIEW_ID = process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION';
 const DEFAULT_LOCALE = process.env.TAXONOMY_DEFAULT_LOCALE || 'en-US';
+const TAXONOMY_ENABLED = process.env.TAXONOMY_ENABLED !== 'false';
 
 let cache = {
   key: null,
@@ -30,6 +31,7 @@ function resolveLocaleCandidates(locale) {
 }
 
 async function ensureTaxonomyReady() {
+  if (!TAXONOMY_ENABLED) return false;
   if (!process.env.DATABASE_URL) return false;
   if (process.env.SKIP_DB_MIGRATIONS === 'true') return true;
   await runMigrations();
@@ -70,6 +72,7 @@ function buildTree(categories) {
 }
 
 async function getTaxonomyView(params = {}) {
+  if (!TAXONOMY_ENABLED) return null;
   const viewId = params.viewId || DEFAULT_VIEW_ID;
   const locale = normalizeLocale(params.locale);
   const cacheTtlMs = Number(process.env.TAXONOMY_CACHE_TTL_MS || 30000);
@@ -79,134 +82,142 @@ async function getTaxonomyView(params = {}) {
     return cache.value;
   }
 
-  const ready = await ensureTaxonomyReady();
-  if (!ready) return null;
+  try {
+    const ready = await ensureTaxonomyReady();
+    if (!ready) return null;
 
-  const localeCandidates = resolveLocaleCandidates(locale);
+    const localeCandidates = resolveLocaleCandidates(locale);
 
-  const rows = await query(
-    `
-      SELECT
-        cc.id,
-        cc.slug,
-        cc.parent_id,
-        cc.level,
-        cc.status,
-        cc.replaced_by_id,
-        COALESCE(tvc.visibility_override, 'visible') AS visibility,
-        COALESCE(tvc.priority_override, cc.default_priority) AS priority,
-        COALESCE(tvc.image_override, cc.default_image_url) AS image_url,
-        tv.market AS market,
-        tv.view_id AS view_id,
-        COALESCE(ops.pinned, false) AS ops_pinned,
-        COALESCE(ops.hidden, false) AS ops_hidden,
-        ops.display_name_override AS ops_name,
-        ops.image_override AS ops_image,
-        COALESCE(ops.priority_boost, 0) AS ops_boost,
-        loc.display_name AS loc_name
-      FROM taxonomy_view tv
-      JOIN taxonomy_view_category tvc ON tvc.view_id = tv.view_id
-      JOIN canonical_category cc ON cc.id = tvc.category_id
-      LEFT JOIN ops_category_override ops ON ops.category_id = cc.id
-      LEFT JOIN LATERAL (
-        SELECT display_name
-        FROM category_localization
-        WHERE category_id = cc.id AND locale = ANY($2)
-        ORDER BY array_position($2, locale)
-        LIMIT 1
-      ) loc ON true
-      WHERE tv.view_id = $1
-        AND tv.status = 'active'
-    `,
-    [viewId, localeCandidates],
-  );
+    const rows = await query(
+      `
+        SELECT
+          cc.id,
+          cc.slug,
+          cc.parent_id,
+          cc.level,
+          cc.status,
+          cc.replaced_by_id,
+          COALESCE(tvc.visibility_override, 'visible') AS visibility,
+          COALESCE(tvc.priority_override, cc.default_priority) AS priority,
+          COALESCE(tvc.image_override, cc.default_image_url) AS image_url,
+          tv.market AS market,
+          tv.view_id AS view_id,
+          COALESCE(ops.pinned, false) AS ops_pinned,
+          COALESCE(ops.hidden, false) AS ops_hidden,
+          ops.display_name_override AS ops_name,
+          ops.image_override AS ops_image,
+          COALESCE(ops.priority_boost, 0) AS ops_boost,
+          loc.display_name AS loc_name
+        FROM taxonomy_view tv
+        JOIN taxonomy_view_category tvc ON tvc.view_id = tv.view_id
+        JOIN canonical_category cc ON cc.id = tvc.category_id
+        LEFT JOIN ops_category_override ops ON ops.category_id = cc.id
+        LEFT JOIN LATERAL (
+          SELECT display_name
+          FROM category_localization
+          WHERE category_id = cc.id AND locale = ANY($2)
+          ORDER BY array_position($2, locale)
+          LIMIT 1
+        ) loc ON true
+        WHERE tv.view_id = $1
+          AND tv.status = 'active'
+      `,
+      [viewId, localeCandidates],
+    );
 
-  if (!rows.rows.length) {
-    logger.warn({ viewId }, 'No taxonomy view rows found');
-  }
-
-  const categories = rows.rows
-    .map((r) => {
-      const id = r.id;
-      const slug = r.slug;
-      const parentId = r.parent_id || null;
-      const level = Number(r.level || 0);
-      const status = r.status;
-      const replacedById = r.replaced_by_id || null;
-      const visibility = r.visibility || 'visible';
-      const priority = Number(r.priority || 0);
-      const imageUrl = r.ops_image || r.image_url || null;
-      const baseName = r.ops_name || r.loc_name || slug;
-
-      const hidden = Boolean(r.ops_hidden) || status === 'hidden' || visibility === 'hidden' || id === 'other';
-      const pinned = Boolean(r.ops_pinned);
-      const priorityBoost = Number(r.ops_boost || 0);
-
-      return {
-        id,
-        slug,
-        name: baseName,
-        parentId,
-        level,
-        status,
-        replacedById,
-        visibility,
-        imageUrl,
-        pinned,
-        priorityBase: priority,
-        priorityBoost,
-        priority: priority + priorityBoost,
-        path: [],
-        market: r.market || 'GLOBAL',
-        viewId: r.view_id || viewId,
-        hidden,
-      };
-    })
-    .filter((c) => c.status !== 'deprecated' || c.replacedById);
-
-  // Resolve deprecated categories to their replacements (view membership is on the deprecated id).
-  const byIdPre = new Map(categories.map((c) => [c.id, c]));
-  const replaced = [];
-  for (const c of categories) {
-    if (c.status === 'deprecated' && c.replacedById) {
-      const rep = byIdPre.get(c.replacedById);
-      if (rep) continue;
-      replaced.push({
-        ...c,
-        id: c.replacedById,
-        slug: c.replacedById,
-        status: 'active',
-        replacedById: null,
-      });
+    if (!rows.rows.length) {
+      logger.warn({ viewId }, 'No taxonomy view rows found');
     }
+
+    const categories = rows.rows
+      .map((r) => {
+        const id = r.id;
+        const slug = r.slug;
+        const parentId = r.parent_id || null;
+        const level = Number(r.level || 0);
+        const status = r.status;
+        const replacedById = r.replaced_by_id || null;
+        const visibility = r.visibility || 'visible';
+        const priority = Number(r.priority || 0);
+        const imageUrl = r.ops_image || r.image_url || null;
+        const baseName = r.ops_name || r.loc_name || slug;
+
+        const hidden =
+          Boolean(r.ops_hidden) || status === 'hidden' || visibility === 'hidden' || id === 'other';
+        const pinned = Boolean(r.ops_pinned);
+        const priorityBoost = Number(r.ops_boost || 0);
+
+        return {
+          id,
+          slug,
+          name: baseName,
+          parentId,
+          level,
+          status,
+          replacedById,
+          visibility,
+          imageUrl,
+          pinned,
+          priorityBase: priority,
+          priorityBoost,
+          priority: priority + priorityBoost,
+          path: [],
+          market: r.market || 'GLOBAL',
+          viewId: r.view_id || viewId,
+          hidden,
+        };
+      })
+      .filter((c) => c.status !== 'deprecated' || c.replacedById);
+
+    // Resolve deprecated categories to their replacements (view membership is on the deprecated id).
+    const byIdPre = new Map(categories.map((c) => [c.id, c]));
+    const replaced = [];
+    for (const c of categories) {
+      if (c.status === 'deprecated' && c.replacedById) {
+        const rep = byIdPre.get(c.replacedById);
+        if (rep) continue;
+        replaced.push({
+          ...c,
+          id: c.replacedById,
+          slug: c.replacedById,
+          status: 'active',
+          replacedById: null,
+        });
+      }
+    }
+
+    const merged = [...categories, ...replaced];
+    const { byId, childrenById, roots } = buildTree(merged);
+
+    const version = process.env.TAXONOMY_VERSION || `${viewId}@v1`;
+
+    const value = {
+      version,
+      market: rows.rows[0]?.market || 'GLOBAL',
+      locale,
+      viewId,
+      byId,
+      childrenById,
+      roots,
+    };
+
+    cache = {
+      key: cacheKey,
+      expiresAt: nowMs() + cacheTtlMs,
+      value,
+    };
+
+    return value;
+  } catch (err) {
+    logger.warn(
+      { err: err.message, viewId: params.viewId || DEFAULT_VIEW_ID },
+      'Taxonomy unavailable; falling back to legacy categories',
+    );
+    return null;
   }
-
-  const merged = [...categories, ...replaced];
-  const { byId, childrenById, roots } = buildTree(merged);
-
-  const version = process.env.TAXONOMY_VERSION || `${viewId}@v1`;
-
-  const value = {
-    version,
-    market: rows.rows[0]?.market || 'GLOBAL',
-    locale,
-    viewId,
-    byId,
-    childrenById,
-    roots,
-  };
-
-  cache = {
-    key: cacheKey,
-    expiresAt: nowMs() + cacheTtlMs,
-    value,
-  };
-
-  return value;
 }
 
 module.exports = {
   getTaxonomyView,
   normalizeLocale,
 };
-
