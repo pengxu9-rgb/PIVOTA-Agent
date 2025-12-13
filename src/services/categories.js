@@ -87,6 +87,30 @@ function normalizeTextForMatch(text) {
 
 const HEURISTIC_RULES = [
   {
+    id: 'designer-toys',
+    keywords: [
+      'designer toys',
+      'collectible toys',
+      'art toys',
+      'vinyl figure',
+      'blind box',
+      'labubu',
+      'pop mart',
+      'the monsters',
+      'bag charm',
+      'plush pendant',
+      'keychain plush',
+      '潮玩',
+      '收藏玩具',
+      '盲盒',
+      '手办',
+      '泡泡玛特',
+      '包挂',
+      '挂件',
+      '钥匙扣',
+    ],
+  },
+  {
     id: 'sportswear',
     keywords: [
       'sportswear',
