@@ -1,7 +1,7 @@
 const logger = require('../logger');
 const { query } = require('../db');
 const { runMigrations } = require('../db/migrate');
-const { ensureSeededGlobalFashion } = require('../db/seed');
+const { runSeeds } = require('../db/seed');
 
 const DEFAULT_VIEW_ID = process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION';
 const DEFAULT_LOCALE = process.env.TAXONOMY_DEFAULT_LOCALE || 'en-US';
@@ -35,7 +35,7 @@ async function ensureTaxonomyReady() {
   if (!process.env.DATABASE_URL) return false;
   if (process.env.SKIP_DB_MIGRATIONS === 'true') return true;
   await runMigrations();
-  await ensureSeededGlobalFashion();
+  await runSeeds();
   return true;
 }
 

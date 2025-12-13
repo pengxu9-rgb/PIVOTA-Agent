@@ -831,7 +831,10 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
       const priority = (base.priorityBase || 0) + priorityBoost + productCount + dealsCount * 5;
 
       const childrenIds = taxonomy.childrenById.get(id) || [];
-      const children = childrenIds.map((cid) => toNode(cid)).filter(Boolean);
+      const children = childrenIds
+        .map((cid) => toNode(cid))
+        .filter(Boolean)
+        .sort((a, b) => (b.category.priority ?? 0) - (a.category.priority ?? 0));
 
       const node = {
         category: {
@@ -857,24 +860,30 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
     const minCount = Number(process.env.CATEGORY_MIN_PRODUCT_COUNT || 1);
     const roots = taxonomy.roots.map((rid) => toNode(rid)).filter(Boolean);
 
-    function filterHidden(nodes) {
+    function filterAndLift(nodes) {
       const out = [];
       for (const node of nodes) {
-        const children = filterHidden(node.children || []);
+        const liftedChildren = filterAndLift(node.children || []);
         const hasDeals = Array.isArray(node.category.deals) && node.category.deals.length > 0;
         const visibleByCount = (node.category.productCount || 0) >= minCount;
+        const shouldInclude =
+          !node._hidden && (node._pinned || visibleByCount || hasDeals || liftedChildren.length > 0);
 
-        if (!node._hidden && (node._pinned || visibleByCount || hasDeals || children.length > 0)) {
+        if (shouldInclude) {
           out.push({
             category: node.category,
-            children,
+            children: liftedChildren,
           });
+        } else {
+          out.push(...liftedChildren);
         }
       }
       return out;
     }
 
-    let finalRoots = filterHidden(roots);
+    let finalRoots = filterAndLift(roots).sort(
+      (a, b) => (b.category.priority ?? 0) - (a.category.priority ?? 0),
+    );
     if (dealsOnly) {
       finalRoots = filterTreeByDeals(finalRoots);
     }
