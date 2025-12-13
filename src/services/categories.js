@@ -144,8 +144,101 @@ const HEURISTIC_RULES = [
     ],
   },
   {
+    id: 'womens-dress',
+    keywords: [
+      'dress',
+      'dresses',
+      'gown',
+      'maxi dress',
+      'midi dress',
+      '连衣裙',
+      '裙子',
+      '礼服',
+    ],
+  },
+  {
+    id: 'outdoor-clothing',
+    keywords: [
+      'outdoor clothing',
+      'hiking jacket',
+      'windbreaker',
+      'rain jacket',
+      'waterproof',
+      'outdoor jacket',
+      'camp jacket',
+      '户外服装',
+      '冲锋衣',
+      '风衣',
+      '雨衣',
+    ],
+  },
+  {
+    id: 'camping-gear',
+    keywords: ['camping gear', 'camping', 'tent', 'sleeping bag', 'camp stove', '露营', '帐篷', '睡袋', '炉具'],
+  },
+  {
+    id: 'hunting-accessories',
+    keywords: ['hunting accessories', 'hunting', 'scope', 'camouflage', '狩猎', '迷彩'],
+  },
+  {
     id: 'toys',
     keywords: ['toy', 'toys', 'plush', 'stuffed', 'doll', 'figure', '玩具', '毛绒', '公仔', '娃娃', '手办'],
+  },
+  {
+    id: 'makeup',
+    keywords: ['makeup', 'foundation', 'lipstick', 'concealer', 'blush', 'eyeshadow', '彩妆', '粉底', '口红', '遮瑕', '腮红', '眼影'],
+  },
+  {
+    id: 'skin-care',
+    keywords: [
+      'skin care',
+      'skincare',
+      'moisturizer',
+      'serum',
+      'cleanser',
+      'toner',
+      '护肤',
+      '面霜',
+      '精华',
+      '洁面',
+      '爽肤水',
+    ],
+  },
+  {
+    id: 'facial-care',
+    keywords: ['facial care', 'face mask', 'exfoliation', 'face wash', '面部护理', '面膜', '去角质', '洗面奶'],
+  },
+  {
+    id: 'haircare',
+    keywords: ['haircare', 'shampoo', 'conditioner', 'hair oil', 'hair mask', '护发', '洗发水', '护发素', '发油', '发膜'],
+  },
+  {
+    id: 'eyelashes',
+    keywords: ['eyelashes', 'false lashes', 'lash extensions', 'lash glue', '假睫毛', '睫毛胶'],
+  },
+  {
+    id: 'nail-polish',
+    keywords: ['nail polish', 'gel polish', 'polish', '指甲油', '甲油胶'],
+  },
+  {
+    id: 'press-on-nails',
+    keywords: ['press on nails', 'press-ons', 'fake nails', '穿戴甲', '假指甲'],
+  },
+  {
+    id: 'beauty-tools',
+    keywords: ['beauty tools', 'makeup brush', 'sponge', 'applicator', '美妆工具', '化妆刷', '美妆蛋'],
+  },
+  {
+    id: 'beauty-devices',
+    keywords: ['beauty device', 'led mask', 'microcurrent', 'beauty仪', '美容仪', 'LED面罩', '微电流'],
+  },
+  {
+    id: 'contact-lens',
+    keywords: ['contact lens', 'contact lenses', 'colored contacts', 'contacts', '隐形眼镜', '美瞳'],
+  },
+  {
+    id: 'pet-toys',
+    keywords: ['pet toys', 'dog toy', 'cat toy', 'chew toy', 'pet plush', '宠物玩具', '狗玩具', '猫玩具'],
   },
 ];
 
