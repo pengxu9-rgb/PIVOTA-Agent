@@ -234,6 +234,7 @@ function promotionToDealPayload(promo, productPrice) {
     return {
       ...base,
       discount_percent: promo.config.discountPercent,
+      threshold_quantity: promo.config.thresholdQuantity,
       end_at: promo.endAt,
       urgency_level: computeUrgency(promo.endAt),
     };

@@ -22,6 +22,7 @@ const {
   buildCreatorCategoryTree,
   getCreatorCategoryProducts,
 } = require('./services/categories');
+const { recommendHandler } = require('./recommend/index');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -253,6 +254,7 @@ function promotionToDealPayload(promo, productPrice) {
     return {
       ...base,
       discount_percent: promo.config.discountPercent,
+      threshold_quantity: promo.config.thresholdQuantity,
       end_at: promo.endAt,
       urgency_level: computeUrgency(promo.endAt),
     };
@@ -1426,6 +1428,11 @@ app.use((err, req, res, next) => {
     message: 'An unexpected error occurred',
     service: 'pivota-agent-gateway'
   });
+});
+
+// Unified recommendation endpoint (creator/shopping chatbox)
+app.post('/recommend', async (req, res) => {
+  return recommendHandler(req, res);
 });
 
 module.exports = app;
