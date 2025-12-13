@@ -8,6 +8,9 @@
     "start:mock": "USE_MOCK=true node src/server.js",
     "dev": "node src/server.js",
     "dev:mock": "USE_MOCK=true node src/server.js",
+    "db:migrate": "node src/db/cli.js migrate",
+    "db:seed": "node src/db/cli.js seed",
+    "db:setup": "node src/db/cli.js all",
     "test": "jest --runInBand",
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
     "mock:pivota": "node scripts/mock-pivota-api.js",
@@ -27,6 +30,7 @@
     "express": "^4.19.2",
     "ioredis": "^5.8.2",
     "openai": "^6.9.1",
+    "pg": "^8.13.1",
     "pino": "^10.1.0",
     "zod": "^4.1.12"
   },

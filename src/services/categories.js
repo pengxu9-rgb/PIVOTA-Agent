@@ -3,6 +3,8 @@ const logger = require('../logger');
 const { getCreatorConfig } = require('../creatorConfig');
 const { getAllPromotions } = require('../promotionStore');
 const { mockProducts } = require('../mockProducts');
+const { getTaxonomyView } = require('./taxonomyStore');
+const { query } = require('../db');
 
 // Keep API mode resolution consistent with src/server.js so that
 // categories behave the same way as the main invoke endpoint.
@@ -59,6 +61,216 @@ function buildCategoryIdFromSegments(segments) {
   const slugs = segments.map(slugify).filter(Boolean);
   if (!slugs.length) return 'uncategorized';
   return slugs.join('/');
+}
+
+function normalizeMerchantCategoryKey(product) {
+  const explicitPath = product.categoryPath;
+  if (Array.isArray(explicitPath) && explicitPath.length) {
+    return explicitPath.map((p) => String(p || '').trim()).filter(Boolean).join(' > ');
+  }
+  const raw =
+    (product.product_type && String(product.product_type)) ||
+    (product.category && String(product.category)) ||
+    (product.productType && String(product.productType)) ||
+    '';
+  return raw.trim() || 'Other';
+}
+
+function normalizeTextForMatch(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[\u2019']/g, "'")
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const HEURISTIC_RULES = [
+  {
+    id: 'sportswear',
+    keywords: [
+      'sportswear',
+      'activewear',
+      'athleisure',
+      'workout',
+      'gym',
+      'yoga',
+      'running',
+      'leggings',
+      'sports bra',
+      'training',
+      'fitness',
+      '运动',
+      '瑜伽',
+      '健身',
+      '跑步',
+      '运动内衣',
+      '紧身裤',
+    ],
+  },
+  {
+    id: 'lingerie-set',
+    keywords: [
+      'lingerie',
+      'lingerie set',
+      'bra',
+      'panty',
+      'panties',
+      'underwear',
+      'lace',
+      'sexy lingerie',
+      '内衣',
+      '内裤',
+      '文胸',
+      '胸罩',
+      '蕾丝',
+    ],
+  },
+  {
+    id: 'womens-loungewear',
+    keywords: [
+      'loungewear',
+      'lounge set',
+      'sleepwear',
+      'pajamas',
+      'pyjamas',
+      'robe',
+      'homewear',
+      'cozy',
+      '家居服',
+      '睡衣',
+      '浴袍',
+      '居家',
+    ],
+  },
+  {
+    id: 'toys',
+    keywords: ['toy', 'toys', 'plush', 'stuffed', 'doll', 'figure', '玩具', '毛绒', '公仔', '娃娃', '手办'],
+  },
+];
+
+function heuristicCategoryForProduct(product) {
+  const haystack = normalizeTextForMatch(
+    [
+      product.title,
+      product.name,
+      product.description,
+      product.product_type,
+      product.category,
+      normalizeMerchantCategoryKey(product),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  for (const rule of HEURISTIC_RULES) {
+    for (const kw of rule.keywords) {
+      const needle = normalizeTextForMatch(kw);
+      if (!needle) continue;
+      if (haystack.includes(needle)) return rule.id;
+    }
+  }
+  return 'other';
+}
+
+async function loadCreatorOverrides(creatorId) {
+  if (!process.env.DATABASE_URL) return new Map();
+  try {
+    const res = await query(
+      `
+        SELECT
+          category_id,
+          pinned,
+          hidden,
+          display_name_override,
+          image_override,
+          COALESCE(priority_boost, 0) AS priority_boost
+        FROM creator_category_override
+        WHERE creator_id = $1
+      `,
+      [creatorId],
+    );
+    return new Map(
+      res.rows.map((r) => [
+        r.category_id,
+        {
+          pinned: r.pinned === null ? null : Boolean(r.pinned),
+          hidden: r.hidden === null ? null : Boolean(r.hidden),
+          name: r.display_name_override || null,
+          image: r.image_override || null,
+          boost: Number(r.priority_boost || 0),
+        },
+      ]),
+    );
+  } catch (err) {
+    logger.warn({ err: err.message, creatorId }, 'Failed to load creator overrides');
+    return new Map();
+  }
+}
+
+async function loadMerchantCategoryMappings(pairs) {
+  if (!process.env.DATABASE_URL) return new Map();
+  if (!pairs.length) return new Map();
+
+  const placeholders = [];
+  const params = [];
+  let idx = 1;
+  for (const [merchantId, key] of pairs) {
+    placeholders.push(`($${idx++}, $${idx++})`);
+    params.push(merchantId, key);
+  }
+
+  try {
+    const res = await query(
+      `
+        SELECT merchant_id, merchant_category_key, canonical_category_id, confidence
+        FROM merchant_category_mapping
+        WHERE (merchant_id, merchant_category_key) IN (VALUES ${placeholders.join(', ')})
+      `,
+      params,
+    );
+
+    const out = new Map();
+    for (const row of res.rows) {
+      out.set(`${row.merchant_id}::${row.merchant_category_key}`, {
+        categoryId: row.canonical_category_id,
+        confidence: Number(row.confidence || 0),
+      });
+    }
+    return out;
+  } catch (err) {
+    logger.warn({ err: err.message }, 'Failed to load merchant category mappings');
+    return new Map();
+  }
+}
+
+async function mapProductsToCanonical(indexedProducts) {
+  const pairs = [];
+  const seen = new Set();
+  for (const item of indexedProducts) {
+    const p = item.product;
+    const merchantId = String(p.merchant_id || p.merchantId || '').trim();
+    const key = normalizeMerchantCategoryKey(p);
+    if (!merchantId || !key) continue;
+    const k = `${merchantId}::${key}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    pairs.push([merchantId, key]);
+  }
+
+  const mapping = await loadMerchantCategoryMappings(pairs);
+  const assigned = [];
+  for (const item of indexedProducts) {
+    const p = item.product;
+    const merchantId = String(p.merchant_id || p.merchantId || '').trim();
+    const key = normalizeMerchantCategoryKey(p);
+    const mapKey = `${merchantId}::${key}`;
+    const mapped = mapping.get(mapKey);
+    const categoryId =
+      mapped && mapped.confidence >= 0.6 ? mapped.categoryId : heuristicCategoryForProduct(p);
+    assigned.push({ product: p, categoryId: categoryId || 'other' });
+  }
+  return assigned;
 }
 
 /**
@@ -516,6 +728,164 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
   const { dealsOnly = false, includeCounts = true } = options;
   const { indexedProducts } = await loadCreatorProducts(creatorId);
 
+  const taxonomy = await getTaxonomyView({
+    viewId: options.viewId,
+    locale: options.locale,
+  });
+
+  if (taxonomy) {
+    const creatorOverrides = await loadCreatorOverrides(creatorId);
+    const assigned = await mapProductsToCanonical(indexedProducts);
+    const countById = new Map();
+
+    const parentById = new Map();
+    for (const cat of taxonomy.byId.values()) {
+      parentById.set(cat.id, cat.parentId || null);
+    }
+
+    const ancestorMemo = new Map();
+    function ancestorsOf(id) {
+      if (ancestorMemo.has(id)) return ancestorMemo.get(id);
+      const out = [];
+      let current = id;
+      while (current && taxonomy.byId.has(current)) {
+        out.push(current);
+        current = parentById.get(current);
+      }
+      ancestorMemo.set(id, out);
+      return out;
+    }
+
+    for (const { categoryId } of assigned) {
+      for (const anc of ancestorsOf(categoryId)) {
+        countById.set(anc, (countById.get(anc) || 0) + 1);
+      }
+    }
+
+    const now = new Date();
+    const promotions = await getActivePromotions(now);
+
+    // Attach deals to categories based on product membership.
+    const promoToCategoryIds = new Map();
+    for (const { product, categoryId } of assigned) {
+      const applicable = findApplicablePromotionsForProduct(product, now, promotions, creatorId);
+      if (!applicable.length) continue;
+      for (const promo of applicable) {
+        let set = promoToCategoryIds.get(promo.id);
+        if (!set) {
+          set = new Set();
+          promoToCategoryIds.set(promo.id, set);
+        }
+        set.add(categoryId);
+      }
+    }
+
+    const dealsByCategory = new Map();
+    for (const [promoId, catSet] of promoToCategoryIds.entries()) {
+      for (const catId of catSet) {
+        for (const anc of ancestorsOf(catId)) {
+          let arr = dealsByCategory.get(anc);
+          if (!arr) {
+            arr = [];
+            dealsByCategory.set(anc, arr);
+          }
+          if (!arr.includes(promoId)) arr.push(promoId);
+        }
+      }
+    }
+
+    const hotDeals = [];
+    for (const [promoId, catSet] of promoToCategoryIds.entries()) {
+      const promo = promotions.find((p) => p.id === promoId);
+      if (!promo) continue;
+      const type =
+        promo.config?.kind === 'FLASH_SALE' || promo.type === 'FLASH_SALE'
+          ? 'FLASH_SALE'
+          : 'MULTI_BUY_DISCOUNT';
+      const label = promo.humanReadableRule || computeHumanReadableRule(promo);
+      hotDeals.push({
+        id: promo.id,
+        label,
+        type,
+        categoryIds: Array.from(catSet),
+      });
+    }
+
+    function toNode(id) {
+      const base = taxonomy.byId.get(id);
+      if (!base) return null;
+
+      const override = creatorOverrides.get(id);
+      const hiddenByCreator = override?.hidden === true;
+      const hidden = base.hidden || hiddenByCreator;
+
+      const name = override?.name || base.name;
+      const imageUrl = override?.image || base.imageUrl || undefined;
+
+      const productCount = includeCounts ? Number(countById.get(id) || 0) : 0;
+      const deals = dealsByCategory.get(id) || undefined;
+      const dealsCount = Array.isArray(deals) ? deals.length : 0;
+
+      const priorityBoost = Number(base.priorityBoost || 0) + Number(override?.boost || 0);
+      const pinned = base.pinned || override?.pinned === true;
+      const priority = (base.priorityBase || 0) + priorityBoost + productCount + dealsCount * 5;
+
+      const childrenIds = taxonomy.childrenById.get(id) || [];
+      const children = childrenIds.map((cid) => toNode(cid)).filter(Boolean);
+
+      const node = {
+        category: {
+          id,
+          slug: base.slug,
+          name,
+          parentId: base.parentId,
+          level: base.level,
+          imageUrl,
+          productCount,
+          path: base.path || [name],
+          deals,
+          priority: pinned ? priority + 1000 : priority,
+        },
+        children,
+        _hidden: hidden,
+        _pinned: pinned,
+      };
+
+      return node;
+    }
+
+    const minCount = Number(process.env.CATEGORY_MIN_PRODUCT_COUNT || 1);
+    const roots = taxonomy.roots.map((rid) => toNode(rid)).filter(Boolean);
+
+    function filterHidden(nodes) {
+      const out = [];
+      for (const node of nodes) {
+        const children = filterHidden(node.children || []);
+        const hasDeals = Array.isArray(node.category.deals) && node.category.deals.length > 0;
+        const visibleByCount = (node.category.productCount || 0) >= minCount;
+
+        if (!node._hidden && (node._pinned || visibleByCount || hasDeals || children.length > 0)) {
+          out.push({
+            category: node.category,
+            children,
+          });
+        }
+      }
+      return out;
+    }
+
+    let finalRoots = filterHidden(roots);
+    if (dealsOnly) {
+      finalRoots = filterTreeByDeals(finalRoots);
+    }
+
+    return {
+      creatorId,
+      roots: finalRoots,
+      hotDeals,
+    };
+  }
+
   if (!indexedProducts.length) {
     return {
       creatorId,
@@ -559,6 +929,61 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
     const err = new Error('Unknown category');
     err.code = 'UNKNOWN_CATEGORY';
     throw err;
+  }
+
+  const taxonomy = await getTaxonomyView({
+    viewId: options.viewId,
+    locale: options.locale,
+  });
+
+  if (taxonomy) {
+    let targetId = null;
+    for (const cat of taxonomy.byId.values()) {
+      if (cat.slug === categorySlug || cat.id === categorySlug) {
+        targetId = cat.id;
+        break;
+      }
+    }
+    if (!targetId) {
+      const err = new Error('Unknown category');
+      err.code = 'UNKNOWN_CATEGORY';
+      throw err;
+    }
+
+    const targetIds = new Set();
+    const stack = [targetId];
+    while (stack.length) {
+      const id = stack.pop();
+      if (targetIds.has(id)) continue;
+      targetIds.add(id);
+      const children = taxonomy.childrenById.get(id) || [];
+      for (const cid of children) stack.push(cid);
+    }
+
+    const assigned = await mapProductsToCanonical(indexedProducts);
+    const productsForCategory = assigned
+      .filter((p) => targetIds.has(p.categoryId))
+      .map((p) => p.product);
+
+    const now = new Date();
+    const promotions = await getActivePromotions(now);
+    const enriched = enrichProductsWithDeals(productsForCategory, promotions, now, creatorId);
+
+    const total = enriched.length;
+    const startIdx = (page - 1) * limit;
+    const endIdx = startIdx + limit;
+    const slice = enriched.slice(startIdx, endIdx);
+
+    return {
+      creatorId,
+      categorySlug,
+      products: slice,
+      pagination: {
+        page,
+        limit,
+        total,
+      },
+    };
   }
 
   const { categoryMap } = buildCategoryTree(indexedProducts);

@@ -713,11 +713,15 @@ app.get('/creator/:creatorId/categories', async (req, res) => {
   const includeCounts =
     req.query.includeCounts === undefined ? true : req.query.includeCounts !== 'false';
   const dealsOnly = req.query.dealsOnly === 'true';
+  const locale = req.query.locale ? String(req.query.locale) : undefined;
+  const viewId = req.query.view ? String(req.query.view) : undefined;
 
   try {
     const tree = await buildCreatorCategoryTree(creatorId, {
       includeCounts,
       dealsOnly,
+      ...(locale ? { locale } : {}),
+      ...(viewId ? { viewId } : {}),
     });
     return res.json(tree);
   } catch (err) {
@@ -734,11 +738,15 @@ app.get('/creator/:creatorId/categories/:categorySlug/products', async (req, res
   const categorySlug = req.params.categorySlug;
   const page = req.query.page ? Number(req.query.page) : 1;
   const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const locale = req.query.locale ? String(req.query.locale) : undefined;
+  const viewId = req.query.view ? String(req.query.view) : undefined;
 
   try {
     const result = await getCreatorCategoryProducts(creatorId, categorySlug, {
       page,
       limit,
+      ...(locale ? { locale } : {}),
+      ...(viewId ? { viewId } : {}),
     });
     return res.json(result);
   } catch (err) {
