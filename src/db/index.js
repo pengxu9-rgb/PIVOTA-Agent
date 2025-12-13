@@ -2,17 +2,27 @@ const { Pool } = require('pg');
 
 let pool = null;
 
+function shouldUseSsl(databaseUrl) {
+  if (process.env.DB_SSL === 'true') return true;
+  const url = String(databaseUrl || '');
+  return (
+    /[?&]sslmode=(require|verify-full|verify-ca)\b/i.test(url) ||
+    /[?&]ssl=true\b/i.test(url)
+  );
+}
+
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) return null;
   if (!pool) {
+    const useSsl = shouldUseSsl(databaseUrl);
     pool = new Pool({
       connectionString: databaseUrl,
       max: Number(process.env.DB_POOL_MAX || 5),
       idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30000),
       connectionTimeoutMillis: Number(process.env.DB_CONN_TIMEOUT_MS || 10000),
       ssl:
-        process.env.DB_SSL === 'true'
+        useSsl
           ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
           : undefined,
     });
@@ -50,4 +60,3 @@ module.exports = {
   query,
   withClient,
 };
-
