@@ -1,0 +1,358 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "GATE_TEE_EN_001",
+      "desc": "Gate: English tee intent must return non-empty tee-only products; no contamination; no placeholder titles.",
+      "request": {
+        "query": "recommend a few tees",
+        "limit": 50,
+        "user_id": "u_test_GATE_TEE_EN_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": false,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_TEE_EN_002",
+      "desc": "Gate: tee intent must remain tee-only even with hoodie/lingerie recent queries.",
+      "request": {
+        "query": "t-shirt",
+        "limit": 50,
+        "user_id": "u_test_GATE_TEE_EN_002",
+        "recent_queries": [
+          "CloudFit Hoodie",
+          "sexy lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "reply_must_not_match": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_TEE_EN_003",
+      "desc": "Gate: tee tokenization variant should keep strict tee-only behavior and respect limit=5.",
+      "request": {
+        "query": "t shirt",
+        "limit": 5,
+        "user_id": "u_test_GATE_TEE_EN_003",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 5
+      }
+    },
+    {
+      "id": "GATE_TEE_EN_004",
+      "desc": "Gate: Unicode hyphen variant should still trigger tee strictness.",
+      "request": {
+        "query": "t\u2011shirt",
+        "limit": 50,
+        "user_id": "u_test_GATE_TEE_EN_004",
+        "recent_queries": [
+          "sexy lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_FP_001",
+      "desc": "Gate: false-positive substring case must not behave like tee intent (cannot be all tees).",
+      "request": {
+        "query": "street hoodie outfit",
+        "limit": 50,
+        "user_id": "u_test_GATE_FP_001",
+        "recent_queries": [
+          "tee",
+          "t-shirt"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_FP_002",
+      "desc": "Gate: non-fashion query must not return only tees (allow empty).",
+      "request": {
+        "query": "teeth whitening kit",
+        "limit": 50,
+        "user_id": "u_test_GATE_FP_002",
+        "recent_queries": [
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_BND_001",
+      "desc": "Gate: empty query follows top-sellers fallback; ensure safe output (no placeholder titles), limit respected.",
+      "request": {
+        "query": "",
+        "limit": 50,
+        "user_id": "u_test_GATE_BND_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "boundary",
+        "allow_http_status": [
+          200,
+          400,
+          422
+        ],
+        "allow_empty": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50,
+        "notes": "Backend currently falls back to top-sellers for empty query; this case validates safety, not emptiness."
+      }
+    },
+    {
+      "id": "GATE_BND_002",
+      "desc": "Gate: whitespace-only query follows top-sellers fallback; ensure safe output (no placeholder titles).",
+      "request": {
+        "query": "   ",
+        "limit": 50,
+        "user_id": "u_test_GATE_BND_002",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "boundary",
+        "allow_http_status": [
+          200,
+          400,
+          422
+        ],
+        "allow_empty": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_BND_003",
+      "desc": "Gate: emoji-only query should not crash; if 200, require empty products.",
+      "request": {
+        "query": "\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+        "limit": 50,
+        "user_id": "u_test_GATE_BND_003",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "boundary",
+        "allow_http_status": [
+          200,
+          400,
+          422
+        ],
+        "if_200_then_products_should_be_empty": true,
+        "max_products": 0
+      }
+    },
+    {
+      "id": "GATE_NONTEE_001",
+      "desc": "Gate: non-tee lingerie query must not collapse into all-tees and should return lingerie items (sanity for non-tee path).",
+      "request": {
+        "query": "lingerie set",
+        "limit": 50,
+        "user_id": "u_test_GATE_NONTEE_001",
+        "recent_queries": [
+          "t-shirt"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lingerie",
+          "lenceria"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_PERF_001",
+      "desc": "Gate perf baseline: tee strictness at limit=50 with relaxed thresholds for current environment.",
+      "request": {
+        "query": "tee",
+        "limit": 50,
+        "user_id": "u_test_GATE_PERF_001",
+        "recent_queries": [
+          "CloudFit Hoodie",
+          "sexy lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "perf",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "perf_threshold_ms": {
+          "p95": 5000,
+          "p99": 8000
+        },
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50,
+        "notes": "If you want stricter perf gates, run in a warm/stable environment and tighten thresholds."
+      }
+    }
+  ]
+}
+

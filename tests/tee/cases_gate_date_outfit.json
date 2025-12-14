@@ -1,0 +1,152 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "GATE_DATE_OUTFIT_EN_001",
+      "desc": "Gate: 'date outfit' may include lingerie by default; validate hygiene only (no placeholders/dupes).",
+      "request": {
+        "query": "outfit for a first date",
+        "limit": 50,
+        "user_id": "u_test_GATE_DATE_OUTFIT_EN_001",
+        "recent_queries": [
+          "sexy lingerie set",
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_DATE_OUTFIT_EN_002",
+      "desc": "Gate: date-night outfit ideas; lingerie allowed; hygiene only.",
+      "request": {
+        "query": "something cute for a date night",
+        "limit": 50,
+        "user_id": "u_test_GATE_DATE_OUTFIT_EN_002",
+        "recent_queries": [
+          "AeroFlex Joggers"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_DATE_OUTFIT_ES_001",
+      "desc": "Gate: Spanish date outfit query; lingerie allowed; hygiene only.",
+      "request": {
+        "query": "ropa para una cita",
+        "limit": 50,
+        "user_id": "u_test_GATE_DATE_OUTFIT_ES_001",
+        "recent_queries": [
+          "conjunto de lenceria sexy"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_DATE_OUTFIT_ES_002",
+      "desc": "Gate: Spanish first-date outfit query; lingerie allowed; hygiene only.",
+      "request": {
+        "query": "outfit para una primera cita",
+        "limit": 50,
+        "user_id": "u_test_GATE_DATE_OUTFIT_ES_002",
+        "recent_queries": [
+          "sudadera con capucha"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_DATE_TEE_EN_001",
+      "desc": "Gate: If user explicitly asks for t-shirt in date context, tee strictness must still hold.",
+      "request": {
+        "query": "date outfit: t-shirt",
+        "limit": 50,
+        "user_id": "u_test_GATE_DATE_TEE_EN_001",
+        "recent_queries": [
+          "sexy lingerie set",
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties",
+          "lingerie",
+          "lenceria"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}
+

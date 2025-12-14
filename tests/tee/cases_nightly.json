@@ -1,0 +1,139 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "NIGHTLY_TEE_ES_001",
+      "desc": "Nightly: Spanish tee synonym coverage. Should ideally return tee-only and non-empty; currently observed empty in your run.",
+      "request": {
+        "query": "recomiendame unas camisetas basicas",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TEE_ES_001",
+        "recent_queries": [
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": false,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50,
+        "notes": "If this fails empty, it indicates Spanish tee intent/search coverage gap."
+      }
+    },
+    {
+      "id": "NIGHTLY_HOODIE_EN_001",
+      "desc": "Nightly: hoodie anchor discoverability. Should return hoodie-like products; currently observed empty.",
+      "request": {
+        "query": "CloudFit Hoodie",
+        "limit": 10,
+        "user_id": "u_test_NIGHTLY_HOODIE_EN_001",
+        "recent_queries": [
+          "tee"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "hoodie",
+          "sweatshirt",
+          "sudadera"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 10,
+        "notes": "If empty, treat as data/index gap or recall regression."
+      }
+    },
+    {
+      "id": "NIGHTLY_JOGGERS_EN_001",
+      "desc": "Nightly: joggers anchor discoverability. Should return joggers; currently observed empty.",
+      "request": {
+        "query": "AeroFlex Joggers",
+        "limit": 10,
+        "user_id": "u_test_NIGHTLY_JOGGERS_EN_001",
+        "recent_queries": [
+          "t-shirt"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "joggers",
+          "jogger"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 10
+      }
+    },
+    {
+      "id": "NIGHTLY_HOODIE_ES_001",
+      "desc": "Nightly: Spanish hoodie query should surface hoodie-like items (language mapping).",
+      "request": {
+        "query": "sudadera con capucha",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_HOODIE_ES_001",
+        "recent_queries": [
+          "camisetas basicas"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "sudadera",
+          "hoodie"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50,
+        "notes": "If this returns products but none match hoodie tokens, treat as language/category mapping bug."
+      }
+    }
+  ]
+}
+

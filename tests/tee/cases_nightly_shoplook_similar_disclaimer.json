@@ -1,0 +1,208 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "NIGHTLY_LOOK_SIMILAR_EN_001",
+      "desc": "Nightly: exact outfit-by-date should return similar items AND include a disclaimer/prompt in reply (non-empty products expected).",
+      "request": {
+        "query": "I want the exact outfit Nina Studio wore on June 3, 2024",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LOOK_SIMILAR_EN_001",
+        "recent_queries": [
+          "outfit for a first date",
+          "sexy lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": false,
+        "reply_should_prompt_for_query": true,
+        "reply_must_not_match": [
+          "here is the exact",
+          "here's the exact",
+          "i found the exact",
+          "this is the exact"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_LOOK_SIMILAR_EN_002",
+      "desc": "Nightly: ISO date format shop-the-look should return similar items + disclaimer/prompt in reply.",
+      "request": {
+        "query": "shop Nina Studio look from 2024-06-03",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LOOK_SIMILAR_EN_002",
+        "recent_queries": [
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": false,
+        "reply_should_prompt_for_query": true,
+        "reply_must_not_match": [
+          "here is the exact",
+          "here's the exact",
+          "i found the exact",
+          "this is the exact"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_LOOK_SIMILAR_ES_001",
+      "desc": "Nightly: Spanish shop-the-look by date should return similar items + disclaimer/prompt in reply.",
+      "request": {
+        "query": "Quiero la ropa que Nina Studio uso el 3 de junio de 2024",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LOOK_SIMILAR_ES_001",
+        "recent_queries": [
+          "ropa para una cita",
+          "conjunto de lenceria sexy"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": false,
+        "reply_should_prompt_for_query": true,
+        "reply_must_not_match": [
+          "here is the exact",
+          "here's the exact",
+          "i found the exact",
+          "this is the exact"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_LOOK_AMBIG_DATE_EN_001",
+      "desc": "Nightly: ambiguous date format should trigger a clarification prompt/disclaimer; similar items allowed.",
+      "request": {
+        "query": "I want Nina Studio outfit on 03/06/2024",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LOOK_AMBIG_DATE_EN_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "reply_should_prompt_for_query": true,
+        "reply_must_not_match": [
+          "here is the exact",
+          "here's the exact",
+          "i found the exact",
+          "this is the exact"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_LOOK_INVALID_DATE_EN_001",
+      "desc": "Nightly: invalid date should not claim exactness; should prompt user and may show similar items.",
+      "request": {
+        "query": "what did Nina Studio wear on 2024-99-99",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LOOK_INVALID_DATE_EN_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "boundary",
+        "allow_http_status": [
+          200,
+          400,
+          422
+        ],
+        "allow_empty": true,
+        "reply_should_prompt_for_query": true,
+        "reply_must_not_match": [
+          "here is the exact",
+          "here's the exact",
+          "i found the exact",
+          "this is the exact"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_DATE_OUTFIT_NO_LINGERIE_EN_001",
+      "desc": "Nightly: if user explicitly excludes lingerie, results must not contain lingerie/underwear terms (lingerie otherwise allowed by default).",
+      "request": {
+        "query": "outfit for a first date, no lingerie",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_DATE_OUTFIT_NO_LINGERIE_EN_001",
+        "recent_queries": [
+          "sexy lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "lingerie",
+          "lenceria",
+          "underwear",
+          "bra",
+          "panties",
+          "ropa interior",
+          "sujetador",
+          "bragas"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}
+

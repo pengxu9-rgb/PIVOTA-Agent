@@ -1,0 +1,892 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "TEE_GATE_EN_001",
+      "desc": "Gate: English tee query should return non-empty and tee-only with no contamination or placeholders.",
+      "request": {
+        "query": "recommend a few tees",
+        "limit": 50,
+        "user_id": "u_test_TEE_GATE_EN_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": false,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties",
+          "sudadera",
+          "lenceria",
+          "bata",
+          "ropa interior",
+          "sujetador"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_EN_002",
+      "desc": "English t-shirt hyphen query with hoodie + lingerie in recent_queries must remain tee-only.",
+      "request": {
+        "query": "t-shirt",
+        "limit": 50,
+        "user_id": "u_test_TEE_EN_002",
+        "recent_queries": [
+          "CloudFit Hoodie",
+          "sexy lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "reply_must_not_match": [
+          "hoodie",
+          "lingerie",
+          "joggers",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_EN_003",
+      "desc": "English 't shirt' (space) variant with limit=5 must return <=5 tee-only products.",
+      "request": {
+        "query": "t shirt",
+        "limit": 5,
+        "user_id": "u_test_TEE_EN_003",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 5
+      }
+    },
+    {
+      "id": "TEE_EN_004",
+      "desc": "Unicode hyphen tee variant 't\u2011shirt' should still trigger tee strictness.",
+      "request": {
+        "query": "t\u2011shirt",
+        "limit": 50,
+        "user_id": "u_test_TEE_EN_004",
+        "recent_queries": [
+          "street hoodie outfit"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_EN_005",
+      "desc": "Attribute-rich English tee query should be tee-only; soft check for quick/dry/running signals in top results.",
+      "request": {
+        "query": "quick dry running tee",
+        "limit": 50,
+        "user_id": "u_test_TEE_EN_005",
+        "recent_queries": [
+          "AeroFlex Joggers"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "soft_expect_topn_match_any": {
+          "n": 10,
+          "min_match_count": 2,
+          "patterns_any": [
+            "quick",
+            "dry",
+            "running"
+          ]
+        },
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_EN_006",
+      "desc": "Cross-language context: English tee query with Spanish recent_queries must remain tee-only.",
+      "request": {
+        "query": "oversized graphic tee",
+        "limit": 50,
+        "user_id": "u_test_TEE_EN_006",
+        "recent_queries": [
+          "sudadera con capucha",
+          "conjunto de lenceria sexy"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "sudadera",
+          "joggers",
+          "lingerie",
+          "lenceria",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "soft_expect_topn_match_any": {
+          "n": 10,
+          "min_match_count": 2,
+          "patterns_any": [
+            "oversize",
+            "oversized",
+            "graphic"
+          ]
+        },
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_EN_NORES_001",
+      "desc": "Very specific tee query to exercise empty-results behavior; if results exist they must still be tee-only.",
+      "request": {
+        "query": "waterproof merino wool tee for diving",
+        "limit": 50,
+        "user_id": "u_test_TEE_EN_NORES_001",
+        "recent_queries": [
+          "lingerie"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "notes": "This query is intentionally niche; empty products is acceptable, but filler categories are not.",
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_ES_001",
+      "desc": "Spanish tee intent (camisetas) should return non-empty and tee-only, even with English recent_queries.",
+      "request": {
+        "query": "recomiendame unas camisetas basicas",
+        "limit": 50,
+        "user_id": "u_test_TEE_ES_001",
+        "recent_queries": [
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": false,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_ES_002",
+      "desc": "Spanish tee intent with sport attributes; tee-only with soft topN match for Spanish/English quick-dry signals.",
+      "request": {
+        "query": "camiseta deportiva de secado rapido",
+        "limit": 50,
+        "user_id": "u_test_TEE_ES_002",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "soft_expect_topn_match_any": {
+          "n": 10,
+          "min_match_count": 2,
+          "patterns_any": [
+            "secado",
+            "rapido",
+            "deportivo",
+            "quick",
+            "dry"
+          ]
+        },
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "TEE_ES_003",
+      "desc": "Spanish 'playera' tee synonym; tee-only with limit=5.",
+      "request": {
+        "query": "playera oversize negra",
+        "limit": 5,
+        "user_id": "u_test_TEE_ES_003",
+        "recent_queries": [
+          "AeroFlex Joggers"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "underwear",
+          "bra"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "soft_expect_topn_match_any": {
+          "n": 5,
+          "min_match_count": 1,
+          "patterns_any": [
+            "oversize",
+            "negra",
+            "black"
+          ]
+        },
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 5
+      }
+    },
+    {
+      "id": "NTE_HOODIE_EN_001",
+      "desc": "Non-tee: exact hoodie anchor should return hoodie items and must not return only tees.",
+      "request": {
+        "query": "CloudFit Hoodie",
+        "limit": 10,
+        "user_id": "u_test_NTE_HOODIE_EN_001",
+        "recent_queries": [
+          "tee",
+          "camisetas basicas"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "hoodie",
+          "sudadera"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 10
+      }
+    },
+    {
+      "id": "NTE_HOODIE_ES_001",
+      "desc": "Non-tee Spanish hoodie query should not be forced into tee strict filtering.",
+      "request": {
+        "query": "sudadera con capucha",
+        "limit": 50,
+        "user_id": "u_test_NTE_HOODIE_ES_001",
+        "recent_queries": [
+          "t-shirt"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "sudadera",
+          "hoodie"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NTE_JOGGERS_EN_001",
+      "desc": "Non-tee: joggers anchor should return joggers items and must not return only tees.",
+      "request": {
+        "query": "AeroFlex Joggers",
+        "limit": 10,
+        "user_id": "u_test_NTE_JOGGERS_EN_001",
+        "recent_queries": [
+          "oversized tee"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "joggers",
+          "jogger"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 10
+      }
+    },
+    {
+      "id": "NTE_LINGERIE_EN_001",
+      "desc": "Non-tee: lingerie query should be able to return lingerie items (not tee-only).",
+      "request": {
+        "query": "lingerie set",
+        "limit": 50,
+        "user_id": "u_test_NTE_LINGERIE_EN_001",
+        "recent_queries": [
+          "t-shirt"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lingerie",
+          "lenceria"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NTE_ROBE_ES_001",
+      "desc": "Non-tee: robe/bathrobe intent in Spanish; if results exist they must not be all tees (allow empty if category absent).",
+      "request": {
+        "query": "bata de casa",
+        "limit": 50,
+        "user_id": "u_test_NTE_ROBE_ES_001",
+        "recent_queries": [
+          "camiseta"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "FP_001",
+      "desc": "False-positive guard: 'street hoodie outfit' contains 'tee' substring; must not behave like tee intent.",
+      "request": {
+        "query": "street hoodie outfit",
+        "limit": 50,
+        "user_id": "u_test_FP_001",
+        "recent_queries": [
+          "tee",
+          "t-shirt"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "FP_002",
+      "desc": "False-positive guard: non-fashion query should not return only tees (allow empty).",
+      "request": {
+        "query": "teeth whitening kit",
+        "limit": 50,
+        "user_id": "u_test_FP_002",
+        "recent_queries": [
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "FP_003",
+      "desc": "False-positive guard: 'teen hoodie style' should not trigger tee-only behavior (allow empty).",
+      "request": {
+        "query": "teen hoodie style",
+        "limit": 50,
+        "user_id": "u_test_FP_003",
+        "recent_queries": [
+          "t-shirt"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "BND_001",
+      "desc": "Boundary: empty query should return 4xx or (if 200) an empty products array.",
+      "request": {
+        "query": "",
+        "limit": 50,
+        "user_id": "u_test_BND_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "boundary",
+        "allow_http_status": [
+          200,
+          400,
+          422
+        ],
+        "if_200_then_products_should_be_empty": true,
+        "reply_should_prompt_for_query": true,
+        "max_products": 0
+      }
+    },
+    {
+      "id": "PERF_001",
+      "desc": "Perf: tee query with limit=50 must remain tee-only and meet latency thresholds.",
+      "request": {
+        "query": "tee",
+        "limit": 50,
+        "user_id": "u_test_PERF_001",
+        "recent_queries": [
+          "CloudFit Hoodie",
+          "lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "perf",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "perf_threshold_ms": {
+          "p95": 1500,
+          "p99": 3000
+        },
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "BND_002",
+      "desc": "Boundary: whitespace-only query should return 4xx or (if 200) an empty products array.",
+      "request": {
+        "query": "   ",
+        "limit": 50,
+        "user_id": "u_test_BND_002",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "boundary",
+        "allow_http_status": [
+          200,
+          400,
+          422
+        ],
+        "if_200_then_products_should_be_empty": true,
+        "reply_should_prompt_for_query": true,
+        "max_products": 0
+      }
+    },
+    {
+      "id": "BND_003",
+      "desc": "Boundary: emoji-only query must not crash; 200 => empty products array.",
+      "request": {
+        "query": "😀😀😀",
+        "limit": 50,
+        "user_id": "u_test_BND_003",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "boundary",
+        "allow_http_status": [
+          200,
+          400,
+          422
+        ],
+        "if_200_then_products_should_be_empty": true,
+        "max_products": 0
+      }
+    },
+    {
+      "id": "BND_004",
+      "desc": "Boundary: punctuation-heavy tee query should still trigger tee strictness if treated as tee.",
+      "request": {
+        "query": "tee????!!!",
+        "limit": 50,
+        "user_id": "u_test_BND_004",
+        "recent_queries": [
+          "hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NTE_HOODIE_ES_002",
+      "desc": "Non-tee Spanish hoodie + color query should not be forced into tee strict filtering.",
+      "request": {
+        "query": "sudadera negra",
+        "limit": 50,
+        "user_id": "u_test_NTE_HOODIE_ES_002",
+        "recent_queries": [
+          "tee"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "sudadera",
+          "hoodie"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NTE_JOGGERS_ES_001",
+      "desc": "Non-tee Spanish joggers phrase should not be collapsed into tees.",
+      "request": {
+        "query": "pantalones jogger",
+        "limit": 50,
+        "user_id": "u_test_NTE_JOGGERS_ES_001",
+        "recent_queries": [
+          "camiseta deportiva"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "joggers",
+          "jogger"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NTE_LINGERIE_ES_001",
+      "desc": "Non-tee: Spanish lingerie phrase should surface lingerie items, not tees.",
+      "request": {
+        "query": "conjunto de lenceria sexy",
+        "limit": 50,
+        "user_id": "u_test_NTE_LINGERIE_ES_001",
+        "recent_queries": [
+          "t shirt"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lenceria",
+          "lingerie"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "FP_004",
+      "desc": "Ambiguous apparel intent (streetwear outfit ideas) should not return only tees.",
+      "request": {
+        "query": "streetwear outfit ideas",
+        "limit": 50,
+        "user_id": "u_test_FP_004",
+        "recent_queries": [
+          "camisetas basicas"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "FP_005",
+      "desc": "Spanish ambiguous streetwear query must not behave like tee intent.",
+      "request": {
+        "query": "ropa streetwear",
+        "limit": 50,
+        "user_id": "u_test_FP_005",
+        "recent_queries": [
+          "hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}
