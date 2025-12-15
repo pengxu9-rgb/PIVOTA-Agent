@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -398,6 +399,64 @@ async def _handle_find_products_multi(
             return []
         return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) > 2]
 
+    def _strip_accents(text: str) -> str:
+        if not text:
+            return ""
+        return "".join(
+            c
+            for c in unicodedata.normalize("NFKD", text)
+            if not unicodedata.combining(c)
+        )
+
+    def _edit_distance_leq(a: str, b: str, max_dist: int) -> bool:
+        """Return True if Levenshtein(a,b) <= max_dist (with early exit)."""
+        if a == b:
+            return True
+        if max_dist <= 0:
+            return False
+        if not a or not b:
+            return max(len(a), len(b)) <= max_dist
+        if abs(len(a) - len(b)) > max_dist:
+            return False
+
+        if len(a) > len(b):
+            a, b = b, a
+
+        prev = list(range(len(a) + 1))
+        for i, ch_b in enumerate(b, start=1):
+            cur = [i]
+            min_in_row = cur[0]
+            for j, ch_a in enumerate(a, start=1):
+                cost = 0 if ch_a == ch_b else 1
+                cur_val = min(
+                    prev[j] + 1,
+                    cur[j - 1] + 1,
+                    prev[j - 1] + cost,
+                )
+                cur.append(cur_val)
+                if cur_val < min_in_row:
+                    min_in_row = cur_val
+            if min_in_row > max_dist:
+                return False
+            prev = cur
+        return prev[-1] <= max_dist
+
+    def _fuzzy_token_match(tokens: List[str], targets: List[str], max_dist: int) -> bool:
+        if not tokens or not targets:
+            return False
+        target_set = {t for t in targets if t}
+        for tok in tokens:
+            if tok in target_set:
+                return True
+            if len(tok) < 4:
+                continue
+            for t in target_set:
+                if abs(len(tok) - len(t)) > max_dist:
+                    continue
+                if _edit_distance_leq(tok, t, max_dist):
+                    return True
+        return False
+
     async def _load_user_history_signals() -> tuple[set[str], List[str]]:
         """Best-effort fetch of the user's historical purchases to bias ranking."""
         if not user_ctx:
@@ -697,6 +756,8 @@ async def _handle_find_products_multi(
     q_raw = filters.query or ""
     q = q_raw.strip()
     q_lower = q.lower()
+    q_ascii = _strip_accents(q_lower)
+    q_tokens = _tokenize(q_ascii)
 
     # Detect special intents for downstream filtering/UX.
     look_intent = False
@@ -715,6 +776,20 @@ async def _handle_find_products_multi(
         or "sin ropa interior" in q_lower
     ):
         exclude_lingerie = True
+
+    # Detect toys intent (kids + designer toys), including common misspellings (e.g. "tolls" ≈ "dolls").
+    toys_intent_query = bool(
+        "toy" in q_ascii
+        or "toys" in q_ascii
+        or "juguete" in q_ascii
+        or "juguetes" in q_ascii
+        or "art toy" in q_ascii
+        or "art toys" in q_ascii
+        or "designer toy" in q_ascii
+        or "designer toys" in q_ascii
+        or "labubu" in q_ascii
+        or _fuzzy_token_match(q_tokens, ["doll", "dolls", "toys"], max_dist=1)
+    )
 
     # Construct reply for look-intent queries: similar items + disclaimer/prompt.
     reply_text: Optional[str] = None
@@ -861,13 +936,38 @@ async def _handle_find_products_multi(
                 relevance_score = 0.8
             else:
                 # Token-based matching with short-token guard (prevents "te e" -> ["te","e"] over-matching).
-                query_terms = _tokenize(q_lower)
+                query_terms = _tokenize(q_ascii)
 
                 if not query_terms and q_compact and len(q_compact) > 2:
                     query_terms = [q_compact]
 
                 if tee_intent:
                     for t in ("tee", "tshirt", "t-shirt"):
+                        if t not in query_terms:
+                            query_terms.append(t)
+
+                if toys_intent_query:
+                    for t in (
+                        "toy",
+                        "toys",
+                        "juguete",
+                        "juguetes",
+                        "doll",
+                        "dolls",
+                        "plush",
+                        "plushie",
+                        "peluche",
+                        "figure",
+                        "figures",
+                        "vinyl",
+                        "blind",
+                        "box",
+                        "collectible",
+                        "collector",
+                        "art",
+                        "designer",
+                        "labubu",
+                    ):
                         if t not in query_terms:
                             query_terms.append(t)
 
@@ -882,6 +982,37 @@ async def _handle_find_products_multi(
                 if matches == 0:
                     continue
                 relevance_score = 0.5 + (matches / len(query_terms)) * 0.3
+
+        # Detect toy-like products for intent filtering/boosting.
+        blob_for_filters = " ".join(
+            [
+                (product.title or "").lower(),
+                (product.description or "").lower(),
+                (product.product_type or "").lower(),
+                " ".join(getattr(product, "tags", None) or []),
+            ]
+        )
+        blob_for_filters_ascii = _strip_accents(blob_for_filters)
+        toy_like_tokens = [
+            "toy",
+            "toys",
+            "juguete",
+            "juguetes",
+            "doll",
+            "dolls",
+            "plush",
+            "plushie",
+            "peluche",
+            "figure",
+            "figures",
+            "vinyl",
+            "blind box",
+            "collectible",
+            "designer toy",
+            "art toy",
+            "labubu",
+        ]
+        is_toy_like = any(tok in blob_for_filters_ascii for tok in toy_like_tokens)
 
         # User intent boost based on history and recency
         pid = str(product.product_id or product.id or "")
@@ -902,13 +1033,21 @@ async def _handle_find_products_multi(
 
         relevance_score += history_boost
 
+        if toys_intent_query and is_toy_like:
+            relevance_score += 0.45
+
         filtered_products.append(
             {
                 "product": product,
                 "merchant_name": merchant_name,
                 "relevance_score": relevance_score,
+                "is_toy_like": is_toy_like,
             }
         )
+
+    if toys_intent_query:
+        toy_candidates = [p for p in filtered_products if p.get("is_toy_like")]
+        filtered_products = toy_candidates if toy_candidates else []
 
     # Sort by relevance
     filtered_products.sort(
@@ -932,7 +1071,7 @@ async def _handle_find_products_multi(
         out_products.append(item)
 
     # Fallback: if primary query returned nothing, surface creator top-sellers instead
-    if not out_products and creator_id:
+    if not out_products and creator_id and not toys_intent_query:
         top_sellers = await _load_creator_top_sellers(max_candidates=limit * 2)
         source = "creator_top_sellers_fallback"
 
@@ -964,6 +1103,12 @@ async def _handle_find_products_multi(
                 "creator_name": creator_name,
             },
         }
+
+    if not out_products and toys_intent_query:
+        reply_text = reply_text or (
+            "I couldn’t find toy items in the current shop catalog for that query. "
+            "If you share a brand or character name (for example: Labubu), I can narrow it down."
+        )
 
     history_used = bool(history_product_ids or history_terms)
 

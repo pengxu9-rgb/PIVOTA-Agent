@@ -1,0 +1,286 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "NIGHTLY_LINGERIE_EN_001",
+      "desc": "Nightly: English lingerie date query should surface lingerie-like items; checks recall and non-tee behavior.",
+      "request": {
+        "query": "sexy lingerie for a date night",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LINGERIE_EN_001",
+        "recent_queries": [
+          "date outfit"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lingerie",
+          "lenceria",
+          "ropa interior"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_LINGERIE_EN_002",
+      "desc": "Nightly: generic English lingerie set query to monitor recall stability.",
+      "request": {
+        "query": "cute lingerie set",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LINGERIE_EN_002",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lingerie",
+          "lenceria",
+          "ropa interior"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_LINGERIE_ES_001",
+      "desc": "Nightly: Spanish lingerie phrase should surface lingerie-like items.",
+      "request": {
+        "query": "conjunto de lenceria sexy",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_LINGERIE_ES_001",
+        "recent_queries": [
+          "ropa para una cita"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lenceria",
+          "lingerie",
+          "ropa interior"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_TOYS_EN_001",
+      "desc": "Nightly: English kids toy query for a child; should retrieve toy-like items when data exists.",
+      "request": {
+        "query": "toys for a 5 year old",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TOYS_EN_001",
+        "recent_queries": [
+          "lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "toy",
+          "toys",
+          "juguete",
+          "juguetes",
+          "labubu",
+          "doll",
+          "dolls",
+          "plush",
+          "figure",
+          "vinyl",
+          "collectible",
+          "blind box"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_TOYS_EN_002",
+      "desc": "Nightly: generic English kids toys query to monitor recall.",
+      "request": {
+        "query": "educational toys for children",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TOYS_EN_002",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "toy",
+          "toys",
+          "juguete",
+          "juguetes",
+          "labubu",
+          "doll",
+          "dolls",
+          "plush",
+          "figure",
+          "vinyl",
+          "collectible",
+          "blind box"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_TOYS_ES_001",
+      "desc": "Nightly: Spanish kids toys query.",
+      "request": {
+        "query": "juguetes educativos para niños",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TOYS_ES_001",
+        "recent_queries": [
+          "conjunto de lenceria sexy"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "juguete",
+          "juguetes",
+          "toy",
+          "toys",
+          "labubu",
+          "muneco",
+          "muneca",
+          "mu\u00f1eco",
+          "mu\u00f1eca",
+          "peluche",
+          "figura",
+          "coleccionable"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_TOYS_EN_003",
+      "desc": "Nightly: English designer toys query should surface toy-like or collectible toy items when data exists.",
+      "request": {
+        "query": "designer toys for collectors",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TOYS_EN_003",
+        "recent_queries": [
+          "art toys",
+          "vinyl figures"
+        ]
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "toy",
+          "toys",
+          "juguete",
+          "juguetes",
+          "labubu",
+          "designer toy",
+          "art toy",
+          "figure",
+          "vinyl",
+          "collectible",
+          "blind box"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_TOYS_TYPO_EN_001",
+      "desc": "Nightly: typo tolerance: 'tolls' should be treated as toy-like intent (commonly mistyped for dolls/toys).",
+      "request": {
+        "query": "tolls for collectors",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TOYS_TYPO_EN_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "non_tee",
+        "allow_empty": false,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "doll",
+          "dolls",
+          "toy",
+          "toys",
+          "labubu",
+          "figure",
+          "collectible"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}
