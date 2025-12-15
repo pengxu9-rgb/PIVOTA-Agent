@@ -1,0 +1,106 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "GATE_NO_HOODIE_EN_001",
+      "desc": "Gate: date outfit with explicit no-hoodie constraint must exclude hoodies.",
+      "request": {
+        "query": "date outfit ideas, no hoodies but jackets are okay",
+        "limit": 50,
+        "user_id": "u_test_GATE_NO_HOODIE_EN_001",
+        "recent_queries": [
+          "CloudFit Hoodie"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "hoodies",
+          "sweatshirt",
+          "sudadera"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_NO_JOGGERS_EN_001",
+      "desc": "Gate: date outfit with explicit no-joggers constraint must exclude joggers.",
+      "request": {
+        "query": "outfit for a first date, no joggers",
+        "limit": 50,
+        "user_id": "u_test_GATE_NO_JOGGERS_EN_001",
+        "recent_queries": [
+          "AeroFlex Joggers"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "joggers",
+          "jogger",
+          "pantalones jogger"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "GATE_NO_LINGERIE_ES_001",
+      "desc": "Gate: Spanish explicit exclusion (sin lenceria) must exclude lingerie items.",
+      "request": {
+        "query": "ropa para una cita, sin lenceria",
+        "limit": 50,
+        "user_id": "u_test_GATE_NO_LINGERIE_ES_001",
+        "recent_queries": [
+          "conjunto de lenceria sexy"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "lingerie",
+          "lenceria",
+          "underwear",
+          "bra",
+          "panties",
+          "ropa interior"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}

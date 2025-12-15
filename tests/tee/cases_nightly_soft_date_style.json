@@ -1,0 +1,141 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "NIGHTLY_SOFT_STYLE_EN_001",
+      "desc": "Nightly soft relevance: classy dinner date outfit should surface at least one classy/elegant signal in top results.",
+      "request": {
+        "query": "something classy for a dinner date",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_SOFT_STYLE_EN_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "soft_expect_topn_match_any": {
+          "n": 10,
+          "min_match_count": 1,
+          "patterns_any": [
+            "classy",
+            "elegant",
+            "dress",
+            "blazer"
+          ]
+        },
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_SOFT_STYLE_EN_002",
+      "desc": "Nightly soft relevance: cute coffee date outfit should surface casual/daytime signals.",
+      "request": {
+        "query": "cute outfit for a coffee date",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_SOFT_STYLE_EN_002",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "soft_expect_topn_match_any": {
+          "n": 10,
+          "min_match_count": 1,
+          "patterns_any": [
+            "cute",
+            "casual",
+            "coffee",
+            "daytime"
+          ]
+        },
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_SOFT_STYLE_ES_001",
+      "desc": "Nightly soft relevance: Spanish elegant date outfit query.",
+      "request": {
+        "query": "ropa elegante para una cita",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_SOFT_STYLE_ES_001",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "soft_expect_topn_match_any": {
+          "n": 10,
+          "min_match_count": 1,
+          "patterns_any": [
+            "elegante",
+            "elegant",
+            "vestido",
+            "dress"
+          ]
+        },
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_SOFT_STYLE_ES_002",
+      "desc": "Nightly soft relevance: Spanish casual first-date outfit query.",
+      "request": {
+        "query": "outfit casual para una primera cita",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_SOFT_STYLE_ES_002",
+        "recent_queries": []
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "soft_expect_topn_match_any": {
+          "n": 10,
+          "min_match_count": 1,
+          "patterns_any": [
+            "casual",
+            "informal",
+            "jeans",
+            "sneakers"
+          ]
+        },
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}
+

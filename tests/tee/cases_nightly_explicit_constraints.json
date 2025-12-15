@@ -1,0 +1,264 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "NIGHTLY_NO_HOODIE_JOGGERS_EN_001",
+      "desc": "Nightly: date night outfit with no hoodies or joggers; jackets are fine.",
+      "request": {
+        "query": "date night outfit, no hoodies or joggers, jackets are fine",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_NO_HOODIE_JOGGERS_EN_001",
+        "recent_queries": [
+          "CloudFit Hoodie",
+          "AeroFlex Joggers"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "hoodies",
+          "sweatshirt",
+          "sudadera",
+          "joggers",
+          "jogger",
+          "pantalones jogger",
+          "robe",
+          "bathrobe"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_NO_UNDERWEAR_ALLOW_LINGERIE_EN_001",
+      "desc": "Nightly: user excludes underwear but allows lingerie.",
+      "request": {
+        "query": "no underwear suggestions, but lingerie is okay",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_NO_UNDERWEAR_ALLOW_LINGERIE_EN_001",
+        "recent_queries": [
+          "sexy lingerie set"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "underwear",
+          "panties",
+          "panty",
+          "briefs",
+          "thong",
+          "ropa interior",
+          "calzoncillos",
+          "bragas"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_NO_LINGERIE_ALLOW_DRESSES_EN_001",
+      "desc": "Nightly: user excludes lingerie but is open to dresses and jackets.",
+      "request": {
+        "query": "no lingerie, but allow dresses and jackets",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_NO_LINGERIE_ALLOW_DRESSES_EN_001",
+        "recent_queries": [
+          "date outfit",
+          "dress for a date"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "lingerie",
+          "lenceria",
+          "underwear",
+          "bra",
+          "panties",
+          "ropa interior"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_JACKETS_EN_001",
+      "desc": "Nightly: user asks for only jackets for a date night; should not be all tees and should contain jacket-like items when available.",
+      "request": {
+        "query": "only jackets for a date night",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_JACKETS_EN_001",
+        "recent_queries": [
+          "hoodie",
+          "coat"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_LINGERIE_EN_001",
+      "desc": "Nightly: user asks for only lingerie for a date outfit; should surface lingerie-like items when available.",
+      "request": {
+        "query": "only lingerie for a date outfit",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_LINGERIE_EN_001",
+        "recent_queries": [
+          "date outfit"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lingerie",
+          "lenceria"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_JACKETS_ES_001",
+      "desc": "Nightly: Spanish only-jackets request for a date; should not be all tees and should contain jacket-like items when available.",
+      "request": {
+        "query": "solo chaquetas para una cita",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_JACKETS_ES_001",
+        "recent_queries": [
+          "ropa para una cita"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_LINGERIE_ES_001",
+      "desc": "Nightly: Spanish only-lingerie request for a date outfit.",
+      "request": {
+        "query": "solo lenceria para una cita",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_LINGERIE_ES_001",
+        "recent_queries": [
+          "ropa para una cita"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_contain_any_category": [
+          "lenceria",
+          "lingerie"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_TEE_ES_001",
+      "desc": "Nightly: Spanish 'solo camisetas' for a date should ideally yield tee-only results.",
+      "request": {
+        "query": "solo camisetas para una cita",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_TEE_ES_001",
+        "recent_queries": [
+          "ropa para una cita"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "hoodies",
+          "sweatshirt",
+          "sudadera",
+          "joggers",
+          "jogger",
+          "lingerie",
+          "lenceria",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}

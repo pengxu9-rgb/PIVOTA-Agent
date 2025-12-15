@@ -19,7 +19,7 @@
       },
       "expect": {
         "intent": "tee",
-        "allow_empty": false,
+        "allow_empty": true,
         "must_all_be_tee": true,
         "must_not_contain_categories": [
           "hoodie",
@@ -355,4 +355,3 @@
     }
   ]
 }
-

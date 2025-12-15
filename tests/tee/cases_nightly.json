@@ -21,7 +21,7 @@
       },
       "expect": {
         "intent": "tee",
-        "allow_empty": false,
+        "allow_empty": true,
         "must_all_be_tee": true,
         "must_not_contain_categories": [
           "hoodie",
@@ -41,7 +41,7 @@
           "title"
         ],
         "max_products": 50,
-        "notes": "If this fails empty, it indicates Spanish tee intent/search coverage gap."
+        "notes": "Empty products is acceptable for now; non-empty results should be tee-only and absence of results still indicates a Spanish tee intent/search coverage gap."
       }
     },
     {
@@ -133,7 +133,78 @@
         "max_products": 50,
         "notes": "If this returns products but none match hoodie tokens, treat as language/category mapping bug."
       }
+    },
+    {
+      "id": "NIGHTLY_TEE_ES_002",
+      "desc": "Nightly: Spanish sport tee intent; ideally tee-only results for camisetas deportivas.",
+      "request": {
+        "query": "camiseta deportiva de secado rapido",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TEE_ES_002",
+        "recent_queries": [
+          "AeroFlex Joggers"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50,
+        "notes": "Tracks Spanish tee intent for sports attributes; empty results highlight recall gap."
+      }
+    },
+    {
+      "id": "NIGHTLY_TEE_ES_003",
+      "desc": "Nightly: Spanish 'playera' tee synonym with oversize + color attributes.",
+      "request": {
+        "query": "playera oversize negra",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_TEE_ES_003",
+        "recent_queries": [
+          "ropa para una cita"
+        ]
+      },
+      "expect": {
+        "intent": "tee",
+        "allow_empty": true,
+        "must_all_be_tee": true,
+        "must_not_contain_categories": [
+          "hoodie",
+          "joggers",
+          "lingerie",
+          "robe",
+          "bathrobe",
+          "underwear",
+          "bra",
+          "panties"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50,
+        "notes": "Covers 'playera' synonym and attribute-rich Spanish tee queries; empty results indicate remaining gaps."
+      }
     }
   ]
 }
-

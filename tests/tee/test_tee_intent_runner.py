@@ -59,6 +59,9 @@ def _extract_category_tokens(product: Dict[str, Any]) -> str:
     path = category.get("path")
     if isinstance(path, list):
       parts.extend([str(x) for x in path])
+  tags = product.get("tags")
+  if isinstance(tags, list):
+    parts.extend([str(x) for x in tags])
   return " ".join(parts).lower()
 
 

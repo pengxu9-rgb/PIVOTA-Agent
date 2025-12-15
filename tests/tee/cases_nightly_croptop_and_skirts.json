@@ -1,0 +1,249 @@
+{
+  "defaults": {
+    "endpoint": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+    "operation": "find_products_multi",
+    "creator": {
+      "creator_id": "creator_demo_001",
+      "creator_name": "Nina Studio"
+    }
+  },
+  "cases": [
+    {
+      "id": "NIGHTLY_NO_CROPTOP_EN_001",
+      "desc": "Nightly: English date outfit with explicit no crop tops constraint.",
+      "request": {
+        "query": "date outfit, no crop tops",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_NO_CROPTOP_EN_001",
+        "recent_queries": [
+          "crop top",
+          "cropped tee"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "crop top",
+          "croptop",
+          "cropped"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "no_duplicate_products": true,
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_NO_CROPTOP_EN_002",
+      "desc": "Nightly: English date night outfit with no cropped items.",
+      "request": {
+        "query": "date night outfit, no cropped tops",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_NO_CROPTOP_EN_002",
+        "recent_queries": [
+          "cropped jacket"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "crop top",
+          "croptop",
+          "cropped"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_NO_CROPTOP_ES_001",
+      "desc": "Nightly: Spanish date outfit query with explicit exclusion of short tops.",
+      "request": {
+        "query": "ropa para una cita, sin tops cortos",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_NO_CROPTOP_ES_001",
+        "recent_queries": [
+          "top corto",
+          "crop top"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "crop top",
+          "top corto",
+          "tops cortos",
+          "blusa corta",
+          "blusas cortas"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_NO_CROPTOP_ES_002",
+      "desc": "Nightly: Spanish first-date outfit query with sin crop tops.",
+      "request": {
+        "query": "outfit para una cita, sin crop tops",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_NO_CROPTOP_ES_002",
+        "recent_queries": [
+          "crop top"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_contain_categories": [
+          "crop top",
+          "top corto",
+          "tops cortos",
+          "blusa corta",
+          "blusas cortas"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_SKIRTS_EN_001",
+      "desc": "Nightly: user asks for only skirts for a date night.",
+      "request": {
+        "query": "only skirts for a date night",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_SKIRTS_EN_001",
+        "recent_queries": [
+          "date outfit"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_SKIRTS_EN_002",
+      "desc": "Nightly: skirts only, no crop tops.",
+      "request": {
+        "query": "skirts only, no crop tops",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_SKIRTS_EN_002",
+        "recent_queries": [
+          "crop top",
+          "skirt"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_categories": [
+          "crop top",
+          "croptop",
+          "cropped"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_SKIRTS_ES_001",
+      "desc": "Nightly: Spanish solo faldas para una cita.",
+      "request": {
+        "query": "solo faldas para una cita",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_SKIRTS_ES_001",
+        "recent_queries": [
+          "ropa para una cita"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    },
+    {
+      "id": "NIGHTLY_ONLY_SKIRTS_ES_002",
+      "desc": "Nightly: Spanish solo faldas, sin tops cortos.",
+      "request": {
+        "query": "solo faldas, sin tops cortos",
+        "limit": 50,
+        "user_id": "u_test_NIGHTLY_ONLY_SKIRTS_ES_002",
+        "recent_queries": [
+          "top corto",
+          "falda"
+        ]
+      },
+      "expect": {
+        "intent": "ambiguous",
+        "allow_empty": true,
+        "must_not_be_all_tee": true,
+        "must_not_contain_categories": [
+          "crop top",
+          "top corto",
+          "tops cortos",
+          "blusa corta",
+          "blusas cortas"
+        ],
+        "must_not_contain_dirty_titles": [
+          "I'm a product",
+          "I\u2019m a product"
+        ],
+        "required_fields_each_product": [
+          "title"
+        ],
+        "max_products": 50
+      }
+    }
+  ]
+}
