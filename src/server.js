@@ -41,7 +41,7 @@ const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
 const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? 'REAL' : 'MOCK');
 const USE_MOCK = API_MODE === 'MOCK';
 const USE_HYBRID = API_MODE === 'HYBRID';
-const REAL_API_ENABLED = API_MODE === 'REAL' && PIVOTA_API_KEY;
+const REAL_API_ENABLED = API_MODE === 'REAL' && Boolean(PIVOTA_API_KEY);
 
 // Load tool schema once for chat endpoint.
 const toolSchemaPath = path.join(__dirname, '..', 'docs', 'tool-schema.json');

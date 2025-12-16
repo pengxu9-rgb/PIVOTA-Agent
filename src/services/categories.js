@@ -652,14 +652,12 @@ async function loadCreatorProducts(creatorId) {
   }
 
   const merchantIds = config.merchantIds || [];
-  if (!merchantIds.length) {
-    return { indexedProducts: [], merchantIds };
-  }
 
   // MOCK mode: use local mockProducts catalog.
   if (USE_MOCK) {
     const indexedProducts = [];
-    for (const mid of merchantIds) {
+    const mids = merchantIds.length ? merchantIds : Object.keys(mockProducts);
+    for (const mid of mids) {
       const list = mockProducts[mid] || [];
       for (const product of list) {
         const path = deriveCategoryPathFromProduct(product);
@@ -702,27 +700,14 @@ async function loadCreatorProducts(creatorId) {
     });
 
     const products = Array.isArray(resp.data?.products) ? resp.data.products : [];
-    let filtered = products.filter((p) => {
+    // For creator categories, we intentionally do not hard-filter by
+    // merchantIds here so that the taxonomy and category tree can
+    // leverage the full cross-merchant product pool returned by
+    // find_products_multi. We only drop items missing a merchant id.
+    const filtered = products.filter((p) => {
       const mid = String(p.merchant_id || p.merchantId || '').trim();
-      if (!mid) return false;
-      if (!merchantIds.length) return true;
-      return merchantIds.includes(mid);
+      return Boolean(mid);
     });
-
-    // Safety net: if creator merchant mapping is stale or empty in production
-    // and filtering yields no products, fall back to all products so that
-    // the Categories page still has meaningful content.
-    if (!filtered.length && merchantIds.length && products.length) {
-      logger.warn(
-        {
-          creatorId,
-          expectedMerchants: merchantIds,
-          totalProducts: products.length,
-        },
-        'No products matched creator merchants; falling back to all products for categories'
-      );
-      filtered = products;
-    }
 
     const indexedProducts = filtered.map((product) => {
       const path = deriveCategoryPathFromProduct(product);
