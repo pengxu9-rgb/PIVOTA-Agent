@@ -8,6 +8,7 @@
     "start:mock": "USE_MOCK=true node src/server.js",
     "dev": "node src/server.js",
     "dev:mock": "USE_MOCK=true node src/server.js",
+    "smoke:real": "npm --prefix .. run smoke:real --",
     "db:migrate": "node src/db/cli.js migrate",
     "db:seed": "node src/db/cli.js seed",
     "db:setup": "node src/db/cli.js all",

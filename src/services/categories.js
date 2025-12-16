@@ -301,6 +301,30 @@ function heuristicCategoryForProduct(product) {
       .join(' '),
   );
 
+  // Toys are visually very different from fashion/lingerie, and we want
+  // to avoid misclassifying collectible dolls/plushies as lingerie just
+  // because the vendor name contains "lingerie". Give toy signals a
+  // dedicated fast-path before generic keyword rules.
+  const toySignals = [
+    'toy',
+    'toys',
+    'plush',
+    'stuffed',
+    'doll',
+    'figure',
+    '玩具',
+    '毛绒',
+    '公仔',
+    '娃娃',
+    '手办',
+  ];
+  for (const kw of toySignals) {
+    const needle = normalizeTextForMatch(kw);
+    if (needle && haystack.includes(needle)) {
+      return 'toys';
+    }
+  }
+
   for (const rule of HEURISTIC_RULES) {
     for (const kw of rule.keywords) {
       const needle = normalizeTextForMatch(kw);
