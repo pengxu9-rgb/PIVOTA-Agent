@@ -272,6 +272,8 @@ function heuristicCategoryForProduct(product) {
       product.title,
       product.name,
       product.description,
+      product.vendor,
+      product.brand,
       product.product_type,
       product.category,
       normalizeMerchantCategoryKey(product),
