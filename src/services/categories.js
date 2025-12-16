@@ -671,6 +671,48 @@ async function loadCreatorProducts(creatorId) {
     return { indexedProducts, merchantIds };
   }
 
+  // Prefer reading the full merchant catalog directly from the cache DB
+  // when available so that category trees (including toys) reflect the
+  // actual merchant portal inventory, not just the recall subset used
+  // by find_products_multi.
+  if (merchantIds.length && process.env.DATABASE_URL) {
+    try {
+      const limit = Number(process.env.CREATOR_CATEGORIES_MAX_PRODUCTS || 2000);
+      const res = await query(
+        `
+          SELECT product_data
+          FROM products_cache
+          WHERE merchant_id = ANY($1)
+            AND expires_at > now()
+          ORDER BY cached_at DESC
+          LIMIT $2
+        `,
+        [merchantIds, limit],
+      );
+
+      if (Array.isArray(res.rows) && res.rows.length > 0) {
+        const indexedProducts = res.rows.map((row) => {
+          const product = row.product_data || row.product || row;
+          const path = deriveCategoryPathFromProduct(product);
+          const leafId = buildCategoryIdFromSegments(path);
+          const slug = slugify(path[path.length - 1] || 'Other');
+          return { product, path, leafId, slug };
+        });
+        return { indexedProducts, merchantIds };
+      }
+
+      logger.warn(
+        { creatorId, merchantIds, limit },
+        'No products found in products_cache for creator; falling back to gateway recall'
+      );
+    } catch (err) {
+      logger.warn(
+        { err: err.message, creatorId, merchantIds },
+        'Failed to load creator products from cache; falling back to gateway recall'
+      );
+    }
+  }
+
   // REAL / HYBRID mode: call upstream Shopping Gateway find_products_multi.
   try {
     const payload = {
