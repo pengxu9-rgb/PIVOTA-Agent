@@ -266,6 +266,25 @@ const HEURISTIC_RULES = [
   },
 ];
 
+function isStatusActive(status) {
+  const normalized = String(status || 'active').toLowerCase();
+  return normalized === 'active';
+}
+
+function isProductSellable(product) {
+  if (!product || typeof product !== 'object') return false;
+  const status = product.status;
+  if (!isStatusActive(status)) return false;
+
+  // Only treat explicit false as unsellable; undefined / null / missing
+  // are allowed so that older cache rows without orderable still surface.
+  if (Object.prototype.hasOwnProperty.call(product, 'orderable')) {
+    if (product.orderable === false) return false;
+  }
+
+  return true;
+}
+
 function heuristicCategoryForProduct(product) {
   const haystack = normalizeTextForMatch(
     [
@@ -691,13 +710,15 @@ async function loadCreatorProducts(creatorId) {
       );
 
       if (Array.isArray(res.rows) && res.rows.length > 0) {
-        const indexedProducts = res.rows.map((row) => {
-          const product = row.product_data || row.product || row;
-          const path = deriveCategoryPathFromProduct(product);
-          const leafId = buildCategoryIdFromSegments(path);
-          const slug = slugify(path[path.length - 1] || 'Other');
-          return { product, path, leafId, slug };
-        });
+        const indexedProducts = res.rows
+          .map((row) => row.product_data || row.product || row)
+          .filter((product) => isProductSellable(product))
+          .map((product) => {
+            const path = deriveCategoryPathFromProduct(product);
+            const leafId = buildCategoryIdFromSegments(path);
+            const slug = slugify(path[path.length - 1] || 'Other');
+            return { product, path, leafId, slug };
+          });
         return { indexedProducts, merchantIds };
       }
 
@@ -750,7 +771,8 @@ async function loadCreatorProducts(creatorId) {
     // find_products_multi. We only drop items missing a merchant id.
     const filtered = products.filter((p) => {
       const mid = String(p.merchant_id || p.merchantId || '').trim();
-      return Boolean(mid);
+      if (!mid) return false;
+      return isProductSellable(p);
     });
 
     const indexedProducts = filtered.map((product) => {
