@@ -1577,24 +1577,26 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const limit = search.limit || 20;
           const fromCache = await searchCreatorSellableFromCache(creatorId, queryText, page, limit);
 
-          const upstreamData = {
-            products: fromCache.products,
-            total: fromCache.total,
-            page: fromCache.page,
-            page_size: fromCache.page_size,
-            reply: null,
-            metadata: {
-              query_source: 'cache_creator_search',
-              fetched_at: new Date().toISOString(),
-              merchants_searched: fromCache.merchantIds.length,
-              ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
-              ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
-            },
-          };
+          if (fromCache.products && fromCache.products.length > 0) {
+            const upstreamData = {
+              products: fromCache.products,
+              total: fromCache.total,
+              page: fromCache.page,
+              page_size: fromCache.page_size,
+              reply: null,
+              metadata: {
+                query_source: 'cache_creator_search',
+                fetched_at: new Date().toISOString(),
+                merchants_searched: fromCache.merchantIds.length,
+                ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+                ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+              },
+            };
 
-          const promotions = await getActivePromotions(now, creatorId);
-          const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
-          return res.json(enriched);
+            const promotions = await getActivePromotions(now, creatorId);
+            const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+            return res.json(enriched);
+          }
         } catch (err) {
           logger.warn(
             { err: err.message, creatorId, source, queryText },
@@ -1648,7 +1650,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const productId = sim.product_id || payload.product_id;
             const lim = sim.limit || payload.limit || 9;
             const cached = await findSimilarCreatorFromCache(creatorId, productId, lim);
-            if (cached) {
+            if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
               const promotions = await getActivePromotions(now, creatorId);
               const enriched = applyDealsToResponse(cached, promotions, now, creatorId);
               return res.json(enriched);
