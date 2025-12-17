@@ -609,6 +609,134 @@ function isProductSellable(product) {
   return true;
 }
 
+function looksSkuLikeQuery(q) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) return false;
+  if (!/[0-9]/.test(s)) return false;
+  return /^[a-z0-9-]{6,}$/.test(s);
+}
+
+function tokenizeQueryForCache(q) {
+  const s = String(q || '').toLowerCase();
+  const raw = s.split(/[^a-z0-9]+/g).filter(Boolean);
+  const stop = new Set([
+    'a',
+    'an',
+    'and',
+    'are',
+    'as',
+    'at',
+    'be',
+    'bought',
+    'by',
+    'can',
+    'could',
+    'do',
+    'does',
+    'for',
+    'from',
+    'have',
+    'help',
+    'i',
+    'in',
+    'is',
+    'it',
+    'just',
+    'like',
+    'me',
+    'my',
+    'of',
+    'on',
+    'or',
+    'please',
+    'some',
+    'that',
+    'the',
+    'their',
+    'them',
+    'this',
+    'to',
+    'u',
+    'we',
+    'what',
+    'which',
+    'with',
+    'you',
+    'your',
+  ]);
+
+  const kept = [];
+  for (const t of raw) {
+    if (stop.has(t)) continue;
+    if (t.length < 3 && t !== 'xs' && t !== 'xl') continue;
+    kept.push(t);
+  }
+
+  // Keep unique, preserve order, clamp to avoid pathological SQL.
+  const seen = new Set();
+  const out = [];
+  for (const t of kept) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function detectToyOutfitIntentFromQuery(q) {
+  const s = String(q || '').toLowerCase();
+  const toy = /\b(labubu|toy|toys|doll|dolls|plush|plushie|figure|collectible)\b/.test(s);
+  const outfit = /\b(clothes|clothing|outfit|accessory|accessories|hat)\b/.test(s) || /衣服|穿/.test(s);
+  const lingerie = /\b(lingerie|underwear|bra|pant(y|ies)|thong|sleepwear|nightgown|nightdress)\b/.test(s);
+  return { toy_intent: toy, outfit_intent: toy && outfit, lingerie_intent: lingerie };
+}
+
+function buildUnderwearExclusionSql(startIndex) {
+  const tokens = [
+    'lingerie',
+    'underwear',
+    'bra',
+    'panties',
+    'panty',
+    'briefs',
+    'thong',
+    'sleepwear',
+    'nightgown',
+    'nightdress',
+    'night dress',
+    'sexy',
+    'lace',
+    'push-up',
+    'push up',
+    'backless',
+    'ropa interior',
+  ];
+
+  const fields = [
+    "lower(coalesce(product_data->>'title',''))",
+    "lower(coalesce(product_data->>'description',''))",
+    "lower(coalesce(product_data->>'product_type',''))",
+    "lower(coalesce(product_data->>'vendor',''))",
+  ];
+
+  const parts = [];
+  const params = [];
+  let idx = startIndex;
+  for (const tok of tokens) {
+    const p = `%${tok}%`;
+    params.push(p);
+    const ors = fields.map((f) => `${f} LIKE $${idx}`).join(' OR ');
+    parts.push(`(${ors})`);
+    idx += 1;
+  }
+  return {
+    sql: parts.length ? `NOT (${parts.join(' OR ')})` : 'TRUE',
+    params,
+    nextIndex: idx,
+  };
+}
+
 async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   const config = getCreatorConfig(creatorId);
   if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) {
@@ -671,6 +799,204 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   }
 
   return { products: unique, total, page: safePage, page_size: safeLimit, merchantIds: config.merchantIds };
+}
+
+async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, limit = 20) {
+  const config = getCreatorConfig(creatorId);
+  if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) {
+    const err = new Error('Unknown creator');
+    err.code = 'UNKNOWN_CREATOR';
+    throw err;
+  }
+
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const offset = (safePage - 1) * safeLimit;
+  const q = String(queryText || '').trim().toLowerCase();
+
+  // Base sellable gating (match merchant portal semantics).
+  const baseWhere = `
+    merchant_id = ANY($1)
+    AND expires_at > now()
+    AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+    AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+  `;
+
+  const terms = tokenizeQueryForCache(q);
+  const skuLike = looksSkuLikeQuery(q);
+  const { toy_intent, outfit_intent, lingerie_intent } = detectToyOutfitIntentFromQuery(q);
+
+  const whereParts = [];
+  const params = [config.merchantIds];
+  let idx = 2;
+
+  // If we have no usable terms, behave like cold-start.
+  if (terms.length === 0) {
+    return await loadCreatorSellableFromCache(creatorId, safePage, safeLimit);
+  }
+
+  const matchFields = [
+    "lower(coalesce(product_data->>'title',''))",
+    "lower(coalesce(product_data->>'description',''))",
+    "lower(coalesce(product_data->>'product_type',''))",
+    "lower(coalesce(product_data->>'sku',''))",
+    "lower(coalesce(product_data->>'vendor',''))",
+  ];
+
+  for (const t of terms) {
+    params.push(`%${t}%`);
+    const ors = matchFields.map((f) => `${f} LIKE $${idx}`).join(' OR ');
+    const termParts = [`(${ors})`];
+    if (skuLike) {
+      // Variant SKU can be nested; bounded text scan for SKU-like queries only.
+      termParts.push(`lower(CAST(product_data AS TEXT)) LIKE $${idx}`);
+    }
+    whereParts.push(`(${termParts.join(' OR ')})`);
+    idx += 1;
+  }
+
+  // For toy outfit intent, avoid surfacing lingerie unless user explicitly asked for it.
+  let underwearClause = null;
+  let underwearParams = [];
+  let afterUnderwearIdx = idx;
+  if ((toy_intent || outfit_intent) && !lingerie_intent) {
+    const built = buildUnderwearExclusionSql(idx);
+    underwearClause = built.sql;
+    underwearParams = built.params;
+    afterUnderwearIdx = built.nextIndex;
+  }
+
+  const queryWhere = whereParts.length ? `(${whereParts.join(' OR ')})` : 'TRUE';
+  const finalWhere = [baseWhere, queryWhere, ...(underwearClause ? [underwearClause] : [])].join(' AND ');
+
+  const pageFetch = Math.min(Math.max(safeLimit * 3, 60), 300);
+  const pageOffset = Math.max(0, offset);
+
+  const countSql = `
+    SELECT COUNT(*)::int AS total
+    FROM products_cache
+    WHERE ${finalWhere}
+  `;
+
+  const rowsSql = `
+    SELECT product_data
+    FROM products_cache
+    WHERE ${finalWhere}
+    ORDER BY cached_at DESC
+    OFFSET $${afterUnderwearIdx}
+    LIMIT $${afterUnderwearIdx + 1}
+  `;
+
+  const countParams = underwearClause ? [...params, ...underwearParams] : params;
+  const rowsParams = underwearClause
+    ? [...params, ...underwearParams, pageOffset, pageFetch]
+    : [...params, pageOffset, pageFetch];
+
+  const [countRes, rowsRes] = await Promise.all([
+    query(countSql, countParams),
+    query(rowsSql, rowsParams),
+  ]);
+
+  const total = Number(countRes.rows?.[0]?.total || 0);
+  const rawProducts = (rowsRes.rows || []).map((r) => r.product_data).filter(Boolean);
+
+  // Rank candidates in-memory for better UX (title matches > description matches).
+  const scored = rawProducts
+    .filter((p) => isProductSellable(p))
+    .map((p) => {
+      const title = String(p.title || '').toLowerCase();
+      const desc = String(p.description || '').toLowerCase();
+      const ptype = String(p.product_type || p.productType || '').toLowerCase();
+      const sku = String(p.sku || '').toLowerCase();
+      const blob = `${title} ${ptype} ${sku} ${desc}`;
+
+      let score = 0;
+      for (const t of terms) {
+        if (title.includes(t)) score += 3;
+        else if (ptype.includes(t)) score += 2;
+        else if (blob.includes(t)) score += 1;
+      }
+
+      if (skuLike) {
+        const q0 = q.replace(/[^a-z0-9-]+/g, '');
+        if (q0 && sku === q0) score += 6;
+        else if (q0 && blob.includes(q0)) score += 3;
+      }
+
+      // Gentle boost for toy-like when the query is toy/outfit intent.
+      if ((toy_intent || outfit_intent) && /\b(labubu|doll|plush|toy|outfit)\b/.test(blob)) {
+        score += 1;
+      }
+
+      return { p, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const products = scored.slice(0, safeLimit).map((x) => x.p);
+  return { products, total, page: safePage, page_size: safeLimit, merchantIds: config.merchantIds };
+}
+
+async function loadCreatorProductFromCache(creatorId, productId) {
+  const config = getCreatorConfig(creatorId);
+  if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) return null;
+  const pid = String(productId || '').trim();
+  if (!pid) return null;
+
+  const res = await query(
+    `
+      SELECT product_data
+      FROM products_cache
+      WHERE merchant_id = ANY($1)
+        AND expires_at > now()
+        AND (
+          product_data->>'id' = $2
+          OR product_data->>'product_id' = $2
+          OR product_data->>'productId' = $2
+        )
+      ORDER BY cached_at DESC
+      LIMIT 1
+    `,
+    [config.merchantIds, pid],
+  );
+  return res.rows?.[0]?.product_data || null;
+}
+
+async function findSimilarCreatorFromCache(creatorId, productId, limit = 9) {
+  const base = await loadCreatorProductFromCache(creatorId, productId);
+  if (!base) return null;
+
+  const baseTitle = String(base.title || '').toLowerCase();
+  const baseDesc = String(base.description || '').toLowerCase();
+  const baseType = String(base.product_type || base.productType || '').toLowerCase();
+  const baseBlob = `${baseTitle} ${baseType} ${baseDesc}`.trim();
+
+  const baseToy = /\b(labubu|doll|plush|toy|collectible)\b/.test(baseBlob);
+  const baseUnderwear = /\b(lingerie|underwear|bra|pant(y|ies)|thong|sleepwear|nightgown|nightdress)\b/.test(baseBlob);
+
+  const anchor = [];
+  if (baseBlob.includes('labubu')) anchor.push('labubu');
+  if (/\bdoll\b/.test(baseBlob)) anchor.push('doll');
+  if (/\boutfit\b/.test(baseBlob)) anchor.push('outfit');
+  if (anchor.length === 0) anchor.push(...tokenizeQueryForCache(baseTitle).slice(0, 3));
+
+  const queryText = anchor.join(' ');
+  const found = await searchCreatorSellableFromCache(creatorId, queryText, 1, Math.min(Math.max(6, limit * 3), 60));
+  const candidates = (found.products || []).filter((p) => String(p.id || p.product_id || '') !== String(productId));
+
+  const filtered = candidates.filter((p) => {
+    const t = `${String(p.title || '').toLowerCase()} ${String(p.description || '').toLowerCase()} ${String(
+      p.product_type || p.productType || '',
+    ).toLowerCase()}`;
+    const isUnderwear = /\b(lingerie|underwear|bra|pant(y|ies)|thong|sleepwear|nightgown|nightdress)\b/.test(t);
+    if (baseToy && !baseUnderwear && isUnderwear) return false;
+    return true;
+  });
+
+  return {
+    base_product_id: String(productId),
+    strategy_used: 'cache_creator_similar',
+    items: filtered.slice(0, Math.max(1, Number(limit || 9))).map((p) => ({ product: p })),
+  };
 }
 
 function extractCreatorId(payload) {
@@ -1210,6 +1536,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const queryText = String(search.query || '').trim();
       const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
 
+      const isCreatorUi = source === 'creator-agent-ui';
       if (isCreatorUiColdStart && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
@@ -1238,6 +1565,40 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           logger.warn(
             { err: err.message, creatorId, source },
             'Creator UI cache cold-start failed; falling back to upstream'
+          );
+        }
+      }
+
+      // For creator UI queries, also prefer searching sellable cache so query results
+      // stay consistent with the featured pool and the merchant portal.
+      if (isCreatorUi && queryText.length > 0 && process.env.DATABASE_URL) {
+        try {
+          const page = search.page || 1;
+          const limit = search.limit || 20;
+          const fromCache = await searchCreatorSellableFromCache(creatorId, queryText, page, limit);
+
+          const upstreamData = {
+            products: fromCache.products,
+            total: fromCache.total,
+            page: fromCache.page,
+            page_size: fromCache.page_size,
+            reply: null,
+            metadata: {
+              query_source: 'cache_creator_search',
+              fetched_at: new Date().toISOString(),
+              merchants_searched: fromCache.merchantIds.length,
+              ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+              ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+            },
+          };
+
+          const promotions = await getActivePromotions(now, creatorId);
+          const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+          return res.json(enriched);
+        } catch (err) {
+          logger.warn(
+            { err: err.message, creatorId, source, queryText },
+            'Creator UI cache search failed; falling back to upstream'
           );
         }
       }
@@ -1277,6 +1638,29 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
       
       case 'find_similar_products': {
+        // Creator UI: prefer cache-based similarity so "Find more" stays consistent
+        // with the creator pool even when upstream has stale/partial cache.
+        const source = metadata?.source;
+        const isCreatorUi = source === 'creator-agent-ui';
+        if (isCreatorUi && process.env.DATABASE_URL) {
+          try {
+            const sim = payload.similar || {};
+            const productId = sim.product_id || payload.product_id;
+            const lim = sim.limit || payload.limit || 9;
+            const cached = await findSimilarCreatorFromCache(creatorId, productId, lim);
+            if (cached) {
+              const promotions = await getActivePromotions(now, creatorId);
+              const enriched = applyDealsToResponse(cached, promotions, now, creatorId);
+              return res.json(enriched);
+            }
+          } catch (err) {
+            logger.warn(
+              { err: err.message, creatorId, source },
+              'Creator UI cache similarity failed; falling back to upstream'
+            );
+          }
+        }
+
         // Delegate to backend shopping gateway which owns the similarity logic.
         // Accept both the legacy nested shape (payload.similar) and the
         // flat shape (payload.product_id, payload.merchant_id, etc.).
