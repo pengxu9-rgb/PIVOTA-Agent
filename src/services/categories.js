@@ -286,6 +286,18 @@ function isProductSellable(product) {
 }
 
 function heuristicCategoryForProduct(product) {
+  const primaryHaystack = normalizeTextForMatch(
+    [
+      product.title,
+      product.name,
+      product.description,
+      product.product_type,
+      product.category,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+
   const haystack = normalizeTextForMatch(
     [
       product.title,
@@ -296,15 +308,52 @@ function heuristicCategoryForProduct(product) {
       product.product_type,
       product.category,
       normalizeMerchantCategoryKey(product),
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
+	    ]
+	      .filter(Boolean)
+	      .join(' '),
+	  );
+
+  // Detect strong lingerie / sleepwear signals from the product itself
+  // (title / description / product type / category). When these are
+  // present we should not override them with a generic "toy" match that
+  // might come from a noisy merchant category.
+  const lingerieSignals = [
+    'lingerie',
+    'lingerie set',
+    'bra',
+    'panty',
+    'panties',
+    'underwear',
+    'lace',
+    'sexy lingerie',
+    'sleepwear',
+    'pajamas',
+    'pyjamas',
+    'robe',
+    'homewear',
+    '内衣',
+    '内裤',
+    '文胸',
+    '胸罩',
+    '蕾丝',
+    '家居服',
+    '睡衣',
+    '浴袍',
+  ];
+  let hasLingerieSignal = false;
+  for (const kw of lingerieSignals) {
+    const needle = normalizeTextForMatch(kw);
+    if (needle && primaryHaystack.includes(needle)) {
+      hasLingerieSignal = true;
+      break;
+    }
+  }
 
   // Toys are visually very different from fashion/lingerie, and we want
   // to avoid misclassifying collectible dolls/plushies as lingerie just
   // because the vendor name contains "lingerie". Give toy signals a
-  // dedicated fast-path before generic keyword rules.
+  // dedicated fast-path before generic keyword rules – but never override
+  // clear lingerie / sleepwear signals coming from the product itself.
   const toySignals = [
     'toy',
     'toys',
@@ -318,10 +367,12 @@ function heuristicCategoryForProduct(product) {
     '娃娃',
     '手办',
   ];
-  for (const kw of toySignals) {
-    const needle = normalizeTextForMatch(kw);
-    if (needle && haystack.includes(needle)) {
-      return 'toys';
+  if (!hasLingerieSignal) {
+    for (const kw of toySignals) {
+      const needle = normalizeTextForMatch(kw);
+      if (needle && haystack.includes(needle)) {
+        return 'toys';
+      }
     }
   }
 
@@ -329,7 +380,7 @@ function heuristicCategoryForProduct(product) {
     for (const kw of rule.keywords) {
       const needle = normalizeTextForMatch(kw);
       if (!needle) continue;
-      if (haystack.includes(needle)) return rule.id;
+      if (primaryHaystack.includes(needle)) return rule.id;
     }
   }
   return 'other';
