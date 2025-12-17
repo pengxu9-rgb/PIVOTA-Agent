@@ -812,10 +812,44 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   ]);
 
   const total = Number(countRes.rows?.[0]?.total || 0);
-  const products = (rowsRes.rows || [])
+  const baseProducts = (rowsRes.rows || [])
     .map((r) => r.product_data)
     .filter(Boolean)
     .filter((p) => isProductSellable(p));
+
+  // Ensure explicit creator picks are always present in the featured pool,
+  // even when they are older than the default cached_at window.
+  let pickProducts = [];
+  const pickIds = Array.from(pickRankByProductId.keys());
+  if (pickIds.length > 0) {
+    try {
+      const pickRowsRes = await query(
+        `
+          SELECT product_data
+          FROM products_cache
+          WHERE ${baseWhere}
+            AND (
+              platform_product_id = ANY($2)
+              OR product_data->>'id' = ANY($2)
+              OR product_data->>'product_id' = ANY($2)
+            )
+          ORDER BY cached_at DESC
+        `,
+        [config.merchantIds, pickIds],
+      );
+      pickProducts = (pickRowsRes.rows || [])
+        .map((r) => r.product_data)
+        .filter(Boolean)
+        .filter((p) => isProductSellable(p));
+    } catch (err) {
+      logger.warn(
+        { err: err.message, creatorId, pickIdsCount: pickIds.length },
+        'Failed to hydrate creator_picks from products_cache; continuing with base products only',
+      );
+    }
+  }
+
+  const products = [...pickProducts, ...baseProducts];
 
   // De-dupe in case multiple cache rows exist for the same product.
   const seen = new Set();
@@ -854,9 +888,11 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
     };
   });
 
+  const effectiveTotal = Math.max(total, sorted.length);
+
   return {
     products: sorted,
-    total,
+    total: effectiveTotal,
     page: safePage,
     page_size: safeLimit,
     merchantIds: config.merchantIds,
