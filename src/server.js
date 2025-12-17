@@ -718,7 +718,6 @@ function buildUnderwearExclusionSql(startIndex) {
   const fields = [
     "lower(coalesce(product_data->>'title',''))",
     "lower(coalesce(product_data->>'product_type',''))",
-    "lower(coalesce(product_data->>'vendor',''))",
   ];
 
   const parts = [];
