@@ -749,6 +749,37 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
   const offset = (safePage - 1) * safeLimit;
 
+  // Optional: load explicit creator_picks so we can surface curated
+  // recommendations at the top of the Featured feed and tag them for
+  // frontends (e.g. Creator Agent UI) to power a "Creator picks" filter.
+  let pickRankByProductId = new Map();
+  try {
+    const picksRes = await query(
+      `
+        SELECT product_id, rank
+        FROM creator_picks
+        WHERE creator_id = $1
+        ORDER BY rank ASC
+        LIMIT $2
+      `,
+      [creatorId, safeLimit * 4],
+    );
+    pickRankByProductId = new Map(
+      (picksRes.rows || [])
+        .map((r) => {
+          const pid = String(r.product_id || '').trim();
+          const rank = Number(r.rank);
+          return [pid, rank];
+        })
+        .filter(([pid, rank]) => pid && Number.isFinite(rank)),
+    );
+  } catch (err) {
+    logger.warn(
+      { err: err.message, creatorId },
+      'Failed to load creator_picks for creator featured feed; continuing without explicit picks',
+    );
+  }
+
   // Apply sellable gating at the SQL layer to keep behavior consistent with
   // merchant portal semantics: status == ACTIVE and orderable != false.
   const baseWhere = `
@@ -797,8 +828,39 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
     seen.add(key);
     unique.push(p);
   }
+  // Reorder so that explicit creator picks (from creator_picks) appear
+  // first while preserving relative order for non-picks. Also tag them
+  // with creator_pick metadata for downstream UIs.
+  const decorated = unique.map((p) => {
+    const pid = String(p.id || p.product_id || p.productId || '').trim();
+    const rank =
+      pid && pickRankByProductId.has(pid) ? pickRankByProductId.get(pid) : null;
+    return { product: p, pickRank: rank };
+  });
 
-  return { products: unique, total, page: safePage, page_size: safeLimit, merchantIds: config.merchantIds };
+  decorated.sort((a, b) => {
+    const ar = a.pickRank == null ? Number.POSITIVE_INFINITY : a.pickRank;
+    const br = b.pickRank == null ? Number.POSITIVE_INFINITY : b.pickRank;
+    if (ar !== br) return ar - br;
+    return 0;
+  });
+
+  const sorted = decorated.map(({ product, pickRank }) => {
+    if (pickRank == null) return product;
+    return {
+      ...product,
+      creator_pick: true,
+      creator_pick_rank: pickRank,
+    };
+  });
+
+  return {
+    products: sorted,
+    total,
+    page: safePage,
+    page_size: safeLimit,
+    merchantIds: config.merchantIds,
+  };
 }
 
 async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, limit = 20) {
