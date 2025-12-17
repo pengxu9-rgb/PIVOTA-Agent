@@ -753,7 +753,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   // merchant portal semantics: status == ACTIVE and orderable != false.
   const baseWhere = `
     merchant_id = ANY($1)
-    AND expires_at > now()
+    AND (expires_at IS NULL OR expires_at > now())
     AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
     AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
   `;
@@ -817,7 +817,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   // Base sellable gating (match merchant portal semantics).
   const baseWhere = `
     merchant_id = ANY($1)
-    AND expires_at > now()
+    AND (expires_at IS NULL OR expires_at > now())
     AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
     AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
   `;
@@ -947,7 +947,7 @@ async function loadCreatorProductFromCache(creatorId, productId) {
       SELECT product_data
       FROM products_cache
       WHERE merchant_id = ANY($1)
-        AND expires_at > now()
+        AND (expires_at IS NULL OR expires_at > now())
         AND (
           product_data->>'id' = $2
           OR product_data->>'product_id' = $2
