@@ -21,6 +21,11 @@ const CREATOR_CONFIGS = [
     // This can be adjusted later or driven from DB.
     merchantIds: ['merch_efbc46b4619cfbdf'],
   },
+  {
+    // Alias used by creator UI demo fixtures.
+    creatorId: 'creator_demo_001',
+    merchantIds: ['merch_efbc46b4619cfbdf'],
+  },
 ];
 
 /**

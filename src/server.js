@@ -12,6 +12,7 @@ const { randomUUID } = require('crypto');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { query } = require('./db');
+const { getCreatorConfig } = require('./creatorConfig');
 const { searchProducts, getProductById } = require('./mockProducts');
 const {
   getAllPromotions,
@@ -594,6 +595,84 @@ async function getActivePromotions(now = new Date(), creatorId = null) {
     }));
 }
 
+function isStatusActive(status) {
+  const normalized = String(status || 'active').toLowerCase();
+  return normalized === 'active';
+}
+
+function isProductSellable(product) {
+  if (!product || typeof product !== 'object') return false;
+  if (!isStatusActive(product.status)) return false;
+  if (Object.prototype.hasOwnProperty.call(product, 'orderable')) {
+    if (product.orderable === false) return false;
+  }
+  return true;
+}
+
+async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
+  const config = getCreatorConfig(creatorId);
+  if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) {
+    const err = new Error('Unknown creator');
+    err.code = 'UNKNOWN_CREATOR';
+    throw err;
+  }
+
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const offset = (safePage - 1) * safeLimit;
+
+  // Apply sellable gating at the SQL layer to keep behavior consistent with
+  // merchant portal semantics: status == ACTIVE and orderable != false.
+  const baseWhere = `
+    merchant_id = ANY($1)
+    AND expires_at > now()
+    AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+    AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+  `;
+
+  const [countRes, rowsRes] = await Promise.all([
+    query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM products_cache
+        WHERE ${baseWhere}
+      `,
+      [config.merchantIds],
+    ),
+    query(
+      `
+        SELECT product_data
+        FROM products_cache
+        WHERE ${baseWhere}
+        ORDER BY cached_at DESC
+        OFFSET $2
+        LIMIT $3
+      `,
+      [config.merchantIds, offset, safeLimit],
+    ),
+  ]);
+
+  const total = Number(countRes.rows?.[0]?.total || 0);
+  const products = (rowsRes.rows || [])
+    .map((r) => r.product_data)
+    .filter(Boolean)
+    .filter((p) => isProductSellable(p));
+
+  // De-dupe in case multiple cache rows exist for the same product.
+  const seen = new Set();
+  const unique = [];
+  for (const p of products) {
+    const mid = String(p.merchant_id || p.merchantId || '').trim();
+    const pid = String(p.id || p.product_id || p.productId || '').trim();
+    const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(p);
+  }
+
+  return { products: unique, total, page: safePage, page_size: safeLimit, merchantIds: config.merchantIds };
+}
+
 function extractCreatorId(payload) {
   if (!payload) return null;
   return (
@@ -1122,6 +1201,48 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   }
 
   try {
+    // Creator UI cold-start (empty query) should not be constrained by the
+    // upstream live merchant recall limits. Prefer reading sellable products
+    // from products_cache (same source as creator categories / merchant portal).
+    if (operation === 'find_products_multi') {
+      const source = metadata?.source;
+      const search = payload.search || {};
+      const queryText = String(search.query || '').trim();
+      const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
+
+      if (isCreatorUiColdStart && process.env.DATABASE_URL) {
+        try {
+          const page = search.page || 1;
+          const limit = search.limit || 20;
+          const fromCache = await loadCreatorSellableFromCache(creatorId, page, limit);
+
+          const upstreamData = {
+            products: fromCache.products,
+            total: fromCache.total,
+            page: fromCache.page,
+            page_size: fromCache.page_size,
+            reply: null,
+            metadata: {
+              query_source: 'cache_creator_featured',
+              fetched_at: new Date().toISOString(),
+              merchants_searched: fromCache.merchantIds.length,
+              ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+              ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+            },
+          };
+
+          const promotions = await getActivePromotions(now, creatorId);
+          const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+          return res.json(enriched);
+        } catch (err) {
+          logger.warn(
+            { err: err.message, creatorId, source },
+            'Creator UI cache cold-start failed; falling back to upstream'
+          );
+        }
+      }
+    }
+
     // Build URL with path parameters
     let url = `${PIVOTA_API_BASE}${route.path}`;
     let requestBody = {};

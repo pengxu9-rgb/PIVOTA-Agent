@@ -479,8 +479,16 @@ async function mapProductsToCanonical(indexedProducts) {
     const key = normalizeMerchantCategoryKey(p);
     const mapKey = `${merchantId}::${key}`;
     const mapped = mapping.get(mapKey);
+    const heuristicId = heuristicCategoryForProduct(p);
+    // Guardrail: if a merchant-level mapping mistakenly points toy items to
+    // lingerie, prefer the product-level heuristic (which checks title/desc)
+    // to avoid obviously wrong placements.
     const categoryId =
-      mapped && mapped.confidence >= 0.6 ? mapped.categoryId : heuristicCategoryForProduct(p);
+      mapped && mapped.confidence >= 0.6
+        ? mapped.categoryId === 'lingerie-set' && heuristicId === 'toys'
+          ? 'toys'
+          : mapped.categoryId
+        : heuristicId;
     assigned.push({ product: p, categoryId: categoryId || 'other' });
   }
   return assigned;
