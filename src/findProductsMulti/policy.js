@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v11';
+const POLICY_VERSION = 'find_products_multi_policy_v12';
 
 const LINGERIE_KEYWORDS = [
   // EN (core underwear terms; avoid broad terms like "lace")
@@ -315,10 +315,11 @@ function satisfiesHardConstraints(product, intent, ctx = {}) {
     if (!hasPetSignalInProduct(product)) return false;
   }
 
-  // Category check (MVP): text-based
+  // Category check (MVP): text-based.
+  // For pet intent we skip strict category enforcement and rely on pet signals + other filters,
+  // since catalog coverage for pet apparel naming is more diverse (harness, boots, overalls, etc.).
   const requiredCats = intent?.category?.required || [];
-  if (requiredCats.length) {
-    // We treat "outerwear"/"coat"/"down_jacket" as category signals; allow partial match via text
+  if (requiredCats.length && target !== 'pet') {
     if (!productHasCategorySignal(product, requiredCats)) return false;
   }
 
