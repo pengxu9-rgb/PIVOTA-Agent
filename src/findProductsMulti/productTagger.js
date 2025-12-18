@@ -43,6 +43,34 @@ const HUMAN_OUTERWEAR_KEYWORDS = [
   'ski jacket',
 ];
 
+const PET_APPAREL_KEYWORDS = [
+  'dog',
+  "dog's",
+  'puppy',
+  'cat',
+  "cat's",
+  'pet',
+  'pets',
+  'for dogs',
+  'for cats',
+  'pet jacket',
+  'dog jacket',
+  'dog coat',
+  'dog sweater',
+  'pet sweater',
+  'harness',
+  'leash',
+  'raincoat',
+  '宠物',
+  '狗',
+  '狗狗',
+  '猫',
+  '宠物衣服',
+  '狗衣服',
+  '狗外套',
+  '狗雨衣',
+];
+
 function safeStringify(value) {
   try {
     return JSON.stringify(value);
@@ -95,6 +123,20 @@ function inferPivotaTags(product) {
       category_path: {
         value: ['human_apparel', 'outerwear'],
         confidence: 0.75,
+        source: TAG_SOURCE,
+      },
+    };
+  }
+
+  const isPetApparel = includesAny(text, PET_APPAREL_KEYWORDS);
+  if (isPetApparel) {
+    return {
+      version: TAG_VERSION,
+      domain: { value: 'sports_outdoor', confidence: 0.7, source: TAG_SOURCE },
+      target_object: { value: 'pet', confidence: 0.9, source: TAG_SOURCE },
+      category_path: {
+        value: ['pet_apparel'],
+        confidence: 0.65,
         source: TAG_SOURCE,
       },
     };
@@ -153,4 +195,3 @@ module.exports = {
   buildProductText,
   isToyLikeText,
 };
-

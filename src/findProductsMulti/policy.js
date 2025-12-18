@@ -68,7 +68,7 @@ function satisfiesHardConstraints(product, intent) {
   const pivota = product?.attributes?.pivota;
   const target = intent?.target_object?.type;
 
-  if (intent.primary_domain === 'human_apparel' || target === 'human') {
+  if (target === 'human') {
     const domain = pivota?.domain?.value;
     const targetObject = pivota?.target_object?.value;
     if (domain && domain !== 'human_apparel') return false;
@@ -80,6 +80,22 @@ function satisfiesHardConstraints(product, intent) {
       if (!kw) continue;
       if (text.includes(String(kw).toLowerCase())) return false;
     }
+  }
+
+  if (target === 'pet') {
+    const targetObject = pivota?.target_object?.value;
+    if (targetObject && targetObject !== 'pet') return false;
+
+    // Always exclude toy/doll keywords for pet apparel
+    const excludeKeywords = intent?.hard_constraints?.must_exclude_keywords || [];
+    const text = buildProductText(product);
+    for (const kw of excludeKeywords) {
+      if (!kw) continue;
+      if (text.includes(String(kw).toLowerCase())) return false;
+    }
+
+    // Coarse pet signal requirement: avoid "featured" human/toy bleed-through.
+    if (!productHasCategorySignal(product, ['dog', 'cat', 'pet', '宠物', '狗', '猫'])) return false;
   }
 
   // Category check (MVP): text-based
@@ -106,11 +122,11 @@ function filterProductsByIntent(products, intent) {
   // Inject pivota tags for all candidates first (for observability and filtering)
   const tagged = products.map(injectPivotaAttributes);
 
-  // Only do strict filtering when we have a clear human apparel intent; otherwise keep candidates.
-  const strictHuman =
-    intent.primary_domain === 'human_apparel' || intent?.target_object?.type === 'human';
+  // Only do strict filtering when we have a clear target object (human/pet). Otherwise keep candidates.
+  const target = intent?.target_object?.type;
+  const strictTarget = target === 'human' || target === 'pet';
 
-  if (!strictHuman) {
+  if (!strictTarget) {
     return { filtered: tagged, reason_codes: [] };
   }
 
@@ -178,8 +194,11 @@ function buildFiltersApplied(intent) {
   const excludedDomains = [];
   const excludedKeywords = normalizeStringArray(intent?.hard_constraints?.must_exclude_keywords, 16, 32);
 
-  if (intent?.primary_domain === 'human_apparel' || intent?.target_object?.type === 'human') {
+  if (intent?.target_object?.type === 'human') {
     requiredDomains.push('human_apparel');
+    excludedDomains.push('toy_accessory');
+  }
+  if (intent?.target_object?.type === 'pet') {
     excludedDomains.push('toy_accessory');
   }
 
@@ -261,6 +280,9 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   }
 
   if (isNone) {
+    if ((intent?.target_object?.type || '') === 'pet') {
+      return "I couldn’t find solid matches for hiking-ready dog/pet apparel in the current inventory, so I won’t recommend unrelated items. Try searching for: dog jacket, dog raincoat, pet hiking gear, or tell me your dog’s size and the weather.";
+    }
     return "I couldn’t find solid matches for adult cold-weather outerwear in the current inventory, so I won’t recommend unrelated items. Try searching for: down jacket, hiking shell, parka, or share your lowest temperature and budget.";
   }
   if (matchTier === 'weak') {

@@ -93,6 +93,45 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.reason_codes).toEqual(expect.arrayContaining(['WEAK_RELEVANCE']));
   });
 
+  test('pet hiking apparel query filters out toy featured bleed-through', () => {
+    const intent = extractIntentRuleBased(
+      "i need a jacket for my dog to go hiking. can you find dog's apparel?",
+      ['labubu doll clothes', 'blind box'],
+      []
+    );
+    expect(intent.target_object.type).toBe('pet');
+    expect(intent.primary_domain).toBe('sports_outdoor');
+
+    const toys = [
+      makeRawProduct({
+        id: 'toy-1',
+        title: 'Cute Rabbit Outfit for Labubu Doll',
+        description: 'Doll clothes outfit set',
+      }),
+    ];
+    const pets = [
+      makeRawProduct({
+        id: 'pet-1',
+        title: 'Warm Fall/Winter Utility-Style Overalls for Dogs',
+        description: 'Warm overalls for dogs',
+      }),
+      makeRawProduct({
+        id: 'pet-2',
+        title: 'Knitted Sweater for Dogs & Cats',
+        description: 'A classic knit sweater for pets',
+      }),
+    ];
+
+    const resp = applyFindProductsMultiPolicy({
+      response: { products: [...toys, ...pets], reply: null },
+      intent,
+      requestPayload: { search: { query: 'dog hiking jacket' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(expect.arrayContaining(['pet-1', 'pet-2']));
+    expect(resp.products.map((p) => p.id)).not.toEqual(expect.arrayContaining(['toy-1']));
+  });
+
   test('filters to empty → has_good_match=false, match_tier=none and reason codes present', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',

@@ -148,6 +148,21 @@ const OUTERWEAR_KEYWORDS_EN = [
 const COLD_SCENARIO_SIGNALS_ZH = ['山上', '登山', '徒步', '爬山', '露营', '很冷', '降温', '低温', '下雪'];
 const COLD_SCENARIO_SIGNALS_EN = ['mountain', 'hiking', 'camping', 'cold', 'snow', 'freezing', 'winter'];
 
+const PET_SIGNALS_ZH = ['狗', '狗狗', '小狗', '猫', '猫猫', '宠物', '遛狗', '狗衣服', '宠物衣服'];
+const PET_SIGNALS_EN = [
+  'dog',
+  "dog's",
+  'puppy',
+  'cat',
+  "cat's",
+  'pet',
+  'pets',
+  'dog coat',
+  'dog jacket',
+  'dog sweater',
+  'pet apparel',
+];
+
 const GREETING_SIGNALS_ZH = ['你好', '嗨', '哈喽', '在吗', 'hello', 'hi', 'hey'];
 const GREETING_SIGNALS_EN = ['hi', 'hello', 'hey', 'yo', 'sup', 'how are you', "what's up"];
 const CHITCHAT_SIGNALS_ZH = ['聊聊', '随便聊', '唠嗑', '无聊', '陪我聊', '想聊天'];
@@ -213,6 +228,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     // common generic intents from UI
     includesAny(latest, ['推荐一些好物', '热门商品', 'show me popular items', 'recommend some products']);
 
+  const hasPetSignal =
+    includesAny(latest, PET_SIGNALS_ZH) || includesAny(latest, PET_SIGNALS_EN);
+
   const hasToySignal =
     includesAny(latest, TOY_KEYWORDS) ||
     recent_queries.some((q) => includesAny(q, TOY_KEYWORDS));
@@ -243,6 +261,15 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     categoryRequired = [];
     scenarioName = 'browse';
     scenarioSignals = [];
+  } else if (hasPetSignal) {
+    // Pet apparel intent should override cold/hiking keywords (e.g. "dog jacket for hiking").
+    primary_domain = 'sports_outdoor';
+    targetType = 'pet';
+    categoryRequired = ['pet_apparel', 'dog_jacket', 'dog_sweater'].slice(0, 3);
+    scenarioName = includesAny(latest, ['hiking', 'trail', 'camping', '徒步', '登山', '爬山'])
+      ? 'pet_hiking'
+      : 'pet_apparel_general';
+    scenarioSignals = [];
   } else if (hasOuterwearSignal || hasColdScenario) {
     primary_domain = 'human_apparel';
     targetType = 'human';
@@ -265,14 +292,19 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
   }
 
   const useHistory = wantsUseHistory(latest);
-  const ignored = !useHistory ? recent_queries.slice(-5) : [];
-  const used = useHistory ? recent_queries.slice(-5) : [];
+  const historySlice = recent_queries.slice(-5);
+  const sanitizedHistory = historySlice
+    .map((q) => String(q || '').trim())
+    .filter((q) => q.length > 0)
+    .map((q) => (q.length > 80 ? q.slice(0, 80) : q));
+  const ignored = !useHistory ? sanitizedHistory : [];
+  const used = useHistory ? sanitizedHistory : [];
 
   const mustExcludeKeywords =
-    targetType === 'human'
+    targetType === 'human' || targetType === 'pet'
       ? ['Labubu', 'doll', 'toy', '娃娃', '公仔', '娃衣', '玩具'].slice(0, 16)
       : [];
-  const mustExcludeDomains = targetType === 'human' ? ['toy_accessory'] : [];
+  const mustExcludeDomains = targetType === 'human' || targetType === 'pet' ? ['toy_accessory'] : [];
 
   const needsClarification =
     scenarioName === 'discovery' ||
@@ -301,8 +333,18 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           ? 0.9
           : 0.6
         : 0.5;
-  const confidenceTarget = scenarioName === 'discovery' ? 0.3 : targetType === 'unknown' ? 0.4 : 0.9;
-  const confidenceCategory = scenarioName === 'discovery' ? 0.3 : categoryRequired.length ? 0.8 : 0.4;
+  const confidenceTarget =
+    scenarioName === 'discovery'
+      ? 0.3
+      : targetType === 'unknown'
+        ? 0.4
+        : 0.9;
+  const confidenceCategory =
+    scenarioName === 'discovery'
+      ? 0.3
+      : categoryRequired.length
+        ? 0.8
+        : 0.4;
   const overall = Math.max(0, Math.min(1, (confidenceDomain + confidenceTarget + confidenceCategory) / 3));
 
   const intent = {
@@ -311,7 +353,14 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     primary_domain,
     target_object: {
       type: targetType,
-      age_group: targetType === 'human' ? 'adult' : targetType === 'toy' ? 'all' : 'unknown',
+      age_group:
+        targetType === 'human'
+          ? 'adult'
+          : targetType === 'toy'
+            ? 'all'
+            : targetType === 'pet'
+              ? 'all'
+              : 'unknown',
       notes: '',
     },
     category: {
