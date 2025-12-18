@@ -2,7 +2,83 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v6';
+const POLICY_VERSION = 'find_products_multi_policy_v7';
+
+const LINGERIE_KEYWORDS = [
+  // EN (core underwear terms; avoid broad terms like "lace")
+  'lingerie',
+  'underwear',
+  'bra',
+  'panty',
+  'panties',
+  'thong',
+  'nightgown',
+  'nightdress',
+  // ES
+  'lencería',
+  'lenceria',
+  'ropa interior',
+  'sujetador',
+  'bragas',
+  'tanga',
+  // FR
+  'sous-vêtement',
+  'sous-vetement',
+  'soutien-gorge',
+  'culotte',
+  'string',
+  // ZH
+  '内衣',
+  '文胸',
+  '胸罩',
+  '丁字裤',
+  '睡衣',
+  '情趣',
+  // JA
+  '下着',
+  'ブラ',
+  'パンティ',
+  'ランジェリー',
+];
+
+function includesAny(haystack, needles) {
+  if (!haystack) return false;
+  const lowered = String(haystack).toLowerCase();
+  return needles.some((k) => lowered.includes(String(k).toLowerCase()));
+}
+
+function isExplicitAdultOrLingerieQuery(rawQuery) {
+  const q = String(rawQuery || '').toLowerCase();
+  if (!q) return false;
+  // Only treat explicit adult/lingerie terms as opt-in.
+  return (
+    includesAny(q, [
+      'lingerie',
+      'underwear',
+      'bra',
+      'panties',
+      'thong',
+      'sex toy',
+      'adult',
+      'lenceria',
+      'lencería',
+      'ropa interior',
+      'sujetador',
+      'sous-vetement',
+      'sous-vêtement',
+      'soutien-gorge',
+      '下着',
+      '内衣',
+      '情趣',
+      '成人用品',
+    ])
+  );
+}
+
+function isLingerieLikeProduct(product) {
+  const text = buildProductText(product);
+  return includesAny(text, LINGERIE_KEYWORDS);
+}
 
 function clamp01(n) {
   if (Number.isNaN(n) || n == null) return 0;
@@ -63,11 +139,23 @@ function productHasCategorySignal(product, requiredCategories) {
   return needles.some((c) => text.includes(c));
 }
 
-function satisfiesHardConstraints(product, intent) {
+function satisfiesHardConstraints(product, intent, ctx = {}) {
   if (!product || !intent) return true;
 
   const pivota = product?.attributes?.pivota;
   const target = intent?.target_object?.type;
+  const rawQuery = ctx?.rawQuery || '';
+
+  // Default safety: exclude lingerie unless explicitly requested.
+  if (
+    target !== 'toy' &&
+    intent?.primary_domain !== 'toy_accessory' &&
+    !isExplicitAdultOrLingerieQuery(rawQuery) &&
+    isLingerieLikeProduct(product)
+  ) {
+    // For pets, humans, and unknown/browse/discovery contexts, lingerie is never a good default.
+    return false;
+  }
 
   if (target === 'human') {
     const domain = pivota?.domain?.value;
@@ -96,7 +184,29 @@ function satisfiesHardConstraints(product, intent) {
     }
 
     // Coarse pet signal requirement: avoid "featured" human/toy bleed-through.
-    if (!productHasCategorySignal(product, ['dog', 'cat', 'pet', '宠物', '狗', '猫'])) return false;
+    if (
+      !productHasCategorySignal(product, [
+        'dog',
+        'cat',
+        'pet',
+        'puppy',
+        'kitten',
+        'perro',
+        'mascota',
+        'gato',
+        'chien',
+        'chat',
+        'animaux',
+        'ペット',
+        '犬',
+        '猫',
+        '宠物',
+        '狗',
+        '猫',
+      ])
+    ) {
+      return false;
+    }
   }
 
   // Category check (MVP): text-based
@@ -116,7 +226,7 @@ function satisfiesHardConstraints(product, intent) {
   return true;
 }
 
-function filterProductsByIntent(products, intent) {
+function filterProductsByIntent(products, intent, ctx = {}) {
   if (!Array.isArray(products) || !intent) return { filtered: products || [], reason_codes: [] };
   const before = products.length;
 
@@ -131,7 +241,8 @@ function filterProductsByIntent(products, intent) {
     return { filtered: tagged, reason_codes: [] };
   }
 
-  const filtered = tagged.filter((p) => satisfiesHardConstraints(p, intent));
+  const rawQuery = String(ctx?.rawQuery || '').trim();
+  const filtered = tagged.filter((p) => satisfiesHardConstraints(p, intent, { rawQuery }));
   const reason_codes = [];
   if (before > 0 && filtered.length === 0) {
     reason_codes.push('NO_DOMAIN_MATCH', 'FILTERED_TO_EMPTY');
@@ -139,15 +250,16 @@ function filterProductsByIntent(products, intent) {
   return { filtered, reason_codes };
 }
 
-function computeMatchStats(sortedProducts, intent) {
+function computeMatchStats(sortedProducts, intent, ctx = {}) {
   const window = Array.isArray(sortedProducts) ? sortedProducts.slice(0, 20) : [];
   const M = window.length;
   let hardMatchCount = 0;
   let inStockHardMatchCount = 0;
   let distractorCount = 0;
 
+  const rawQuery = String(ctx?.rawQuery || '').trim();
   for (const p of window) {
-    const hard = satisfiesHardConstraints(p, intent);
+    const hard = satisfiesHardConstraints(p, intent, { rawQuery });
     if (hard) {
       hardMatchCount += 1;
       const qty = Number(p.inventory_quantity ?? p.inventoryQuantity ?? p.quantity ?? 0);
@@ -225,6 +337,9 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   const isNone = matchTier === 'none';
   const scenario = intent?.scenario?.name || 'general';
   const creatorName = creatorContext?.creatorName || creatorContext?.creatorId || null;
+  const isEs = lang === 'es';
+  const isFr = lang === 'fr';
+  const isJa = lang === 'ja';
 
   if (scenario === 'discovery') {
     if (isZh) {
@@ -236,6 +351,39 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
         '2）送礼（告诉我对象 + 预算）',
         '3）给 Labubu/娃娃/公仔（衣服/配饰）',
         '4）我也不确定，就想随便看看',
+      ].join('\n');
+    }
+    if (isEs) {
+      const who = creatorName ? `Soy ${creatorName}` : 'Estoy aquí';
+      return [
+        `Hola—${who}. ¿Quieres echar un vistazo o estás buscando algo específico?`,
+        'Elige una opción para empezar:',
+        '1) Para mí (abrigo / zapatos / oficina / cita)',
+        '2) Un regalo (para quién + presupuesto)',
+        '3) Para mi perro/gato/mascota (ropa / accesorios)',
+        '4) No estoy seguro—muéstrame lo popular',
+      ].join('\n');
+    }
+    if (isFr) {
+      const who = creatorName ? `Je suis ${creatorName}` : 'Je suis là';
+      return [
+        `Salut—${who}. Tu veux juste parcourir, ou tu cherches quelque chose de précis ?`,
+        'Choisis une option pour commencer :',
+        '1) Pour moi (manteau / chaussures / bureau / rendez-vous)',
+        '2) Un cadeau (pour qui + budget)',
+        '3) Pour mon chien/chat/animal (vêtements / accessoires)',
+        '4) Je ne sais pas—montre-moi le populaire',
+      ].join('\n');
+    }
+    if (isJa) {
+      const who = creatorName ? `私は${creatorName}です` : 'ここにいるよ';
+      return [
+        `こんにちは—${who}。まずは「見て回る」？それとも何か探してる？`,
+        'まずは1つ選んで：',
+        '1) 自分用（アウター/靴/通勤/デート）',
+        '2) ギフト（相手 + 予算）',
+        '3) 犬/猫/ペット用（服/アクセ）',
+        '4) まだ未定—人気から見たい',
       ].join('\n');
     }
     const who = creatorName ? `I’m ${creatorName}` : "I’m here";
@@ -260,6 +408,36 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
         '4）就先看看热门',
       ].join('\n');
     }
+    if (isEs) {
+      const who = creatorName ? ` (${creatorName})` : '';
+      return [
+        `Aquí tienes algunas selecciones destacadas${who}. ¿Hacia dónde lo enfocamos?`,
+        '1) Abrigos / outfits',
+        '2) Regalos',
+        '3) Mascotas (ropa/accesorios)',
+        '4) Ver lo más popular',
+      ].join('\n');
+    }
+    if (isFr) {
+      const who = creatorName ? ` (${creatorName})` : '';
+      return [
+        `Voici quelques sélections à parcourir${who}. Tu veux plutôt :`,
+        '1) Manteaux / tenues',
+        '2) Cadeaux',
+        '3) Animaux (vêtements/accessoires)',
+        '4) Le plus populaire',
+      ].join('\n');
+    }
+    if (isJa) {
+      const who = creatorName ? `（${creatorName}）` : '';
+      return [
+        `まずはおすすめ${who}を出すね。どの方向がいい？`,
+        '1) アウター/コーデ',
+        '2) ギフト',
+        '3) ペット（服/アクセ）',
+        '4) 人気だけ見たい',
+      ].join('\n');
+    }
     const who = creatorName ? ` (${creatorName})` : '';
     return [
       `Here are some featured picks${who} to browse. Which direction should I lean into?`,
@@ -282,6 +460,15 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
 
   if (isNone) {
     if ((intent?.target_object?.type || '') === 'pet') {
+      if (isEs) {
+        return 'No encontré opciones realmente adecuadas de ropa de senderismo para tu perro/mascota en el inventario actual, así que no voy a recomendar cosas que no correspondan. Prueba con: "chaqueta para perro", "abrigo para perro", "impermeable para perro" o dime la talla de tu perro y la temperatura.';
+      }
+      if (isFr) {
+        return 'Je n’ai pas trouvé de bonnes options de vêtements de randonnée pour ton chien/animal dans l’inventaire actuel, donc je ne vais pas recommander des articles hors sujet. Essaie : "manteau pour chien", "veste pour chien", "imperméable pour chien" ou donne-moi la taille et la température.';
+      }
+      if (isJa) {
+        return '今の在庫では、ハイキング向けの犬/ペット用ウェアが十分に見つからなかったので、関係ない商品はおすすめしません。例：犬用ジャケット、犬用レインコート、ペット用防寒。犬のサイズと気温も教えてね。';
+      }
       return "I couldn’t find solid matches for hiking-ready dog/pet apparel in the current inventory, so I won’t recommend unrelated items. Try searching for: dog jacket, dog raincoat, pet hiking gear, or tell me your dog’s size and the weather.";
     }
     return "I couldn’t find solid matches for adult cold-weather outerwear in the current inventory, so I won’t recommend unrelated items. Try searching for: down jacket, hiking shell, parka, or share your lowest temperature and budget.";
@@ -301,26 +488,63 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const intent = await extractIntent(latestUserQuery, recentQueries, recentMessages);
   const pruned = pruneRecentQueries(latestUserQuery, recentQueries, intent);
 
+  const expandedQuery = (() => {
+    const q = latestUserQuery;
+    if (!q) return q;
+    const lang = intent?.language || 'en';
+    if (lang === 'en' || lang === 'zh') return q;
+    const target = intent?.target_object?.type || 'unknown';
+    const scenario = intent?.scenario?.name || 'general';
+
+    const extra = [];
+    if (target === 'pet') {
+      extra.push('dog jacket', 'pet apparel');
+      if (scenario.includes('hiking')) extra.push('hiking', 'cold weather');
+      if (lang === 'es') extra.push('perro', 'ropa');
+      if (lang === 'fr') extra.push('chien', 'vêtement');
+      if (lang === 'ja') extra.push('犬', '犬服');
+    } else if (target === 'human' && intent?.primary_domain === 'human_apparel') {
+      extra.push('coat', 'jacket', 'outerwear');
+      if (scenario.includes('cold') || scenario.includes('mountain')) extra.push('down jacket', 'winter');
+      if (lang === 'es') extra.push('abrigo', 'chaqueta');
+      if (lang === 'fr') extra.push('manteau', 'veste');
+    } else if (intent?.primary_domain === 'toy_accessory') {
+      extra.push('labubu', 'doll clothes', 'outfit');
+    }
+
+    if (!extra.length) return q;
+    const combined = `${q} ${extra.join(' ')}`.trim();
+    return combined.length > 240 ? combined.slice(0, 240) : combined;
+  })();
+
   const adjustedPayload = {
     ...(payload || {}),
     user: {
       ...(payload?.user || {}),
       ...(pruned ? { recent_queries: pruned } : {}),
     },
+    search: {
+      ...(payload?.search || {}),
+      ...(expandedQuery ? { query: expandedQuery } : {}),
+    },
   };
 
-  return { intent, adjustedPayload };
+  return { intent, adjustedPayload, rawUserQuery: latestUserQuery };
 }
 
-function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata }) {
+function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata, rawUserQuery }) {
   const { key, list } = getResponseProductList(response);
   const before = Array.isArray(list) ? list.length : 0;
+  const rawQuery =
+    String(rawUserQuery || '').trim() ||
+    String(requestPayload?.search?.query || '').trim() ||
+    '';
 
-  const { filtered, reason_codes: filterReasonCodes } = filterProductsByIntent(list, intent);
+  const { filtered, reason_codes: filterReasonCodes } = filterProductsByIntent(list, intent, { rawQuery });
   const after = filtered.length;
 
   // By default, keep ordering. LLM rerank (optional) can be added later.
-  const stats = computeMatchStats(filtered, intent);
+  const stats = computeMatchStats(filtered, intent, { rawQuery });
 
   const reasonCodes = new Set([...(filterReasonCodes || [])]);
   if (intent?.ambiguity?.needs_clarification) {

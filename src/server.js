@@ -1441,6 +1441,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       : null;
   const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
   const effectiveIntent = findProductsMultiCtx?.intent || null;
+  const rawUserQuery = findProductsMultiCtx?.rawUserQuery || payload?.search?.query || '';
 
   // Redundant allowlist check for semantics clarity.
   if (!OperationEnum.options.includes(operation)) {
@@ -1492,6 +1493,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       intent: effectiveIntent,
       requestPayload: effectivePayload,
       metadata,
+      rawUserQuery,
     });
 
     const promotions = await getActivePromotions(now, creatorId);
@@ -1654,6 +1656,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           intent: effectiveIntent,
           requestPayload: effectivePayload,
           metadata,
+          rawUserQuery,
         });
       }
 
@@ -1713,6 +1716,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 intent: effectiveIntent,
                 requestPayload: effectivePayload,
                 metadata,
+                rawUserQuery,
               })
             : upstreamData;
 
@@ -1757,6 +1761,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   intent: effectiveIntent,
                   requestPayload: effectivePayload,
                   metadata,
+                  rawUserQuery,
                 })
               : upstreamData;
 
@@ -2100,6 +2105,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         intent: effectiveIntent,
         requestPayload: effectivePayload,
         metadata,
+        rawUserQuery,
       });
     }
 
