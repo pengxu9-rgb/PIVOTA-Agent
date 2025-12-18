@@ -92,9 +92,22 @@ function hasHikingSignal(text) {
   );
 }
 
+function detectLanguageHeuristic(text) {
+  const t = String(text || '');
+  if (!t) return 'other';
+  if (/[\u3040-\u30ff]/.test(t)) return 'ja';
+  if (/[\uac00-\ud7af]/.test(t)) return 'ko';
+  if (/[\u4e00-\u9fff]/.test(t)) return 'zh';
+  const lower = t.toLowerCase();
+  if (/[¿¡ñáéíóúü]/i.test(t) || /\b(senderismo|perro|mascota|ropa|fr[ií]o)\b/.test(lower)) return 'es';
+  if (/[çœàâæéèêëîïôœùûüÿ]/i.test(t) || /\b(randonn[eé]e|chien|v[eê]tement|froid)\b/.test(lower)) return 'fr';
+  return 'en';
+}
+
 function applyHardOverrides(latestQuery, intent) {
   const q = String(latestQuery || '');
   if (!intent || typeof intent !== 'object') return intent;
+  const language = detectLanguageHeuristic(q);
 
   // Priority rule (enforced): latest query dominates target_object decisions.
   // If user is clearly asking for pet apparel, do not let history or vague wording override it.
@@ -102,6 +115,7 @@ function applyHardOverrides(latestQuery, intent) {
     const scenarioName = hasHikingSignal(q) ? 'pet_hiking' : 'pet_apparel_general';
     const patched = {
       ...intent,
+      language,
       primary_domain: 'sports_outdoor',
       target_object: { ...(intent.target_object || {}), type: 'pet', age_group: 'all' },
       category: {
@@ -141,7 +155,9 @@ function applyHardOverrides(latestQuery, intent) {
     return PivotaIntentV1Zod.parse(patched);
   }
 
-  return intent;
+  // Always normalize language to match the query (LLMs may default to English).
+  const patched = { ...intent, language };
+  return PivotaIntentV1Zod.parse(patched);
 }
 
 async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], recent_messages = []) {

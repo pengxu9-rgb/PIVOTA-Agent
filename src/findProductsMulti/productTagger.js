@@ -42,55 +42,32 @@ const HUMAN_OUTERWEAR_KEYWORDS = [
   'ski jacket',
 ];
 
-const PET_APPAREL_KEYWORDS = [
-  'dog',
-  "dog's",
-  'puppy',
-  'cat',
-  "cat's",
-  'pet',
-  'pets',
-  'for dogs',
-  'for cats',
-  'pet jacket',
-  'dog jacket',
-  'dog coat',
-  'dog sweater',
-  'pet sweater',
-  'harness',
-  'leash',
-  'raincoat',
-  // Spanish / French
-  'perro',
-  'perros',
-  'mascota',
-  'mascotas',
-  'gato',
-  'gatos',
-  'ropa para perro',
-  'abrigo para perro',
-  'chaqueta para perro',
-  'chien',
-  'chiens',
-  'chat',
-  'chats',
-  'vêtement pour chien',
-  'manteau pour chien',
-  // Japanese
-  'ペット',
-  '犬',
-  '猫',
-  '犬服',
-  '猫服',
-  '宠物',
-  '狗',
-  '狗狗',
-  '猫',
-  '宠物衣服',
-  '狗衣服',
-  '狗外套',
-  '狗雨衣',
-];
+const PET_ANIMAL_RE = /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets)\b/i;
+const PET_ANIMAL_ES_RE = /\b(perro|perros|perrita|cachorro|mascota|mascotas|gato|gatos)\b/i;
+const PET_ANIMAL_FR_RE = /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/i;
+
+const PET_APPAREL_GEAR_RE = /\b(jacket|coat|sweater|raincoat|overalls|hoodie|parka|shell|vest|boots|booties|harness|leash)\b/i;
+const PET_APPAREL_GEAR_ES_RE = /\b(chaqueta|abrigo|su[eé]ter|impermeable|overol|arn[eé]s|correa)\b/i;
+const PET_APPAREL_GEAR_FR_RE = /\b(veste|manteau|pull|imperm[eé]able|salopette|harnais|laisse)\b/i;
+
+function hasPetAnimalSignal(text) {
+  if (!text) return false;
+  // CJK substring check
+  if (/[\u4e00-\u9fff\u3040-\u30ff]/.test(text)) {
+    return ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服'].some((k) =>
+      text.includes(k)
+    );
+  }
+  return PET_ANIMAL_RE.test(text) || PET_ANIMAL_ES_RE.test(text) || PET_ANIMAL_FR_RE.test(text);
+}
+
+function hasPetApparelOrGearSignal(text) {
+  if (!text) return false;
+  if (/[\u4e00-\u9fff\u3040-\u30ff]/.test(text)) {
+    return ['衣服', '外套', '雨衣', '背带', '牵引', '项圈', '犬服', '猫服'].some((k) => text.includes(k));
+  }
+  return PET_APPAREL_GEAR_RE.test(text) || PET_APPAREL_GEAR_ES_RE.test(text) || PET_APPAREL_GEAR_FR_RE.test(text);
+}
 
 function safeStringify(value) {
   try {
@@ -149,7 +126,7 @@ function inferPivotaTags(product) {
     };
   }
 
-  const isPetApparel = includesAny(text, PET_APPAREL_KEYWORDS);
+  const isPetApparel = hasPetAnimalSignal(text) && hasPetApparelOrGearSignal(text);
   if (isPetApparel) {
     return {
       version: TAG_VERSION,

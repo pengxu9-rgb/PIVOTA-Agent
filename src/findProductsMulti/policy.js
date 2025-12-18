@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v7';
+const POLICY_VERSION = 'find_products_multi_policy_v8';
 
 const LINGERIE_KEYWORDS = [
   // EN (core underwear terms; avoid broad terms like "lace")
@@ -78,6 +78,21 @@ function isExplicitAdultOrLingerieQuery(rawQuery) {
 function isLingerieLikeProduct(product) {
   const text = buildProductText(product);
   return includesAny(text, LINGERIE_KEYWORDS);
+}
+
+function hasPetSignalInProduct(product) {
+  const text = buildProductText(product);
+  if (/[\u4e00-\u9fff\u3040-\u30ff]/.test(text)) {
+    return ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服'].some((k) =>
+      text.includes(k)
+    );
+  }
+  // Word-boundary checks to avoid false positives like "catsuit".
+  return (
+    /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets)\b/.test(text) ||
+    /\b(perro|perros|perrita|cachorro|mascota|mascotas|gato|gatos)\b/.test(text) ||
+    /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/.test(text)
+  );
 }
 
 function clamp01(n) {
@@ -183,30 +198,8 @@ function satisfiesHardConstraints(product, intent, ctx = {}) {
       if (text.includes(String(kw).toLowerCase())) return false;
     }
 
-    // Coarse pet signal requirement: avoid "featured" human/toy bleed-through.
-    if (
-      !productHasCategorySignal(product, [
-        'dog',
-        'cat',
-        'pet',
-        'puppy',
-        'kitten',
-        'perro',
-        'mascota',
-        'gato',
-        'chien',
-        'chat',
-        'animaux',
-        'ペット',
-        '犬',
-        '猫',
-        '宠物',
-        '狗',
-        '猫',
-      ])
-    ) {
-      return false;
-    }
+    // Pet-signal requirement: avoid "featured" human/toy bleed-through.
+    if (!hasPetSignalInProduct(product)) return false;
   }
 
   // Category check (MVP): text-based
@@ -319,7 +312,13 @@ function buildFiltersApplied(intent) {
   const requiredCats = normalizeStringArray(intent?.category?.required, 5, 64);
   if (requiredCats.length) {
     // Represent as paths to match UI expectations; MVP is coarse.
-    requiredCategoryPaths.push(['human_apparel', ...requiredCats.slice(0, 2)]);
+    const prefix =
+      intent?.target_object?.type === 'pet'
+        ? 'pet_apparel'
+        : intent?.target_object?.type === 'human'
+          ? 'human_apparel'
+          : 'other';
+    requiredCategoryPaths.push([prefix, ...requiredCats.slice(0, 2)]);
   }
 
   return {
@@ -453,6 +452,9 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
       return '我没找到适合这次山上保暖的成人外套/大衣（当前货盘里可能缺少相关品类）。你可以试试改搜：羽绒服 / 冲锋衣 / 抓绒 / 保暖外套，或告诉我最低温度和预算，我再帮你缩小范围。';
     }
     if (matchTier === 'weak') {
+      if ((intent?.target_object?.type || '') === 'pet') {
+        return '我只找到少量勉强相关的狗狗/宠物衣服（匹配度不高），所以先不强行推荐不相关的商品。你可以补充：狗狗体型/胸围、最低温度、是否需要防风防水，我再帮你精准筛。';
+      }
       return '我只找到了少量勉强相关的结果（匹配度不高），所以先不强行推荐。你可以补充：最低温度、预算、是否需要防风/防水，以及更偏好羽绒服还是冲锋衣。';
     }
     return '我找到了几件更符合你需求的选择。';
@@ -474,6 +476,18 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     return "I couldn’t find solid matches for adult cold-weather outerwear in the current inventory, so I won’t recommend unrelated items. Try searching for: down jacket, hiking shell, parka, or share your lowest temperature and budget.";
   }
   if (matchTier === 'weak') {
+    if ((intent?.target_object?.type || '') === 'pet') {
+      if (isEs) {
+        return 'Solo encontré unas pocas opciones flojas para ropa de perro/mascota, así que no voy a recomendar artículos fuera de tema. Dime la talla de tu perro (pecho/espalda), la temperatura y si necesitas impermeable/cortaviento.';
+      }
+      if (isFr) {
+        return 'Je n’ai trouvé que quelques options faibles pour des vêtements de chien/animal, donc je ne vais pas recommander des articles hors sujet. Donne-moi la taille (poitrine/dos), la température et si tu veux coupe-vent/imperméable.';
+      }
+      if (isJa) {
+        return '犬/ペット用の候補が少なく、関連の薄い商品はおすすめしません。サイズ（胴回り/背丈）、気温、雨対策（防水/防風）が必要か教えてください。';
+      }
+      return "I only found a few weak matches for dog/pet apparel, so I won’t recommend unrelated items. Tell me your dog’s size, the temperature, and whether you need waterproof/windproof.";
+    }
     return "I only found a few weak matches, so I won’t force unrelated recommendations. Share your budget, the lowest temperature, and whether you need windproof/waterproof.";
   }
   return 'Here are some more suitable picks based on your request.';
@@ -492,7 +506,6 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     const q = latestUserQuery;
     if (!q) return q;
     const lang = intent?.language || 'en';
-    if (lang === 'en' || lang === 'zh') return q;
     const target = intent?.target_object?.type || 'unknown';
     const scenario = intent?.scenario?.name || 'general';
 
@@ -500,6 +513,8 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     if (target === 'pet') {
       extra.push('dog jacket', 'pet apparel');
       if (scenario.includes('hiking')) extra.push('hiking', 'cold weather');
+      // Also expand for Chinese queries against English-heavy catalogs.
+      if (lang === 'zh') extra.push('dog', 'pet', 'coat');
       if (lang === 'es') extra.push('perro', 'ropa');
       if (lang === 'fr') extra.push('chien', 'vêtement');
       if (lang === 'ja') extra.push('犬', '犬服');
@@ -508,6 +523,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       if (scenario.includes('cold') || scenario.includes('mountain')) extra.push('down jacket', 'winter');
       if (lang === 'es') extra.push('abrigo', 'chaqueta');
       if (lang === 'fr') extra.push('manteau', 'veste');
+      if (lang === 'zh') extra.push('coat', 'jacket');
     } else if (intent?.primary_domain === 'toy_accessory') {
       extra.push('labubu', 'doll clothes', 'outfit');
     }

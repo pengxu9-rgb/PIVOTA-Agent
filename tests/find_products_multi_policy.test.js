@@ -197,6 +197,34 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products.find((p) => p.id === 'ling-1')).toBeUndefined();
   });
 
+  test('does not treat "catsuit" lingerie as pet apparel (avoid cat substring false positive)', () => {
+    const intent = extractIntentRuleBased('我要狗狗的外套', [], []);
+    expect(intent.target_object.type).toBe('pet');
+    expect(intent.language).toBe('zh');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Sexy lace catsuit bodysuit',
+            description: 'lingerie set',
+          }),
+          makeRawProduct({
+            id: 'pet-1',
+            title: 'Warm sweater for dogs & cats',
+            description: 'dog sweater',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '我要狗狗的外套' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(['pet-1']);
+  });
+
   test('filters to empty → has_good_match=false, match_tier=none and reason codes present', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',
