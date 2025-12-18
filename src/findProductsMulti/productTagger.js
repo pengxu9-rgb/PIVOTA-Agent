@@ -1,4 +1,4 @@
-const { TOY_KEYWORDS } = require('./intent');
+const { TOY_KEYWORDS_STRONG, TOY_KEYWORDS_WEAK } = require('./intent');
 
 const TAG_VERSION = 'ann_v1';
 const TAG_SOURCE = 'rule_v1';
@@ -21,6 +21,8 @@ const TOY_STRONG_KEYWORDS = [
   '娃衣',
   '玩具',
 ];
+
+const TOY_KEYWORDS = [...TOY_KEYWORDS_STRONG, ...TOY_KEYWORDS_WEAK];
 
 const HUMAN_OUTERWEAR_KEYWORDS = [
   '外套',

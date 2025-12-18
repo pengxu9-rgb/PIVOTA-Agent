@@ -1,8 +1,54 @@
 const { extractIntent } = require('./intentLlm');
-const { injectPivotaAttributes, buildProductText } = require('./productTagger');
+const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
 const POLICY_VERSION = 'find_products_multi_policy_v12';
+
+// Feature flags / tunables for the global three-layer policy.
+const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
+const OBJECT_CONF_THRESHOLD = Number(
+  process.env.FIND_PRODUCTS_MULTI_OBJECT_CONF_THRESHOLD || '0.75',
+);
+const OBJECT_CONF_LOWER = Number(
+  process.env.FIND_PRODUCTS_MULTI_OBJECT_CONF_LOWER || '0.45',
+);
+const ADULT_UNREQUESTED_BLOCK =
+  process.env.FIND_PRODUCTS_MULTI_ADULT_UNREQUESTED_BLOCK !== 'false';
+const COMPAT_CRITICAL_STRICT =
+  process.env.FIND_PRODUCTS_MULTI_COMPAT_CRITICAL_STRICT !== 'false';
+const WEAK_QUOTA_DEFAULT = Number(
+  process.env.FIND_PRODUCTS_MULTI_WEAK_QUOTA_DEFAULT || '2',
+);
+
+// Reason codes (atomic; safe to log/aggregate).
+const REASON_CODES = {
+  OBJ_EXACT: 'OBJ_EXACT',
+  OBJ_COMPATIBLE: 'OBJ_COMPATIBLE',
+  OBJ_MISMATCH: 'OBJ_MISMATCH',
+  OBJ_UNCERTAIN: 'OBJ_UNCERTAIN',
+
+  CAT_EXACT: 'CAT_EXACT',
+  CAT_SIBLING: 'CAT_SIBLING',
+  CAT_PARENT: 'CAT_PARENT',
+  CAT_ANCESTOR: 'CAT_ANCESTOR',
+  CAT_FAR: 'CAT_FAR',
+
+  MISSING_SIZE: 'MISSING_SIZE',
+  MISSING_MODEL: 'MISSING_MODEL',
+  MISSING_INTERFACE: 'MISSING_INTERFACE',
+  MISSING_WEIGHT_RANGE: 'MISSING_WEIGHT_RANGE',
+  CONSTRAINT_PARTIAL: 'CONSTRAINT_PARTIAL',
+  PREFERENCE_MISMATCH: 'PREFERENCE_MISMATCH',
+
+  SCENE_MISMATCH: 'SCENE_MISMATCH',
+  SEASON_MISMATCH: 'SEASON_MISMATCH',
+
+  ADULT_UNREQUESTED: 'ADULT_UNREQUESTED',
+  COMPAT_INCOMPATIBLE: 'COMPAT_INCOMPATIBLE',
+  COMPAT_UNKNOWN: 'COMPAT_UNKNOWN',
+  SAFETY_RISK: 'SAFETY_RISK',
+  TOY_ONLY_LEFT: 'TOY_ONLY_LEFT',
+};
 
 const LINGERIE_KEYWORDS = [
   // EN (core underwear terms; avoid broad terms like "lace")
@@ -264,73 +310,289 @@ function productHasCategorySignal(product, requiredCategories) {
   return false;
 }
 
+function getProductObject(product) {
+  const pivota = product?.attributes?.pivota;
+  const tagged = String(pivota?.target_object?.value || '').toLowerCase();
+  if (tagged === 'human' || tagged === 'pet' || tagged === 'toy') return tagged;
+
+  // Fallback: light-weight heuristic from text.
+  const text = buildProductText(product);
+  if (hasPetSignalInProduct(product)) return 'pet';
+  if (isToyLikeText(text)) return 'toy';
+  // If explicitly human apparel in domain, treat as human.
+  const domain = String(pivota?.domain?.value || '').toLowerCase();
+  if (domain === 'human_apparel') return 'human';
+
+  return 'unknown';
+}
+
+function isAdultProduct(product) {
+  return isLingerieLikeProduct(product);
+}
+
+function getAdultIntent(intent, rawQuery) {
+  const explicit = isExplicitAdultOrLingerieQuery(rawQuery || '');
+  // TODO: if we later extend intent schema with an explicit adult_intent object,
+  // read it here instead of relying only on query text.
+  const conf = explicit ? 0.9 : 0.0;
+  return { is_explicit: explicit, conf };
+}
+
+function getCompatMeta(intent, product) {
+  // MVP: compatibility is opt-in via attributes.
+  // If not present, we treat as non-critical.
+  const hard = intent?.hard_constraints || {};
+  const model = hard.model || null;
+
+  const compat =
+    product?.attributes?.pivota?.compat ||
+    product?.attributes?.compat ||
+    product?.attributes?.model_compat ||
+    null;
+
+  const compatModels = Array.isArray(compat?.models)
+    ? compat.models
+    : Array.isArray(compat)
+      ? compat
+      : [];
+
+  if (!model || !compatModels.length) {
+    if (!model && !compatModels.length) {
+      return { critical: false, state: 'none' };
+    }
+    return { critical: true, state: 'unknown' };
+  }
+
+  const match = compatModels.map(String).includes(String(model));
+  return { critical: true, state: match ? 'ok' : 'incompatible' };
+}
+
+function evaluateProductForIntent(product, intent, ctx = {}) {
+  const rawQuery = String(ctx?.rawQuery || '').trim();
+  const target = intent?.target_object?.type || 'unknown';
+  const targetConf = Number(intent?.confidence?.target_object ?? 0.5);
+
+  const productObject = getProductObject(product);
+  const adultIntent = getAdultIntent(intent, rawQuery);
+  const compatMeta = getCompatMeta(intent, product);
+
+  const reasonCodes = new Set();
+  let riskLevel = 'ok'; // ok | soft_block | hard_block
+
+  // ---------- Object mismatch hard gate ----------
+  const objPair = `${target}:${productObject}`;
+  const isCompatibleObject =
+    target === 'unknown' ||
+    productObject === 'unknown' ||
+    target === productObject ||
+    // Toy intent can accept generic toy/pet accessories when confidence is low.
+    (target === 'toy' && productObject === 'unknown');
+
+  if (!isCompatibleObject) {
+    if (targetConf >= OBJECT_CONF_THRESHOLD) {
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.OBJ_MISMATCH);
+    } else if (targetConf >= OBJECT_CONF_LOWER) {
+      // Do not hard block when we are uncertain about the user's object.
+      reasonCodes.add(REASON_CODES.OBJ_UNCERTAIN);
+    }
+  } else if (target !== 'unknown' && productObject === target) {
+    reasonCodes.add(REASON_CODES.OBJ_EXACT);
+  } else if (target !== 'unknown' && productObject === 'unknown') {
+    reasonCodes.add(REASON_CODES.OBJ_UNCERTAIN);
+  } else if (target !== 'unknown' && productObject !== 'unknown') {
+    reasonCodes.add(REASON_CODES.OBJ_COMPATIBLE);
+  }
+
+  // ---------- Adult / lingerie hard gate ----------
+  if (
+    riskLevel !== 'hard_block' &&
+    ADULT_UNREQUESTED_BLOCK &&
+    target !== 'toy' &&
+    intent?.primary_domain !== 'toy_accessory'
+  ) {
+    if (isAdultProduct(product) && (!adultIntent.is_explicit || adultIntent.conf < 0.6)) {
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.ADULT_UNREQUESTED);
+    }
+  }
+
+  // ---------- Compatibility / safety gates (MVP) ----------
+  if (riskLevel !== 'hard_block' && compatMeta.critical) {
+    if (compatMeta.state === 'incompatible') {
+      if (COMPAT_CRITICAL_STRICT) {
+        riskLevel = 'hard_block';
+      } else {
+        riskLevel = 'soft_block';
+      }
+      reasonCodes.add(REASON_CODES.COMPAT_INCOMPATIBLE);
+    } else if (compatMeta.state === 'unknown') {
+      // Allow but flag as soft block.
+      riskLevel = riskLevel === 'ok' ? 'soft_block' : riskLevel;
+      reasonCodes.add(REASON_CODES.COMPAT_UNKNOWN);
+    }
+  }
+
+  // Safety-critical hook (not widely used yet).
+  const safetyRisk =
+    product?.attributes?.pivota?.risk?.safety_critical === true &&
+    intent?.hard_constraints?.safety &&
+    intent.hard_constraints.safety === 'violation';
+  if (safetyRisk) {
+    riskLevel = 'hard_block';
+    reasonCodes.add(REASON_CODES.SAFETY_RISK);
+  }
+
+  // ---------- Pet-specific guard rails ----------
+  if (riskLevel !== 'hard_block' && target === 'pet') {
+    // For pet apparel, we always exclude toy/doll-style products.
+    const text = buildProductText(product);
+    if (isToyLikeText(text)) {
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.OBJ_MISMATCH);
+    }
+    // Pet-signal requirement: avoid "featured" human-only items.
+    if (!hasPetSignalInProduct(product)) {
+      // Treat as soft block if intent confidence is low; hard block otherwise.
+      if (targetConf >= OBJECT_CONF_THRESHOLD) {
+        riskLevel = 'hard_block';
+      } else if (riskLevel === 'ok') {
+        riskLevel = 'soft_block';
+      }
+      reasonCodes.add(REASON_CODES.OBJ_UNCERTAIN);
+    }
+  }
+
+  // ---------- in_stock_only ----------
+  const inStockOnly = intent?.hard_constraints?.in_stock_only;
+  if (riskLevel !== 'hard_block' && inStockOnly === true) {
+    const qty = Number(
+      product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0,
+    );
+    if (!Number.isFinite(qty) || qty <= 0) {
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.CONSTRAINT_PARTIAL);
+    }
+  }
+
+  return {
+    risk_level: riskLevel,
+    reason_codes: Array.from(reasonCodes),
+    // Expose derived classification for scoring.
+    product_object: productObject,
+    target_object: target,
+    target_conf: targetConf,
+  };
+}
+
+function computeProductRelevance(product, intent, evalMeta) {
+  const target = evalMeta.target_object;
+  const productObject = evalMeta.product_object;
+  const reasonCodes = new Set(evalMeta.reason_codes || []);
+
+  // ---------- Object score ----------
+  let objectScore = 0.5;
+  if (target === 'unknown' || productObject === 'unknown') {
+    objectScore = 0.5;
+  } else if (target === productObject) {
+    objectScore = 1.0;
+    reasonCodes.add(REASON_CODES.OBJ_EXACT);
+  } else {
+    // In practice, incompatible objects should have been hard-blocked already.
+    objectScore = 0.0;
+    reasonCodes.add(REASON_CODES.OBJ_MISMATCH);
+  }
+
+  // ---------- Category score ----------
+  const requiredCats = intent?.category?.required || [];
+  let catScore = 0.6;
+  if (!requiredCats.length) {
+    // No explicit category → treat as parent-level.
+    catScore = 0.6;
+    reasonCodes.add(REASON_CODES.CAT_PARENT);
+  } else if (productHasCategorySignal(product, requiredCats)) {
+    catScore = 1.0;
+    reasonCodes.add(REASON_CODES.CAT_EXACT);
+  } else {
+    // We know the user cares about category but the product does not strongly match.
+    catScore = 0.4;
+    reasonCodes.add(REASON_CODES.CAT_PARENT);
+  }
+
+  // ---------- Hard constraint coverage (MVP) ----------
+  const hard = intent?.hard_constraints || {};
+  let required = 0;
+  let satisfied = 0;
+
+  const price = Number(product.price ?? product.price_amount ?? NaN);
+  if (hard.price && (hard.price.min != null || hard.price.max != null)) {
+    required += 1;
+    const withinMin = hard.price.min == null || (Number.isFinite(price) && price >= hard.price.min);
+    const withinMax = hard.price.max == null || (Number.isFinite(price) && price <= hard.price.max);
+    if (withinMin && withinMax) {
+      satisfied += 1;
+    } else {
+      reasonCodes.add(REASON_CODES.CONSTRAINT_PARTIAL);
+    }
+  }
+
+  if (hard.in_stock_only === true) {
+    required += 1;
+    const qty = Number(
+      product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0,
+    );
+    if (Number.isFinite(qty) && qty > 0) {
+      satisfied += 1;
+    } else {
+      reasonCodes.add(REASON_CODES.MISSING_SIZE);
+    }
+  }
+
+  const hardCoverage = required > 0 ? clamp01(satisfied / required) : 1.0;
+
+  // ---------- Soft preference coverage (placeholder) ----------
+  // We do not yet model style/colors/brands deeply; treat as neutral.
+  const softCoverage = 0.5;
+
+  const isSensitive = evalMeta.reason_codes.includes(REASON_CODES.COMPAT_UNKNOWN);
+  const baseScore =
+    0.35 * objectScore + 0.3 * catScore + 0.3 * hardCoverage + 0.05 * softCoverage;
+  const sensitiveScore =
+    0.3 * objectScore + 0.2 * catScore + 0.45 * hardCoverage + 0.05 * softCoverage;
+
+  const finalScore = clamp01(isSensitive ? sensitiveScore : baseScore);
+
+  // ---------- Tier classification ----------
+  let matchTier = 'none';
+  if (finalScore >= 0.78 && hardCoverage >= (isSensitive ? 0.9 : 0.75)) {
+    matchTier = 'strong';
+  } else if (
+    finalScore >= 0.58 &&
+    finalScore < 0.78 &&
+    hardCoverage >= (isSensitive ? 0.7 : 0.5)
+  ) {
+    matchTier = 'medium';
+  } else if (finalScore >= 0.35) {
+    matchTier = 'weak';
+  } else {
+    matchTier = 'none';
+  }
+
+  return {
+    match_tier: matchTier,
+    final_score: finalScore,
+    object_score: objectScore,
+    cat_score: catScore,
+    hard_coverage: hardCoverage,
+    soft_coverage: softCoverage,
+    reason_codes: Array.from(reasonCodes),
+  };
+}
+
 function satisfiesHardConstraints(product, intent, ctx = {}) {
   if (!product || !intent) return true;
-
-  const pivota = product?.attributes?.pivota;
-  const target = intent?.target_object?.type;
-  const rawQuery = ctx?.rawQuery || '';
-
-  // Default safety: exclude lingerie unless explicitly requested.
-  if (
-    target !== 'toy' &&
-    intent?.primary_domain !== 'toy_accessory' &&
-    !isExplicitAdultOrLingerieQuery(rawQuery) &&
-    isLingerieLikeProduct(product)
-  ) {
-    // For pets, humans, and unknown/browse/discovery contexts, lingerie is never a good default.
-    return false;
-  }
-
-  if (target === 'human') {
-    const domain = pivota?.domain?.value;
-    const targetObject = pivota?.target_object?.value;
-    // Only enforce when we have a confident/non-default tag. "other/unknown" is not a blocker.
-    if (domain && domain !== 'human_apparel' && domain !== 'other') return false;
-    if (targetObject && targetObject !== 'human' && targetObject !== 'unknown') return false;
-
-    const excludeKeywords = intent?.hard_constraints?.must_exclude_keywords || [];
-    const text = buildProductText(product);
-    for (const kw of excludeKeywords) {
-      if (!kw) continue;
-      if (text.includes(String(kw).toLowerCase())) return false;
-    }
-  }
-
-  if (target === 'pet') {
-    const targetObject = pivota?.target_object?.value;
-    // Do not block on "unknown" (rule tagger may miss some pet items).
-    if (targetObject && targetObject !== 'pet' && targetObject !== 'unknown') return false;
-
-    // Always exclude toy/doll keywords for pet apparel
-    const excludeKeywords = intent?.hard_constraints?.must_exclude_keywords || [];
-    const text = buildProductText(product);
-    for (const kw of excludeKeywords) {
-      if (!kw) continue;
-      if (text.includes(String(kw).toLowerCase())) return false;
-    }
-
-    // Pet-signal requirement: avoid "featured" human/toy bleed-through.
-    // Note: we require an animal signal; clothing type is validated by category signals below.
-    if (!hasPetSignalInProduct(product)) return false;
-  }
-
-  // Category check (MVP): text-based.
-  // For pet intent we skip strict category enforcement and rely on pet signals + other filters,
-  // since catalog coverage for pet apparel naming is more diverse (harness, boots, overalls, etc.).
-  const requiredCats = intent?.category?.required || [];
-  if (requiredCats.length && target !== 'pet') {
-    if (!productHasCategorySignal(product, requiredCats)) return false;
-  }
-
-  // in_stock_only
-  const inStockOnly = intent?.hard_constraints?.in_stock_only;
-  if (inStockOnly === true) {
-    const qty = Number(product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0);
-    if (!Number.isFinite(qty) || qty <= 0) return false;
-  }
-
-  return true;
+  const evalMeta = evaluateProductForIntent(product, intent, ctx);
+  return evalMeta.risk_level !== 'hard_block';
 }
 
 function filterProductsByIntent(products, intent, ctx = {}) {
@@ -339,69 +601,146 @@ function filterProductsByIntent(products, intent, ctx = {}) {
 
   // Inject pivota tags for all candidates first (for observability and filtering)
   const tagged = products.map(injectPivotaAttributes);
+  const rawQuery = String(ctx?.rawQuery || '').trim();
+  const filtered = [];
+  let hardBlocked = 0;
 
-  // Only do strict filtering when we have a clear target object (human/pet). Otherwise keep candidates.
-  const target = intent?.target_object?.type;
-  const strictTarget = target === 'human' || target === 'pet';
+  for (const p of tagged) {
+    const evalMeta = evaluateProductForIntent(p, intent, { rawQuery });
 
-  if (!strictTarget) {
-    return { filtered: tagged, reason_codes: [] };
+    // Attach relevance metadata under attributes.pivota for downstream consumers.
+    const existingAttrs = p.attributes && typeof p.attributes === 'object' ? p.attributes : {};
+    const existingPivota =
+      existingAttrs.pivota && typeof existingAttrs.pivota === 'object'
+        ? existingAttrs.pivota
+        : {};
+    const relevance = {
+      ...(existingPivota.relevance || {}),
+      risk_level: evalMeta.risk_level,
+      reason_codes: evalMeta.reason_codes,
+      product_object: evalMeta.product_object,
+      target_object: evalMeta.target_object,
+      target_conf: evalMeta.target_conf,
+    };
+    const annotated = {
+      ...p,
+      attributes: {
+        ...existingAttrs,
+        pivota: {
+          ...existingPivota,
+          relevance,
+        },
+      },
+    };
+
+    if (evalMeta.risk_level === 'hard_block') {
+      hardBlocked += 1;
+      continue;
+    }
+    filtered.push(annotated);
   }
 
-  const rawQuery = String(ctx?.rawQuery || '').trim();
-  const filtered = tagged.filter((p) => satisfiesHardConstraints(p, intent, { rawQuery }));
   const reason_codes = [];
   if (before > 0 && filtered.length === 0) {
     reason_codes.push('NO_DOMAIN_MATCH', 'FILTERED_TO_EMPTY');
+    if (hardBlocked === before) {
+      reason_codes.push(REASON_CODES.TOY_ONLY_LEFT);
+    }
   }
   return { filtered, reason_codes };
 }
 
 function computeMatchStats(sortedProducts, intent, ctx = {}) {
-  const window = Array.isArray(sortedProducts) ? sortedProducts.slice(0, 20) : [];
-  const M = window.length;
-  let hardMatchCount = 0;
-  let inStockHardMatchCount = 0;
+  const arr = Array.isArray(sortedProducts) ? sortedProducts : [];
+  const M = Math.min(arr.length, 20);
+  let inStockNonNoneCount = 0;
+  let strongCount = 0;
+  let mediumCount = 0;
+  let weakCount = 0;
   let distractorCount = 0;
 
   const rawQuery = String(ctx?.rawQuery || '').trim();
-  for (const p of window) {
-    const hard = satisfiesHardConstraints(p, intent, { rawQuery });
-    if (hard) {
-      hardMatchCount += 1;
-      const qty = Number(p.inventory_quantity ?? p.inventoryQuantity ?? p.quantity ?? 0);
-      if (Number.isFinite(qty) && qty > 0) inStockHardMatchCount += 1;
-    } else {
-      distractorCount += 1;
+
+  for (let i = 0; i < arr.length; i += 1) {
+    const p = arr[i];
+    const evalMeta = evaluateProductForIntent(p, intent, { rawQuery });
+    if (evalMeta.risk_level === 'hard_block') {
+      if (i < M) distractorCount += 1;
+      continue;
+    }
+    const relevance = computeProductRelevance(p, intent, evalMeta);
+
+    // Attach scoring info to pivota.relevance for downstream usage.
+    const attrs = p.attributes && typeof p.attributes === 'object' ? p.attributes : {};
+    const pivota = attrs.pivota && typeof attrs.pivota === 'object' ? attrs.pivota : {};
+    const mergedRelevance = {
+      ...(pivota.relevance || {}),
+      risk_level: evalMeta.risk_level,
+      reason_codes: relevance.reason_codes,
+      product_object: evalMeta.product_object,
+      target_object: evalMeta.target_object,
+      target_conf: evalMeta.target_conf,
+      match_tier: relevance.match_tier,
+      final_score: relevance.final_score,
+      object_score: relevance.object_score,
+      cat_score: relevance.cat_score,
+      hard_coverage: relevance.hard_coverage,
+      soft_coverage: relevance.soft_coverage,
+    };
+    // Mutate in-place on the original array so the caller sees scoring metadata.
+    // eslint-disable-next-line no-param-reassign
+    arr[i] = {
+      ...p,
+      attributes: {
+        ...attrs,
+        pivota: {
+          ...pivota,
+          relevance: mergedRelevance,
+        },
+      },
+    };
+
+    if (i < M) {
+      const tier = relevance.match_tier;
+      if (tier === 'strong') strongCount += 1;
+      else if (tier === 'medium') mediumCount += 1;
+      else if (tier === 'weak') weakCount += 1;
+      else distractorCount += 1;
+
+      const qty = Number(
+        p.inventory_quantity ?? p.inventoryQuantity ?? p.quantity ?? 0,
+      );
+      if (tier !== 'none' && Number.isFinite(qty) && qty > 0) inStockNonNoneCount += 1;
     }
   }
 
   const distractorRatio = M > 0 ? distractorCount / M : 1;
   const domainPurity = 1 - distractorRatio;
-  const hardCoverage = clamp01(hardMatchCount / 3);
-  const availability = clamp01(inStockHardMatchCount / 3);
-  const matchConfidence = clamp01(0.4 * domainPurity + 0.4 * hardCoverage + 0.2 * availability);
+  const effectiveCount = strongCount + mediumCount;
+  const hardCoverage = clamp01(effectiveCount / 3);
+  const availability = clamp01(inStockNonNoneCount / 3);
+  const matchConfidence = clamp01(
+    0.4 * domainPurity + 0.4 * hardCoverage + 0.2 * availability,
+  );
 
   let matchTier = 'none';
-  if (M === 0) {
-    matchTier = 'none';
-  } else if (hardMatchCount === 0 || distractorRatio > 0.5) {
-    matchTier = 'none';
-  } else if (hardMatchCount >= 1 && hardMatchCount <= 2) {
-    matchTier = 'weak';
-  } else if (hardMatchCount >= 6 && distractorRatio <= 0.1) {
-    matchTier = 'great';
-  } else if (hardMatchCount >= 3 && distractorRatio <= 0.15) {
-    matchTier = 'good';
-  } else {
+  if (M === 0 || effectiveCount === 0) {
+    matchTier = weakCount > 0 ? 'weak' : 'none';
+  } else if (effectiveCount >= 3 && strongCount >= 1) {
+    matchTier = 'strong';
+  } else if (effectiveCount >= 3 && mediumCount >= 1) {
+    matchTier = 'medium';
+  } else if (weakCount > 0 || effectiveCount > 0) {
+    // Fewer than 3 non-distractor matches → treat as weak overall,
+    // even if individual items look strong.
     matchTier = 'weak';
   }
 
-  const hasGoodMatch = hardMatchCount >= 3 && distractorRatio <= 0.15;
+  const hasGoodMatch = effectiveCount >= 3 && distractorRatio <= 0.5;
 
   return {
-    hard_match_count_top20: hardMatchCount,
-    in_stock_hard_match_count_top20: inStockHardMatchCount,
+    hard_match_count_top20: effectiveCount,
+    in_stock_hard_match_count_top20: inStockNonNoneCount,
     distractor_ratio_top20: distractorRatio,
     match_confidence: matchConfidence,
     has_good_match: hasGoodMatch,
