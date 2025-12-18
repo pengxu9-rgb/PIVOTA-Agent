@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v8';
+const POLICY_VERSION = 'find_products_multi_policy_v9';
 
 const LINGERIE_KEYWORDS = [
   // EN (core underwear terms; avoid broad terms like "lace")
@@ -150,8 +150,94 @@ function setResponseProductList(response, key, list) {
 function productHasCategorySignal(product, requiredCategories) {
   if (!requiredCategories || !requiredCategories.length) return true;
   const text = buildProductText(product);
-  const needles = requiredCategories.map((c) => String(c || '').toLowerCase());
-  return needles.some((c) => text.includes(c));
+  const loweredRequired = requiredCategories.map((c) => String(c || '').toLowerCase()).filter(Boolean);
+  if (!loweredRequired.length) return true;
+
+  const hasAny = (patterns) =>
+    patterns.some((p) => {
+      if (!p) return false;
+      if (p instanceof RegExp) return p.test(text);
+      return text.includes(String(p).toLowerCase());
+    });
+
+  // Category IDs in intent are *semantic*, but product text is natural language.
+  // Map common category tokens to multilingual keyword sets (MVP, rule-based).
+  const categoryMatchers = {
+    // Human apparel
+    outerwear: [
+      /\b(coat|jacket|parka|puffer|outerwear|shell|windbreaker)\b/i,
+      'down jacket',
+      '羽绒',
+      '羽绒服',
+      '外套',
+      '大衣',
+      '冲锋衣',
+      '风衣',
+      '夹克',
+      'abrigo',
+      'chaqueta',
+      'manteau',
+      'veste',
+      'コート',
+      'ジャケット',
+    ],
+    coat: [
+      /\b(coat|parka)\b/i,
+      '大衣',
+      '外套',
+      'abrigo',
+      'manteau',
+      'コート',
+    ],
+    down_jacket: [
+      /\b(down|puffer)\b/i,
+      'down jacket',
+      '羽绒',
+      '羽绒服',
+      'plumífero',
+      'doudoune',
+    ],
+
+    // Pet apparel (and close accessories that are often acceptable for hiking)
+    pet_apparel: [
+      /\b(jacket|coat|sweater|raincoat|overalls|hoodie|parka|shell|vest|boots|booties|clothes|clothing|apparel|outfit)\b/i,
+      /\b(chaqueta|abrigo|su[eé]ter|impermeable|overol|ropa|vestido)\b/i,
+      /\b(veste|manteau|pull|imperm[eé]able|salopette|v[eê]tement|v[eê]tements)\b/i,
+      '犬服',
+      '猫服',
+      'ペット',
+      '服',
+      '衣服',
+      '外套',
+      '雨衣',
+      '毛衣',
+    ],
+    dog_jacket: [
+      /\b(jacket|coat|parka|raincoat|shell|windbreaker)\b/i,
+      /\b(chaqueta|abrigo|impermeable)\b/i,
+      /\b(veste|manteau|imperm[eé]able)\b/i,
+      '外套',
+      '雨衣',
+      'ジャケット',
+      'コート',
+    ],
+    dog_sweater: [
+      /\b(sweater|hoodie|knit|pullover)\b/i,
+      /\b(su[eé]ter)\b/i,
+      /\b(pull)\b/i,
+      '毛衣',
+      'ニット',
+    ],
+  };
+
+  for (const c of loweredRequired) {
+    if (categoryMatchers[c]) {
+      if (hasAny(categoryMatchers[c])) return true;
+      continue;
+    }
+    if (text.includes(c)) return true;
+  }
+  return false;
 }
 
 function satisfiesHardConstraints(product, intent, ctx = {}) {
@@ -175,8 +261,9 @@ function satisfiesHardConstraints(product, intent, ctx = {}) {
   if (target === 'human') {
     const domain = pivota?.domain?.value;
     const targetObject = pivota?.target_object?.value;
-    if (domain && domain !== 'human_apparel') return false;
-    if (targetObject && targetObject !== 'human') return false;
+    // Only enforce when we have a confident/non-default tag. "other/unknown" is not a blocker.
+    if (domain && domain !== 'human_apparel' && domain !== 'other') return false;
+    if (targetObject && targetObject !== 'human' && targetObject !== 'unknown') return false;
 
     const excludeKeywords = intent?.hard_constraints?.must_exclude_keywords || [];
     const text = buildProductText(product);
@@ -188,7 +275,8 @@ function satisfiesHardConstraints(product, intent, ctx = {}) {
 
   if (target === 'pet') {
     const targetObject = pivota?.target_object?.value;
-    if (targetObject && targetObject !== 'pet') return false;
+    // Do not block on "unknown" (rule tagger may miss some pet items).
+    if (targetObject && targetObject !== 'pet' && targetObject !== 'unknown') return false;
 
     // Always exclude toy/doll keywords for pet apparel
     const excludeKeywords = intent?.hard_constraints?.must_exclude_keywords || [];
@@ -199,6 +287,7 @@ function satisfiesHardConstraints(product, intent, ctx = {}) {
     }
 
     // Pet-signal requirement: avoid "featured" human/toy bleed-through.
+    // Note: we require an animal signal; clothing type is validated by category signals below.
     if (!hasPetSignalInProduct(product)) return false;
   }
 
