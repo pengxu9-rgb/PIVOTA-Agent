@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v9';
+const POLICY_VERSION = 'find_products_multi_policy_v10';
 
 const LINGERIE_KEYWORDS = [
   // EN (core underwear terms; avoid broad terms like "lace")
@@ -111,6 +111,30 @@ function normalizeStringArray(arr, maxItems, maxLen) {
     if (out.length >= maxItems) break;
   }
   return out;
+}
+
+function extractLatestUserTextFromMessages(messages) {
+  if (!Array.isArray(messages)) return '';
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (!msg || typeof msg !== 'object') continue;
+    const role = String(msg.role || '').toLowerCase();
+    if (role !== 'user') continue;
+    const content = msg.content;
+    if (typeof content === 'string') {
+      const trimmed = content.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return '';
+}
+
+function looksLikeRealQuery(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (t.length < 2) return false;
+  // Require at least one alnum or CJK character to avoid pure punctuation.
+  return /[a-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/i.test(t);
 }
 
 function shouldDropHistoryByIntent(intent) {
@@ -584,9 +608,18 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
 
 async function buildFindProductsMultiContext({ payload, metadata }) {
   const search = payload?.search || {};
-  const latestUserQuery = String(search.query || '').trim();
   const recentQueries = payload?.user?.recent_queries || [];
   const recentMessages = payload?.messages || [];
+
+  // Some clients (chat-style UIs) may send the user utterance only in `messages`
+  // and leave `search.query` empty. If so, derive query from the last user message.
+  const queryFromSearch = String(search.query || '').trim();
+  const queryFromMessages = extractLatestUserTextFromMessages(recentMessages);
+  const latestUserQuery = looksLikeRealQuery(queryFromSearch)
+    ? queryFromSearch
+    : looksLikeRealQuery(queryFromMessages)
+      ? queryFromMessages
+      : queryFromSearch;
 
   const intent = await extractIntent(latestUserQuery, recentQueries, recentMessages);
   const pruned = pruneRecentQueries(latestUserQuery, recentQueries, intent);
