@@ -12,7 +12,6 @@ const TOY_STRONG_KEYWORDS = [
   'doll outfit',
   'for doll',
   'doll',
-  'toy',
   'figure',
   'plush',
   'plushie',

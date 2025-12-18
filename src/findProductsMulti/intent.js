@@ -104,14 +104,16 @@ function detectLanguage(text) {
   return 'en';
 }
 
-const TOY_KEYWORDS = [
+// "toy" is ambiguous (e.g. "toy breeds" for dogs). Avoid treating it as a strong signal.
+const TOY_KEYWORDS_STRONG = [
   'labubu',
   'pop mart',
   'doll',
   'vinyl face doll',
   'doll clothes',
   'doll outfit',
-  'toy',
+  'toy accessory',
+  'toy accessories',
   'figure',
   'plush',
   'blind box',
@@ -119,8 +121,11 @@ const TOY_KEYWORDS = [
   '公仔',
   '娃娃',
   '娃衣',
-  '玩具',
+  '玩具配饰',
+  '玩具配件',
 ];
+
+const TOY_KEYWORDS_WEAK = ['toy', 'toys', '玩具'];
 
 const OUTERWEAR_KEYWORDS_ZH = [
   '外套',
@@ -231,9 +236,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
   const hasPetSignal =
     includesAny(latest, PET_SIGNALS_ZH) || includesAny(latest, PET_SIGNALS_EN);
 
-  const hasToySignal =
-    includesAny(latest, TOY_KEYWORDS) ||
-    recent_queries.some((q) => includesAny(q, TOY_KEYWORDS));
+  const hasToySignalStrong =
+    includesAny(latest, TOY_KEYWORDS_STRONG) ||
+    recent_queries.some((q) => includesAny(q, TOY_KEYWORDS_STRONG));
 
   const hasOuterwearSignal =
     includesAny(latest, OUTERWEAR_KEYWORDS_ZH) || includesAny(latest, OUTERWEAR_KEYWORDS_EN);
@@ -247,14 +252,24 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
   let scenarioName = 'general';
   let scenarioSignals = [];
 
-  if ((isGreeting || isChitchat) && !hasOuterwearSignal && !hasColdScenario && !includesAny(latest, TOY_KEYWORDS)) {
+  if (
+    (isGreeting || isChitchat) &&
+    !hasOuterwearSignal &&
+    !hasColdScenario &&
+    !includesAny(latest, TOY_KEYWORDS_STRONG)
+  ) {
     // Discovery / chitchat mode: user has not expressed a shopping goal yet.
     primary_domain = 'other';
     targetType = 'unknown';
     categoryRequired = [];
     scenarioName = 'discovery';
     scenarioSignals = [];
-  } else if (isBrowse && !hasOuterwearSignal && !hasColdScenario && !includesAny(latest, TOY_KEYWORDS)) {
+  } else if (
+    isBrowse &&
+    !hasOuterwearSignal &&
+    !hasColdScenario &&
+    !includesAny(latest, TOY_KEYWORDS_STRONG)
+  ) {
     // Generic browse: user wants to see what's available, without a clear category.
     primary_domain = 'other';
     targetType = 'unknown';
@@ -280,7 +295,10 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           includesAny(latest, [s])
         )
       : [];
-  } else if (includesAny(latest, TOY_KEYWORDS) || (hasToySignal && !latest)) {
+  } else if (
+    includesAny(latest, TOY_KEYWORDS_STRONG) ||
+    (hasToySignalStrong && !latest && includesAny(recent_queries.join(' '), TOY_KEYWORDS_STRONG))
+  ) {
     primary_domain = 'toy_accessory';
     targetType = 'toy';
     categoryRequired = ['toy_accessory', 'doll_clothing'].slice(0, 2);
@@ -302,7 +320,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
 
   const mustExcludeKeywords =
     targetType === 'human' || targetType === 'pet'
-      ? ['Labubu', 'doll', 'toy', '娃娃', '公仔', '娃衣', '玩具'].slice(0, 16)
+      ? ['Labubu', 'doll', 'vinyl face doll', '娃娃', '公仔', '娃衣', '盲盒', 'pop mart'].slice(0, 16)
       : [];
   const mustExcludeDomains = targetType === 'human' || targetType === 'pet' ? ['toy_accessory'] : [];
 
@@ -414,6 +432,7 @@ module.exports = {
   PivotaIntentV1Zod,
   extractIntentRuleBased,
   detectLanguage,
-  TOY_KEYWORDS,
+  TOY_KEYWORDS_STRONG,
+  TOY_KEYWORDS_WEAK,
   INTENT_VERSION,
 };

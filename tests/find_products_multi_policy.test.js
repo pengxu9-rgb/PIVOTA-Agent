@@ -45,7 +45,7 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.target_object.type).toBe('human');
     expect(intent.history_usage.used).toBe(false);
     expect(intent.hard_constraints.must_exclude_keywords).toEqual(
-      expect.arrayContaining(['Labubu', 'doll', 'toy', '娃娃'])
+      expect.arrayContaining(['Labubu', 'doll', '娃娃'])
     );
     expect(intent.history_usage.ignored_queries).toEqual(
       expect.arrayContaining(['Labubu 娃娃衣服', '公仔 配件', '盲盒'])
@@ -95,7 +95,7 @@ describe('find_products_multi intent + filtering', () => {
 
   test('pet hiking apparel query filters out toy featured bleed-through', () => {
     const intent = extractIntentRuleBased(
-      "i need a jacket for my dog to go hiking. can you find dog's apparel?",
+      "it's fun to see some cute toys. i actually need a jacket for my dog to go hiking. can you find dog's apparel?",
       ['labubu doll clothes', 'blind box'],
       []
     );

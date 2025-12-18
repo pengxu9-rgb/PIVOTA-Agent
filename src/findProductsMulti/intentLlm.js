@@ -1,7 +1,11 @@
 const OpenAI = require('openai');
 const axios = require('axios');
 const intentSchema = require('../schemas/intent.v1.json');
-const { PivotaIntentV1Zod, extractIntentRuleBased } = require('./intent');
+const {
+  PivotaIntentV1Zod,
+  extractIntentRuleBased,
+  TOY_KEYWORDS_STRONG,
+} = require('./intent');
 
 function isEnabled() {
   return process.env.PIVOTA_INTENT_LLM_ENABLED === 'true';
@@ -48,6 +52,86 @@ function buildDeveloperPrompt() {
     '',
     'Return JSON only.',
   ].join('\n');
+}
+
+function includesAny(haystack, needles) {
+  if (!haystack) return false;
+  const lowered = String(haystack).toLowerCase();
+  return needles.some((k) => lowered.includes(String(k).toLowerCase()));
+}
+
+function hasPetSignal(text) {
+  const t = String(text || '');
+  const lower = t.toLowerCase();
+  if (/[\u4e00-\u9fff]/.test(t)) {
+    return ['狗', '狗狗', '小狗', '猫', '猫猫', '宠物', '狗衣服', '宠物衣服'].some((k) => t.includes(k));
+  }
+  return /\b(dog|dogs|puppy|cat|cats|pet|pets)\b/.test(lower);
+}
+
+function hasToyStrongSignal(text) {
+  return includesAny(text, TOY_KEYWORDS_STRONG);
+}
+
+function hasHikingSignal(text) {
+  const t = String(text || '');
+  const lower = t.toLowerCase();
+  if (/[\u4e00-\u9fff]/.test(t)) {
+    return ['登山', '徒步', '爬山', '露营', '山上'].some((k) => t.includes(k));
+  }
+  return /\b(hiking|trail|camping|mountain)\b/.test(lower);
+}
+
+function applyHardOverrides(latestQuery, intent) {
+  const q = String(latestQuery || '');
+  if (!intent || typeof intent !== 'object') return intent;
+
+  // Priority rule (enforced): latest query dominates target_object decisions.
+  // If user is clearly asking for pet apparel, do not let history or vague wording override it.
+  if (hasPetSignal(q) && !hasToyStrongSignal(q)) {
+    const scenarioName = hasHikingSignal(q) ? 'pet_hiking' : 'pet_apparel_general';
+    const patched = {
+      ...intent,
+      primary_domain: 'sports_outdoor',
+      target_object: { ...(intent.target_object || {}), type: 'pet', age_group: 'all' },
+      category: {
+        required: ['pet_apparel', 'dog_jacket', 'dog_sweater'].slice(0, 3),
+        optional: Array.isArray(intent.category?.optional) ? intent.category.optional : [],
+      },
+      scenario: {
+        name: scenarioName,
+        signals: Array.isArray(intent.scenario?.signals) ? intent.scenario.signals : [],
+      },
+      hard_constraints: {
+        ...(intent.hard_constraints || {}),
+        must_exclude_domains: Array.from(
+          new Set([...(intent.hard_constraints?.must_exclude_domains || []), 'toy_accessory'])
+        ),
+        must_exclude_keywords: Array.from(
+          new Set([
+            ...(intent.hard_constraints?.must_exclude_keywords || []),
+            'Labubu',
+            'doll',
+            'vinyl face doll',
+            '娃娃',
+            '公仔',
+            '娃衣',
+            '盲盒',
+          ])
+        ).slice(0, 16),
+      },
+      history_usage: {
+        ...(intent.history_usage || {}),
+        used: Boolean(intent.history_usage?.used),
+        reason: intent.history_usage?.used
+          ? intent.history_usage.reason
+          : 'Pet apparel intent detected from latest query; history not allowed to override target_object.',
+      },
+    };
+    return PivotaIntentV1Zod.parse(patched);
+  }
+
+  return intent;
 }
 
 async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], recent_messages = []) {
@@ -157,10 +241,12 @@ async function extractIntent(latest_user_query, recent_queries = [], recent_mess
     };
 
     try {
-      return await run(primary);
+      const intent = await run(primary);
+      return applyHardOverrides(latest_user_query, intent);
     } catch (primaryErr) {
       if (!fallback || fallback === primary) throw primaryErr;
-      return await run(fallback);
+      const intent = await run(fallback);
+      return applyHardOverrides(latest_user_query, intent);
     }
   } catch (err) {
     // Fail-safe: never block search; fall back to deterministic extraction.
