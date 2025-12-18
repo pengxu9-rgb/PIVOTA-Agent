@@ -903,7 +903,25 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   };
 }
 
-async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, limit = 20) {
+function buildPetSignalSql(startIndex) {
+  // Regex boundary for latin words; also include CJK pet keywords without boundaries.
+  // Use ~* for case-insensitive matching.
+  const latin = '(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|perro|perros|mascota|mascotas|gato|gatos|chien|chiens|chienne|chiot|chat|chats)';
+  const cjk = '(狗狗|狗|猫猫|猫|宠物|犬服|猫服|犬|ペット|わんちゃん)';
+  const re = `(\\\\m${latin}\\\\M|${cjk})`;
+
+  const fields = [
+    "coalesce(product_data->>'title','')",
+    "coalesce(product_data->>'description','')",
+    "coalesce(product_data->>'product_type','')",
+  ];
+
+  const idx = startIndex;
+  const ors = fields.map((f) => `${f} ~* $${idx}`).join(' OR ');
+  return { sql: `(${ors})`, params: [re], nextIndex: idx + 1 };
+}
+
+async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, limit = 20, options = {}) {
   const config = getCreatorConfig(creatorId);
   if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) {
     const err = new Error('Unknown creator');
@@ -927,6 +945,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const terms = tokenizeQueryForCache(q);
   const skuLike = looksSkuLikeQuery(q);
   const { toy_intent, outfit_intent, lingerie_intent } = detectToyOutfitIntentFromQuery(q);
+  const intentTarget = String(options?.intent?.target_object?.type || '').toLowerCase();
 
   const whereParts = [];
   const params = [config.merchantIds];
@@ -957,11 +976,16 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     idx += 1;
   }
 
-  // For toy outfit intent, avoid surfacing lingerie unless user explicitly asked for it.
+  // Intent-aware safety:
+  // - For pet/human searches, avoid surfacing lingerie unless explicitly asked for it.
+  // - For pet searches, additionally require a pet signal to prevent "featured" bleed-through.
   let underwearClause = null;
   let underwearParams = [];
   let afterUnderwearIdx = idx;
-  if ((toy_intent || outfit_intent) && !lingerie_intent) {
+  const shouldExcludeUnderwear =
+    !lingerie_intent && ((toy_intent || outfit_intent) || intentTarget === 'pet' || intentTarget === 'human');
+
+  if (shouldExcludeUnderwear) {
     const built = buildUnderwearExclusionSql(idx);
     underwearClause = built.sql;
     underwearParams = built.params;
@@ -969,7 +993,19 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   }
 
   const queryWhere = whereParts.length ? `(${whereParts.join(' OR ')})` : 'TRUE';
-  const finalWhere = [baseWhere, queryWhere, ...(underwearClause ? [underwearClause] : [])].join(' AND ');
+  let petClause = null;
+  let petParams = [];
+  let afterPetIdx = afterUnderwearIdx;
+  if (intentTarget === 'pet') {
+    const built = buildPetSignalSql(afterUnderwearIdx);
+    petClause = built.sql;
+    petParams = built.params;
+    afterPetIdx = built.nextIndex;
+  }
+
+  const finalWhere = [baseWhere, queryWhere, ...(underwearClause ? [underwearClause] : []), ...(petClause ? [petClause] : [])].join(
+    ' AND '
+  );
 
   const pageFetch = Math.min(Math.max(safeLimit * 3, 60), 300);
   const pageOffset = Math.max(0, offset);
@@ -985,14 +1021,24 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     FROM products_cache
     WHERE ${finalWhere}
     ORDER BY cached_at DESC
-    OFFSET $${afterUnderwearIdx}
-    LIMIT $${afterUnderwearIdx + 1}
+    OFFSET $${afterPetIdx}
+    LIMIT $${afterPetIdx + 1}
   `;
 
-  const countParams = underwearClause ? [...params, ...underwearParams] : params;
+  const countParams = underwearClause
+    ? petClause
+      ? [...params, ...underwearParams, ...petParams]
+      : [...params, ...underwearParams]
+    : petClause
+      ? [...params, ...petParams]
+      : params;
   const rowsParams = underwearClause
-    ? [...params, ...underwearParams, pageOffset, pageFetch]
-    : [...params, pageOffset, pageFetch];
+    ? petClause
+      ? [...params, ...underwearParams, ...petParams, pageOffset, pageFetch]
+      : [...params, ...underwearParams, pageOffset, pageFetch]
+    : petClause
+      ? [...params, ...petParams, pageOffset, pageFetch]
+      : [...params, pageOffset, pageFetch];
 
   const [countRes, rowsRes] = await Promise.all([
     query(countSql, countParams),
@@ -1737,7 +1783,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         try {
           const page = search.page || 1;
           const limit = search.limit || 20;
-          const fromCache = await searchCreatorSellableFromCache(creatorId, queryText, page, limit);
+          const fromCache = await searchCreatorSellableFromCache(creatorId, queryText, page, limit, {
+            intent: effectiveIntent,
+          });
 
           if (fromCache.products && fromCache.products.length > 0) {
             const upstreamData = {

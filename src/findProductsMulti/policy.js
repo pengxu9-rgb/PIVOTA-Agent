@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v10';
+const POLICY_VERSION = 'find_products_multi_policy_v11';
 
 const LINGERIE_KEYWORDS = [
   // EN (core underwear terms; avoid broad terms like "lace")
