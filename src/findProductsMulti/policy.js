@@ -1,0 +1,304 @@
+const { extractIntent } = require('./intentLlm');
+const { injectPivotaAttributes, buildProductText } = require('./productTagger');
+
+const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
+
+function clamp01(n) {
+  if (Number.isNaN(n) || n == null) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function normalizeStringArray(arr, maxItems, maxLen) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const item of arr) {
+    if (typeof item !== 'string') continue;
+    const s = item.trim();
+    if (!s) continue;
+    out.push(s.length > maxLen ? s.slice(0, maxLen) : s);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function shouldDropHistoryByIntent(intent) {
+  // Default: only use history when explicitly requested by user (intent.history_usage.used=true)
+  return !intent?.history_usage?.used;
+}
+
+function pruneRecentQueries(latestQuery, recentQueries, intent) {
+  const trimmed = normalizeStringArray(recentQueries, 5, 80);
+  if (!trimmed.length) return [];
+  if (!intent) return trimmed;
+
+  if (!shouldDropHistoryByIntent(intent)) return trimmed;
+
+  // If we are dropping history, do not forward it upstream to avoid cross-domain bias.
+  return [];
+}
+
+function getResponseProductList(response) {
+  if (!response || typeof response !== 'object') return { key: null, list: [] };
+  if (Array.isArray(response.products)) return { key: 'products', list: response.products };
+  if (Array.isArray(response.items)) return { key: 'items', list: response.items };
+  if (response.data && Array.isArray(response.data.products)) return { key: 'data.products', list: response.data.products };
+  if (response.output && Array.isArray(response.output.products)) return { key: 'output.products', list: response.output.products };
+  return { key: null, list: [] };
+}
+
+function setResponseProductList(response, key, list) {
+  if (!response || typeof response !== 'object' || !key) return response;
+  if (key === 'products') return { ...response, products: list };
+  if (key === 'items') return { ...response, items: list };
+  if (key === 'data.products') return { ...response, data: { ...(response.data || {}), products: list } };
+  if (key === 'output.products') return { ...response, output: { ...(response.output || {}), products: list } };
+  return response;
+}
+
+function productHasCategorySignal(product, requiredCategories) {
+  if (!requiredCategories || !requiredCategories.length) return true;
+  const text = buildProductText(product);
+  const needles = requiredCategories.map((c) => String(c || '').toLowerCase());
+  return needles.some((c) => text.includes(c));
+}
+
+function satisfiesHardConstraints(product, intent) {
+  if (!product || !intent) return true;
+
+  const pivota = product?.attributes?.pivota;
+  const target = intent?.target_object?.type;
+
+  if (intent.primary_domain === 'human_apparel' || target === 'human') {
+    const domain = pivota?.domain?.value;
+    const targetObject = pivota?.target_object?.value;
+    if (domain && domain !== 'human_apparel') return false;
+    if (targetObject && targetObject !== 'human') return false;
+
+    const excludeKeywords = intent?.hard_constraints?.must_exclude_keywords || [];
+    const text = buildProductText(product);
+    for (const kw of excludeKeywords) {
+      if (!kw) continue;
+      if (text.includes(String(kw).toLowerCase())) return false;
+    }
+  }
+
+  // Category check (MVP): text-based
+  const requiredCats = intent?.category?.required || [];
+  if (requiredCats.length) {
+    // We treat "outerwear"/"coat"/"down_jacket" as category signals; allow partial match via text
+    if (!productHasCategorySignal(product, requiredCats)) return false;
+  }
+
+  // in_stock_only
+  const inStockOnly = intent?.hard_constraints?.in_stock_only;
+  if (inStockOnly === true) {
+    const qty = Number(product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0);
+    if (!Number.isFinite(qty) || qty <= 0) return false;
+  }
+
+  return true;
+}
+
+function filterProductsByIntent(products, intent) {
+  if (!Array.isArray(products) || !intent) return { filtered: products || [], reason_codes: [] };
+  const before = products.length;
+
+  // Inject pivota tags for all candidates first (for observability and filtering)
+  const tagged = products.map(injectPivotaAttributes);
+
+  // Only do strict filtering when we have a clear human apparel intent; otherwise keep candidates.
+  const strictHuman =
+    intent.primary_domain === 'human_apparel' || intent?.target_object?.type === 'human';
+
+  if (!strictHuman) {
+    return { filtered: tagged, reason_codes: [] };
+  }
+
+  const filtered = tagged.filter((p) => satisfiesHardConstraints(p, intent));
+  const reason_codes = [];
+  if (before > 0 && filtered.length === 0) {
+    reason_codes.push('NO_DOMAIN_MATCH', 'FILTERED_TO_EMPTY');
+  }
+  return { filtered, reason_codes };
+}
+
+function computeMatchStats(sortedProducts, intent) {
+  const window = Array.isArray(sortedProducts) ? sortedProducts.slice(0, 20) : [];
+  const M = window.length;
+  let hardMatchCount = 0;
+  let inStockHardMatchCount = 0;
+  let distractorCount = 0;
+
+  for (const p of window) {
+    const hard = satisfiesHardConstraints(p, intent);
+    if (hard) {
+      hardMatchCount += 1;
+      const qty = Number(p.inventory_quantity ?? p.inventoryQuantity ?? p.quantity ?? 0);
+      if (Number.isFinite(qty) && qty > 0) inStockHardMatchCount += 1;
+    } else {
+      distractorCount += 1;
+    }
+  }
+
+  const distractorRatio = M > 0 ? distractorCount / M : 1;
+  const domainPurity = 1 - distractorRatio;
+  const hardCoverage = clamp01(hardMatchCount / 3);
+  const availability = clamp01(inStockHardMatchCount / 3);
+  const matchConfidence = clamp01(0.4 * domainPurity + 0.4 * hardCoverage + 0.2 * availability);
+
+  let matchTier = 'none';
+  if (M === 0) {
+    matchTier = 'none';
+  } else if (hardMatchCount === 0 || distractorRatio > 0.5) {
+    matchTier = 'none';
+  } else if (hardMatchCount >= 1 && hardMatchCount <= 2) {
+    matchTier = 'weak';
+  } else if (hardMatchCount >= 6 && distractorRatio <= 0.1) {
+    matchTier = 'great';
+  } else if (hardMatchCount >= 3 && distractorRatio <= 0.15) {
+    matchTier = 'good';
+  } else {
+    matchTier = 'weak';
+  }
+
+  const hasGoodMatch = hardMatchCount >= 3 && distractorRatio <= 0.15;
+
+  return {
+    hard_match_count_top20: hardMatchCount,
+    in_stock_hard_match_count_top20: inStockHardMatchCount,
+    distractor_ratio_top20: distractorRatio,
+    match_confidence: matchConfidence,
+    has_good_match: hasGoodMatch,
+    match_tier: matchTier,
+  };
+}
+
+function buildFiltersApplied(intent) {
+  const requiredDomains = [];
+  const excludedDomains = [];
+  const excludedKeywords = normalizeStringArray(intent?.hard_constraints?.must_exclude_keywords, 16, 32);
+
+  if (intent?.primary_domain === 'human_apparel' || intent?.target_object?.type === 'human') {
+    requiredDomains.push('human_apparel');
+    excludedDomains.push('toy_accessory');
+  }
+
+  const requiredCategoryPaths = [];
+  const requiredCats = normalizeStringArray(intent?.category?.required, 5, 64);
+  if (requiredCats.length) {
+    // Represent as paths to match UI expectations; MVP is coarse.
+    requiredCategoryPaths.push(['human_apparel', ...requiredCats.slice(0, 2)]);
+  }
+
+  return {
+    required_domains: requiredDomains,
+    required_target_object: intent?.target_object?.type || 'unknown',
+    required_category_paths: requiredCategoryPaths,
+    excluded_domains: excludedDomains,
+    excluded_keywords: excludedKeywords,
+  };
+}
+
+function buildReply(intent, matchTier, reasonCodes) {
+  const lang = intent?.language || 'en';
+  const isZh = lang === 'zh';
+  const isNone = matchTier === 'none';
+
+  if (isZh) {
+    if (isNone) {
+      return '我没找到适合这次山上保暖的成人外套/大衣（当前货盘里可能缺少相关品类）。你可以试试改搜：羽绒服 / 冲锋衣 / 抓绒 / 保暖外套，或告诉我最低温度和预算，我再帮你缩小范围。';
+    }
+    if (matchTier === 'weak') {
+      return '我只找到了少量勉强相关的结果（匹配度不高），所以先不强行推荐。你可以补充：最低温度、预算、是否需要防风/防水，以及更偏好羽绒服还是冲锋衣。';
+    }
+    return '我找到了几件更符合你需求的选择。';
+  }
+
+  if (isNone) {
+    return "I couldn’t find solid matches for adult cold-weather outerwear in the current inventory, so I won’t recommend unrelated items. Try searching for: down jacket, hiking shell, parka, or share your lowest temperature and budget.";
+  }
+  if (matchTier === 'weak') {
+    return "I only found a few weak matches, so I won’t force unrelated recommendations. Share your budget, the lowest temperature, and whether you need windproof/waterproof.";
+  }
+  return 'Here are some more suitable picks based on your request.';
+}
+
+async function buildFindProductsMultiContext({ payload, metadata }) {
+  const search = payload?.search || {};
+  const latestUserQuery = String(search.query || '').trim();
+  const recentQueries = payload?.user?.recent_queries || [];
+  const recentMessages = payload?.messages || [];
+
+  const intent = await extractIntent(latestUserQuery, recentQueries, recentMessages);
+  const pruned = pruneRecentQueries(latestUserQuery, recentQueries, intent);
+
+  const adjustedPayload = {
+    ...(payload || {}),
+    user: {
+      ...(payload?.user || {}),
+      ...(pruned ? { recent_queries: pruned } : {}),
+    },
+  };
+
+  return { intent, adjustedPayload };
+}
+
+function applyFindProductsMultiPolicy({ response, intent, requestPayload }) {
+  const { key, list } = getResponseProductList(response);
+  const before = Array.isArray(list) ? list.length : 0;
+
+  const { filtered, reason_codes: filterReasonCodes } = filterProductsByIntent(list, intent);
+  const after = filtered.length;
+
+  // By default, keep ordering. LLM rerank (optional) can be added later.
+  const stats = computeMatchStats(filtered, intent);
+
+  const reasonCodes = new Set([...(filterReasonCodes || [])]);
+  if (!stats.has_good_match) {
+    if (stats.match_tier === 'none' && after === 0) {
+      reasonCodes.add('FILTERED_TO_EMPTY');
+    } else if (stats.match_tier === 'weak') {
+      reasonCodes.add('WEAK_RELEVANCE');
+    }
+  }
+
+  const augmented = setResponseProductList(response, key, filtered);
+  const filtersApplied = buildFiltersApplied(intent);
+
+  const shouldOverrideReply =
+    !augmented.reply ||
+    typeof augmented.reply !== 'string' ||
+    augmented.reply.trim().length === 0 ||
+    !stats.has_good_match;
+
+  const reply = shouldOverrideReply
+    ? buildReply(intent, stats.match_tier, Array.from(reasonCodes))
+    : augmented.reply;
+
+  const debugStats = DEBUG_STATS_ENABLED
+    ? {
+        candidate_count_before_filter: before,
+        candidate_count_after_filter: after,
+        hard_match_count_top20: stats.hard_match_count_top20,
+        distractor_ratio_top20: stats.distractor_ratio_top20,
+      }
+    : undefined;
+
+  return {
+    ...augmented,
+    reply,
+    intent,
+    filters_applied: filtersApplied,
+    match_confidence: stats.match_confidence,
+    has_good_match: stats.has_good_match,
+    match_tier: stats.match_tier,
+    reason_codes: Array.from(reasonCodes),
+    ...(debugStats ? { debug_stats: debugStats } : {}),
+  };
+}
+
+module.exports = {
+  buildFindProductsMultiContext,
+  applyFindProductsMultiPolicy,
+  pruneRecentQueries,
+};

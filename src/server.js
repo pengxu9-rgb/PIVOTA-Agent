@@ -25,6 +25,10 @@ const {
   getCreatorCategoryProducts,
 } = require('./services/categories');
 const { recommendHandler } = require('./recommend/index');
+const {
+  buildFindProductsMultiContext,
+  applyFindProductsMultiPolicy,
+} = require('./findProductsMulti/policy');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -1431,6 +1435,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   const metadata = normalizeMetadata(req.body.metadata, payload);
   const creatorId = extractCreatorId({ ...payload, metadata });
   const now = new Date();
+  const findProductsMultiCtx =
+    operation === 'find_products_multi'
+      ? await buildFindProductsMultiContext({ payload, metadata })
+      : null;
+  const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
+  const effectiveIntent = findProductsMultiCtx?.intent || null;
 
   // Redundant allowlist check for semantics clarity.
   if (!OperationEnum.options.includes(operation)) {
@@ -1466,7 +1476,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       
       switch (operation) {
         case 'find_products': {
-          const search = payload.search || {};
+          const search = effectivePayload.search || {};
           const products = searchProducts(
             search.merchant_id || DEFAULT_MERCHANT_ID,
             search.query,
@@ -1514,7 +1524,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
 
         case 'find_products_multi': {
-          const search = payload.search || {};
+          const search = effectivePayload.search || {};
           const products = searchProducts(
             search.merchant_id || 'merch_208139f7600dbf42',
             search.query,
@@ -1606,8 +1616,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           });
       }
       
+      let maybePolicy = mockResponse;
+      if (operation === 'find_products_multi' && effectiveIntent) {
+        maybePolicy = applyFindProductsMultiPolicy({
+          response: mockResponse,
+          intent: effectiveIntent,
+          requestPayload: effectivePayload,
+        });
+      }
+
       const promotions = await getActivePromotions(now, creatorId);
-      const enriched = applyDealsToResponse(mockResponse, promotions, now, creatorId);
+      const enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
       return res.json(enriched);
     } catch (err) {
       logger.error({ err: err.message }, 'Mock handler error');
@@ -1630,7 +1649,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     // from products_cache (same source as creator categories / merchant portal).
     if (operation === 'find_products_multi') {
       const source = metadata?.source;
-      const search = payload.search || {};
+      const search = effectivePayload.search || {};
       const queryText = String(search.query || '').trim();
       const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
 
@@ -1656,8 +1675,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             },
           };
 
+          const withPolicy = effectiveIntent
+            ? applyFindProductsMultiPolicy({
+                response: upstreamData,
+                intent: effectiveIntent,
+                requestPayload: effectivePayload,
+              })
+            : upstreamData;
+
           const promotions = await getActivePromotions(now, creatorId);
-          const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
           return res.json(enriched);
         } catch (err) {
           logger.warn(
@@ -1691,8 +1718,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               },
             };
 
+            const withPolicy = effectiveIntent
+              ? applyFindProductsMultiPolicy({
+                  response: upstreamData,
+                  intent: effectiveIntent,
+                  requestPayload: effectivePayload,
+                })
+              : upstreamData;
+
             const promotions = await getActivePromotions(now, creatorId);
-            const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+            const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
             return res.json(enriched);
           }
         } catch (err) {
@@ -1713,7 +1748,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     switch (operation) {
       case 'find_products': {
         // Convert body params to query params
-        const search = payload.search || {};
+        const search = effectivePayload.search || {};
         queryParams = {
           ...(search.merchant_id && { merchant_id: search.merchant_id }),
           ...(search.query && { query: search.query }),
@@ -1731,7 +1766,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         // Pass through to backend shopping gateway which understands this operation
         requestBody = {
           operation,
-          payload,
+          payload: effectivePayload,
           metadata,
         };
         break;
@@ -2024,7 +2059,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       return res.status(response.status).json(wrapped);
     }
 
-    const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+    let maybePolicy = upstreamData;
+    if (operation === 'find_products_multi' && effectiveIntent) {
+      maybePolicy = applyFindProductsMultiPolicy({
+        response: upstreamData,
+        intent: effectiveIntent,
+        requestPayload: effectivePayload,
+      });
+    }
+
+    const enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
     return res.status(response.status).json(enriched);
 
   } catch (err) {

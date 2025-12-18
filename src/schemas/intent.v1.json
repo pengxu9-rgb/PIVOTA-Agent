@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pivota/schemas/intent.v1.json",
+  "title": "PivotaIntentV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "intent_version",
+    "language",
+    "primary_domain",
+    "target_object",
+    "category",
+    "scenario",
+    "hard_constraints",
+    "soft_preferences",
+    "confidence",
+    "ambiguity",
+    "history_usage"
+  ],
+  "properties": {
+    "intent_version": { "type": "string", "const": "1.0" },
+    "language": {
+      "type": "string",
+      "enum": ["zh", "en", "ja", "ko", "es", "fr", "de", "other"]
+    },
+    "primary_domain": {
+      "type": "string",
+      "enum": [
+        "human_apparel",
+        "toy_accessory",
+        "home",
+        "electronics",
+        "beauty",
+        "sports_outdoor",
+        "other"
+      ]
+    },
+    "secondary_domains": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "string",
+        "enum": [
+          "human_apparel",
+          "toy_accessory",
+          "home",
+          "electronics",
+          "beauty",
+          "sports_outdoor",
+          "other"
+        ]
+      }
+    },
+    "target_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "age_group"],
+      "properties": {
+        "type": { "type": "string", "enum": ["human", "toy", "pet", "unknown"] },
+        "age_group": {
+          "type": "string",
+          "enum": ["adult", "teen", "kid", "baby", "all", "unknown"]
+        },
+        "notes": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "optional"],
+      "properties": {
+        "required": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "type": "string", "maxLength": 64 }
+        },
+        "optional": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 64 }
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "signals"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 64 },
+        "signals": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 48 }
+        }
+      }
+    },
+    "hard_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temperature_c": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": ["number", "null"] },
+            "max": { "type": ["number", "null"] }
+          }
+        },
+        "must_include_keywords": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 32 }
+        },
+        "must_exclude_domains": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 32 }
+        },
+        "must_exclude_keywords": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "maxLength": 32 }
+        },
+        "in_stock_only": { "type": ["boolean", "null"] },
+        "price": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "currency": { "type": ["string", "null"], "maxLength": 8 },
+            "min": { "type": ["number", "null"] },
+            "max": { "type": ["number", "null"] }
+          }
+        }
+      }
+    },
+    "soft_preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "style": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "type": "string", "maxLength": 32 }
+        },
+        "colors": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "type": "string", "maxLength": 24 }
+        },
+        "brands": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "type": "string", "maxLength": 32 }
+        },
+        "materials": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "type": "string", "maxLength": 24 }
+        }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall", "domain", "target_object", "category"],
+      "properties": {
+        "overall": { "type": "number", "minimum": 0, "maximum": 1 },
+        "domain": { "type": "number", "minimum": 0, "maximum": 1 },
+        "target_object": { "type": "number", "minimum": 0, "maximum": 1 },
+        "category": { "type": "number", "minimum": 0, "maximum": 1 },
+        "notes": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "ambiguity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["needs_clarification", "missing_slots"],
+      "properties": {
+        "needs_clarification": { "type": "boolean" },
+        "missing_slots": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "type": "string", "maxLength": 48 }
+        },
+        "clarifying_questions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": { "type": "string", "maxLength": 120 }
+        }
+      }
+    },
+    "history_usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["used", "reason"],
+      "properties": {
+        "used": { "type": "boolean" },
+        "reason": { "type": "string", "maxLength": 200 },
+        "used_queries": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "type": "string", "maxLength": 80 }
+        },
+        "ignored_queries": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "type": "string", "maxLength": 80 }
+        }
+      }
+    }
+  }
+}
+
