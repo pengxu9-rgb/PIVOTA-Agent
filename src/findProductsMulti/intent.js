@@ -148,6 +148,21 @@ const OUTERWEAR_KEYWORDS_EN = [
 const COLD_SCENARIO_SIGNALS_ZH = ['山上', '登山', '徒步', '爬山', '露营', '很冷', '降温', '低温', '下雪'];
 const COLD_SCENARIO_SIGNALS_EN = ['mountain', 'hiking', 'camping', 'cold', 'snow', 'freezing', 'winter'];
 
+const GREETING_SIGNALS_ZH = ['你好', '嗨', '哈喽', '在吗', 'hello', 'hi', 'hey'];
+const GREETING_SIGNALS_EN = ['hi', 'hello', 'hey', 'yo', 'sup', 'how are you', "what's up"];
+const CHITCHAT_SIGNALS_ZH = ['聊聊', '随便聊', '唠嗑', '无聊', '陪我聊', '想聊天'];
+const CHITCHAT_SIGNALS_EN = ['just chat', 'chat', 'talk', 'bored', 'kill time'];
+
+const BROWSE_SIGNALS_ZH = ['随便看看', '逛逛', '看看有什么', '推荐点', '推荐一些', '热门', '有什么好物'];
+const BROWSE_SIGNALS_EN = [
+  'recommend something',
+  'show me popular',
+  'popular items',
+  'browse',
+  'show me something',
+  'surprise me',
+];
+
 function includesAny(haystack, needles) {
   if (!haystack) return false;
   const lowered = haystack.toLowerCase();
@@ -169,13 +184,15 @@ function wantsUseHistory(latestUserQuery) {
 function buildNoResultClarifiers(language) {
   if (language === 'zh') {
     return [
-      '你的预算大概是多少？',
+      '是给自己/送礼，还是给 Labubu/娃娃/公仔配件？',
+      '你要的主要场景是什么（通勤/约会/登山/室内）？',
       '你更偏好“羽绒服 / 冲锋衣 / 大衣”哪一类？',
-      '需要防风防水吗？大概最低温度是多少？',
+      '需要防风/防水吗？大概最低温度是多少？',
     ];
   }
   return [
-    'What’s your budget range?',
+    'Is this for you, a gift, or for a doll/toy like Labubu?',
+    'What’s the main scenario (commute, date, hiking, indoor)?',
     'Do you prefer a down jacket, a shell, or a coat?',
     'Do you need it windproof/waterproof, and what’s the lowest temperature?',
   ];
@@ -184,6 +201,17 @@ function buildNoResultClarifiers(language) {
 function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_messages = []) {
   const latest = String(latest_user_query || '').trim();
   const language = detectLanguage(latest);
+
+  const isGreeting =
+    includesAny(latest, GREETING_SIGNALS_ZH) || includesAny(latest, GREETING_SIGNALS_EN);
+  const isChitchat =
+    includesAny(latest, CHITCHAT_SIGNALS_ZH) || includesAny(latest, CHITCHAT_SIGNALS_EN);
+  const isBrowse =
+    latest.length === 0 ||
+    includesAny(latest, BROWSE_SIGNALS_ZH) ||
+    includesAny(latest, BROWSE_SIGNALS_EN) ||
+    // common generic intents from UI
+    includesAny(latest, ['推荐一些好物', '热门商品', 'show me popular items', 'recommend some products']);
 
   const hasToySignal =
     includesAny(latest, TOY_KEYWORDS) ||
@@ -201,7 +229,21 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
   let scenarioName = 'general';
   let scenarioSignals = [];
 
-  if (hasOuterwearSignal || hasColdScenario) {
+  if ((isGreeting || isChitchat) && !hasOuterwearSignal && !hasColdScenario && !includesAny(latest, TOY_KEYWORDS)) {
+    // Discovery / chitchat mode: user has not expressed a shopping goal yet.
+    primary_domain = 'other';
+    targetType = 'unknown';
+    categoryRequired = [];
+    scenarioName = 'discovery';
+    scenarioSignals = [];
+  } else if (isBrowse && !hasOuterwearSignal && !hasColdScenario && !includesAny(latest, TOY_KEYWORDS)) {
+    // Generic browse: user wants to see what's available, without a clear category.
+    primary_domain = 'other';
+    targetType = 'unknown';
+    categoryRequired = [];
+    scenarioName = 'browse';
+    scenarioSignals = [];
+  } else if (hasOuterwearSignal || hasColdScenario) {
     primary_domain = 'human_apparel';
     targetType = 'human';
     categoryRequired = ['outerwear', 'coat', 'down_jacket'].slice(0, 3);
@@ -232,13 +274,25 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
       : [];
   const mustExcludeDomains = targetType === 'human' ? ['toy_accessory'] : [];
 
-  const needsClarification = targetType === 'unknown' || primary_domain === 'other';
+  const needsClarification =
+    scenarioName === 'discovery' ||
+    (scenarioName === 'browse' && latest.length > 0) ||
+    targetType === 'unknown' ||
+    primary_domain === 'other';
   const missingSlots = [];
-  if (primary_domain === 'human_apparel' && categoryRequired.length === 0) missingSlots.push('category');
-  if (primary_domain === 'human_apparel' && !hasColdScenario) missingSlots.push('scenario_temperature');
+  if (scenarioName === 'discovery') {
+    missingSlots.push('shopping_goal', 'target_object');
+  } else if (scenarioName === 'browse') {
+    missingSlots.push('category', 'scenario');
+  } else {
+    if (primary_domain === 'human_apparel' && categoryRequired.length === 0) missingSlots.push('category');
+    if (primary_domain === 'human_apparel' && !hasColdScenario) missingSlots.push('scenario_temperature');
+  }
 
   const confidenceDomain =
-    primary_domain === 'human_apparel'
+    scenarioName === 'discovery'
+      ? 0.3
+      : primary_domain === 'human_apparel'
       ? hasOuterwearSignal || hasColdScenario
         ? 0.9
         : 0.6
@@ -247,8 +301,8 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           ? 0.9
           : 0.6
         : 0.5;
-  const confidenceTarget = targetType === 'unknown' ? 0.4 : 0.9;
-  const confidenceCategory = categoryRequired.length ? 0.8 : 0.4;
+  const confidenceTarget = scenarioName === 'discovery' ? 0.3 : targetType === 'unknown' ? 0.4 : 0.9;
+  const confidenceCategory = scenarioName === 'discovery' ? 0.3 : categoryRequired.length ? 0.8 : 0.4;
   const overall = Math.max(0, Math.min(1, (confidenceDomain + confidenceTarget + confidenceCategory) / 3));
 
   const intent = {
@@ -314,4 +368,3 @@ module.exports = {
   TOY_KEYWORDS,
   INTENT_VERSION,
 };
-

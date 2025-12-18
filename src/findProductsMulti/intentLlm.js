@@ -1,4 +1,5 @@
 const OpenAI = require('openai');
+const axios = require('axios');
 const intentSchema = require('../schemas/intent.v1.json');
 const { PivotaIntentV1Zod, extractIntentRuleBased } = require('./intent');
 
@@ -6,11 +7,10 @@ function isEnabled() {
   return process.env.PIVOTA_INTENT_LLM_ENABLED === 'true';
 }
 
-function getClient() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is not set');
-  }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not set');
+  const baseURL = process.env.OPENAI_BASE_URL || undefined;
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(baseURL ? { baseURL } : {}) });
 }
 
 function buildSystemPrompt() {
@@ -50,9 +50,9 @@ function buildDeveloperPrompt() {
   ].join('\n');
 }
 
-async function extractIntentWithLLM(latest_user_query, recent_queries = [], recent_messages = []) {
+async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], recent_messages = []) {
   const model = process.env.PIVOTA_INTENT_MODEL || 'gpt-5.1-mini';
-  const openai = getClient();
+  const openai = getOpenAIClient();
 
   const messages = [
     { role: 'system', content: buildSystemPrompt() },
@@ -90,12 +90,78 @@ async function extractIntentWithLLM(latest_user_query, recent_queries = [], rece
   return PivotaIntentV1Zod.parse(parsed);
 }
 
+async function extractIntentWithGemini(latest_user_query, recent_queries = [], recent_messages = []) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not set');
+  }
+
+  const model = process.env.PIVOTA_INTENT_MODEL_GEMINI || process.env.PIVOTA_INTENT_MODEL || 'gemini-1.5-flash';
+  const baseURL =
+    (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
+
+  const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
+    process.env.GEMINI_API_KEY
+  )}`;
+
+  const systemText = `${buildSystemPrompt()}\n\n${buildDeveloperPrompt()}`;
+  const userText = JSON.stringify(
+    {
+      latest_user_query: String(latest_user_query || ''),
+      recent_queries: Array.isArray(recent_queries) ? recent_queries : [],
+      recent_messages: Array.isArray(recent_messages) ? recent_messages : [],
+      schema: intentSchema,
+    },
+    null,
+    2
+  );
+
+  const body = {
+    systemInstruction: { parts: [{ text: systemText }] },
+    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: 'application/json',
+    },
+  };
+
+  const res = await axios.post(url, body, { timeout: 12000 });
+  const text =
+    res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('\n') || '';
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`Gemini intent did not return valid JSON: ${String(err)}`);
+  }
+
+  return PivotaIntentV1Zod.parse(parsed);
+}
+
 async function extractIntent(latest_user_query, recent_queries = [], recent_messages = []) {
   if (!isEnabled()) {
     return extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
   }
   try {
-    return await extractIntentWithLLM(latest_user_query, recent_queries, recent_messages);
+    const primary = (process.env.PIVOTA_INTENT_LLM_PROVIDER || 'openai').toLowerCase();
+    const fallback = (process.env.PIVOTA_INTENT_LLM_FALLBACK_PROVIDER || 'gemini').toLowerCase();
+
+    const run = async (provider) => {
+      if (provider === 'openai') {
+        return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages);
+      }
+      if (provider === 'gemini') {
+        return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages);
+      }
+      throw new Error(`Unsupported intent provider: ${provider}`);
+    };
+
+    try {
+      return await run(primary);
+    } catch (primaryErr) {
+      if (!fallback || fallback === primary) throw primaryErr;
+      return await run(fallback);
+    }
   } catch (err) {
     // Fail-safe: never block search; fall back to deterministic extraction.
     return extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
@@ -103,7 +169,7 @@ async function extractIntent(latest_user_query, recent_queries = [], recent_mess
 }
 
 module.exports = {
-  extractIntentWithLLM,
+  extractIntentWithOpenAI,
+  extractIntentWithGemini,
   extractIntent,
 };
-

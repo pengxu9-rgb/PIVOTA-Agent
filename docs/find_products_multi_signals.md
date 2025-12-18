@@ -31,6 +31,25 @@ The gateway may generate intent via:
 - Rule-based extraction (default)
 - LLM extraction (optional; enable with `PIVOTA_INTENT_LLM_ENABLED=true`)
 
+### LLM Provider Configuration (OpenAI primary, Gemini fallback)
+
+The intent extractor supports a primary + fallback provider:
+
+- `PIVOTA_INTENT_LLM_PROVIDER` (default: `openai`)
+- `PIVOTA_INTENT_LLM_FALLBACK_PROVIDER` (default: `gemini`)
+
+OpenAI:
+
+- `OPENAI_API_KEY` (required if provider is `openai`)
+- `OPENAI_BASE_URL` (optional; OpenAI-compatible endpoint)
+- `PIVOTA_INTENT_MODEL` (default: `gpt-5.1-mini`)
+
+Gemini:
+
+- `GEMINI_API_KEY` (required if provider is `gemini`)
+- `GEMINI_BASE_URL` (optional; default: `https://generativelanguage.googleapis.com`)
+- `PIVOTA_INTENT_MODEL_GEMINI` (default: `gemini-1.5-flash`)
+
 ## `attributes.pivota` Product Tags
 
 When returning product results, the gateway injects (or preserves) the following structure:
@@ -117,3 +136,12 @@ Fields:
 - `hard_match_count_top20`
 - `distractor_ratio_top20`
 
+## Discovery / Chitchat Routing
+
+When intent indicates `scenario.name = "discovery"` (user hasn't expressed a shopping goal yet),
+the gateway short-circuits catalog search and returns:
+
+- `products: []`
+- `has_good_match=false`, `match_tier=none`
+- `reason_codes` includes `NEEDS_CLARIFICATION` and `CHITCHAT_ROUTED`
+- `reply` contains a guided question to steer the user into a concrete shopping or browsing intent

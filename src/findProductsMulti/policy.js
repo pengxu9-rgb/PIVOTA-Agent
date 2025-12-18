@@ -199,10 +199,56 @@ function buildFiltersApplied(intent) {
   };
 }
 
-function buildReply(intent, matchTier, reasonCodes) {
+function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   const lang = intent?.language || 'en';
   const isZh = lang === 'zh';
   const isNone = matchTier === 'none';
+  const scenario = intent?.scenario?.name || 'general';
+  const creatorName = creatorContext?.creatorName || creatorContext?.creatorId || null;
+
+  if (scenario === 'discovery') {
+    if (isZh) {
+      const who = creatorName ? `我是「${creatorName}」` : '我在这';
+      return [
+        `嗨～${who}。想先随便逛逛，还是你其实有一个“想买/想找”的目标？`,
+        '给我一个方向就行（选 1 个）：',
+        '1）给自己穿（外套/鞋/通勤/约会）',
+        '2）送礼（告诉我对象 + 预算）',
+        '3）给 Labubu/娃娃/公仔（衣服/配饰）',
+        '4）我也不确定，就想随便看看',
+      ].join('\n');
+    }
+    const who = creatorName ? `I’m ${creatorName}` : "I’m here";
+    return [
+      `Hey—${who}. Want to browse casually, or are you looking for something specific?`,
+      'Pick one to start:',
+      '1) For me (outerwear / shoes / commute / date)',
+      '2) A gift (tell me who + budget)',
+      '3) For a doll/toy like Labubu (outfits / accessories)',
+      "4) Not sure—surprise me with what's available",
+    ].join('\n');
+  }
+
+  if (scenario === 'browse') {
+    if (isZh) {
+      const who = creatorName ? `（${creatorName}）` : '';
+      return [
+        `我先给你上${who}的“随便逛逛”精选～你更想往哪边收？`,
+        '1）保暖外套/出门穿搭',
+        '2）送礼',
+        '3）玩具/公仔相关',
+        '4）就先看看热门',
+      ].join('\n');
+    }
+    const who = creatorName ? ` (${creatorName})` : '';
+    return [
+      `Here are some featured picks${who} to browse. Which direction should I lean into?`,
+      '1) Outerwear / outfits',
+      '2) Gifts',
+      '3) Toys / collectibles',
+      '4) Just show popular items',
+    ].join('\n');
+  }
 
   if (isZh) {
     if (isNone) {
@@ -243,7 +289,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   return { intent, adjustedPayload };
 }
 
-function applyFindProductsMultiPolicy({ response, intent, requestPayload }) {
+function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata }) {
   const { key, list } = getResponseProductList(response);
   const before = Array.isArray(list) ? list.length : 0;
 
@@ -254,6 +300,12 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload }) {
   const stats = computeMatchStats(filtered, intent);
 
   const reasonCodes = new Set([...(filterReasonCodes || [])]);
+  if (intent?.ambiguity?.needs_clarification) {
+    reasonCodes.add('NEEDS_CLARIFICATION');
+    const scen = intent?.scenario?.name || '';
+    if (scen === 'discovery') reasonCodes.add('CHITCHAT_ROUTED');
+    if (scen === 'browse') reasonCodes.add('BROWSE_ROUTED');
+  }
   if (!stats.has_good_match) {
     if (stats.match_tier === 'none' && after === 0) {
       reasonCodes.add('FILTERED_TO_EMPTY');
@@ -272,7 +324,10 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload }) {
     !stats.has_good_match;
 
   const reply = shouldOverrideReply
-    ? buildReply(intent, stats.match_tier, Array.from(reasonCodes))
+    ? buildReply(intent, stats.match_tier, Array.from(reasonCodes), {
+        creatorName: metadata?.creator_name || metadata?.creatorName || null,
+        creatorId: metadata?.creator_id || metadata?.creatorId || null,
+      })
     : augmented.reply;
 
   const debugStats = DEBUG_STATS_ENABLED

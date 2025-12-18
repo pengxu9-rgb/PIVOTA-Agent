@@ -1467,6 +1467,37 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   
   // Use mock API if configured or in hybrid mode for certain operations
   const shouldUseMock = USE_MOCK || (USE_HYBRID && ['submit_payment', 'request_after_sales'].includes(operation));
+
+  // Discovery / chitchat routing: when the user hasn't expressed a shopping goal yet,
+  // do NOT query the catalog. Return a guided, creator-styled prompt instead.
+  if (operation === 'find_products_multi' && effectiveIntent?.scenario?.name === 'discovery') {
+    const base = {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+      page: 1,
+      page_size: 0,
+      reply: null,
+      metadata: {
+        query_source: 'intent_discovery_short_circuit',
+        fetched_at: new Date().toISOString(),
+        ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+        ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+      },
+    };
+
+    const withPolicy = applyFindProductsMultiPolicy({
+      response: base,
+      intent: effectiveIntent,
+      requestPayload: effectivePayload,
+      metadata,
+    });
+
+    const promotions = await getActivePromotions(now, creatorId);
+    const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+    return res.json(enriched);
+  }
   
   if (shouldUseMock) {
     logger.info({ operation, mock: true }, 'Using internal mock data with rich product catalog');
@@ -1622,6 +1653,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           response: mockResponse,
           intent: effectiveIntent,
           requestPayload: effectivePayload,
+          metadata,
         });
       }
 
@@ -1680,6 +1712,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 response: upstreamData,
                 intent: effectiveIntent,
                 requestPayload: effectivePayload,
+                metadata,
               })
             : upstreamData;
 
@@ -1723,6 +1756,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   response: upstreamData,
                   intent: effectiveIntent,
                   requestPayload: effectivePayload,
+                  metadata,
                 })
               : upstreamData;
 
@@ -2065,6 +2099,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         response: upstreamData,
         intent: effectiveIntent,
         requestPayload: effectivePayload,
+        metadata,
       });
     }
 

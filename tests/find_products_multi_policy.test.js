@@ -15,6 +15,25 @@ function makeRawProduct(overrides) {
 }
 
 describe('find_products_multi intent + filtering', () => {
+  test('discovery/chitchat intent routes to discovery and asks clarifying question', () => {
+    const intent = extractIntentRuleBased('你好', ['Labubu 娃娃衣服', '公仔 配件'], []);
+    expect(intent.scenario.name).toBe('discovery');
+    expect(intent.ambiguity.needs_clarification).toBe(true);
+    expect(intent.history_usage.used).toBe(false);
+
+    const resp = applyFindProductsMultiPolicy({
+      response: { products: [], reply: null },
+      intent,
+      requestPayload: { search: { query: '你好' } },
+      metadata: { creator_name: 'Nina Studio' },
+    });
+
+    expect(resp.products).toHaveLength(0);
+    expect(resp.has_good_match).toBe(false);
+    expect(resp.reason_codes).toEqual(expect.arrayContaining(['NEEDS_CLARIFICATION', 'CHITCHAT_ROUTED']));
+    expect(String(resp.reply)).toContain('Nina');
+  });
+
   test('intent: cold mountain outerwear is human_apparel and ignores toy history', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',
@@ -103,4 +122,3 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 });
-
