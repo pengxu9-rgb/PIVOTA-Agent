@@ -100,7 +100,28 @@ const PivotaIntentV1Zod = z
 
 function detectLanguage(text) {
   if (!text) return 'other';
+  // Japanese (Hiragana/Katakana) and Korean (Hangul)
+  if (/[\u3040-\u30ff]/.test(text)) return 'ja';
+  if (/[\uac00-\ud7af]/.test(text)) return 'ko';
+
+  // Chinese (Han characters without kana/hangul)
   if (/[\u4e00-\u9fff]/.test(text)) return 'zh';
+
+  const lower = String(text).toLowerCase();
+
+  // Spanish / French (lightweight heuristic via common stopwords)
+  const esHits = [' por ', ' por favor', ' voy ', ' ir ', ' con ', ' mi ', ' perro', ' ropa', ' frío', ' senderismo']
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .some((s) => lower.includes(s));
+  if (esHits || /[¿¡ñáéíóúü]/i.test(text)) return 'es';
+
+  const frHits = [' bonjour', ' je ', ' avec ', ' mon ', ' chien', ' vêtements', ' froid', ' randonnée']
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .some((s) => lower.includes(s));
+  if (frHits || /[çœàâæéèêëîïôœùûüÿ]/i.test(text)) return 'fr';
+
   return 'en';
 }
 
@@ -167,6 +188,34 @@ const PET_SIGNALS_EN = [
   'dog sweater',
   'pet apparel',
 ];
+const PET_SIGNALS_ES = [
+  'perro',
+  'perros',
+  'perrita',
+  'cachorro',
+  'mascota',
+  'mascotas',
+  'gato',
+  'gatos',
+  'ropa para perro',
+  'abrigo para perro',
+  'chaqueta para perro',
+  'ropa de perro',
+];
+const PET_SIGNALS_FR = [
+  'chien',
+  'chiens',
+  'chienne',
+  'chiot',
+  'animal',
+  'animaux',
+  'chat',
+  'chats',
+  'vêtement pour chien',
+  'manteau pour chien',
+  'vêtements pour chien',
+];
+const PET_SIGNALS_JA = ['犬', 'わんちゃん', '猫', 'ペット', '犬服', '猫服'];
 
 const GREETING_SIGNALS_ZH = ['你好', '嗨', '哈喽', '在吗', 'hello', 'hi', 'hey'];
 const GREETING_SIGNALS_EN = ['hi', 'hello', 'hey', 'yo', 'sup', 'how are you', "what's up"];
@@ -234,7 +283,11 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, ['推荐一些好物', '热门商品', 'show me popular items', 'recommend some products']);
 
   const hasPetSignal =
-    includesAny(latest, PET_SIGNALS_ZH) || includesAny(latest, PET_SIGNALS_EN);
+    includesAny(latest, PET_SIGNALS_ZH) ||
+    includesAny(latest, PET_SIGNALS_EN) ||
+    includesAny(latest, PET_SIGNALS_ES) ||
+    includesAny(latest, PET_SIGNALS_FR) ||
+    includesAny(latest, PET_SIGNALS_JA);
 
   const hasToySignalStrong =
     includesAny(latest, TOY_KEYWORDS_STRONG) ||

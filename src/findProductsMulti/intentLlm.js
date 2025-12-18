@@ -64,9 +64,15 @@ function hasPetSignal(text) {
   const t = String(text || '');
   const lower = t.toLowerCase();
   if (/[\u4e00-\u9fff]/.test(t)) {
-    return ['狗', '狗狗', '小狗', '猫', '猫猫', '宠物', '狗衣服', '宠物衣服'].some((k) => t.includes(k));
+    // Chinese / Japanese Kanji coverage (also works for Japanese short queries like "犬 服")
+    return ['狗', '狗狗', '小狗', '猫', '猫猫', '宠物', '狗衣服', '宠物衣服', '犬', 'ペット', '犬服', '猫服'].some((k) =>
+      t.includes(k)
+    );
   }
-  return /\b(dog|dogs|puppy|cat|cats|pet|pets)\b/.test(lower);
+  // English / Spanish / French
+  return /\b(dog|dogs|puppy|cat|cats|pet|pets)\b/.test(lower) ||
+    /\b(perro|perros|perrita|cachorro|mascota|mascotas|gato|gatos)\b/.test(lower) ||
+    /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/.test(lower);
 }
 
 function hasToyStrongSignal(text) {
@@ -77,9 +83,13 @@ function hasHikingSignal(text) {
   const t = String(text || '');
   const lower = t.toLowerCase();
   if (/[\u4e00-\u9fff]/.test(t)) {
-    return ['登山', '徒步', '爬山', '露营', '山上'].some((k) => t.includes(k));
+    return ['登山', '徒步', '爬山', '露营', '山上', 'ハイキング', '登山', '山', '寒い'].some((k) => t.includes(k));
   }
-  return /\b(hiking|trail|camping|mountain)\b/.test(lower);
+  return (
+    /\b(hiking|trail|camping|mountain|trek|trekking)\b/.test(lower) ||
+    /\b(senderismo|caminata|excursi[oó]n|monta[nñ]a)\b/.test(lower) ||
+    /\b(randonn[eé]e|montagne|trek)\b/.test(lower)
+  );
 }
 
 function applyHardOverrides(latestQuery, intent) {

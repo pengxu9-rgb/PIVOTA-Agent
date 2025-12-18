@@ -132,6 +132,38 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products.map((p) => p.id)).not.toEqual(expect.arrayContaining(['toy-1']));
   });
 
+  test('spanish pet hiking apparel query is detected as pet and filters toy items', () => {
+    const intent = extractIntentRuleBased(
+      'Voy a ir de senderismo con mi perro este fin de semana. Va a hacer frío, por favor encuentra ropa adecuada para mi perro.',
+      ['Labubu', 'blind box'],
+      []
+    );
+    expect(intent.language).toBe('es');
+    expect(intent.target_object.type).toBe('pet');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'toy-1',
+            title: 'Cute Rabbit Outfit for Labubu Doll',
+            description: 'Doll clothes outfit set',
+          }),
+          makeRawProduct({
+            id: 'pet-1',
+            title: 'Warm Fall/Winter Utility-Style Overalls for Dogs & Cats',
+            description: 'Warm overalls for dogs',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'senderismo perro ropa' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(['pet-1']);
+  });
+
   test('filters to empty → has_good_match=false, match_tier=none and reason codes present', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',
