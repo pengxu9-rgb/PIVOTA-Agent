@@ -2,6 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
+const POLICY_VERSION = 'find_products_multi_policy_v6';
 
 function clamp01(n) {
   if (Number.isNaN(n) || n == null) return 0;
@@ -363,6 +364,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   return {
     ...augmented,
+    policy_version: POLICY_VERSION,
     reply,
     intent,
     filters_applied: filtersApplied,
