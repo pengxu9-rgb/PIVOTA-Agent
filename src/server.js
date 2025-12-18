@@ -37,6 +37,16 @@ const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
 
+// Agent budgeting & loop protection (per /ui/chat turn)
+const MAX_AGENT_STEPS_PER_TURN = Number(process.env.AGENT_MAX_STEPS_PER_TURN || 8);
+const MAX_TOOL_CALLS_PER_TURN = Number(process.env.AGENT_MAX_TOOL_CALLS_PER_TURN || 8);
+const MAX_TOTAL_RUNTIME_MS = Number(process.env.AGENT_MAX_TOTAL_RUNTIME_MS || 20000);
+const MAX_TOOL_LOOP_DUPLICATES = Number(process.env.AGENT_MAX_TOOL_LOOP_DUPLICATES || 3);
+const MAX_CONTEXT_MESSAGES = Number(process.env.AGENT_MAX_CONTEXT_MESSAGES || 40);
+const MAX_TOOL_CONTENT_CHARS = Number(process.env.AGENT_MAX_TOOL_CONTENT_CHARS || 8000);
+const MAX_TASK_POLL_ATTEMPTS = Number(process.env.AGENT_MAX_TASK_POLL_ATTEMPTS || 10);
+const TASK_POLL_INTERVAL_MS = Number(process.env.AGENT_TASK_POLL_INTERVAL_MS || 500);
+
 // API Mode: MOCK (default), HYBRID, or REAL
 // MOCK: Use internal mock data
 // HYBRID: Real product search, mock payment
@@ -2210,18 +2220,95 @@ if (require.main === module) {
   });
 }
 
+function deriveTaskBaseFromGatewayUrl(gatewayUrl) {
+  // Expect URLs like: http://host/agent/shop/v1/invoke
+  return gatewayUrl.replace(/\/invoke\/?$/, '');
+}
+
+async function pollCreatorTaskUntilComplete(taskId, baseUrl) {
+  const statusUrl = `${baseUrl}/creator/tasks/${taskId}`;
+  for (let attempt = 0; attempt < MAX_TASK_POLL_ATTEMPTS; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, TASK_POLL_INTERVAL_MS));
+    const res = await axios.get(statusUrl, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 15000,
+    });
+    const body = res.data || {};
+    const status = body.status;
+    if (status === 'succeeded' && body.result) {
+      return body.result;
+    }
+    if (['failed', 'cancelled', 'timeout', 'expired'].includes(status)) {
+      const errMsg = body.error || `Creator task ended with status=${status}`;
+      throw new Error(errMsg);
+    }
+  }
+  throw new Error('Creator task did not complete within polling budget');
+}
+
 async function callPivotaToolViaGateway(args) {
   const res = await axios.post(UI_GATEWAY_URL, args, {
     headers: { 'Content-Type': 'application/json' },
     timeout: 15000,
   });
-  return res.data;
+  const data = res.data;
+
+  // Handle async/pending responses from the Python gateway when enabled.
+  if (data && data.status === 'pending' && data.task_id) {
+    const base = deriveTaskBaseFromGatewayUrl(UI_GATEWAY_URL);
+    logger.info({ taskId: data.task_id, base }, 'Received pending tool result, polling creator task status');
+    return pollCreatorTaskUntilComplete(data.task_id, base);
+  }
+
+  return data;
 }
 
 async function runAgentWithTools(messages) {
   // messages already contain system message
   const openai = getOpenAIClient();
+  const startTs = Date.now();
+  let steps = 0;
+  let totalToolCalls = 0;
+  const recentToolCalls = [];
+
+  function withinRuntimeBudget() {
+    if (!MAX_TOTAL_RUNTIME_MS || MAX_TOTAL_RUNTIME_MS <= 0) return true;
+    return Date.now() - startTs < MAX_TOTAL_RUNTIME_MS;
+  }
+
+  function clampContext() {
+    if (!MAX_CONTEXT_MESSAGES || MAX_CONTEXT_MESSAGES <= 0) return;
+    if (!Array.isArray(messages)) return;
+    if (messages.length <= MAX_CONTEXT_MESSAGES) return;
+
+    // Keep system message(s) and the most recent messages.
+    const systemMessages = messages.filter((m) => m.role === 'system');
+    const nonSystem = messages.filter((m) => m.role !== 'system');
+    const keepNonSystem = nonSystem.slice(-Math.max(MAX_CONTEXT_MESSAGES - systemMessages.length, 0));
+    messages.length = 0;
+    messages.push(...systemMessages, ...keepNonSystem);
+  }
+
+  function budgetExceededMessage(reason) {
+    return {
+      role: 'assistant',
+      content:
+        reason === 'runtime'
+          ? 'I used up my safety time budget trying to complete this request. Please try again with a shorter or more specific question.'
+          : 'I hit an internal safety limit while trying to complete this request. Please rephrase or narrow down what you need.',
+    };
+  }
+
   while (true) {
+    if (!withinRuntimeBudget()) {
+      logger.warn({ steps, totalToolCalls }, 'Agent runtime budget exceeded');
+      return budgetExceededMessage('runtime');
+    }
+    if (MAX_AGENT_STEPS_PER_TURN > 0 && steps >= MAX_AGENT_STEPS_PER_TURN) {
+      logger.warn({ steps, totalToolCalls }, 'Agent step budget exceeded');
+      return budgetExceededMessage('steps');
+    }
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-5.1',
       messages,
@@ -2235,8 +2322,17 @@ async function runAgentWithTools(messages) {
     });
 
     const msg = completion.choices[0].message;
+    steps += 1;
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
+      if (MAX_TOOL_CALLS_PER_TURN > 0 && totalToolCalls + msg.tool_calls.length > MAX_TOOL_CALLS_PER_TURN) {
+        logger.warn(
+          { totalToolCalls, requestedCalls: msg.tool_calls.length },
+          'Tool call budget exceeded in this turn'
+        );
+        return budgetExceededMessage('tools');
+      }
+
       for (const toolCall of msg.tool_calls) {
         if (toolCall.type !== 'function') continue;
         const { name, arguments: argStr } = toolCall.function;
@@ -2252,17 +2348,55 @@ async function runAgentWithTools(messages) {
 
         logger.info({ tool: name, args }, 'Calling Pivota tool via gateway');
 
+         // Loop detection: same tool + args repeated too many times.
+         const toolKey = JSON.stringify({ name, args });
+         recentToolCalls.push(toolKey);
+         if (recentToolCalls.length > 16) {
+           recentToolCalls.shift();
+         }
+         const duplicates = recentToolCalls.filter((k) => k === toolKey).length;
+         if (MAX_TOOL_LOOP_DUPLICATES > 0 && duplicates >= MAX_TOOL_LOOP_DUPLICATES) {
+           logger.warn(
+             { name, duplicates },
+             'Detected potential tool loop (same tool+args repeated)'
+           );
+           return {
+             role: 'assistant',
+             content:
+               'I seem to be calling the same shopping operation repeatedly without making progress. ' +
+               'Please adjust your request or try a different query.',
+           };
+         }
+
         const toolResult = await callPivotaToolViaGateway(args);
 
         messages.push(msg);
+        let content = JSON.stringify(toolResult);
+        if (MAX_TOOL_CONTENT_CHARS > 0 && content.length > MAX_TOOL_CONTENT_CHARS) {
+          content = content.slice(0, MAX_TOOL_CONTENT_CHARS) + '… [truncated]';
+        }
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
           name,
-          content: JSON.stringify(toolResult),
+          content,
         });
+        totalToolCalls += 1;
+        clampContext();
       }
       continue;
+    }
+
+    // Detect repeated identical clarification messages.
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+    if (lastAssistant && lastAssistant.content && lastAssistant.content === msg.content) {
+      logger.warn('Detected repeated identical assistant clarification message');
+      return {
+        role: 'assistant',
+        content:
+          'I just repeated myself trying to clarify your request and am not making progress. ' +
+          'Please rephrase or provide different details so I can help.',
+      };
     }
 
     return msg;
