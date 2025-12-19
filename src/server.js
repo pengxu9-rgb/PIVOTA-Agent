@@ -2047,6 +2047,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         try {
           const page = search.page || 1;
           const limit = search.limit || 20;
+          const intentTarget = String(effectiveIntent?.target_object?.type || '').toLowerCase();
           const fromCache = await searchCreatorSellableFromCache(creatorId, queryText, page, limit, {
             intent: effectiveIntent,
           });
