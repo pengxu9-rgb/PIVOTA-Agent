@@ -374,11 +374,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     scenarioName = 'lingerie';
     scenarioSignals = [];
   } else if (hasSexySignal && latest) {
-    // "Sexy outfit" is often ambiguous (dress vs lingerie). Treat as human apparel but ask.
+    // "Sexy outfit" is often ambiguous (dress vs lingerie). Keep it as human apparel,
+    // but mark a dedicated scenario so downstream retrieval can avoid wrong expansions.
     primary_domain = 'human_apparel';
     targetType = 'human';
     categoryRequired = [];
-    scenarioName = 'human_apparel_general';
+    scenarioName = 'sexy_outfit';
     scenarioSignals = [];
   } else if (
     includesAny(latest, TOY_KEYWORDS_STRONG) ||

@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v27';
+const POLICY_VERSION = 'find_products_multi_policy_v28';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -1027,19 +1027,46 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       if (lang === 'fr') extra.push('chien', 'vêtement');
       if (lang === 'ja') extra.push('犬', '犬服');
     } else if (target === 'human' && intent?.primary_domain === 'human_apparel') {
-      const isLingerie = (intent?.category?.required || []).includes('lingerie') || scenario === 'lingerie';
+      const requiredCats = Array.isArray(intent?.category?.required) ? intent.category.required : [];
+      const isLingerie = requiredCats.includes('lingerie') || requiredCats.includes('underwear') || scenario === 'lingerie';
+      const isSexy =
+        scenario === 'sexy_outfit' ||
+        /\bsexy\b/i.test(q) ||
+        /性感/.test(q) ||
+        /セクシー/.test(q);
+      const isOuterwear =
+        requiredCats.includes('outerwear') ||
+        requiredCats.includes('coat') ||
+        requiredCats.includes('down_jacket') ||
+        scenario.includes('cold') ||
+        scenario.includes('mountain');
+
       if (isLingerie) {
         extra.push('lingerie', 'underwear', 'bra', 'panties');
         if (lang === 'es') extra.push('lenceria', 'ropa interior');
         if (lang === 'fr') extra.push('lingerie', 'sous vetement');
         if (lang === 'ja') extra.push('下着', 'ランジェリー');
         if (lang === 'zh') extra.push('lingerie', 'underwear');
-      } else {
+      } else if (isSexy) {
+        // Avoid pulling pet coats via generic "coat/jacket" expansions.
+        // "Sexy clothes" commonly maps to lingerie, party dresses, nightwear.
+        extra.push('sexy', 'lingerie', 'party dress', 'bodycon', 'nightwear');
+        if (lang === 'es') extra.push('sexy', 'lenceria', 'vestido');
+        if (lang === 'fr') extra.push('sexy', 'lingerie', 'robe');
+        if (lang === 'ja') extra.push('セクシー', '下着', 'ドレス');
+        if (lang === 'zh') extra.push('sexy', 'lingerie', 'dress');
+      } else if (isOuterwear) {
         extra.push('coat', 'jacket', 'outerwear');
         if (scenario.includes('cold') || scenario.includes('mountain')) extra.push('down jacket', 'winter');
         if (lang === 'es') extra.push('abrigo', 'chaqueta');
         if (lang === 'fr') extra.push('manteau', 'veste');
         if (lang === 'zh') extra.push('coat', 'jacket');
+      } else {
+        // Generic human apparel: keep expansions lightweight and avoid category over-commit.
+        extra.push('outfit', 'dress');
+        if (lang === 'es') extra.push('ropa', 'vestido');
+        if (lang === 'fr') extra.push('tenue', 'robe');
+        if (lang === 'ja') extra.push('服', 'コーデ');
       }
     } else if (intent?.primary_domain === 'toy_accessory') {
       extra.push('labubu', 'doll clothes', 'outfit');

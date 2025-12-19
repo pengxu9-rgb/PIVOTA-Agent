@@ -23,5 +23,24 @@ describe('find_products_multi context building', () => {
     expect(intent.target_object.type).toBe('pet');
     expect(String(adjustedPayload.search.query)).toContain('perro');
   });
-});
 
+  test('sexy outfit query expands to lingerie/dress (not outerwear)', async () => {
+    const { intent, adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: '当天晚上要给女朋友一个惊喜，准备一套性感的衣服送给她，推荐一些' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: '当天晚上要给女朋友一个惊喜，准备一套性感的衣服送给她，推荐一些' }],
+      },
+      metadata: {},
+    });
+
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.scenario.name).toBe('sexy_outfit');
+
+    const q = String(adjustedPayload.search.query || '');
+    expect(q.toLowerCase()).toContain('lingerie');
+    expect(q.toLowerCase()).not.toContain('outerwear');
+    expect(q.toLowerCase()).not.toContain('coat jacket outerwear');
+  });
+});
