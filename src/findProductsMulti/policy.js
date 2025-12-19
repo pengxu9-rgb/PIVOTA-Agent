@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v21';
+const POLICY_VERSION = 'find_products_multi_policy_v22';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -128,17 +128,19 @@ function isLingerieLikeProduct(product) {
 
 function hasPetSignalInProduct(product) {
   const text = buildProductText(product);
-  if (/[\u4e00-\u9fff\u3040-\u30ff]/.test(text)) {
-    return ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服'].some((k) =>
+  // Do not "short-circuit" to CJK-only checks: many Shopify products include CJK
+  // option labels (e.g. 尺寸/颜色) even when the title/description is English.
+  const cjkHit =
+    /[\u4e00-\u9fff\u3040-\u30ff]/.test(text) &&
+    ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服'].some((k) =>
       text.includes(k)
     );
-  }
   // Word-boundary checks to avoid false positives like "catsuit".
-  return (
+  const latinHit =
     /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets)\b/.test(text) ||
     /\b(perro|perros|perrita|cachorro|mascota|mascotas|gato|gatos)\b/.test(text) ||
-    /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/.test(text)
-  );
+    /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/.test(text);
+  return cjkHit || latinHit;
 }
 
 function clamp01(n) {

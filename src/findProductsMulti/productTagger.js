@@ -54,21 +54,25 @@ const PET_APPAREL_GEAR_FR_RE = /\b(veste|manteau|pull|imperm[eé]able|salopette|
 
 function hasPetAnimalSignal(text) {
   if (!text) return false;
-  // CJK substring check
-  if (/[\u4e00-\u9fff\u3040-\u30ff]/.test(text)) {
-    return ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服'].some((k) =>
+  // Do not "short-circuit" to CJK-only checks: many Shopify products include CJK
+  // option labels (e.g. 尺寸/颜色) even when the title/description is English.
+  const cjkHit =
+    /[\u4e00-\u9fff\u3040-\u30ff]/.test(text) &&
+    ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服'].some((k) =>
       text.includes(k)
     );
-  }
-  return PET_ANIMAL_RE.test(text) || PET_ANIMAL_ES_RE.test(text) || PET_ANIMAL_FR_RE.test(text);
+  const latinHit = PET_ANIMAL_RE.test(text) || PET_ANIMAL_ES_RE.test(text) || PET_ANIMAL_FR_RE.test(text);
+  return cjkHit || latinHit;
 }
 
 function hasPetApparelOrGearSignal(text) {
   if (!text) return false;
-  if (/[\u4e00-\u9fff\u3040-\u30ff]/.test(text)) {
-    return ['衣服', '外套', '雨衣', '背带', '牵引', '项圈', '犬服', '猫服'].some((k) => text.includes(k));
-  }
-  return PET_APPAREL_GEAR_RE.test(text) || PET_APPAREL_GEAR_ES_RE.test(text) || PET_APPAREL_GEAR_FR_RE.test(text);
+  const cjkHit =
+    /[\u4e00-\u9fff\u3040-\u30ff]/.test(text) &&
+    ['衣服', '外套', '雨衣', '背带', '牵引', '项圈', '犬服', '猫服'].some((k) => text.includes(k));
+  const latinHit =
+    PET_APPAREL_GEAR_RE.test(text) || PET_APPAREL_GEAR_ES_RE.test(text) || PET_APPAREL_GEAR_FR_RE.test(text);
+  return cjkHit || latinHit;
 }
 
 function safeStringify(value) {

@@ -277,6 +277,33 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products.map((p) => p.id)).toEqual(['pet-1']);
   });
 
+  test('pet detection does not break when product has CJK option labels', () => {
+    const intent = extractIntentRuleBased(
+      'Voy a ir de senderismo con mi perro. Hace frío. Necesito un abrigo para mi perro.',
+      [],
+      []
+    );
+    expect(intent.target_object.type).toBe('pet');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'pet-1',
+            title: 'Warm Fall/Winter Padded Winter Vest for Dogs & Cats',
+            description: 'Warm padded vest for pets',
+            options: [{ name: '尺寸', values: ['S', 'M', 'L'] }],
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'senderismo perro abrigo' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(['pet-1']);
+  });
+
   test('filters to empty → has_good_match=false, match_tier=none and reason codes present', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',
