@@ -72,6 +72,63 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.hard_constraints.price.max).toBeGreaterThanOrEqual(20);
   });
 
+  test('women_clothing allows lingerie as soft-block instead of hard-block', () => {
+    const intent = extractIntentRuleBased('帮我选几件20美金左右的女生衣服', [], []);
+    expect(intent.scenario.name).toBe('women_clothing');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Sweet Lace lingerie set',
+            description: 'Women underwear set',
+            price: 19.9,
+          }),
+          makeRawProduct({
+            id: 'pet-1',
+            title: 'Warm Winter Coat for Dogs & Cats',
+            description: 'Warm padded coat for pets',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '帮我选几件20美金左右的女生衣服' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(expect.arrayContaining(['ling-1']));
+    expect(resp.products.map((p) => p.id)).not.toEqual(expect.arrayContaining(['pet-1']));
+    const ling = resp.products.find((p) => p.id === 'ling-1');
+    expect(ling.attributes?.pivota?.relevance?.risk_level).toBe('soft_block');
+    expect(ling.attributes?.pivota?.relevance?.reason_codes || []).toEqual(
+      expect.arrayContaining(['ADULT_NEEDS_CONFIRMATION'])
+    );
+  });
+
+  test('women clothing weak reply does not ask for windproof/waterproof outerwear slots', () => {
+    const intent = extractIntentRuleBased('帮我选几件20美金左右的女生衣服', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Sweet Lace lingerie set',
+            description: 'Women underwear set',
+            price: 19.9,
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '帮我选几件20美金左右的女生衣服' } },
+    });
+
+    expect(String(resp.reply)).toContain('裙子');
+    expect(String(resp.reply)).not.toContain('防风');
+    expect(String(resp.reply)).not.toContain('冲锋衣');
+  });
+
   test('lingerie intent filters out pet/toy items (avoid mixed featured pool)', () => {
     const intent = extractIntentRuleBased('性感内衣', [], []);
     expect(intent.target_object.type).toBe('human');

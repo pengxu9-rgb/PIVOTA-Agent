@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v29';
+const POLICY_VERSION = 'find_products_multi_policy_v30';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -44,6 +44,7 @@ const REASON_CODES = {
   SEASON_MISMATCH: 'SEASON_MISMATCH',
 
   ADULT_UNREQUESTED: 'ADULT_UNREQUESTED',
+  ADULT_NEEDS_CONFIRMATION: 'ADULT_NEEDS_CONFIRMATION',
   COMPAT_INCOMPATIBLE: 'COMPAT_INCOMPATIBLE',
   COMPAT_UNKNOWN: 'COMPAT_UNKNOWN',
   SAFETY_RISK: 'SAFETY_RISK',
@@ -276,6 +277,7 @@ function productHasCategorySignal(product, requiredCategories) {
     apparel: [
       /\b(dress|skirt|top|blouse|shirt|pants|jeans|hoodie|sweater|cardigan|tee|t-shirt)\b/i,
       /\b(outfit|clothes|clothing|apparel)\b/i,
+      /\b(lingerie|underwear)\b/i,
       '衣服',
       '穿搭',
       '女装',
@@ -287,6 +289,8 @@ function productHasCategorySignal(product, requiredCategories) {
       '裤',
       '卫衣',
       '毛衣',
+      '内衣',
+      '下着',
       'vêtement',
       'vetement',
       'robe',
@@ -407,6 +411,7 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
   const rawQuery = String(ctx?.rawQuery || '').trim();
   const target = intent?.target_object?.type || 'unknown';
   const targetConf = Number(intent?.confidence?.target_object ?? 0.5);
+  const scenario = String(intent?.scenario?.name || '');
 
   const productObject = getProductObject(product);
   const adultIntent = getAdultIntent(intent, rawQuery);
@@ -448,8 +453,15 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
     intent?.primary_domain !== 'toy_accessory'
   ) {
     if (isAdultProduct(product) && (!adultIntent.is_explicit || adultIntent.conf < 0.6)) {
-      riskLevel = 'hard_block';
-      reasonCodes.add(REASON_CODES.ADULT_UNREQUESTED);
+      // For broad "women's clothing" queries, lingerie can be a reasonable subset.
+      // Don't hard-block; allow as soft_block and ask for confirmation in reply.
+      if (scenario === 'women_clothing') {
+        if (riskLevel === 'ok') riskLevel = 'soft_block';
+        reasonCodes.add(REASON_CODES.ADULT_NEEDS_CONFIRMATION);
+      } else {
+        riskLevel = 'hard_block';
+        reasonCodes.add(REASON_CODES.ADULT_UNREQUESTED);
+      }
     }
   }
 
@@ -590,7 +602,9 @@ function computeProductRelevance(product, intent, evalMeta) {
   // We do not yet model style/colors/brands deeply; treat as neutral.
   const softCoverage = 0.5;
 
-  const isSensitive = evalMeta.reason_codes.includes(REASON_CODES.COMPAT_UNKNOWN);
+  const isSensitive =
+    evalMeta.risk_level === 'soft_block' ||
+    evalMeta.reason_codes.includes(REASON_CODES.COMPAT_UNKNOWN);
   const baseScore =
     0.35 * objectScore + 0.3 * catScore + 0.3 * hardCoverage + 0.05 * softCoverage;
   const sensitiveScore =
@@ -612,6 +626,11 @@ function computeProductRelevance(product, intent, evalMeta) {
     matchTier = 'weak';
   } else {
     matchTier = 'none';
+  }
+
+  // Soft-block items (e.g., adult needs confirmation / compat unknown) must never be strong/medium.
+  if (evalMeta.risk_level === 'soft_block' && matchTier !== 'none') {
+    matchTier = 'weak';
   }
 
   return {
@@ -983,7 +1002,26 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
       if ((intent?.target_object?.type || '') === 'pet') {
         return '我只找到少量勉强相关的狗狗/宠物衣服（匹配度不高），所以先不强行推荐不相关的商品。你可以补充：狗狗体型/胸围、最低温度、是否需要防风防水，我再帮你精准筛。';
       }
-      return '我只找到了少量勉强相关的结果（匹配度不高），所以先不强行推荐。你可以补充：最低温度、预算、是否需要防风/防水，以及更偏好羽绒服还是冲锋衣。';
+      if ((intent?.scenario?.name || '') === 'women_clothing') {
+        const p = intent?.hard_constraints?.price;
+        const budgetHint =
+          p && p.max != null && p.currency
+            ? `（预算大约 ≤${p.currency}${p.max}）`
+            : '';
+        return [
+          `我找到了一些可能合适的女生衣服${budgetHint}（匹配度一般，我把更接近你预算的先放前面）。`,
+          '你更想要哪一类：裙子 / 上衣 / 裤子 / 卫衣？尺码和风格也可以说一下。',
+          '另外要确认下：这次“女生衣服”是否也包括内衣/内搭类？如果不包括我可以帮你过滤掉。',
+        ].join('\n');
+      }
+      if ((intent?.scenario?.name || '') === 'sexy_outfit') {
+        return [
+          '我找到了一些“性感风”相关的候选（匹配度一般，我先把可能合适的放前面）。',
+          '你更偏好：1) 内衣套装 2) 小礼裙/约会穿搭 3) 居家睡衣？',
+          '如果你不想看内衣类，我也可以帮你过滤只留“可外穿”的款式。',
+        ].join('\n');
+      }
+      return '我只找到了少量勉强相关的结果（匹配度不高）。你可以补充：预算、尺码、想要的品类（裙子/上衣/裤子）和风格（简约/甜酷/通勤/约会）。';
     }
     return '我找到了几件更符合你需求的选择。';
   }
@@ -1063,6 +1101,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         /\bsexy\b/i.test(q) ||
         /性感/.test(q) ||
         /セクシー/.test(q);
+      const isWomenClothing = scenario === 'women_clothing' || requiredCats.includes('apparel');
       const isOuterwear =
         requiredCats.includes('outerwear') ||
         requiredCats.includes('coat') ||
@@ -1090,6 +1129,12 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         if (lang === 'es') extra.push('abrigo', 'chaqueta');
         if (lang === 'fr') extra.push('manteau', 'veste');
         if (lang === 'zh') extra.push('coat', 'jacket');
+      } else if (isWomenClothing) {
+        extra.push('women clothing', 'dress', 'top', 'skirt', 'outfit');
+        if (lang === 'es') extra.push('ropa mujer', 'vestido', 'falda');
+        if (lang === 'fr') extra.push('vetement femme', 'robe', 'jupe');
+        if (lang === 'ja') extra.push('レディース', '服', 'ワンピース');
+        if (lang === 'zh') extra.push('women', 'dress');
       } else {
         // Generic human apparel: keep expansions lightweight and avoid category over-commit.
         extra.push('outfit', 'dress');
