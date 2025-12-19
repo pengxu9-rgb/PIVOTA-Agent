@@ -15,6 +15,9 @@ BEGIN
     WHEN insufficient_privilege THEN
       RAISE NOTICE 'insufficient privilege to create pgvector extension; skipping products_cache_embeddings migration';
       RETURN;
+    WHEN OTHERS THEN
+      RAISE NOTICE 'pgvector unavailable (%): skipping products_cache_embeddings migration', SQLERRM;
+      RETURN;
   END;
 
   EXECUTE $sql$
