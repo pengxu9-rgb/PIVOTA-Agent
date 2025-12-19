@@ -4,7 +4,7 @@ jest.mock('../src/db', () => ({
 
 const { query } = require('../src/db');
 const {
-  vectorSearchCreatorProductsFromCache,
+  semanticSearchCreatorProductsFromCache,
   pickVectorColumn,
 } = require('../src/services/productsCacheVectorSearch');
 
@@ -20,7 +20,7 @@ describe('products_cache vector recall SQL', () => {
   });
 
   test('vector recall uses embedding_768 and includes provider/model/dim filters', async () => {
-    await vectorSearchCreatorProductsFromCache({
+    await semanticSearchCreatorProductsFromCache({
       merchantIds: ['merch_x'],
       queryVector: [0.1, 0.2],
       dim: 768,
@@ -47,4 +47,3 @@ describe('products_cache vector recall SQL', () => {
     expect(params[4]).toBe(768);
   });
 });
-

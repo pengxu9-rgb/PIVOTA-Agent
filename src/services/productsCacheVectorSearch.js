@@ -5,6 +5,36 @@ function vectorLiteral(vec) {
   return `[${vec.map((n) => (typeof n === 'number' && Number.isFinite(n) ? n : 0)).join(',')}]`;
 }
 
+function isPgvectorMissingError(err) {
+  const msg = String(err && err.message ? err.message : err || '');
+  const code = err && err.code ? String(err.code) : '';
+  // 42P01: undefined_table, 42704: undefined_object (vector type), 0A000: feature_not_supported
+  if (code === '42P01' || code === '42704' || code === '0A000') return true;
+  return (
+    /relation .*products_cache_embeddings.* does not exist/i.test(msg) ||
+    /type .*vector.* does not exist/i.test(msg) ||
+    /extension .*vector.* is not available/i.test(msg)
+  );
+}
+
+function dot(a, b) {
+  let s = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i += 1) s += a[i] * b[i];
+  return s;
+}
+
+function norm(a) {
+  return Math.sqrt(dot(a, a));
+}
+
+function cosineSim(a, b) {
+  const na = norm(a);
+  const nb = norm(b);
+  if (!na || !nb) return 0;
+  return dot(a, b) / (na * nb);
+}
+
 function pickVectorColumn(dim) {
   if (dim === 768) return 'embedding_768';
   if (dim === 1536) return 'embedding_1536';
@@ -200,8 +230,134 @@ async function vectorSearchCreatorProductsFromCache({
     .filter((x) => x.product);
 }
 
+async function vectorSearchCreatorProductsFromCacheFallback({
+  merchantIds,
+  queryVector,
+  dim,
+  provider,
+  model,
+  limit = 60,
+  intentTarget,
+  excludeUnderwear = false,
+}) {
+  if (!Array.isArray(merchantIds) || merchantIds.length === 0) return [];
+
+  const normalizedTarget = normalizeIntentTarget(intentTarget);
+  // Load embeddings for these merchants (creator-scoped; typically small).
+  const embRes = await query(
+    `
+      SELECT merchant_id, product_id, embedding
+      FROM products_cache_embeddings_fallback
+      WHERE merchant_id = ANY($1)
+        AND provider = $2
+        AND model = $3
+        AND dim = $4
+    `,
+    [merchantIds, String(provider || ''), String(model || ''), Number(dim || 0)],
+  );
+
+  const scored = (embRes.rows || [])
+    .map((r) => {
+      const vec = Array.isArray(r.embedding) ? r.embedding.map((x) => Number(x)) : [];
+      if (!vec.length) return null;
+      return {
+        merchant_id: r.merchant_id,
+        product_id: r.product_id,
+        score: cosineSim(queryVector, vec),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.min(Math.max(1, Number(limit || 60)), 300));
+
+  if (scored.length === 0) return [];
+
+  // Fetch latest sellable product_data for just the scored product_ids.
+  const baseWhere = buildBaseSellableWhere();
+  const params = [merchantIds, scored.map((s) => String(s.product_id))];
+  let idx = 3;
+
+  let underwearClause = null;
+  let underwearParams = [];
+  let afterUnderwearIdx = idx;
+  if (excludeUnderwear) {
+    const built = buildUnderwearExclusionSql(idx);
+    underwearClause = built.sql;
+    underwearParams = built.params;
+    afterUnderwearIdx = built.nextIndex;
+  }
+
+  let petClause = null;
+  let petParams = [];
+  let afterPetIdx = afterUnderwearIdx;
+  if (normalizedTarget === 'pet') {
+    const built = buildPetSignalSql(afterUnderwearIdx);
+    petClause = built.sql;
+    petParams = built.params;
+    afterPetIdx = built.nextIndex;
+  }
+
+  const latestWhere = [baseWhere, ...(underwearClause ? [underwearClause] : []), ...(petClause ? [petClause] : [])].join(' AND ');
+  const sql = `
+    WITH latest AS (
+      SELECT DISTINCT ON (merchant_id, cache_product_id)
+        merchant_id,
+        cache_product_id,
+        product_data,
+        cached_at
+      FROM (
+        SELECT
+          merchant_id,
+          COALESCE(
+            NULLIF(platform_product_id, ''),
+            NULLIF(product_data->>'id', ''),
+            NULLIF(product_data->>'product_id', ''),
+            NULLIF(product_data->>'productId', '')
+          ) AS cache_product_id,
+          product_data,
+          cached_at
+        FROM products_cache
+        WHERE ${latestWhere}
+      ) t
+      WHERE cache_product_id IS NOT NULL
+      ORDER BY merchant_id, cache_product_id, cached_at DESC
+    )
+    SELECT merchant_id, cache_product_id, product_data
+    FROM latest
+    WHERE cache_product_id = ANY($2)
+  `;
+
+  const rowsRes = await query(sql, [
+    ...params,
+    ...underwearParams,
+    ...petParams,
+  ]);
+
+  const byKey = new Map();
+  for (const r of rowsRes.rows || []) {
+    byKey.set(`${r.merchant_id}::${r.cache_product_id}`, r.product_data);
+  }
+
+  return scored
+    .map((s) => {
+      const p = byKey.get(`${s.merchant_id}::${s.product_id}`);
+      if (!p) return null;
+      return { product: p, score: s.score };
+    })
+    .filter(Boolean);
+}
+
+async function semanticSearchCreatorProductsFromCache(params) {
+  try {
+    return await vectorSearchCreatorProductsFromCache(params);
+  } catch (err) {
+    if (!isPgvectorMissingError(err)) throw err;
+    return await vectorSearchCreatorProductsFromCacheFallback(params);
+  }
+}
+
 module.exports = {
   vectorSearchCreatorProductsFromCache,
+  semanticSearchCreatorProductsFromCache,
   pickVectorColumn,
 };
-

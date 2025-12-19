@@ -12,10 +12,14 @@ Vector recall is intended to fix cross-language queries (ES/FR/JA/ZH → mostly 
 1) Ensure Postgres is configured:
 - Set `DATABASE_URL`
 
-2) Run migrations (creates `products_cache_embeddings` and enables `pgvector`):
+2) Run migrations:
 - `npm run db:migrate`
 
-Note: if the connected Postgres instance does not support `pgvector`, the migration will log a NOTICE and skip creating the vector table. The gateway will continue in lexical-only mode.
+This creates:
+- `products_cache_embeddings_fallback` (always; no extensions required)
+- `products_cache_embeddings` (only if `pgvector` is available)
+
+If the connected Postgres instance does not support `pgvector`, the migration will log a NOTICE and skip creating the pgvector table. Vector recall will still work via the fallback table (Node-side cosine similarity).
 
 3) Backfill embeddings for a creator (recommended before enabling):
 - `node scripts/backfill-products-cache-embeddings.js --creatorId creator_demo_001`

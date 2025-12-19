@@ -183,6 +183,34 @@ async function upsertEmbeddingsBatch(client, rows, provider, model, dim) {
   await client.query(sql, params);
 }
 
+async function upsertEmbeddingsFallbackBatch(client, rows, provider, model, dim) {
+  if (!rows.length) return;
+
+  const values = [];
+  const params = [];
+  let idx = 1;
+  for (const r of rows) {
+    params.push(r.merchant_id, r.product_id, provider, model, dim, r.vector.map((x) => Number(x)), r.content_hash);
+    values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6})`);
+    idx += 7;
+  }
+
+  const sql = `
+    INSERT INTO products_cache_embeddings_fallback (
+      merchant_id, product_id, provider, model, dim, embedding, content_hash
+    )
+    VALUES ${values.join(',\n')}
+    ON CONFLICT (merchant_id, product_id, provider, model)
+    DO UPDATE SET
+      dim = EXCLUDED.dim,
+      embedding = EXCLUDED.embedding,
+      content_hash = EXCLUDED.content_hash,
+      updated_at = now()
+  `;
+
+  await client.query(sql, params);
+}
+
 async function main() {
   const creatorId = argValue('creatorId');
   const merchantIdsArg = argValue('merchantIds');
@@ -255,7 +283,21 @@ async function main() {
 
       for (let w = 0; w < rows.length; w += upsertBatchSize) {
         const up = rows.slice(w, w + upsertBatchSize);
-        await upsertEmbeddingsBatch(client, up, res.provider, res.model, dim);
+        // Always write fallback table (no extensions required).
+        await upsertEmbeddingsFallbackBatch(client, up, res.provider, res.model, dim);
+        // Best-effort write pgvector table when available.
+        try {
+          await upsertEmbeddingsBatch(client, up, res.provider, res.model, dim);
+        } catch (err) {
+          // Ignore when pgvector table/extension doesn't exist.
+          const msg = String(err && err.message ? err.message : err || '');
+          const code = err && err.code ? String(err.code) : '';
+          if (code === '42P01' || code === '42704' || /vector/i.test(msg)) {
+            // noop
+          } else {
+            throw err;
+          }
+        }
       }
 
       console.log(`Upserted ${Math.min(start + batchSize, toEmbed.length)}/${toEmbed.length} embeddings...`);
@@ -269,4 +311,3 @@ main()
     console.error(err);
     process.exit(1);
   });
-

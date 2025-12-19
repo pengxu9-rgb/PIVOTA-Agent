@@ -31,7 +31,7 @@ const {
 } = require('./findProductsMulti/policy');
 const { embedText } = require('./services/embeddings');
 const {
-  vectorSearchCreatorProductsFromCache,
+  semanticSearchCreatorProductsFromCache,
 } = require('./services/productsCacheVectorSearch');
 
 const PORT = process.env.PORT || 3000;
@@ -1115,7 +1115,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     try {
       const embedding = await embedText(queryText, { cache: true });
       const vecLimit = Math.min(Math.max(safeLimit * 6, 80), 240);
-      const vecHits = await vectorSearchCreatorProductsFromCache({
+      const vecHits = await semanticSearchCreatorProductsFromCache({
         merchantIds: config.merchantIds,
         queryVector: embedding.vector,
         dim: embedding.dim,
