@@ -174,6 +174,30 @@ const OUTERWEAR_KEYWORDS_EN = [
 const COLD_SCENARIO_SIGNALS_ZH = ['山上', '登山', '徒步', '爬山', '露营', '很冷', '降温', '低温', '下雪'];
 const COLD_SCENARIO_SIGNALS_EN = ['mountain', 'hiking', 'camping', 'cold', 'snow', 'freezing', 'winter'];
 
+// "衣服" is too generic and appears in many contexts (including "sexy outfit").
+// Keep this list focused on gendered signals and common women clothing terms.
+const WOMEN_CLOTHING_SIGNALS_ZH = ['女生', '女装', '女士', '女人', '女孩', '穿搭', '裙子', '连衣裙', '上衣', '裤子'];
+const WOMEN_CLOTHING_SIGNALS_EN = [
+  'women',
+  "women's",
+  'womens',
+  'girl',
+  "girl's",
+  'girls',
+  'clothes',
+  'clothing',
+  'outfit',
+  'dress',
+  'skirt',
+  'top',
+  'blouse',
+  'shirt',
+  'pants',
+  'jeans',
+  'hoodie',
+  'sweater',
+];
+
 const PET_SIGNALS_ZH = ['狗', '狗狗', '小狗', '猫', '猫猫', '宠物', '遛狗', '狗衣服', '宠物衣服'];
 const PET_SIGNALS_EN = [
   'dog',
@@ -246,6 +270,30 @@ function includesAny(haystack, needles) {
   return needles.some((k) => lowered.includes(String(k).toLowerCase()));
 }
 
+function parseBudgetToPriceConstraint(latestUserQuery) {
+  const q = String(latestUserQuery || '');
+  if (!q) return null;
+
+  // Normalize full-width digits and currency symbols if present.
+  const normalized = q.replace(/[０-９]/g, (d) => String('０１２３４５６７８９'.indexOf(d)));
+  const hasUsd =
+    /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
+  const m = normalized.match(/(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+
+  const val = Number(m[1]);
+  if (!Number.isFinite(val) || val <= 0) return null;
+
+  const within = /左右|around|about|approx/i.test(normalized);
+  const maxOnly = /以内|以下|不超过|at most|under|<=/i.test(normalized);
+
+  const currency = hasUsd ? 'USD' : null;
+  const max = maxOnly ? val : within ? Math.round(val * 1.25 * 100) / 100 : val;
+  const min = within && !maxOnly ? Math.round(val * 0.75 * 100) / 100 : null;
+
+  return { currency, min, max };
+}
+
 function wantsUseHistory(latestUserQuery) {
   const q = String(latestUserQuery || '').toLowerCase();
   return (
@@ -305,6 +353,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, LINGERIE_SIGNALS_JA);
 
   const hasSexySignal = includesAny(latest, ['sexy', '性感', 'セクシー']);
+
+  const hasWomenClothingSignal =
+    includesAny(latest, WOMEN_CLOTHING_SIGNALS_ZH) ||
+    includesAny(latest, WOMEN_CLOTHING_SIGNALS_EN) ||
+    // Spanish/French basic gender words
+    includesAny(latest, ['mujer', 'mujeres', 'ropa', 'femme', 'femmes', 'vêtement', 'vetement']);
 
   const hasToySignalStrong =
     includesAny(latest, TOY_KEYWORDS_STRONG) ||
@@ -367,6 +421,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           includesAny(latest, [s])
         )
       : [];
+  } else if (hasWomenClothingSignal) {
+    primary_domain = 'human_apparel';
+    targetType = 'human';
+    categoryRequired = ['apparel'].slice(0, 1);
+    scenarioName = 'women_clothing';
+    scenarioSignals = [];
   } else if (hasLingerieSignal) {
     primary_domain = 'human_apparel';
     targetType = 'human';
@@ -451,6 +511,8 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
         : 0.4;
   const overall = Math.max(0, Math.min(1, (confidenceDomain + confidenceTarget + confidenceCategory) / 3));
 
+  const budget = parseBudgetToPriceConstraint(latest);
+
   const intent = {
     intent_version: INTENT_VERSION,
     language,
@@ -481,7 +543,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
       must_exclude_domains: mustExcludeDomains,
       must_exclude_keywords: mustExcludeKeywords,
       in_stock_only: null,
-      price: { currency: null, min: null, max: null },
+      price: budget || { currency: null, min: null, max: null },
     },
     soft_preferences: {
       style: [],

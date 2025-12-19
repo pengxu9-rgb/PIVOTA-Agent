@@ -61,6 +61,17 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.ambiguity.needs_clarification).toBe(false);
   });
 
+  test('intent: women clothing with budget is human_apparel (human) with USD price max', () => {
+    const intent = extractIntentRuleBased('帮我选几件20美金左右的女生衣服', [], []);
+    expect(intent.language).toBe('zh');
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('women_clothing');
+    expect(intent.category.required).toEqual(expect.arrayContaining(['apparel']));
+    expect(intent.hard_constraints.price.currency).toBe('USD');
+    expect(intent.hard_constraints.price.max).toBeGreaterThanOrEqual(20);
+  });
+
   test('lingerie intent filters out pet/toy items (avoid mixed featured pool)', () => {
     const intent = extractIntentRuleBased('性感内衣', [], []);
     expect(intent.target_object.type).toBe('human');

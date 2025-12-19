@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v28';
+const POLICY_VERSION = 'find_products_multi_policy_v29';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -271,6 +271,29 @@ function productHasCategorySignal(product, requiredCategories) {
       '外套',
       '雨衣',
       '毛衣',
+    ],
+    // Generic human apparel (non-outerwear; used for broad "women's clothes" queries)
+    apparel: [
+      /\b(dress|skirt|top|blouse|shirt|pants|jeans|hoodie|sweater|cardigan|tee|t-shirt)\b/i,
+      /\b(outfit|clothes|clothing|apparel)\b/i,
+      '衣服',
+      '穿搭',
+      '女装',
+      '女生',
+      '女士',
+      '裙',
+      '连衣裙',
+      '上衣',
+      '裤',
+      '卫衣',
+      '毛衣',
+      'vêtement',
+      'vetement',
+      'robe',
+      'jupe',
+      'ropa',
+      'vestido',
+      'falda',
     ],
     dog_jacket: [
       /\b(jacket|coat|parka|raincoat|shell|windbreaker)\b/i,
@@ -948,7 +971,13 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
 
   if (isZh) {
     if (isNone) {
-      return '我没找到适合这次山上保暖的成人外套/大衣（当前货盘里可能缺少相关品类）。你可以试试改搜：羽绒服 / 冲锋衣 / 抓绒 / 保暖外套，或告诉我最低温度和预算，我再帮你缩小范围。';
+      if ((intent?.scenario?.name || '') === 'women_clothing') {
+        return '我没在当前货盘里找到足够匹配的女生衣服（可能品类覆盖不足）。你可以告诉我：更想要裙子/上衣/裤子/卫衣哪一类？尺码和预算（例如 ≤$20）也可以，我再帮你更精准地筛。';
+      }
+      if ((intent?.scenario?.name || '') === 'sexy_outfit') {
+        return '我没在当前货盘里找到足够匹配的“性感风”女生衣服。你更偏好：内衣套装 / 小礼裙 / 约会穿搭 哪一类？也可以给我预算和尺码。';
+      }
+      return '我没找到足够匹配的商品（当前货盘里可能缺少相关品类）。你可以换个关键词，或告诉我预算/尺码/场景，我再帮你缩小范围。';
     }
     if (matchTier === 'weak') {
       if ((intent?.target_object?.type || '') === 'pet') {
