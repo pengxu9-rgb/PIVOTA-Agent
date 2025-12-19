@@ -29,6 +29,10 @@ const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
+const { embedText } = require('./services/embeddings');
+const {
+  vectorSearchCreatorProductsFromCache,
+} = require('./services/productsCacheVectorSearch');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -1090,8 +1094,100 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     })
     .sort((a, b) => b.score - a.score);
 
-  const products = scored.slice(0, safeLimit).map((x) => x.p);
-  return { products, total, page: safePage, page_size: safeLimit, merchantIds: config.merchantIds };
+  const lexicalProducts = scored.slice(0, safeLimit).map((x) => x.p);
+  const retrievalSources = [
+    { source: 'lexical_cache', used: true, count: lexicalProducts.length, candidate_count: rawProducts.length },
+  ];
+
+  const vectorEnabled =
+    process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true' &&
+    process.env.DATABASE_URL &&
+    safePage === 1;
+
+  const intentLang = String(options?.intent?.language || '').toLowerCase();
+  const shouldTryVector =
+    vectorEnabled &&
+    // Try vector recall when lexical is weak or query is likely non-English.
+    (lexicalProducts.length < safeLimit ||
+      (intentLang && intentLang !== 'en' && intentLang !== 'other'));
+
+  if (shouldTryVector) {
+    try {
+      const embedding = await embedText(queryText, { cache: true });
+      const vecLimit = Math.min(Math.max(safeLimit * 6, 80), 240);
+      const vecHits = await vectorSearchCreatorProductsFromCache({
+        merchantIds: config.merchantIds,
+        queryVector: embedding.vector,
+        dim: embedding.dim,
+        provider: embedding.provider,
+        model: embedding.model,
+        limit: vecLimit,
+        intentTarget,
+        excludeUnderwear: shouldExcludeUnderwear,
+      });
+
+      const vecProducts = vecHits
+        .map((x) => x.product)
+        .filter(Boolean)
+        .filter((p) => isProductSellable(p));
+
+      retrievalSources.push({
+        source: 'vector_cache',
+        used: true,
+        count: vecProducts.length,
+        provider: embedding.provider,
+        model: embedding.model,
+        dim: embedding.dim,
+      });
+
+      if (vecProducts.length > 0 && lexicalProducts.length < safeLimit) {
+        const seen = new Set();
+        const merged = [];
+        for (const p of lexicalProducts) {
+          const mid = String(p.merchant_id || p.merchantId || '').trim();
+          const pid = String(p.id || p.product_id || p.productId || '').trim();
+          const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(p);
+        }
+        for (const p of vecProducts) {
+          if (merged.length >= safeLimit) break;
+          const mid = String(p.merchant_id || p.merchantId || '').trim();
+          const pid = String(p.id || p.product_id || p.productId || '').trim();
+          const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(p);
+        }
+
+        return {
+          products: merged,
+          total: Math.max(total, merged.length),
+          page: safePage,
+          page_size: safeLimit,
+          merchantIds: config.merchantIds,
+          retrieval_sources: retrievalSources,
+        };
+      }
+    } catch (err) {
+      // Fail-open: vector recall is an optional enhancement; do not block lexical search.
+      retrievalSources.push({
+        source: 'vector_cache',
+        used: false,
+        error: String(err && err.message ? err.message : err),
+      });
+    }
+  }
+
+  return {
+    products: lexicalProducts,
+    total,
+    page: safePage,
+    page_size: safeLimit,
+    merchantIds: config.merchantIds,
+    retrieval_sources: retrievalSources,
+  };
 }
 
 function buildPetFallbackQuery(intent, rawUserQuery) {
@@ -1824,6 +1920,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 query_source: 'cache_creator_search',
                 fetched_at: new Date().toISOString(),
                 merchants_searched: fromCache.merchantIds.length,
+                ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
                 ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
                 ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
               },
@@ -2217,6 +2314,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 query_source: 'cache_creator_pet_fallback',
                 fetched_at: new Date().toISOString(),
                 merchants_searched: fromCache.merchantIds.length,
+                ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
                 ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
                 ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
               },

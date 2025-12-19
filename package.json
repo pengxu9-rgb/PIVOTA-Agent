@@ -15,7 +15,8 @@
     "test": "jest --runInBand",
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
     "mock:pivota": "node scripts/mock-pivota-api.js",
-    "demo:status": "node scripts/demo-openai-status.mjs"
+    "demo:status": "node scripts/demo-openai-status.mjs",
+    "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"
   },
   "keywords": [
     "pivota",
