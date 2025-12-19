@@ -54,6 +54,56 @@ const ROUTE_DEBUG_ENABLED =
   process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1' ||
   process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG === '1';
 
+async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown') {
+  if (!ROUTE_DEBUG_ENABLED) return null;
+  if (!process.env.DATABASE_URL) return { db_configured: false };
+  if (!Array.isArray(merchantIds) || merchantIds.length === 0) return { db_configured: true, merchant_ids_count: 0 };
+
+  const baseWhere = `
+    merchant_id = ANY($1)
+    AND (expires_at IS NULL OR expires_at > now())
+    AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+    AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+  `;
+
+  const pet = buildPetSignalSql(2);
+  const petWhere = intentTarget === 'pet' ? ` AND ${pet.sql}` : '';
+  const petParams = intentTarget === 'pet' ? pet.params : [];
+
+  try {
+    const [allRes, sellableRes, petRes, embRes] = await Promise.all([
+      query(`SELECT COUNT(*)::int AS c FROM products_cache WHERE merchant_id = ANY($1)`, [merchantIds]),
+      query(`SELECT COUNT(*)::int AS c FROM products_cache WHERE ${baseWhere}`, [merchantIds]),
+      intentTarget === 'pet'
+        ? query(
+            `SELECT COUNT(*)::int AS c FROM products_cache WHERE ${baseWhere}${petWhere}`,
+            [merchantIds, ...petParams],
+          )
+        : Promise.resolve({ rows: [{ c: null }] }),
+      query(
+        `SELECT COUNT(*)::int AS c FROM products_cache_embeddings_fallback WHERE merchant_id = ANY($1)`,
+        [merchantIds],
+      ),
+    ]);
+
+    return {
+      db_configured: true,
+      merchant_ids_count: merchantIds.length,
+      products_cache_total: Number(allRes.rows?.[0]?.c || 0),
+      products_cache_sellable_total: Number(sellableRes.rows?.[0]?.c || 0),
+      products_cache_pet_signal_sellable_total:
+        intentTarget === 'pet' ? Number(petRes.rows?.[0]?.c || 0) : null,
+      embeddings_fallback_total: Number(embRes.rows?.[0]?.c || 0),
+    };
+  } catch (err) {
+    return {
+      db_configured: true,
+      merchant_ids_count: merchantIds.length,
+      error: String(err && err.message ? err.message : err),
+    };
+  }
+}
+
 // API Mode: MOCK (default), HYBRID, or REAL
 // MOCK: Use internal mock data
 // HYBRID: Real product search, mock payment
@@ -2014,6 +2064,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             vector_enabled: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
             intent_language: effectiveIntent?.language || null,
             intent_target: effectiveIntent?.target_object?.type || null,
+            db_stats: await probeCreatorCacheDbStats(
+              Array.isArray(fromCache.merchantIds) ? fromCache.merchantIds : [],
+              intentTarget,
+            ),
           };
 
           if (fromCache.products && fromCache.products.length > 0) {
