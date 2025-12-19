@@ -108,7 +108,7 @@ function buildBaseSellableWhere() {
     merchant_id = ANY($1)
     AND (expires_at IS NULL OR expires_at > now())
     AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
-    AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+    AND COALESCE((product_data->>'inventory_quantity')::int, 0) > 0
   `;
 }
 
