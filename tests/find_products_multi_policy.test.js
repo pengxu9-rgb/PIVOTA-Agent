@@ -132,6 +132,28 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products.map((p) => p.id)).not.toEqual(expect.arrayContaining(['toy-1']));
   });
 
+  test('pet jacket products are not mis-tagged as human outerwear', () => {
+    const intent = extractIntentRuleBased('need a jacket for my dog', [], []);
+    expect(intent.target_object.type).toBe('pet');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'pet-jacket-1',
+            title: 'Warm Winter Jacket for Dogs & Cats',
+            description: 'A warm jacket for pets',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'dog jacket' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(['pet-jacket-1']);
+  });
+
   test('spanish pet hiking apparel query is detected as pet and filters toy items', () => {
     const intent = extractIntentRuleBased(
       'Voy a ir de senderismo con mi perro este fin de semana. Va a hacer frío, por favor encuentra ropa adecuada para mi perro.',

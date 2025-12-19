@@ -114,20 +114,9 @@ function inferPivotaTags(product) {
     };
   }
 
-  const isHumanOuterwear = includesAny(text, HUMAN_OUTERWEAR_KEYWORDS);
-  if (isHumanOuterwear) {
-    return {
-      version: TAG_VERSION,
-      domain: { value: 'human_apparel', confidence: 0.9, source: TAG_SOURCE },
-      target_object: { value: 'human', confidence: 0.95, source: TAG_SOURCE },
-      category_path: {
-        value: ['human_apparel', 'outerwear'],
-        confidence: 0.75,
-        source: TAG_SOURCE,
-      },
-    };
-  }
-
+  // Pet apparel must take precedence over "human outerwear" keywords because
+  // many pet items use terms like "jacket/coat" in their titles.
+  // We intentionally require BOTH an animal signal and an apparel/gear signal.
   const isPetApparel = hasPetAnimalSignal(text) && hasPetApparelOrGearSignal(text);
   if (isPetApparel) {
     return {
@@ -137,6 +126,20 @@ function inferPivotaTags(product) {
       category_path: {
         value: ['pet_apparel'],
         confidence: 0.65,
+        source: TAG_SOURCE,
+      },
+    };
+  }
+
+  const isHumanOuterwear = includesAny(text, HUMAN_OUTERWEAR_KEYWORDS);
+  if (isHumanOuterwear) {
+    return {
+      version: TAG_VERSION,
+      domain: { value: 'human_apparel', confidence: 0.9, source: TAG_SOURCE },
+      target_object: { value: 'human', confidence: 0.95, source: TAG_SOURCE },
+      category_path: {
+        value: ['human_apparel', 'outerwear'],
+        confidence: 0.75,
         source: TAG_SOURCE,
       },
     };
