@@ -243,18 +243,36 @@ async function vectorSearchCreatorProductsFromCacheFallback({
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) return [];
 
   const normalizedTarget = normalizeIntentTarget(intentTarget);
+  const requestedProvider = String(provider || '');
+  const requestedModel = String(model || '');
+  const requestedDim = Number(dim || 0);
+
   // Load embeddings for these merchants (creator-scoped; typically small).
-  const embRes = await query(
+  // First try strict provider/model/dim match. If that yields 0, fall back to
+  // "any provider/model with same dim" to avoid config mismatches.
+  let embRes = await query(
     `
-      SELECT merchant_id, product_id, embedding
+      SELECT merchant_id, product_id, embedding, provider, model, dim
       FROM products_cache_embeddings_fallback
       WHERE merchant_id = ANY($1)
         AND provider = $2
         AND model = $3
         AND dim = $4
     `,
-    [merchantIds, String(provider || ''), String(model || ''), Number(dim || 0)],
+    [merchantIds, requestedProvider, requestedModel, requestedDim],
   );
+
+  if (!embRes.rows || embRes.rows.length === 0) {
+    embRes = await query(
+      `
+        SELECT merchant_id, product_id, embedding, provider, model, dim
+        FROM products_cache_embeddings_fallback
+        WHERE merchant_id = ANY($1)
+          AND dim = $2
+      `,
+      [merchantIds, requestedDim],
+    );
+  }
 
   const scored = (embRes.rows || [])
     .map((r) => {

@@ -699,12 +699,28 @@ function tokenizeQueryForCache(q) {
     kept.push(t);
   }
 
-  // Keep unique, preserve order, clamp to avoid pathological SQL.
+  // Keep unique, preserve order.
   const seen = new Set();
-  const out = [];
+  const uniq = [];
   for (const t of kept) {
     if (seen.has(t)) continue;
     seen.add(t);
+    uniq.push(t);
+  }
+
+  // Clamp to avoid pathological SQL, but ensure we don't drop "important" tokens
+  // that often appear at the end (e.g. appended canonical keywords).
+  // Strategy:
+  // - If <= 8 tokens: return as-is.
+  // - Else: take a balanced slice (first 4 + last 4), preserving order.
+  if (uniq.length <= 8) return uniq;
+  const first = uniq.slice(0, 4);
+  const last = uniq.slice(-4);
+  const outSeen = new Set();
+  const out = [];
+  for (const t of [...first, ...last]) {
+    if (outSeen.has(t)) continue;
+    outSeen.add(t);
     out.push(t);
     if (out.length >= 8) break;
   }
@@ -1098,6 +1114,71 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const retrievalSources = [
     { source: 'lexical_cache', used: true, count: lexicalProducts.length, candidate_count: rawProducts.length },
   ];
+
+  // If lexical returned nothing for pet intent (common for non-English queries
+  // against an English catalog), do a pet-constrained browse fallback so we can
+  // still show some relevant creator items.
+  if (lexicalProducts.length === 0 && intentTarget === 'pet') {
+    try {
+      let underwearClause2 = null;
+      let underwearParams2 = [];
+      let idx2 = 2;
+      const shouldExcludeUnderwear2 =
+        !lingerie_intent && ((toy_intent || outfit_intent) || intentTarget === 'pet' || intentTarget === 'human');
+      if (shouldExcludeUnderwear2) {
+        const built = buildUnderwearExclusionSql(idx2);
+        underwearClause2 = built.sql;
+        underwearParams2 = built.params;
+        idx2 = built.nextIndex;
+      }
+      const builtPet = buildPetSignalSql(idx2);
+      const petClause2 = builtPet.sql;
+      const petParams2 = builtPet.params;
+      idx2 = builtPet.nextIndex;
+
+      const browseWhere = [baseWhere, ...(underwearClause2 ? [underwearClause2] : []), petClause2].join(' AND ');
+      const pageFetch2 = Math.min(Math.max(safeLimit * 4, 80), 300);
+      const browseRes = await query(
+        `
+          SELECT product_data
+          FROM products_cache
+          WHERE ${browseWhere}
+          ORDER BY cached_at DESC
+          LIMIT $${idx2}
+        `,
+        [config.merchantIds, ...underwearParams2, ...petParams2, pageFetch2],
+      );
+
+      const browseProducts = (browseRes.rows || [])
+        .map((r) => r.product_data)
+        .filter(Boolean)
+        .filter((p) => isProductSellable(p))
+        .slice(0, safeLimit);
+
+      retrievalSources.push({
+        source: 'pet_browse_fallback',
+        used: true,
+        count: browseProducts.length,
+      });
+
+      if (browseProducts.length > 0) {
+        return {
+          products: browseProducts,
+          total: Math.max(total, browseProducts.length),
+          page: safePage,
+          page_size: safeLimit,
+          merchantIds: config.merchantIds,
+          retrieval_sources: retrievalSources,
+        };
+      }
+    } catch (err) {
+      retrievalSources.push({
+        source: 'pet_browse_fallback',
+        used: false,
+        error: String(err && err.message ? err.message : err),
+      });
+    }
+  }
 
   const vectorEnabled =
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true' &&
