@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v24';
+const POLICY_VERSION = 'find_products_multi_policy_v25';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -48,6 +48,7 @@ const REASON_CODES = {
   COMPAT_UNKNOWN: 'COMPAT_UNKNOWN',
   SAFETY_RISK: 'SAFETY_RISK',
   TOY_ONLY_LEFT: 'TOY_ONLY_LEFT',
+  ALL_HARD_BLOCKED: 'ALL_HARD_BLOCKED',
 };
 
 const LINGERIE_KEYWORDS = [
@@ -580,6 +581,7 @@ function filterProductsByIntent(products, intent, ctx = {}) {
   const rawQuery = String(ctx?.rawQuery || '').trim();
   const filtered = [];
   let hardBlocked = 0;
+  let hardBlockedToyLike = 0;
   const hardBlockedSamples = [];
 
   for (const p of tagged) {
@@ -612,15 +614,17 @@ function filterProductsByIntent(products, intent, ctx = {}) {
 
     if (evalMeta.risk_level === 'hard_block') {
       hardBlocked += 1;
+      const text = buildProductText(p);
+      const toyLike = isToyLikeText(text);
+      if (toyLike) hardBlockedToyLike += 1;
       if (hardBlockedSamples.length < 8) {
-        const text = buildProductText(p);
         const pivota = p?.attributes?.pivota || {};
         hardBlockedSamples.push({
           id: p.id || p.product_id || p.productId || null,
           title: p.title || p.name || null,
           pivota_target: pivota?.target_object || null,
           pivota_domain: pivota?.domain || null,
-          toy_like: isToyLikeText(text),
+          toy_like: toyLike,
           lingerie_like: isLingerieLikeProduct(p),
           pet_signal: hasPetSignalInProduct(p),
           eval_reason_codes: evalMeta.reason_codes,
@@ -636,7 +640,11 @@ function filterProductsByIntent(products, intent, ctx = {}) {
   if (before > 0 && filtered.length === 0) {
     reason_codes.push('NO_DOMAIN_MATCH', 'FILTERED_TO_EMPTY');
     if (hardBlocked === before) {
-      reason_codes.push(REASON_CODES.TOY_ONLY_LEFT);
+      reason_codes.push(REASON_CODES.ALL_HARD_BLOCKED);
+      // Preserve legacy code but only emit it when it's literally all toy-like.
+      if (hardBlockedToyLike === hardBlocked) {
+        reason_codes.push(REASON_CODES.TOY_ONLY_LEFT);
+      }
     }
   }
   return {
@@ -646,6 +654,7 @@ function filterProductsByIntent(products, intent, ctx = {}) {
       before,
       after: filtered.length,
       hard_blocked: hardBlocked,
+      hard_blocked_toy_like: hardBlockedToyLike,
       hard_blocked_samples: hardBlockedSamples,
     },
   };

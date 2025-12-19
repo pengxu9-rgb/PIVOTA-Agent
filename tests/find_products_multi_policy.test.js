@@ -354,4 +354,29 @@ describe('find_products_multi intent + filtering', () => {
       expect.arrayContaining(['NO_DOMAIN_MATCH', 'FILTERED_TO_EMPTY'])
     );
   });
+
+  test('TOY_ONLY_LEFT is only emitted when everything is toy-like', () => {
+    const intent = extractIntentRuleBased('need a jacket for my dog', [], []);
+    expect(intent.target_object.type).toBe('pet');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Sexy lace catsuit bodysuit',
+            description: 'lingerie set',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'dog jacket' } },
+    });
+
+    // All candidates are hard-blocked, but not because they're toys.
+    expect(resp.products).toHaveLength(0);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['ALL_HARD_BLOCKED']));
+    expect(resp.reason_codes || []).not.toEqual(expect.arrayContaining(['TOY_ONLY_LEFT']));
+  });
 });
