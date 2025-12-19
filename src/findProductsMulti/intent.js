@@ -222,7 +222,9 @@ const GREETING_SIGNALS_EN = ['hi', 'hello', 'hey', 'yo', 'sup', 'how are you', "
 const CHITCHAT_SIGNALS_ZH = ['聊聊', '随便聊', '唠嗑', '无聊', '陪我聊', '想聊天'];
 const CHITCHAT_SIGNALS_EN = ['just chat', 'chat', 'talk', 'bored', 'kill time'];
 
-const BROWSE_SIGNALS_ZH = ['随便看看', '逛逛', '看看有什么', '推荐点', '推荐一些', '热门', '有什么好物'];
+// Browse signals should be truly "browse" (no clear shopping goal). Avoid triggering
+// browse for common request phrasing like “推荐一些XX”.
+const BROWSE_SIGNALS_ZH = ['随便看看', '逛逛', '看看有什么', '热门', '有什么好物', '就先看看'];
 const BROWSE_SIGNALS_EN = [
   'recommend something',
   'show me popular',
@@ -231,6 +233,12 @@ const BROWSE_SIGNALS_EN = [
   'show me something',
   'surprise me',
 ];
+
+const LINGERIE_SIGNALS_ZH = ['内衣', '性感内衣', '文胸', '胸罩', '丁字裤', '情趣', '情趣内衣', '成人用品'];
+const LINGERIE_SIGNALS_EN = ['lingerie', 'underwear', 'bra', 'panties', 'panty', 'thong', 'sexy lingerie'];
+const LINGERIE_SIGNALS_ES = ['lenceria', 'lencería', 'ropa interior', 'sujetador', 'bragas', 'tanga'];
+const LINGERIE_SIGNALS_FR = ['lingerie', 'sous-vetement', 'sous-vêtement', 'soutien-gorge', 'culotte', 'string'];
+const LINGERIE_SIGNALS_JA = ['下着', 'ランジェリー', 'ブラ', 'パンティ', 'セクシー'];
 
 function includesAny(haystack, needles) {
   if (!haystack) return false;
@@ -289,6 +297,15 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, PET_SIGNALS_FR) ||
     includesAny(latest, PET_SIGNALS_JA);
 
+  const hasLingerieSignal =
+    includesAny(latest, LINGERIE_SIGNALS_ZH) ||
+    includesAny(latest, LINGERIE_SIGNALS_EN) ||
+    includesAny(latest, LINGERIE_SIGNALS_ES) ||
+    includesAny(latest, LINGERIE_SIGNALS_FR) ||
+    includesAny(latest, LINGERIE_SIGNALS_JA);
+
+  const hasSexySignal = includesAny(latest, ['sexy', '性感', 'セクシー']);
+
   const hasToySignalStrong =
     includesAny(latest, TOY_KEYWORDS_STRONG) ||
     recent_queries.some((q) => includesAny(q, TOY_KEYWORDS_STRONG));
@@ -309,6 +326,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     (isGreeting || isChitchat) &&
     !hasOuterwearSignal &&
     !hasColdScenario &&
+    !hasLingerieSignal &&
     !includesAny(latest, TOY_KEYWORDS_STRONG)
   ) {
     // Discovery / chitchat mode: user has not expressed a shopping goal yet.
@@ -321,6 +339,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     isBrowse &&
     !hasOuterwearSignal &&
     !hasColdScenario &&
+    !hasLingerieSignal &&
     !includesAny(latest, TOY_KEYWORDS_STRONG)
   ) {
     // Generic browse: user wants to see what's available, without a clear category.
@@ -348,6 +367,19 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           includesAny(latest, [s])
         )
       : [];
+  } else if (hasLingerieSignal) {
+    primary_domain = 'human_apparel';
+    targetType = 'human';
+    categoryRequired = ['lingerie', 'underwear'].slice(0, 2);
+    scenarioName = 'lingerie';
+    scenarioSignals = [];
+  } else if (hasSexySignal && latest) {
+    // "Sexy outfit" is often ambiguous (dress vs lingerie). Treat as human apparel but ask.
+    primary_domain = 'human_apparel';
+    targetType = 'human';
+    categoryRequired = [];
+    scenarioName = 'human_apparel_general';
+    scenarioSignals = [];
   } else if (
     includesAny(latest, TOY_KEYWORDS_STRONG) ||
     (hasToySignalStrong && !latest && includesAny(recent_queries.join(' '), TOY_KEYWORDS_STRONG))

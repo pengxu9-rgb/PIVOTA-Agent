@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v25';
+const POLICY_VERSION = 'find_products_multi_policy_v26';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -274,6 +274,28 @@ function productHasCategorySignal(product, requiredCategories) {
       /\b(pull)\b/i,
       '毛衣',
       'ニット',
+    ],
+
+    // Adult/intimate apparel (human)
+    lingerie: [
+      /\b(lingerie|underwear)\b/i,
+      /\b(bra|bras|panty|panties|thong|briefs)\b/i,
+      /\b(lencer[ií]a|ropa\s+interior|sujetador|bragas|tanga)\b/i,
+      /\b(sous[-\s]?v[eê]tement|soutien[-\s]?gorge|culotte|string)\b/i,
+      '内衣',
+      '文胸',
+      '胸罩',
+      '丁字裤',
+      '情趣',
+      '下着',
+      'ランジェリー',
+    ],
+    underwear: [
+      /\b(underwear|lingerie)\b/i,
+      /\b(bra|bras|panty|panties|briefs)\b/i,
+      /\b(ropa\s+interior|sous[-\s]?v[eê]tement)\b/i,
+      '内衣',
+      '下着',
     ],
   };
 
@@ -991,11 +1013,20 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       if (lang === 'fr') extra.push('chien', 'vêtement');
       if (lang === 'ja') extra.push('犬', '犬服');
     } else if (target === 'human' && intent?.primary_domain === 'human_apparel') {
-      extra.push('coat', 'jacket', 'outerwear');
-      if (scenario.includes('cold') || scenario.includes('mountain')) extra.push('down jacket', 'winter');
-      if (lang === 'es') extra.push('abrigo', 'chaqueta');
-      if (lang === 'fr') extra.push('manteau', 'veste');
-      if (lang === 'zh') extra.push('coat', 'jacket');
+      const isLingerie = (intent?.category?.required || []).includes('lingerie') || scenario === 'lingerie';
+      if (isLingerie) {
+        extra.push('lingerie', 'underwear', 'bra', 'panties');
+        if (lang === 'es') extra.push('lenceria', 'ropa interior');
+        if (lang === 'fr') extra.push('lingerie', 'sous vetement');
+        if (lang === 'ja') extra.push('下着', 'ランジェリー');
+        if (lang === 'zh') extra.push('lingerie', 'underwear');
+      } else {
+        extra.push('coat', 'jacket', 'outerwear');
+        if (scenario.includes('cold') || scenario.includes('mountain')) extra.push('down jacket', 'winter');
+        if (lang === 'es') extra.push('abrigo', 'chaqueta');
+        if (lang === 'fr') extra.push('manteau', 'veste');
+        if (lang === 'zh') extra.push('coat', 'jacket');
+      }
     } else if (intent?.primary_domain === 'toy_accessory') {
       extra.push('labubu', 'doll clothes', 'outfit');
     }

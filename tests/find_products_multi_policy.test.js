@@ -52,6 +52,48 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('intent: lingerie query is human_apparel (human) and is not treated as browse', () => {
+    const intent = extractIntentRuleBased('性感内衣', [], []);
+    expect(intent.language).toBe('zh');
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.category.required).toEqual(expect.arrayContaining(['lingerie']));
+    expect(intent.ambiguity.needs_clarification).toBe(false);
+  });
+
+  test('lingerie intent filters out pet/toy items (avoid mixed featured pool)', () => {
+    const intent = extractIntentRuleBased('性感内衣', [], []);
+    expect(intent.target_object.type).toBe('human');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'toy-1',
+            title: 'Labubu doll clothes set',
+            description: 'Doll outfit for Labubu-style vinyl face doll',
+          }),
+          makeRawProduct({
+            id: 'pet-1',
+            title: 'Warm Winter Coat for Dogs & Cats',
+            description: 'Warm padded coat for pets',
+          }),
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Lace lingerie set',
+            description: 'Women underwear set',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '性感内衣' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(expect.arrayContaining(['ling-1']));
+    expect(resp.products.map((p) => p.id)).not.toEqual(expect.arrayContaining(['toy-1', 'pet-1']));
+  });
+
   test('filters toy products out for human outerwear intent; weak tier when <3 matches', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',
