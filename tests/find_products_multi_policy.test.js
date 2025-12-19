@@ -94,6 +94,35 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products.map((p) => p.id)).not.toEqual(expect.arrayContaining(['toy-1', 'pet-1']));
   });
 
+  test('sexy outfit query should not hard-block lingerie products as unrequested adult', () => {
+    const intent = extractIntentRuleBased('当天晚上要给女朋友一个惊喜，准备一套性感的衣服送给她，推荐一些', [], []);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'ling-1',
+            title: 'Sweet Lace Sheer Mesh Deep V Backless lingerie set',
+            description: 'Sexy lingerie set for women',
+          }),
+          makeRawProduct({
+            id: 'pet-1',
+            title: 'Warm Winter Coat for Dogs & Cats',
+            description: 'Warm padded coat for pets',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '性感的衣服' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(expect.arrayContaining(['ling-1']));
+    expect(resp.products.map((p) => p.id)).not.toEqual(expect.arrayContaining(['pet-1']));
+  });
+
   test('filters toy products out for human outerwear intent; weak tier when <3 matches', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',

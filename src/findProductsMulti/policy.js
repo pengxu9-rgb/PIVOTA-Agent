@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v26';
+const POLICY_VERSION = 'find_products_multi_policy_v27';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -79,11 +79,12 @@ function includesAny(haystack, needles) {
   return needles.some((k) => lowered.includes(String(k).toLowerCase()));
 }
 
-function isExplicitAdultOrLingerieQuery(rawQuery) {
+function detectAdultIntentStrength(rawQuery) {
   const q = String(rawQuery || '');
-  if (!q) return false;
-  // Only treat explicit lingerie/adult terms as opt-in (avoid "sleepwear" etc).
-  const patterns = [
+  if (!q) return 'none';
+
+  // Strong: explicitly lingerie/underwear.
+  const strong = [
     /\b(lingerie|underwear)\b/i,
     /\b(bra|bras)\b/i,
     /\b(panty|panties|thong)\b/i,
@@ -92,7 +93,19 @@ function isExplicitAdultOrLingerieQuery(rawQuery) {
     /\b(sous[-\s]?v[eê]tement|soutien[-\s]?gorge)\b/i,
     /下着|内衣|情趣|成人用品/,
   ];
-  return patterns.some((re) => re.test(q));
+  if (strong.some((re) => re.test(q))) return 'strong';
+
+  // Soft: "sexy" requests are adult-adjacent and should allow lingerie results,
+  // otherwise we end up filtering the whole candidate set and showing irrelevant items.
+  const soft = [
+    /\bsexy\b/i,
+    /性感/,
+    /セクシー/,
+    /\ber[oó]tico\b/i,
+  ];
+  if (soft.some((re) => re.test(q))) return 'soft';
+
+  return 'none';
 }
 
 function isLingerieLikeProduct(product) {
@@ -330,11 +343,12 @@ function isAdultProduct(product) {
 }
 
 function getAdultIntent(intent, rawQuery) {
-  const explicit = isExplicitAdultOrLingerieQuery(rawQuery || '');
+  const strength = detectAdultIntentStrength(rawQuery || '');
   // TODO: if we later extend intent schema with an explicit adult_intent object,
   // read it here instead of relying only on query text.
-  const conf = explicit ? 0.9 : 0.0;
-  return { is_explicit: explicit, conf };
+  if (strength === 'strong') return { is_explicit: true, conf: 0.9 };
+  if (strength === 'soft') return { is_explicit: true, conf: 0.65 };
+  return { is_explicit: false, conf: 0.0 };
 }
 
 function getCompatMeta(intent, product) {
