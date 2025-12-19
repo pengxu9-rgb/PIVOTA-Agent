@@ -170,14 +170,34 @@ function injectPivotaAttributes(product) {
   const existingPivota = attributes.pivota && typeof attributes.pivota === 'object' ? attributes.pivota : null;
   const inferred = inferPivotaTags(product);
 
+  // If products_cache already stored older pivota tags from our own rule tagger,
+  // they might be stale (e.g. pet jackets mis-tagged as human outerwear).
+  // We treat tags as "ours" when:
+  // - version matches TAG_VERSION, OR
+  // - the tag object has source == TAG_SOURCE.
+  // In those cases, prefer the freshly inferred tags.
+  const existingVersion = String(existingPivota?.version || '').trim();
+  const isOurExisting =
+    existingVersion === TAG_VERSION ||
+    String(existingPivota?.domain?.source || '').toLowerCase() === TAG_SOURCE ||
+    String(existingPivota?.target_object?.source || '').toLowerCase() === TAG_SOURCE ||
+    String(existingPivota?.category_path?.source || '').toLowerCase() === TAG_SOURCE;
+
+  const pickField = (field) => {
+    const existing = existingPivota?.[field];
+    if (!existing) return inferred[field];
+    const src = String(existing?.source || '').toLowerCase();
+    if (isOurExisting || src === TAG_SOURCE) return inferred[field];
+    return existing;
+  };
+
   const mergedPivota = {
-    ...inferred,
     ...(existingPivota || {}),
-    // preserve inferred structure but allow upstream override if present
-    version: existingPivota?.version || inferred.version,
-    domain: existingPivota?.domain || inferred.domain,
-    target_object: existingPivota?.target_object || inferred.target_object,
-    category_path: existingPivota?.category_path || inferred.category_path,
+    ...inferred,
+    version: isOurExisting ? inferred.version : (existingPivota?.version || inferred.version),
+    domain: pickField('domain'),
+    target_object: pickField('target_object'),
+    category_path: pickField('category_path'),
   };
 
   return {
