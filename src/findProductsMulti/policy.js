@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v22';
+const POLICY_VERSION = 'find_products_multi_policy_v23';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -606,6 +606,7 @@ function filterProductsByIntent(products, intent, ctx = {}) {
   const rawQuery = String(ctx?.rawQuery || '').trim();
   const filtered = [];
   let hardBlocked = 0;
+  const hardBlockedSamples = [];
 
   for (const p of tagged) {
     const evalMeta = evaluateProductForIntent(p, intent, { rawQuery });
@@ -637,6 +638,21 @@ function filterProductsByIntent(products, intent, ctx = {}) {
 
     if (evalMeta.risk_level === 'hard_block') {
       hardBlocked += 1;
+      if (hardBlockedSamples.length < 8) {
+        const text = buildProductText(p);
+        const pivota = p?.attributes?.pivota || {};
+        hardBlockedSamples.push({
+          id: p.id || p.product_id || p.productId || null,
+          title: p.title || p.name || null,
+          pivota_target: pivota?.target_object || null,
+          pivota_domain: pivota?.domain || null,
+          toy_like: isToyLikeText(text),
+          lingerie_like: isLingerieLikeProduct(p),
+          pet_signal: hasPetSignalInProduct(p),
+          eval_reason_codes: evalMeta.reason_codes,
+          eval_product_object: evalMeta.product_object,
+        });
+      }
       continue;
     }
     filtered.push(annotated);
@@ -649,7 +665,16 @@ function filterProductsByIntent(products, intent, ctx = {}) {
       reason_codes.push(REASON_CODES.TOY_ONLY_LEFT);
     }
   }
-  return { filtered, reason_codes };
+  return {
+    filtered,
+    reason_codes,
+    debug: {
+      before,
+      after: filtered.length,
+      hard_blocked: hardBlocked,
+      hard_blocked_samples: hardBlockedSamples,
+    },
+  };
 }
 
 function computeMatchStats(sortedProducts, intent, ctx = {}) {
@@ -1020,7 +1045,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     String(requestPayload?.search?.query || '').trim() ||
     '';
 
-  const { filtered, reason_codes: filterReasonCodes } = filterProductsByIntent(list, intent, { rawQuery });
+  const filteredResult = filterProductsByIntent(list, intent, { rawQuery });
+  const { filtered, reason_codes: filterReasonCodes } = filteredResult;
   const after = filtered.length;
 
   // By default, keep ordering. LLM rerank (optional) can be added later.
@@ -1043,6 +1069,26 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   const augmented = setResponseProductList(response, key, filtered);
   const filtersApplied = buildFiltersApplied(intent);
+  const existingMeta =
+    augmented && augmented.metadata && typeof augmented.metadata === 'object' ? augmented.metadata : {};
+  const existingRouteDebug =
+    existingMeta.route_debug && typeof existingMeta.route_debug === 'object'
+      ? existingMeta.route_debug
+      : null;
+  const policyDebug = filteredResult?.debug || null;
+  const mergedMetadata =
+    DEBUG_STATS_ENABLED || existingRouteDebug
+      ? {
+          ...existingMeta,
+          route_debug: {
+            ...(existingRouteDebug || {}),
+            policy: {
+              ...(existingRouteDebug?.policy || {}),
+              ...(policyDebug ? { filter_debug: policyDebug } : {}),
+            },
+          },
+        }
+      : existingMeta;
 
   const shouldOverrideReply =
     !augmented.reply ||
@@ -1068,6 +1114,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   return {
     ...augmented,
+    ...(mergedMetadata !== existingMeta ? { metadata: mergedMetadata } : {}),
     policy_version: POLICY_VERSION,
     reply,
     intent,
