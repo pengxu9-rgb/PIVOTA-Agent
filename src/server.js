@@ -988,7 +988,9 @@ function buildPetSignalSql(startIndex) {
   // Use ~* for case-insensitive matching.
   const latin = '(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|perro|perros|mascota|mascotas|gato|gatos|chien|chiens|chienne|chiot|chat|chats)';
   const cjk = '(狗狗|狗|猫猫|猫|宠物|犬服|猫服|犬|ペット|わんちゃん)';
-  const re = `(\\\\m${latin}\\\\M|${cjk})`;
+  // IMPORTANT: Postgres uses \m and \M as word-boundary tokens. Do NOT double-escape
+  // here, otherwise the regex engine sees a literal "\m" string and never matches.
+  const re = `(\\m${latin}\\M|${cjk})`;
 
   const fields = [
     "coalesce(product_data->>'title','')",

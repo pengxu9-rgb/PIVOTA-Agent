@@ -6,6 +6,7 @@ const { query } = require('../src/db');
 const {
   semanticSearchCreatorProductsFromCache,
   pickVectorColumn,
+  _buildPetSignalSql,
 } = require('../src/services/productsCacheVectorSearch');
 
 describe('products_cache vector recall SQL', () => {
@@ -45,5 +46,17 @@ describe('products_cache vector recall SQL', () => {
     expect(params[2]).toBe('gemini');
     expect(params[3]).toBe('text-embedding-004');
     expect(params[4]).toBe(768);
+  });
+
+  test('pet regex uses single-backslash word boundaries', () => {
+    const built = _buildPetSignalSql(2);
+    expect(built.params).toHaveLength(1);
+    const pattern = String(built.params[0]);
+    // Should contain a single backslash before m/M (JS string literal representation: "\\m").
+    expect(pattern).toContain('\\m');
+    expect(pattern).toContain('\\M');
+    // Should not contain double-backslash characters (representation: "\\\\m").
+    expect(pattern).not.toContain('\\\\m');
+    expect(pattern).not.toContain('\\\\M');
   });
 });

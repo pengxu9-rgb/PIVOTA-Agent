@@ -90,7 +90,7 @@ function buildPetSignalSql(startIndex) {
   const latin =
     '(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|perro|perros|mascota|mascotas|gato|gatos|chien|chiens|chienne|chiot|chat|chats)';
   const cjk = '(狗狗|狗|猫猫|猫|宠物|犬服|猫服|犬|ペット|わんちゃん)';
-  const re = `(\\\\m${latin}\\\\M|${cjk})`;
+  const re = `(\\m${latin}\\M|${cjk})`;
 
   const fields = [
     "coalesce(product_data->>'title','')",
@@ -378,4 +378,5 @@ module.exports = {
   vectorSearchCreatorProductsFromCache,
   semanticSearchCreatorProductsFromCache,
   pickVectorColumn,
+  _buildPetSignalSql: buildPetSignalSql,
 };
