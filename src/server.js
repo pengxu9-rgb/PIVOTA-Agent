@@ -1094,6 +1094,22 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   return { products, total, page: safePage, page_size: safeLimit, merchantIds: config.merchantIds };
 }
 
+function buildPetFallbackQuery(intent, rawUserQuery) {
+  const lang = intent?.language || 'en';
+  switch (lang) {
+    case 'zh':
+      return '狗 狗狗 宠物 外套 衣服';
+    case 'es':
+      return 'perro ropa abrigo chaqueta';
+    case 'fr':
+      return 'chien vêtement manteau veste';
+    case 'ja':
+      return '犬 犬服 服';
+    default:
+      return 'dog jacket dog clothes';
+  }
+}
+
 async function loadCreatorProductFromCache(creatorId, productId) {
   const config = getCreatorConfig(creatorId);
   if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) return null;
@@ -2165,6 +2181,68 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         metadata,
         rawUserQuery,
       });
+
+      const effTarget = effectiveIntent?.target_object?.type || 'unknown';
+      const productsAfterPolicy = Array.isArray(maybePolicy.products) ? maybePolicy.products : [];
+      const upstreamTotal = Array.isArray(upstreamData.products) ? upstreamData.products.length : upstreamData.total || 0;
+
+      // Pet-specific recall fallback:
+      // If multi-merchant recall (cache_multi_intent) returns only non-pet / blocked items
+      // and policy filters everything out, try the creator's own sellable cache with a
+      // simplified pet query so we at least surface some dog apparel.
+      if (
+        effTarget === 'pet' &&
+        productsAfterPolicy.length === 0 &&
+        creatorId &&
+        process.env.DATABASE_URL &&
+        upstreamTotal > 0
+      ) {
+        try {
+          const fallbackQuery = buildPetFallbackQuery(effectiveIntent, rawUserQuery);
+          const search = effectivePayload.search || {};
+          const page = search.page || 1;
+          const limit = search.limit || search.page_size || 20;
+          const fromCache = await searchCreatorSellableFromCache(creatorId, fallbackQuery, page, limit, {
+            intent: effectiveIntent,
+          });
+
+          if (fromCache.products && fromCache.products.length > 0) {
+            const fallbackData = {
+              products: fromCache.products,
+              total: fromCache.total,
+              page: fromCache.page,
+              page_size: fromCache.page_size,
+              reply: null,
+              metadata: {
+                query_source: 'cache_creator_pet_fallback',
+                fetched_at: new Date().toISOString(),
+                merchants_searched: fromCache.merchantIds.length,
+                ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+                ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+              },
+            };
+
+            maybePolicy = applyFindProductsMultiPolicy({
+              response: fallbackData,
+              intent: effectiveIntent,
+              requestPayload: {
+                ...effectivePayload,
+                search: {
+                  ...(effectivePayload.search || {}),
+                  query: fallbackQuery,
+                },
+              },
+              metadata,
+              rawUserQuery: fallbackQuery,
+            });
+          }
+        } catch (err) {
+          logger.warn(
+            { err: err.message, creatorId, source: metadata?.source },
+            'Pet apparel fallback from creator cache failed',
+          );
+        }
+      }
     }
 
     const enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
