@@ -249,6 +249,28 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products.find((p) => p.id === 'ling-1')).toBeUndefined();
   });
 
+  test('does not misclassify "breathable" pet apparel as lingerie ("bra" substring)', () => {
+    const intent = extractIntentRuleBased('need a warm jacket for my dog', [], []);
+    expect(intent.target_object.type).toBe('pet');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'pet-1',
+            title: 'Warm Winter Jacket for Dogs & Cats',
+            description: 'Breathable fabric, warm and comfy for pets',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'dog jacket' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(['pet-1']);
+  });
+
   test('does not treat "catsuit" lingerie as pet apparel (avoid cat substring false positive)', () => {
     const intent = extractIntentRuleBased('我要狗狗的外套', [], []);
     expect(intent.target_object.type).toBe('pet');

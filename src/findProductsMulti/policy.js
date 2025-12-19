@@ -2,7 +2,7 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v23';
+const POLICY_VERSION = 'find_products_multi_policy_v24';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -51,40 +51,25 @@ const REASON_CODES = {
 };
 
 const LINGERIE_KEYWORDS = [
-  // EN (core underwear terms; avoid broad terms like "lace")
-  'lingerie',
-  'underwear',
-  'bra',
-  'panty',
-  'panties',
-  'thong',
-  'nightgown',
-  'nightdress',
+  // Deprecated: kept for compatibility with older code paths.
+];
+
+// Be careful with substring matching: tokens like "bra" appear in unrelated words
+// (e.g. "breathable"). Use word boundaries for short latin terms.
+const LINGERIE_PATTERNS = [
+  // EN
+  /\b(lingerie|underwear)\b/i,
+  /\b(bra|bras)\b/i,
+  /\b(panty|panties|thong|briefs)\b/i,
+  /\b(sex\s*toy|adult)\b/i,
   // ES
-  'lencería',
-  'lenceria',
-  'ropa interior',
-  'sujetador',
-  'bragas',
-  'tanga',
+  /\b(lencer[ií]a|ropa\s+interior|sujetador|bragas|tanga)\b/i,
   // FR
-  'sous-vêtement',
-  'sous-vetement',
-  'soutien-gorge',
-  'culotte',
-  'string',
+  /\b(sous[-\s]?v[eê]tement|soutien[-\s]?gorge|culotte|string)\b/i,
   // ZH
-  '内衣',
-  '文胸',
-  '胸罩',
-  '丁字裤',
-  '睡衣',
-  '情趣',
+  /内衣|文胸|胸罩|丁字裤|情趣|成人用品/,
   // JA
-  '下着',
-  'ブラ',
-  'パンティ',
-  'ランジェリー',
+  /下着|ブラ|パンティ|ランジェリー/,
 ];
 
 function includesAny(haystack, needles) {
@@ -94,36 +79,25 @@ function includesAny(haystack, needles) {
 }
 
 function isExplicitAdultOrLingerieQuery(rawQuery) {
-  const q = String(rawQuery || '').toLowerCase();
+  const q = String(rawQuery || '');
   if (!q) return false;
-  // Only treat explicit adult/lingerie terms as opt-in.
-  return (
-    includesAny(q, [
-      'lingerie',
-      'underwear',
-      'bra',
-      'panties',
-      'thong',
-      'sex toy',
-      'adult',
-      'lenceria',
-      'lencería',
-      'ropa interior',
-      'sujetador',
-      'sous-vetement',
-      'sous-vêtement',
-      'soutien-gorge',
-      '下着',
-      '内衣',
-      '情趣',
-      '成人用品',
-    ])
-  );
+  // Only treat explicit lingerie/adult terms as opt-in (avoid "sleepwear" etc).
+  const patterns = [
+    /\b(lingerie|underwear)\b/i,
+    /\b(bra|bras)\b/i,
+    /\b(panty|panties|thong)\b/i,
+    /\b(sex\s*toy|adult)\b/i,
+    /\b(lencer[ií]a|ropa\s+interior|sujetador|bragas|tanga)\b/i,
+    /\b(sous[-\s]?v[eê]tement|soutien[-\s]?gorge)\b/i,
+    /下着|内衣|情趣|成人用品/,
+  ];
+  return patterns.some((re) => re.test(q));
 }
 
 function isLingerieLikeProduct(product) {
   const text = buildProductText(product);
-  return includesAny(text, LINGERIE_KEYWORDS);
+  if (!text) return false;
+  return LINGERIE_PATTERNS.some((re) => re.test(text));
 }
 
 function hasPetSignalInProduct(product) {
