@@ -92,6 +92,23 @@ function hasHikingSignal(text) {
   );
 }
 
+function hasBeautyToolSignal(text) {
+  const t = String(text || '');
+  const lower = t.toLowerCase();
+  // Japanese: keep strict enough to avoid tooth-brush etc; require makeup context.
+  if (/[\u3040-\u30ff]/.test(t)) {
+    const hasBrush = /ブラシ|メイクブラシ|ブラシセット|化粧筆/.test(t);
+    const hasMakeup = /メイク|化粧/.test(t);
+    return hasBrush && hasMakeup;
+  }
+  // Chinese (Han): common tool keywords
+  if (/[\u4e00-\u9fff]/.test(t)) {
+    return /化妆刷|刷具|粉底刷|散粉刷|腮红刷|修容刷|遮瑕刷|眼影刷|晕染刷|美妆蛋|粉扑|睫毛夹/.test(t);
+  }
+  // Latin: makeup brush/sponge terms
+  return /\b(makeup|cosmetic)\b/.test(lower) && /\b(brush|brushes|sponge|puff)\b/.test(lower);
+}
+
 function detectLanguageHeuristic(text) {
   const t = String(text || '');
   if (!t) return 'other';
@@ -150,6 +167,37 @@ function applyHardOverrides(latestQuery, intent) {
         reason: intent.history_usage?.used
           ? intent.history_usage.reason
           : 'Pet apparel intent detected from latest query; history not allowed to override target_object.',
+      },
+    };
+    return PivotaIntentV1Zod.parse(patched);
+  }
+
+  // Beauty tools: if the latest query is clearly about makeup tools, force a
+  // tool-first scenario so non-tool products (e.g., apparel) are blocked.
+  if (hasBeautyToolSignal(q)) {
+    const patched = {
+      ...intent,
+      language,
+      primary_domain: 'beauty',
+      target_object: {
+        ...(intent.target_object || {}),
+        type: 'human',
+        age_group: intent.target_object?.age_group || 'all',
+      },
+      category: {
+        required: ['cosmetic_tools'],
+        optional: Array.isArray(intent.category?.optional) ? intent.category.optional : [],
+      },
+      scenario: {
+        name: 'beauty_tools',
+        signals: Array.isArray(intent.scenario?.signals) ? intent.scenario.signals : [],
+      },
+      history_usage: {
+        ...(intent.history_usage || {}),
+        used: Boolean(intent.history_usage?.used),
+        reason: intent.history_usage?.used
+          ? intent.history_usage.reason
+          : 'Beauty tools intent detected from latest query; forcing tool-first scenario.',
       },
     };
     return PivotaIntentV1Zod.parse(patched);

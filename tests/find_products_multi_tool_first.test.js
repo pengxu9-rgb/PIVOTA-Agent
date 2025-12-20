@@ -10,6 +10,17 @@ describe('find_products_multi tool-first (beauty tools)', () => {
     expect(intent.category.required).toEqual(expect.arrayContaining(['cosmetic_tools']));
   });
 
+  test('detects beauty tools intent from Japanese ブラシ query', async () => {
+    const intent = extractIntentRuleBased(
+      '来週、aespaのNingningのメイクを一通り描くけど、そのメイクに合うブラシのおすすめはある？',
+      [],
+      []
+    );
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.scenario.name).toBe('beauty_tools');
+    expect(intent.target_object.type).toBe('human');
+  });
+
   test('assembles tool_kits and reorders products', async () => {
     const intent = extractIntentRuleBased('makeup brush set for foundation and powder', [], []);
     expect(intent.primary_domain).toBe('beauty');

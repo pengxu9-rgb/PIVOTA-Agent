@@ -337,6 +337,8 @@ const BEAUTY_TOOL_SIGNALS_FR = [
 ];
 const BEAUTY_TOOL_SIGNALS_JA = [
   'メイクブラシ',
+  'ブラシ',
+  '化粧筆',
   'ブラシセット',
   'ファンデーションブラシ',
   'パウダーブラシ',

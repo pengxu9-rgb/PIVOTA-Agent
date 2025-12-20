@@ -125,7 +125,7 @@ function isBeautyToolLikeProduct(product) {
     return true;
   }
   // CJK keywords
-  return /化妆刷|刷具|粉底刷|散粉刷|腮红刷|修容刷|遮瑕刷|眼影刷|晕染刷|美妆蛋|海绵蛋|粉扑|气垫扑|睫毛夹|清洁垫|清洁剂/.test(text);
+  return /化妆刷|刷具|粉底刷|散粉刷|腮红刷|修容刷|遮瑕刷|眼影刷|晕染刷|美妆蛋|海绵蛋|粉扑|气垫扑|睫毛夹|清洁垫|清洁剂|メイクブラシ|化粧筆|ブラシセット/.test(text);
 }
 
 function hasPetSignalInProduct(product) {
