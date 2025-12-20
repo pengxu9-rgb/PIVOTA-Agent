@@ -485,8 +485,63 @@ function recommendToolKits({ rawQuery, intent, products }) {
     },
   ];
 
-  const kits = templates.map((tpl) => assembleKit(tpl, filtered, user));
-  const stats = computeToolRequestStats(kits);
+  let kits = templates.map((tpl) => assembleKit(tpl, filtered, user));
+
+  // If none of the templates can be filled (catalog may have only a subset of tools),
+  // fall back to showing the best available tool-like items while asking clarifiers.
+  const anyKitHasItems = kits.some((k) => Array.isArray(k?.items) && k.items.length > 0);
+  let usedFallback = false;
+  if (!anyKitHasItems && filtered.length > 0) {
+    usedFallback = true;
+    const priority = [
+      'brush_set',
+      'foundation_brush',
+      'powder_brush',
+      'sponge',
+      'powder_puff',
+      'concealer_brush',
+      'blush_brush',
+      'contour_brush',
+      'highlight_brush',
+      'eye_brush',
+      'eyelash_curler',
+      'cleaner',
+      'multi_face_brush',
+    ];
+    const byPri = new Map(priority.map((k, i) => [k, i]));
+    const sorted = [...filtered].sort((a, b) => {
+      const ai = byPri.has(a.tool_category_lv2) ? byPri.get(a.tool_category_lv2) : 999;
+      const bi = byPri.has(b.tool_category_lv2) ? byPri.get(b.tool_category_lv2) : 999;
+      return ai - bi;
+    });
+    const unique = [];
+    const seen = new Set();
+    for (const t of sorted) {
+      if (!t?.id) continue;
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      unique.push(t);
+      if (unique.length >= 12) break;
+    }
+
+    const counts = [4, 6, 8];
+    kits = kits.map((k, idx) => {
+      const take = counts[idx] || 6;
+      return {
+        ...k,
+        items: unique.slice(0, take).map((t) => ({
+          role: t.tool_category_lv2 === 'eye_brush' ? TOOL_ROLES.EYE_BRUSH_SET : t.tool_category_lv2,
+          product_id: t.id,
+          title: t.title,
+        })),
+      };
+    });
+  }
+
+  let stats = computeToolRequestStats(kits);
+  if (usedFallback) {
+    stats = { has_good_match: false, match_tier: 'weak', match_confidence: 0.4 };
+  }
   const followUps = buildFollowUps(user);
 
   const orderedIds = [];
