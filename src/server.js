@@ -1158,6 +1158,27 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
         score += 1;
       }
 
+      // Penalize obvious object mismatches at recall time.
+      // This prevents generic terms like "dress" from being dominated by doll outfits
+      // when the user is clearly asking for human clothing.
+      const toyLike =
+        /\b(labubu|doll|vinyl face doll|blind box|plush|plushie|figure|collectible)\b/.test(blob) ||
+        /盲盒|公仔|娃娃|娃衣/.test(blob);
+      const petLike =
+        /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets)\b/.test(blob) ||
+        /\b(perro|perros|mascota|mascotas|gato|gatos)\b/.test(blob) ||
+        /\b(chien|chiens|chat|chats|animal|animaux)\b/.test(blob) ||
+        /狗|猫|宠物|犬服|猫服|ペット/.test(blob);
+
+      if (intentTarget === 'human') {
+        if (!toy_intent && !outfit_intent && toyLike) score -= 100;
+        if (petLike) score -= 60;
+      } else if (intentTarget === 'pet') {
+        if (toyLike) score -= 100;
+      } else if (intentTarget === 'toy') {
+        if (petLike) score -= 40;
+      }
+
       return { p, score };
     })
     .sort((a, b) => b.score - a.score);
@@ -1273,10 +1294,17 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
         dim: embedding.dim,
       });
 
-      if (vecProducts.length > 0 && lexicalProducts.length < safeLimit) {
+      const nonEnglishQuery = intentLang && intentLang !== 'en' && intentLang !== 'other';
+      const shouldBlend =
+        vecProducts.length > 0 &&
+        (lexicalProducts.length < safeLimit || nonEnglishQuery || intentTarget === 'human' || intentTarget === 'pet');
+
+      if (shouldBlend) {
         const seen = new Set();
         const merged = [];
-        for (const p of lexicalProducts) {
+        const lexicalTake = nonEnglishQuery ? Math.min(Math.ceil(safeLimit * 0.4), lexicalProducts.length) : lexicalProducts.length;
+
+        for (const p of lexicalProducts.slice(0, lexicalTake)) {
           const mid = String(p.merchant_id || p.merchantId || '').trim();
           const pid = String(p.id || p.product_id || p.productId || '').trim();
           const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
@@ -1292,6 +1320,18 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
           if (seen.has(key)) continue;
           seen.add(key);
           merged.push(p);
+        }
+        // If still not full, backfill from remaining lexical items.
+        if (merged.length < safeLimit && lexicalTake < lexicalProducts.length) {
+          for (const p of lexicalProducts.slice(lexicalTake)) {
+            if (merged.length >= safeLimit) break;
+            const mid = String(p.merchant_id || p.merchantId || '').trim();
+            const pid = String(p.id || p.product_id || p.productId || '').trim();
+            const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(p);
+          }
         }
 
         return {
