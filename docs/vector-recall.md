@@ -27,6 +27,30 @@ If the connected Postgres instance does not support `pgvector`, the migration wi
 You can also target merchants directly:
 - `node scripts/backfill-products-cache-embeddings.js --merchantIds merch_abc,merch_def --limit 2000`
 
+## What gets embedded
+
+Each product is embedded from a single text blob that includes:
+- `title`, `product_type`, `vendor`, `description`
+- `tags` (Shopify tags → `product_data.tags`)
+- `recommendation_meta.tags` + `recommendation_meta.facets` (if present)
+
+This means **Shopify tags become first-class retrieval signals** for multilingual search and downstream similarity.
+
+## Recommended tagging conventions (optional but high impact)
+
+Use stable, prefix-based tags so the system can derive facets:
+- `Cat:Brush`, `Cat:Sponge`, `Cat:Puff`
+- `Area:Face`, `Area:Eyes`, `Area:Lips`
+- `Use:Foundation`, `Use:Powder`, `Use:Concealer`, `Use:Blush`
+- `Material:Synthetic`, `Material:Natural`
+- `Hair:Goat`, `Hair:Pony`
+- `Shape:Angled`, `Shape:Flat`, `Shape:Round`
+
+These are parsed into `recommendation_meta.facets` and heavily influence:
+- creator cache lexical ranking
+- vector embeddings (semantic recall)
+- creator “similar products” rerank
+
 ## Enable
 
 Set env vars:
