@@ -3,7 +3,7 @@ const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./p
 const { recommendToolKits } = require('./toolRecommender');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v36';
+const POLICY_VERSION = 'find_products_multi_policy_v37';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';

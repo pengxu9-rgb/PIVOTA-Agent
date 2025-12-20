@@ -146,6 +146,43 @@ function inferUseCases(productText) {
   return Array.from(out);
 }
 
+function isRoleCompatible(tool, role) {
+  const lv2 = tool?.tool_category_lv2;
+  if (!lv2 || !role) return false;
+
+  // For non-brush accessories, require strict matching (avoid a brush being selected as a sponge).
+  if (role === TOOL_ROLES.SPONGE) return lv2 === 'sponge';
+  if (role === TOOL_ROLES.POWDER_PUFF) return lv2 === 'powder_puff';
+  if (role === TOOL_ROLES.CLEANER) return lv2 === 'cleaner';
+  if (role === TOOL_ROLES.EYELASH_CURLER) return lv2 === 'eyelash_curler';
+
+  // Eye brushes can be a specific eye brush or a brush set.
+  if (role === TOOL_ROLES.EYE_BRUSH_SET) return lv2 === 'eye_brush' || lv2 === 'brush_set';
+
+  // Brush set is strict.
+  if (role === TOOL_ROLES.BRUSH_SET) return lv2 === 'brush_set';
+
+  // For brush roles, allow exact, brush sets, or a generic multi-face brush as a compatible fallback.
+  const brushRoles = new Set([
+    TOOL_ROLES.FOUNDATION_BRUSH,
+    TOOL_ROLES.POWDER_BRUSH,
+    TOOL_ROLES.BLUSH_BRUSH,
+    TOOL_ROLES.CONTOUR_BRUSH,
+    TOOL_ROLES.HIGHLIGHT_BRUSH,
+    TOOL_ROLES.CONCEALER_BRUSH,
+    TOOL_ROLES.MULTI_FACE_BRUSH,
+  ]);
+  if (brushRoles.has(role)) {
+    if (lv2 === 'brush_set') return true;
+    if (lv2 === role) return true;
+    if (lv2 === 'multi_face_brush') return true;
+    // Some products are eye brushes but could serve as concealer/detail brush; keep strict here.
+    return false;
+  }
+
+  return lv2 === role;
+}
+
 function mapRawProductToToolProduct(raw) {
   const productText = buildProductText(raw) || `${raw?.title || ''} ${raw?.description || ''}`;
   const attrBlob = extractAttributeBlob(raw);
@@ -282,6 +319,7 @@ function withinBudget(tool, budget) {
 
 function scoreToolForRole(tool, role, user) {
   const lv2 = tool?.tool_category_lv2;
+  if (!isRoleCompatible(tool, role)) return 0;
   const covers = new Set(toolCoversRoles(tool));
   const exact =
     lv2 === role ||
@@ -529,13 +567,30 @@ function recommendToolKits({ rawQuery, intent, products }) {
     const desired = padCounts[idx] || 4;
     const items = Array.isArray(k?.items) ? [...k.items] : [];
     const usedIds = new Set(items.map((it) => String(it.product_id || '')).filter(Boolean));
+    const usedRoles = new Set(items.map((it) => String(it.role || '')).filter(Boolean));
+    const usedTitleNorm = new Set(
+      items
+        .map((it) => normalizeMatchText(it?.title || ''))
+        .filter(Boolean),
+    );
     for (const t of uniqueTools) {
       if (items.length >= desired) break;
       if (!t?.id) continue;
       if (usedIds.has(t.id)) continue;
+      const role =
+        t.tool_category_lv2 === 'eye_brush' ? TOOL_ROLES.EYE_BRUSH_SET : t.tool_category_lv2;
+      if (!role) continue;
+      // Prefer diversity: at most 1 item per role unless we have no other choice.
+      if (usedRoles.has(role)) continue;
+      const titleNorm = normalizeMatchText(t.title || '');
+      if (titleNorm && usedTitleNorm.has(titleNorm)) continue;
+
       usedIds.add(t.id);
+      usedRoles.add(role);
+      if (titleNorm) usedTitleNorm.add(titleNorm);
+
       items.push({
-        role: t.tool_category_lv2 === 'eye_brush' ? TOOL_ROLES.EYE_BRUSH_SET : t.tool_category_lv2,
+        role,
         product_id: t.id,
         title: t.title,
       });

@@ -135,4 +135,49 @@ describe('find_products_multi tool-first (beauty tools)', () => {
     const ids = (out.products || []).map((p) => p.id);
     expect(ids).toEqual(['tool-1']);
   });
+
+  test('never assigns brush as sponge role', async () => {
+    const intent = extractIntentRuleBased('makeup sponge for foundation', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+
+    const response = {
+      products: [
+        {
+          id: 'b1',
+          title: 'Under-Eye Detail Brush – Pro-quality finish',
+          description: 'Detail brush. Cosmetic Tools.',
+          price: 12.0,
+          currency: 'USD',
+          inventory_quantity: 10,
+        },
+        {
+          id: 'b2',
+          title: 'Highlighter Brush – glow',
+          description: 'Highlighter brush. Cosmetic Tools.',
+          price: 12.0,
+          currency: 'USD',
+          inventory_quantity: 10,
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      reply: '',
+      metadata: { query_source: 'test' },
+    };
+
+    const out = applyFindProductsMultiPolicy({
+      response,
+      intent,
+      requestPayload: { search: { query: 'makeup sponge for foundation' } },
+      metadata: { creator_id: 'creator_demo_001', creator_name: 'Nina Studio' },
+      rawUserQuery: 'makeup sponge for foundation',
+    });
+
+    const kitA = out.tool_kits?.[0];
+    expect(Array.isArray(kitA?.items)).toBe(true);
+    // No item should claim role=sponge unless it's truly a sponge product.
+    const spongeItems = (kitA.items || []).filter((it) => it.role === 'sponge');
+    expect(spongeItems.length).toBe(0);
+  });
 });
