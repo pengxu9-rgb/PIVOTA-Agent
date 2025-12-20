@@ -147,6 +147,7 @@ const TOY_KEYWORDS_STRONG = [
 ];
 
 const TOY_KEYWORDS_WEAK = ['toy', 'toys', '玩具'];
+const TOY_KEYWORDS = [...TOY_KEYWORDS_STRONG, ...TOY_KEYWORDS_WEAK];
 
 const OUTERWEAR_KEYWORDS_ZH = [
   '外套',
@@ -264,6 +265,90 @@ const LINGERIE_SIGNALS_ES = ['lenceria', 'lencería', 'ropa interior', 'sujetado
 const LINGERIE_SIGNALS_FR = ['lingerie', 'sous-vetement', 'sous-vêtement', 'soutien-gorge', 'culotte', 'string'];
 const LINGERIE_SIGNALS_JA = ['下着', 'ランジェリー', 'ブラ', 'パンティ', 'セクシー'];
 
+// Beauty / makeup tools (Tool-first). Keep broad enough for multilingual queries.
+const BEAUTY_TOOL_SIGNALS_ZH = [
+  '化妆工具',
+  '美妆工具',
+  '化妆刷',
+  '刷具',
+  '刷子',
+  '粉底刷',
+  '散粉刷',
+  '腮红刷',
+  '修容刷',
+  '遮瑕刷',
+  '眼影刷',
+  '晕染刷',
+  '眉刷',
+  '唇刷',
+  '美妆蛋',
+  '海绵蛋',
+  '粉扑',
+  '气垫扑',
+  '睫毛夹',
+  '清洁垫',
+  '刷具清洁',
+  '刷具清洗',
+  '刷具套装',
+];
+const BEAUTY_TOOL_SIGNALS_EN = [
+  'cosmetic tools',
+  'makeup tools',
+  'makeup brush',
+  'brush set',
+  'makeup brush set',
+  'foundation brush',
+  'powder brush',
+  'blush brush',
+  'contour brush',
+  'concealer brush',
+  'eyeshadow brush',
+  'blending brush',
+  'makeup sponge',
+  'beauty blender',
+  'powder puff',
+  'cushion puff',
+  'eyelash curler',
+  'brush cleaner',
+  'cleaning pad',
+];
+const BEAUTY_TOOL_SIGNALS_ES = [
+  'brocha',
+  'brochas',
+  'brocha de base',
+  'brocha para base',
+  'brocha para polvo',
+  'brocha para rubor',
+  'esponja de maquillaje',
+  'borla',
+  'rizador de pestañas',
+  'kit de brochas',
+];
+const BEAUTY_TOOL_SIGNALS_FR = [
+  'pinceau',
+  'pinceaux',
+  'pinceau fond de teint',
+  'pinceau poudre',
+  'pinceau blush',
+  'éponge maquillage',
+  'houppette',
+  'recourbe-cils',
+  'set de pinceaux',
+];
+const BEAUTY_TOOL_SIGNALS_JA = [
+  'メイクブラシ',
+  'ブラシセット',
+  'ファンデーションブラシ',
+  'パウダーブラシ',
+  'チークブラシ',
+  'コンシーラーブラシ',
+  'アイシャドウブラシ',
+  'ブレンディングブラシ',
+  'メイクスポンジ',
+  'パフ',
+  'ビューラー',
+];
+
 function includesAny(haystack, needles) {
   if (!haystack) return false;
   const lowered = haystack.toLowerCase();
@@ -354,6 +439,13 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
 
   const hasSexySignal = includesAny(latest, ['sexy', '性感', 'セクシー']);
 
+  const hasBeautyToolSignal =
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_ZH) ||
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_EN) ||
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_ES) ||
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_FR) ||
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_JA);
+
   const hasWomenClothingSignal =
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_ZH) ||
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_EN) ||
@@ -421,6 +513,27 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           includesAny(latest, [s])
         )
       : [];
+  } else if (hasBeautyToolSignal) {
+    primary_domain = 'beauty';
+    targetType = 'human';
+    scenarioName = 'beauty_tools';
+    scenarioSignals = [];
+
+    const lowered = latest.toLowerCase();
+    const cats = ['cosmetic_tools'];
+    if (/粉底刷|foundation brush/.test(latest)) cats.push('foundation_brush');
+    if (/散粉刷|powder brush/.test(latest)) cats.push('powder_brush');
+    if (/腮红刷|blush brush/.test(latest)) cats.push('blush_brush');
+    if (/修容刷|contour brush/.test(latest)) cats.push('contour_brush');
+    if (/遮瑕刷|concealer brush/.test(latest)) cats.push('concealer_brush');
+    if (/眼影刷|eyeshadow brush/.test(latest)) cats.push('eyeshadow_brush');
+    if (/晕染刷|blending brush/.test(latest)) cats.push('blending_brush');
+    if (/美妆蛋|海绵蛋|makeup sponge|beauty blender/.test(lowered)) cats.push('makeup_sponge');
+    if (/粉扑|puff|houppette/.test(lowered) || /粉扑/.test(latest)) cats.push('powder_puff');
+    if (/睫毛夹|eyelash curler|recourbe-cils|ビューラー/.test(lowered) || /睫毛夹/.test(latest))
+      cats.push('eyelash_curler');
+    if (/套装|set|kit|\b\d+\s*(?:pcs|pieces|piece)\b/.test(lowered)) cats.push('brush_set');
+    categoryRequired = cats.slice(0, 5);
   } else if (hasWomenClothingSignal) {
     primary_domain = 'human_apparel';
     targetType = 'human';
@@ -483,6 +596,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
   } else {
     if (primary_domain === 'human_apparel' && categoryRequired.length === 0) missingSlots.push('category');
     if (primary_domain === 'human_apparel' && !hasColdScenario) missingSlots.push('scenario_temperature');
+    if (primary_domain === 'beauty' && scenarioName === 'beauty_tools') {
+      missingSlots.push('makeup_goal', 'skin_type', 'base_product_type', 'budget');
+    }
   }
 
   const confidenceDomain =
@@ -492,6 +608,10 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
       ? hasOuterwearSignal || hasColdScenario
         ? 0.9
         : 0.6
+      : primary_domain === 'beauty'
+        ? hasBeautyToolSignal
+          ? 0.85
+          : 0.6
       : primary_domain === 'toy_accessory'
         ? includesAny(latest, TOY_KEYWORDS)
           ? 0.9

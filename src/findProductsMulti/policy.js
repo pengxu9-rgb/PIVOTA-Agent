@@ -1,8 +1,9 @@
 const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
+const { recommendToolKits } = require('./toolRecommender');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v31';
+const POLICY_VERSION = 'find_products_multi_policy_v32';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -842,7 +843,7 @@ function buildFiltersApplied(intent) {
   const excludedKeywords = normalizeStringArray(intent?.hard_constraints?.must_exclude_keywords, 16, 32);
 
   if (intent?.target_object?.type === 'human') {
-    requiredDomains.push('human_apparel');
+    if (intent?.primary_domain === 'human_apparel') requiredDomains.push('human_apparel');
     excludedDomains.push('toy_accessory');
   }
   if (intent?.target_object?.type === 'pet') {
@@ -856,9 +857,11 @@ function buildFiltersApplied(intent) {
     const prefix =
       intent?.target_object?.type === 'pet'
         ? 'pet_apparel'
-        : intent?.target_object?.type === 'human'
-          ? 'human_apparel'
-          : 'other';
+        : intent?.primary_domain === 'beauty'
+          ? 'beauty'
+          : intent?.target_object?.type === 'human'
+            ? 'human_apparel'
+            : 'other';
     requiredCategoryPaths.push([prefix, ...requiredCats.slice(0, 2)]);
   }
 
@@ -880,6 +883,25 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   const isEs = lang === 'es';
   const isFr = lang === 'fr';
   const isJa = lang === 'ja';
+
+  if (scenario === 'beauty_tools') {
+    if (isZh) {
+      if (isNone) {
+        return '我暂时没在当前货盘里找到足够匹配的化妆工具/刷具（可能库存覆盖不足）。你可以告诉我：你最想解决什么（底妆服帖/持妆控油/遮瑕/新手不翻车/眼妆更干净）？以及常用底妆类型（粉底液/气垫/粉饼）和肤质（油/干/混）。';
+      }
+      if (matchTier === 'weak') {
+        return '我先给你配了一些“工具优先”的组合（匹配度一般，主要是信息还不够）。你更想解决哪一个：底妆服帖 / 持妆控油 / 遮瑕 / 新手不翻车 / 眼妆更干净？';
+      }
+      return '我按“工具优先”给你配好了几套更合适的化妆工具组合。';
+    }
+    if (isNone) {
+      return 'I couldn’t find enough solid matches for makeup tools in the current inventory. Tell me your goal (smooth base / longwear / coverage / beginner-safe / eye blending) and your base type (liquid/cushion/powder).';
+    }
+    if (matchTier === 'weak') {
+      return 'I assembled a few tool-first picks, but it’s a weak match because key details are missing. What’s your main goal (smooth base / longwear / coverage / beginner-safe / eye blending)?';
+    }
+    return 'Here are some more suitable tool-first makeup picks based on your request.';
+  }
 
   if (scenario === 'discovery') {
     if (isZh) {
@@ -1093,7 +1115,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       if (lang === 'es') extra.push('perro', 'ropa');
       if (lang === 'fr') extra.push('chien', 'vêtement');
       if (lang === 'ja') extra.push('犬', '犬服');
-    } else if (target === 'human' && intent?.primary_domain === 'human_apparel') {
+	    } else if (target === 'human' && intent?.primary_domain === 'human_apparel') {
       const requiredCats = Array.isArray(intent?.category?.required) ? intent.category.required : [];
       const isLingerie = requiredCats.includes('lingerie') || requiredCats.includes('underwear') || scenario === 'lingerie';
       const isSexy =
@@ -1142,9 +1164,26 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         if (lang === 'fr') extra.push('tenue', 'robe');
         if (lang === 'ja') extra.push('服', 'コーデ');
       }
-    } else if (intent?.primary_domain === 'toy_accessory') {
-      extra.push('labubu', 'doll clothes', 'outfit');
-    }
+	    } else if (intent?.primary_domain === 'toy_accessory') {
+	      extra.push('labubu', 'doll clothes', 'outfit');
+	    }
+
+	    if (intent?.primary_domain === 'beauty' && scenario === 'beauty_tools') {
+	      extra.push(
+	        'makeup tools',
+	        'cosmetic tools',
+	        'makeup brush',
+	        'brush set',
+	        'foundation brush',
+	        'powder brush',
+	        'makeup sponge',
+	        'powder puff',
+	      );
+	      if (lang === 'zh') extra.push('化妆刷', '粉底刷', '散粉刷', '美妆蛋', '粉扑', '刷具套装');
+	      if (lang === 'es') extra.push('brochas', 'esponja de maquillaje', 'borla');
+	      if (lang === 'fr') extra.push('pinceaux', 'éponge maquillage', 'houppette');
+	      if (lang === 'ja') extra.push('メイクブラシ', 'ブラシセット', 'メイクスポンジ', 'パフ');
+	    }
 
     if (!extra.length) return q;
     const combined = `${q} ${extra.join(' ')}`.trim();
@@ -1175,11 +1214,49 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     '';
 
   const filteredResult = filterProductsByIntent(list, intent, { rawQuery });
-  const { filtered, reason_codes: filterReasonCodes } = filteredResult;
+  let { filtered, reason_codes: filterReasonCodes } = filteredResult;
+
+  // Tool-first: for beauty tools queries, assemble 3 kits and reorder products accordingly.
+  const toolRec = recommendToolKits({ rawQuery, intent, products: filtered });
+  if (toolRec && Array.isArray(toolRec.ordered_product_ids) && toolRec.ordered_product_ids.length > 0) {
+    const byId = new Map();
+    for (const p of filtered) {
+      const pid = String(p?.id || p?.product_id || p?.productId || '');
+      if (!pid) continue;
+      if (!byId.has(pid)) byId.set(pid, p);
+    }
+
+    const ordered = [];
+    const seen = new Set();
+    for (const pid of toolRec.ordered_product_ids) {
+      const p = byId.get(String(pid));
+      if (!p) continue;
+      const k = String(pid);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      ordered.push(p);
+    }
+    for (const p of filtered) {
+      const pid = String(p?.id || p?.product_id || p?.productId || '');
+      if (pid && seen.has(pid)) continue;
+      ordered.push(p);
+    }
+    filtered = ordered;
+  }
   const after = filtered.length;
 
   // By default, keep ordering. LLM rerank (optional) can be added later.
-  const stats = computeMatchStats(filtered, intent, { rawQuery });
+  let stats = computeMatchStats(filtered, intent, { rawQuery });
+  if (toolRec?.stats) {
+    stats = {
+      ...stats,
+      has_good_match: Boolean(toolRec.stats.has_good_match),
+      match_tier: String(toolRec.stats.match_tier || stats.match_tier),
+      match_confidence: Number.isFinite(toolRec.stats.match_confidence)
+        ? toolRec.stats.match_confidence
+        : stats.match_confidence,
+    };
+  }
 
   const reasonCodes = new Set([...(filterReasonCodes || [])]);
   if (intent?.ambiguity?.needs_clarification) {
@@ -1225,12 +1302,74 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     augmented.reply.trim().length === 0 ||
     !stats.has_good_match;
 
-  const reply = shouldOverrideReply
-    ? buildReply(intent, stats.match_tier, Array.from(reasonCodes), {
-        creatorName: metadata?.creator_name || metadata?.creatorName || null,
-        creatorId: metadata?.creator_id || metadata?.creatorId || null,
-      })
-    : augmented.reply;
+  const toolFirstReply = (() => {
+    if (!toolRec) return null;
+    const lang = intent?.language || 'en';
+    const isZh = lang === 'zh';
+    const kits = Array.isArray(toolRec.tool_kits) ? toolRec.tool_kits : [];
+    if (!kits.length) return null;
+
+    const qs = Array.isArray(toolRec.follow_up_questions) ? toolRec.follow_up_questions : [];
+
+    const roleLabelZh = {
+      foundation_brush: '粉底刷',
+      sponge: '美妆蛋/海绵',
+      powder_brush: '散粉刷',
+      powder_puff: '粉扑',
+      concealer_brush: '遮瑕刷',
+      multi_face_brush: '多功能面部刷',
+      blush_brush: '腮红刷',
+      contour_brush: '修容刷',
+      highlight_brush: '高光刷',
+      eye_brush_set: '眼影刷/晕染刷（眼妆刷）',
+      eyelash_curler: '睫毛夹',
+      cleaner: '清洁工具',
+      brush_set: '刷具套装',
+    };
+    const roleLabelEn = {
+      foundation_brush: 'foundation brush',
+      sponge: 'makeup sponge',
+      powder_brush: 'powder brush',
+      powder_puff: 'powder puff',
+      concealer_brush: 'concealer brush',
+      multi_face_brush: 'multi face brush',
+      blush_brush: 'blush brush',
+      contour_brush: 'contour brush',
+      highlight_brush: 'highlight brush',
+      eye_brush_set: 'eye brushes',
+      eyelash_curler: 'eyelash curler',
+      cleaner: 'cleaner',
+      brush_set: 'brush set',
+    };
+
+    const fmtKit = (k) => {
+      const items = Array.isArray(k?.items) ? k.items : [];
+      const roles = items.map((it) => String(it?.role || '')).filter(Boolean);
+      const labels = roles.map((r) => (isZh ? roleLabelZh[r] : roleLabelEn[r] || r));
+      const uniq = Array.from(new Set(labels));
+      const prefix = isZh ? '包含：' : 'Includes: ';
+      return `${k.kit_name}\n${prefix}${uniq.join(isZh ? '、' : ', ')}`;
+    };
+
+    const headerZh =
+      '我按“工具优先（Tool-first）”给你配了 3 套可直接加购的组合（商品已按 A→B→C 顺序排列在列表里）：';
+    const headerEn =
+      'I assembled 3 tool-first kits (products are ordered A→B→C in the list):';
+    const kitLines = kits.slice(0, 3).map(fmtKit);
+    const qLines = qs.length
+      ? [isZh ? '\n想更精准的话，回答 1–2 个就行：' : '\nTo refine, answer 1–2 quick questions:', ...qs.map((q) => `- ${q}`)]
+      : [];
+    return [isZh ? headerZh : headerEn, ...kitLines, ...qLines].join('\n');
+  })();
+
+  const reply = toolFirstReply
+    ? toolFirstReply
+    : shouldOverrideReply
+      ? buildReply(intent, stats.match_tier, Array.from(reasonCodes), {
+          creatorName: metadata?.creator_name || metadata?.creatorName || null,
+          creatorId: metadata?.creator_id || metadata?.creatorId || null,
+        })
+      : augmented.reply;
 
   const debugStats = DEBUG_STATS_ENABLED
     ? {
@@ -1252,6 +1391,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     has_good_match: stats.has_good_match,
     match_tier: stats.match_tier,
     reason_codes: Array.from(reasonCodes),
+    ...(toolRec?.tool_kits ? { tool_kits: toolRec.tool_kits } : {}),
+    ...(toolRec?.user_summary ? { user_summary: toolRec.user_summary } : {}),
+    ...(toolRec?.follow_up_questions ? { follow_up_questions: toolRec.follow_up_questions } : {}),
     ...(debugStats ? { debug_stats: debugStats } : {}),
   };
 }
