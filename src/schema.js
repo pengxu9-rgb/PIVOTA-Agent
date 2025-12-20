@@ -5,6 +5,7 @@ const OperationEnum = z.enum([
   // Cross-merchant search (backend gateway)
   'find_products_multi',
   'find_similar_products',
+  'products.recommendations',
   'find_promotions', // admin list (optional routing guard)
   'create_promotion',
   'update_promotion',

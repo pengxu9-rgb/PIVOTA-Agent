@@ -33,6 +33,10 @@ const { embedText } = require('./services/embeddings');
 const {
   semanticSearchCreatorProductsFromCache,
 } = require('./services/productsCacheVectorSearch');
+const {
+  scoreByTagFacetOverlap,
+  scorePairOverlap,
+} = require('./services/productTagSignals');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -137,6 +141,16 @@ const ROUTE_MAP = {
     method: 'POST',
     path: '/agent/shop/v1/invoke',
     paramType: 'body'
+  },
+  products_recommendations: {
+    method: 'GET',
+    path: '/agent/v1/products/recommendations',
+    paramType: 'query'
+  },
+  'products.recommendations': {
+    method: 'GET',
+    path: '/agent/v1/products/recommendations',
+    paramType: 'query'
   },
   get_product_detail: {
     // Route via the shopping gateway so that product detail uses the same
@@ -328,6 +342,16 @@ function promotionToDealPayload(promo, productPrice) {
       ...base,
       discount_percent: promo.config.discountPercent,
       threshold_quantity: promo.config.thresholdQuantity,
+      end_at: promo.endAt,
+      urgency_level: computeUrgency(promo.endAt),
+    };
+  }
+
+  if (promo.config?.kind === 'FREE_SHIPPING' || promo.type === 'FREE_SHIPPING') {
+    return {
+      ...base,
+      free_shipping: true,
+      min_subtotal: promo.config?.minSubtotal,
       end_at: promo.endAt,
       urgency_level: computeUrgency(promo.endAt),
     };
@@ -1016,6 +1040,12 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
 
+  function productKey(p) {
+    const mid = String(p?.merchant_id || p?.merchantId || '').trim();
+    const pid = String(p?.id || p?.product_id || p?.productId || '').trim();
+    return `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+  }
+
   // Base sellable gating (match merchant portal semantics).
   const baseWhere = `
     merchant_id = ANY($1)
@@ -1130,6 +1160,8 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const total = Number(countRes.rows?.[0]?.total || 0);
   const rawProducts = (rowsRes.rows || []).map((r) => r.product_data).filter(Boolean);
 
+  const lexicalScoreByKey = new Map();
+
   // Rank candidates in-memory for better UX (title matches > description matches).
   const scored = rawProducts
     .filter((p) => isProductSellable(p))
@@ -1138,7 +1170,12 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
       const desc = String(p.description || '').toLowerCase();
       const ptype = String(p.product_type || p.productType || '').toLowerCase();
       const sku = String(p.sku || '').toLowerCase();
-      const blob = `${title} ${ptype} ${sku} ${desc}`;
+      const tags = Array.isArray(p.tags) ? p.tags.join(' ').toLowerCase() : String(p.tags || '').toLowerCase();
+      const recTags = Array.isArray(p.recommendation_meta?.tags)
+        ? p.recommendation_meta.tags.join(' ').toLowerCase()
+        : '';
+      const recFacets = p.recommendation_meta?.facets ? JSON.stringify(p.recommendation_meta.facets).toLowerCase() : '';
+      const blob = `${title} ${ptype} ${sku} ${tags} ${recTags} ${recFacets} ${desc}`;
 
       let score = 0;
       for (const t of terms) {
@@ -1146,6 +1183,9 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
         else if (ptype.includes(t)) score += 2;
         else if (blob.includes(t)) score += 1;
       }
+
+      // Tags/facets are stable catalog semantics; prioritize them when available.
+      score += scoreByTagFacetOverlap(terms, p).score;
 
       if (skuLike) {
         const q0 = q.replace(/[^a-z0-9-]+/g, '');
@@ -1179,9 +1219,15 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
         if (petLike) score -= 40;
       }
 
-      return { p, score };
+      return { p, score, key: productKey(p) };
     })
     .sort((a, b) => b.score - a.score);
+
+  for (const row of scored) {
+    if (row && row.key) {
+      lexicalScoreByKey.set(row.key, typeof row.score === 'number' ? row.score : Number(row.score || 0));
+    }
+  }
 
   const lexicalProducts = scored.slice(0, safeLimit).map((x) => x.p);
   const retrievalSources = [
@@ -1280,8 +1326,14 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
         excludeUnderwear: shouldExcludeUnderwear,
       });
 
+      const vectorScoreByKey = new Map();
       const vecProducts = vecHits
-        .map((x) => x.product)
+        .map((x) => {
+          const p = x && x.product ? x.product : null;
+          if (!p) return null;
+          vectorScoreByKey.set(productKey(p), typeof x.score === 'number' ? x.score : Number(x.score || 0));
+          return p;
+        })
         .filter(Boolean)
         .filter((p) => isProductSellable(p));
 
@@ -1305,18 +1357,14 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
         const lexicalTake = nonEnglishQuery ? Math.min(Math.ceil(safeLimit * 0.4), lexicalProducts.length) : lexicalProducts.length;
 
         for (const p of lexicalProducts.slice(0, lexicalTake)) {
-          const mid = String(p.merchant_id || p.merchantId || '').trim();
-          const pid = String(p.id || p.product_id || p.productId || '').trim();
-          const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+          const key = productKey(p);
           if (seen.has(key)) continue;
           seen.add(key);
           merged.push(p);
         }
         for (const p of vecProducts) {
           if (merged.length >= safeLimit) break;
-          const mid = String(p.merchant_id || p.merchantId || '').trim();
-          const pid = String(p.id || p.product_id || p.productId || '').trim();
-          const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+          const key = productKey(p);
           if (seen.has(key)) continue;
           seen.add(key);
           merged.push(p);
@@ -1325,14 +1373,27 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
         if (merged.length < safeLimit && lexicalTake < lexicalProducts.length) {
           for (const p of lexicalProducts.slice(lexicalTake)) {
             if (merged.length >= safeLimit) break;
-            const mid = String(p.merchant_id || p.merchantId || '').trim();
-            const pid = String(p.id || p.product_id || p.productId || '').trim();
-            const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+            const key = productKey(p);
             if (seen.has(key)) continue;
             seen.add(key);
             merged.push(p);
           }
         }
+
+        // Final rerank: keep strong lexical matches first, but allow high-similarity
+        // vector hits to surface above weak lexical noise. Tags/facets already feed
+        // into lexical scoring and embeddings, so this provides a stable blend.
+        merged.sort((a, b) => {
+          const ak = productKey(a);
+          const bk = productKey(b);
+          const aLex = lexicalScoreByKey.get(ak) || 0;
+          const bLex = lexicalScoreByKey.get(bk) || 0;
+          const aVec = vectorScoreByKey.get(ak) || 0;
+          const bVec = vectorScoreByKey.get(bk) || 0;
+          const aScore = aLex + aVec * 4.0;
+          const bScore = bLex + bVec * 4.0;
+          return bScore - aScore;
+        });
 
         return {
           products: merged,
@@ -1411,7 +1472,12 @@ async function findSimilarCreatorFromCache(creatorId, productId, limit = 9) {
   const baseTitle = String(base.title || '').toLowerCase();
   const baseDesc = String(base.description || '').toLowerCase();
   const baseType = String(base.product_type || base.productType || '').toLowerCase();
-  const baseBlob = `${baseTitle} ${baseType} ${baseDesc}`.trim();
+  const baseTags = Array.isArray(base.tags) ? base.tags.join(' ').toLowerCase() : String(base.tags || '').toLowerCase();
+  const baseRecTags = Array.isArray(base.recommendation_meta?.tags)
+    ? base.recommendation_meta.tags.join(' ').toLowerCase()
+    : '';
+  const baseRecFacets = base.recommendation_meta?.facets ? JSON.stringify(base.recommendation_meta.facets).toLowerCase() : '';
+  const baseBlob = `${baseTitle} ${baseType} ${baseTags} ${baseRecTags} ${baseRecFacets} ${baseDesc}`.trim();
 
   const baseToy = /\b(labubu|doll|plush|toy|collectible)\b/.test(baseBlob);
   const baseUnderwear = /\b(lingerie|underwear|bra|pant(y|ies)|thong|sleepwear|nightgown|nightdress)\b/.test(baseBlob);
@@ -1420,7 +1486,20 @@ async function findSimilarCreatorFromCache(creatorId, productId, limit = 9) {
   if (baseBlob.includes('labubu')) anchor.push('labubu');
   if (/\bdoll\b/.test(baseBlob)) anchor.push('doll');
   if (/\boutfit\b/.test(baseBlob)) anchor.push('outfit');
-  if (anchor.length === 0) anchor.push(...tokenizeQueryForCache(baseTitle).slice(0, 3));
+  if (anchor.length === 0) {
+    // Prefer tags/facets (more stable than title words), then fallback to title tokens.
+    const tagTokens = [];
+    if (Array.isArray(base.tags)) tagTokens.push(...base.tags);
+    if (Array.isArray(base.recommendation_meta?.tags)) tagTokens.push(...base.recommendation_meta.tags);
+    const facets = base.recommendation_meta?.facets || {};
+    for (const v of Object.values(facets)) {
+      if (!v) continue;
+      if (Array.isArray(v)) tagTokens.push(...v);
+      else tagTokens.push(v);
+    }
+    anchor.push(...tokenizeQueryForCache(tagTokens.join(' ')).slice(0, 6));
+    if (anchor.length < 3) anchor.push(...tokenizeQueryForCache(baseTitle).slice(0, 3));
+  }
 
   const queryText = anchor.join(' ');
   const found = await searchCreatorSellableFromCache(creatorId, queryText, 1, Math.min(Math.max(6, limit * 3), 60));
@@ -1435,10 +1514,15 @@ async function findSimilarCreatorFromCache(creatorId, productId, limit = 9) {
     return true;
   });
 
+  const ranked = filtered
+    .map((p) => ({ p, score: scorePairOverlap(base, p).score }))
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.p);
+
   return {
     base_product_id: String(productId),
     strategy_used: 'cache_creator_similar',
-    items: filtered.slice(0, Math.max(1, Number(limit || 9))).map((p) => ({ product: p })),
+    items: ranked.slice(0, Math.max(1, Number(limit || 9))).map((p) => ({ product: p })),
   };
 }
 
@@ -2185,6 +2269,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ...(search.page && search.page_size && { offset: (search.page - 1) * search.page_size }),
           ...(search.page_size && { limit: Math.min(search.page_size, 100) }),
           in_stock_only: search.in_stock_only !== false
+        };
+        break;
+      }
+
+      case 'products.recommendations': {
+        const search = effectivePayload.search || {};
+        queryParams = {
+          ...(search.merchant_id && { merchant_id: search.merchant_id }),
+          ...(search.platform_product_id && { platform_product_id: search.platform_product_id }),
+          ...(search.platform && { platform: search.platform }),
+          ...(search.limit && { limit: Math.min(Number(search.limit || 0) || 0, 50) }),
         };
         break;
       }

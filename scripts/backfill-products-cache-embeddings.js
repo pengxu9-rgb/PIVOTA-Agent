@@ -41,7 +41,27 @@ function buildEmbeddingText(product) {
   const vendor = String(product?.vendor || '').trim();
   const desc = String(product?.description || '').trim();
   const tags = Array.isArray(product?.tags) ? product.tags.join(', ') : '';
-  return [title, ptype && `Type: ${ptype}`, vendor && `Vendor: ${vendor}`, tags && `Tags: ${tags}`, desc]
+  const meta = product?.recommendation_meta || {};
+  const metaTags = Array.isArray(meta?.tags) ? meta.tags.join(', ') : '';
+  const facets = meta?.facets && typeof meta.facets === 'object' ? meta.facets : null;
+  const facetParts = [];
+  if (facets) {
+    for (const [k, v] of Object.entries(facets)) {
+      if (!v) continue;
+      if (Array.isArray(v) && v.length) facetParts.push(`${k}=${v.join('|')}`);
+      else if (!Array.isArray(v)) facetParts.push(`${k}=${String(v)}`);
+    }
+  }
+  const facetsLine = facetParts.length ? `Facets: ${facetParts.join(', ')}` : '';
+  return [
+    title,
+    ptype && `Type: ${ptype}`,
+    vendor && `Vendor: ${vendor}`,
+    tags && `Tags: ${tags}`,
+    metaTags && `MetaTags: ${metaTags}`,
+    facetsLine,
+    desc,
+  ]
     .filter(Boolean)
     .join('\n')
     .trim();
