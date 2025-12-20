@@ -28,6 +28,14 @@ function safeLower(s) {
   return String(s || '').toLowerCase();
 }
 
+function normalizeMatchText(s) {
+  return safeLower(s)
+    // Normalize common Unicode dashes to ASCII hyphen for regex matching.
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    // Normalize non-breaking spaces.
+    .replace(/\u00a0/g, ' ');
+}
+
 function collectStringsDeep(value, out, depth = 0) {
   if (depth > 3) return;
   if (value == null) return;
@@ -59,7 +67,7 @@ function extractAttributeBlob(product) {
 }
 
 function inferToolCategoryLv2(productText) {
-  const t = safeLower(productText);
+  const t = normalizeMatchText(productText);
 
   // Sets first: can cover many roles.
   if (
