@@ -487,12 +487,9 @@ function recommendToolKits({ rawQuery, intent, products }) {
 
   let kits = templates.map((tpl) => assembleKit(tpl, filtered, user));
 
-  // If none of the templates can be filled (catalog may have only a subset of tools),
-  // fall back to showing the best available tool-like items while asking clarifiers.
-  const anyKitHasItems = kits.some((k) => Array.isArray(k?.items) && k.items.length > 0);
-  let usedFallback = false;
-  if (!anyKitHasItems && filtered.length > 0) {
-    usedFallback = true;
+  // If a kit is empty or too sparse, pad it with the best available tool-like items
+  // so the UI can still show something useful while we ask clarifying questions.
+  const buildUniqueTools = () => {
     const priority = [
       'brush_set',
       'foundation_brush',
@@ -521,8 +518,38 @@ function recommendToolKits({ rawQuery, intent, products }) {
       if (seen.has(t.id)) continue;
       seen.add(t.id);
       unique.push(t);
-      if (unique.length >= 12) break;
+      if (unique.length >= 16) break;
     }
+    return unique;
+  };
+
+  const uniqueTools = buildUniqueTools();
+  const padCounts = [3, 4, 5];
+  kits = kits.map((k, idx) => {
+    const desired = padCounts[idx] || 4;
+    const items = Array.isArray(k?.items) ? [...k.items] : [];
+    const usedIds = new Set(items.map((it) => String(it.product_id || '')).filter(Boolean));
+    for (const t of uniqueTools) {
+      if (items.length >= desired) break;
+      if (!t?.id) continue;
+      if (usedIds.has(t.id)) continue;
+      usedIds.add(t.id);
+      items.push({
+        role: t.tool_category_lv2 === 'eye_brush' ? TOOL_ROLES.EYE_BRUSH_SET : t.tool_category_lv2,
+        product_id: t.id,
+        title: t.title,
+      });
+    }
+    return { ...k, items };
+  });
+
+  // If none of the templates can be filled (catalog may have only a subset of tools),
+  // fall back to showing the best available tool-like items while asking clarifiers.
+  const anyKitHasItems = kits.some((k) => Array.isArray(k?.items) && k.items.length > 0);
+  let usedFallback = false;
+  if (!anyKitHasItems && filtered.length > 0) {
+    usedFallback = true;
+    const unique = uniqueTools.slice(0, 12);
 
     const counts = [4, 6, 8];
     kits = kits.map((k, idx) => {
