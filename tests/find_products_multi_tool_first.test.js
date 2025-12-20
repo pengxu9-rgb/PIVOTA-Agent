@@ -77,11 +77,54 @@ describe('find_products_multi tool-first (beauty tools)', () => {
     expect(out.policy_version).toMatch(/find_products_multi_policy_v/);
     expect(Array.isArray(out.tool_kits)).toBe(true);
     expect(out.tool_kits.length).toBeGreaterThanOrEqual(1);
+    expect((out.tool_kits[0].items || []).length).toBeGreaterThan(0);
     expect(Array.isArray(out.follow_up_questions)).toBe(true);
 
     // Reordering should put kit items first.
     const topIds = (out.products || []).slice(0, 3).map((p) => p.id);
     expect(topIds).toEqual(expect.arrayContaining(['p2', 'p3']));
     expect(String(out.reply || '')).toMatch(/tool-first/i);
+  });
+
+  test('blocks non-tool products for beauty_tools', async () => {
+    const intent = extractIntentRuleBased('化妆工具推荐：刷具', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+
+    const response = {
+      products: [
+        {
+          id: 'ling-1',
+          title: "women's sleepwear set",
+          description: 'sleepwear set',
+          price: 19.9,
+          currency: 'USD',
+          inventory_quantity: 10,
+        },
+        {
+          id: 'tool-1',
+          title: 'Powder Brush',
+          description: 'Cosmetic Tools',
+          price: 9.9,
+          currency: 'USD',
+          inventory_quantity: 10,
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      reply: '',
+      metadata: { query_source: 'test' },
+    };
+
+    const out = applyFindProductsMultiPolicy({
+      response,
+      intent,
+      requestPayload: { search: { query: '化妆工具推荐：刷具' } },
+      metadata: { creator_id: 'creator_demo_001', creator_name: 'Nina Studio' },
+      rawUserQuery: '化妆工具推荐：刷具',
+    });
+
+    const ids = (out.products || []).map((p) => p.id);
+    expect(ids).toEqual(['tool-1']);
   });
 });

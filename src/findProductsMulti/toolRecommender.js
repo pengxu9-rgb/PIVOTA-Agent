@@ -75,13 +75,19 @@ function inferToolCategoryLv2(productText) {
   if (/\b(powder brush|setting brush)\b/.test(t) || /散粉刷/.test(productText)) return 'powder_brush';
   if (/\b(blush brush)\b/.test(t) || /腮红刷/.test(productText)) return 'blush_brush';
   if (/\b(contour brush)\b/.test(t) || /修容刷|鼻影刷/.test(productText)) return 'contour_brush';
-  if (/\b(highlight brush|fan brush)\b/.test(t) || /高光刷|扇形刷/.test(productText)) return 'highlight_brush';
+  if (/\b(highlight(?:er|ing)? brush|fan brush)\b/.test(t) || /高光刷|扇形刷/.test(productText)) return 'highlight_brush';
   if (/\b(eyeshadow brush|blending brush|shader brush|crease brush)\b/.test(t) || /眼影刷|晕染刷/.test(productText))
     return 'eye_brush';
+  // "detail brush" is common for under-eye / concealer.
+  if (/\b(under[-\\s]?eye|detail) brush\b/.test(t) || /眼下|细节刷/.test(productText)) return 'concealer_brush';
   if (/\b(eyelash curler)\b/.test(t) || /睫毛夹/.test(productText)) return 'eyelash_curler';
   if (/\b(makeup sponge|beauty blender|sponge)\b/.test(t) || /美妆蛋|海绵蛋|粉扑海绵/.test(productText)) return 'sponge';
   if (/\b(powder puff|cushion puff|puff)\b/.test(t) || /粉扑|气垫扑/.test(productText)) return 'powder_puff';
   if (/\b(brush cleaner|cleaning pad|brush soap)\b/.test(t) || /清洁垫|清洁剂|刷具清洁/.test(productText)) return 'cleaner';
+
+  // Fallback: if it is clearly a brush/tool but not a known specific type,
+  // treat as a multi-face brush so we can still assemble reasonable kits.
+  if (/\b(makeup brush|brush)\b/.test(t) || /化妆刷|刷具|刷子/.test(productText)) return 'multi_face_brush';
 
   return null;
 }
@@ -233,7 +239,17 @@ function toolCoversRoles(tool) {
   if (lv2 === 'sponge') return [TOOL_ROLES.SPONGE];
   if (lv2 === 'powder_puff') return [TOOL_ROLES.POWDER_PUFF];
   if (lv2 === 'cleaner') return [TOOL_ROLES.CLEANER];
-  if (TOOL_ROLES[lv2?.toUpperCase?.()]) return [lv2];
+  if (lv2 === 'multi_face_brush') {
+    // Compatible coverage for common face roles (weakly).
+    return [
+      TOOL_ROLES.MULTI_FACE_BRUSH,
+      TOOL_ROLES.FOUNDATION_BRUSH,
+      TOOL_ROLES.POWDER_BRUSH,
+      TOOL_ROLES.BLUSH_BRUSH,
+      TOOL_ROLES.CONTOUR_BRUSH,
+      TOOL_ROLES.HIGHLIGHT_BRUSH,
+    ];
+  }
 
   // direct mapping for our lv2 strings
   return [lv2];
@@ -257,13 +273,22 @@ function withinBudget(tool, budget) {
 }
 
 function scoreToolForRole(tool, role, user) {
+  const lv2 = tool?.tool_category_lv2;
   const covers = new Set(toolCoversRoles(tool));
-  const exact = covers.has(role);
+  const exact =
+    lv2 === role ||
+    (lv2 === 'eye_brush' && role === TOOL_ROLES.EYE_BRUSH_SET) ||
+    (lv2 === 'brush_set' && role === TOOL_ROLES.BRUSH_SET) ||
+    (lv2 === 'sponge' && role === TOOL_ROLES.SPONGE) ||
+    (lv2 === 'powder_puff' && role === TOOL_ROLES.POWDER_PUFF) ||
+    (lv2 === 'cleaner' && role === TOOL_ROLES.CLEANER);
   const viaSet = covers.has(TOOL_ROLES.BRUSH_SET) && role !== TOOL_ROLES.BRUSH_SET;
+  const compatible = !exact && !viaSet && covers.has(role);
 
   let score = 0;
   if (exact) score += 0.8;
   else if (viaSet) score += 0.65;
+  else if (compatible) score += 0.45;
   else score += 0.05;
 
   // Beginner-friendly nudges:

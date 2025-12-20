@@ -3,7 +3,7 @@ const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./p
 const { recommendToolKits } = require('./toolRecommender');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v32';
+const POLICY_VERSION = 'find_products_multi_policy_v33';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -46,6 +46,7 @@ const REASON_CODES = {
 
   ADULT_UNREQUESTED: 'ADULT_UNREQUESTED',
   ADULT_NEEDS_CONFIRMATION: 'ADULT_NEEDS_CONFIRMATION',
+  NOT_TOOL_PRODUCT: 'NOT_TOOL_PRODUCT',
   COMPAT_INCOMPATIBLE: 'COMPAT_INCOMPATIBLE',
   COMPAT_UNKNOWN: 'COMPAT_UNKNOWN',
   SAFETY_RISK: 'SAFETY_RISK',
@@ -114,6 +115,17 @@ function isLingerieLikeProduct(product) {
   const text = buildProductText(product);
   if (!text) return false;
   return LINGERIE_PATTERNS.some((re) => re.test(text));
+}
+
+function isBeautyToolLikeProduct(product) {
+  const text = buildProductText(product);
+  if (!text) return false;
+  // EN/Latin keywords
+  if (/\b(brush|brushes|puff|sponge|beauty blender|curler|tweezer|applicator|cleaning pad|brush cleaner|cleaner)\b/.test(text)) {
+    return true;
+  }
+  // CJK keywords
+  return /化妆刷|刷具|粉底刷|散粉刷|腮红刷|修容刷|遮瑕刷|眼影刷|晕染刷|美妆蛋|海绵蛋|粉扑|气垫扑|睫毛夹|清洁垫|清洁剂/.test(text);
 }
 
 function hasPetSignalInProduct(product) {
@@ -463,6 +475,20 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
         riskLevel = 'hard_block';
         reasonCodes.add(REASON_CODES.ADULT_UNREQUESTED);
       }
+    }
+  }
+
+  // ---------- Beauty tools guard rails ----------
+  if (
+    riskLevel !== 'hard_block' &&
+    intent?.primary_domain === 'beauty' &&
+    scenario === 'beauty_tools'
+  ) {
+    if (!isBeautyToolLikeProduct(product)) {
+      // For tool-first requests, block non-tool products (e.g., lingerie/apparel)
+      // to avoid confusing outputs.
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.NOT_TOOL_PRODUCT);
     }
   }
 
