@@ -280,6 +280,34 @@ const HEURISTIC_RULES = [
     id: 'pet-toys',
     keywords: ['pet toys', 'dog toy', 'cat toy', 'chew toy', 'pet plush', '宠物玩具', '狗玩具', '猫玩具'],
   },
+  {
+    id: 'pet-apparel',
+    keywords: [
+      'pet clothing',
+      'pet clothes',
+      'pet apparel',
+      'dog clothes',
+      'cat clothes',
+      'dog clothing',
+      'cat clothing',
+      'dog sweater',
+      'cat sweater',
+      'dog coat',
+      'cat coat',
+      'pet jacket',
+      'pet onesie',
+      'pet boots',
+      'dog boots',
+      'dog shoes',
+      '宠物衣服',
+      '宠物服饰',
+      '狗衣服',
+      '猫衣服',
+      '宠物鞋',
+      '狗鞋',
+      '猫鞋',
+    ],
+  },
 ];
 
 function isStatusActive(status) {
@@ -361,6 +389,69 @@ function heuristicCategoryForProduct(product) {
       hasLingerieSignal = true;
       break;
     }
+  }
+
+  const petSignals = ['dogs', 'cats', 'pet', 'puppy', 'kitten', '宠物', '狗', '猫'];
+  let hasPetSignal = false;
+  for (const kw of petSignals) {
+    if (containsKeyword(primaryHaystack, kw)) {
+      hasPetSignal = true;
+      break;
+    }
+  }
+
+  if (hasPetSignal) {
+    const petToySignals = [
+      'pet toy',
+      'pet toys',
+      'dog toy',
+      'cat toy',
+      'chew toy',
+      'squeaky',
+      'chew',
+      'ball',
+      'fetch',
+      '玩具',
+      '磨牙',
+      '咬咬',
+    ];
+    for (const kw of petToySignals) {
+      if (containsKeyword(haystack, kw)) return 'pet-toys';
+    }
+
+    const petApparelSignals = [
+      'onesie',
+      'sweater',
+      'coat',
+      'vest',
+      'tee',
+      'shirt',
+      'jacket',
+      'clothes',
+      'clothing',
+      'hoodie',
+      'raincoat',
+      'boot',
+      'boots',
+      'shoe',
+      'shoes',
+      'padded',
+      'knit',
+      '衣服',
+      '服饰',
+      '外套',
+      '毛衣',
+      '背心',
+      '鞋',
+      '雨衣',
+    ];
+    for (const kw of petApparelSignals) {
+      if (containsKeyword(primaryHaystack, kw)) return 'pet-apparel';
+    }
+
+    // Default pet bucket: in absence of a clearer signal, prefer pet-apparel
+    // so pet items don't leak into womenswear buckets.
+    return 'pet-apparel';
   }
 
   // Toys are visually very different from fashion/lingerie, and we want
@@ -503,7 +594,8 @@ const CATEGORY_GROUPS = {
     'press-on-nails',
     'contact-lens',
   ]),
-  toys: new Set(['toys', 'designer-toys', 'pet-toys']),
+  pets: new Set(['pet-toys', 'pet-apparel']),
+  toys: new Set(['toys', 'designer-toys']),
   outdoor: new Set(['camping-gear', 'hunting-accessories']),
 };
 

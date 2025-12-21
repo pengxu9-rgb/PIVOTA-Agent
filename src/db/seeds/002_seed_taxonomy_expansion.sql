@@ -50,6 +50,17 @@ SET slug = EXCLUDED.slug,
     default_priority = EXCLUDED.default_priority,
     updated_at = now();
 
+-- Add pet apparel (dogs/cats clothing/shoes).
+INSERT INTO canonical_category (id, slug, parent_id, level, status, replaced_by_id, default_image_url, default_priority)
+VALUES
+  ('pet-apparel', 'pet-apparel', 'pets', 1, 'active', NULL, NULL, 40)
+ON CONFLICT (id) DO UPDATE
+SET parent_id = EXCLUDED.parent_id,
+    level = EXCLUDED.level,
+    status = EXCLUDED.status,
+    default_priority = EXCLUDED.default_priority,
+    updated_at = now();
+
 -- Update existing Fashion children to live under fashion root.
 INSERT INTO canonical_category (id, slug, parent_id, level, status, replaced_by_id, default_image_url, default_priority)
 VALUES
@@ -95,6 +106,8 @@ VALUES
   ('outdoor', 'zh-CN', '户外', '["户外","露营","徒步","探险"]'::jsonb),
   ('pets', 'zh-CN', '宠物', '["宠物","宠物用品","宠物护理"]'::jsonb),
   ('pet-toys', 'zh-CN', '宠物玩具', '["宠物玩具","狗玩具","猫玩具"]'::jsonb),
+  ('pet-apparel', 'en-US', 'Pet Apparel', '["pet apparel","pet clothing","dog clothes","dog clothing","cat clothes","dog sweater","dog coat","dog onesie"]'::jsonb),
+  ('pet-apparel', 'zh-CN', '宠物服饰', '["宠物服饰","宠物衣服","狗衣服","猫衣服","宠物鞋","狗鞋"]'::jsonb),
 
   ('womens-dress', 'zh-CN', '女式连衣裙', '["连衣裙","裙子","礼服"]'::jsonb),
   ('outdoor-clothing', 'zh-CN', '户外服装', '["户外服装","冲锋衣","风衣","雨衣"]'::jsonb),
@@ -155,6 +168,7 @@ VALUES
   -- Pets view
   ('GLOBAL_PETS', 'pets', 'hidden', 0, NULL),
   ('GLOBAL_PETS', 'pet-toys', 'visible', 45, NULL),
+  ('GLOBAL_PETS', 'pet-apparel', 'visible', 50, NULL),
   ('GLOBAL_PETS', 'other', 'hidden', -1000, NULL),
 
   -- Toys view
@@ -164,4 +178,3 @@ ON CONFLICT (view_id, category_id) DO UPDATE
 SET visibility_override = EXCLUDED.visibility_override,
     priority_override = EXCLUDED.priority_override,
     image_override = COALESCE(EXCLUDED.image_override, taxonomy_view_category.image_override);
-
