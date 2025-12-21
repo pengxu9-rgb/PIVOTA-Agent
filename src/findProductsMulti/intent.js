@@ -446,7 +446,13 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, BEAUTY_TOOL_SIGNALS_EN) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_ES) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_FR) ||
-    includesAny(latest, BEAUTY_TOOL_SIGNALS_JA);
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_JA) ||
+    // Treat short follow-ups as part of the same beauty-tools mission if recent context indicates it.
+    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_ZH)) ||
+    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_EN)) ||
+    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_ES)) ||
+    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_FR)) ||
+    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_JA));
 
   const hasWomenClothingSignal =
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_ZH) ||
