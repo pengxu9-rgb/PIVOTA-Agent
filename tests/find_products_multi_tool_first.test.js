@@ -31,6 +31,18 @@ describe('find_products_multi tool-first (beauty tools)', () => {
     expect(intent.scenario.name).toBe('beauty_tools');
   });
 
+  test('keeps beauty tools intent on short follow-up when user messages contain brush query', async () => {
+    const intent = extractIntentRuleBased(
+      'A 新手极简：底妆更干净',
+      [],
+      [
+        { role: 'user', content: '来週、aespaのNingningのメイクを一通り描くけど、そのメイクに合うブラシのおすすめはある？' },
+      ]
+    );
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.scenario.name).toBe('beauty_tools');
+  });
+
   test('tool-first reply stays in Japanese for Japanese query, and does not recommend unrelated products', async () => {
     const intent = extractIntentRuleBased(
       '来週、aespaのNingningのメイクを一通り描くけど、そのメイクに合うブラシのおすすめはある？',

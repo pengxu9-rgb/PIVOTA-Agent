@@ -452,7 +452,19 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_EN)) ||
     recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_ES)) ||
     recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_FR)) ||
-    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_JA));
+    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_JA)) ||
+    // Some clients send chat history in `messages` rather than recent_queries.
+    Array.isArray(recent_messages) &&
+      recent_messages.some(
+        (m) =>
+          m &&
+          m.role === 'user' &&
+          (includesAny(m.content, BEAUTY_TOOL_SIGNALS_ZH) ||
+            includesAny(m.content, BEAUTY_TOOL_SIGNALS_EN) ||
+            includesAny(m.content, BEAUTY_TOOL_SIGNALS_ES) ||
+            includesAny(m.content, BEAUTY_TOOL_SIGNALS_FR) ||
+            includesAny(m.content, BEAUTY_TOOL_SIGNALS_JA)),
+      );
 
   const hasWomenClothingSignal =
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_ZH) ||
