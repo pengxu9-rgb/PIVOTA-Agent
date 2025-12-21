@@ -362,31 +362,40 @@ function isToyBreedContext(text) {
 }
 
 function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []) {
-  const historyTexts = [];
-  if (Array.isArray(recent_messages)) {
-    for (const m of recent_messages) {
-      if (m && m.role === 'user' && m.content) historyTexts.push(String(m.content));
-    }
-  }
-  if (Array.isArray(recent_queries)) {
-    for (const q of recent_queries) {
-      if (q) historyTexts.push(String(q));
-    }
-  }
-
-  for (let i = historyTexts.length - 1; i >= 0; i -= 1) {
-    const t = historyTexts[i];
-    if (!t) continue;
+  const classify = (t) => {
+    if (!t) return null;
     const isToy = includesAny(t, TOY_KEYWORDS) && !isToyBreedContext(t);
+    if (isToy) return 'toy_accessory';
     const isBeauty =
       includesAny(t, BEAUTY_TOOL_SIGNALS_ZH) ||
       includesAny(t, BEAUTY_TOOL_SIGNALS_EN) ||
       includesAny(t, BEAUTY_TOOL_SIGNALS_ES) ||
       includesAny(t, BEAUTY_TOOL_SIGNALS_FR) ||
       includesAny(t, BEAUTY_TOOL_SIGNALS_JA);
-    if (isToy) return 'toy_accessory';
     if (isBeauty) return 'beauty_tools';
+    return null;
+  };
+
+  // Prefer explicit mission signals in chat messages (most recent turn) over
+  // aggregated "recent_queries", which may include older sessions.
+  if (Array.isArray(recent_messages) && recent_messages.length) {
+    for (let i = recent_messages.length - 1; i >= 0; i -= 1) {
+      const m = recent_messages[i];
+      if (!m || m.role !== 'user' || !m.content) continue;
+      const mission = classify(String(m.content));
+      if (mission) return mission;
+    }
   }
+
+  if (Array.isArray(recent_queries) && recent_queries.length) {
+    for (let i = recent_queries.length - 1; i >= 0; i -= 1) {
+      const q = recent_queries[i];
+      if (!q) continue;
+      const mission = classify(String(q));
+      if (mission) return mission;
+    }
+  }
+
   return null;
 }
 

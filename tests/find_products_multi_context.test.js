@@ -64,4 +64,18 @@ describe('find_products_multi context building', () => {
     expect(intent.primary_domain).toBe('toy_accessory');
     expect(intent.target_object.type).toBe('toy');
   });
+
+  test('toy follow-up prefers message mission over older recent queries', async () => {
+    const intent = extractIntentRuleBased(
+      'I want a pajama, the color is green',
+      ['makeup brush set for foundation and powder'],
+      [
+        { role: 'user', content: 'Show me some pink toys' },
+        { role: 'assistant', content: 'Sure—here are some options.' },
+        { role: 'user', content: 'I want a pajama, the color is green' },
+      ],
+    );
+    expect(intent.primary_domain).toBe('toy_accessory');
+    expect(intent.target_object.type).toBe('toy');
+  });
 });
