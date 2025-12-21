@@ -416,40 +416,166 @@ function assembleKit({ name, roles }, tools, user) {
 }
 
 function buildHowToUse(user) {
+  const lang = String(user?.language || 'en');
+  const t = (dict) => dict[lang] || dict.en;
+
   const lines = [];
-  lines.push('底妆：少量多次；刷/海绵上完后，用轻拍方式把边缘收干净更服帖。');
+  lines.push(
+    t({
+      zh: '底妆：少量多次；刷/海绵上完后，用轻拍方式把边缘收干净更服帖。',
+      ja: 'ベース：少量ずつ。ブラシ/スポンジの後は軽く叩いて境目をなじませると密着。',
+      fr: 'Teint : applique en petites quantités; tapote légèrement les bords pour fondre et fixer.',
+      es: 'Base: aplica en capas finas; da golpecitos suaves en los bordes para difuminar y fijar.',
+      en: 'Base: use thin layers; tap the edges to blend for a smoother finish.',
+    }),
+  );
+
   if (user?.skin_type === 'combo' || user?.skin_type === 'oily') {
-    lines.push('定妆：T 区更建议粉扑按压增强持妆，两颊用散粉刷轻扫。');
+    lines.push(
+      t({
+        zh: '定妆：T 区更建议粉扑按压增强持妆，两颊用散粉刷轻扫。',
+        ja: 'セット：Tゾーンはパフで押さえると崩れにくい。頬はパウダーブラシでふんわり。',
+        fr: "Fixation : presse la poudre au houppette sur la zone T, et balaie léger sur les joues.",
+        es: 'Sellado: en la zona T presiona con borla; en mejillas, pasa la brocha suavemente.',
+        en: 'Set: press with a puff on the T-zone; lightly sweep with a powder brush on cheeks.',
+      }),
+    );
   } else if (user?.skin_type === 'dry') {
-    lines.push('定妆：更建议散粉刷轻扫，粉扑按压要控制用量，避免卡粉。');
+    lines.push(
+      t({
+        zh: '定妆：更建议散粉刷轻扫，粉扑按压要控制用量，避免卡粉。',
+        ja: 'セット：乾燥肌はブラシで軽く。パフで押さえるなら量を控えて粉浮きを回避。',
+        fr: "Fixation : préfère un voile au pinceau; si houppette, mets très peu pour éviter l'effet plâtre.",
+        es: 'Sellado: mejor un velo con brocha; si usas borla, poca cantidad para evitar efecto acartonado.',
+        en: 'Set: prefer a light brush veil; if using a puff, use less to avoid cakiness.',
+      }),
+    );
   } else {
-    lines.push('定妆：粉扑按压更持妆；散粉刷更轻薄，按你偏好选择。');
+    lines.push(
+      t({
+        zh: '定妆：粉扑按压更持妆；散粉刷更轻薄，按你偏好选择。',
+        ja: 'セット：パフは持ちが良く、ブラシは軽い仕上がり。好みで選んでOK。',
+        fr: "Fixation : houppette = plus de tenue; pinceau = plus léger. Choisis selon ta préférence.",
+        es: 'Sellado: borla = más duración; brocha = más ligero. Elige según tu preferencia.',
+        en: 'Set: puff = longer wear; brush = lighter finish. Choose based on your preference.',
+      }),
+    );
   }
-  lines.push('清洁：海绵/粉扑更易藏污纳垢，清洗后务必完全晾干再收纳。');
+
+  lines.push(
+    t({
+      zh: '清洁：海绵/粉扑更易藏污纳垢，清洗后务必完全晾干再收纳。',
+      ja: '洗浄：スポンジ/パフは汚れが残りやすいので、洗ったら完全に乾かしてから保管。',
+      fr: "Nettoyage : éponge/houppette retiennent vite les impuretés; sèche totalement avant de ranger.",
+      es: 'Limpieza: esponja/borla acumulan suciedad; sécalas por completo antes de guardar.',
+      en: 'Cleaning: sponges/puffs trap buildup; fully dry them before storing.',
+    }),
+  );
+
   return lines;
 }
 
 function buildWhyThisWorks(user) {
+  const lang = String(user?.language || 'en');
+  const t = (dict) => dict[lang] || dict.en;
+
   const lines = [];
   if (user?.skill_level === 'beginner') {
-    lines.push('优先选择容错更高的工具组合，减少“刷痕/结块/边界脏”。');
+    lines.push(
+      t({
+        zh: '优先选择容错更高的工具组合，减少“刷痕/结块/边界脏”。',
+        ja: '失敗しにくい組み合わせを優先して、ムラ・ダマ・境目の汚れを減らす。',
+        fr: "Priorise des outils tolérants pour réduire les traces, paquets et bords sales.",
+        es: 'Prioriza herramientas más fáciles para reducir marcas, grumos y bordes sucios.',
+        en: 'Choose forgiving tools to reduce streaks, clumps, and messy edges.',
+      }),
+    );
   }
   if (user?.goal === 'longwear_oil_control') {
-    lines.push('粉扑按压 + 分区定妆能明显提升持妆，尤其是 T 区。');
+    lines.push(
+      t({
+        zh: '粉扑按压 + 分区定妆能明显提升持妆，尤其是 T 区。',
+        ja: 'パフで押さえて部分的にセットすると、特にTゾーンの持ちが上がる。',
+        fr: "Presser avec la houppette + fixation par zones améliore nettement la tenue, surtout la zone T.",
+        es: 'Presionar con borla + sellar por zonas mejora mucho la duración, sobre todo en la zona T.',
+        en: 'Pressing with a puff + zone-setting improves wear, especially on the T-zone.',
+      }),
+    );
   }
   if (user?.goal === 'smooth_base') {
-    lines.push('少量多次 + 轻拍收边更容易做出服帖、细腻的底妆。');
+    lines.push(
+      t({
+        zh: '少量多次 + 轻拍收边更容易做出服帖、细腻的底妆。',
+        ja: '少量ずつ＋叩いてなじませると、密着したきれいなベースになりやすい。',
+        fr: 'Couches fines + tapotements = base plus fondue et plus lisse.',
+        es: 'Capas finas + golpecitos = base más uniforme y suave.',
+        en: 'Thin layers + tapping edges helps achieve a smoother base.',
+      }),
+    );
   }
-  lines.push('加入清洁工具能降低闷痘/异味风险，减少投诉。');
+  lines.push(
+    t({
+      zh: '加入清洁工具能降低闷痘/异味风险，减少投诉。',
+      ja: 'クリーニング用品を入れると、ニキビ・臭いのリスクを下げられる。',
+      fr: "Ajouter un outil de nettoyage réduit les risques d'irritations/odeurs.",
+      es: 'Incluir herramientas de limpieza reduce el riesgo de brotes y olores.',
+      en: 'Adding cleaning tools reduces the risk of breakouts/odor buildup.',
+    }),
+  );
   return lines;
 }
 
 function buildFollowUps(user) {
   const qs = [];
-  if (user?.goal === 'general') qs.push('你主要想解决什么：底妆服帖 / 持妆控油 / 遮瑕 / 新手不翻车 / 眼妆更干净？');
-  if (user?.base_product_type === 'unknown') qs.push('你常用底妆是：粉底液/粉霜/气垫/粉饼？（不知道也没关系）');
-  if (user?.skin_type === 'unknown') qs.push('你的肤质更接近：油皮 / 干皮 / 混合皮 / 敏感肌？');
-  if (!user?.budget || (user?.budget?.max == null && user?.budget?.min == null)) qs.push('预算大概在什么区间？我可以按预算给你分 A/B/C 三档。');
+  const lang = String(user?.language || 'en');
+
+  const t = (dict) => dict[lang] || dict.en;
+
+  if (user?.goal === 'general') {
+    qs.push(
+      t({
+        zh: '你主要想解决什么：底妆服帖 / 持妆控油 / 遮瑕 / 新手不翻车 / 眼妆更干净？',
+        ja: '一番重視したいのはどれ？：ベース密着 / 皮脂崩れ防止 / 遮瑕 / 初心者でも失敗しにくい / 目元をきれいに',
+        fr: "Quel est ton objectif principal : base bien fondue / tenue & anti-sébum / anti-cernes / débutant sans ratés / yeux plus nets ?",
+        es: '¿Qué quieres resolver principalmente: base más adherente / larga duración y control de sebo / corrector / principiante sin fallos / ojos más limpios?',
+        en: 'What’s your main goal: smoother base / longwear oil control / better coverage / beginner-safe / cleaner eye makeup?',
+      }),
+    );
+  }
+  if (user?.base_product_type === 'unknown') {
+    qs.push(
+      t({
+        zh: '你常用底妆是：粉底液/粉霜/气垫/粉饼？（不知道也没关系）',
+        ja: '普段のベースは？：リキッド/クリーム/クッション/パウダーファンデ（不明でもOK）',
+        fr: 'Quel type de base utilises-tu : liquide / crème / cushion / poudre ? (si tu ne sais pas, pas grave)',
+        es: '¿Qué base usas normalmente: líquida / crema / cushion / polvo? (si no lo sabes, no pasa nada)',
+        en: 'What base do you usually use: liquid / cream / cushion / powder foundation? (unknown is fine)',
+      }),
+    );
+  }
+  if (user?.skin_type === 'unknown') {
+    qs.push(
+      t({
+        zh: '你的肤质更接近：油皮 / 干皮 / 混合皮 / 敏感肌？',
+        ja: '肌質はどれに近い？：脂性 / 乾燥 / 混合 / 敏感',
+        fr: 'Ta peau est plutôt : grasse / sèche / mixte / sensible ?',
+        es: 'Tu tipo de piel: grasa / seca / mixta / sensible?',
+        en: 'Your skin type: oily / dry / combination / sensitive?',
+      }),
+    );
+  }
+  if (!user?.budget || (user?.budget?.max == null && user?.budget?.min == null)) {
+    qs.push(
+      t({
+        zh: '预算大概在什么区间？我可以按预算给你分 A/B/C 三档。',
+        ja: '予算感はどれくらい？予算に合わせて A/B/C で分けられるよ。',
+        fr: 'Tu as quel budget ? Je peux te proposer 3 niveaux A/B/C selon le budget.',
+        es: '¿Qué presupuesto tienes? Puedo dividirlo en 3 niveles A/B/C según el presupuesto.',
+        en: 'What’s your budget? I can split recommendations into A/B/C tiers.',
+      }),
+    );
+  }
+
   return qs.slice(0, 3);
 }
 
@@ -475,6 +601,7 @@ function recommendToolKits({ rawQuery, intent, products }) {
   if (domain !== 'beauty' || scenario !== 'beauty_tools') return null;
 
   const user = inferUserProfile(rawQuery, intent);
+  user.language = String(intent?.language || 'en');
   const mapped = (Array.isArray(products) ? products : [])
     .map(mapRawProductToToolProduct)
     .filter(Boolean);
@@ -485,14 +612,43 @@ function recommendToolKits({ rawQuery, intent, products }) {
     .filter((t) => withinBudget(t, user.budget))
     .filter((t) => !(user?.preferences?.latex_free && t.latex_flag));
 
-  // Templates (A/B/C).
+  const lang = user.language || 'en';
+  const tierNames = {
+    zh: {
+      A: 'A 新手极简：底妆更干净',
+      B: 'B 通勤完整：全脸覆盖更省心',
+      C: 'C 进阶妆效：更细节更专业',
+    },
+    ja: {
+      A: 'A 初心者ミニマル：ベースをきれいに',
+      B: 'B 通勤フル：全顔を手早く',
+      C: 'C 上級仕上げ：より細かくプロっぽく',
+    },
+    fr: {
+      A: 'A Débutant minimal : teint plus net',
+      B: 'B Bureau complet : visage complet, plus simple',
+      C: 'C Avancé : plus de détails, plus pro',
+    },
+    es: {
+      A: 'A Principiante minimal: base más limpia',
+      B: 'B Diario completo: rostro completo, más fácil',
+      C: 'C Avanzado: más detalle, más pro',
+    },
+    en: {
+      A: 'A Beginner Minimal: cleaner base',
+      B: 'B Everyday Complete: full face made easy',
+      C: 'C Advanced Finish: more detail, more pro',
+    },
+  };
+  const names = tierNames[lang] || tierNames.en;
+
   const templates = [
     {
-      name: 'A 新手极简：底妆更干净',
+      name: names.A,
       roles: [TOOL_ROLES.SPONGE, TOOL_ROLES.POWDER_BRUSH, TOOL_ROLES.MULTI_FACE_BRUSH, TOOL_ROLES.CLEANER],
     },
     {
-      name: 'B 通勤完整：全脸覆盖更省心',
+      name: names.B,
       roles: [
         TOOL_ROLES.FOUNDATION_BRUSH,
         TOOL_ROLES.SPONGE,
@@ -506,7 +662,7 @@ function recommendToolKits({ rawQuery, intent, products }) {
       ],
     },
     {
-      name: 'C 进阶妆效：更细节更专业',
+      name: names.C,
       roles: [
         TOOL_ROLES.FOUNDATION_BRUSH,
         TOOL_ROLES.SPONGE,
@@ -525,105 +681,20 @@ function recommendToolKits({ rawQuery, intent, products }) {
 
   let kits = templates.map((tpl) => assembleKit(tpl, filtered, user));
 
-  // If a kit is empty or too sparse, pad it with the best available tool-like items
-  // so the UI can still show something useful while we ask clarifying questions.
-  const buildUniqueTools = () => {
-    const priority = [
-      'brush_set',
-      'foundation_brush',
-      'powder_brush',
-      'sponge',
-      'powder_puff',
-      'concealer_brush',
-      'blush_brush',
-      'contour_brush',
-      'highlight_brush',
-      'eye_brush',
-      'eyelash_curler',
-      'cleaner',
-      'multi_face_brush',
-    ];
-    const byPri = new Map(priority.map((k, i) => [k, i]));
-    const sorted = [...filtered].sort((a, b) => {
-      const ai = byPri.has(a.tool_category_lv2) ? byPri.get(a.tool_category_lv2) : 999;
-      const bi = byPri.has(b.tool_category_lv2) ? byPri.get(b.tool_category_lv2) : 999;
-      return ai - bi;
-    });
-    const unique = [];
-    const seen = new Set();
-    for (const t of sorted) {
-      if (!t?.id) continue;
-      if (seen.has(t.id)) continue;
-      seen.add(t.id);
-      unique.push(t);
-      if (unique.length >= 16) break;
-    }
-    return unique;
-  };
-
-  const uniqueTools = buildUniqueTools();
-  const padCounts = [3, 4, 5];
-  kits = kits.map((k, idx) => {
-    const desired = padCounts[idx] || 4;
-    const items = Array.isArray(k?.items) ? [...k.items] : [];
-    const usedIds = new Set(items.map((it) => String(it.product_id || '')).filter(Boolean));
-    const usedRoles = new Set(items.map((it) => String(it.role || '')).filter(Boolean));
-    const usedTitleNorm = new Set(
-      items
-        .map((it) => normalizeMatchText(it?.title || ''))
-        .filter(Boolean),
-    );
-    for (const t of uniqueTools) {
-      if (items.length >= desired) break;
-      if (!t?.id) continue;
-      if (usedIds.has(t.id)) continue;
-      const role =
-        t.tool_category_lv2 === 'eye_brush' ? TOOL_ROLES.EYE_BRUSH_SET : t.tool_category_lv2;
-      if (!role) continue;
-      // Prefer diversity: at most 1 item per role unless we have no other choice.
-      if (usedRoles.has(role)) continue;
-      const titleNorm = normalizeMatchText(t.title || '');
-      if (titleNorm && usedTitleNorm.has(titleNorm)) continue;
-
-      usedIds.add(t.id);
-      usedRoles.add(role);
-      if (titleNorm) usedTitleNorm.add(titleNorm);
-
-      items.push({
-        role,
-        product_id: t.id,
-        title: t.title,
-      });
-    }
-    return { ...k, items };
-  });
-
-  // If none of the templates can be filled (catalog may have only a subset of tools),
-  // fall back to showing the best available tool-like items while asking clarifiers.
-  const anyKitHasItems = kits.some((k) => Array.isArray(k?.items) && k.items.length > 0);
-  let usedFallback = false;
-  if (!anyKitHasItems && filtered.length > 0) {
-    usedFallback = true;
-    const unique = uniqueTools.slice(0, 12);
-
-    const counts = [4, 6, 8];
-    kits = kits.map((k, idx) => {
-      const take = counts[idx] || 6;
-      return {
-        ...k,
-        items: unique.slice(0, take).map((t) => ({
-          role: t.tool_category_lv2 === 'eye_brush' ? TOOL_ROLES.EYE_BRUSH_SET : t.tool_category_lv2,
-          product_id: t.id,
-          title: t.title,
-        })),
-      };
-    });
-  }
-
+  // If we found no tool candidates at all, return "skeleton" kits (roles only, no products)
+  // so we can still guide the user without recommending unrelated items.
   let stats = computeToolRequestStats(kits);
-  if (usedFallback) {
-    stats = { has_good_match: false, match_tier: 'weak', match_confidence: 0.4 };
+  if (filtered.length === 0) {
+    kits = templates.map((tpl) => ({
+      kit_name: tpl.name,
+      items: [],
+      completeness: 0,
+      missing_roles: tpl.roles,
+    }));
+    stats = { has_good_match: false, match_tier: 'none', match_confidence: 0 };
   }
+  stats = { ...stats, tool_candidates_count: filtered.length };
+
   const followUps = buildFollowUps(user);
 
   const orderedIds = [];
@@ -643,7 +714,19 @@ function recommendToolKits({ rawQuery, intent, products }) {
     items: k.items,
     how_to_use: buildHowToUse(user),
     why_this_works: buildWhyThisWorks(user),
-    cautions: user?.preferences?.latex_free ? ['已按“无乳胶/latex-free”偏好优先筛选；如果你不确定是否过敏，可以先从无乳胶开始。'] : [],
+    cautions: user?.preferences?.latex_free
+      ? [
+          (user.language === 'zh'
+            ? '已按“无乳胶/latex-free”偏好优先筛选；如果你不确定是否过敏，可以先从无乳胶开始。'
+            : user.language === 'ja'
+              ? 'ラテックスフリーを優先しています。アレルギーが不安なら、まずはラテックスフリーから。'
+              : user.language === 'fr'
+                ? 'Préférence latex-free appliquée. Si tu n’es pas sûr(e), commence par du latex-free.'
+                : user.language === 'es'
+                  ? 'Se priorizó “sin látex”. Si no estás seguro/a, empieza por opciones sin látex.'
+                  : 'Latex-free preference applied. If unsure, start with latex-free.')
+        ]
+      : [],
     alternatives: [],
     completeness: k.completeness,
     missing_roles: k.missing_roles,

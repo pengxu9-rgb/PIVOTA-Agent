@@ -1269,6 +1269,18 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     }
     filtered = ordered;
   }
+
+  // If we couldn't reliably match beauty tools, avoid showing unrelated products.
+  // We still keep toolRec so the agent can provide a tool-first template reply.
+  if (
+    intent?.primary_domain === 'beauty' &&
+    intent?.scenario?.name === 'beauty_tools' &&
+    toolRec?.stats &&
+    String(toolRec.stats.match_tier || '') === 'none' &&
+    Number(toolRec.stats.tool_candidates_count || 0) === 0
+  ) {
+    filtered = [];
+  }
   const after = filtered.length;
 
   // By default, keep ordering. LLM rerank (optional) can be added later.
@@ -1331,61 +1343,138 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const toolFirstReply = (() => {
     if (!toolRec) return null;
     const lang = intent?.language || 'en';
-    const isZh = lang === 'zh';
     const kits = Array.isArray(toolRec.tool_kits) ? toolRec.tool_kits : [];
     if (!kits.length) return null;
 
     const qs = Array.isArray(toolRec.follow_up_questions) ? toolRec.follow_up_questions : [];
 
-    const roleLabelZh = {
-      foundation_brush: '粉底刷',
-      sponge: '美妆蛋/海绵',
-      powder_brush: '散粉刷',
-      powder_puff: '粉扑',
-      concealer_brush: '遮瑕刷',
-      multi_face_brush: '多功能面部刷',
-      blush_brush: '腮红刷',
-      contour_brush: '修容刷',
-      highlight_brush: '高光刷',
-      eye_brush_set: '眼影刷/晕染刷（眼妆刷）',
-      eyelash_curler: '睫毛夹',
-      cleaner: '清洁工具',
-      brush_set: '刷具套装',
+    const roleLabelsByLang = {
+      zh: {
+        foundation_brush: '粉底刷',
+        sponge: '美妆蛋/海绵',
+        powder_brush: '散粉刷',
+        powder_puff: '粉扑',
+        concealer_brush: '遮瑕刷',
+        multi_face_brush: '多功能面部刷',
+        blush_brush: '腮红刷',
+        contour_brush: '修容刷',
+        highlight_brush: '高光刷',
+        eye_brush_set: '眼影刷/晕染刷（眼妆刷）',
+        eyelash_curler: '睫毛夹',
+        cleaner: '清洁工具',
+        brush_set: '刷具套装',
+      },
+      ja: {
+        foundation_brush: 'ファンデーションブラシ',
+        sponge: 'メイクスポンジ',
+        powder_brush: 'パウダーブラシ',
+        powder_puff: 'パフ',
+        concealer_brush: 'コンシーラーブラシ',
+        multi_face_brush: 'マルチフェイスブラシ',
+        blush_brush: 'チークブラシ',
+        contour_brush: 'シェーディングブラシ',
+        highlight_brush: 'ハイライトブラシ',
+        eye_brush_set: 'アイブラシ（セット）',
+        eyelash_curler: 'ビューラー',
+        cleaner: 'クリーニング用品',
+        brush_set: 'ブラシセット',
+      },
+      fr: {
+        foundation_brush: 'pinceau fond de teint',
+        sponge: 'éponge maquillage',
+        powder_brush: 'pinceau poudre',
+        powder_puff: 'houppette',
+        concealer_brush: 'pinceau anti-cernes',
+        multi_face_brush: 'pinceau visage multi-usage',
+        blush_brush: 'pinceau blush',
+        contour_brush: 'pinceau contour',
+        highlight_brush: 'pinceau enlumineur',
+        eye_brush_set: 'pinceaux yeux',
+        eyelash_curler: 'recourbe-cils',
+        cleaner: 'nettoyant',
+        brush_set: 'set de pinceaux',
+      },
+      es: {
+        foundation_brush: 'brocha de base',
+        sponge: 'esponja de maquillaje',
+        powder_brush: 'brocha de polvo',
+        powder_puff: 'borla',
+        concealer_brush: 'brocha de corrector',
+        multi_face_brush: 'brocha multiuso',
+        blush_brush: 'brocha de rubor',
+        contour_brush: 'brocha de contorno',
+        highlight_brush: 'brocha iluminador',
+        eye_brush_set: 'brochas de ojos',
+        eyelash_curler: 'rizador de pestañas',
+        cleaner: 'limpiador',
+        brush_set: 'set de brochas',
+      },
+      en: {
+        foundation_brush: 'foundation brush',
+        sponge: 'makeup sponge',
+        powder_brush: 'powder brush',
+        powder_puff: 'powder puff',
+        concealer_brush: 'concealer brush',
+        multi_face_brush: 'multi face brush',
+        blush_brush: 'blush brush',
+        contour_brush: 'contour brush',
+        highlight_brush: 'highlight brush',
+        eye_brush_set: 'eye brushes',
+        eyelash_curler: 'eyelash curler',
+        cleaner: 'cleaner',
+        brush_set: 'brush set',
+      },
     };
-    const roleLabelEn = {
-      foundation_brush: 'foundation brush',
-      sponge: 'makeup sponge',
-      powder_brush: 'powder brush',
-      powder_puff: 'powder puff',
-      concealer_brush: 'concealer brush',
-      multi_face_brush: 'multi face brush',
-      blush_brush: 'blush brush',
-      contour_brush: 'contour brush',
-      highlight_brush: 'highlight brush',
-      eye_brush_set: 'eye brushes',
-      eyelash_curler: 'eyelash curler',
-      cleaner: 'cleaner',
-      brush_set: 'brush set',
-    };
+
+    const roleLabel = roleLabelsByLang[lang] || roleLabelsByLang.en;
+    const joiner = lang === 'zh' || lang === 'ja' ? '、' : ', ';
+    const prefix =
+      lang === 'zh'
+        ? '包含：'
+        : lang === 'ja'
+          ? '内容：'
+          : lang === 'fr'
+            ? 'Inclus : '
+            : lang === 'es'
+              ? 'Incluye: '
+              : 'Includes: ';
 
     const fmtKit = (k) => {
       const items = Array.isArray(k?.items) ? k.items : [];
       const roles = items.map((it) => String(it?.role || '')).filter(Boolean);
-      const labels = roles.map((r) => (isZh ? roleLabelZh[r] : roleLabelEn[r] || r));
+      const missingRoles = Array.isArray(k?.missing_roles) ? k.missing_roles.map((r) => String(r || '')).filter(Boolean) : [];
+      const allRoles = Array.from(new Set([...roles, ...missingRoles].filter(Boolean)));
+      const labels = allRoles.map((r) => roleLabel[r] || r);
       const uniq = Array.from(new Set(labels));
-      const prefix = isZh ? '包含：' : 'Includes: ';
-      return `${k.kit_name}\n${prefix}${uniq.join(isZh ? '、' : ', ')}`;
+      return `${k.kit_name}\n${prefix}${uniq.join(joiner)}`;
     };
 
-    const headerZh =
-      '我按“工具优先（Tool-first）”给你配了 3 套可直接加购的组合（商品已按 A→B→C 顺序排列在列表里）：';
-    const headerEn =
-      'I assembled 3 tool-first kits (products are ordered A→B→C in the list):';
+    const header =
+      lang === 'zh'
+        ? '我按“工具优先（Tool-first）”给你配了 3 套组合（A→B→C）：'
+        : lang === 'ja'
+          ? '「ツール優先」で 3 つのセット（A→B→C）を用意しました：'
+        : lang === 'fr'
+          ? 'J’ai assemblé 3 kits “tool-first” (A→B→C) :'
+        : lang === 'es'
+              ? 'Armé 3 kits “tool-first” (A→B→C):'
+              : 'I assembled 3 tool-first kits (A→B→C):';
     const kitLines = kits.slice(0, 3).map(fmtKit);
     const qLines = qs.length
-      ? [isZh ? '\n想更精准的话，回答 1–2 个就行：' : '\nTo refine, answer 1–2 quick questions:', ...qs.map((q) => `- ${q}`)]
+      ? [
+          lang === 'zh'
+            ? '\n想更精准的话，回答 1–2 个就行：'
+            : lang === 'ja'
+              ? '\nもっと絞り込むなら、1〜2個だけ答えて：'
+              : lang === 'fr'
+                ? '\nPour affiner, réponds à 1–2 questions :'
+                : lang === 'es'
+                  ? '\nPara afinar, responde 1–2 preguntas:'
+                  : '\nTo refine, answer 1–2 quick questions:',
+          ...qs.map((q) => `- ${q}`),
+        ]
       : [];
-    return [isZh ? headerZh : headerEn, ...kitLines, ...qLines].join('\n');
+    return [header, ...kitLines, ...qLines].join('\n');
   })();
 
   const reply = toolFirstReply

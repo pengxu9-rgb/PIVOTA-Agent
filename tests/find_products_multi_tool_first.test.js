@@ -21,6 +21,49 @@ describe('find_products_multi tool-first (beauty tools)', () => {
     expect(intent.target_object.type).toBe('human');
   });
 
+  test('tool-first reply stays in Japanese for Japanese query, and does not recommend unrelated products', async () => {
+    const intent = extractIntentRuleBased(
+      '来週、aespaのNingningのメイクを一通り描くけど、そのメイクに合うブラシのおすすめはある？',
+      [],
+      []
+    );
+    expect(intent.language).toBe('ja');
+
+    const response = {
+      products: [
+        {
+          id: 'toy-1',
+          title: 'Labubu Doll Outfit Set',
+          description: 'Cute clothes for a doll figure.',
+          price: 9.9,
+          currency: 'USD',
+          inventory_quantity: 10,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      reply: '',
+      metadata: { query_source: 'test' },
+    };
+
+    const out = applyFindProductsMultiPolicy({
+      response,
+      intent,
+      requestPayload: { search: { query: intent.raw_user_query || '' } },
+      metadata: { creator_id: 'creator_demo_001', creator_name: 'Nina Studio' },
+      rawUserQuery: '来週、aespaのNingningのメイクを一通り描くけど、そのメイクに合うブラシのおすすめはある？',
+    });
+
+    expect(Array.isArray(out.products)).toBe(true);
+    expect(out.products.length).toBe(0);
+    expect(typeof out.reply).toBe('string');
+    // Japanese-only signal
+    expect(out.reply).toMatch(/[\u3040-\u30ff]/);
+    // No English "Includes:" line
+    expect(out.reply).not.toMatch(/Includes:/);
+  });
+
   test('assembles tool_kits and reorders products', async () => {
     const intent = extractIntentRuleBased('makeup brush set for foundation and powder', [], []);
     expect(intent.primary_domain).toBe('beauty');
