@@ -17,11 +17,85 @@ const API_KEY = process.env.PIVOTA_API_KEY || '';
 const MAX_RESULTS = 8;
 const AVAIL_TTL_MS = Number(process.env.RECOMMEND_AVAIL_TTL_MS || 5 * 60 * 1000);
 const PRICE_TTL_MS = Number(process.env.RECOMMEND_PRICE_TTL_MS || 10 * 60 * 1000);
+const MISSION_MAX_CHARS = Number(process.env.RECOMMEND_MISSION_MAX_CHARS || 500);
+const REFINEMENT_MAX_CHARS = Number(process.env.RECOMMEND_REFINEMENT_MAX_CHARS || 60);
 
 function isSuspiciousInput(text) {
   if (!text) return false;
   const lowered = text.toLowerCase();
   return lowered.includes('ignore instructions') || lowered.includes('system prompt') || lowered.includes('ignore previous');
+}
+
+function capText(text, maxChars) {
+  if (!text) return '';
+  if (!maxChars || maxChars <= 0) return String(text);
+  const str = String(text);
+  return str.length > maxChars ? str.slice(0, maxChars) : str;
+}
+
+function normalizeMessage(text) {
+  return String(text || '').trim();
+}
+
+function isExplicitGoalSwitch(text) {
+  const t = normalizeMessage(text).toLowerCase();
+  if (!t) return false;
+  // English
+  if (t.includes('ignore that') || t.includes('ignore this') || t.includes('new request') || t.includes('change topic')) return true;
+  if (t.startsWith('instead,') || t.startsWith('actually,') || t.startsWith('scratch that')) return true;
+  // Chinese
+  if (t.includes('不管了') || t.includes('忽略') || t.includes('换成') || t.includes('改成') || t.includes('另外')) return true;
+  // Japanese
+  if (t.includes('やっぱり') || t.includes('別の') || t.includes('別件')) return true;
+  // Spanish / French
+  if (t.includes('olvida') || t.includes('cambiemos') || t.includes('oublie') || t.includes('changeons')) return true;
+  return false;
+}
+
+function isLowSignalAck(text) {
+  const raw = normalizeMessage(text);
+  if (!raw) return true;
+  if (raw.length < 3) return true;
+  const t = raw.toLowerCase();
+  const acks = new Set([
+    'ok', 'okay', 'kk', 'sure', 'thanks', 'thank you', 'thx', 'ty', 'got it', 'cool', 'nice', 'great',
+    'merci', 'd’accord', "d'accord", 'ok merci',
+    'gracias', 'vale',
+    '谢谢', '好的', '行', '明白了',
+    'ありがとう', '了解', 'はい',
+  ]);
+  return acks.has(t);
+}
+
+function deriveEffectiveQuery(message, state, { freezePersonalization }) {
+  const msg = normalizeMessage(message);
+  const prevMission = normalizeMessage(state?.mission_query || '');
+
+  if (!prevMission) {
+    return { effectiveQuery: msg, nextMission: capText(msg, MISSION_MAX_CHARS) || null };
+  }
+
+  if (freezePersonalization) {
+    // If we suspect prompt injection, don't reuse prior mission text.
+    return { effectiveQuery: msg, nextMission: prevMission || null };
+  }
+
+  if (isExplicitGoalSwitch(msg)) {
+    return { effectiveQuery: msg, nextMission: capText(msg, MISSION_MAX_CHARS) || null };
+  }
+
+  if (isLowSignalAck(msg)) {
+    return { effectiveQuery: prevMission, nextMission: prevMission || null };
+  }
+
+  // Heuristic: short follow-ups are usually refinements (budget/size/material/etc).
+  if (msg.length <= REFINEMENT_MAX_CHARS) {
+    const combined = capText(`${prevMission}; refinement: ${msg}`, MISSION_MAX_CHARS);
+    return { effectiveQuery: combined, nextMission: combined || prevMission || null };
+  }
+
+  // Long messages are more likely new missions.
+  return { effectiveQuery: msg, nextMission: capText(msg, MISSION_MAX_CHARS) || null };
 }
 
 async function callFindProductsMulti(query, locale) {
@@ -170,14 +244,23 @@ async function recommendHandler(req, res) {
 
   try {
     // Session handling
-    const userState = await getState(user_id, null, creator_id, source);
+    const userState = user_id ? await getState(user_id, null, creator_id, source) : null;
     const anonState = anon_id ? await getState(null, anon_id, creator_id, source) : null;
-    const mergedState = anon_id && user_id ? mergeAnonToUser(anonState || {}, userState || {}) : userState || {};
+    const mergedState =
+      user_id && anon_id
+        ? mergeAnonToUser(anonState || {}, userState || {})
+        : user_id
+          ? userState || {}
+          : anon_id
+            ? anonState || {}
+            : {};
     const freezePersonalization = suspicious;
     const stateAfterEvents = freezePersonalization ? mergedState : applyEvents(mergedState, events);
 
+    const { effectiveQuery, nextMission } = deriveEffectiveQuery(message, stateAfterEvents, { freezePersonalization });
+
     // Recall
-    const recallResp = await callFindProductsMulti(message, locale);
+    const recallResp = await callFindProductsMulti(effectiveQuery, locale);
     const candidatesRaw = recallResp.items || [];
     const candidates = candidatesRaw.map(mapCandidate);
     if (!candidates.length) {
@@ -297,6 +380,7 @@ async function recommendHandler(req, res) {
           -50,
         ),
         last_question_id: question?.id || stateAfterEvents.last_question_id || null,
+        mission_query: nextMission,
       };
       await saveState(user_id, anon_id, creator_id, source, finalState);
     }

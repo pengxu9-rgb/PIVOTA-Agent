@@ -110,4 +110,50 @@ describe('/recommend integration', () => {
     expect(res.body.copy_overrides).toBeTruthy();
     expect(res.body.meta.llm_used).toBe(false);
   });
+
+  test('short follow-up refines prior mission query (same session)', async () => {
+    const responseBody = require('./samples/find_products_multi_sample.json');
+
+    const anonId = 'a_refine_1';
+    const creatorId = 'c1';
+
+    const firstScope = nock('http://localhost:8080')
+      .post('/agent/shop/v1/invoke', (body) => body?.payload?.search?.query === 'cozy hoodie gift')
+      .reply(200, responseBody);
+
+    await request(app)
+      .post('/recommend')
+      .send({
+        trace_id: 't_refine_1',
+        creator_id: creatorId,
+        anon_id: anonId,
+        locale: 'en-US',
+        message: 'cozy hoodie gift',
+        events: [],
+      })
+      .expect(200);
+
+    expect(firstScope.isDone()).toBe(true);
+
+    const secondScope = nock('http://localhost:8080')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const q = body?.payload?.search?.query || '';
+        return q.includes('cozy hoodie gift') && q.includes('refinement: under $80');
+      })
+      .reply(200, responseBody);
+
+    await request(app)
+      .post('/recommend')
+      .send({
+        trace_id: 't_refine_2',
+        creator_id: creatorId,
+        anon_id: anonId,
+        locale: 'en-US',
+        message: 'under $80',
+        events: [],
+      })
+      .expect(200);
+
+    expect(secondScope.isDone()).toBe(true);
+  });
 });

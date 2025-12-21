@@ -41,6 +41,9 @@ function defaultState() {
     answered_slots: {},
     last_question_id: null,
     last_intent: null,
+    // Carries forward the user's primary goal across turns so short follow-ups
+    // (e.g. budget / size / material) can refine instead of replacing the mission.
+    mission_query: null,
   };
 }
 
@@ -83,6 +86,7 @@ function mergeAnonToUser(anonState, userState) {
     answered_slots: { ...(userState.answered_slots || {}), ...(anonState.answered_slots || {}) },
     last_question_id: userState.last_question_id || anonState.last_question_id || null,
     last_intent: userState.last_intent || anonState.last_intent || null,
+    mission_query: userState.mission_query || anonState.mission_query || null,
   };
 }
 
