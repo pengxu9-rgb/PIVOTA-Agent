@@ -85,6 +85,23 @@ function normalizeTextForMatch(text) {
     .trim();
 }
 
+function containsKeyword(normalizedHaystack, keyword) {
+  const hay = String(normalizedHaystack || '');
+  if (!hay) return false;
+  const needle = normalizeTextForMatch(keyword);
+  if (!needle) return false;
+
+  // CJK terms are commonly written without spaces, so token boundaries
+  // are not meaningful. Use substring match.
+  if (/[\u4e00-\u9fff]/.test(needle)) {
+    return hay.includes(needle);
+  }
+
+  // For Latin words/phrases, require token boundary matching to avoid
+  // false positives like "bra" matching "braun".
+  return ` ${hay} `.includes(` ${needle} `);
+}
+
 const HEURISTIC_RULES = [
   {
     id: 'designer-toys',
@@ -138,16 +155,15 @@ const HEURISTIC_RULES = [
       'lingerie',
       'lingerie set',
       'bra',
+      'bralette',
       'panty',
       'panties',
       'underwear',
-      'lace',
       'sexy lingerie',
       '内衣',
       '内裤',
       '文胸',
       '胸罩',
-      '蕾丝',
     ],
   },
   {
@@ -308,10 +324,10 @@ function heuristicCategoryForProduct(product) {
       product.product_type,
       product.category,
       normalizeMerchantCategoryKey(product),
-	    ]
-	      .filter(Boolean)
-	      .join(' '),
-	  );
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 
   // Detect strong lingerie / sleepwear signals from the product itself
   // (title / description / product type / category). When these are
@@ -321,10 +337,10 @@ function heuristicCategoryForProduct(product) {
     'lingerie',
     'lingerie set',
     'bra',
+    'bralette',
     'panty',
     'panties',
     'underwear',
-    'lace',
     'sexy lingerie',
     'sleepwear',
     'pajamas',
@@ -335,15 +351,13 @@ function heuristicCategoryForProduct(product) {
     '内裤',
     '文胸',
     '胸罩',
-    '蕾丝',
     '家居服',
     '睡衣',
     '浴袍',
   ];
   let hasLingerieSignal = false;
   for (const kw of lingerieSignals) {
-    const needle = normalizeTextForMatch(kw);
-    if (needle && primaryHaystack.includes(needle)) {
+    if (containsKeyword(primaryHaystack, kw)) {
       hasLingerieSignal = true;
       break;
     }
@@ -369,18 +383,35 @@ function heuristicCategoryForProduct(product) {
   ];
   if (!hasLingerieSignal) {
     for (const kw of toySignals) {
-      const needle = normalizeTextForMatch(kw);
-      if (needle && haystack.includes(needle)) {
+      if (containsKeyword(haystack, kw)) {
         return 'toys';
       }
     }
   }
 
+  // Prefer routing brushes/sponges/devices into dedicated beauty buckets
+  // before broader "makeup" matches.
+  const beautyToolsSignals = [
+    'beauty tools',
+    'makeup brush',
+    'sponge',
+    'applicator',
+    '美妆工具',
+    '化妆刷',
+    '美妆蛋',
+  ];
+  for (const kw of beautyToolsSignals) {
+    if (containsKeyword(primaryHaystack, kw)) return 'beauty-tools';
+  }
+
+  const beautyDeviceSignals = ['beauty device', 'led mask', 'microcurrent', 'beauty仪', '美容仪', 'LED面罩', '微电流'];
+  for (const kw of beautyDeviceSignals) {
+    if (containsKeyword(primaryHaystack, kw)) return 'beauty-devices';
+  }
+
   for (const rule of HEURISTIC_RULES) {
     for (const kw of rule.keywords) {
-      const needle = normalizeTextForMatch(kw);
-      if (!needle) continue;
-      if (primaryHaystack.includes(needle)) return rule.id;
+      if (containsKeyword(primaryHaystack, kw)) return rule.id;
     }
   }
   return 'other';
@@ -457,6 +488,36 @@ async function loadMerchantCategoryMappings(pairs) {
   }
 }
 
+const CATEGORY_GROUPS = {
+  fashion: new Set(['sportswear', 'lingerie-set', 'womens-loungewear', 'womens-dress', 'outdoor-clothing']),
+  beauty: new Set([
+    'beauty-tools',
+    'beauty-devices',
+    'makeup',
+    'skin-care',
+    'facial-care',
+    'haircare',
+    'eyelashes',
+    'nails',
+    'nail-polish',
+    'press-on-nails',
+    'contact-lens',
+  ]),
+  toys: new Set(['toys', 'designer-toys', 'pet-toys']),
+  outdoor: new Set(['camping-gear', 'hunting-accessories']),
+};
+
+function categoryGroup(categoryId) {
+  const id = String(categoryId || '').trim();
+  if (!id) return 'other';
+  for (const [group, ids] of Object.entries(CATEGORY_GROUPS)) {
+    if (ids.has(id)) return group;
+  }
+  return 'other';
+}
+
+const loggedMappingOverrides = new Set();
+
 async function mapProductsToCanonical(indexedProducts) {
   const pairs = [];
   const seen = new Set();
@@ -480,15 +541,39 @@ async function mapProductsToCanonical(indexedProducts) {
     const mapKey = `${merchantId}::${key}`;
     const mapped = mapping.get(mapKey);
     const heuristicId = heuristicCategoryForProduct(p);
-    // Guardrail: if a merchant-level mapping mistakenly points toy items to
-    // lingerie, prefer the product-level heuristic (which checks title/desc)
-    // to avoid obviously wrong placements.
-    const categoryId =
-      mapped && mapped.confidence >= 0.6
-        ? mapped.categoryId === 'lingerie-set' && heuristicId === 'toys'
-          ? 'toys'
-          : mapped.categoryId
-        : heuristicId;
+
+    let categoryId = heuristicId;
+    if (mapped && mapped.confidence >= 0.6) {
+      categoryId = mapped.categoryId;
+
+      // Guardrail: if a merchant-level mapping produces a clear cross-vertical mismatch
+      // (e.g., beauty tools mapped to lingerie), prefer the product-level heuristic.
+      const mappedGroup = categoryGroup(mapped.categoryId);
+      const heuristicGroup = categoryGroup(heuristicId);
+      if (
+        mappedGroup !== 'other' &&
+        heuristicGroup !== 'other' &&
+        mappedGroup !== heuristicGroup &&
+        heuristicId &&
+        heuristicId !== 'other'
+      ) {
+        categoryId = heuristicId;
+        if (!loggedMappingOverrides.has(mapKey)) {
+          loggedMappingOverrides.add(mapKey);
+          logger.warn(
+            {
+              merchantId,
+              merchantCategoryKey: key,
+              mappedCategoryId: mapped.categoryId,
+              mappedConfidence: mapped.confidence,
+              heuristicCategoryId: heuristicId,
+            },
+            'Overriding merchant category mapping due to cross-vertical conflict',
+          );
+        }
+      }
+    }
+
     assigned.push({ product: p, categoryId: categoryId || 'other' });
   }
   return assigned;
