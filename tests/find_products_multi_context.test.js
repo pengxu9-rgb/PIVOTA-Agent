@@ -1,4 +1,5 @@
 const { buildFindProductsMultiContext } = require('../src/findProductsMulti/policy');
+const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
 
 describe('find_products_multi context building', () => {
   test('uses last user message as query when search.query is empty', async () => {
@@ -42,5 +43,25 @@ describe('find_products_multi context building', () => {
     expect(q.toLowerCase()).toContain('lingerie');
     expect(q.toLowerCase()).not.toContain('outerwear');
     expect(q.toLowerCase()).not.toContain('coat jacket outerwear');
+  });
+
+  test('toy request overrides prior beauty history (no accidental cosmetic tools)', async () => {
+    const intent = extractIntentRuleBased(
+      'Show me some pink toys',
+      [],
+      [{ role: 'user', content: 'makeup brush set for foundation and powder' }],
+    );
+    expect(intent.primary_domain).toBe('toy_accessory');
+    expect(intent.target_object.type).toBe('toy');
+  });
+
+  test('toy follow-up keeps toy mission from recent queries', async () => {
+    const intent = extractIntentRuleBased(
+      'I want a pajama, the color is green',
+      ['Show me some pink toys'],
+      [],
+    );
+    expect(intent.primary_domain).toBe('toy_accessory');
+    expect(intent.target_object.type).toBe('toy');
   });
 });

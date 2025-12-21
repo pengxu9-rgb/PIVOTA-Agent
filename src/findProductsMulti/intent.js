@@ -357,6 +357,39 @@ function includesAny(haystack, needles) {
   return needles.some((k) => lowered.includes(String(k).toLowerCase()));
 }
 
+function isToyBreedContext(text) {
+  return /\btoy\s+(?:poodle|breed|dog|puppy)\b/i.test(String(text || ''));
+}
+
+function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []) {
+  const historyTexts = [];
+  if (Array.isArray(recent_messages)) {
+    for (const m of recent_messages) {
+      if (m && m.role === 'user' && m.content) historyTexts.push(String(m.content));
+    }
+  }
+  if (Array.isArray(recent_queries)) {
+    for (const q of recent_queries) {
+      if (q) historyTexts.push(String(q));
+    }
+  }
+
+  for (let i = historyTexts.length - 1; i >= 0; i -= 1) {
+    const t = historyTexts[i];
+    if (!t) continue;
+    const isToy = includesAny(t, TOY_KEYWORDS) && !isToyBreedContext(t);
+    const isBeauty =
+      includesAny(t, BEAUTY_TOOL_SIGNALS_ZH) ||
+      includesAny(t, BEAUTY_TOOL_SIGNALS_EN) ||
+      includesAny(t, BEAUTY_TOOL_SIGNALS_ES) ||
+      includesAny(t, BEAUTY_TOOL_SIGNALS_FR) ||
+      includesAny(t, BEAUTY_TOOL_SIGNALS_JA);
+    if (isToy) return 'toy_accessory';
+    if (isBeauty) return 'beauty_tools';
+  }
+  return null;
+}
+
 function parseBudgetToPriceConstraint(latestUserQuery) {
   const q = String(latestUserQuery || '');
   if (!q) return null;
@@ -413,6 +446,8 @@ function buildNoResultClarifiers(language) {
 function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_messages = []) {
   const latest = String(latest_user_query || '').trim();
   const language = detectLanguage(latest);
+  const isShortFollowup = latest.length > 0 && latest.length <= 80;
+  const historyMission = inferRecentMissionFromHistory(recent_queries, recent_messages);
 
   const isGreeting =
     includesAny(latest, GREETING_SIGNALS_ZH) || includesAny(latest, GREETING_SIGNALS_EN);
@@ -441,30 +476,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
 
   const hasSexySignal = includesAny(latest, ['sexy', '性感', 'セクシー']);
 
-  const hasBeautyToolSignal =
+  const hasBeautyToolSignalLocal =
     includesAny(latest, BEAUTY_TOOL_SIGNALS_ZH) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_EN) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_ES) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_FR) ||
-    includesAny(latest, BEAUTY_TOOL_SIGNALS_JA) ||
-    // Treat short follow-ups as part of the same beauty-tools mission if recent context indicates it.
-    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_ZH)) ||
-    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_EN)) ||
-    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_ES)) ||
-    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_FR)) ||
-    recent_queries.some((q) => includesAny(q, BEAUTY_TOOL_SIGNALS_JA)) ||
-    // Some clients send chat history in `messages` rather than recent_queries.
-    Array.isArray(recent_messages) &&
-      recent_messages.some(
-        (m) =>
-          m &&
-          m.role === 'user' &&
-          (includesAny(m.content, BEAUTY_TOOL_SIGNALS_ZH) ||
-            includesAny(m.content, BEAUTY_TOOL_SIGNALS_EN) ||
-            includesAny(m.content, BEAUTY_TOOL_SIGNALS_ES) ||
-            includesAny(m.content, BEAUTY_TOOL_SIGNALS_FR) ||
-            includesAny(m.content, BEAUTY_TOOL_SIGNALS_JA)),
-      );
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_JA);
 
   const hasWomenClothingSignal =
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_ZH) ||
@@ -472,15 +489,27 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     // Spanish/French basic gender words
     includesAny(latest, ['mujer', 'mujeres', 'ropa', 'femme', 'femmes', 'vêtement', 'vetement']);
 
-  const hasToySignalStrong =
-    includesAny(latest, TOY_KEYWORDS_STRONG) ||
-    recent_queries.some((q) => includesAny(q, TOY_KEYWORDS_STRONG));
+  const hasToySignalStrongLocal = includesAny(latest, TOY_KEYWORDS_STRONG) && !isToyBreedContext(latest);
+  const hasToySignalWeakLocal = includesAny(latest, TOY_KEYWORDS_WEAK) && !isToyBreedContext(latest);
+  const hasToySignalLocal = hasToySignalStrongLocal || hasToySignalWeakLocal;
 
   const hasOuterwearSignal =
     includesAny(latest, OUTERWEAR_KEYWORDS_ZH) || includesAny(latest, OUTERWEAR_KEYWORDS_EN);
 
   const hasColdScenario =
     includesAny(latest, COLD_SCENARIO_SIGNALS_ZH) || includesAny(latest, COLD_SCENARIO_SIGNALS_EN);
+
+  const hasBeautyToolSignal =
+    hasBeautyToolSignalLocal ||
+    (historyMission === 'beauty_tools' &&
+      isShortFollowup &&
+      // Do not let prior makeup/beauty history override a clearly different new mission.
+      !hasToySignalLocal &&
+      !hasPetSignal &&
+      !hasOuterwearSignal &&
+      !hasColdScenario &&
+      !hasWomenClothingSignal &&
+      !hasLingerieSignal);
 
   let primary_domain = 'other';
   let targetType = 'unknown';
@@ -493,7 +522,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     !hasOuterwearSignal &&
     !hasColdScenario &&
     !hasLingerieSignal &&
-    !includesAny(latest, TOY_KEYWORDS_STRONG)
+    !hasToySignalLocal
   ) {
     // Discovery / chitchat mode: user has not expressed a shopping goal yet.
     primary_domain = 'other';
@@ -506,7 +535,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     !hasOuterwearSignal &&
     !hasColdScenario &&
     !hasLingerieSignal &&
-    !includesAny(latest, TOY_KEYWORDS_STRONG)
+    !hasToySignalLocal
   ) {
     // Generic browse: user wants to see what's available, without a clear category.
     primary_domain = 'other';
@@ -575,8 +604,16 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     scenarioName = 'sexy_outfit';
     scenarioSignals = [];
   } else if (
-    includesAny(latest, TOY_KEYWORDS_STRONG) ||
-    (hasToySignalStrong && !latest && includesAny(recent_queries.join(' '), TOY_KEYWORDS_STRONG))
+    // Direct toy request, or short follow-up that should stay on toy mission.
+    hasToySignalLocal ||
+    (isShortFollowup &&
+      !hasBeautyToolSignalLocal &&
+      !hasPetSignal &&
+      !hasOuterwearSignal &&
+      !hasColdScenario &&
+      !hasWomenClothingSignal &&
+      !hasLingerieSignal &&
+      historyMission === 'toy_accessory')
   ) {
     primary_domain = 'toy_accessory';
     targetType = 'toy';
