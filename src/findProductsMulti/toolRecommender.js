@@ -717,12 +717,12 @@ function recommendToolKits({ rawQuery, intent, products }) {
     cautions: user?.preferences?.latex_free
       ? [
           (user.language === 'zh'
-            ? '已按“无乳胶/latex-free”偏好优先筛选；如果你不确定是否过敏，可以先从无乳胶开始。'
+            ? '已按“无乳胶”偏好优先筛选；如果你不确定是否过敏，可以先从无乳胶开始。'
             : user.language === 'ja'
               ? 'ラテックスフリーを優先しています。アレルギーが不安なら、まずはラテックスフリーから。'
-              : user.language === 'fr'
+            : user.language === 'fr'
                 ? 'Préférence latex-free appliquée. Si tu n’es pas sûr(e), commence par du latex-free.'
-                : user.language === 'es'
+              : user.language === 'es'
                   ? 'Se priorizó “sin látex”. Si no estás seguro/a, empieza por opciones sin látex.'
                   : 'Latex-free preference applied. If unsure, start with latex-free.')
         ]

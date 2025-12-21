@@ -1451,7 +1451,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
     const header =
       lang === 'zh'
-        ? '我按“工具优先（Tool-first）”给你配了 3 套组合（A→B→C）：'
+        ? '我按“工具优先”给你配了 3 套组合（A→B→C）：'
         : lang === 'ja'
           ? '「ツール優先」で 3 つのセット（A→B→C）を用意しました：'
         : lang === 'fr'
