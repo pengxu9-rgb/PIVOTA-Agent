@@ -100,18 +100,30 @@ function deriveEffectiveQuery(message, state, { freezePersonalization }) {
   return { effectiveQuery: msg, nextMission: capText(msg, MISSION_MAX_CHARS) || null };
 }
 
-function introTextOutOfDomain(locale) {
+function languageBucket({ message, locale }) {
+  const msg = String(message || '');
+  if (/[ぁ-んァ-ン]/.test(msg)) return 'ja';
+  if (/[\u4e00-\u9fff]/.test(msg)) return 'zh';
   const l = String(locale || '').toLowerCase();
-  if (l.startsWith('ja')) {
+  if (l.startsWith('ja')) return 'ja';
+  if (l.startsWith('zh')) return 'zh';
+  if (l.startsWith('fr')) return 'fr';
+  if (l.startsWith('es')) return 'es';
+  return 'en';
+}
+
+function introTextOutOfDomain({ message, locale }) {
+  const lang = languageBucket({ message, locale });
+  if (lang === 'ja') {
     return '今のおすすめ商品カタログは主にファッション向けのため、メイク・スキンケア（ブラシなど）の商品が見つかりません。ファッション商品の提案に切り替えるか、ブラシの種類の一般的なおすすめが必要か教えてください。';
   }
-  if (l.startsWith('zh')) {
+  if (lang === 'zh') {
     return '当前的推荐商品目录以时尚类为主，暂时很难匹配到美妆/护肤（例如化妆刷）相关商品。你想改成找时尚商品，还是想要我用文字给出化妆刷类型的通用建议？';
   }
-  if (l.startsWith('fr')) {
+  if (lang === 'fr') {
     return "Le catalogue recommandé ici est surtout orienté mode, donc je ne trouve pas d’articles maquillage/soin (ex. pinceaux). Préférez-vous passer à des produits mode, ou voulez-vous des conseils généraux sur les types de pinceaux ?";
   }
-  if (l.startsWith('es')) {
+  if (lang === 'es') {
     return 'El catálogo recomendado aquí es principalmente de moda, así que no encuentro productos de maquillaje/cuidado de la piel (p. ej., brochas). ¿Quieres cambiar a productos de moda o prefieres consejos generales sobre tipos de brochas?';
   }
   return 'This recommended catalog is mainly fashion-focused, so I cannot find makeup/skincare items (e.g., brushes) right now. Do you want to switch to fashion items, or do you want general brush-type guidance?';
@@ -290,7 +302,7 @@ async function recommendHandler(req, res) {
         trace_id,
         cards: [],
         copy_overrides: {
-          intro_text: introTextOutOfDomain(locale),
+          intro_text: introTextOutOfDomain({ message, locale }),
           items: [],
           follow_up_question_id: null,
         },
