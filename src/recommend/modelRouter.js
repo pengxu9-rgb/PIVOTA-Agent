@@ -5,10 +5,20 @@ const { ERROR_CODES } = require('./errors');
 const MODEL_ID = process.env.RECOMMEND_LLM_MODEL || 'gpt-4o-mini';
 const MAX_LLM_MS = Number(process.env.RECOMMEND_LLM_BUDGET_MS || 2000);
 
-function buildPrompt({ items, persona, copyPack }) {
+function languageTagFromLocale(locale) {
+  const l = String(locale || '').toLowerCase();
+  if (l.startsWith('ja')) return 'Japanese';
+  if (l.startsWith('zh')) return 'Chinese';
+  if (l.startsWith('fr')) return 'French';
+  if (l.startsWith('es')) return 'Spanish';
+  return 'English';
+}
+
+function buildPrompt({ items, persona, copyPack, locale }) {
   const introStyle = copyPack.intro_style_id || 'INTRO_WARM_SHORT';
   const signature = persona?.signature_phrases || [];
   const allowedEmojis = persona?.allowed_emojis || [];
+  const language = languageTagFromLocale(locale);
   const instructions = `
 You produce ONLY JSON with keys: intro_text, items, follow_up_question_id.
 Rules:
@@ -16,6 +26,7 @@ Rules:
 - Do NOT use digits or currency symbols.
 - Do NOT output brand names, product names, URLs, prices, facts.
 - Keep it short. Max one sentence per field.
+- Language: ${language}. Use exactly one language and do not mix languages.
 - Tone: ${persona?.tone_tag || 'warm'} with emoji level ${(persona?.emoji_level ?? 0)}.
 - Allowed signature phrases: ${signature.join(' | ') || 'none'}; use at most one overall.
 - Allowed emojis: ${allowedEmojis.join(' ')}.
@@ -49,6 +60,7 @@ async function maybeGenerateCopy({
   items,
   persona,
   copyPack,
+  locale,
   allow,
   expectedProductIds,
   maxItems,
@@ -64,7 +76,7 @@ async function maybeGenerateCopy({
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MAX_LLM_MS);
   try {
-    const prompt = buildPrompt({ items, persona, copyPack });
+    const prompt = buildPrompt({ items, persona, copyPack, locale });
     const res = await runOpenAICompletion(
       [
         { role: 'system', content: prompt.system },

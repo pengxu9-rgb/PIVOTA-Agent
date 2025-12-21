@@ -156,4 +156,31 @@ describe('/recommend integration', () => {
 
     expect(secondScope.isDone()).toBe(true);
   });
+
+  test('returns OUT_OF_DOMAIN for beauty/makeup intent under GLOBAL_FASHION taxonomy', async () => {
+    process.env.TAXONOMY_VIEW_ID = 'GLOBAL_FASHION';
+    const responseBody = require('./samples/find_products_multi_sample.json');
+
+    const upstreamScope = nock('http://localhost:8080')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, responseBody);
+
+    const res = await request(app)
+      .post('/recommend')
+      .send({
+        trace_id: 't_domain_1',
+        creator_id: 'c1',
+        anon_id: 'a_domain_1',
+        locale: 'ja-JP',
+        message: 'メイク ブラシ おすすめ',
+        events: [],
+      })
+      .expect(200);
+
+    expect(res.body.error).toBe('OUT_OF_DOMAIN');
+    expect(res.body.cards).toEqual([]);
+    expect(res.body.copy_overrides && typeof res.body.copy_overrides.intro_text).toBe('string');
+    expect(/[ぁ-んァ-ン一-龥]/.test(res.body.copy_overrides.intro_text)).toBe(true);
+    expect(upstreamScope.isDone()).toBe(false);
+  });
 });

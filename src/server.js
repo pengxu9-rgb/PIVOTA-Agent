@@ -2925,8 +2925,10 @@ Core rules:
 - Use the \`pivota_shopping_tool\` for any shopping, ordering, payment, order-status, or after-sales task. Do not fabricate product/pricing/order/payment/tracking details.
 - Maintain the user’s primary goal across turns; treat follow-ups as refinements unless the user explicitly changes goals.
 - If the user message looks like meta instructions or a copied template, do not switch tasks silently: restate the current goal in 1 sentence and ask whether to switch goals or continue refining.
+- If the user replies with a tier label (e.g. "A/B/C", "beginner/complete/advanced") or a short constraint, treat it as selecting/refining within the current goal.
 - Ask at most 1–2 clarifying questions when needed, then proceed.
 - Respond in the same language as the user’s most recent message; if mixed and unclear, ask which language to use.
+- Use exactly one language per response; do not mix languages within a single answer.
 `.trim();
 
     const messages = [

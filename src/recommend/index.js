@@ -8,7 +8,7 @@ const { maybeGenerateCopy } = require('./modelRouter');
 const { validateCopyOverrides } = require('./validators');
 const { getState, saveState, mergeAnonToUser, applyEvents } = require('./session');
 const { ERROR_CODES } = require('./errors');
-const { detectAllowOOS } = require('./intent');
+const { detectAllowOOS, detectBeautyIntent } = require('./intent');
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info', name: 'recommend' });
 
@@ -19,6 +19,8 @@ const AVAIL_TTL_MS = Number(process.env.RECOMMEND_AVAIL_TTL_MS || 5 * 60 * 1000)
 const PRICE_TTL_MS = Number(process.env.RECOMMEND_PRICE_TTL_MS || 10 * 60 * 1000);
 const MISSION_MAX_CHARS = Number(process.env.RECOMMEND_MISSION_MAX_CHARS || 500);
 const REFINEMENT_MAX_CHARS = Number(process.env.RECOMMEND_REFINEMENT_MAX_CHARS || 60);
+const TAXONOMY_VIEW_ID = process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION';
+const IS_FASHION_ONLY_TAXONOMY = TAXONOMY_VIEW_ID === 'GLOBAL_FASHION';
 
 function isSuspiciousInput(text) {
   if (!text) return false;
@@ -96,6 +98,23 @@ function deriveEffectiveQuery(message, state, { freezePersonalization }) {
 
   // Long messages are more likely new missions.
   return { effectiveQuery: msg, nextMission: capText(msg, MISSION_MAX_CHARS) || null };
+}
+
+function introTextOutOfDomain(locale) {
+  const l = String(locale || '').toLowerCase();
+  if (l.startsWith('ja')) {
+    return '今のおすすめ商品カタログは主にファッション向けのため、メイク・スキンケア（ブラシなど）の商品が見つかりません。ファッション商品の提案に切り替えるか、ブラシの種類の一般的なおすすめが必要か教えてください。';
+  }
+  if (l.startsWith('zh')) {
+    return '当前的推荐商品目录以时尚类为主，暂时很难匹配到美妆/护肤（例如化妆刷）相关商品。你想改成找时尚商品，还是想要我用文字给出化妆刷类型的通用建议？';
+  }
+  if (l.startsWith('fr')) {
+    return "Le catalogue recommandé ici est surtout orienté mode, donc je ne trouve pas d’articles maquillage/soin (ex. pinceaux). Préférez-vous passer à des produits mode, ou voulez-vous des conseils généraux sur les types de pinceaux ?";
+  }
+  if (l.startsWith('es')) {
+    return 'El catálogo recomendado aquí es principalmente de moda, así que no encuentro productos de maquillaje/cuidado de la piel (p. ej., brochas). ¿Quieres cambiar a productos de moda o prefieres consejos generales sobre tipos de brochas?';
+  }
+  return 'This recommended catalog is mainly fashion-focused, so I cannot find makeup/skincare items (e.g., brushes) right now. Do you want to switch to fashion items, or do you want general brush-type guidance?';
 }
 
 async function callFindProductsMulti(query, locale) {
@@ -259,6 +278,29 @@ async function recommendHandler(req, res) {
 
     const { effectiveQuery, nextMission } = deriveEffectiveQuery(message, stateAfterEvents, { freezePersonalization });
 
+    // Guardrail: avoid returning irrelevant fashion/toy items for beauty/makeup queries
+    // when the active taxonomy is fashion-only.
+    if (IS_FASHION_ONLY_TAXONOMY && detectBeautyIntent(effectiveQuery)) {
+      if (!freezePersonalization) {
+        const finalState = { ...stateAfterEvents, mission_query: nextMission };
+        await saveState(user_id, anon_id, creator_id, source, finalState);
+      }
+
+      return res.status(200).json(stripDebugPayload({
+        trace_id,
+        cards: [],
+        copy_overrides: {
+          intro_text: introTextOutOfDomain(locale),
+          items: [],
+          follow_up_question_id: null,
+        },
+        question: null,
+        state_delta: {},
+        meta: { ...baseMeta, route_reason: ERROR_CODES.OUT_OF_DOMAIN },
+        error: ERROR_CODES.OUT_OF_DOMAIN,
+      }, req));
+    }
+
     // Recall
     const recallResp = await callFindProductsMulti(effectiveQuery, locale);
     const candidatesRaw = recallResp.items || [];
@@ -345,6 +387,7 @@ async function recommendHandler(req, res) {
         allowed_emojis: [],
       },
       copyPack,
+      locale,
       allow: allowLlm,
       expectedProductIds,
       maxItems: expectedProductIds.length,
