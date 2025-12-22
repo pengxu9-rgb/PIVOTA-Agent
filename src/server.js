@@ -159,6 +159,11 @@ const ROUTE_MAP = {
     path: '/agent/shop/v1/invoke',
     paramType: 'body'
   },
+  preview_quote: {
+    method: 'POST',
+    path: '/agent/v1/quotes/preview',
+    paramType: 'body',
+  },
   create_order: {
     method: 'POST',
     path: '/agent/v1/orders/create',
@@ -2358,6 +2363,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         };
         break;
       }
+
+      case 'preview_quote': {
+        const quote = payload.quote || {};
+        if (!quote.merchant_id || !Array.isArray(quote.items) || quote.items.length === 0) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'quote.merchant_id and quote.items[] are required',
+          });
+        }
+        requestBody = quote;
+        break;
+      }
       
       case 'create_order': {
         // Map to real API requirements
@@ -2384,6 +2401,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         requestBody = {
           merchant_id,
           customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
+          ...(order.quote_id ? { quote_id: order.quote_id } : {}),
+          ...(order.discount_codes ? { discount_codes: order.discount_codes } : {}),
+          ...(order.selected_delivery_option
+            ? { selected_delivery_option: order.selected_delivery_option }
+            : {}),
           items: items.map(item => ({
             merchant_id: item.merchant_id,
             product_id: item.product_id,

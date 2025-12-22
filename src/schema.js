@@ -6,6 +6,7 @@ const OperationEnum = z.enum([
   'find_products_multi',
   'find_similar_products',
   'products.recommendations',
+  'preview_quote',
   'find_promotions', // admin list (optional routing guard)
   'create_promotion',
   'update_promotion',
@@ -40,6 +41,9 @@ const InvokeRequestSchema = z.object({
     // promotions admin payloads
     promotion: z.any().optional(),
     promotion_id: z.string().optional(),
+
+    // preview_quote: { merchant_id, items[], discount_codes?, customer_email?, shipping_address?, selected_delivery_option? }
+    quote: z.any().optional(),
     
     // create_order: { items[], shipping_address, notes? }
     order: z.any().optional(),
