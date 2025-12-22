@@ -93,4 +93,22 @@ describe('find_products_multi context building', () => {
     expect(intent.target_object.type).toBe('pet');
     expect(intent.scenario.name).toContain('pet');
   });
+
+  test('eye shadow brush query routes to dedicated scenario (no full-face kit)', async () => {
+    const intent = extractIntentRuleBased('帮我挑一个画眼影的刷子', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('eye_shadow_brush');
+  });
+
+  test('eye shadow brush follow-up keeps mission from messages', async () => {
+    const intent = extractIntentRuleBased('想要自然一点的晕染', [], [
+      { role: 'user', content: '帮我挑一个画眼影的刷子' },
+      { role: 'assistant', content: '好的，我先问你两个问题。' },
+      { role: 'user', content: '想要自然一点的晕染' },
+    ]);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('eye_shadow_brush');
+  });
 });

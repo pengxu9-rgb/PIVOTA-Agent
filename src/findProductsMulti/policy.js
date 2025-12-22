@@ -1,6 +1,7 @@
 const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { recommendToolKits } = require('./toolRecommender');
+const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
 const POLICY_VERSION = 'find_products_multi_policy_v37';
@@ -47,6 +48,7 @@ const REASON_CODES = {
   ADULT_UNREQUESTED: 'ADULT_UNREQUESTED',
   ADULT_NEEDS_CONFIRMATION: 'ADULT_NEEDS_CONFIRMATION',
   NOT_TOOL_PRODUCT: 'NOT_TOOL_PRODUCT',
+  NOT_EYE_BRUSH_PRODUCT: 'NOT_EYE_BRUSH_PRODUCT',
   COMPAT_INCOMPATIBLE: 'COMPAT_INCOMPATIBLE',
   COMPAT_UNKNOWN: 'COMPAT_UNKNOWN',
   SAFETY_RISK: 'SAFETY_RISK',
@@ -126,6 +128,21 @@ function isBeautyToolLikeProduct(product) {
   }
   // CJK keywords
   return /化妆刷|刷具|粉底刷|散粉刷|腮红刷|修容刷|遮瑕刷|眼影刷|晕染刷|美妆蛋|海绵蛋|粉扑|气垫扑|睫毛夹|清洁垫|清洁剂|メイクブラシ|化粧筆|ブラシセット/.test(text);
+}
+
+function isEyeBrushLikeProduct(product) {
+  const text = buildProductText(product);
+  if (!text) return false;
+  // Must include an eye-specific signal; avoid generic "brush set" that might be full-face.
+  const eyeSignals =
+    /\b(eye\s*shadow|eyeshadow|eye\s*brush|blending brush|crease brush|pencil brush|smudger|eyeliner brush|tightline)\b/i.test(text) ||
+    /眼影刷|眼部刷|眼妆刷|晕染刷|过渡刷|铺色刷|铅笔刷|烟熏刷|眼线刷|下眼睑刷|卧蚕刷|眼窝刷/.test(text) ||
+    /アイシャドウブラシ|ブレンディングブラシ|クリースブラシ|鉛筆ブラシ|スマッジャー|アイライナーブラシ|下まぶた/.test(text) ||
+    /\b(pinceau\s+(?:fard|paupi[eè]res)|pinceau\s+estompeur|pinceau\s+crayon|pinceau\s+eye-?liner)\b/i.test(text) ||
+    /\b(pincel\s+de\s+(?:sombra|ojos)|pincel\s+difuminador|pincel\s+l[aá]piz|pincel\s+delineador)\b/i.test(text);
+  if (!eyeSignals) return false;
+  // Exclude clearly non-eye face roles when no eye signal exists (handled above).
+  return true;
 }
 
 function hasPetSignalInProduct(product) {
@@ -489,6 +506,18 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
       // to avoid confusing outputs.
       riskLevel = 'hard_block';
       reasonCodes.add(REASON_CODES.NOT_TOOL_PRODUCT);
+    }
+  }
+
+  // ---------- Eye shadow brush guard rails ----------
+  if (
+    riskLevel !== 'hard_block' &&
+    intent?.primary_domain === 'beauty' &&
+    scenario === 'eye_shadow_brush'
+  ) {
+    if (!isEyeBrushLikeProduct(product)) {
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.NOT_EYE_BRUSH_PRODUCT);
     }
   }
 
@@ -910,6 +939,10 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   const isFr = lang === 'fr';
   const isJa = lang === 'ja';
 
+  if (scenario === 'eye_shadow_brush') {
+    return buildEyeShadowBrushReply({ rawQuery: creatorContext?.rawUserQuery || '', language: lang }).reply;
+  }
+
   if (scenario === 'beauty_tools') {
     if (isZh) {
       if (isNone) {
@@ -1194,7 +1227,21 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	      extra.push('labubu', 'doll clothes', 'outfit');
 	    }
 
-	    if (intent?.primary_domain === 'beauty' && scenario === 'beauty_tools') {
+	    if (intent?.primary_domain === 'beauty' && scenario === 'eye_shadow_brush') {
+	      extra.push(
+	        'eyeshadow brush',
+	        'eye brush',
+	        'blending brush',
+	        'crease brush',
+	        'pencil brush',
+	        'smudger',
+	        'eyeliner brush',
+	      );
+	      if (lang === 'zh') extra.push('眼影刷', '晕染刷', '铺色刷', '眼线刷', '下眼睑刷');
+	      if (lang === 'es') extra.push('pincel de sombra', 'pincel difuminador', 'pincel delineador');
+	      if (lang === 'fr') extra.push('pinceau fard à paupières', 'pinceau estompeur', 'pinceau eye-liner');
+	      if (lang === 'ja') extra.push('アイシャドウブラシ', 'ブレンディングブラシ', 'アイライナーブラシ', '下まぶた');
+	    } else if (intent?.primary_domain === 'beauty' && scenario === 'beauty_tools') {
 	      extra.push(
 	        'makeup tools',
 	        'cosmetic tools',
@@ -1483,6 +1530,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       ? buildReply(intent, stats.match_tier, Array.from(reasonCodes), {
           creatorName: metadata?.creator_name || metadata?.creatorName || null,
           creatorId: metadata?.creator_id || metadata?.creatorId || null,
+          rawUserQuery: rawQuery,
         })
       : augmented.reply;
 

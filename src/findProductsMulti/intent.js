@@ -355,6 +355,73 @@ const BEAUTY_TOOL_SIGNALS_JA = [
   'ビューラー',
 ];
 
+// Eye shadow / eye brushes (subcategory under beauty tools).
+// We treat this as a dedicated scenario so we don't accidentally output full-face kits.
+const EYE_SHADOW_BRUSH_SIGNALS_ZH = [
+  '眼影刷',
+  '眼部刷',
+  '眼妆刷',
+  '晕染刷',
+  '过渡刷',
+  '铺色刷',
+  '细节刷',
+  '铅笔刷',
+  '烟熏刷',
+  '眼线刷',
+  '下眼睑刷',
+  '卧蚕刷',
+  '眼窝刷',
+  '贴根部',
+  '填充睫毛根部',
+];
+const EYE_SHADOW_BRUSH_SIGNALS_EN = [
+  'eyeshadow brush',
+  'eye brush',
+  'blending brush',
+  'shader brush',
+  'flat shader',
+  'packing brush',
+  'crease brush',
+  'pencil brush',
+  'smudger',
+  'smudger brush',
+  'eyeliner brush',
+  'tightline',
+  'lower lash brush',
+];
+const EYE_SHADOW_BRUSH_SIGNALS_JA = [
+  'アイシャドウブラシ',
+  '目元ブラシ',
+  'ブレンディングブラシ',
+  'ぼかし',
+  '平筆',
+  'クリースブラシ',
+  '鉛筆ブラシ',
+  'スマッジャー',
+  'アイライナーブラシ',
+  '下まぶた',
+];
+const EYE_SHADOW_BRUSH_SIGNALS_FR = [
+  'pinceau fard à paupières',
+  'pinceau pour les yeux',
+  'pinceau estompeur',
+  'pinceau plat',
+  'pinceau creux',
+  'pinceau crayon',
+  'pinceau smoky',
+  'pinceau eye-liner',
+];
+const EYE_SHADOW_BRUSH_SIGNALS_ES = [
+  'pincel de sombra',
+  'pincel de ojos',
+  'pincel difuminador',
+  'pincel plano',
+  'pincel de cuenca',
+  'pincel lápiz',
+  'pincel smoky',
+  'pincel delineador',
+];
+
 function includesAny(haystack, needles) {
   if (!haystack) return false;
   const lowered = haystack.toLowerCase();
@@ -379,6 +446,16 @@ function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []
       includesAny(t, PET_BREED_SIGNALS_ZH) ||
       includesAny(t, PET_BREED_SIGNALS_EN);
     if (isPet) return 'pet_apparel';
+    const isEye =
+      includesAny(t, EYE_SHADOW_BRUSH_SIGNALS_ZH) ||
+      includesAny(t, EYE_SHADOW_BRUSH_SIGNALS_EN) ||
+      includesAny(t, EYE_SHADOW_BRUSH_SIGNALS_ES) ||
+      includesAny(t, EYE_SHADOW_BRUSH_SIGNALS_FR) ||
+      includesAny(t, EYE_SHADOW_BRUSH_SIGNALS_JA) ||
+      (/眼影/.test(t) && /刷/.test(t)) ||
+      (/\beye\s*shadow\b/i.test(t) && /\bbrush\b/i.test(t)) ||
+      (/アイシャドウ/.test(t) && /ブラシ/.test(t));
+    if (isEye) return 'eye_shadow_brush';
     const isBeauty =
       includesAny(t, BEAUTY_TOOL_SIGNALS_ZH) ||
       includesAny(t, BEAUTY_TOOL_SIGNALS_EN) ||
@@ -507,6 +584,17 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, BEAUTY_TOOL_SIGNALS_FR) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_JA);
 
+  const hasEyeShadowBrushSignalLocal =
+    includesAny(latest, EYE_SHADOW_BRUSH_SIGNALS_ZH) ||
+    includesAny(latest, EYE_SHADOW_BRUSH_SIGNALS_EN) ||
+    includesAny(latest, EYE_SHADOW_BRUSH_SIGNALS_ES) ||
+    includesAny(latest, EYE_SHADOW_BRUSH_SIGNALS_FR) ||
+    includesAny(latest, EYE_SHADOW_BRUSH_SIGNALS_JA) ||
+    // Heuristic: "eyeshadow" + "brush" without exact phrase match.
+    (/眼影/.test(latest) && /刷/.test(latest)) ||
+    (/\beye\s*shadow\b/i.test(latest) && /\bbrush\b/i.test(latest)) ||
+    (/アイシャドウ/.test(latest) && /ブラシ/.test(latest));
+
   const hasWomenClothingSignal =
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_ZH) ||
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_EN) ||
@@ -534,8 +622,19 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
       !hasWomenClothingSignal &&
       !hasLingerieSignal);
 
+  const hasEyeShadowBrushSignal =
+    hasEyeShadowBrushSignalLocal ||
+    (historyMission === 'eye_shadow_brush' &&
+      isShortFollowup &&
+      // Do not let prior eye-brush history override a clearly different new mission.
+      !hasToySignalLocal &&
+      !hasPetSignalLocal &&
+      !hasOuterwearSignal &&
+      !hasWomenClothingSignal &&
+      !hasLingerieSignal);
+
   const hasBeautyToolSignal =
-    hasBeautyToolSignalLocal ||
+    (hasBeautyToolSignalLocal && !hasEyeShadowBrushSignalLocal) ||
     (historyMission === 'beauty_tools' &&
       isShortFollowup &&
       // Do not let prior makeup/beauty history override a clearly different new mission.
@@ -597,6 +696,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           includesAny(latest, [s])
         )
       : [];
+  } else if (hasEyeShadowBrushSignal) {
+    primary_domain = 'beauty';
+    targetType = 'human';
+    scenarioName = 'eye_shadow_brush';
+    scenarioSignals = [];
+    categoryRequired = ['eye_shadow_brush', 'eye_brush'].slice(0, 2);
   } else if (hasBeautyToolSignal) {
     primary_domain = 'beauty';
     targetType = 'human';
@@ -691,6 +796,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     if (primary_domain === 'beauty' && scenarioName === 'beauty_tools') {
       missingSlots.push('makeup_goal', 'skin_type', 'base_product_type', 'budget');
     }
+    if (primary_domain === 'beauty' && scenarioName === 'eye_shadow_brush') {
+      missingSlots.push('look_finish', 'skill_level_or_eye_type', 'budget');
+    }
   }
 
   const confidenceDomain =
@@ -701,9 +809,13 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
         ? 0.9
         : 0.6
       : primary_domain === 'beauty'
-        ? hasBeautyToolSignal
-          ? 0.85
-          : 0.6
+        ? scenarioName === 'eye_shadow_brush'
+          ? hasEyeShadowBrushSignal
+            ? 0.9
+            : 0.6
+          : hasBeautyToolSignal
+            ? 0.85
+            : 0.6
       : primary_domain === 'toy_accessory'
         ? includesAny(latest, TOY_KEYWORDS)
           ? 0.9
@@ -794,5 +906,7 @@ module.exports = {
   detectLanguage,
   TOY_KEYWORDS_STRONG,
   TOY_KEYWORDS_WEAK,
+  EYE_SHADOW_BRUSH_SIGNALS_ZH,
+  EYE_SHADOW_BRUSH_SIGNALS_EN,
   INTENT_VERSION,
 };
