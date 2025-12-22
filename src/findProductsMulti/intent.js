@@ -242,6 +242,10 @@ const PET_SIGNALS_FR = [
 ];
 const PET_SIGNALS_JA = ['犬', 'わんちゃん', '猫', 'ペット', '犬服', '猫服'];
 
+// Common dog-breed references that users might use without saying "dog".
+const PET_BREED_SIGNALS_ZH = ['边牧', '边境牧羊犬'];
+const PET_BREED_SIGNALS_EN = ['border collie'];
+
 const GREETING_SIGNALS_ZH = ['你好', '嗨', '哈喽', '在吗', 'hello', 'hi', 'hey'];
 const GREETING_SIGNALS_EN = ['hi', 'hello', 'hey', 'yo', 'sup', 'how are you', "what's up"];
 const CHITCHAT_SIGNALS_ZH = ['聊聊', '随便聊', '唠嗑', '无聊', '陪我聊', '想聊天'];
@@ -366,6 +370,15 @@ function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []
     if (!t) return null;
     const isToy = includesAny(t, TOY_KEYWORDS) && !isToyBreedContext(t);
     if (isToy) return 'toy_accessory';
+    const isPet =
+      includesAny(t, PET_SIGNALS_ZH) ||
+      includesAny(t, PET_SIGNALS_EN) ||
+      includesAny(t, PET_SIGNALS_ES) ||
+      includesAny(t, PET_SIGNALS_FR) ||
+      includesAny(t, PET_SIGNALS_JA) ||
+      includesAny(t, PET_BREED_SIGNALS_ZH) ||
+      includesAny(t, PET_BREED_SIGNALS_EN);
+    if (isPet) return 'pet_apparel';
     const isBeauty =
       includesAny(t, BEAUTY_TOOL_SIGNALS_ZH) ||
       includesAny(t, BEAUTY_TOOL_SIGNALS_EN) ||
@@ -469,12 +482,14 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     // common generic intents from UI
     includesAny(latest, ['推荐一些好物', '热门商品', 'show me popular items', 'recommend some products']);
 
-  const hasPetSignal =
+  const hasPetSignalLocal =
     includesAny(latest, PET_SIGNALS_ZH) ||
     includesAny(latest, PET_SIGNALS_EN) ||
     includesAny(latest, PET_SIGNALS_ES) ||
     includesAny(latest, PET_SIGNALS_FR) ||
-    includesAny(latest, PET_SIGNALS_JA);
+    includesAny(latest, PET_SIGNALS_JA) ||
+    includesAny(latest, PET_BREED_SIGNALS_ZH) ||
+    includesAny(latest, PET_BREED_SIGNALS_EN);
 
   const hasLingerieSignal =
     includesAny(latest, LINGERIE_SIGNALS_ZH) ||
@@ -507,6 +522,17 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
 
   const hasColdScenario =
     includesAny(latest, COLD_SCENARIO_SIGNALS_ZH) || includesAny(latest, COLD_SCENARIO_SIGNALS_EN);
+
+  const hasPetSignal =
+    hasPetSignalLocal ||
+    (historyMission === 'pet_apparel' &&
+      isShortFollowup &&
+      // Do not let prior pet history override a clearly different new mission.
+      !hasToySignalLocal &&
+      !hasBeautyToolSignalLocal &&
+      !hasOuterwearSignal &&
+      !hasWomenClothingSignal &&
+      !hasLingerieSignal);
 
   const hasBeautyToolSignal =
     hasBeautyToolSignalLocal ||

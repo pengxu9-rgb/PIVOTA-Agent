@@ -78,4 +78,19 @@ describe('find_products_multi context building', () => {
     expect(intent.primary_domain).toBe('toy_accessory');
     expect(intent.target_object.type).toBe('toy');
   });
+
+  test('pet follow-up keeps pet mission from chat messages (breed-only follow-up)', async () => {
+    const intent = extractIntentRuleBased(
+      '边牧的颜色是黑白的，帮我找点颜色鲜艳的款式',
+      [],
+      [
+        { role: 'user', content: '我想买一件狗的衣服，我家养了一只边牧' },
+        { role: 'assistant', content: '我找到了几件更符合你需求的选择。' },
+        { role: 'user', content: '边牧的颜色是黑白的，帮我找点颜色鲜艳的款式' },
+      ],
+    );
+    expect(intent.primary_domain).toBe('sports_outdoor');
+    expect(intent.target_object.type).toBe('pet');
+    expect(intent.scenario.name).toContain('pet');
+  });
 });
