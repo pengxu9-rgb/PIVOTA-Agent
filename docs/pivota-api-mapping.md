@@ -9,6 +9,7 @@ Gateway entry: `POST /agent/shop/v1/invoke`
 Real production routing (gateway -> upstream):
 - `operation = "find_products"` → `GET {PIVOTA_API_BASE}/agent/v1/products/search`
 - `operation = "get_product_detail"` → `GET {PIVOTA_API_BASE}/agent/v1/products/{merchant_id}/{product_id}`
+- `operation = "preview_quote"` → `POST {PIVOTA_API_BASE}/agent/v1/quotes/preview`
 - `operation = "create_order"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/create`
 - `operation = "submit_payment"` → `POST {PIVOTA_API_BASE}/agent/v1/payments`
 - `operation = "get_order_status"` → `GET {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/track`
@@ -62,6 +63,19 @@ For each operation, align required/optional fields and note any differences.
 - Additional fields added by gateway:
   - `agent_id` (from auth context)
   - `currency` (from items or default)
+
+### 2.3.1 preview_quote (quote-first)
+- Gateway receives: `payload.quote` (JSON body)
+- Upstream expects: Request body (POST)
+- Parameter mapping (direct pass-through with structure adjustment):
+  - `payload.quote.merchant_id` → `merchant_id` (required)
+  - `payload.quote.items[]` → `items[]` (required)
+  - `payload.quote.discount_codes[]` → `discount_codes[]` (optional)
+  - `payload.quote.customer_email` → `customer_email` (optional)
+  - `payload.quote.shipping_address` → `shipping_address` (recommended for authoritative shipping/tax)
+- Notes:
+  - quote-first flow expects: preview quote → create order with `quote_id`
+  - `create_order` should forward `quote_id` when provided (gateway supports `payload.order.quote_id`)
 
 ### 2.4 submit_payment
 - Gateway receives: `payload.payment` (JSON body)

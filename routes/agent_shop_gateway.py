@@ -138,6 +138,8 @@ class ShippingAddress(BaseModel):
 class OrderPayloadBody(BaseModel):
     merchant_id: str
     customer_email: str
+    quote_id: Optional[str] = Field(None, description="Quote-first locked pricing id (optional)")
+    discount_codes: Optional[List[str]] = Field(default=None, description="Optional discount codes (quote-first fingerprint)")
     items: List[OrderItem]
     shipping_address: ShippingAddress
     customer_notes: Optional[str] = None
@@ -145,6 +147,31 @@ class OrderPayloadBody(BaseModel):
 
 class CreateOrderPayload(BaseModel):
     order: OrderPayloadBody
+
+
+class QuoteItem(BaseModel):
+    product_id: str
+    variant_id: Optional[str] = None
+    quantity: int = Field(..., ge=1)
+
+
+class QuoteShippingAddress(BaseModel):
+    country: str
+    postal_code: str
+    city: Optional[str] = None
+    state: Optional[str] = None
+
+
+class QuotePayloadBody(BaseModel):
+    merchant_id: str
+    items: List[QuoteItem]
+    discount_codes: Optional[List[str]] = None
+    customer_email: Optional[str] = None
+    shipping_address: Optional[QuoteShippingAddress] = None
+
+
+class PreviewQuotePayload(BaseModel):
+    quote: QuotePayloadBody
 
 
 class PaymentPayloadBody(BaseModel):
@@ -1549,6 +1576,8 @@ async def _handle_create_order(order: OrderPayloadBody) -> Dict[str, Any]:
     body = {
         "merchant_id": order.merchant_id,
         "customer_email": order.customer_email,
+        **({"quote_id": order.quote_id} if order.quote_id else {}),
+        **({"discount_codes": order.discount_codes} if order.discount_codes else {}),
         "items": [
             {
                 "merchant_id": item.merchant_id,
@@ -1573,6 +1602,34 @@ async def _handle_create_order(order: OrderPayloadBody) -> Dict[str, Any]:
     }
 
     return await _proxy_agent_api("POST", "/agent/v1/orders/create", body)
+
+
+async def _handle_preview_quote(quote: QuotePayloadBody) -> Dict[str, Any]:
+    """Proxy preview_quote to Agent API (/agent/v1/quotes/preview)."""
+    body: Dict[str, Any] = {
+        "merchant_id": quote.merchant_id,
+        "items": [
+            {
+                "product_id": item.product_id,
+                **({"variant_id": item.variant_id} if item.variant_id else {}),
+                "quantity": item.quantity,
+            }
+            for item in quote.items
+        ],
+    }
+    if quote.discount_codes:
+        body["discount_codes"] = quote.discount_codes
+    if quote.customer_email:
+        body["customer_email"] = quote.customer_email
+    if quote.shipping_address:
+        body["shipping_address"] = {
+            "country": quote.shipping_address.country,
+            "postal_code": quote.shipping_address.postal_code,
+            **({"city": quote.shipping_address.city} if quote.shipping_address.city else {}),
+            **({"state": quote.shipping_address.state} if quote.shipping_address.state else {}),
+        }
+
+    return await _proxy_agent_api("POST", "/agent/v1/quotes/preview", body)
 
 
 async def _handle_submit_payment(payment: PaymentPayloadBody) -> Dict[str, Any]:
@@ -1621,6 +1678,10 @@ async def invoke_shop_operation(
     if operation == "create_order":
         payload = CreateOrderPayload(**request.payload)
         return await _handle_create_order(payload.order)
+
+    if operation == "preview_quote":
+        payload = PreviewQuotePayload(**request.payload)
+        return await _handle_preview_quote(payload.quote)
 
     if operation == "find_products_multi":
         payload = FindProductsMultiPayload(**request.payload)

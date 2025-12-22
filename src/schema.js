@@ -11,6 +11,8 @@ const OperationEnum = z.enum([
   'create_promotion',
   'update_promotion',
   'get_product_detail',
+  // Quote-first (locked pricing)
+  'preview_quote',
   'create_order',
   'submit_payment',
   'get_order_status',
@@ -47,6 +49,9 @@ const InvokeRequestSchema = z.object({
     
     // create_order: { items[], shipping_address, notes? }
     order: z.any().optional(),
+
+    // preview_quote: { merchant_id, items[], discount_codes?, customer_email?, shipping_address? }
+    quote: z.any().optional(),
     
     // submit_payment: { order_id, expected_amount, currency, payment_method_hint?, return_url? }
     payment: z.any().optional(),

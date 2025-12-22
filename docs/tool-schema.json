@@ -12,6 +12,7 @@
           "find_products",
           "find_products_multi",
           "get_product_detail",
+          "preview_quote",
           "create_order",
           "submit_payment",
           "get_order_status",
@@ -62,6 +63,8 @@
             "type": "object",
             "description": "Used when operation = create_order",
             "properties": {
+              "quote_id": { "type": "string", "description": "Required when quote-first is enabled upstream." },
+              "discount_codes": { "type": "array", "items": { "type": "string" } },
               "items": {
                 "type": "array",
                 "items": {
@@ -69,6 +72,7 @@
                   "properties": {
                     "product_id": { "type": "string" },
                     "sku_id": { "type": "string" },
+                    "variant_id": { "type": "string" },
                     "quantity": { "type": "integer", "minimum": 1 }
                   },
                   "required": ["sku_id", "quantity"],
@@ -102,6 +106,41 @@
               },
               "notes": { "type": "string" }
             },
+            "additionalProperties": true
+          },
+          "quote": {
+            "type": "object",
+            "description": "Used when operation = preview_quote (quote-first locked pricing)",
+            "properties": {
+              "merchant_id": { "type": "string" },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "product_id": { "type": "string" },
+                    "variant_id": { "type": "string" },
+                    "quantity": { "type": "integer", "minimum": 1 }
+                  },
+                  "required": ["product_id", "quantity"],
+                  "additionalProperties": true
+                }
+              },
+              "discount_codes": { "type": "array", "items": { "type": "string" } },
+              "customer_email": { "type": "string" },
+              "shipping_address": {
+                "type": "object",
+                "properties": {
+                  "country": { "type": "string" },
+                  "postal_code": { "type": "string" },
+                  "city": { "type": "string" },
+                  "state": { "type": "string" }
+                },
+                "required": ["country", "postal_code"],
+                "additionalProperties": true
+              }
+            },
+            "required": ["merchant_id", "items"],
             "additionalProperties": true
           },
           "payment": {

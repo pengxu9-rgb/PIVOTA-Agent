@@ -2047,6 +2047,38 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           };
           break;
         }
+
+        case 'preview_quote': {
+          const quote = payload.quote || {};
+          const items = quote.items || [];
+          const subtotal = items.reduce(
+            (sum, item) => sum + (Number(item.unit_price || item.price || 0) * Number(item.quantity || 0)),
+            0
+          );
+          mockResponse = {
+            quote_id: `q_${Date.now().toString(36)}`,
+            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+            engine: 'mock',
+            currency: 'USD',
+            pricing: {
+              subtotal,
+              discount_total: 0,
+              shipping_fee: 0,
+              tax: 0,
+              total: subtotal,
+            },
+            promotion_lines: [],
+            line_items: items.map((it) => ({
+              variant_id: it.variant_id || it.sku_id || it.sku || it.product_id,
+              quantity: it.quantity,
+              unit_price_original: it.unit_price || it.price || 0,
+              unit_price_effective: it.unit_price || it.price || 0,
+              line_discount_total: 0,
+              compare_at_savings: 0,
+            })),
+          };
+          break;
+        }
         
         case 'submit_payment': {
           // Mock payment submission
@@ -2402,7 +2434,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           merchant_id,
           customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
           ...(order.quote_id ? { quote_id: order.quote_id } : {}),
-          ...(order.discount_codes ? { discount_codes: order.discount_codes } : {}),
           ...(order.selected_delivery_option
             ? { selected_delivery_option: order.selected_delivery_option }
             : {}),
@@ -2418,6 +2449,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             unit_price: item.unit_price || item.price,
             subtotal: (item.unit_price || item.price) * item.quantity
           })),
+          ...(order.discount_codes ? { discount_codes: order.discount_codes } : {}),
           shipping_address: {
             name: order.shipping_address?.recipient_name || order.shipping_address?.name,
             address_line1: order.shipping_address?.address_line1,
