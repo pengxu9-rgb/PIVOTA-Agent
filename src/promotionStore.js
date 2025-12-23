@@ -17,6 +17,27 @@ const PROMO_ADMIN_KEY =
 const PROMO_MODE = process.env.PROMOTIONS_MODE || 'local'; // 'local' | 'remote'
 const USE_REMOTE_PROMO = !!PROMO_BACKEND_BASE && PROMO_MODE !== 'local';
 
+// Production safety: never allow local/demo promotions.
+// We want promotions to be sourced from pivota-backend (/agent/internal/promotions),
+// otherwise Deals UI can show fake discounts.
+if (process.env.NODE_ENV === 'production') {
+  if (PROMO_MODE !== 'remote') {
+    throw new Error(
+      `[promotionStore] PROMOTIONS_MODE must be "remote" in production (got "${PROMO_MODE}")`
+    );
+  }
+  if (!PROMO_BACKEND_BASE) {
+    throw new Error(
+      '[promotionStore] PROMOTIONS_BACKEND_BASE_URL (or PIVOTA_API_BASE) must be set in production'
+    );
+  }
+  if (!PROMO_ADMIN_KEY) {
+    throw new Error(
+      '[promotionStore] PROMOTIONS_ADMIN_KEY (or ADMIN_API_KEY) must be set in production'
+    );
+  }
+}
+
 // Simple in-memory cache used when remote calls fail.
 let lastKnownPromotions = [];
 
