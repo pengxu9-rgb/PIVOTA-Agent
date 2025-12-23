@@ -53,6 +53,11 @@ function parseFocusedRoles(rawQuery) {
   if (!only && (wantsQuick || wantsSeamless)) roles.push(TOOL_ROLES.SPONGE);
   if (!only && (wantsLoosePowder || /定妆|set\b/.test(lower))) roles.push(TOOL_ROLES.POWDER_BRUSH);
 
+  // For "quick & seamless" asks, a puff is usually the highest-leverage pairing with a sponge.
+  if (!only && (wantsQuick || wantsSeamless) && !roles.includes(TOOL_ROLES.POWDER_PUFF)) {
+    roles.push(TOOL_ROLES.POWDER_PUFF);
+  }
+
   // If user explicitly said "only", keep the list strictly to what they asked for.
   if (only) {
     const dedup = Array.from(new Set(roles));
