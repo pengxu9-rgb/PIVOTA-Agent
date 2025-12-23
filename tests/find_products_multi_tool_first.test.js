@@ -256,4 +256,57 @@ describe('find_products_multi tool-first (beauty tools)', () => {
     const spongeItems = (kitA.items || []).filter((it) => it.role === 'sponge');
     expect(spongeItems.length).toBe(0);
   });
+
+  test('does not force A/B/C kits when user only wants concealer + powder tools', async () => {
+    const intent = extractIntentRuleBased('我只需要遮瑕工具和粉饼上妆的工具', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.scenario.name).toBe('beauty_tools');
+
+    const response = {
+      products: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+      reply: '',
+      metadata: { query_source: 'test' },
+    };
+
+    const out = applyFindProductsMultiPolicy({
+      response,
+      intent,
+      requestPayload: { search: { query: '我只需要遮瑕工具和粉饼上妆的工具' } },
+      metadata: { creator_id: 'creator_demo_001', creator_name: 'Nina Studio' },
+      rawUserQuery: '我只需要遮瑕工具和粉饼上妆的工具',
+    });
+
+    expect(String(out.reply || '')).not.toMatch(/A\\s*新手极简|A→B→C/);
+    expect(String(out.reply || '')).toMatch(/遮瑕刷/);
+    expect(String(out.reply || '')).toMatch(/粉扑/);
+  });
+
+  test('celebrity same request asks for clarifiers instead of generic A/B/C kits', async () => {
+    const intent = extractIntentRuleBased('我想要明星同款的化妆刷', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.scenario.name).toBe('beauty_tools');
+
+    const response = {
+      products: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+      reply: '',
+      metadata: { query_source: 'test' },
+    };
+
+    const out = applyFindProductsMultiPolicy({
+      response,
+      intent,
+      requestPayload: { search: { query: '我想要明星同款的化妆刷' } },
+      metadata: { creator_id: 'creator_demo_001', creator_name: 'Nina Studio' },
+      rawUserQuery: '我想要明星同款的化妆刷',
+    });
+
+    expect(String(out.reply || '')).not.toMatch(/A\\s*新手极简|A→B→C/);
+    expect(String(out.reply || '')).toMatch(/哪位明星|参考/);
+  });
 });

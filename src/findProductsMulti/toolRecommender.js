@@ -19,6 +19,74 @@ const TOOL_ROLES = {
   BRUSH_SET: 'brush_set',
 };
 
+function wantsTieredKits(rawQuery) {
+  const q = String(rawQuery || '');
+  const lower = safeLower(q);
+  return (
+    /A\s*新手|B\s*通勤|C\s*进阶|A→B→C|三档|分\s*[A-C]|分档|分成/.test(q) ||
+    /一套|套装|全套|全脸|入门.*套|通勤完整|进阶妆效/.test(q) ||
+    /\b(a\/b\/c|tiers?|kit|kits|set|full\s*face|starter)\b/.test(lower)
+  );
+}
+
+function wantsCelebritySame(rawQuery) {
+  const q = String(rawQuery || '');
+  return /明星同款|同款|仿妆|同じメイク|メイク.*同じ|celebrity|same.*look/i.test(q);
+}
+
+function parseFocusedRoles(rawQuery) {
+  const q = String(rawQuery || '');
+  const lower = safeLower(q);
+  const only = /只需要|只要|仅需要|只想要/.test(q);
+
+  const wantsConcealer = /遮瑕|concealer/.test(q) || /\bconceal(er|ing)\b/.test(lower);
+  const wantsPowderFoundation = /粉饼|powder foundation/.test(q) || /\bpowder\s+foundation\b/.test(lower);
+  const wantsLoosePowder = /散粉|setting powder|loose powder/.test(q) || /\b(loose|setting)\s+powder\b/.test(lower);
+  const wantsCushion = /气垫|cushion/.test(q) || /\bcushion\b/.test(lower);
+  const wantsQuick = /快捷|更快|省时|quick|fast/.test(q) || /\b(quick|fast|speed)\b/.test(lower);
+  const wantsSeamless = /服帖|贴服|不卡粉|smooth|seamless|streak[-\s]?free/.test(q) || /\b(smooth|seamless|streak)\b/.test(lower);
+
+  const roles = [];
+
+  if (wantsConcealer) roles.push(TOOL_ROLES.CONCEALER_BRUSH);
+  if (wantsPowderFoundation || wantsLoosePowder || wantsCushion) roles.push(TOOL_ROLES.POWDER_PUFF);
+  if (!only && (wantsQuick || wantsSeamless)) roles.push(TOOL_ROLES.SPONGE);
+  if (!only && (wantsLoosePowder || /定妆|set\b/.test(lower))) roles.push(TOOL_ROLES.POWDER_BRUSH);
+
+  // If user explicitly said "only", keep the list strictly to what they asked for.
+  if (only) {
+    const dedup = Array.from(new Set(roles));
+    return dedup.length ? dedup : [];
+  }
+
+  // Default minimal base combo when user asks for "faster / more seamless" without specifics.
+  if (!roles.length && (wantsQuick || wantsSeamless)) {
+    roles.push(TOOL_ROLES.SPONGE, TOOL_ROLES.POWDER_PUFF, TOOL_ROLES.CONCEALER_BRUSH);
+  }
+
+  return Array.from(new Set(roles));
+}
+
+function buildCelebrityClarifiers(lang) {
+  const t = (dict) => dict[lang] || dict.en;
+  return [
+    t({
+      zh: '你说的“明星同款”是指哪位明星/哪张参考图（或妆容关键词）？',
+      ja: '「同じメイク」は誰のどの参考（画像/キーワード）？',
+      fr: 'De quelle célébrité / quelle référence (photo ou mots-clés) parles-tu ?',
+      es: '¿De qué celebridad / qué referencia (foto o palabras clave) hablas?',
+      en: 'Which celebrity and which reference (photo/keywords) are you following?',
+    }),
+    t({
+      zh: '你想复刻的是：全脸刷具，还是只要眼妆/底妆/遮瑕/定妆其中一部分？',
+      ja: '全顔のブラシ？それとも目元/ベース/遮瑕/セットの一部だけ？',
+      fr: 'Tu veux un set visage complet, ou seulement yeux/teint/anti-cernes/fixation ?',
+      es: '¿Set completo o solo ojos/base/corrector/sellado?',
+      en: 'Do you want a full-face set, or only eyes/base/concealer/setting?',
+    }),
+  ];
+}
+
 function clamp01(n) {
   if (n == null || Number.isNaN(n)) return 0;
   return Math.max(0, Math.min(1, n));
@@ -579,6 +647,68 @@ function buildFollowUps(user) {
   return qs.slice(0, 3);
 }
 
+function buildFocusedFollowUps({ lang, rawQuery, roles }) {
+  const q = String(rawQuery || '');
+  const lower = safeLower(q);
+  const t = (dict) => dict[lang] || dict.en;
+
+  const qs = [];
+
+  const only = /只需要|只要|仅需要|只想要/.test(q);
+  if (only) {
+    // Keep follow-ups minimal when the user is explicit about scope.
+    if (roles.includes(TOOL_ROLES.CONCEALER_BRUSH)) {
+      qs.push(
+        t({
+          zh: '遮瑕你更常用在：黑眼圈（大面积）还是痘印点涂？',
+          ja: '遮瑕は主に：クマ（広め）？それともニキビ跡の点置き？',
+          fr: 'Anti-cernes : cernes (zone large) ou imperfections (point par point) ?',
+          es: 'Corrector: ¿ojeras (zona amplia) o granitos/puntos?',
+          en: 'Concealer: under-eyes (larger area) or spot concealing?',
+        }),
+      );
+    }
+    if (roles.includes(TOOL_ROLES.POWDER_PUFF) && /粉饼|powder foundation|cushion|气垫/.test(q) === false) {
+      qs.push(
+        t({
+          zh: '你说的“粉饼”是定妆粉饼还是粉饼粉底？',
+          ja: '「パウダー」は仕上げ用？それともパウダーファンデ？',
+          fr: 'Ton “poudre” est plutôt une poudre de finition ou un fond de teint poudre ?',
+          es: '¿Polvo para sellar o base en polvo?',
+          en: 'Is that a setting powder, or powder foundation?',
+        }),
+      );
+    }
+    return qs.slice(0, 2);
+  }
+
+  if (/\b(quick|fast)\b/.test(lower) || /快捷|省时/.test(q)) {
+    qs.push(
+      t({
+        zh: '你常用底妆是：气垫/粉饼/粉底液？（影响“更快更服帖”的工具选择）',
+        ja: '普段のベースは？クッション/パウダー/リキッド？',
+        fr: 'Ta base est plutôt cushion / poudre / liquide ?',
+        es: '¿Tu base es cushion / polvo / líquida?',
+        en: 'What base do you use most: cushion / powder / liquid?',
+      }),
+    );
+  }
+
+  if (roles.includes(TOOL_ROLES.POWDER_PUFF)) {
+    qs.push(
+      t({
+        zh: '你更喜欢“轻薄自然”还是“更持妆、更遮瑕”的粉感？',
+        ja: '仕上がりは薄めナチュラル？それとも持ち重視？',
+        fr: 'Tu préfères léger/naturel ou plus tenue/couvrant ?',
+        es: '¿Ligero/natural o más duradero/cubriente?',
+        en: 'Do you prefer a light-natural finish or longer-wear/coverage?',
+      }),
+    );
+  }
+
+  return qs.slice(0, 2);
+}
+
 function computeToolRequestStats(kits) {
   const best = Array.isArray(kits) ? kits.reduce((a, b) => (a.completeness >= b.completeness ? a : b), kits[0]) : null;
   const completeness = best ? best.completeness : 0;
@@ -613,6 +743,33 @@ function recommendToolKits({ rawQuery, intent, products }) {
     .filter((t) => !(user?.preferences?.latex_free && t.latex_flag));
 
   const lang = user.language || 'en';
+
+  // If the user asks for "celebrity same" brushes, don't jump into generic A/B/C kits.
+  if (wantsCelebritySame(rawQuery) && !wantsTieredKits(rawQuery)) {
+    const qs = buildCelebrityClarifiers(lang);
+    const header = (lang === 'zh'
+      ? '为了帮你配到“明星同款”的刷具，我先确认 1–2 个关键信息：'
+      : lang === 'ja'
+        ? '「同じメイク」の刷を合わせるために、まず1〜2点だけ確認させて：'
+        : lang === 'fr'
+          ? 'Pour te proposer des pinceaux “comme la célébrité”, je dois d’abord confirmer 1–2 infos :'
+          : lang === 'es'
+            ? 'Para recomendar “como la celebridad”, primero confirmo 1–2 cosas:'
+            : 'To match a celebrity look, I need 1–2 quick details:');
+
+    return {
+      mode: 'clarify',
+      reply_override: [header, ...qs.map((q) => `- ${q}`)].join('\n'),
+      tool_kits: [],
+      ordered_product_ids: [],
+      follow_up_questions: qs,
+      stats: { has_good_match: false, match_tier: 'none', match_confidence: 0, tool_candidates_count: filtered.length },
+      user_summary: user,
+    };
+  }
+
+  const tiered = wantsTieredKits(rawQuery);
+
   const tierNames = {
     zh: {
       A: 'A 新手极简：底妆更干净',
@@ -642,42 +799,58 @@ function recommendToolKits({ rawQuery, intent, products }) {
   };
   const names = tierNames[lang] || tierNames.en;
 
-  const templates = [
-    {
-      name: names.A,
-      roles: [TOOL_ROLES.SPONGE, TOOL_ROLES.POWDER_BRUSH, TOOL_ROLES.MULTI_FACE_BRUSH, TOOL_ROLES.CLEANER],
-    },
-    {
-      name: names.B,
-      roles: [
-        TOOL_ROLES.FOUNDATION_BRUSH,
-        TOOL_ROLES.SPONGE,
-        TOOL_ROLES.CONCEALER_BRUSH,
-        TOOL_ROLES.POWDER_PUFF,
-        TOOL_ROLES.POWDER_BRUSH,
-        TOOL_ROLES.MULTI_FACE_BRUSH,
-        TOOL_ROLES.EYE_BRUSH_SET,
-        TOOL_ROLES.EYELASH_CURLER,
-        TOOL_ROLES.CLEANER,
-      ],
-    },
-    {
-      name: names.C,
-      roles: [
-        TOOL_ROLES.FOUNDATION_BRUSH,
-        TOOL_ROLES.SPONGE,
-        TOOL_ROLES.CONCEALER_BRUSH,
-        TOOL_ROLES.POWDER_PUFF,
-        TOOL_ROLES.POWDER_BRUSH,
-        TOOL_ROLES.BLUSH_BRUSH,
-        TOOL_ROLES.CONTOUR_BRUSH,
-        TOOL_ROLES.HIGHLIGHT_BRUSH,
-        TOOL_ROLES.EYE_BRUSH_SET,
-        TOOL_ROLES.EYELASH_CURLER,
-        TOOL_ROLES.CLEANER,
-      ],
-    },
-  ];
+  const templates = tiered
+    ? [
+        {
+          name: names.A,
+          roles: [TOOL_ROLES.SPONGE, TOOL_ROLES.POWDER_BRUSH, TOOL_ROLES.MULTI_FACE_BRUSH, TOOL_ROLES.CLEANER],
+        },
+        {
+          name: names.B,
+          roles: [
+            TOOL_ROLES.FOUNDATION_BRUSH,
+            TOOL_ROLES.SPONGE,
+            TOOL_ROLES.CONCEALER_BRUSH,
+            TOOL_ROLES.POWDER_PUFF,
+            TOOL_ROLES.POWDER_BRUSH,
+            TOOL_ROLES.MULTI_FACE_BRUSH,
+            TOOL_ROLES.EYE_BRUSH_SET,
+            TOOL_ROLES.EYELASH_CURLER,
+            TOOL_ROLES.CLEANER,
+          ],
+        },
+        {
+          name: names.C,
+          roles: [
+            TOOL_ROLES.FOUNDATION_BRUSH,
+            TOOL_ROLES.SPONGE,
+            TOOL_ROLES.CONCEALER_BRUSH,
+            TOOL_ROLES.POWDER_PUFF,
+            TOOL_ROLES.POWDER_BRUSH,
+            TOOL_ROLES.BLUSH_BRUSH,
+            TOOL_ROLES.CONTOUR_BRUSH,
+            TOOL_ROLES.HIGHLIGHT_BRUSH,
+            TOOL_ROLES.EYE_BRUSH_SET,
+            TOOL_ROLES.EYELASH_CURLER,
+            TOOL_ROLES.CLEANER,
+          ],
+        },
+      ]
+    : [
+        {
+          name:
+            lang === 'zh'
+              ? '精简清单：按你当前需求'
+              : lang === 'ja'
+                ? 'ミニマル：いまの要件に合わせて'
+                : lang === 'fr'
+                  ? 'Minimal : selon ton besoin'
+                  : lang === 'es'
+                    ? 'Minimal: según tu necesidad'
+                    : 'Focused: based on your needs',
+          roles: parseFocusedRoles(rawQuery),
+        },
+      ];
 
   let kits = templates.map((tpl) => assembleKit(tpl, filtered, user));
 
@@ -695,7 +868,9 @@ function recommendToolKits({ rawQuery, intent, products }) {
   }
   stats = { ...stats, tool_candidates_count: filtered.length };
 
-  const followUps = buildFollowUps(user);
+  const followUps = tiered
+    ? buildFollowUps(user)
+    : buildFocusedFollowUps({ lang, rawQuery, roles: templates[0].roles });
 
   const orderedIds = [];
   const seen = new Set();
@@ -733,6 +908,7 @@ function recommendToolKits({ rawQuery, intent, products }) {
   }));
 
   return {
+    mode: tiered ? 'tiered' : 'focused',
     user_summary: user,
     tool_kits: toolKits,
     ordered_product_ids: orderedIds,

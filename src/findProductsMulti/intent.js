@@ -582,7 +582,10 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, BEAUTY_TOOL_SIGNALS_EN) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_ES) ||
     includesAny(latest, BEAUTY_TOOL_SIGNALS_FR) ||
-    includesAny(latest, BEAUTY_TOOL_SIGNALS_JA);
+    includesAny(latest, BEAUTY_TOOL_SIGNALS_JA) ||
+    // Heuristic: user explicitly asks for tools for common base steps.
+    (/工具/.test(latest) && /(遮瑕|粉饼|散粉|定妆|气垫|粉底|上妆)/.test(latest)) ||
+    (/\btools?\b/i.test(latest) && /\b(conceal|concealer|powder|cushion|foundation|setting)\b/i.test(latest));
 
   const hasEyeShadowBrushSignalLocal =
     includesAny(latest, EYE_SHADOW_BRUSH_SIGNALS_ZH) ||

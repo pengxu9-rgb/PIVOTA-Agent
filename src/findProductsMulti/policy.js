@@ -1389,7 +1389,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   const toolFirstReply = (() => {
     if (!toolRec) return null;
+    if (toolRec.reply_override) return String(toolRec.reply_override);
     const lang = intent?.language || 'en';
+    const mode = String(toolRec.mode || 'tiered');
     const kits = Array.isArray(toolRec.tool_kits) ? toolRec.tool_kits : [];
     if (!kits.length) return null;
 
@@ -1497,16 +1499,27 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     };
 
     const header =
-      lang === 'zh'
-        ? '我按“工具优先”给你配了 3 套组合（A→B→C）：'
-        : lang === 'ja'
-          ? '「ツール優先」で 3 つのセット（A→B→C）を用意しました：'
-        : lang === 'fr'
-          ? 'J’ai assemblé 3 kits “tool-first” (A→B→C) :'
-        : lang === 'es'
-              ? 'Armé 3 kits “tool-first” (A→B→C):'
-              : 'I assembled 3 tool-first kits (A→B→C):';
-    const kitLines = kits.slice(0, 3).map(fmtKit);
+      mode === 'focused'
+        ? lang === 'zh'
+          ? '我先按你当前需求整理成一份精简清单：'
+          : lang === 'ja'
+            ? 'まずは要件に合わせてミニマルに整理しました：'
+            : lang === 'fr'
+              ? 'Je te propose d’abord une liste minimale selon ton besoin :'
+              : lang === 'es'
+                ? 'Primero te dejo una lista mínima según tu necesidad:'
+                : 'Here’s a focused minimal list based on your needs:'
+        : lang === 'zh'
+          ? '我按“工具优先”给你配了 3 套组合（A→B→C）：'
+          : lang === 'ja'
+            ? '「ツール優先」で 3 つのセット（A→B→C）を用意しました：'
+            : lang === 'fr'
+              ? 'J’ai assemblé 3 kits “tool-first” (A→B→C) :'
+              : lang === 'es'
+                ? 'Armé 3 kits “tool-first” (A→B→C):'
+                : 'I assembled 3 tool-first kits (A→B→C):';
+
+    const kitLines = (mode === 'focused' ? kits.slice(0, 1) : kits.slice(0, 3)).map(fmtKit);
     const qLines = qs.length
       ? [
           lang === 'zh'
@@ -1518,7 +1531,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
                 : lang === 'es'
                   ? '\nPara afinar, responde 1–2 preguntas:'
                   : '\nTo refine, answer 1–2 quick questions:',
-          ...qs.map((q) => `- ${q}`),
+          ...qs.slice(0, 2).map((q) => `- ${q}`),
         ]
       : [];
     return [header, ...kitLines, ...qLines].join('\n');
