@@ -80,6 +80,14 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.hard_constraints.price.max).toBeNull();
   });
 
+  test('new chat: base makeup tools should not inherit sleepwear mission from recent_queries', () => {
+    const latest = '干皮冬天用什么底妆工具不卡粉';
+    const intent = extractIntentRuleBased(latest, ['绿色睡衣', '睡衣', 'pajamas'], [{ role: 'user', content: latest }]);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.scenario.name).toBe('beauty_tools');
+    expect(intent.target_object.type).toBe('human');
+  });
+
   test('pet min budget is prioritized in results ordering (>= $30 first)', () => {
     const intent = extractIntentRuleBased('我要送朋友，可以贵一点，30美金以上的狗狗衣服', [], []);
     expect(intent.target_object.type).toBe('pet');

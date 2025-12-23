@@ -304,9 +304,12 @@ const LINGERIE_SIGNALS_JA = ['下着', 'ランジェリー', 'ブラ', 'パン�
 const BEAUTY_TOOL_SIGNALS_ZH = [
   '化妆工具',
   '美妆工具',
+  '底妆工具',
+  '上妆工具',
   '化妆刷',
   '刷具',
   '刷子',
+  '底妆刷',
   '粉底刷',
   '散粉刷',
   '腮红刷',
@@ -325,6 +328,8 @@ const BEAUTY_TOOL_SIGNALS_ZH = [
   '刷具清洁',
   '刷具清洗',
   '刷具套装',
+  '卡粉',
+  '不卡粉',
 ];
 const BEAUTY_TOOL_SIGNALS_EN = [
   'cosmetic tools',
@@ -618,6 +623,22 @@ function wantsUseHistory(latestUserQuery) {
   );
 }
 
+function looksLikeFollowUpRefinement(latestUserQuery) {
+  const q = String(latestUserQuery || '').trim();
+  if (!q) return false;
+  const lower = q.toLowerCase();
+
+  // Explicit tier / option refinements (common in our UX and tests).
+  if (/^[ABC]\s*[:：]/.test(q) || /^A\s+/.test(q)) return true;
+  if (/\b(color|size|more|similar|like that|instead|refine|filter)\b/i.test(q)) return true;
+  if (/颜色|色系|换个|再来|更多|类似|同款|精简|筛选|优先|只要/.test(q)) return true;
+  if (/色|サイズ|もっと|もう少し|同じ|絞り込み/.test(q)) return true;
+  if (/\b(talla|color|más|menos|similar)\b/i.test(lower)) return true;
+  if (/\b(couleur|taille|plus|moins|similaire)\b/i.test(lower)) return true;
+
+  return false;
+}
+
 function buildNoResultClarifiers(language) {
   if (language === 'zh') {
     return [
@@ -638,6 +659,7 @@ function buildNoResultClarifiers(language) {
 function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_messages = []) {
   const latest = String(latest_user_query || '').trim();
   const language = detectLanguage(latest);
+  const useHistory = wantsUseHistory(latest);
   const isShortFollowup = latest.length > 0 && latest.length <= 80;
   // When `recent_messages` includes the latest user message, exclude it from history scanning
   // so "mission" represents prior turns (helps continuity on short follow-ups).
@@ -653,7 +675,15 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     }
     return recent_messages;
   })();
-  const historyMission = inferRecentMissionFromHistory(recent_queries, messagesForHistory);
+  // `user.recent_queries` may be cross-session (not conversation-bound). To reduce "new chat"
+  // bleed-through while still supporting follow-ups for clients that don't send full messages,
+  // only use it when the user is clearly refining a prior request (or explicitly asks to continue).
+  const allowRecentQueriesForMission =
+    useHistory || (isShortFollowup && looksLikeFollowUpRefinement(latest));
+  const historyMission = inferRecentMissionFromHistory(
+    allowRecentQueriesForMission ? recent_queries : [],
+    messagesForHistory,
+  );
 
   const isGreeting =
     includesAny(latest, GREETING_SIGNALS_ZH) || includesAny(latest, GREETING_SIGNALS_EN);
@@ -924,7 +954,6 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     scenarioName = 'general';
   }
 
-  const useHistory = wantsUseHistory(latest);
   const historySlice = recent_queries.slice(-5);
   const sanitizedHistory = historySlice
     .map((q) => String(q || '').trim())
