@@ -2972,7 +2972,15 @@ app.post('/ui/chat', async (req, res) => {
       });
     }
 
-    const systemPrompt = `
+    const defaultPromptPath = path.join(__dirname, '..', 'prompts', 'shopping_agent_system_prompt_v1_4.txt');
+    const promptPath = process.env.PIVOTA_UI_CHAT_SYSTEM_PROMPT_PATH || defaultPromptPath;
+
+    let systemPrompt;
+    try {
+      systemPrompt = fs.readFileSync(promptPath, 'utf8');
+    } catch (err) {
+      logger.warn({ err, promptPath }, 'Failed to load system prompt file; using fallback prompt');
+      systemPrompt = `
 You are the Pivota Shopping Agent.
 
 Core rules:
@@ -2984,6 +2992,10 @@ Core rules:
 - Respond in the same language as the user’s most recent message; if mixed and unclear, ask which language to use.
 - Use exactly one language per response; do not mix languages within a single answer.
 `.trim();
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    systemPrompt = String(systemPrompt || '').replace(/now=\\d{4}-\\d{2}-\\d{2}/g, `now=${today}`).trim();
 
     const messages = [
       { role: 'system', content: systemPrompt },
