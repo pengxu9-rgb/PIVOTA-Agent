@@ -943,6 +943,52 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     return buildEyeShadowBrushReply({ rawQuery: creatorContext?.rawUserQuery || '', language: lang }).reply;
   }
 
+  if (scenario === 'sleepwear') {
+    if (isZh) {
+      if (isNone) {
+        return '我暂时没在当前货盘里找到足够匹配的睡衣/家居服（可能品类覆盖不足）。你可以告诉我：春秋/冬季、长袖还是短袖、偏宽松还是修身、以及尺码范围，我再帮你精准筛。';
+      }
+      if (matchTier === 'weak') {
+        return '我先按“睡衣/家居服”给你挑了一些候选（匹配度一般）。你更想要：春秋/冬季、长袖/短袖、以及大概尺码？我再帮你收敛到更贴近的款。';
+      }
+      return '我按你要的睡衣/家居服场景整理了几件更合适的选择。';
+    }
+    if (isJa) {
+      if (isNone) {
+        return '今の在庫では、睡衣/ルームウェアが十分に見つからなかったので、関係ない商品はおすすめしません。季節（春秋/冬）、袖丈（長袖/半袖）、サイズ感を教えてください。';
+      }
+      if (matchTier === 'weak') {
+        return 'ルームウェア候補は少なめでした。季節（春秋/冬）と袖丈（長袖/半袖）、サイズを教えてくれたら絞り込みます。';
+      }
+      return '睡衣/ルームウェアとして合いそうな候補をまとめました。';
+    }
+    if (isFr) {
+      if (isNone) {
+        return "Je n’ai pas trouvé assez de pyjamas/tenues d’intérieur dans l’inventaire actuel, donc je ne vais pas recommander des articles hors sujet. Dis-moi la saison (mi-saison/hiver), manches (longues/courtes) et la taille.";
+      }
+      if (matchTier === 'weak') {
+        return 'J’ai trouvé quelques options de pyjama/tenue d’intérieur mais la correspondance est faible. Saison (mi-saison/hiver), manches, taille ?';
+      }
+      return 'Voici des options de pyjama/tenue d’intérieur plus adaptées.';
+    }
+    if (isEs) {
+      if (isNone) {
+        return 'No encontré suficientes pijamas/ropa de dormir en el inventario actual, así que no voy a recomendar artículos fuera de tema. Dime temporada (entretiempo/invierno), manga (larga/corta) y talla.';
+      }
+      if (matchTier === 'weak') {
+        return 'Encontré pocas opciones de pijama/ropa de dormir (match débil). ¿Temporada, manga y talla?';
+      }
+      return 'Aquí van opciones de pijama/ropa de dormir más adecuadas.';
+    }
+    if (isNone) {
+      return "I couldn’t find enough sleepwear/loungewear in the current inventory, so I won’t recommend unrelated items. Tell me season (spring/fall vs winter), sleeve length, and your size range.";
+    }
+    if (matchTier === 'weak') {
+      return 'I found a few sleepwear options but the match is weak. What season, sleeve length, and size range do you want?';
+    }
+    return 'Here are some more suitable sleepwear/loungewear picks.';
+  }
+
   if (scenario === 'beauty_tools') {
     if (isZh) {
       if (isNone) {
@@ -1182,6 +1228,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         /\bsexy\b/i.test(q) ||
         /性感/.test(q) ||
         /セクシー/.test(q);
+      const isSleepwear =
+        scenario === 'sleepwear' ||
+        requiredCats.includes('sleepwear') ||
+        requiredCats.includes('pajamas');
       const isWomenClothing = scenario === 'women_clothing' || requiredCats.includes('apparel');
       const isOuterwear =
         requiredCats.includes('outerwear') ||
@@ -1204,6 +1254,12 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         if (lang === 'fr') extra.push('sexy', 'lingerie', 'robe');
         if (lang === 'ja') extra.push('セクシー', '下着', 'ドレス');
         if (lang === 'zh') extra.push('sexy', 'lingerie', 'dress');
+      } else if (isSleepwear) {
+        extra.push('sleepwear', 'pajamas', 'loungewear');
+        if (lang === 'es') extra.push('pijama', 'ropa de dormir');
+        if (lang === 'fr') extra.push('pyjama', 'vetement de nuit');
+        if (lang === 'ja') extra.push('パジャマ', 'ルームウェア');
+        if (lang === 'zh') extra.push('sleepwear', 'pajama');
       } else if (isOuterwear) {
         extra.push('coat', 'jacket', 'outerwear');
         if (scenario.includes('cold') || scenario.includes('mountain')) extra.push('down jacket', 'winter');

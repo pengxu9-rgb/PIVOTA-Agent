@@ -111,4 +111,33 @@ describe('find_products_multi context building', () => {
     expect(intent.target_object.type).toBe('human');
     expect(intent.scenario.name).toBe('eye_shadow_brush');
   });
+
+  test('sleepwear query routes to human apparel (not pet)', async () => {
+    const intent = extractIntentRuleBased('给我推荐一个睡觉很舒服，好看的睡衣', [], []);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('sleepwear');
+  });
+
+  test('negated pet mention does not force pet intent', async () => {
+    const intent = extractIntentRuleBased('女士睡衣，不是小狗的', [], [
+      { role: 'user', content: '我想买一件狗的衣服，我家养了一只边牧' },
+      { role: 'assistant', content: '我找到了几件更符合你需求的选择。' },
+      { role: 'user', content: '女士睡衣，不是小狗的' },
+    ]);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('sleepwear');
+  });
+
+  test('sleepwear follow-up keeps sleepwear mission from messages', async () => {
+    const intent = extractIntentRuleBased('我要一件春秋穿的', [], [
+      { role: 'user', content: '给我推荐一个睡觉很舒服，好看的睡衣' },
+      { role: 'assistant', content: '好的，我先给你一些建议。' },
+      { role: 'user', content: '我要一件春秋穿的' },
+    ]);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('sleepwear');
+  });
 });

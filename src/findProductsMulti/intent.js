@@ -246,6 +246,13 @@ const PET_SIGNALS_JA = ['犬', 'わんちゃん', '猫', 'ペット', '犬服', 
 const PET_BREED_SIGNALS_ZH = ['边牧', '边境牧羊犬'];
 const PET_BREED_SIGNALS_EN = ['border collie'];
 
+// Sleepwear / pajamas (human apparel). Keep broad enough for multilingual queries.
+const SLEEPWEAR_SIGNALS_ZH = ['睡衣', '家居服', '睡裙', '睡袍', '睡裤', '睡衣套装', '居家'];
+const SLEEPWEAR_SIGNALS_EN = ['pajama', 'pyjama', 'sleepwear', 'loungewear', 'nightwear', 'nightgown'];
+const SLEEPWEAR_SIGNALS_ES = ['pijama', 'ropa de dormir', 'ropa de noche', 'camisón', 'camison'];
+const SLEEPWEAR_SIGNALS_FR = ['pyjama', 'vêtement de nuit', 'vetement de nuit', 'nuisette', 'robe de nuit'];
+const SLEEPWEAR_SIGNALS_JA = ['パジャマ', 'ルームウェア', 'ナイトウェア', '寝巻き'];
+
 const GREETING_SIGNALS_ZH = ['你好', '嗨', '哈喽', '在吗', 'hello', 'hi', 'hey'];
 const GREETING_SIGNALS_EN = ['hi', 'hello', 'hey', 'yo', 'sup', 'how are you', "what's up"];
 const CHITCHAT_SIGNALS_ZH = ['聊聊', '随便聊', '唠嗑', '无聊', '陪我聊', '想聊天'];
@@ -432,6 +439,27 @@ function isToyBreedContext(text) {
   return /\btoy\s+(?:poodle|breed|dog|puppy)\b/i.test(String(text || ''));
 }
 
+function isNegatedPetContext(text) {
+  const t = String(text || '');
+  const lower = t.toLowerCase();
+
+  // Chinese negation patterns: "不是小狗的/不是狗的/不是宠物的/不要宠物"
+  if (/不是.{0,6}(狗|小狗|宠物|猫)/.test(t)) return true;
+  if (/不(要|给).{0,8}(狗|小狗|宠物|猫)/.test(t)) return true;
+
+  // English
+  if (/\b(not for|no|not a)\s+(dog|pet|cat)\b/i.test(lower)) return true;
+
+  // Japanese
+  if (/(犬|ペット|猫).{0,6}(じゃない|ではない|じゃなく)/.test(t)) return true;
+
+  // French / Spanish (lightweight heuristics)
+  if (/\b(pas|non)\b.*\b(chien|animal|chat)\b/i.test(t)) return true;
+  if (/\b(no)\b.*\b(perro|mascota|gato)\b/i.test(t)) return true;
+
+  return false;
+}
+
 function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []) {
   const classify = (t) => {
     if (!t) return null;
@@ -446,6 +474,13 @@ function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []
       includesAny(t, PET_BREED_SIGNALS_ZH) ||
       includesAny(t, PET_BREED_SIGNALS_EN);
     if (isPet) return 'pet_apparel';
+    const isSleepwear =
+      includesAny(t, SLEEPWEAR_SIGNALS_ZH) ||
+      includesAny(t, SLEEPWEAR_SIGNALS_EN) ||
+      includesAny(t, SLEEPWEAR_SIGNALS_ES) ||
+      includesAny(t, SLEEPWEAR_SIGNALS_FR) ||
+      includesAny(t, SLEEPWEAR_SIGNALS_JA);
+    if (isSleepwear) return 'sleepwear';
     const isEye =
       includesAny(t, EYE_SHADOW_BRUSH_SIGNALS_ZH) ||
       includesAny(t, EYE_SHADOW_BRUSH_SIGNALS_EN) ||
@@ -546,7 +581,21 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
   const latest = String(latest_user_query || '').trim();
   const language = detectLanguage(latest);
   const isShortFollowup = latest.length > 0 && latest.length <= 80;
-  const historyMission = inferRecentMissionFromHistory(recent_queries, recent_messages);
+  // When `recent_messages` includes the latest user message, exclude it from history scanning
+  // so "mission" represents prior turns (helps continuity on short follow-ups).
+  const messagesForHistory = (() => {
+    if (!Array.isArray(recent_messages) || recent_messages.length === 0) return [];
+    // Find the last user message content
+    for (let i = recent_messages.length - 1; i >= 0; i -= 1) {
+      const m = recent_messages[i];
+      if (!m || m.role !== 'user' || !m.content) continue;
+      const content = String(m.content).trim();
+      if (content && content === latest) return recent_messages.slice(0, i);
+      break;
+    }
+    return recent_messages;
+  })();
+  const historyMission = inferRecentMissionFromHistory(recent_queries, messagesForHistory);
 
   const isGreeting =
     includesAny(latest, GREETING_SIGNALS_ZH) || includesAny(latest, GREETING_SIGNALS_EN);
@@ -559,7 +608,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     // common generic intents from UI
     includesAny(latest, ['推荐一些好物', '热门商品', 'show me popular items', 'recommend some products']);
 
-  const hasPetSignalLocal =
+  const hasPetSignalPositive =
     includesAny(latest, PET_SIGNALS_ZH) ||
     includesAny(latest, PET_SIGNALS_EN) ||
     includesAny(latest, PET_SIGNALS_ES) ||
@@ -567,6 +616,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, PET_SIGNALS_JA) ||
     includesAny(latest, PET_BREED_SIGNALS_ZH) ||
     includesAny(latest, PET_BREED_SIGNALS_EN);
+
+  const petNegated = isNegatedPetContext(latest);
+  const hasPetSignalLocal = hasPetSignalPositive && !petNegated;
 
   const hasLingerieSignal =
     includesAny(latest, LINGERIE_SIGNALS_ZH) ||
@@ -604,9 +656,27 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     // Spanish/French basic gender words
     includesAny(latest, ['mujer', 'mujeres', 'ropa', 'femme', 'femmes', 'vêtement', 'vetement']);
 
+  const hasSleepwearSignalLocalRaw =
+    includesAny(latest, SLEEPWEAR_SIGNALS_ZH) ||
+    includesAny(latest, SLEEPWEAR_SIGNALS_EN) ||
+    includesAny(latest, SLEEPWEAR_SIGNALS_ES) ||
+    includesAny(latest, SLEEPWEAR_SIGNALS_FR) ||
+    includesAny(latest, SLEEPWEAR_SIGNALS_JA);
+
   const hasToySignalStrongLocal = includesAny(latest, TOY_KEYWORDS_STRONG) && !isToyBreedContext(latest);
   const hasToySignalWeakLocal = includesAny(latest, TOY_KEYWORDS_WEAK) && !isToyBreedContext(latest);
   const hasToySignalLocal = hasToySignalStrongLocal || hasToySignalWeakLocal;
+
+  // "pajama/sleepwear" can also refer to toy/doll clothing. If the user is in a toy-accessory mission
+  // and did not provide any explicit human-wear signals, keep the toy mission by default.
+  const hasExplicitHumanWearSignal =
+    hasWomenClothingSignal ||
+    /自己|给我|我穿|尺码|身高|体重|男士|女士/.test(latest) ||
+    /\b(for me|my|mine|women|men|lady|size|xs|s|m|l|xl|xxl)\b/i.test(latest);
+
+  const hasSleepwearSignalLocal =
+    hasSleepwearSignalLocalRaw &&
+    !(historyMission === 'toy_accessory' && isShortFollowup && !hasExplicitHumanWearSignal);
 
   const hasOuterwearSignal =
     includesAny(latest, OUTERWEAR_KEYWORDS_ZH) || includesAny(latest, OUTERWEAR_KEYWORDS_EN);
@@ -624,6 +694,17 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
       !hasOuterwearSignal &&
       !hasWomenClothingSignal &&
       !hasLingerieSignal);
+
+  const hasSleepwearSignal =
+    hasSleepwearSignalLocal ||
+    (historyMission === 'sleepwear' &&
+      isShortFollowup &&
+      !hasToySignalLocal &&
+      !hasPetSignalLocal &&
+      !hasBeautyToolSignalLocal &&
+      !hasOuterwearSignal &&
+      !hasLingerieSignal &&
+      !hasEyeShadowBrushSignalLocal);
 
   const hasEyeShadowBrushSignal =
     hasEyeShadowBrushSignalLocal ||
@@ -699,6 +780,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
           includesAny(latest, [s])
         )
       : [];
+  } else if (hasSleepwearSignal) {
+    primary_domain = 'human_apparel';
+    targetType = 'human';
+    categoryRequired = ['sleepwear', 'pajamas'].slice(0, 2);
+    scenarioName = 'sleepwear';
+    scenarioSignals = [];
   } else if (hasEyeShadowBrushSignal) {
     primary_domain = 'beauty';
     targetType = 'human';
@@ -793,28 +880,32 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     missingSlots.push('shopping_goal', 'target_object');
   } else if (scenarioName === 'browse') {
     missingSlots.push('category', 'scenario');
-  } else {
-    if (primary_domain === 'human_apparel' && categoryRequired.length === 0) missingSlots.push('category');
-    if (primary_domain === 'human_apparel' && !hasColdScenario) missingSlots.push('scenario_temperature');
-    if (primary_domain === 'beauty' && scenarioName === 'beauty_tools') {
-      missingSlots.push('makeup_goal', 'skin_type', 'base_product_type', 'budget');
-    }
-    if (primary_domain === 'beauty' && scenarioName === 'eye_shadow_brush') {
-      missingSlots.push('look_finish', 'skill_level_or_eye_type', 'budget');
-    }
-  }
+	  } else {
+	    if (primary_domain === 'human_apparel' && categoryRequired.length === 0) missingSlots.push('category');
+	    if (primary_domain === 'human_apparel' && !hasColdScenario && scenarioName !== 'sleepwear') {
+	      missingSlots.push('scenario_temperature');
+	    }
+	    if (primary_domain === 'beauty' && scenarioName === 'beauty_tools') {
+	      missingSlots.push('makeup_goal', 'skin_type', 'base_product_type', 'budget');
+	    }
+	    if (primary_domain === 'beauty' && scenarioName === 'eye_shadow_brush') {
+	      missingSlots.push('look_finish', 'skill_level_or_eye_type', 'budget');
+	    }
+	  }
 
-  const confidenceDomain =
-    scenarioName === 'discovery'
-      ? 0.3
-      : primary_domain === 'human_apparel'
-      ? hasOuterwearSignal || hasColdScenario
-        ? 0.9
-        : 0.6
-      : primary_domain === 'beauty'
-        ? scenarioName === 'eye_shadow_brush'
-          ? hasEyeShadowBrushSignal
-            ? 0.9
+	  const confidenceDomain =
+	    scenarioName === 'discovery'
+	      ? 0.3
+	      : primary_domain === 'human_apparel'
+	      ? hasOuterwearSignal || hasColdScenario
+	        ? 0.9
+	        : hasSleepwearSignal
+	          ? 0.85
+	          : 0.6
+	      : primary_domain === 'beauty'
+	        ? scenarioName === 'eye_shadow_brush'
+	          ? hasEyeShadowBrushSignal
+	            ? 0.9
             : 0.6
           : hasBeautyToolSignal
             ? 0.85
