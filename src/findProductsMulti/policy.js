@@ -151,15 +151,214 @@ function hasPetSignalInProduct(product) {
   // option labels (e.g. 尺寸/颜色) even when the title/description is English.
   const cjkHit =
     /[\u4e00-\u9fff\u3040-\u30ff]/.test(text) &&
-    ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服'].some((k) =>
+    ['宠物', '狗', '狗狗', '猫', '犬', 'ペット', '犬服', '猫服', '狗衣服', '宠物衣服', '狗背带', '宠物背带', '胸背'].some((k) =>
       text.includes(k)
     );
   // Word-boundary checks to avoid false positives like "catsuit".
   const latinHit =
     /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets)\b/.test(text) ||
+    /\b(dog\s+harness|pet\s+harness|cat\s+harness)\b/.test(text) ||
     /\b(perro|perros|perrita|cachorro|mascota|mascotas|gato|gatos)\b/.test(text) ||
     /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/.test(text);
   return cjkHit || latinHit;
+}
+
+function getProductPriceMajor(product) {
+  if (!product) return NaN;
+
+  const majorCandidates = [
+    product.price,
+    product.price_amount,
+    product.priceAmount,
+    product.amount,
+    product.amount_total,
+    product.amountTotal,
+  ];
+  for (const raw of majorCandidates) {
+    if (raw == null) continue;
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'string') {
+      const m = raw.match(/(\d+(?:\.\d+)?)/);
+      if (m) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+  }
+
+  const minorCandidates = [
+    product.price_minor,
+    product.priceMinor,
+    product.price_cents,
+    product.priceCents,
+    product.amount_minor,
+    product.amountMinor,
+  ];
+  for (const raw of minorCandidates) {
+    if (raw == null) continue;
+    const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+    if (Number.isFinite(n)) return n / 100;
+  }
+
+  return NaN;
+}
+
+function isWithinPriceConstraint(price, constraint) {
+  if (!constraint) return true;
+  if (!Number.isFinite(price)) return false;
+  const minOk = constraint.min == null || price >= Number(constraint.min);
+  const maxOk = constraint.max == null || price <= Number(constraint.max);
+  return minOk && maxOk;
+}
+
+function detectHarnessSignal(rawQuery) {
+  const q = String(rawQuery || '');
+  if (!q) return false;
+  return (
+    /背带|胸背|牵引|胸背带|宠物背带|狗背带/.test(q) ||
+    /\b(harness|dog\s+harness|pet\s+harness|no-?pull)\b/i.test(q) ||
+    /\b(harnais)\b/i.test(q) ||
+    /\b(arn[eé]s)\b/i.test(q) ||
+    /ハーネス|胴輪/.test(q)
+  );
+}
+
+function detectPetApparelSignal(rawQuery) {
+  const q = String(rawQuery || '');
+  if (!q) return false;
+  return (
+    /衣服|外套|毛衣|雨衣|睡衣|背心|夹克|狗衣服|宠物衣服|犬服|猫服/.test(q) ||
+    /\b(jacket|coat|sweater|hoodie|raincoat|clothes|clothing|apparel|outfit|overalls)\b/i.test(q) ||
+    /\b(chaqueta|abrigo|su[eé]ter|ropa|impermeable)\b/i.test(q) ||
+    /\b(veste|manteau|pull|v[eê]tement|imperm[eé]able)\b/i.test(q) ||
+    /服|コート|ジャケット|犬服/.test(q)
+  );
+}
+
+function detectLargeDogSignal(rawQuery) {
+  const q = String(rawQuery || '');
+  if (!q) return false;
+  return (
+    /大型犬|大狗|中大型|大码/.test(q) ||
+    /金毛|拉布拉多|德牧|哈士奇|萨摩耶|阿拉斯加|罗威纳|秋田/.test(q) ||
+    /\b(golden\s+retriever|labrador|german\s+shepherd|husky|samoyed|alaskan|rottweiler|akita)\b/i.test(
+      q,
+    )
+  );
+}
+
+function hasDogMeasurementsInQuery(rawQuery) {
+  const q = String(rawQuery || '');
+  if (!q) return false;
+  // chest/back/neck measurements, or explicit size codes.
+  return (
+    /\b\d{2,3}\s*(cm|mm|in|inch|inches)\b/i.test(q) ||
+    /胸围|胸圍|背长|背長|颈围|頸圍|胴回り|背丈|首回り/.test(q) ||
+    /\b(XXL|2XL|3XL|4XL|5XL|XL)\b/i.test(q)
+  );
+}
+
+function isPetHarnessProduct(product) {
+  const text = buildProductText(product);
+  return (
+    /\b(harness|no-?pull)\b/i.test(text) ||
+    /背带|胸背|牵引|胸背带|胴輪|ハーネス/.test(text) ||
+    /\b(harnais)\b/i.test(text) ||
+    /\b(arn[eé]s)\b/i.test(text)
+  );
+}
+
+function isPetApparelProduct(product) {
+  const text = buildProductText(product);
+  return (
+    /\b(jacket|coat|sweater|raincoat|hoodie|overalls|parka|vest|clothes|clothing|apparel)\b/i.test(text) ||
+    /衣服|外套|毛衣|雨衣|卫衣|睡衣|背心|犬服|猫服|ペット.*服|犬服/.test(text)
+  );
+}
+
+function getLargeDogSizeScore(product) {
+  const text = buildProductText(product);
+  const positive =
+    /\b(XXL|2XL|3XL|4XL|5XL|XL)\b/i.test(text) ||
+    /\b(large\s+breed|big\s+dog)\b/i.test(text) ||
+    /大型犬|中大型|大码|加大/.test(text);
+  const negative =
+    /\b(XXS|XS)\b/i.test(text) ||
+    /\b(small\s+breed|toy\s+dog)\b/i.test(text) ||
+    /小型犬|茶杯/.test(text);
+  if (positive && !negative) return 1;
+  if (negative && !positive) return -1;
+  return 0;
+}
+
+function interleavePetHarnessAndApparel(products) {
+  const harness = [];
+  const apparel = [];
+  const rest = [];
+  for (const p of products) {
+    if (isPetHarnessProduct(p)) harness.push(p);
+    else if (isPetApparelProduct(p)) apparel.push(p);
+    else rest.push(p);
+  }
+
+  const out = [];
+  let i = 0;
+  let j = 0;
+  let toggle = 0; // 0 apparel, 1 harness
+  while (i < apparel.length || j < harness.length) {
+    if (toggle === 0) {
+      if (i < apparel.length) out.push(apparel[i++]);
+      else if (j < harness.length) out.push(harness[j++]);
+    } else {
+      if (j < harness.length) out.push(harness[j++]);
+      else if (i < apparel.length) out.push(apparel[i++]);
+    }
+    toggle = 1 - toggle;
+  }
+  return out.concat(rest);
+}
+
+function reorderProductsForConstraints(products, intent, rawQuery) {
+  const arr = Array.isArray(products) ? products : [];
+  if (!arr.length) return arr;
+
+  const priceConstraint = intent?.hard_constraints?.price || null;
+  const hasPriceConstraint =
+    priceConstraint && (priceConstraint.min != null || priceConstraint.max != null);
+
+  const isPet = (intent?.target_object?.type || '') === 'pet';
+  const wantsHarness = isPet && detectHarnessSignal(rawQuery);
+  const wantsApparel = isPet && detectPetApparelSignal(rawQuery);
+  const wantsMix = wantsHarness && wantsApparel;
+  const preferLargeDog = isPet && detectLargeDogSignal(rawQuery);
+
+  if (!hasPriceConstraint && !wantsMix && !preferLargeDog) return arr;
+
+  const annotated = arr.map((p, idx) => {
+    const price = getProductPriceMajor(p);
+    const priceKnown = Number.isFinite(price);
+    const within = hasPriceConstraint ? isWithinPriceConstraint(price, priceConstraint) : true;
+    const priceGroup = !hasPriceConstraint ? 0 : within ? 0 : priceKnown ? 2 : 1;
+    const sizeScore = preferLargeDog ? getLargeDogSizeScore(p) : 0;
+    return { p, idx, priceGroup, sizeScore };
+  });
+
+  annotated.sort((a, b) => {
+    if (a.priceGroup !== b.priceGroup) return a.priceGroup - b.priceGroup;
+    if (a.sizeScore !== b.sizeScore) return b.sizeScore - a.sizeScore;
+    return a.idx - b.idx;
+  });
+
+  const sorted = annotated.map((x) => x.p);
+  if (!wantsMix) return sorted;
+
+  const groups = [[], [], []];
+  for (const x of annotated) groups[x.priceGroup].push(x.p);
+  return [
+    ...interleavePetHarnessAndApparel(groups[0]),
+    ...interleavePetHarnessAndApparel(groups[1]),
+    ...interleavePetHarnessAndApparel(groups[2]),
+  ];
 }
 
 function clamp01(n) {
@@ -344,6 +543,16 @@ function productHasCategorySignal(product, requiredCategories) {
       /\b(pull)\b/i,
       '毛衣',
       'ニット',
+    ],
+    pet_harness: [
+      /\b(harness|no-?pull|tactical\s+harness)\b/i,
+      /\b(harnais)\b/i,
+      /\b(arn[eé]s)\b/i,
+      '背带',
+      '胸背',
+      '牵引',
+      'ハーネス',
+      '胴輪',
     ],
 
     // Adult/intimate apparel (human)
@@ -628,7 +837,7 @@ function computeProductRelevance(product, intent, evalMeta) {
   let required = 0;
   let satisfied = 0;
 
-  const price = Number(product.price ?? product.price_amount ?? NaN);
+  const price = getProductPriceMajor(product);
   if (hard.price && (hard.price.min != null || hard.price.max != null)) {
     required += 1;
     const withinMin = hard.price.min == null || (Number.isFinite(price) && price >= hard.price.min);
@@ -938,6 +1147,52 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   const isEs = lang === 'es';
   const isFr = lang === 'fr';
   const isJa = lang === 'ja';
+  const rawUserQuery = String(creatorContext?.rawUserQuery || '');
+  const isPet = (intent?.target_object?.type || '') === 'pet';
+  const price = intent?.hard_constraints?.price || null;
+  const priceHintZh =
+    price && price.currency === 'USD'
+      ? price.min != null
+        ? `（优先 ≥$${price.min}）`
+        : price.max != null
+          ? `（预算 ≤$${price.max}）`
+          : ''
+      : '';
+  const priceHintEn =
+    price && price.currency === 'USD'
+      ? price.min != null
+        ? `(prioritizing $${price.min}+)`
+        : price.max != null
+          ? `(budget ≤$${price.max})`
+          : ''
+      : '';
+  const priceHintJa =
+    price && price.currency === 'USD'
+      ? price.min != null
+        ? `（$${price.min}以上を優先）`
+        : price.max != null
+          ? `（予算は$${price.max}以内）`
+          : ''
+      : '';
+  const priceHintFr =
+    price && price.currency === 'USD'
+      ? price.min != null
+        ? `(priorité $${price.min}+)`
+        : price.max != null
+          ? `(budget ≤$${price.max})`
+          : ''
+      : '';
+  const priceHintEs =
+    price && price.currency === 'USD'
+      ? price.min != null
+        ? `(priorizando $${price.min}+)`
+        : price.max != null
+          ? `(presupuesto ≤$${price.max})`
+          : ''
+      : '';
+
+  const needsLargeDogSizingHelp =
+    isPet && detectLargeDogSignal(rawUserQuery) && !hasDogMeasurementsInQuery(rawUserQuery);
 
   if (scenario === 'eye_shadow_brush') {
     return buildEyeShadowBrushReply({ rawQuery: creatorContext?.rawUserQuery || '', language: lang }).reply;
@@ -1127,7 +1382,8 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     }
     if (matchTier === 'weak') {
       if ((intent?.target_object?.type || '') === 'pet') {
-        return '我只找到少量勉强相关的狗狗/宠物衣服（匹配度不高），所以先不强行推荐不相关的商品。你可以补充：狗狗体型/胸围、最低温度、是否需要防风防水，我再帮你精准筛。';
+        const sizeHint = needsLargeDogSizingHelp ? '胸围/背长（cm）或常穿尺码（L/XL/XXL）' : '体型/胸围';
+        return `我只找到少量勉强相关的狗狗/宠物衣服（匹配度不高），所以先不强行推荐不相关的商品。你可以补充：狗狗${sizeHint}、最低温度、是否需要防风防水，我再帮你精准筛。`;
       }
       if ((intent?.scenario?.name || '') === 'women_clothing') {
         const p = intent?.hard_constraints?.price;
@@ -1150,7 +1406,10 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
       }
       return '我只找到了少量勉强相关的结果（匹配度不高）。你可以补充：预算、尺码、想要的品类（裙子/上衣/裤子）和风格（简约/甜酷/通勤/约会）。';
     }
-    return '我找到了几件更符合你需求的选择。';
+    const sizingHint = needsLargeDogSizingHelp
+      ? '为了更准（尤其是大型犬），告诉我狗狗的胸围+背长（cm）或常穿尺码（L/XL/XXL）。'
+      : '';
+    return ['我找到了几件更符合你需求的选择。' + (priceHintZh || ''), sizingHint].filter(Boolean).join('\n');
   }
 
   if (isNone) {
@@ -1183,7 +1442,30 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     }
     return "I only found a few weak matches, so I won’t force unrelated recommendations. Share your budget, the lowest temperature, and whether you need windproof/waterproof.";
   }
-  return 'Here are some more suitable picks based on your request.';
+  if (isJa) {
+    const sizingHint = needsLargeDogSizingHelp
+      ? '大型犬だとサイズ差が大きいので、胴回り＋背丈（cm）か普段のサイズ（L/XL/XXL）を教えてください。'
+      : '';
+    return ['リクエストに合いそうな候補をまとめました。' + (priceHintJa || ''), sizingHint].filter(Boolean).join('\n');
+  }
+  if (isFr) {
+    const sizingHint = needsLargeDogSizingHelp
+      ? 'Pour un grand chien, la taille varie beaucoup : donne-moi le tour de poitrine + la longueur de dos (cm) ou la taille habituelle (L/XL/XXL).'
+      : '';
+    return ['Voici des options plus adaptées.' + (priceHintFr || ''), sizingHint].filter(Boolean).join('\n');
+  }
+  if (isEs) {
+    const sizingHint = needsLargeDogSizingHelp
+      ? 'Para un perro grande la talla varía mucho: dime pecho + espalda (cm) o la talla habitual (L/XL/XXL).'
+      : '';
+    return ['Aquí tienes opciones más adecuadas.' + (priceHintEs || ''), sizingHint].filter(Boolean).join('\n');
+  }
+  const sizingHint = needsLargeDogSizingHelp
+    ? "For a large dog, sizing varies a lot—share chest + back length (cm/in) or your usual size (L/XL/XXL)."
+    : '';
+  return ['Here are some more suitable picks based on your request.' + (priceHintEn || ''), sizingHint]
+    .filter(Boolean)
+    .join('\n');
 }
 
 async function buildFindProductsMultiContext({ payload, metadata }) {
@@ -1383,6 +1665,13 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     Number(toolRec.stats.tool_candidates_count || 0) === 0
   ) {
     filtered = [];
+  }
+
+  const skipConstraintReorder =
+    intent?.primary_domain === 'beauty' &&
+    (intent?.scenario?.name === 'beauty_tools' || intent?.scenario?.name === 'eye_shadow_brush');
+  if (!skipConstraintReorder) {
+    filtered = reorderProductsForConstraints(filtered, intent, rawQuery);
   }
   const after = filtered.length;
 

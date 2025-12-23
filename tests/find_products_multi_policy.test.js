@@ -72,6 +72,111 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.hard_constraints.price.max).toBeGreaterThanOrEqual(20);
   });
 
+  test('intent: pet gift with min budget parses as USD price min (30+)', () => {
+    const intent = extractIntentRuleBased('我要送朋友，可以贵一点，30美金以上的狗狗衣服', [], []);
+    expect(intent.target_object.type).toBe('pet');
+    expect(intent.hard_constraints.price.currency).toBe('USD');
+    expect(intent.hard_constraints.price.min).toBe(30);
+    expect(intent.hard_constraints.price.max).toBeNull();
+  });
+
+  test('pet min budget is prioritized in results ordering (>= $30 first)', () => {
+    const intent = extractIntentRuleBased('我要送朋友，可以贵一点，30美金以上的狗狗衣服', [], []);
+    expect(intent.target_object.type).toBe('pet');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'p-low',
+            title: 'Warm Fall/Winter Padded Vest for Dogs',
+            description: 'Dog apparel',
+            price: 24.99,
+          }),
+          makeRawProduct({
+            id: 'p-ok-1',
+            title: 'Premium Winter Coat for Dogs',
+            description: 'Dog coat',
+            price: 30.99,
+          }),
+          makeRawProduct({
+            id: 'p-ok-2',
+            title: 'Outdoor-Ready Padded Jacket for Dogs',
+            description: 'Dog jacket',
+            price: 35.0,
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '30美金以上 狗狗衣服' } },
+    });
+
+    expect(resp.products.map((p) => p.id).slice(0, 2)).toEqual(['p-ok-1', 'p-ok-2']);
+    expect(resp.products.map((p) => p.id)).toEqual(expect.arrayContaining(['p-low']));
+  });
+
+  test('pet harness is recognized and not filtered; large-dog query asks for measurements', () => {
+    const intent = extractIntentRuleBased('大型犬的衣服或者背带', [], []);
+    expect(intent.target_object.type).toBe('pet');
+    expect(intent.category.required).toEqual(expect.arrayContaining(['pet_harness']));
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'h-1',
+            title: 'No-pull Dog Harness (XL/XXL)',
+            description: 'Dog harness for walking',
+            price: 34.0,
+          }),
+          makeRawProduct({
+            id: 'c-1',
+            title: 'Warm Coat for Dogs (XXL)',
+            description: 'Dog jacket for winter',
+            price: 32.0,
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '大型犬 衣服 背带' } },
+    });
+
+    expect(resp.products.map((p) => p.id)).toEqual(expect.arrayContaining(['h-1', 'c-1']));
+    expect(String(resp.reply)).toContain('胸围');
+    expect(String(resp.reply)).toContain('背长');
+  });
+
+  test('large dog sizing signal ranks XXL ahead of XS when prices are equal group', () => {
+    const intent = extractIntentRuleBased('大型犬的衣服', [], []);
+    expect(intent.target_object.type).toBe('pet');
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 's-1',
+            title: 'Dog Jacket (XS)',
+            description: 'Small breed jacket',
+            price: 35,
+          }),
+          makeRawProduct({
+            id: 'l-1',
+            title: 'Dog Jacket (XXL)',
+            description: 'Large breed jacket',
+            price: 35,
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '大型犬 衣服' } },
+    });
+
+    expect(resp.products.map((p) => p.id)[0]).toBe('l-1');
+  });
+
   test('women_clothing allows lingerie as soft-block instead of hard-block', () => {
     const intent = extractIntentRuleBased('帮我选几件20美金左右的女生衣服', [], []);
     expect(intent.scenario.name).toBe('women_clothing');

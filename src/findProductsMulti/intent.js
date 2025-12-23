@@ -199,7 +199,22 @@ const WOMEN_CLOTHING_SIGNALS_EN = [
   'sweater',
 ];
 
-const PET_SIGNALS_ZH = ['狗', '狗狗', '小狗', '猫', '猫猫', '宠物', '遛狗', '狗衣服', '宠物衣服'];
+const PET_SIGNALS_ZH = [
+  '狗',
+  '狗狗',
+  '小狗',
+  '猫',
+  '猫猫',
+  '宠物',
+  '遛狗',
+  '狗衣服',
+  '宠物衣服',
+  '背带',
+  '胸背',
+  '牵引',
+  '狗背带',
+  '宠物背带',
+];
 const PET_SIGNALS_EN = [
   'dog',
   "dog's",
@@ -212,6 +227,10 @@ const PET_SIGNALS_EN = [
   'dog jacket',
   'dog sweater',
   'pet apparel',
+  'dog harness',
+  'pet harness',
+  'harness',
+  'leash',
 ];
 const PET_SIGNALS_ES = [
   'perro',
@@ -226,6 +245,9 @@ const PET_SIGNALS_ES = [
   'abrigo para perro',
   'chaqueta para perro',
   'ropa de perro',
+  'arnes',
+  'arnés',
+  'correa',
 ];
 const PET_SIGNALS_FR = [
   'chien',
@@ -239,8 +261,10 @@ const PET_SIGNALS_FR = [
   'vêtement pour chien',
   'manteau pour chien',
   'vêtements pour chien',
+  'harnais',
+  'laisse',
 ];
-const PET_SIGNALS_JA = ['犬', 'わんちゃん', '猫', 'ペット', '犬服', '猫服'];
+const PET_SIGNALS_JA = ['犬', 'わんちゃん', '猫', 'ペット', '犬服', '猫服', 'ハーネス', 'リード', '胴輪'];
 
 // Common dog-breed references that users might use without saying "dog".
 const PET_BREED_SIGNALS_ZH = ['边牧', '边境牧羊犬'];
@@ -532,6 +556,19 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   const normalized = q.replace(/[０-９]/g, (d) => String('０１２３４５６７８９'.indexOf(d)));
   const hasUsd =
     /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
+  const currency = hasUsd ? 'USD' : null;
+
+  // Range forms: "30-50", "30~50", "30 to 50", "30到50"
+  const rangeMatch = normalized.match(
+    /(\d+(?:\.\d+)?)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)/i,
+  );
+  if (rangeMatch) {
+    const a = Number(rangeMatch[1]);
+    const b = Number(rangeMatch[2]);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+    return { currency, min: Math.min(a, b), max: Math.max(a, b) };
+  }
+
   const m = normalized.match(/(\d+(?:\.\d+)?)/);
   if (!m) return null;
 
@@ -539,13 +576,34 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   if (!Number.isFinite(val) || val <= 0) return null;
 
   const within = /左右|around|about|approx/i.test(normalized);
-  const maxOnly = /以内|以下|不超过|at most|under|<=/i.test(normalized);
 
-  const currency = hasUsd ? 'USD' : null;
-  const max = maxOnly ? val : within ? Math.round(val * 1.25 * 100) / 100 : val;
-  const min = within && !maxOnly ? Math.round(val * 0.75 * 100) / 100 : null;
+  // Max-only: "≤30", "under 30", "30以内/以下"
+  const maxOnly =
+    /以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below/i.test(normalized);
+  // Min-only: "≥30", "over 30", "30以上/至少/起"
+  const minOnly =
+    /以上|至少|不低于|起\b|起步|>=|＞=|≥|\b(over|above|more than|at least|from|starting from|start(?:ing)?\s+at)\b/i.test(
+      normalized,
+    ) ||
+    /(\d+(?:\.\d+)?)\s*\+/.test(normalized) ||
+    /(?:plus\s+de|au\s+moins|à\s+partir\s+de|a\s+partir\s+de)\b/i.test(normalized) ||
+    /(?:m[aá]s\s+de|al\s+menos|a\s+partir\s+de|desde)\b/i.test(normalized) ||
+    /(?:以上)\b/.test(normalized) ||
+    /ドル以上|円以上|以上/.test(normalized);
 
-  return { currency, min, max };
+  if (within) {
+    return {
+      currency,
+      min: Math.round(val * 0.75 * 100) / 100,
+      max: Math.round(val * 1.25 * 100) / 100,
+    };
+  }
+
+  if (minOnly && !maxOnly) return { currency, min: val, max: null };
+  if (maxOnly && !minOnly) return { currency, min: null, max: val };
+
+  // Default: treat as max budget ("$30") to avoid overspending.
+  return { currency, min: null, max: val };
 }
 
 function wantsUseHistory(latestUserQuery) {
@@ -765,7 +823,18 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     // Pet apparel intent should override cold/hiking keywords (e.g. "dog jacket for hiking").
     primary_domain = 'sports_outdoor';
     targetType = 'pet';
-    categoryRequired = ['pet_apparel', 'dog_jacket', 'dog_sweater'].slice(0, 3);
+    const wantsHarness =
+      /背带|胸背|牵引|胸背带/.test(latest) ||
+      /\b(harness|dog\s+harness|pet\s+harness|no-?pull)\b/i.test(latest) ||
+      /\b(harnais)\b/i.test(latest) ||
+      /\b(arn[eé]s)\b/i.test(latest) ||
+      /ハーネス|胴輪/.test(latest);
+    categoryRequired = [
+      ...(wantsHarness ? ['pet_harness'] : []),
+      'pet_apparel',
+      'dog_jacket',
+      'dog_sweater',
+    ].slice(0, 4);
     scenarioName = includesAny(latest, ['hiking', 'trail', 'camping', '徒步', '登山', '爬山'])
       ? 'pet_hiking'
       : 'pet_apparel_general';
