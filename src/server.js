@@ -1594,7 +1594,11 @@ app.use(express.json({
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+  // Allow both legacy and newer header names used by clients (Creator UI / SDKs).
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-API-Key, X-Agent-API-Key',
+  );
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
