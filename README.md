@@ -85,6 +85,17 @@ Accepts operations:
 
 See [API Mapping Documentation](docs/pivota-api-mapping.md) for details.
 
+### Look Replicator Endpoints (agent task)
+
+These endpoints support the `pengxu9-rgb/look-replicate-share` frontend:
+
+- `POST /uploads/signed-url` (signed direct uploads for 1–10MB images)
+- `POST /look-jobs` (create job; expects `referenceImageUrl` and optional `selfieImageUrl`)
+- `GET /look-jobs/:jobId` (poll)
+- `GET /shares/:shareId` (share landing payload)
+
+Configure env vars in `env.example` under `LOOK_REPLICATOR_*`. In production, set `LOOK_REPLICATOR_API_KEY` and require callers to send `Authorization: Bearer ...`.
+
 ## LLM Integration Guides
 
 - [ChatGPT / OpenAI](docs/integrations/chatgpt.md) - Complete guide

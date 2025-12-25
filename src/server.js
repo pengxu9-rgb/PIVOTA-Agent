@@ -37,6 +37,7 @@ const {
   scoreByTagFacetOverlap,
   scorePairOverlap,
 } = require('./services/productTagSignals');
+const { mountLookReplicatorRoutes } = require('./lookReplicator');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -1670,6 +1671,10 @@ app.get('/healthz/db', async (req, res) => {
     return res.status(200).json({ ok: true, db_ready: false, error: err.message });
   }
 });
+
+// ---------------- Look Replicator (agent task) ----------------
+
+mountLookReplicatorRoutes(app, { logger });
 
 // ---------------- Creator-scoped category APIs ----------------
 

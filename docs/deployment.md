@@ -39,6 +39,31 @@ TEST_MERCHANT_ID=<test-merchant-id>   # For safe testing
 TEST_AGENT_ID=<test-agent-id>         # For agent identification
 ```
 
+### Look Replicator (optional)
+
+If you are deploying this gateway to support the `pengxu9-rgb/look-replicate-share` app (large image uploads + job polling), also set:
+
+```bash
+# Require callers to send: Authorization: Bearer <token>
+LOOK_REPLICATOR_API_KEY=<strong-random-token>
+
+# Upload policy (1–10MB selfies are expected; default max is 25MB)
+LOOK_REPLICATOR_MAX_UPLOAD_BYTES=26214400
+LOOK_REPLICATOR_SIGNED_URL_TTL_SECONDS=300
+
+# S3-compatible storage (Cloudflare R2 recommended)
+LOOK_REPLICATOR_S3_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
+LOOK_REPLICATOR_S3_REGION=auto
+LOOK_REPLICATOR_S3_BUCKET=<bucket>
+LOOK_REPLICATOR_S3_ACCESS_KEY_ID=<key>
+LOOK_REPLICATOR_S3_SECRET_ACCESS_KEY=<secret>
+
+# Public base used to form returned publicUrl (e.g. https://<bucket>.r2.dev or custom domain)
+LOOK_REPLICATOR_PUBLIC_ASSET_BASE_URL=https://<public-domain>
+```
+
+For share persistence across restarts, configure `DATABASE_URL` (Postgres). Without it, look jobs and shares are stored in-memory.
+
 ## Deployment Options
 
 ### Option 1: Railway (Recommended)
