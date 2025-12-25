@@ -38,6 +38,7 @@ const {
   scorePairOverlap,
 } = require('./services/productTagSignals');
 const { mountLookReplicatorRoutes } = require('./lookReplicator');
+const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compatibility');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -1679,6 +1680,7 @@ app.get('/healthz', (req, res) => {
       order_creation: true,
       payment: USE_MOCK || USE_HYBRID ? 'mock' : 'real',
       tracking: true,
+      layer1_compatibility: true,
       find_products_multi_vector_enabled:
         process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
     },
@@ -1701,6 +1703,10 @@ app.get('/healthz/db', async (req, res) => {
 // ---------------- Look Replicator (agent task) ----------------
 
 mountLookReplicatorRoutes(app, { logger });
+
+// ---------------- Layer 1 (US): Compatibility ----------------
+
+mountLayer1CompatibilityRoutes(app, { logger });
 
 // ---------------- Creator-scoped category APIs ----------------
 
