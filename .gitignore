@@ -66,6 +66,9 @@ local-test/
 # Railway specific
 railway.json
 
+# Generated eval artifacts
+artifacts/
+
 # Pivota specific - ensure no real API keys
 pivota-credentials.json
 real-api-keys.txt
