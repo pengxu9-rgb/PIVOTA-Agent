@@ -12,8 +12,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('forwards allowed operation and returns upstream response', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
-      .query(true)
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'find_products_multi' &&
+          body.payload &&
+          body.payload.search &&
+          body.payload.search.query === 'shoes'
+        );
+      })
       .reply(200, {
         products: [{ id: 'p1' }],
       });

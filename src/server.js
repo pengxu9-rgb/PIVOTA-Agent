@@ -126,9 +126,12 @@ const toolSchema = JSON.parse(fs.readFileSync(toolSchemaPath, 'utf-8'));
 // Routing map for real Pivota API endpoints
 const ROUTE_MAP = {
   find_products: {
-    method: 'GET',
-    path: '/agent/v1/products/search',
-    paramType: 'query'
+    // Route through backend shopping gateway to avoid slow legacy search endpoints.
+    // The response remains a products list, but the upstream call uses the same
+    // cache + live fallback pipeline as find_products_multi.
+    method: 'POST',
+    path: '/agent/shop/v1/invoke',
+    paramType: 'body'
   },
   find_similar_products: {
     // Delegate to Python shopping gateway for multi-merchant similarity.
@@ -2299,17 +2302,29 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     // Handle different parameter types
     switch (operation) {
       case 'find_products': {
-        // Convert body params to query params
-        const search = effectivePayload.search || {};
-        queryParams = {
+        // Normalize legacy single-merchant search into the multi-merchant pipeline.
+        // We keep the public operation name (find_products) but invoke the upstream
+        // shopping gateway with find_products_multi under the hood.
+        const search = effectivePayload.search || effectivePayload || {};
+
+        const normalizedSearch = {
           ...(search.merchant_id && { merchant_id: search.merchant_id }),
           ...(search.query && { query: search.query }),
-          ...(search.price_min && { min_price: search.price_min }),
-          ...(search.price_max && { max_price: search.price_max }),
+          ...(search.price_min && { price_min: search.price_min }),
+          ...(search.price_max && { price_max: search.price_max }),
           ...(search.category && { category: search.category }),
-          ...(search.page && search.page_size && { offset: (search.page - 1) * search.page_size }),
-          ...(search.page_size && { limit: Math.min(search.page_size, 100) }),
-          in_stock_only: search.in_stock_only !== false
+          page: Number(search.page || 1) || 1,
+          limit: Math.min(Number(search.page_size || search.limit || 20) || 20, 100),
+          in_stock_only: search.in_stock_only !== false,
+        };
+
+        requestBody = {
+          operation: 'find_products_multi',
+          payload: {
+            search: normalizedSearch,
+            ...(effectivePayload.user ? { user: effectivePayload.user } : {}),
+          },
+          metadata,
         };
         break;
       }
