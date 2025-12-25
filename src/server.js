@@ -230,6 +230,32 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
   }
 }
 
+function extractUpstreamErrorCode(err) {
+  const data = err && err.response ? err.response.data : null;
+  const detail = data && typeof data === 'object' ? (data.detail ?? data) : data;
+  const code =
+    detail && typeof detail === 'object'
+      ? typeof detail.code === 'string'
+        ? detail.code
+        : typeof detail.error === 'string'
+          ? detail.error
+          : null
+      : null;
+  const message =
+    detail && typeof detail === 'object' && typeof detail.message === 'string'
+      ? detail.message
+      : typeof detail === 'string'
+        ? detail
+        : err && err.message
+          ? err.message
+          : '';
+  return { code, message, data, detail };
+}
+
+function isRetryableQuoteError(code) {
+  return code === 'QUOTE_EXPIRED' || code === 'QUOTE_MISMATCH';
+}
+
 const app = express();
 
 // ---------------- Promotion / deals enrichment helpers ----------------
@@ -2599,7 +2625,66 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
 
-    const response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+    let response;
+    try {
+      response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+    } catch (err) {
+      // Quote-first hardening: auto re-quote once on QUOTE_EXPIRED / QUOTE_MISMATCH.
+      if (
+        operation === 'create_order' &&
+        requestBody &&
+        requestBody.quote_id
+      ) {
+        const { code } = extractUpstreamErrorCode(err);
+        if (isRetryableQuoteError(code)) {
+          try {
+            const quoteBody = {
+              merchant_id: requestBody.merchant_id,
+              items: Array.isArray(requestBody.items)
+                ? requestBody.items.map((it) => ({
+                    product_id: it.product_id,
+                    variant_id: it.variant_id || undefined,
+                    quantity: it.quantity,
+                  }))
+                : [],
+              discount_codes: requestBody.discount_codes || [],
+              customer_email: requestBody.customer_email || undefined,
+              shipping_address: requestBody.shipping_address || undefined,
+              ...(requestBody.selected_delivery_option
+                ? { selected_delivery_option: requestBody.selected_delivery_option }
+                : {}),
+            };
+
+            const quoteUrl = `${PIVOTA_API_BASE}/agent/v1/quotes/preview`;
+            const quoteResp = await callUpstreamWithOptionalRetry('preview_quote', {
+              method: 'POST',
+              url: quoteUrl,
+              headers: {
+                'Content-Type': 'application/json',
+                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+              },
+              timeout: 15000,
+              data: quoteBody,
+            });
+
+            const newQuoteId = quoteResp && quoteResp.data ? quoteResp.data.quote_id : null;
+            if (newQuoteId) {
+              requestBody.quote_id = newQuoteId;
+              axiosConfig.data = requestBody;
+              response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+            } else {
+              throw err;
+            }
+          } catch (_) {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
     let upstreamData = response.data;
     if (operation === 'find_products_multi' && ROUTE_DEBUG_ENABLED && creatorCacheRouteDebug) {
       upstreamData = {
