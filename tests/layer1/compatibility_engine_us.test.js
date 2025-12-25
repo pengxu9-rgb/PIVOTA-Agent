@@ -75,6 +75,8 @@ describe('Layer1 CompatibilityEngine US', () => {
     expect(report.reasons).toHaveLength(3);
     expect(report.adjustments).toHaveLength(3);
     expect(new Set(report.adjustments.map((a) => a.impactArea)).size).toBe(3);
+    expect(report.engineVersion).toMatch(/^compat-us-\d+\.\d+\.\d+$/);
+    expect(report.schemaVersion).toBe('v0');
   });
 
   test('missing selfie still returns 3 safe adjustments', () => {
@@ -112,4 +114,3 @@ describe('Layer1 CompatibilityEngine US', () => {
     expect(structure.fitScore).toBeLessThanOrEqual(vibe.fitScore);
   });
 });
-

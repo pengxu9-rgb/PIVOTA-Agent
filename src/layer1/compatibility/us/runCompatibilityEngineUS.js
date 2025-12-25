@@ -3,6 +3,7 @@ const { computeDeltasUS } = require('./computeDeltas');
 const { scoreFitUS } = require('./scoreFit');
 const { selectAdjustmentsUS } = require('./selectAdjustments');
 const { buildReasonsUS } = require('./buildReasons');
+const { ENGINE_VERSION } = require('./config/version');
 
 const userControls = {
   modes: [
@@ -43,6 +44,8 @@ function runCompatibilityEngineUS({ market, preferenceMode, userFaceProfile, ref
 
   const report = {
     version: 'v0',
+    schemaVersion: 'v0',
+    engineVersion: ENGINE_VERSION,
     market: 'US',
     preferenceMode,
     confidence: scored.confidence,
@@ -66,4 +69,3 @@ function runCompatibilityEngineUS({ market, preferenceMode, userFaceProfile, ref
 }
 
 module.exports = { runCompatibilityEngineUS };
-

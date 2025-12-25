@@ -1,0 +1,111 @@
+{
+  "locale": "en",
+  "market": "US",
+  "optInTraining": false,
+  "preferenceMode": "structure",
+  "refFaceProfile": {
+    "categorical": {
+      "eyeType": "almond",
+      "faceShape": "oval",
+      "lipType": "thin"
+    },
+    "derived": {
+      "embeddingVersion": "geom-v0",
+      "geometryVector": [
+        1.05,
+        0.8,
+        0.24,
+        0.38,
+        0.29,
+        10,
+        0.26,
+        0.18
+      ]
+    },
+    "geometry": {
+      "chinLengthRatio": 0.24,
+      "eyeOpennessRatio": 0.26,
+      "eyeSpacingRatio": 0.29,
+      "eyeTiltDeg": 10,
+      "faceAspect": 1.05,
+      "jawToCheekRatio": 0.8,
+      "lipFullnessRatio": 0.18,
+      "midfaceRatio": 0.38
+    },
+    "locale": "en",
+    "market": "US",
+    "quality": {
+      "faceCount": 1,
+      "lightingScore": 85,
+      "occlusionFlags": {
+        "eyesOccluded": false,
+        "faceBorderCutoff": false,
+        "mouthOccluded": false
+      },
+      "pose": {
+        "pitchDeg": -1,
+        "rollDeg": 0.5,
+        "yawDeg": 1
+      },
+      "rejectReasons": [],
+      "score": 95,
+      "sharpnessScore": 90,
+      "valid": true
+    },
+    "source": "reference",
+    "version": "v0"
+  },
+  "sessionId": "sess_contract_sample_01",
+  "userFaceProfile": {
+    "categorical": {
+      "eyeType": "round",
+      "faceShape": "oval",
+      "lipType": "full"
+    },
+    "derived": {
+      "embeddingVersion": "geom-v0",
+      "geometryVector": [
+        1.05,
+        0.8,
+        0.24,
+        0.38,
+        0.29,
+        0.5,
+        0.26,
+        0.28
+      ]
+    },
+    "geometry": {
+      "chinLengthRatio": 0.24,
+      "eyeOpennessRatio": 0.26,
+      "eyeSpacingRatio": 0.29,
+      "eyeTiltDeg": 0.5,
+      "faceAspect": 1.05,
+      "jawToCheekRatio": 0.8,
+      "lipFullnessRatio": 0.28,
+      "midfaceRatio": 0.38
+    },
+    "locale": "en",
+    "market": "US",
+    "quality": {
+      "faceCount": 1,
+      "lightingScore": 85,
+      "occlusionFlags": {
+        "eyesOccluded": false,
+        "faceBorderCutoff": false,
+        "mouthOccluded": false
+      },
+      "pose": {
+        "pitchDeg": -1,
+        "rollDeg": 0.5,
+        "yawDeg": 1
+      },
+      "rejectReasons": [],
+      "score": 95,
+      "sharpnessScore": 90,
+      "valid": true
+    },
+    "source": "selfie",
+    "version": "v0"
+  }
+}

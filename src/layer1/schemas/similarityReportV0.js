@@ -36,6 +36,8 @@ const AdjustmentSchema = z
 const SimilarityReportV0Schema = z
   .object({
     version: z.literal('v0'),
+    schemaVersion: z.literal('v0'),
+    engineVersion: z.string().min(1),
     market: z.literal('US'),
     preferenceMode: PreferenceModeSchema,
     confidence: ConfidenceSchema,
@@ -83,4 +85,3 @@ module.exports = {
   PreferenceModeSchema,
   ConfidenceSchema,
 };
-

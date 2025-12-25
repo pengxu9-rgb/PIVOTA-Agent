@@ -13,6 +13,8 @@
     "db:seed": "node src/db/cli.js seed",
     "db:setup": "node src/db/cli.js all",
     "test": "jest --runInBand",
+    "eval:layer1:us": "node src/eval/layer1/us/runEval.js",
+    "contract:export": "node scripts/export-contracts-us.js",
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
@@ -41,6 +43,7 @@
   "devDependencies": {
     "jest": "^30.2.0",
     "nock": "^14.0.10",
-    "supertest": "^7.1.4"
+    "supertest": "^7.1.4",
+    "zod-to-json-schema": "^3.25.0"
   }
 }
