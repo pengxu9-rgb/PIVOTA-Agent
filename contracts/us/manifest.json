@@ -1,0 +1,34 @@
+{
+  "files": [
+    {
+      "path": "contracts/us/faceProfileV0.schema.json",
+      "sha256": "48eed6ee1f4da577f7a8156dd50c9261d594d517e71be9fa62e9c46b2eecc94c"
+    },
+    {
+      "path": "contracts/us/layer1BundleV0.schema.json",
+      "sha256": "4493611492a9521283d5f56341e2d5ebddad0c1165bd476faa2ecddb0e1b1fff"
+    },
+    {
+      "path": "contracts/us/similarityReportV0.schema.json",
+      "sha256": "2f711f32be18767ac4c9b03f6b73fd1aa7401d2917dfd44d6c15af8a1606798b"
+    },
+    {
+      "path": "fixtures/contracts/us/compatibility.request.sample.json",
+      "sha256": "18ebba7337a884234f7c7884bdcd708ec6527efdb072e33754ac35f04828a422"
+    },
+    {
+      "path": "fixtures/contracts/us/faceProfileV0.sample.json",
+      "sha256": "d7e1fd45d376ed10fa684b329586aafc29a804d1a057df83f7816307af59017b"
+    },
+    {
+      "path": "fixtures/contracts/us/layer1BundleV0.sample.json",
+      "sha256": "cfad6153b99502be6dfa7bb320f07f22aa0d3383cbb4498c39c4f9935376c718"
+    },
+    {
+      "path": "fixtures/contracts/us/similarityReportV0.sample.json",
+      "sha256": "b4e6e764279afdd02b46b71ee9494b0c838ad7c80797987c3202d8447943242e"
+    }
+  ],
+  "generatedAt": "2025-01-01T00:00:00.000Z",
+  "refHint": "c72a58de1e61797bfee420efd8ed5dead1672bb4"
+}

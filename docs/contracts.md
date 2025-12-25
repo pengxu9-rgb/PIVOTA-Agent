@@ -7,10 +7,14 @@ This repo publishes versioned, machine-readable contract artifacts for Layer 1 (
 - JSON Schemas:
   - `contracts/us/faceProfileV0.schema.json`
   - `contracts/us/similarityReportV0.schema.json`
+  - `contracts/us/layer1BundleV0.schema.json`
 - Canonical fixtures (golden samples for CI):
   - `fixtures/contracts/us/faceProfileV0.sample.json`
   - `fixtures/contracts/us/compatibility.request.sample.json`
   - `fixtures/contracts/us/similarityReportV0.sample.json`
+  - `fixtures/contracts/us/layer1BundleV0.sample.json`
+- Deterministic manifest (integrity + completeness):
+  - `contracts/us/manifest.json` (sha256 for every contract file)
 
 ## How to update
 
@@ -18,7 +22,17 @@ Run:
 
 - `npm run contract:export`
 
-This regenerates schemas and fixtures deterministically (stable formatting and key ordering) and overwrites the files in-place.
+This regenerates schemas, fixtures, and the manifest deterministically (stable formatting and key ordering) and overwrites the files in-place.
+
+## Manifest
+
+`contracts/us/manifest.json` is intended for cross-repo sync verification (e.g. frontend can copy `contracts/` + `fixtures/` and then verify sha256s).
+
+- `generatedAt` is intentionally fixed to keep diffs stable.
+- `refHint` is best-effort:
+  - If `git` is available at export time, it records the current commit SHA.
+  - Otherwise it is `"unknown"`.
+- `files[]` lists repo-relative paths and sha256 over file bytes (the manifest does not include itself).
 
 ## Versioning policy
 
@@ -27,4 +41,3 @@ This regenerates schemas and fixtures deterministically (stable formatting and k
 - `engineVersion`:
   - Bumped when engine behavior changes (weights, thresholds, rules, scoring, copy).
   - Current version is defined in `src/layer1/compatibility/us/config/version.js`.
-

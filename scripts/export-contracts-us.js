@@ -1,6 +1,8 @@
 /* eslint-disable no-console */
 const fs = require('fs/promises');
 const path = require('path');
+const crypto = require('crypto');
+const childProcess = require('child_process');
 
 const { zodToJsonSchema } = require('zod-to-json-schema');
 
@@ -37,6 +39,43 @@ async function writeJson(filePath, value) {
   await ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, stableJson(value), 'utf8');
   console.log('[contracts] wrote', path.relative(process.cwd(), filePath));
+}
+
+function sha256Hex(bytes) {
+  return crypto.createHash('sha256').update(bytes).digest('hex');
+}
+
+function tryGetGitCommitSha(repoRoot) {
+  try {
+    const sha = childProcess
+      .execSync('git rev-parse HEAD', { cwd: repoRoot, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString('utf8')
+      .trim();
+    if (!sha) return 'unknown';
+    return sha;
+  } catch {
+    return 'unknown';
+  }
+}
+
+async function writeContractManifest({ repoRoot, manifestPath, filePaths }) {
+  const repoRelativeEntries = await Promise.all(
+    filePaths.map(async (absolutePath) => {
+      const bytes = await fs.readFile(absolutePath);
+      const rel = path.relative(repoRoot, absolutePath).split(path.sep).join('/');
+      return { path: rel, sha256: sha256Hex(bytes) };
+    })
+  );
+
+  repoRelativeEntries.sort((a, b) => a.path.localeCompare(b.path));
+
+  const manifest = {
+    generatedAt: '2025-01-01T00:00:00.000Z',
+    refHint: tryGetGitCommitSha(repoRoot),
+    files: repoRelativeEntries,
+  };
+
+  await writeJson(manifestPath, manifest);
 }
 
 function makeFaceProfileSample(source, overrides = {}) {
@@ -169,6 +208,20 @@ async function main() {
   await writeJson(path.join(fixturesDir, 'compatibility.request.sample.json'), requestSample);
   await writeJson(path.join(fixturesDir, 'similarityReportV0.sample.json'), reportSample);
   await writeJson(path.join(fixturesDir, 'layer1BundleV0.sample.json'), bundleSample);
+
+  await writeContractManifest({
+    repoRoot,
+    manifestPath: path.join(contractsDir, 'manifest.json'),
+    filePaths: [
+      path.join(contractsDir, 'faceProfileV0.schema.json'),
+      path.join(contractsDir, 'similarityReportV0.schema.json'),
+      path.join(contractsDir, 'layer1BundleV0.schema.json'),
+      path.join(fixturesDir, 'faceProfileV0.sample.json'),
+      path.join(fixturesDir, 'compatibility.request.sample.json'),
+      path.join(fixturesDir, 'similarityReportV0.sample.json'),
+      path.join(fixturesDir, 'layer1BundleV0.sample.json'),
+    ],
+  });
 }
 
 main().catch((err) => {
