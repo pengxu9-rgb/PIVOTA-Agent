@@ -3,6 +3,7 @@ const path = require('path');
 
 const { FaceProfileV0Schema } = require('../../src/layer1/schemas/faceProfileV0');
 const { SimilarityReportV0Schema } = require('../../src/layer1/schemas/similarityReportV0');
+const { Layer1BundleV0Schema } = require('../../src/layer1/schemas/layer1BundleV0');
 const { ENGINE_VERSION } = require('../../src/layer1/compatibility/us/config/version');
 
 function readJson(relPath) {
@@ -15,11 +16,13 @@ describe('Layer1 contracts (US)', () => {
     const face = readJson('fixtures/contracts/us/faceProfileV0.sample.json');
     const req = readJson('fixtures/contracts/us/compatibility.request.sample.json');
     const report = readJson('fixtures/contracts/us/similarityReportV0.sample.json');
+    const bundle = readJson('fixtures/contracts/us/layer1BundleV0.sample.json');
 
     FaceProfileV0Schema.parse(face);
     FaceProfileV0Schema.parse(req.refFaceProfile);
     FaceProfileV0Schema.parse(req.userFaceProfile);
     SimilarityReportV0Schema.parse(report);
+    Layer1BundleV0Schema.parse(bundle);
   });
 
   test('report invariants and version fields', () => {
@@ -34,4 +37,3 @@ describe('Layer1 contracts (US)', () => {
     expect(report.adjustments).toHaveLength(3);
   });
 });
-

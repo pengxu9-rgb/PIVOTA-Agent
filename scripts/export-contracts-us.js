@@ -6,6 +6,7 @@ const { zodToJsonSchema } = require('zod-to-json-schema');
 
 const { FaceProfileV0Schema } = require('../src/layer1/schemas/faceProfileV0');
 const { SimilarityReportV0Schema } = require('../src/layer1/schemas/similarityReportV0');
+const { Layer1BundleV0Schema } = require('../src/layer1/schemas/layer1BundleV0');
 const { runCompatibilityEngineUS } = require('../src/layer1/compatibility/us/runCompatibilityEngineUS');
 const { ENGINE_VERSION } = require('../src/layer1/compatibility/us/config/version');
 
@@ -135,9 +136,14 @@ async function main() {
     name: 'SimilarityReportV0',
     $refStrategy: 'none',
   });
+  const bundleSchema = zodToJsonSchema(Layer1BundleV0Schema, {
+    name: 'Layer1BundleV0',
+    $refStrategy: 'none',
+  });
 
   await writeJson(path.join(contractsDir, 'faceProfileV0.schema.json'), faceProfileSchema);
   await writeJson(path.join(contractsDir, 'similarityReportV0.schema.json'), similaritySchema);
+  await writeJson(path.join(contractsDir, 'layer1BundleV0.schema.json'), bundleSchema);
 
   const requestSample = makeCompatibilityRequestSample();
   const reportSample = runCompatibilityEngineUS({
@@ -148,13 +154,24 @@ async function main() {
     locale: requestSample.locale,
   });
 
+  const bundleSample = Layer1BundleV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    locale: requestSample.locale,
+    preferenceMode: requestSample.preferenceMode,
+    createdAt: '2025-01-01T00:00:00.000Z',
+    userFaceProfile: requestSample.userFaceProfile,
+    refFaceProfile: requestSample.refFaceProfile,
+    similarityReport: reportSample,
+  });
+
   await writeJson(path.join(fixturesDir, 'faceProfileV0.sample.json'), requestSample.refFaceProfile);
   await writeJson(path.join(fixturesDir, 'compatibility.request.sample.json'), requestSample);
   await writeJson(path.join(fixturesDir, 'similarityReportV0.sample.json'), reportSample);
+  await writeJson(path.join(fixturesDir, 'layer1BundleV0.sample.json'), bundleSample);
 }
 
 main().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });
-

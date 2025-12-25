@@ -39,6 +39,7 @@ const {
 } = require('./services/productTagSignals');
 const { mountLookReplicatorRoutes } = require('./lookReplicator');
 const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compatibility');
+const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -1707,6 +1708,7 @@ mountLookReplicatorRoutes(app, { logger });
 // ---------------- Layer 1 (US): Compatibility ----------------
 
 mountLayer1CompatibilityRoutes(app, { logger });
+mountLayer1BundleRoutes(app, { logger });
 
 // ---------------- Creator-scoped category APIs ----------------
 

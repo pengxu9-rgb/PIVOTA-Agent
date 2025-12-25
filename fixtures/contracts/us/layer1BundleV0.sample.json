@@ -1,0 +1,281 @@
+{
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "locale": "en",
+  "market": "US",
+  "preferenceMode": "structure",
+  "refFaceProfile": {
+    "categorical": {
+      "eyeType": "almond",
+      "faceShape": "oval",
+      "lipType": "thin"
+    },
+    "derived": {
+      "embeddingVersion": "geom-v0",
+      "geometryVector": [
+        1.05,
+        0.8,
+        0.24,
+        0.38,
+        0.29,
+        10,
+        0.26,
+        0.18
+      ]
+    },
+    "geometry": {
+      "chinLengthRatio": 0.24,
+      "eyeOpennessRatio": 0.26,
+      "eyeSpacingRatio": 0.29,
+      "eyeTiltDeg": 10,
+      "faceAspect": 1.05,
+      "jawToCheekRatio": 0.8,
+      "lipFullnessRatio": 0.18,
+      "midfaceRatio": 0.38
+    },
+    "locale": "en",
+    "market": "US",
+    "quality": {
+      "faceCount": 1,
+      "lightingScore": 85,
+      "occlusionFlags": {
+        "eyesOccluded": false,
+        "faceBorderCutoff": false,
+        "mouthOccluded": false
+      },
+      "pose": {
+        "pitchDeg": -1,
+        "rollDeg": 0.5,
+        "yawDeg": 1
+      },
+      "rejectReasons": [],
+      "score": 95,
+      "sharpnessScore": 90,
+      "valid": true
+    },
+    "source": "reference",
+    "version": "v0"
+  },
+  "schemaVersion": "v0",
+  "similarityReport": {
+    "adjustments": [
+      {
+        "because": "A thin base preserves texture and makes it easier to match the reference finish.",
+        "confidence": "medium",
+        "do": "Apply a light layer first, then spot-conceal only where needed and re-blend.",
+        "evidence": [
+          "fallback:base"
+        ],
+        "impactArea": "base",
+        "title": "Keep base thin and build only where needed"
+      },
+      {
+        "because": "Your eye tilt is flatter than the reference, so a steep wing can overshoot the reference direction.",
+        "confidence": "high",
+        "do": "Start liner from the outer third, keep the wing shorter, and follow the lower lash line angle rather than aiming upward.",
+        "evidence": [
+          "delta:geometry.eyeTiltDeg",
+          "user.geometry.eyeTiltDeg",
+          "ref.geometry.eyeTiltDeg"
+        ],
+        "impactArea": "eye",
+        "title": "Keep the wing shorter and more horizontal"
+      },
+      {
+        "because": "If your lips read fuller than the reference, crisp edges and controlled shine can match the reference shape.",
+        "confidence": "high",
+        "do": "Use a precise lip line, keep color within the natural border, and choose a satin finish over a high-gloss center.",
+        "evidence": [
+          "delta:geometry.lipFullnessRatio",
+          "user.geometry.lipFullnessRatio",
+          "ref.geometry.lipFullnessRatio"
+        ],
+        "impactArea": "lip",
+        "title": "Keep lip edges crisp and reduce shine"
+      }
+    ],
+    "confidence": "high",
+    "engineVersion": "compat-us-0.1.0",
+    "fitScore": 61,
+    "layer2Hints": {
+      "base": [
+        "base.finish.match_reference"
+      ],
+      "eye": [
+        "eye.liner.direction.match_reference"
+      ],
+      "lip": [
+        "lip.finish.match_reference"
+      ]
+    },
+    "market": "US",
+    "preferenceMode": "structure",
+    "reasons": [
+      {
+        "copy": "Your selfie and the reference share enough structure cues to make this look achievable with technique.",
+        "evidence": [
+          "ref.quality.valid",
+          "user.quality.valid",
+          "score.fitScore"
+        ],
+        "title": "This reference is workable"
+      },
+      {
+        "copy": "We’ll focus on placement and finish choices in base, eye, and lip to match the reference mood without relying on identity.",
+        "evidence": [
+          "score.scoreBreakdown.adaptabilityBonus",
+          "delta:categorical.eyeType",
+          "delta:geometry.eyeTiltDeg"
+        ],
+        "title": "The main emphasis areas are adjustable"
+      },
+      {
+        "copy": "We provide exactly three actionable adjustments (base, eye, lip), each tied to measurable differences and quality signals.",
+        "evidence": [
+          "report.adjustments[base]",
+          "report.adjustments[eye]",
+          "report.adjustments[lip]"
+        ],
+        "title": "You’ll get a clear 3-part plan"
+      }
+    ],
+    "schemaVersion": "v0",
+    "scoreBreakdown": {
+      "adaptabilityBonus": 6,
+      "geometryFit": 55,
+      "riskPenalty": 0
+    },
+    "topDeltas": [
+      {
+        "evidence": [
+          "user.categorical.eyeType",
+          "ref.categorical.eyeType"
+        ],
+        "explanationKey": "categorical_mismatch",
+        "key": "categorical.eyeType",
+        "refValue": "almond",
+        "severity": 0.8,
+        "userValue": "round"
+      },
+      {
+        "evidence": [
+          "user.geometry.eyeTiltDeg",
+          "ref.geometry.eyeTiltDeg"
+        ],
+        "explanationKey": "geometry_mismatch",
+        "key": "geometry.eyeTiltDeg",
+        "refValue": 10,
+        "severity": 0.7222222222222222,
+        "userValue": 0.5
+      },
+      {
+        "evidence": [
+          "user.categorical.lipType",
+          "ref.categorical.lipType"
+        ],
+        "explanationKey": "categorical_mismatch",
+        "key": "categorical.lipType",
+        "refValue": "thin",
+        "severity": 0.7,
+        "userValue": "full"
+      },
+      {
+        "evidence": [
+          "user.geometry.lipFullnessRatio",
+          "ref.geometry.lipFullnessRatio"
+        ],
+        "explanationKey": "geometry_mismatch",
+        "key": "geometry.lipFullnessRatio",
+        "refValue": 0.18,
+        "severity": 0.6000000000000003,
+        "userValue": 0.28
+      },
+      {
+        "evidence": [
+          "user.geometry.faceAspect",
+          "ref.geometry.faceAspect"
+        ],
+        "explanationKey": "geometry_close",
+        "key": "geometry.faceAspect",
+        "refValue": 1.05,
+        "severity": 0,
+        "userValue": 1.05
+      }
+    ],
+    "userControls": {
+      "defaultMode": "structure",
+      "modes": [
+        {
+          "description": "Prioritize facial structure alignment.",
+          "label": "Structure",
+          "mode": "structure"
+        },
+        {
+          "description": "Prioritize the overall vibe and adaptable emphasis.",
+          "label": "Vibe",
+          "mode": "vibe"
+        },
+        {
+          "description": "Prioritize low-risk, easy-to-replicate adjustments.",
+          "label": "Ease",
+          "mode": "ease"
+        }
+      ]
+    },
+    "version": "v0",
+    "warnings": [
+      "Not enough strong signals for all areas; filled with safe, low-risk adjustments."
+    ]
+  },
+  "userFaceProfile": {
+    "categorical": {
+      "eyeType": "round",
+      "faceShape": "oval",
+      "lipType": "full"
+    },
+    "derived": {
+      "embeddingVersion": "geom-v0",
+      "geometryVector": [
+        1.05,
+        0.8,
+        0.24,
+        0.38,
+        0.29,
+        0.5,
+        0.26,
+        0.28
+      ]
+    },
+    "geometry": {
+      "chinLengthRatio": 0.24,
+      "eyeOpennessRatio": 0.26,
+      "eyeSpacingRatio": 0.29,
+      "eyeTiltDeg": 0.5,
+      "faceAspect": 1.05,
+      "jawToCheekRatio": 0.8,
+      "lipFullnessRatio": 0.28,
+      "midfaceRatio": 0.38
+    },
+    "locale": "en",
+    "market": "US",
+    "quality": {
+      "faceCount": 1,
+      "lightingScore": 85,
+      "occlusionFlags": {
+        "eyesOccluded": false,
+        "faceBorderCutoff": false,
+        "mouthOccluded": false
+      },
+      "pose": {
+        "pitchDeg": -1,
+        "rollDeg": 0.5,
+        "yawDeg": 1
+      },
+      "rejectReasons": [],
+      "score": 95,
+      "sharpnessScore": 90,
+      "valid": true
+    },
+    "source": "selfie",
+    "version": "v0"
+  }
+}
