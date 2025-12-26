@@ -20,9 +20,16 @@ async function ensureDbReady() {
     dbReady = true;
     return true;
   }
-  await runMigrations();
-  dbReady = true;
-  return true;
+  try {
+    await runMigrations();
+    dbReady = true;
+    return true;
+  } catch (err) {
+    // If migrations fail in production (permissions, transient DB issues), fall back to in-memory storage
+    // rather than taking down endpoints with 500s. We keep retry eligibility by clearing dbAttempted.
+    dbAttempted = false;
+    return false;
+  }
 }
 
 function nowIso() {

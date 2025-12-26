@@ -287,6 +287,10 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
       return res.json(payload);
     } catch (err) {
+      logger?.warn?.(
+        { jobId: req.params.jobId, code: err?.code, err: err?.message || String(err) },
+        'lookReplicate job get failed'
+      );
       return res.status(500).json({ error: 'JOB_GET_FAILED' });
     }
   });
