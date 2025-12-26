@@ -54,6 +54,24 @@ function geminiModelName(model) {
   return m.startsWith('models/') ? m.slice('models/'.length) : m;
 }
 
+function uniqueStrings(list) {
+  const seen = new Set();
+  const out = [];
+  for (const v of list) {
+    const s = String(v || '').trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function isGeminiModelNotFoundMessage(message) {
+  const m = String(message || '').toLowerCase();
+  return m.includes('is not found') || m.includes('not supported for generatecontent') || m.includes('call listmodels');
+}
+
 function extractJsonObject(text) {
   const raw = String(text || '').trim();
   if (!raw) throw new LlmError('LLM_PARSE_FAILED', 'Empty model output');
@@ -244,14 +262,20 @@ function createProviderFromEnv(purpose = 'generic') {
     if (provider === 'gemini') {
       const apiKey = geminiApiKey();
       const baseURL = geminiBaseUrl();
-      const model = geminiModelName(
-        getEnv('PIVOTA_LAYER2_MODEL_GEMINI') || getEnv('PIVOTA_LAYER2_MODEL') || 'gemini-1.5-flash'
-      );
+      const requestedModel = geminiModelName(getEnv('PIVOTA_LAYER2_MODEL_GEMINI') || getEnv('PIVOTA_LAYER2_MODEL'));
+      const candidateModels = uniqueStrings([
+        requestedModel,
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-2.0-flash',
+        'gemini-1.5-pro-latest',
+      ]);
+      const apiVersions = ['v1beta', 'v1'];
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: GEMINI_API_KEY');
 
-      const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
-        apiKey
-      )}`;
+      const urlFor = (apiVersion, model) =>
+        `${baseURL}/${apiVersion}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
       async function postGeminiWithRetry(body, schema) {
         const maxAttempts = 1 + 2;
@@ -259,14 +283,41 @@ function createProviderFromEnv(purpose = 'generic') {
 
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
-            const res = await axios.post(url, body, { timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000') });
-            const text = res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('\n') || '';
-            const json = extractJsonObject(String(text));
-            const parsed = schema.safeParse(json);
-            if (!parsed.success) {
-              throw new LlmError('LLM_SCHEMA_INVALID', 'Model JSON did not match expected schema', parsed.error);
+            for (const apiVersion of apiVersions) {
+              for (const model of candidateModels) {
+                try {
+                  const res = await axios.post(urlFor(apiVersion, model), body, {
+                    timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
+                  });
+                  const text =
+                    res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('\n') || '';
+                  const json = extractJsonObject(String(text));
+                  const parsed = schema.safeParse(json);
+                  if (!parsed.success) {
+                    throw new LlmError('LLM_SCHEMA_INVALID', 'Model JSON did not match expected schema', parsed.error);
+                  }
+                  return parsed.data;
+                } catch (innerErr) {
+                  if (innerErr instanceof LlmError && innerErr.code === 'LLM_SCHEMA_INVALID') throw innerErr;
+
+                  if (innerErr instanceof AxiosError) {
+                    const status = innerErr.response?.status;
+                    const apiMessage =
+                      typeof innerErr.response?.data?.error?.message === 'string'
+                        ? String(innerErr.response?.data?.error?.message).trim()
+                        : '';
+                    if (status === 404 && isGeminiModelNotFoundMessage(apiMessage)) {
+                      continue;
+                    }
+                  }
+                  throw innerErr;
+                }
+              }
             }
-            return parsed.data;
+            throw new LlmError(
+              'LLM_CONFIG_MISSING',
+              'No supported Gemini model found for generateContent. Set PIVOTA_LAYER2_MODEL_GEMINI to an available model name.'
+            );
           } catch (err) {
             if (err instanceof LlmError && err.code === 'LLM_SCHEMA_INVALID') throw err;
 

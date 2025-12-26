@@ -73,6 +73,24 @@ function geminiModelName(model: string): string {
   return m.startsWith("models/") ? m.slice("models/".length) : m;
 }
 
+function uniqueStrings(list: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of list) {
+    const s = String(v || "").trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function isGeminiModelNotFoundMessage(message: unknown): boolean {
+  const m = String(message || "").toLowerCase();
+  return m.includes("is not found") || m.includes("not supported for generatecontent") || m.includes("call listmodels");
+}
+
 function toDataUrl(bytes: Buffer, contentType: string): string {
   const b64 = bytes.toString("base64");
   return `data:${contentType};base64,${b64}`;
@@ -467,154 +485,154 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
     if (provider === "gemini") {
       const apiKey = geminiApiKey();
       const baseURL = geminiBaseUrl();
-      const model = geminiModelName(
-        getEnv("PIVOTA_LAYER2_MODEL_GEMINI") || getEnv("PIVOTA_LAYER2_MODEL") || "gemini-1.5-flash"
-      );
       if (!apiKey) {
         throw new LlmError("LLM_CONFIG_MISSING", "Missing required env var: GEMINI_API_KEY");
       }
 
-      const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
-        apiKey
-      )}`;
+      const requestedModel = geminiModelName(getEnv("PIVOTA_LAYER2_MODEL_GEMINI") || getEnv("PIVOTA_LAYER2_MODEL"));
+      const candidateModels = uniqueStrings([
+        requestedModel,
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-002",
+        "gemini-2.0-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro-latest",
+        "gemini-1.5-pro",
+        "gemini-1.5-pro-002",
+      ]);
+
+      const apiVersions = ["v1beta", "v1"] as const;
+      const urlFor = (apiVersion: string, model: string) =>
+        `${baseURL}/${apiVersion}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+      async function postGeminiWithRetry<TSchema extends z.ZodTypeAny>(
+        body: unknown,
+        schema: TSchema
+      ): Promise<z.infer<TSchema>> {
+        const maxAttempts = 1 + 2;
+        let lastErr: unknown = null;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            for (const apiVersion of apiVersions) {
+              for (const model of candidateModels) {
+                try {
+                  const res = await axios.post(urlFor(apiVersion, model), body, {
+                    timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000"),
+                  });
+                  const text =
+                    res?.data?.candidates?.[0]?.content?.parts
+                      ?.map((p: any) => p.text)
+                      .filter(Boolean)
+                      .join("\n") || "";
+
+                  const json = extractJsonObject(String(text));
+                  const parsed = schema.safeParse(json);
+                  if (!parsed.success) {
+                    throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
+                  }
+                  return parsed.data;
+                } catch (innerErr) {
+                  if (innerErr instanceof LlmError && innerErr.code === "LLM_SCHEMA_INVALID") throw innerErr;
+
+                  if (innerErr instanceof AxiosError) {
+                    const status = innerErr.response?.status;
+                    const apiMessage =
+                      typeof (innerErr.response?.data as any)?.error?.message === "string"
+                        ? String((innerErr.response?.data as any)?.error?.message).trim()
+                        : "";
+                    if (status === 404 && isGeminiModelNotFoundMessage(apiMessage)) {
+                      continue;
+                    }
+                  }
+                  throw innerErr;
+                }
+              }
+            }
+
+            throw new LlmError(
+              "LLM_CONFIG_MISSING",
+              "No supported Gemini model found for generateContent. Set PIVOTA_LAYER2_MODEL_GEMINI to an available model name."
+            );
+          } catch (err) {
+            if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
+
+            if (err instanceof AxiosError) {
+              if (err.code === "ECONNABORTED") {
+                lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+              } else {
+                const status = err.response?.status;
+                const apiMessage =
+                  typeof (err.response?.data as any)?.error?.message === "string"
+                    ? String((err.response?.data as any)?.error?.message).trim()
+                    : "";
+                const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
+                const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
+                lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+              }
+            } else if (err instanceof LlmError) {
+              lastErr = err;
+            } else {
+              lastErr = err;
+            }
+
+            if (attempt < maxAttempts && isRetryableError(lastErr)) {
+              await sleep(250 * attempt);
+              continue;
+            }
+            throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+          }
+        }
+
+        throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+      }
 
       return {
         async analyzeImageToJson({ prompt, image, schema }) {
-          const maxAttempts = 1 + 2;
-          let lastErr: unknown = null;
-
-          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-            try {
-              const { mimeType, dataB64 } = await resolveImageForGemini(image);
-
-              const body = {
-                systemInstruction: {
-                  parts: [
-                    {
-                      text: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
-                    },
-                  ],
-                },
-                contents: [
+          const { mimeType, dataB64 } = await resolveImageForGemini(image);
+          return postGeminiWithRetry(
+            {
+              systemInstruction: {
+                parts: [
                   {
-                    role: "user",
-                    parts: [
-                      { text: prompt },
-                      { inlineData: { mimeType, data: dataB64 } },
-                    ],
+                    text: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
                   },
                 ],
-                generationConfig: {
-                  temperature: 0,
-                  responseMimeType: "application/json",
+              },
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: prompt }, { inlineData: { mimeType, data: dataB64 } }],
                 },
-              };
-
-              const res = await axios.post(url, body, { timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000") });
-              const text =
-                res?.data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("\n") || "";
-
-              const json = extractJsonObject(String(text));
-              const parsed = schema.safeParse(json);
-              if (!parsed.success) {
-                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
-              }
-              return parsed.data;
-            } catch (err) {
-              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
-
-              if (err instanceof AxiosError) {
-                if (err.code === "ECONNABORTED") {
-                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
-                } else {
-                  const status = err.response?.status;
-                  const apiMessage =
-                    typeof (err.response?.data as any)?.error?.message === "string"
-                      ? String((err.response?.data as any)?.error?.message).trim()
-                      : "";
-                  const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
-                  const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
-                  lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
-                }
-              } else if (err instanceof LlmError) {
-                lastErr = err;
-              } else {
-                lastErr = err;
-              }
-
-              if (attempt < maxAttempts && isRetryableError(lastErr)) {
-                await sleep(250 * attempt);
-                continue;
-              }
-              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-            }
-          }
-
-          throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+              ],
+              generationConfig: {
+                temperature: 0,
+                responseMimeType: "application/json",
+              },
+            },
+            schema
+          );
         },
 
         async analyzeTextToJson({ prompt, schema }) {
-          const maxAttempts = 1 + 2;
-          let lastErr: unknown = null;
-
-          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-            try {
-              const body = {
-                systemInstruction: {
-                  parts: [
-                    {
-                      text: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
-                    },
-                  ],
-                },
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                generationConfig: {
-                  temperature: 0,
-                  responseMimeType: "application/json",
-                },
-              };
-
-              const res = await axios.post(url, body, { timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000") });
-              const text =
-                res?.data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("\n") || "";
-
-              const json = extractJsonObject(String(text));
-              const parsed = schema.safeParse(json);
-              if (!parsed.success) {
-                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
-              }
-              return parsed.data;
-            } catch (err) {
-              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
-
-              if (err instanceof AxiosError) {
-                if (err.code === "ECONNABORTED") {
-                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
-                } else {
-                  const status = err.response?.status;
-                  const apiMessage =
-                    typeof (err.response?.data as any)?.error?.message === "string"
-                      ? String((err.response?.data as any)?.error?.message).trim()
-                      : "";
-                  const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
-                  const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
-                  lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
-                }
-              } else if (err instanceof LlmError) {
-                lastErr = err;
-              } else {
-                lastErr = err;
-              }
-
-              if (attempt < maxAttempts && isRetryableError(lastErr)) {
-                await sleep(250 * attempt);
-                continue;
-              }
-              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-            }
-          }
-
-          throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+          return postGeminiWithRetry(
+            {
+              systemInstruction: {
+                parts: [
+                  {
+                    text: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+                  },
+                ],
+              },
+              contents: [{ role: "user", parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0,
+                responseMimeType: "application/json",
+              },
+            },
+            schema
+          );
         },
       };
     }
