@@ -1,0 +1,128 @@
+{
+  "lookSpec": {
+    "schemaVersion": "v0",
+    "market": "US",
+    "locale": "en",
+    "layer2EngineVersion": "l2-us-0.1.0",
+    "layer3EngineVersion": "l3-us-0.1.0",
+    "orchestratorVersion": "orchestrator-us-0.1.0",
+    "breakdown": {
+      "base": {
+        "intent": "natural base",
+        "finish": "dewy",
+        "coverage": "medium-full",
+        "keyNotes": ["thin base"],
+        "evidence": ["ref.image"]
+      },
+      "eye": {
+        "intent": "winged liner look",
+        "finish": "defined",
+        "coverage": "buildable",
+        "keyNotes": ["outer third focus"],
+        "evidence": ["ref.image"]
+      },
+      "lip": {
+        "intent": "soft diffused lip",
+        "finish": "gloss",
+        "coverage": "sheer",
+        "keyNotes": ["close shade family"],
+        "evidence": ["ref.image"]
+      }
+    },
+    "warnings": []
+  },
+  "userFaceProfile": {
+    "version": "v0",
+    "market": "US",
+    "source": "selfie",
+    "locale": "en",
+    "quality": {
+      "valid": true,
+      "score": 90,
+      "faceCount": 1,
+      "lightingScore": 80,
+      "sharpnessScore": 88,
+      "pose": { "yawDeg": 0, "pitchDeg": 0, "rollDeg": 0 },
+      "occlusionFlags": { "eyesOccluded": false, "mouthOccluded": false, "faceBorderCutoff": false },
+      "rejectReasons": []
+    },
+    "geometry": {
+      "faceAspect": 1.0,
+      "jawToCheekRatio": 0.75,
+      "chinLengthRatio": 0.22,
+      "midfaceRatio": 0.4,
+      "eyeSpacingRatio": 0.29,
+      "eyeTiltDeg": -3,
+      "eyeOpennessRatio": 0.26,
+      "lipFullnessRatio": 0.28
+    },
+    "categorical": { "faceShape": "oval", "eyeType": "almond", "lipType": "thin" },
+    "derived": { "geometryVector": [1.0, 0.75, 0.22, 0.4, 0.29, -3, 0.26, 0.28], "embeddingVersion": "geom-v0" }
+  },
+  "refFaceProfile": {
+    "version": "v0",
+    "market": "US",
+    "source": "reference",
+    "locale": "en",
+    "quality": {
+      "valid": true,
+      "score": 92,
+      "faceCount": 1,
+      "lightingScore": 82,
+      "sharpnessScore": 90,
+      "pose": { "yawDeg": 0, "pitchDeg": 0, "rollDeg": 0 },
+      "occlusionFlags": { "eyesOccluded": false, "mouthOccluded": false, "faceBorderCutoff": false },
+      "rejectReasons": []
+    },
+    "geometry": {
+      "faceAspect": 1.0,
+      "jawToCheekRatio": 0.75,
+      "chinLengthRatio": 0.22,
+      "midfaceRatio": 0.4,
+      "eyeSpacingRatio": 0.29,
+      "eyeTiltDeg": 4,
+      "eyeOpennessRatio": 0.3,
+      "lipFullnessRatio": 0.36
+    },
+    "categorical": { "faceShape": "oval", "eyeType": "almond", "lipType": "balanced" },
+    "derived": { "geometryVector": [1.0, 0.75, 0.22, 0.4, 0.29, 4, 0.3, 0.36], "embeddingVersion": "geom-v0" }
+  },
+  "similarityReport": {
+    "version": "v0",
+    "schemaVersion": "v0",
+    "engineVersion": "l1-us-0.1.0",
+    "market": "US",
+    "preferenceMode": "structure",
+    "confidence": "medium",
+    "fitScore": 80,
+    "scoreBreakdown": { "geometryFit": 50, "riskPenalty": 10, "adaptabilityBonus": 10 },
+    "reasons": [
+      { "title": "Reason 1", "copy": "copy", "evidence": ["x"] },
+      { "title": "Reason 2", "copy": "copy", "evidence": ["x"] },
+      { "title": "Reason 3", "copy": "copy", "evidence": ["x"] }
+    ],
+    "topDeltas": [
+      {
+        "key": "geometry.eyeTiltDeg",
+        "userValue": -3,
+        "refValue": 4,
+        "severity": 0.7,
+        "explanationKey": "EYE_TILT_MISMATCH",
+        "evidence": ["userFaceProfile.geometry.eyeTiltDeg", "refFaceProfile.geometry.eyeTiltDeg"]
+      }
+    ],
+    "adjustments": [
+      { "impactArea": "base", "title": "x", "because": "x", "do": "x", "confidence": "low", "evidence": ["x"] },
+      { "impactArea": "eye", "title": "x", "because": "x", "do": "x", "confidence": "low", "evidence": ["x"] },
+      { "impactArea": "lip", "title": "x", "because": "x", "do": "x", "confidence": "low", "evidence": ["x"] }
+    ],
+    "userControls": {
+      "modes": [
+        { "mode": "structure", "label": "Structure", "description": "Structure" },
+        { "mode": "vibe", "label": "Vibe", "description": "Vibe" },
+        { "mode": "ease", "label": "Ease", "description": "Ease" }
+      ],
+      "defaultMode": "structure"
+    }
+  }
+}

@@ -1,0 +1,99 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3 skeletons with evidenceKeys and ruleId 1`] = `
+[
+  {
+    "becauseFacts": [
+      "The reference base coverage is higher.",
+      "Building coverage in thin passes reduces caking while still matching the reference.",
+    ],
+    "confidence": "medium",
+    "doActions": [
+      "Build coverage in thin layers.",
+      "Conceal only where needed, then re-blend edges.",
+      "Set strategically to preserve the intended finish.",
+    ],
+    "evidenceKeys": [
+      "lookSpec.breakdown.base.coverage",
+      "lookSpec.breakdown.base.finish",
+    ],
+    "impactArea": "base",
+    "market": "US",
+    "ruleId": "BASE_BUILD_COVERAGE_SPOT",
+    "safetyNotes": [
+      "If the base starts to look heavy, stop layering and spot-correct instead.",
+    ],
+    "schemaVersion": "v0",
+    "severity": 0.7,
+    "tags": [
+      "coverage",
+    ],
+    "whyMechanism": [
+      "Thin passes reduce buildup while letting you reach the desired coverage level.",
+    ],
+  },
+  {
+    "becauseFacts": [
+      "The reference eye look relies on liner direction/wing control.",
+      "Eye tilt differs between user and reference, so wing angle needs adjustment.",
+    ],
+    "confidence": "medium",
+    "doActions": [
+      "Start liner from the outer third.",
+      "Keep the wing shorter.",
+      "Angle slightly more horizontal, then connect back with a thin stroke.",
+    ],
+    "evidenceKeys": [
+      "userFaceProfile.geometry.eyeTiltDeg",
+      "refFaceProfile.geometry.eyeTiltDeg",
+      "similarityReport.topDeltas[*].evidence",
+      "lookSpec.breakdown.eye.intent",
+    ],
+    "impactArea": "eye",
+    "market": "US",
+    "ruleId": "EYE_LINER_DIRECTION_ADAPT",
+    "safetyNotes": [
+      "Avoid thick liner across the full lid; thickness can overwhelm the eye area.",
+    ],
+    "schemaVersion": "v0",
+    "severity": 0.7,
+    "tags": [
+      "liner",
+      "wing",
+    ],
+    "whyMechanism": [
+      "A slightly more horizontal, shorter wing reduces emphasis on tilt differences while preserving the reference mood.",
+    ],
+  },
+  {
+    "becauseFacts": [
+      "The reference lip finish is glossy.",
+      "A center-focused gloss effect is a safe way to match finish and enhance shape without over-lining.",
+    ],
+    "confidence": "medium",
+    "doActions": [
+      "Keep the lip line soft.",
+      "Concentrate gloss in the center of the lips.",
+      "Stay in the closest shade family to the reference.",
+    ],
+    "evidenceKeys": [
+      "lookSpec.breakdown.lip.finish",
+      "userFaceProfile.geometry.lipFullnessRatio",
+    ],
+    "impactArea": "lip",
+    "market": "US",
+    "ruleId": "LIP_GLOSS_CENTER_GRADIENT",
+    "safetyNotes": [
+      "Avoid heavy over-lining; keep changes subtle to stay faithful to the reference.",
+    ],
+    "schemaVersion": "v0",
+    "severity": 0.46666666666666634,
+    "tags": [
+      "gloss",
+    ],
+    "whyMechanism": [
+      "Center gloss increases dimension and keeps the glossy finish aligned with the reference.",
+    ],
+  },
+]
+`;

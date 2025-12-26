@@ -65,23 +65,36 @@ describe("Layer2 personalization generation", () => {
         schema.parse({
           adjustments: [
             {
+              impactArea: "base",
+              ruleId: "BASE_FALLBACK_THIN_LAYER",
+              title: "Keep base thin",
+              because: "A thin base keeps the finish aligned with the reference.",
+              do: "Apply a light layer first.",
+              why: "Thin layers are more forgiving.",
+              confidence: "low",
+              evidence: ["lookSpec.breakdown.base.finish"],
+            },
+            {
               impactArea: "eye",
-              title: "Shorten wing",
-              because: "To match the reference look, adjust liner direction.",
-              do: "Keep the wing shorter.",
-              confidence: "medium",
+              ruleId: "EYE_FALLBACK_SAFE_CONTROL",
+              title: "Control liner safely",
+              because: "Liner direction affects eye emphasis.",
+              do: "Start liner at the outer third and keep it thin.",
+              why: "A thin, short wing is forgiving.",
+              confidence: "low",
               evidence: ["lookSpec.breakdown.eye.intent"],
             },
             {
               impactArea: "lip",
-              title: "Match finish",
-              because: "Finish drives the mood.",
-              do: "Use a gloss finish.",
-              confidence: "medium",
+              ruleId: "LIP_FALLBACK_FINISH_FOCUS",
+              title: "Match lip finish",
+              because: "Finish carries the lip mood.",
+              do: "Match the reference finish and stay in a close shade family.",
+              why: "Finish is more reliable than exact shape tweaks.",
+              confidence: "low",
               evidence: ["lookSpec.breakdown.lip.finish"],
             },
           ],
-          warnings: [],
         }) as z.infer<TSchema>,
     };
 
@@ -122,9 +135,36 @@ describe("Layer2 personalization generation", () => {
     };
 
     const adjustments = [
-      { impactArea: "base" as const, title: "Keep base thin", because: "Because", do: "Do", confidence: "low" as const, evidence: ["x"] },
-      { impactArea: "eye" as const, title: "Control liner", because: "Because", do: "Do", confidence: "low" as const, evidence: ["x"] },
-      { impactArea: "lip" as const, title: "Match finish", because: "Because", do: "Do", confidence: "low" as const, evidence: ["x"] },
+      {
+        impactArea: "base" as const,
+        ruleId: "BASE_FALLBACK_THIN_LAYER",
+        title: "Keep base thin",
+        because: "Because",
+        do: "Do",
+        why: "Why",
+        confidence: "low" as const,
+        evidence: ["x"],
+      },
+      {
+        impactArea: "eye" as const,
+        ruleId: "EYE_FALLBACK_SAFE_CONTROL",
+        title: "Control liner",
+        because: "Because",
+        do: "Do",
+        why: "Why",
+        confidence: "low" as const,
+        evidence: ["x"],
+      },
+      {
+        impactArea: "lip" as const,
+        ruleId: "LIP_FALLBACK_FINISH_FOCUS",
+        title: "Match finish",
+        because: "Because",
+        do: "Do",
+        why: "Why",
+        confidence: "low" as const,
+        evidence: ["x"],
+      },
     ];
 
     const out = await generateSteps({

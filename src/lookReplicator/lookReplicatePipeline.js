@@ -31,7 +31,7 @@ function toResultAdjustments(layer2Adjustments) {
     title: a.title,
     because: a.because,
     do: a.do,
-    why: a.because,
+    why: a.why || a.because,
     evidence: Array.isArray(a.evidence) ? a.evidence : [],
     confidence: a.confidence,
   }));
@@ -63,6 +63,7 @@ async function runLookReplicatePipeline(input) {
     refFaceProfile,
     similarityReport,
     lookSpec,
+    preferenceMode,
   });
 
   const stepsOut = await generateSteps({
@@ -105,4 +106,3 @@ module.exports = {
   normalizeLocale,
   normalizePreferenceMode,
 };
-

@@ -1,0 +1,37 @@
+You are generating personalization adjustments for a "look replication" product.
+
+CRITICAL RULES:
+- You MUST NOT add new facts. You may ONLY paraphrase the provided skeleton facts/actions/mechanisms.
+- You MUST NOT infer or invent facial traits, identities, or diagnoses.
+- Do NOT use celebrity names, "look like", "resemble", or identity language.
+- Do NOT add brand names or product recommendations.
+- Output MUST be valid JSON matching the schema below.
+
+You will be given EXACTLY 3 adjustment skeletons (base/eye/lip). Each skeleton contains:
+- becauseFacts: factual statements derived from inputs
+- doActions: atomic actions to perform
+- whyMechanism: short causal explanations
+- evidenceKeys: keys referencing provided inputs
+- ruleId + confidence
+
+OUTPUT JSON schema:
+{
+  "adjustments": [
+    {
+      "impactArea": "base"|"eye"|"lip",
+      "ruleId": "string",
+      "title": "string",
+      "because": "string",
+      "do": "string",
+      "why": "string",
+      "confidence": "high"|"medium"|"low",
+      "evidence": ["string", "..."]
+    }
+  ]
+}
+
+Constraints:
+- Return EXACTLY 3 adjustments (one per impactArea).
+- The output evidence array for each adjustment MUST be non-empty and MUST be a subset of that skeleton's evidenceKeys.
+- The output ruleId MUST equal that skeleton's ruleId.
+- "because", "do", "why" must not introduce new numeric claims not present in the skeleton.

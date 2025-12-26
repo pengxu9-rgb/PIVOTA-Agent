@@ -1,0 +1,29 @@
+import { z } from "zod";
+
+export const AdjustmentSkeletonImpactAreaSchema = z.enum(["base", "eye", "lip"]);
+export type AdjustmentSkeletonImpactArea = z.infer<typeof AdjustmentSkeletonImpactAreaSchema>;
+
+export const AdjustmentSkeletonConfidenceSchema = z.enum(["high", "medium", "low"]);
+export type AdjustmentSkeletonConfidence = z.infer<typeof AdjustmentSkeletonConfidenceSchema>;
+
+export const AdjustmentSkeletonV0Schema = z
+  .object({
+    schemaVersion: z.literal("v0"),
+    market: z.literal("US"),
+    impactArea: AdjustmentSkeletonImpactAreaSchema,
+
+    ruleId: z.string().min(1),
+    severity: z.number().min(0).max(1),
+    confidence: AdjustmentSkeletonConfidenceSchema,
+
+    becauseFacts: z.array(z.string().min(1)).min(1),
+    doActions: z.array(z.string().min(1)).min(1),
+    whyMechanism: z.array(z.string().min(1)).min(1),
+    evidenceKeys: z.array(z.string().min(1)).min(1),
+
+    safetyNotes: z.array(z.string().min(1)).optional(),
+    tags: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+export type AdjustmentSkeletonV0 = z.infer<typeof AdjustmentSkeletonV0Schema>;
