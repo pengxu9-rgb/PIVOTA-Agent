@@ -1920,13 +1920,14 @@ app.delete('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
 // ---------------- Merchant risk ops API (v0, admin-key protected) ----------------
 
 app.get('/api/merchant/disputes', requireAdmin, async (req, res) => {
-  const { merchantId, status, source, limit, offset } = req.query;
+  const { merchantId, orderId, status, source, limit, offset } = req.query;
   try {
     const resp = await fetchBackendAdmin({
       method: 'GET',
       path: '/agent/internal/disputes',
       params: {
         ...(merchantId ? { merchantId } : {}),
+        ...(orderId ? { orderId } : {}),
         ...(status ? { status } : {}),
         ...(source ? { source } : {}),
         ...(limit ? { limit } : {}),
@@ -1940,6 +1941,35 @@ app.get('/api/merchant/disputes', requireAdmin, async (req, res) => {
     return res.status(statusCode).json({
       error: code || 'FAILED_TO_FETCH_DISPUTES',
       message: message || 'Failed to fetch disputes',
+      details: data || null,
+    });
+  }
+});
+
+app.post('/api/merchant/disputes/sync', requireAdmin, async (req, res) => {
+  const orderId = req.body?.orderId || req.body?.order_id;
+  const limit = req.body?.limit;
+
+  if (!orderId) {
+    return res.status(400).json({ error: 'MISSING_ORDER_ID', message: 'orderId is required' });
+  }
+
+  try {
+    const resp = await fetchBackendAdmin({
+      method: 'POST',
+      path: '/agent/internal/disputes/sync',
+      params: {
+        orderId,
+        ...(limit ? { limit } : {}),
+      },
+    });
+    return res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const { code, message, data } = extractUpstreamErrorCode(err);
+    const statusCode = err?.response?.status || err?.status || 500;
+    return res.status(statusCode).json({
+      error: code || 'FAILED_TO_SYNC_DISPUTES',
+      message: message || 'Failed to sync disputes',
       details: data || null,
     });
   }

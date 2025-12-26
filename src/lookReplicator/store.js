@@ -133,6 +133,9 @@ async function updateJob(jobId, patch) {
     if (!existing) return null;
     const merged = { ...existing, ...patch, updatedAt: now };
     mem.set(jobId, merged);
+    if (patch.shareId && patch.shareId !== jobId) {
+      mem.set(patch.shareId, merged);
+    }
     return merged;
   }
 
@@ -150,6 +153,7 @@ async function updateJob(jobId, patch) {
   if (patch.progress !== undefined) setField('progress', patch.progress);
   if (patch.result !== undefined) setField('result_json', patch.result);
   if (patch.error !== undefined) setField('error_message', patch.error);
+  if (patch.shareId !== undefined) setField('share_id', patch.shareId);
 
   setField('updated_at', now);
   values.push(jobId);
@@ -164,4 +168,3 @@ module.exports = {
   getShare,
   updateJob,
 };
-
