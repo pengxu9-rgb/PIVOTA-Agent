@@ -19,6 +19,9 @@ describe("extractLookSpec (Layer2, US)", () => {
   test("returns a LookSpecV0 that validates", async () => {
     const provider: LlmProvider = {
       analyzeImageToJson: async ({ schema }) => schema.parse(sampleCore()),
+      analyzeTextToJson: async () => {
+        throw new Error("not used");
+      },
     };
 
     const out = await extractLookSpec({
@@ -38,6 +41,9 @@ describe("extractLookSpec (Layer2, US)", () => {
       analyzeImageToJson: async () => {
         throw new LlmError("LLM_PARSE_FAILED", "Model output is not JSON");
       },
+      analyzeTextToJson: async () => {
+        throw new Error("not used");
+      },
     };
 
     const out = await extractLookSpec({
@@ -52,4 +58,3 @@ describe("extractLookSpec (Layer2, US)", () => {
     LookSpecV0Schema.parse(out);
   });
 });
-

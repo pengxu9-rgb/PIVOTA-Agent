@@ -32,6 +32,11 @@ export interface LlmProvider {
     image: ImageInput;
     schema: TSchema;
   }): Promise<z.infer<TSchema>>;
+
+  analyzeTextToJson<TSchema extends z.ZodTypeAny>(input: {
+    prompt: string;
+    schema: TSchema;
+  }): Promise<z.infer<TSchema>>;
 }
 
 function getEnv(name: string): string | undefined {
@@ -192,6 +197,64 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
 
       throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
     },
+
+    async analyzeTextToJson({ prompt, schema }) {
+      const maxAttempts = 1 + 2; // initial + 2 retries
+      let lastErr: unknown = null;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const response = await client.post("/v1/chat/completions", {
+            model,
+            temperature: 0.2,
+            max_tokens: 900,
+            messages: [
+              {
+                role: "system",
+                content: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+              },
+              { role: "user", content: prompt },
+            ],
+          });
+
+          const content =
+            response.data?.choices?.[0]?.message?.content ??
+            response.data?.choices?.[0]?.message?.content?.[0]?.text ??
+            "";
+
+          const json = extractJsonObject(String(content));
+          const parsed = schema.safeParse(json);
+          if (!parsed.success) {
+            throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
+          }
+          return parsed.data;
+        } catch (err) {
+          if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") {
+            throw err;
+          }
+
+          if (err instanceof AxiosError) {
+            const status = err.response?.status;
+            if (err.code === "ECONNABORTED") {
+              lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+            } else {
+              const msg = status ? `LLM request failed (HTTP ${status})` : "LLM request failed";
+              lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+            }
+          } else {
+            lastErr = err;
+          }
+
+          if (attempt < maxAttempts && isRetryableError(lastErr)) {
+            await sleep(250 * attempt);
+            continue;
+          }
+          throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+        }
+      }
+
+      throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+    },
   };
 }
 
@@ -289,6 +352,62 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
 
           throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
         },
+
+        async analyzeTextToJson({ prompt, schema }) {
+          const maxAttempts = 1 + 2;
+          let lastErr: unknown = null;
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+              const response = await client.post("/v1/chat/completions", {
+                model,
+                temperature: 0.2,
+                max_tokens: 900,
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+                  },
+                  { role: "user", content: prompt },
+                ],
+              });
+
+              const content =
+                response.data?.choices?.[0]?.message?.content ??
+                response.data?.choices?.[0]?.message?.content?.[0]?.text ??
+                "";
+
+              const json = extractJsonObject(String(content));
+              const parsed = schema.safeParse(json);
+              if (!parsed.success) {
+                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
+              }
+              return parsed.data;
+            } catch (err) {
+              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
+
+              if (err instanceof AxiosError) {
+                const status = err.response?.status;
+                if (err.code === "ECONNABORTED") {
+                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+                } else {
+                  const msg = status ? `LLM request failed (HTTP ${status})` : "LLM request failed";
+                  lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+                }
+              } else {
+                lastErr = err;
+              }
+
+              if (attempt < maxAttempts && isRetryableError(lastErr)) {
+                await sleep(250 * attempt);
+                continue;
+              }
+              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+            }
+          }
+
+          throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+        },
       };
     }
 
@@ -333,6 +452,63 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
                     ],
                   },
                 ],
+                generationConfig: {
+                  temperature: 0,
+                  responseMimeType: "application/json",
+                },
+              };
+
+              const res = await axios.post(url, body, { timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000") });
+              const text =
+                res?.data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("\n") || "";
+
+              const json = extractJsonObject(String(text));
+              const parsed = schema.safeParse(json);
+              if (!parsed.success) {
+                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
+              }
+              return parsed.data;
+            } catch (err) {
+              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
+
+              if (err instanceof AxiosError) {
+                if (err.code === "ECONNABORTED") {
+                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+                } else {
+                  lastErr = new LlmError("LLM_REQUEST_FAILED", "LLM request failed", err);
+                }
+              } else if (err instanceof LlmError) {
+                lastErr = err;
+              } else {
+                lastErr = err;
+              }
+
+              if (attempt < maxAttempts && isRetryableError(lastErr)) {
+                await sleep(250 * attempt);
+                continue;
+              }
+              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+            }
+          }
+
+          throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+        },
+
+        async analyzeTextToJson({ prompt, schema }) {
+          const maxAttempts = 1 + 2;
+          let lastErr: unknown = null;
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+              const body = {
+                systemInstruction: {
+                  parts: [
+                    {
+                      text: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+                    },
+                  ],
+                },
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
                 generationConfig: {
                   temperature: 0,
                   responseMimeType: "application/json",

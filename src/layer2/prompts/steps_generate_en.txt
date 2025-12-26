@@ -1,0 +1,37 @@
+You are generating a step-by-step tutorial for replicating a makeup look.
+
+Goal:
+Given the provided JSON inputs (lookSpec + 3 adjustments), output 8 to 12 ordered steps.
+Each step MUST be grounded to either:
+- lookSpec.breakdown (base/eye/lip), OR
+- one of the 3 adjustments (base/eye/lip).
+
+Output rules (CRITICAL):
+- Output MUST be a single JSON object.
+- Output JSON ONLY. No markdown, no code fences, no prose.
+- Do NOT include any keys other than those listed below.
+- Do NOT mention or guess any celebrity/KOL or identity.
+- Do NOT infer sensitive traits; use only the provided fields.
+- Every step MUST include evidence keys (non-empty array) referencing provided inputs, e.g.:
+  - "lookSpec.breakdown.eye.keyNotes", "adjustments[eye].do"
+
+JSON shape (exact keys):
+{
+  "steps": [
+    {
+      "impactArea": "base" | "eye" | "lip",
+      "title": string,
+      "instruction": string,
+      "tips": string[],
+      "cautions": string[],
+      "fitConditions": string[],
+      "evidence": string[]
+    }
+  ],
+  "warnings": string[]
+}
+
+Constraints:
+- steps.length must be between 8 and 12 (inclusive).
+- Use a sensible order: base first, then eye, then lip (some interleaving is OK).
+- If userFaceProfile is missing, phrase instructions as "to match the reference look" and keep confidence low via cautious language.
