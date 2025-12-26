@@ -20,9 +20,31 @@ function getEnv(name) {
   return v && String(v).trim() ? String(v).trim() : undefined;
 }
 
+function hasEnv(name) {
+  return Boolean(getEnv(name));
+}
+
 function toDataUrl(bytes, contentType) {
   const b64 = Buffer.from(bytes).toString('base64');
   return `data:${contentType};base64,${b64}`;
+}
+
+function geminiApiKey() {
+  return getEnv('GEMINI_API_KEY') || getEnv('PIVOTA_GEMINI_API_KEY') || getEnv('GOOGLE_API_KEY');
+}
+
+function geminiBaseUrl() {
+  return (
+    getEnv('GEMINI_BASE_URL') ||
+    getEnv('GOOGLE_GENAI_BASE_URL') ||
+    'https://generativelanguage.googleapis.com'
+  ).replace(/\/$/, '');
+}
+
+function geminiModelName(model) {
+  const m = String(model || '').trim();
+  if (!m) return 'gemini-1.5-flash';
+  return m.startsWith('models/') ? m.slice('models/'.length) : m;
 }
 
 function extractJsonObject(text) {
@@ -80,16 +102,33 @@ async function resolveImageForGemini(image) {
 }
 
 function createProviderFromEnv(purpose = 'generic') {
-  const primary = String(
-    (getEnv(purpose === 'layer2_lookspec' ? 'PIVOTA_LAYER2_LLM_PROVIDER' : '') ||
-      getEnv('PIVOTA_INTENT_LLM_PROVIDER') ||
-      'openai')
-  ).toLowerCase();
-  const fallback = String(
-    (getEnv(purpose === 'layer2_lookspec' ? 'PIVOTA_LAYER2_LLM_FALLBACK_PROVIDER' : '') ||
-      getEnv('PIVOTA_INTENT_LLM_FALLBACK_PROVIDER') ||
-      '')
-  ).toLowerCase();
+  const explicitPrimary =
+    getEnv(purpose === 'layer2_lookspec' ? 'PIVOTA_LAYER2_LLM_PROVIDER' : '') || getEnv('PIVOTA_INTENT_LLM_PROVIDER');
+
+  const inferredPrimary =
+    purpose === 'layer2_lookspec'
+      ? geminiApiKey()
+        ? 'gemini'
+        : hasEnv('OPENAI_API_KEY')
+          ? 'openai'
+          : 'gemini'
+      : hasEnv('OPENAI_API_KEY')
+        ? 'openai'
+        : geminiApiKey()
+          ? 'gemini'
+          : 'openai';
+
+  const primary = String(explicitPrimary || inferredPrimary).toLowerCase();
+
+  const explicitFallback =
+    getEnv(purpose === 'layer2_lookspec' ? 'PIVOTA_LAYER2_LLM_FALLBACK_PROVIDER' : '') ||
+    getEnv('PIVOTA_INTENT_LLM_FALLBACK_PROVIDER');
+
+  const inferredFallback =
+    explicitFallback ||
+    (primary === 'gemini' && hasEnv('OPENAI_API_KEY') ? 'openai' : primary === 'openai' && geminiApiKey() ? 'gemini' : '');
+
+  const fallback = String(inferredFallback || '').toLowerCase();
 
   const run = (provider) => {
     if (provider === 'openai') {
@@ -196,9 +235,11 @@ function createProviderFromEnv(purpose = 'generic') {
     }
 
     if (provider === 'gemini') {
-      const apiKey = getEnv('GEMINI_API_KEY');
-      const baseURL = (getEnv('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-      const model = getEnv('PIVOTA_LAYER2_MODEL_GEMINI') || getEnv('PIVOTA_LAYER2_MODEL') || 'gemini-1.5-flash';
+      const apiKey = geminiApiKey();
+      const baseURL = geminiBaseUrl();
+      const model = geminiModelName(
+        getEnv('PIVOTA_LAYER2_MODEL_GEMINI') || getEnv('PIVOTA_LAYER2_MODEL') || 'gemini-1.5-flash'
+      );
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: GEMINI_API_KEY');
 
       const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
@@ -226,7 +267,14 @@ function createProviderFromEnv(purpose = 'generic') {
               if (err.code === 'ECONNABORTED') {
                 lastErr = new LlmError('LLM_TIMEOUT', 'LLM request timed out', err);
               } else {
-                lastErr = new LlmError('LLM_REQUEST_FAILED', 'LLM request failed', err);
+                const status = err.response?.status;
+                const apiMessage =
+                  typeof err.response?.data?.error?.message === 'string'
+                    ? String(err.response?.data?.error?.message).trim()
+                    : '';
+                const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : '';
+                const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
+                lastErr = new LlmError('LLM_REQUEST_FAILED', msg, err);
               }
             } else if (err instanceof LlmError) {
               lastErr = err;
