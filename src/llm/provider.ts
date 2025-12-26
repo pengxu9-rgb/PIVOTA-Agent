@@ -125,6 +125,51 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function llmMaxAttempts(): number {
+  const raw = Number(getEnv("LLM_MAX_ATTEMPTS") || "");
+  if (!Number.isFinite(raw) || raw <= 0) return 3;
+  return Math.max(1, Math.min(10, Math.floor(raw)));
+}
+
+function parseRetryAfterMs(headers: unknown): number | null {
+  if (!headers || typeof headers !== "object") return null;
+  const h = headers as Record<string, unknown>;
+  const v = h["retry-after"] ?? h["Retry-After"];
+  if (!v) return null;
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  const seconds = Number(s);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+
+  const dateMs = Date.parse(s);
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+
+  return null;
+}
+
+function retryDelayMs(attempt: number, err: unknown): number {
+  const base = Number(getEnv("LLM_RETRY_BASE_MS") || "750");
+  const cap = Number(getEnv("LLM_RETRY_MAX_MS") || "10000");
+  const exp = Math.min(cap, base * Math.pow(2, Math.max(0, attempt - 1)));
+  const jitter = Math.floor(Math.random() * Math.min(250, exp * 0.2));
+  const computed = Math.min(cap, exp + jitter);
+
+  let retryAfterMs: number | null = null;
+  if (err instanceof AxiosError) {
+    retryAfterMs = parseRetryAfterMs(err.response?.headers);
+  } else if (err instanceof LlmError && err.cause instanceof AxiosError) {
+    retryAfterMs = parseRetryAfterMs(err.cause.response?.headers);
+  }
+
+  if (retryAfterMs != null && Number.isFinite(retryAfterMs)) {
+    return Math.min(cap, Math.max(computed, retryAfterMs));
+  }
+
+  return computed;
+}
+
 function isRetryableError(err: unknown): boolean {
   if (err instanceof LlmError) {
     return err.code === "LLM_TIMEOUT" || err.code === "LLM_REQUEST_FAILED" || err.code === "LLM_PARSE_FAILED";
@@ -174,7 +219,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
       const imageUrl =
         image.kind === "url" ? image.url : toDataUrl(image.bytes, image.contentType);
 
-      const maxAttempts = 1 + 2; // initial + 2 retries
+      const maxAttempts = llmMaxAttempts();
       let lastErr: unknown = null;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -235,7 +280,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
           }
 
           if (attempt < maxAttempts && isRetryableError(lastErr)) {
-            await sleep(250 * attempt);
+            await sleep(retryDelayMs(attempt, err));
             continue;
           }
           throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -246,7 +291,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
     },
 
     async analyzeTextToJson({ prompt, schema }) {
-      const maxAttempts = 1 + 2; // initial + 2 retries
+      const maxAttempts = llmMaxAttempts();
       let lastErr: unknown = null;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -293,7 +338,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
           }
 
           if (attempt < maxAttempts && isRetryableError(lastErr)) {
-            await sleep(250 * attempt);
+            await sleep(retryDelayMs(attempt, err));
             continue;
           }
           throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -312,10 +357,10 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
 
   const inferredPrimary =
     purpose === "layer2_lookspec"
-      ? geminiApiKey()
-        ? "gemini"
-        : hasEnv("OPENAI_API_KEY")
-          ? "openai"
+      ? hasEnv("OPENAI_API_KEY")
+        ? "openai"
+        : geminiApiKey()
+          ? "gemini"
           : "gemini"
       : hasEnv("OPENAI_API_KEY")
         ? "openai"
@@ -365,7 +410,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
       return {
         async analyzeImageToJson({ prompt, image, schema }) {
           const imageUrl = image.kind === "url" ? image.url : toDataUrl(image.bytes, image.contentType);
-          const maxAttempts = 1 + 2;
+          const maxAttempts = llmMaxAttempts();
           let lastErr: unknown = null;
 
           for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -417,7 +462,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
               }
 
               if (attempt < maxAttempts && isRetryableError(lastErr)) {
-                await sleep(250 * attempt);
+                await sleep(retryDelayMs(attempt, err));
                 continue;
               }
               throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -428,7 +473,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
         },
 
         async analyzeTextToJson({ prompt, schema }) {
-          const maxAttempts = 1 + 2;
+          const maxAttempts = llmMaxAttempts();
           let lastErr: unknown = null;
 
           for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -473,7 +518,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
               }
 
               if (attempt < maxAttempts && isRetryableError(lastErr)) {
-                await sleep(250 * attempt);
+                await sleep(retryDelayMs(attempt, err));
                 continue;
               }
               throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -513,7 +558,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
         body: unknown,
         schema: TSchema
       ): Promise<z.infer<TSchema>> {
-        const maxAttempts = 1 + 2;
+        const maxAttempts = llmMaxAttempts();
         let lastErr: unknown = null;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -581,7 +626,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
             }
 
             if (attempt < maxAttempts && isRetryableError(lastErr)) {
-              await sleep(250 * attempt);
+              await sleep(retryDelayMs(attempt, err));
               continue;
             }
             throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

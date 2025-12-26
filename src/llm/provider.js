@@ -100,6 +100,50 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function llmMaxAttempts() {
+  const raw = Number(getEnv('LLM_MAX_ATTEMPTS') || '');
+  if (!Number.isFinite(raw) || raw <= 0) return 3;
+  return Math.max(1, Math.min(10, Math.floor(raw)));
+}
+
+function parseRetryAfterMs(headers) {
+  if (!headers || typeof headers !== 'object') return null;
+  const v = headers['retry-after'] ?? headers['Retry-After'];
+  if (!v) return null;
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  const seconds = Number(s);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+
+  const dateMs = Date.parse(s);
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+
+  return null;
+}
+
+function retryDelayMs(attempt, err) {
+  const base = Number(getEnv('LLM_RETRY_BASE_MS') || '750');
+  const cap = Number(getEnv('LLM_RETRY_MAX_MS') || '10000');
+  const exp = Math.min(cap, base * Math.pow(2, Math.max(0, attempt - 1)));
+  const jitter = Math.floor(Math.random() * Math.min(250, exp * 0.2));
+  const computed = Math.min(cap, exp + jitter);
+
+  let retryAfterMs = null;
+  if (err instanceof AxiosError) {
+    retryAfterMs = parseRetryAfterMs(err.response?.headers);
+  } else if (err instanceof LlmError && err.cause instanceof AxiosError) {
+    retryAfterMs = parseRetryAfterMs(err.cause.response?.headers);
+  }
+
+  if (retryAfterMs != null && Number.isFinite(retryAfterMs)) {
+    return Math.min(cap, Math.max(computed, retryAfterMs));
+  }
+
+  return computed;
+}
+
 function isRetryableError(err) {
   if (err instanceof LlmError) {
     return err.code === 'LLM_TIMEOUT' || err.code === 'LLM_REQUEST_FAILED' || err.code === 'LLM_PARSE_FAILED';
@@ -132,10 +176,10 @@ function createProviderFromEnv(purpose = 'generic') {
 
   const inferredPrimary =
     purpose === 'layer2_lookspec'
-      ? geminiApiKey()
-        ? 'gemini'
-        : hasEnv('OPENAI_API_KEY')
-          ? 'openai'
+      ? hasEnv('OPENAI_API_KEY')
+        ? 'openai'
+        : geminiApiKey()
+          ? 'gemini'
           : 'gemini'
       : hasEnv('OPENAI_API_KEY')
         ? 'openai'
@@ -172,7 +216,7 @@ function createProviderFromEnv(purpose = 'generic') {
       });
 
       async function postWithRetry(body, schema) {
-        const maxAttempts = 1 + 2;
+        const maxAttempts = llmMaxAttempts();
         let lastErr = null;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -206,7 +250,7 @@ function createProviderFromEnv(purpose = 'generic') {
             }
 
             if (attempt < maxAttempts && isRetryableError(lastErr)) {
-              await sleep(250 * attempt);
+              await sleep(retryDelayMs(attempt, err));
               continue;
             }
             throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -281,7 +325,7 @@ function createProviderFromEnv(purpose = 'generic') {
         `${baseURL}/${apiVersion}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
       async function postGeminiWithRetry(body, schema) {
-        const maxAttempts = 1 + 2;
+        const maxAttempts = llmMaxAttempts();
         let lastErr = null;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -344,7 +388,7 @@ function createProviderFromEnv(purpose = 'generic') {
             }
 
             if (attempt < maxAttempts && isRetryableError(lastErr)) {
-              await sleep(250 * attempt);
+              await sleep(retryDelayMs(attempt, err));
               continue;
             }
             throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -450,8 +494,8 @@ function createOpenAiCompatibleProvider() {
   });
 
   async function postWithRetry(body, schema) {
-    const maxAttempts = 1 + 2;
-    let lastErr = null;
+        const maxAttempts = llmMaxAttempts();
+        let lastErr = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
@@ -481,15 +525,15 @@ function createOpenAiCompatibleProvider() {
           lastErr = err;
         } else {
           lastErr = err;
-        }
+          }
 
-        if (attempt < maxAttempts && isRetryableError(lastErr)) {
-          await sleep(250 * attempt);
-          continue;
+          if (attempt < maxAttempts && isRetryableError(lastErr)) {
+            await sleep(retryDelayMs(attempt, err));
+            continue;
+          }
+          throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
         }
-        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
       }
-    }
 
     throw lastErr instanceof Error ? lastErr : new Error('LLM request failed');
   }
