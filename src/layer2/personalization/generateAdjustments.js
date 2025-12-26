@@ -57,7 +57,8 @@ async function generateAdjustments(input) {
     }
   }
   warnings.push(...(rephrased.warnings || []));
-  return { adjustments: parsed, warnings };
+  const usedFallback = Boolean(rendered.usedFallback) || Boolean(rephrased.usedFallback);
+  return { adjustments: parsed, warnings, usedFallback, skeletons: rendered.skeletons };
 }
 
 module.exports = {

@@ -19,6 +19,7 @@ function fallbackStepsForArea(area) {
 
 function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
   const warnings = [];
+  let usedFallback = false;
 
   const out = (inputSkeletons || []).map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
@@ -31,14 +32,17 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
       const card = kb.byId.get(id);
       if (!card) {
         warnings.push(`Missing technique card: ${id} (area=${s.impactArea}).`);
+        usedFallback = true;
         continue;
       }
       if (card.market !== 'US') {
         warnings.push(`Technique card ${id} market is not US.`);
+        usedFallback = true;
         continue;
       }
       if (card.area !== s.impactArea) {
         warnings.push(`Technique card ${id} area mismatch (expected ${s.impactArea}, got ${card.area}).`);
+        usedFallback = true;
         continue;
       }
 
@@ -56,6 +60,7 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
     const finalDoActions = uniqueStrings(doActions);
     if (!finalDoActions.length) {
       warnings.push(`No rendered doActions for ${s.impactArea}: using safe fallback steps.`);
+      usedFallback = true;
       finalDoActions.push(...fallbackStepsForArea(s.impactArea));
     }
 
@@ -76,10 +81,9 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
     throw new Error('renderSkeletonFromKB requires one skeleton per impactArea.');
   }
 
-  return { skeletons: [byArea.base, byArea.eye, byArea.lip], warnings };
+  return { skeletons: [byArea.base, byArea.eye, byArea.lip], warnings, usedFallback };
 }
 
 module.exports = {
   renderSkeletonFromKB,
 };
-

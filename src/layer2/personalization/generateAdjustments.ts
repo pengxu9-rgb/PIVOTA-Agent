@@ -4,6 +4,7 @@ import { rephraseAdjustments, Layer2AdjustmentV0, Layer2AdjustmentV0Schema } fro
 import { runAdjustmentRulesUS } from "./rules/runAdjustmentRulesUS";
 import { loadTechniqueKBUS } from "../kb/loadTechniqueKBUS";
 import { renderSkeletonFromKB } from "./renderSkeletonFromKB";
+import type { AdjustmentSkeletonV0 } from "../schemas/adjustmentSkeletonV0";
 
 export { Layer2AdjustmentV0Schema };
 export type { Layer2AdjustmentV0 };
@@ -28,6 +29,8 @@ export type GenerateAdjustmentsInput = {
 export type GenerateAdjustmentsOutput = {
   adjustments: [Layer2AdjustmentV0, Layer2AdjustmentV0, Layer2AdjustmentV0];
   warnings: string[];
+  usedFallback: boolean;
+  skeletons: [AdjustmentSkeletonV0, AdjustmentSkeletonV0, AdjustmentSkeletonV0];
 };
 
 export async function generateAdjustments(input: GenerateAdjustmentsInput): Promise<GenerateAdjustmentsOutput> {
@@ -96,5 +99,6 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
 
   warnings.push(...(rephrased.warnings || []));
 
-  return { adjustments: parsed, warnings };
+  const usedFallback = Boolean(rendered.usedFallback) || Boolean(rephrased.usedFallback);
+  return { adjustments: parsed, warnings, usedFallback, skeletons: rendered.skeletons };
 }

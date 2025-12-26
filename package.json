@@ -21,6 +21,8 @@
     "ci:layer1": "npm run test && npm run contract:test && npm run eval:layer1:us",
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
     "lint:kb:us": "node scripts/lint-technique-kb-us.js",
+    "kb:analyze:us": "node src/kb/us/runAnalyzeKBHealth.js",
+    "kb:propose:us": "node src/kb/us/proposeNewTechniqueCards.js",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"

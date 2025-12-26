@@ -6,6 +6,7 @@ const { JobQueue } = require('./jobQueue');
 const { parseMultipart, rmrf } = require('./multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
 const { randomUUID } = require('crypto');
+const { upsertOutcomeSampleFromJobCompletion } = require('../telemetry/outcomeStore');
 
 const DEFAULT_JOB_CONCURRENCY = Number(process.env.LOOK_REPLICATOR_JOB_CONCURRENCY || 2);
 const queue = new JobQueue({ concurrency: DEFAULT_JOB_CONCURRENCY });
@@ -239,7 +240,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
         const log = logger || console;
         try {
           await updateJob(jobId, { status: 'processing', progress: 10 });
-          const { result } = await runLookReplicatePipeline({
+          const { result, telemetrySample } = await runLookReplicatePipeline({
+            jobId,
             market: 'US',
             locale,
             preferenceMode,
@@ -248,6 +250,14 @@ function mountLookReplicatorRoutes(app, { logger }) {
             selfieImage,
             layer1Bundle,
           });
+
+          if (telemetrySample) {
+            try {
+              await upsertOutcomeSampleFromJobCompletion(telemetrySample);
+            } catch (err) {
+              log?.warn?.({ jobId, err: err?.message || String(err) }, 'outcome sample upsert failed');
+            }
+          }
 
           await updateJob(jobId, { status: 'completed', progress: 100, result });
         } catch (err) {
