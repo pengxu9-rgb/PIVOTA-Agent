@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { z } = require('zod');
 
-const { createProviderFromEnv } = require('../../llm/provider');
+const { createProviderFromEnv, LlmError } = require('../../llm/provider');
 const { LookSpecV0Schema } = require('../schemas/lookSpecV0');
 const { StepPlanV0Schema, StepImpactAreaSchema } = require('../schemas/stepPlanV0');
 const { Layer2AdjustmentV0Schema } = require('./generateAdjustments');
@@ -85,7 +85,7 @@ async function generateSteps(input) {
   let provider = input.provider ?? null;
   if (!provider) {
     try {
-      provider = createProviderFromEnv('generic');
+      provider = createProviderFromEnv('layer2_lookspec');
     } catch (err) {
       warnings.push('LLM config missing: using fallback steps.');
       return { steps: fallbackSteps(locale, adjustments, lowConfidence), warnings };
@@ -131,7 +131,11 @@ async function generateSteps(input) {
     );
     return { steps, warnings: [...(parsed.warnings || []), ...warnings] };
   } catch (err) {
-    warnings.push('LLM failed: using fallback steps.');
+    if (err instanceof LlmError) {
+      warnings.push(`LLM failed (${err.code}): ${String(err.message || '').slice(0, 220)}`);
+    } else {
+      warnings.push('LLM failed: using fallback steps.');
+    }
     return { steps: fallbackSteps(locale, adjustments, lowConfidence), warnings };
   }
 }

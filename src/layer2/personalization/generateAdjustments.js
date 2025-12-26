@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { z } = require('zod');
 
-const { createProviderFromEnv } = require('../../llm/provider');
+const { createProviderFromEnv, LlmError } = require('../../llm/provider');
 const { hintsFromLayer1 } = require('./hintsFromLayer1');
 const { LookSpecV0Schema } = require('../schemas/lookSpecV0');
 
@@ -119,7 +119,7 @@ async function generateAdjustments(input) {
   let provider = input.provider ?? null;
   if (!provider) {
     try {
-      provider = createProviderFromEnv('generic');
+      provider = createProviderFromEnv('layer2_lookspec');
     } catch (err) {
       warnings.push('LLM config missing: using fallback adjustments.');
       const fixed = ensureExactlyThree([], lowConfidence, warnings);
@@ -151,7 +151,11 @@ async function generateAdjustments(input) {
     const fixed = ensureExactlyThree(candidate, lowConfidence, warnings);
     return { adjustments: fixed, warnings: [...(parsed.warnings || []), ...warnings] };
   } catch (err) {
-    warnings.push('LLM failed: using fallback adjustments.');
+    if (err instanceof LlmError) {
+      warnings.push(`LLM failed (${err.code}): ${String(err.message || '').slice(0, 220)}`);
+    } else {
+      warnings.push('LLM failed: using fallback adjustments.');
+    }
     const fixed = ensureExactlyThree([], lowConfidence, warnings);
     return { adjustments: fixed, warnings };
   }

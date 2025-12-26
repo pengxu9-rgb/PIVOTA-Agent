@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 
-import { createProviderFromEnv, LlmProvider } from "../../llm/provider";
+import { createProviderFromEnv, LlmError, LlmProvider } from "../../llm/provider";
 import { hintsFromLayer1 } from "./hintsFromLayer1";
 import { LookSpecV0Schema } from "../schemas/lookSpecV0";
 
@@ -36,7 +36,7 @@ export type GenerateAdjustmentsInput = {
   market: "US";
   locale: string;
   userFaceProfile?: unknown | null;
-  refFaceProfile: unknown;
+  refFaceProfile?: unknown | null;
   similarityReport?: unknown | null;
   lookSpec: unknown;
   provider?: LlmProvider;
@@ -141,15 +141,26 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
 
   const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
   const userFace = input.userFaceProfile == null ? null : FaceProfileV0Schema.parse(input.userFaceProfile);
-  const refFace = FaceProfileV0Schema.parse(input.refFaceProfile);
+  const refFace = input.refFaceProfile == null ? null : FaceProfileV0Schema.parse(input.refFaceProfile);
   const similarityReport = input.similarityReport == null ? null : SimilarityReportV0Schema.parse(input.similarityReport);
   const hints = hintsFromLayer1(similarityReport);
 
-  const provider = input.provider ?? createProviderFromEnv("generic");
+  const warnings: string[] = [];
+  if (refFace == null) warnings.push("Missing refFaceProfile: using safer defaults.");
+  const lowConfidence = userFace == null || refFace == null;
+
+  let provider = input.provider ?? null;
+  if (!provider) {
+    try {
+      provider = createProviderFromEnv("layer2_lookspec");
+    } catch {
+      warnings.push("LLM config missing: using fallback adjustments.");
+      const fixed = ensureExactlyThree([], lowConfidence, warnings);
+      return { adjustments: fixed, warnings };
+    }
+  }
+
   const promptTemplate = loadPrompt();
-
-  const lowConfidence = userFace == null;
-
   const prompt =
     `${promptTemplate}\n\n` +
     `INPUT_JSON:\n` +
@@ -167,8 +178,6 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
       2
     );
 
-  const warnings: string[] = [];
-
   try {
     const parsed = await provider.analyzeTextToJson({
       prompt,
@@ -180,9 +189,12 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
     const mergedWarnings = [...(parsed.warnings || []), ...warnings];
     return { adjustments: fixed, warnings: mergedWarnings };
   } catch (err) {
-    warnings.push("LLM failed: using fallback adjustments.");
+    if (err instanceof LlmError) {
+      warnings.push(`LLM failed (${err.code}): ${String(err.message || "").slice(0, 220)}`);
+    } else {
+      warnings.push("LLM failed: using fallback adjustments.");
+    }
     const fixed = ensureExactlyThree([], lowConfidence, warnings);
     return { adjustments: fixed, warnings };
   }
 }
-

@@ -60,7 +60,11 @@ function geminiBaseUrl(): string {
   ).trim();
   const noTrailingSlash = raw.replace(/\/+$/, "");
   // Some deploy configs include the API version in the base URL already.
-  return noTrailingSlash.replace(/\/v1beta$/i, "").replace(/\/v1$/i, "");
+  return noTrailingSlash
+    .replace(/\/v1beta\/models$/i, "")
+    .replace(/\/v1\/models$/i, "")
+    .replace(/\/v1beta$/i, "")
+    .replace(/\/v1$/i, "");
 }
 
 function geminiModelName(model: string): string {

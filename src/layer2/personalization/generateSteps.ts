@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 
-import { createProviderFromEnv, LlmProvider } from "../../llm/provider";
+import { createProviderFromEnv, LlmError, LlmProvider } from "../../llm/provider";
 import { LookSpecV0Schema } from "../schemas/lookSpecV0";
 import { StepPlanV0, StepPlanV0Schema, StepImpactAreaSchema } from "../schemas/stepPlanV0";
 import { Layer2AdjustmentV0, Layer2AdjustmentV0Schema } from "./generateAdjustments";
@@ -101,7 +101,19 @@ export async function generateSteps(input: GenerateStepsInput): Promise<Generate
 
   const lowConfidence = input.userFaceProfile == null;
 
-  const provider = input.provider ?? createProviderFromEnv("generic");
+  const warnings: string[] = [];
+
+  let provider = input.provider ?? null;
+  if (!provider) {
+    try {
+      provider = createProviderFromEnv("layer2_lookspec");
+    } catch {
+      warnings.push("LLM config missing: using fallback steps.");
+      const steps = fallbackSteps(locale, adjustments, lowConfidence);
+      return { steps, warnings };
+    }
+  }
+
   const promptTemplate = loadPrompt();
 
   const prompt =
@@ -118,8 +130,6 @@ export async function generateSteps(input: GenerateStepsInput): Promise<Generate
       null,
       2
     );
-
-  const warnings: string[] = [];
 
   try {
     const parsed = await provider.analyzeTextToJson({ prompt, schema: StepsCoreSchema });
@@ -145,9 +155,12 @@ export async function generateSteps(input: GenerateStepsInput): Promise<Generate
 
     return { steps, warnings: [...(parsed.warnings || []), ...warnings] };
   } catch (err) {
-    warnings.push("LLM failed: using fallback steps.");
+    if (err instanceof LlmError) {
+      warnings.push(`LLM failed (${err.code}): ${String(err.message || "").slice(0, 220)}`);
+    } else {
+      warnings.push("LLM failed: using fallback steps.");
+    }
     const steps = fallbackSteps(locale, adjustments, lowConfidence);
     return { steps, warnings };
   }
 }
-

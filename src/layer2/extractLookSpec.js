@@ -49,7 +49,11 @@ function unknownLookSpec(locale, warnings) {
 }
 
 function toWarning(err) {
-  if (err instanceof LlmError) return [`LookSpec extraction failed (${err.code}).`];
+  if (err instanceof LlmError) {
+    const msg = String(err.message || '').trim();
+    const suffix = msg ? `: ${msg.slice(0, 220)}` : '';
+    return [`LookSpec extraction failed (${err.code})${suffix}`];
+  }
   return ['LookSpec extraction failed (UNEXPECTED_ERROR).'];
 }
 
