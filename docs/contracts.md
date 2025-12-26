@@ -1,6 +1,6 @@
 # Contracts (US)
 
-This repo publishes versioned, machine-readable contract artifacts for Layer 1 (US-only) so other repos (e.g. frontend) can validate payloads and responses without importing backend code.
+This repo publishes versioned, machine-readable contract artifacts for Layer 1 and Layer 2/3 (US-only) so other repos (e.g. frontend) can validate payloads and responses without importing backend code.
 
 ## What gets published
 
@@ -8,11 +8,18 @@ This repo publishes versioned, machine-readable contract artifacts for Layer 1 (
   - `contracts/us/faceProfileV0.schema.json`
   - `contracts/us/similarityReportV0.schema.json`
   - `contracts/us/layer1BundleV0.schema.json`
+  - `contracts/us/lookSpecV0.schema.json`
+  - `contracts/us/stepPlanV0.schema.json`
+  - `contracts/us/kitPlanV0.schema.json`
+  - `contracts/us/lookReplicateResultV0.schema.json`
 - Canonical fixtures (golden samples for CI):
   - `fixtures/contracts/us/faceProfileV0.sample.json`
   - `fixtures/contracts/us/compatibility.request.sample.json`
   - `fixtures/contracts/us/similarityReportV0.sample.json`
   - `fixtures/contracts/us/layer1BundleV0.sample.json`
+  - `fixtures/contracts/us/lookSpecV0.sample.json`
+  - `fixtures/contracts/us/kitPlanV0.sample.json`
+  - `fixtures/contracts/us/lookResultV0.sample.json`
 - Deterministic manifest (integrity + completeness):
   - `contracts/us/manifest.json` (sha256 for every contract file)
 
@@ -21,8 +28,14 @@ This repo publishes versioned, machine-readable contract artifacts for Layer 1 (
 Run:
 
 - `npm run contract:export`
+- `npm run contract:export:l2l3` (Layer2/3 only)
 
 This regenerates schemas, fixtures, and the manifest deterministically (stable formatting and key ordering) and overwrites the files in-place.
+
+## Smoke checks
+
+- `npm run contract:test`
+- `npm run eval:layer2_3:us` (fast contract/invariants smoke)
 
 ## Manifest
 

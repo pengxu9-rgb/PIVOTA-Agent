@@ -1,0 +1,526 @@
+{
+  "adjustments": [
+    {
+      "because": "Preserve skin texture while evening tone.",
+      "confidence": "medium",
+      "do": "Apply thin layers and spot conceal only where needed.",
+      "evidence": [
+        "lookSpec.breakdown.base.coverage"
+      ],
+      "impactArea": "base",
+      "title": "Keep base light",
+      "why": "Preserve skin texture while evening tone."
+    },
+    {
+      "because": "Maintain natural enhancement without harsh lines.",
+      "confidence": "low",
+      "do": "Use mascara lightly and skip heavy eyeliner.",
+      "evidence": [
+        "lookSpec.breakdown.eye.keyNotes[1]"
+      ],
+      "impactArea": "eye",
+      "title": "Subtle lash definition",
+      "why": "Maintain natural enhancement without harsh lines."
+    },
+    {
+      "because": "Match the hydrated, slightly tinted lip.",
+      "confidence": "medium",
+      "do": "Use a tinted balm and blot to control intensity.",
+      "evidence": [
+        "lookSpec.breakdown.lip.keyNotes[0]"
+      ],
+      "impactArea": "lip",
+      "title": "Soft tinted balm",
+      "why": "Match the hydrated, slightly tinted lip."
+    }
+  ],
+  "breakdown": {
+    "base": {
+      "coverage": "light",
+      "evidence": [
+        "skin looks even",
+        "no heavy contour",
+        "natural sheen"
+      ],
+      "finish": "natural",
+      "intent": "even skin tone, natural look",
+      "keyNotes": [
+        "freckles visible",
+        "soft glow",
+        "minimal conceal"
+      ]
+    },
+    "eye": {
+      "coverage": "light",
+      "evidence": [
+        "bright eyes",
+        "minimal shadow",
+        "defined lashes"
+      ],
+      "finish": "soft",
+      "intent": "natural enhancement",
+      "keyNotes": [
+        "subtle definition",
+        "no heavy eyeliner",
+        "natural lashes"
+      ]
+    },
+    "lip": {
+      "coverage": "light",
+      "evidence": [
+        "lips look moisturized",
+        "no bold color",
+        "even tint"
+      ],
+      "finish": "hydrated",
+      "intent": "soft, natural color",
+      "keyNotes": [
+        "hydrated appearance",
+        "slight tint",
+        "soft sheen"
+      ]
+    }
+  },
+  "kit": {
+    "kit": {
+      "base": {
+        "best": {
+          "availability": "in_stock",
+          "availabilityByMarket": {
+            "US": "in_stock"
+          },
+          "brand": "Chydan",
+          "category": "base",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-us-0.1.0",
+          "layer3EngineVersion": "l3-us-0.1.0",
+          "locale": "en",
+          "market": "US",
+          "name": "BASE Sample 1",
+          "orchestratorVersion": "orchestrator-us-0.1.0",
+          "price": {
+            "amount": 20.99,
+            "currency": "USD"
+          },
+          "priceTier": "mid",
+          "productUrl": "https://example.com/product",
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "sku_0fad49bb742c263a",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "Deterministic sample for base (mid)."
+        },
+        "dupe": {
+          "availability": "in_stock",
+          "availabilityByMarket": {
+            "US": "in_stock"
+          },
+          "brand": "Chydan",
+          "category": "base",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-us-0.1.0",
+          "layer3EngineVersion": "l3-us-0.1.0",
+          "locale": "en",
+          "market": "US",
+          "name": "BASE Sample 2",
+          "orchestratorVersion": "orchestrator-us-0.1.0",
+          "price": {
+            "amount": 21.99,
+            "currency": "USD"
+          },
+          "priceTier": "budget",
+          "productUrl": "https://example.com/product",
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "sku_80b3c63c62eeea30",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "Deterministic sample for base (budget)."
+        }
+      },
+      "eye": {
+        "best": {
+          "availability": "in_stock",
+          "availabilityByMarket": {
+            "US": "in_stock"
+          },
+          "brand": "Chydan",
+          "category": "eye",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-us-0.1.0",
+          "layer3EngineVersion": "l3-us-0.1.0",
+          "locale": "en",
+          "market": "US",
+          "name": "EYE Sample 3",
+          "orchestratorVersion": "orchestrator-us-0.1.0",
+          "price": {
+            "amount": 22.99,
+            "currency": "USD"
+          },
+          "priceTier": "mid",
+          "productUrl": "https://example.com/product",
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "sku_5329ce41a751d854",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "Deterministic sample for eye (mid)."
+        },
+        "dupe": {
+          "availability": "in_stock",
+          "availabilityByMarket": {
+            "US": "in_stock"
+          },
+          "brand": "Chydan",
+          "category": "eye",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-us-0.1.0",
+          "layer3EngineVersion": "l3-us-0.1.0",
+          "locale": "en",
+          "market": "US",
+          "name": "EYE Sample 4",
+          "orchestratorVersion": "orchestrator-us-0.1.0",
+          "price": {
+            "amount": 23.99,
+            "currency": "USD"
+          },
+          "priceTier": "budget",
+          "productUrl": "https://example.com/product",
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "sku_60775bdb84f965c6",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "Deterministic sample for eye (budget)."
+        }
+      },
+      "lip": {
+        "best": {
+          "availability": "in_stock",
+          "availabilityByMarket": {
+            "US": "in_stock"
+          },
+          "brand": "Chydan",
+          "category": "lip",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-us-0.1.0",
+          "layer3EngineVersion": "l3-us-0.1.0",
+          "locale": "en",
+          "market": "US",
+          "name": "LIP Sample 5",
+          "orchestratorVersion": "orchestrator-us-0.1.0",
+          "price": {
+            "amount": 24.99,
+            "currency": "USD"
+          },
+          "priceTier": "mid",
+          "productUrl": "https://example.com/product",
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "sku_90f9344c453ab270",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "Deterministic sample for lip (mid)."
+        },
+        "dupe": {
+          "availability": "in_stock",
+          "availabilityByMarket": {
+            "US": "in_stock"
+          },
+          "brand": "Chydan",
+          "category": "lip",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-us-0.1.0",
+          "layer3EngineVersion": "l3-us-0.1.0",
+          "locale": "en",
+          "market": "US",
+          "name": "LIP Sample 6",
+          "orchestratorVersion": "orchestrator-us-0.1.0",
+          "price": {
+            "amount": 25.99,
+            "currency": "USD"
+          },
+          "priceTier": "budget",
+          "productUrl": "https://example.com/product",
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "sku_8801dfa2c7168432",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "Deterministic sample for lip (budget)."
+        }
+      }
+    },
+    "layer2EngineVersion": "l2-us-0.1.0",
+    "layer3EngineVersion": "l3-us-0.1.0",
+    "locale": "en",
+    "market": "US",
+    "orchestratorVersion": "orchestrator-us-0.1.0",
+    "schemaVersion": "v0",
+    "warnings": []
+  },
+  "layer2EngineVersion": "l2-us-0.1.0",
+  "layer3EngineVersion": "l3-us-0.1.0",
+  "locale": "en",
+  "market": "US",
+  "orchestratorVersion": "orchestrator-us-0.1.0",
+  "schemaVersion": "v0",
+  "steps": [
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.base.intent"
+      ],
+      "fitConditions": [],
+      "impactArea": "base",
+      "instruction": "Moisturize and apply primer as needed for a smooth base.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 0,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_0",
+      "tips": [
+        "Let skincare absorb before applying makeup."
+      ],
+      "title": "Prep skin"
+    },
+    {
+      "cautions": [
+        "Avoid heavy layers that hide natural skin texture."
+      ],
+      "evidence": [
+        "lookSpec.breakdown.base.coverage"
+      ],
+      "fitConditions": [],
+      "impactArea": "base",
+      "instruction": "Use a light coverage foundation and blend evenly.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 1,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_1",
+      "tips": [
+        "Apply thin layers and build only where needed."
+      ],
+      "title": "Apply light base"
+    },
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.base.keyNotes[2]"
+      ],
+      "fitConditions": [],
+      "impactArea": "base",
+      "instruction": "Conceal only where needed and re-blend edges.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 2,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_2",
+      "tips": [],
+      "title": "Spot conceal"
+    },
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.eye.keyNotes[0]"
+      ],
+      "fitConditions": [],
+      "impactArea": "eye",
+      "instruction": "Brush brows upward and fill sparse areas lightly.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 3,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_3",
+      "tips": [
+        "Use short strokes for a natural finish."
+      ],
+      "title": "Groom brows softly"
+    },
+    {
+      "cautions": [
+        "Avoid clumps by combing through."
+      ],
+      "evidence": [
+        "lookSpec.breakdown.eye.keyNotes[2]"
+      ],
+      "fitConditions": [],
+      "impactArea": "eye",
+      "instruction": "Apply mascara with a light hand to define lashes.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 4,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_4",
+      "tips": [
+        "Wiggle at the root for lift."
+      ],
+      "title": "Define lashes"
+    },
+    {
+      "cautions": [
+        "Skip if it makes the look too heavy."
+      ],
+      "evidence": [
+        "lookSpec.breakdown.eye.finish"
+      ],
+      "fitConditions": [],
+      "impactArea": "eye",
+      "instruction": "Use a neutral wash of shadow only if needed for subtle definition.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 5,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_5",
+      "tips": [],
+      "title": "Optional soft shadow"
+    },
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.lip.keyNotes[0]"
+      ],
+      "fitConditions": [],
+      "impactArea": "lip",
+      "instruction": "Apply balm and blot so lips feel hydrated but not slippery.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 6,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_6",
+      "tips": [],
+      "title": "Prep lips"
+    },
+    {
+      "cautions": [
+        "Avoid bold colors."
+      ],
+      "evidence": [
+        "lookSpec.breakdown.lip.coverage"
+      ],
+      "fitConditions": [],
+      "impactArea": "lip",
+      "instruction": "Apply a tinted balm or sheer lipstick for a natural color.",
+      "layer2EngineVersion": "l2-us-0.1.0",
+      "layer3EngineVersion": "l3-us-0.1.0",
+      "locale": "en",
+      "market": "US",
+      "orchestratorVersion": "orchestrator-us-0.1.0",
+      "order": 7,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_7",
+      "tips": [
+        "Tap with a finger for a softer edge."
+      ],
+      "title": "Add soft tint"
+    }
+  ],
+  "warnings": []
+}

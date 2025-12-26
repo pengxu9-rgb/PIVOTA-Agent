@@ -11,6 +11,10 @@ const { SimilarityReportV0Schema } = require('../src/layer1/schemas/similarityRe
 const { Layer1BundleV0Schema } = require('../src/layer1/schemas/layer1BundleV0');
 const { runCompatibilityEngineUS } = require('../src/layer1/compatibility/us/runCompatibilityEngineUS');
 const { ENGINE_VERSION } = require('../src/layer1/compatibility/us/config/version');
+const { LookSpecV0Schema } = require('../src/layer2/schemas/lookSpecV0');
+const { StepPlanV0Schema } = require('../src/layer2/schemas/stepPlanV0');
+const { KitPlanV0Schema } = require('../src/layer3/schemas/kitPlanV0');
+const { LookReplicateResultV0Schema } = require('../src/schemas/lookReplicateResultV0');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -45,6 +49,15 @@ function sha256Hex(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
+function sha256HexString(value) {
+  return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
+}
+
+function deterministicId(prefix, seed, counter) {
+  const hex = sha256HexString(`${seed}:${counter}`).slice(0, 16);
+  return `${prefix}_${hex}`;
+}
+
 function tryGetGitCommitSha(repoRoot) {
   try {
     const sha = childProcess
@@ -76,6 +89,39 @@ async function writeContractManifest({ repoRoot, manifestPath, filePaths }) {
   };
 
   await writeJson(manifestPath, manifest);
+}
+
+async function listJsonFilesRecursively(rootDir) {
+  const entries = [];
+  async function walk(dir) {
+    const items = await fs.readdir(dir, { withFileTypes: true });
+    for (const it of items) {
+      const p = path.join(dir, it.name);
+      if (it.isDirectory()) {
+        await walk(p);
+        continue;
+      }
+      if (!it.isFile()) continue;
+      if (!it.name.endsWith('.json')) continue;
+      if (it.name === 'manifest.json') continue;
+      entries.push(p);
+    }
+  }
+  await walk(rootDir);
+  return entries.sort((a, b) => a.localeCompare(b));
+}
+
+async function writeContractManifestFromDirs({ repoRoot, manifestPath, dirs }) {
+  const files = [];
+  for (const d of dirs) {
+    files.push(...(await listJsonFilesRecursively(d)));
+  }
+
+  await writeContractManifest({
+    repoRoot,
+    manifestPath,
+    filePaths: files,
+  });
 }
 
 function makeFaceProfileSample(source, overrides = {}) {
@@ -137,6 +183,252 @@ function makeFaceProfileSample(source, overrides = {}) {
   return FaceProfileV0Schema.parse(merged);
 }
 
+function makeLookSpecSample() {
+  const locale = 'en';
+  const breakdown = {
+    base: {
+      intent: 'even skin tone, natural look',
+      finish: 'natural',
+      coverage: 'light',
+      keyNotes: ['freckles visible', 'soft glow', 'minimal conceal'],
+      evidence: ['skin looks even', 'no heavy contour', 'natural sheen'],
+    },
+    eye: {
+      intent: 'natural enhancement',
+      finish: 'soft',
+      coverage: 'light',
+      keyNotes: ['subtle definition', 'no heavy eyeliner', 'natural lashes'],
+      evidence: ['bright eyes', 'minimal shadow', 'defined lashes'],
+    },
+    lip: {
+      intent: 'soft, natural color',
+      finish: 'hydrated',
+      coverage: 'light',
+      keyNotes: ['hydrated appearance', 'slight tint', 'soft sheen'],
+      evidence: ['lips look moisturized', 'no bold color', 'even tint'],
+    },
+  };
+
+  return LookSpecV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    locale,
+    layer2EngineVersion: 'l2-us-0.1.0',
+    layer3EngineVersion: 'l3-us-0.1.0',
+    orchestratorVersion: 'orchestrator-us-0.1.0',
+    lookTitle: 'Natural Glow',
+    styleTags: ['natural', 'fresh', 'everyday'],
+    breakdown,
+    warnings: [],
+  });
+}
+
+function makeStepPlanSamples(locale) {
+  const base = {
+    schemaVersion: 'v0',
+    market: 'US',
+    locale,
+    layer2EngineVersion: 'l2-us-0.1.0',
+    layer3EngineVersion: 'l3-us-0.1.0',
+    orchestratorVersion: 'orchestrator-us-0.1.0',
+  };
+
+  const steps = [
+    {
+      stepId: 'l2_step_0',
+      order: 0,
+      impactArea: 'base',
+      title: 'Prep skin',
+      instruction: 'Moisturize and apply primer as needed for a smooth base.',
+      tips: ['Let skincare absorb before applying makeup.'],
+      cautions: [],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.base.intent'],
+    },
+    {
+      stepId: 'l2_step_1',
+      order: 1,
+      impactArea: 'base',
+      title: 'Apply light base',
+      instruction: 'Use a light coverage foundation and blend evenly.',
+      tips: ['Apply thin layers and build only where needed.'],
+      cautions: ['Avoid heavy layers that hide natural skin texture.'],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.base.coverage'],
+    },
+    {
+      stepId: 'l2_step_2',
+      order: 2,
+      impactArea: 'base',
+      title: 'Spot conceal',
+      instruction: 'Conceal only where needed and re-blend edges.',
+      tips: [],
+      cautions: [],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.base.keyNotes[2]'],
+    },
+    {
+      stepId: 'l2_step_3',
+      order: 3,
+      impactArea: 'eye',
+      title: 'Groom brows softly',
+      instruction: 'Brush brows upward and fill sparse areas lightly.',
+      tips: ['Use short strokes for a natural finish.'],
+      cautions: [],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.eye.keyNotes[0]'],
+    },
+    {
+      stepId: 'l2_step_4',
+      order: 4,
+      impactArea: 'eye',
+      title: 'Define lashes',
+      instruction: 'Apply mascara with a light hand to define lashes.',
+      tips: ['Wiggle at the root for lift.'],
+      cautions: ['Avoid clumps by combing through.'],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.eye.keyNotes[2]'],
+    },
+    {
+      stepId: 'l2_step_5',
+      order: 5,
+      impactArea: 'eye',
+      title: 'Optional soft shadow',
+      instruction: 'Use a neutral wash of shadow only if needed for subtle definition.',
+      tips: [],
+      cautions: ['Skip if it makes the look too heavy.'],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.eye.finish'],
+    },
+    {
+      stepId: 'l2_step_6',
+      order: 6,
+      impactArea: 'lip',
+      title: 'Prep lips',
+      instruction: 'Apply balm and blot so lips feel hydrated but not slippery.',
+      tips: [],
+      cautions: [],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.lip.keyNotes[0]'],
+    },
+    {
+      stepId: 'l2_step_7',
+      order: 7,
+      impactArea: 'lip',
+      title: 'Add soft tint',
+      instruction: 'Apply a tinted balm or sheer lipstick for a natural color.',
+      tips: ['Tap with a finger for a softer edge.'],
+      cautions: ['Avoid bold colors.'],
+      fitConditions: [],
+      evidence: ['lookSpec.breakdown.lip.coverage'],
+    },
+  ];
+
+  return steps.map((s) => StepPlanV0Schema.parse({ ...base, ...s }));
+}
+
+function makeProductAttributesSample({ locale, category, seed, counter, priceTier }) {
+  return {
+    schemaVersion: 'v0',
+    market: 'US',
+    locale,
+    layer2EngineVersion: 'l2-us-0.1.0',
+    layer3EngineVersion: 'l3-us-0.1.0',
+    orchestratorVersion: 'orchestrator-us-0.1.0',
+    category,
+    skuId: deterministicId('sku', seed, counter),
+    name: `${category.toUpperCase()} Sample ${counter}`,
+    brand: 'Chydan',
+    price: { currency: 'USD', amount: 19.99 + counter },
+    priceTier,
+    imageUrl: 'https://example.com/product.png',
+    productUrl: 'https://example.com/product',
+    availability: 'in_stock',
+    availabilityByMarket: { US: 'in_stock' },
+    tags: { finish: ['natural'], texture: ['cream'], coverage: ['light'], effect: [] },
+    undertoneFit: 'unknown',
+    shadeDescriptor: 'neutral',
+    whyThis: `Deterministic sample for ${category} (${priceTier}).`,
+    evidence: ['contract.fixture'],
+  };
+}
+
+function makeKitPlanSample({ locale }) {
+  const seed = 'contract.us.kitPlanV0.v0';
+  return KitPlanV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    locale,
+    layer2EngineVersion: 'l2-us-0.1.0',
+    layer3EngineVersion: 'l3-us-0.1.0',
+    orchestratorVersion: 'orchestrator-us-0.1.0',
+    kit: {
+      base: {
+        best: makeProductAttributesSample({ locale, category: 'base', seed, counter: 1, priceTier: 'mid' }),
+        dupe: makeProductAttributesSample({ locale, category: 'base', seed, counter: 2, priceTier: 'budget' }),
+      },
+      eye: {
+        best: makeProductAttributesSample({ locale, category: 'eye', seed, counter: 3, priceTier: 'mid' }),
+        dupe: makeProductAttributesSample({ locale, category: 'eye', seed, counter: 4, priceTier: 'budget' }),
+      },
+      lip: {
+        best: makeProductAttributesSample({ locale, category: 'lip', seed, counter: 5, priceTier: 'mid' }),
+        dupe: makeProductAttributesSample({ locale, category: 'lip', seed, counter: 6, priceTier: 'budget' }),
+      },
+    },
+    warnings: [],
+  });
+}
+
+function makeLookResultSample() {
+  const lookSpec = makeLookSpecSample();
+  const locale = lookSpec.locale;
+  const steps = makeStepPlanSamples(locale);
+  const kit = makeKitPlanSample({ locale });
+
+  return LookReplicateResultV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    locale,
+    layer2EngineVersion: 'l2-us-0.1.0',
+    layer3EngineVersion: 'l3-us-0.1.0',
+    orchestratorVersion: 'orchestrator-us-0.1.0',
+    breakdown: lookSpec.breakdown,
+    adjustments: [
+      {
+        impactArea: 'base',
+        title: 'Keep base light',
+        because: 'Preserve skin texture while evening tone.',
+        do: 'Apply thin layers and spot conceal only where needed.',
+        why: 'Preserve skin texture while evening tone.',
+        evidence: ['lookSpec.breakdown.base.coverage'],
+        confidence: 'medium',
+      },
+      {
+        impactArea: 'eye',
+        title: 'Subtle lash definition',
+        because: 'Maintain natural enhancement without harsh lines.',
+        do: 'Use mascara lightly and skip heavy eyeliner.',
+        why: 'Maintain natural enhancement without harsh lines.',
+        evidence: ['lookSpec.breakdown.eye.keyNotes[1]'],
+        confidence: 'low',
+      },
+      {
+        impactArea: 'lip',
+        title: 'Soft tinted balm',
+        because: 'Match the hydrated, slightly tinted lip.',
+        do: 'Use a tinted balm and blot to control intensity.',
+        why: 'Match the hydrated, slightly tinted lip.',
+        evidence: ['lookSpec.breakdown.lip.keyNotes[0]'],
+        confidence: 'medium',
+      },
+    ],
+    steps,
+    kit,
+    warnings: [],
+  });
+}
+
 function makeCompatibilityRequestSample() {
   const refFaceProfile = makeFaceProfileSample('reference', {
     geometry: { eyeTiltDeg: 10.0, lipFullnessRatio: 0.18 },
@@ -159,6 +451,13 @@ function makeCompatibilityRequestSample() {
 }
 
 async function main() {
+  const argv = process.argv.slice(2);
+  const onlyLayer1 = argv.includes('--layer1');
+  const onlyL2L3 = argv.includes('--l2l3');
+  if (onlyLayer1 && onlyL2L3) {
+    throw new Error('Use at most one of: --layer1, --l2l3');
+  }
+
   const repoRoot = path.resolve(__dirname, '..');
   const contractsDir = path.join(repoRoot, 'contracts', 'us');
   const fixturesDir = path.join(repoRoot, 'fixtures', 'contracts', 'us');
@@ -167,60 +466,70 @@ async function main() {
     throw new Error('ENGINE_VERSION is missing');
   }
 
-  const faceProfileSchema = zodToJsonSchema(FaceProfileV0Schema, {
-    name: 'FaceProfileV0',
-    $refStrategy: 'none',
-  });
-  const similaritySchema = zodToJsonSchema(SimilarityReportV0Schema, {
-    name: 'SimilarityReportV0',
-    $refStrategy: 'none',
-  });
-  const bundleSchema = zodToJsonSchema(Layer1BundleV0Schema, {
-    name: 'Layer1BundleV0',
-    $refStrategy: 'none',
-  });
+  if (!onlyL2L3) {
+    const faceProfileSchema = zodToJsonSchema(FaceProfileV0Schema, {
+      name: 'FaceProfileV0',
+      $refStrategy: 'none',
+    });
+    const similaritySchema = zodToJsonSchema(SimilarityReportV0Schema, {
+      name: 'SimilarityReportV0',
+      $refStrategy: 'none',
+    });
+    const bundleSchema = zodToJsonSchema(Layer1BundleV0Schema, {
+      name: 'Layer1BundleV0',
+      $refStrategy: 'none',
+    });
 
-  await writeJson(path.join(contractsDir, 'faceProfileV0.schema.json'), faceProfileSchema);
-  await writeJson(path.join(contractsDir, 'similarityReportV0.schema.json'), similaritySchema);
-  await writeJson(path.join(contractsDir, 'layer1BundleV0.schema.json'), bundleSchema);
+    await writeJson(path.join(contractsDir, 'faceProfileV0.schema.json'), faceProfileSchema);
+    await writeJson(path.join(contractsDir, 'similarityReportV0.schema.json'), similaritySchema);
+    await writeJson(path.join(contractsDir, 'layer1BundleV0.schema.json'), bundleSchema);
 
-  const requestSample = makeCompatibilityRequestSample();
-  const reportSample = runCompatibilityEngineUS({
-    market: 'US',
-    preferenceMode: requestSample.preferenceMode,
-    userFaceProfile: requestSample.userFaceProfile,
-    refFaceProfile: requestSample.refFaceProfile,
-    locale: requestSample.locale,
-  });
+    const requestSample = makeCompatibilityRequestSample();
+    const reportSample = runCompatibilityEngineUS({
+      market: 'US',
+      preferenceMode: requestSample.preferenceMode,
+      userFaceProfile: requestSample.userFaceProfile,
+      refFaceProfile: requestSample.refFaceProfile,
+      locale: requestSample.locale,
+    });
 
-  const bundleSample = Layer1BundleV0Schema.parse({
-    schemaVersion: 'v0',
-    market: 'US',
-    locale: requestSample.locale,
-    preferenceMode: requestSample.preferenceMode,
-    createdAt: '2025-01-01T00:00:00.000Z',
-    userFaceProfile: requestSample.userFaceProfile,
-    refFaceProfile: requestSample.refFaceProfile,
-    similarityReport: reportSample,
-  });
+    const bundleSample = Layer1BundleV0Schema.parse({
+      schemaVersion: 'v0',
+      market: 'US',
+      locale: requestSample.locale,
+      preferenceMode: requestSample.preferenceMode,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      userFaceProfile: requestSample.userFaceProfile,
+      refFaceProfile: requestSample.refFaceProfile,
+      similarityReport: reportSample,
+    });
 
-  await writeJson(path.join(fixturesDir, 'faceProfileV0.sample.json'), requestSample.refFaceProfile);
-  await writeJson(path.join(fixturesDir, 'compatibility.request.sample.json'), requestSample);
-  await writeJson(path.join(fixturesDir, 'similarityReportV0.sample.json'), reportSample);
-  await writeJson(path.join(fixturesDir, 'layer1BundleV0.sample.json'), bundleSample);
+    await writeJson(path.join(fixturesDir, 'faceProfileV0.sample.json'), requestSample.refFaceProfile);
+    await writeJson(path.join(fixturesDir, 'compatibility.request.sample.json'), requestSample);
+    await writeJson(path.join(fixturesDir, 'similarityReportV0.sample.json'), reportSample);
+    await writeJson(path.join(fixturesDir, 'layer1BundleV0.sample.json'), bundleSample);
+  }
 
-  await writeContractManifest({
+  if (!onlyLayer1) {
+    const lookSpecSchema = zodToJsonSchema(LookSpecV0Schema, { name: 'LookSpecV0', $refStrategy: 'none' });
+    const stepPlanSchema = zodToJsonSchema(StepPlanV0Schema, { name: 'StepPlanV0', $refStrategy: 'none' });
+    const kitPlanSchema = zodToJsonSchema(KitPlanV0Schema, { name: 'KitPlanV0', $refStrategy: 'none' });
+    const lookResultSchema = zodToJsonSchema(LookReplicateResultV0Schema, { name: 'LookReplicateResultV0', $refStrategy: 'none' });
+
+    await writeJson(path.join(contractsDir, 'lookSpecV0.schema.json'), lookSpecSchema);
+    await writeJson(path.join(contractsDir, 'stepPlanV0.schema.json'), stepPlanSchema);
+    await writeJson(path.join(contractsDir, 'kitPlanV0.schema.json'), kitPlanSchema);
+    await writeJson(path.join(contractsDir, 'lookReplicateResultV0.schema.json'), lookResultSchema);
+
+    await writeJson(path.join(fixturesDir, 'lookSpecV0.sample.json'), makeLookSpecSample());
+    await writeJson(path.join(fixturesDir, 'kitPlanV0.sample.json'), makeKitPlanSample({ locale: 'en' }));
+    await writeJson(path.join(fixturesDir, 'lookResultV0.sample.json'), makeLookResultSample());
+  }
+
+  await writeContractManifestFromDirs({
     repoRoot,
     manifestPath: path.join(contractsDir, 'manifest.json'),
-    filePaths: [
-      path.join(contractsDir, 'faceProfileV0.schema.json'),
-      path.join(contractsDir, 'similarityReportV0.schema.json'),
-      path.join(contractsDir, 'layer1BundleV0.schema.json'),
-      path.join(fixturesDir, 'faceProfileV0.sample.json'),
-      path.join(fixturesDir, 'compatibility.request.sample.json'),
-      path.join(fixturesDir, 'similarityReportV0.sample.json'),
-      path.join(fixturesDir, 'layer1BundleV0.sample.json'),
-    ],
+    dirs: [contractsDir, fixturesDir],
   });
 }
 

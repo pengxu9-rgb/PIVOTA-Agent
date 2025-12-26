@@ -5,12 +5,28 @@
       "sha256": "48eed6ee1f4da577f7a8156dd50c9261d594d517e71be9fa62e9c46b2eecc94c"
     },
     {
+      "path": "contracts/us/kitPlanV0.schema.json",
+      "sha256": "64723365069ce87ebc6be6965d014ae54231029a5a54b4a6a1a1719ca3c8dcba"
+    },
+    {
       "path": "contracts/us/layer1BundleV0.schema.json",
       "sha256": "4493611492a9521283d5f56341e2d5ebddad0c1165bd476faa2ecddb0e1b1fff"
     },
     {
+      "path": "contracts/us/lookReplicateResultV0.schema.json",
+      "sha256": "657025030ac5ff985e043802e0264d95c05f3bdea293cfb6ee6b925c588bc57c"
+    },
+    {
+      "path": "contracts/us/lookSpecV0.schema.json",
+      "sha256": "ad62811d0ddf7f57d2492840044d54a9a1080f92d706edc8d380a2a87e2cecd4"
+    },
+    {
       "path": "contracts/us/similarityReportV0.schema.json",
       "sha256": "2f711f32be18767ac4c9b03f6b73fd1aa7401d2917dfd44d6c15af8a1606798b"
+    },
+    {
+      "path": "contracts/us/stepPlanV0.schema.json",
+      "sha256": "a5e1ae865dd3dce31540342d23dd4ff178e7cd0c82bd85ce13d6a885fb001821"
     },
     {
       "path": "fixtures/contracts/us/compatibility.request.sample.json",
@@ -21,8 +37,20 @@
       "sha256": "d7e1fd45d376ed10fa684b329586aafc29a804d1a057df83f7816307af59017b"
     },
     {
+      "path": "fixtures/contracts/us/kitPlanV0.sample.json",
+      "sha256": "ca775b1cbc71ab9511b9b8095939ca3fe0e0c07ff7c6acd53ca92c4b21fa9848"
+    },
+    {
       "path": "fixtures/contracts/us/layer1BundleV0.sample.json",
       "sha256": "cfad6153b99502be6dfa7bb320f07f22aa0d3383cbb4498c39c4f9935376c718"
+    },
+    {
+      "path": "fixtures/contracts/us/lookResultV0.sample.json",
+      "sha256": "6ba1387c023c5f82ea9c735e5e11f0d5b819c6974d5f4376abdc285424bba0ee"
+    },
+    {
+      "path": "fixtures/contracts/us/lookSpecV0.sample.json",
+      "sha256": "a382b19f0d5d43230edc7e41a767b2394953d2b66dd3fc6c78105523dea9d998"
     },
     {
       "path": "fixtures/contracts/us/similarityReportV0.sample.json",
@@ -30,5 +58,5 @@
     }
   ],
   "generatedAt": "2025-01-01T00:00:00.000Z",
-  "refHint": "c72a58de1e61797bfee420efd8ed5dead1672bb4"
+  "refHint": "93caee9fc3e302e638edca354d41a996988dd33b"
 }

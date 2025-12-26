@@ -1,0 +1,263 @@
+{
+  "kit": {
+    "base": {
+      "best": {
+        "availability": "in_stock",
+        "availabilityByMarket": {
+          "US": "in_stock"
+        },
+        "brand": "Chydan",
+        "category": "base",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-us-0.1.0",
+        "layer3EngineVersion": "l3-us-0.1.0",
+        "locale": "en",
+        "market": "US",
+        "name": "BASE Sample 1",
+        "orchestratorVersion": "orchestrator-us-0.1.0",
+        "price": {
+          "amount": 20.99,
+          "currency": "USD"
+        },
+        "priceTier": "mid",
+        "productUrl": "https://example.com/product",
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "sku_0fad49bb742c263a",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "Deterministic sample for base (mid)."
+      },
+      "dupe": {
+        "availability": "in_stock",
+        "availabilityByMarket": {
+          "US": "in_stock"
+        },
+        "brand": "Chydan",
+        "category": "base",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-us-0.1.0",
+        "layer3EngineVersion": "l3-us-0.1.0",
+        "locale": "en",
+        "market": "US",
+        "name": "BASE Sample 2",
+        "orchestratorVersion": "orchestrator-us-0.1.0",
+        "price": {
+          "amount": 21.99,
+          "currency": "USD"
+        },
+        "priceTier": "budget",
+        "productUrl": "https://example.com/product",
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "sku_80b3c63c62eeea30",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "Deterministic sample for base (budget)."
+      }
+    },
+    "eye": {
+      "best": {
+        "availability": "in_stock",
+        "availabilityByMarket": {
+          "US": "in_stock"
+        },
+        "brand": "Chydan",
+        "category": "eye",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-us-0.1.0",
+        "layer3EngineVersion": "l3-us-0.1.0",
+        "locale": "en",
+        "market": "US",
+        "name": "EYE Sample 3",
+        "orchestratorVersion": "orchestrator-us-0.1.0",
+        "price": {
+          "amount": 22.99,
+          "currency": "USD"
+        },
+        "priceTier": "mid",
+        "productUrl": "https://example.com/product",
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "sku_5329ce41a751d854",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "Deterministic sample for eye (mid)."
+      },
+      "dupe": {
+        "availability": "in_stock",
+        "availabilityByMarket": {
+          "US": "in_stock"
+        },
+        "brand": "Chydan",
+        "category": "eye",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-us-0.1.0",
+        "layer3EngineVersion": "l3-us-0.1.0",
+        "locale": "en",
+        "market": "US",
+        "name": "EYE Sample 4",
+        "orchestratorVersion": "orchestrator-us-0.1.0",
+        "price": {
+          "amount": 23.99,
+          "currency": "USD"
+        },
+        "priceTier": "budget",
+        "productUrl": "https://example.com/product",
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "sku_60775bdb84f965c6",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "Deterministic sample for eye (budget)."
+      }
+    },
+    "lip": {
+      "best": {
+        "availability": "in_stock",
+        "availabilityByMarket": {
+          "US": "in_stock"
+        },
+        "brand": "Chydan",
+        "category": "lip",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-us-0.1.0",
+        "layer3EngineVersion": "l3-us-0.1.0",
+        "locale": "en",
+        "market": "US",
+        "name": "LIP Sample 5",
+        "orchestratorVersion": "orchestrator-us-0.1.0",
+        "price": {
+          "amount": 24.99,
+          "currency": "USD"
+        },
+        "priceTier": "mid",
+        "productUrl": "https://example.com/product",
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "sku_90f9344c453ab270",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "Deterministic sample for lip (mid)."
+      },
+      "dupe": {
+        "availability": "in_stock",
+        "availabilityByMarket": {
+          "US": "in_stock"
+        },
+        "brand": "Chydan",
+        "category": "lip",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-us-0.1.0",
+        "layer3EngineVersion": "l3-us-0.1.0",
+        "locale": "en",
+        "market": "US",
+        "name": "LIP Sample 6",
+        "orchestratorVersion": "orchestrator-us-0.1.0",
+        "price": {
+          "amount": 25.99,
+          "currency": "USD"
+        },
+        "priceTier": "budget",
+        "productUrl": "https://example.com/product",
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "sku_8801dfa2c7168432",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "Deterministic sample for lip (budget)."
+      }
+    }
+  },
+  "layer2EngineVersion": "l2-us-0.1.0",
+  "layer3EngineVersion": "l3-us-0.1.0",
+  "locale": "en",
+  "market": "US",
+  "orchestratorVersion": "orchestrator-us-0.1.0",
+  "schemaVersion": "v0",
+  "warnings": []
+}

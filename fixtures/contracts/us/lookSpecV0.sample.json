@@ -1,0 +1,62 @@
+{
+  "breakdown": {
+    "base": {
+      "coverage": "light",
+      "evidence": [
+        "skin looks even",
+        "no heavy contour",
+        "natural sheen"
+      ],
+      "finish": "natural",
+      "intent": "even skin tone, natural look",
+      "keyNotes": [
+        "freckles visible",
+        "soft glow",
+        "minimal conceal"
+      ]
+    },
+    "eye": {
+      "coverage": "light",
+      "evidence": [
+        "bright eyes",
+        "minimal shadow",
+        "defined lashes"
+      ],
+      "finish": "soft",
+      "intent": "natural enhancement",
+      "keyNotes": [
+        "subtle definition",
+        "no heavy eyeliner",
+        "natural lashes"
+      ]
+    },
+    "lip": {
+      "coverage": "light",
+      "evidence": [
+        "lips look moisturized",
+        "no bold color",
+        "even tint"
+      ],
+      "finish": "hydrated",
+      "intent": "soft, natural color",
+      "keyNotes": [
+        "hydrated appearance",
+        "slight tint",
+        "soft sheen"
+      ]
+    }
+  },
+  "layer2EngineVersion": "l2-us-0.1.0",
+  "layer3EngineVersion": "l3-us-0.1.0",
+  "locale": "en",
+  "lookTitle": "Natural Glow",
+  "market": "US",
+  "orchestratorVersion": "orchestrator-us-0.1.0",
+  "schemaVersion": "v0",
+  "styleTags": [
+    "natural",
+    "fresh",
+    "everyday"
+  ],
+  "warnings": []
+}
