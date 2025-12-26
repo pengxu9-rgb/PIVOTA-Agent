@@ -260,6 +260,26 @@ function isRetryableQuoteError(code) {
 
 const app = express();
 
+async function fetchBackendAdmin({ method, path, params, data }) {
+  if (!ADMIN_API_KEY) {
+    const err = new Error('ADMIN_API_KEY_NOT_CONFIGURED');
+    err.status = 500;
+    throw err;
+  }
+  const url = `${PIVOTA_API_BASE}${path}`;
+  return await axios({
+    method,
+    url,
+    headers: {
+      ...(method !== 'GET' && { 'Content-Type': 'application/json' }),
+      'X-ADMIN-KEY': ADMIN_API_KEY,
+    },
+    timeout: 15000,
+    ...(params ? { params } : {}),
+    ...(data ? { data } : {}),
+  });
+}
+
 // ---------------- Promotion / deals enrichment helpers ----------------
 
 const CHANNEL_CREATOR = 'creator_agents';
@@ -1895,6 +1915,90 @@ app.delete('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
     return res.status(404).json({ error: 'NOT_FOUND' });
   }
   return res.json({ ok: true });
+});
+
+// ---------------- Merchant risk ops API (v0, admin-key protected) ----------------
+
+app.get('/api/merchant/disputes', requireAdmin, async (req, res) => {
+  const { merchantId, status, source, limit, offset } = req.query;
+  try {
+    const resp = await fetchBackendAdmin({
+      method: 'GET',
+      path: '/agent/internal/disputes',
+      params: {
+        ...(merchantId ? { merchantId } : {}),
+        ...(status ? { status } : {}),
+        ...(source ? { source } : {}),
+        ...(limit ? { limit } : {}),
+        ...(offset ? { offset } : {}),
+      },
+    });
+    return res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const { code, message, data } = extractUpstreamErrorCode(err);
+    const statusCode = err?.response?.status || err?.status || 500;
+    return res.status(statusCode).json({
+      error: code || 'FAILED_TO_FETCH_DISPUTES',
+      message: message || 'Failed to fetch disputes',
+      details: data || null,
+    });
+  }
+});
+
+app.get('/api/merchant/returns', requireAdmin, async (req, res) => {
+  const { merchantId, status, limit, offset } = req.query;
+  try {
+    const resp = await fetchBackendAdmin({
+      method: 'GET',
+      path: '/agent/internal/returns',
+      params: {
+        ...(merchantId ? { merchantId } : {}),
+        ...(status ? { status } : {}),
+        ...(limit ? { limit } : {}),
+        ...(offset ? { offset } : {}),
+      },
+    });
+    return res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const { code, message, data } = extractUpstreamErrorCode(err);
+    const statusCode = err?.response?.status || err?.status || 500;
+    return res.status(statusCode).json({
+      error: code || 'FAILED_TO_FETCH_RETURNS',
+      message: message || 'Failed to fetch returns',
+      details: data || null,
+    });
+  }
+});
+
+app.post('/api/merchant/returns/sync', requireAdmin, async (req, res) => {
+  const merchantId = req.body?.merchantId || req.body?.merchant_id;
+  const limit = req.body?.limit;
+  const apiVersion = req.body?.apiVersion || req.body?.api_version;
+
+  if (!merchantId) {
+    return res.status(400).json({ error: 'MISSING_MERCHANT_ID', message: 'merchantId is required' });
+  }
+
+  try {
+    const resp = await fetchBackendAdmin({
+      method: 'POST',
+      path: '/agent/internal/returns/sync',
+      params: {
+        merchantId,
+        ...(limit ? { limit } : {}),
+        ...(apiVersion ? { apiVersion } : {}),
+      },
+    });
+    return res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const { code, message, data } = extractUpstreamErrorCode(err);
+    const statusCode = err?.response?.status || err?.status || 500;
+    return res.status(statusCode).json({
+      error: code || 'FAILED_TO_SYNC_RETURNS',
+      message: message || 'Failed to sync returns',
+      details: data || null,
+    });
+  }
 });
 
 // ---------------- Main invoke endpoint ----------------
