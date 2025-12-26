@@ -46,6 +46,8 @@
     "jest": "^30.2.0",
     "nock": "^14.0.10",
     "supertest": "^7.1.4",
+    "ts-jest": "^29.4.4",
+    "typescript": "^5.9.2",
     "zod-to-json-schema": "^3.25.0"
   }
 }

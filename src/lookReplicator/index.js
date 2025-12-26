@@ -31,7 +31,7 @@ function scheduleMockProgress({ jobId, market, locale, logger }) {
   let total = 0;
   for (const s of stages) {
     total += s.delay;
-    setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         if (s.status === 'completed') {
           const result = makeMockLookResult({ shareId: jobId, market, locale });
@@ -43,6 +43,8 @@ function scheduleMockProgress({ jobId, market, locale, logger }) {
         logger?.warn({ jobId, err: err?.message || String(err) }, 'lookReplicator job update failed');
       }
     }, total);
+    // Avoid keeping the Node process alive in tests (Supertest runs without app.listen()).
+    if (timer && typeof timer.unref === 'function') timer.unref();
   }
 }
 
@@ -151,4 +153,3 @@ function mountLookReplicatorRoutes(app, { logger }) {
 module.exports = {
   mountLookReplicatorRoutes,
 };
-
