@@ -118,11 +118,15 @@ async function getCandidates(input) {
 
   await Promise.all(
     categories.map(async (category) => {
-      const query = buildQueryForCategory(category, lookSpec);
-      const products = await fetcher({ query, limit: limitPerCategory });
-      const expanded = products.flatMap((p) => explodeVariantsToSkus(p));
-      const filtered = expanded.filter((p) => matchesCategory(category, p));
-      results[category] = filtered.slice(0, limitPerCategory);
+      try {
+        const query = buildQueryForCategory(category, lookSpec);
+        const products = await fetcher({ query, limit: limitPerCategory });
+        const expanded = products.flatMap((p) => explodeVariantsToSkus(p));
+        const filtered = expanded.filter((p) => matchesCategory(category, p));
+        results[category] = filtered.slice(0, limitPerCategory);
+      } catch {
+        results[category] = [];
+      }
     })
   );
 
