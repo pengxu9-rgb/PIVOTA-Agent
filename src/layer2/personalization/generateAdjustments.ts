@@ -2,6 +2,8 @@ import { LlmProvider } from "../../llm/provider";
 import { LookSpecV0Schema } from "../schemas/lookSpecV0";
 import { rephraseAdjustments, Layer2AdjustmentV0, Layer2AdjustmentV0Schema } from "./rephraseAdjustments";
 import { runAdjustmentRulesUS } from "./rules/runAdjustmentRulesUS";
+import { loadTechniqueKBUS } from "../kb/loadTechniqueKBUS";
+import { renderSkeletonFromKB } from "./renderSkeletonFromKB";
 
 export { Layer2AdjustmentV0Schema };
 export type { Layer2AdjustmentV0 };
@@ -56,10 +58,24 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
     preferenceMode: preferenceMode as any,
   });
 
+  const kb = loadTechniqueKBUS();
+  const rendered = renderSkeletonFromKB(
+    skeletons,
+    kb,
+    {
+      userFaceProfile: userFace,
+      refFaceProfile: refFace,
+      similarityReport,
+      lookSpec,
+      preferenceMode: preferenceMode as any,
+    },
+  );
+  warnings.push(...rendered.warnings);
+
   const rephrased = await rephraseAdjustments({
     market: "US",
     locale,
-    skeletons,
+    skeletons: rendered.skeletons,
     provider: input.provider,
   });
 
@@ -73,7 +89,7 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
   for (const a of parsed) {
     if (!a.evidence?.length) {
       warnings.push(`Adjustment ${a.impactArea} missing evidence: using skeleton evidenceKeys.`);
-      const sk = skeletons.find((s) => s.impactArea === a.impactArea);
+      const sk = rendered.skeletons.find((s) => s.impactArea === a.impactArea);
       if (sk) a.evidence = sk.evidenceKeys;
     }
   }

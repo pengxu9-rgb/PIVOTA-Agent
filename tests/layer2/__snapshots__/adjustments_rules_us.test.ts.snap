@@ -8,11 +8,13 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3
       "Building coverage in thin passes reduces caking while still matching the reference.",
     ],
     "confidence": "medium",
-    "doActions": [
-      "Build coverage in thin layers.",
-      "Conceal only where needed, then re-blend edges.",
-      "Set strategically to preserve the intended finish.",
+    "doActionIds": [
+      "T_BASE_BUILD_COVERAGE_THIN_PASSES",
+      "T_BASE_SPOT_CONCEAL_ONLY",
+      "T_BASE_SET_TZONE_LIGHT",
+      "T_BASE_MIST_MELT",
     ],
+    "doActions": [],
     "evidenceKeys": [
       "lookSpec.breakdown.base.coverage",
       "lookSpec.breakdown.base.finish",
@@ -38,11 +40,13 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3
       "Eye tilt differs between user and reference, so wing angle needs adjustment.",
     ],
     "confidence": "medium",
-    "doActions": [
-      "Start liner from the outer third.",
-      "Keep the wing shorter.",
-      "Angle slightly more horizontal, then connect back with a thin stroke.",
+    "doActionIds": [
+      "T_EYE_LINER_OUTER_THIRD_START",
+      "T_EYE_WING_SHORTEN",
+      "T_EYE_WING_ANGLE_MORE_HORIZONTAL",
+      "T_EYE_FILL_GAP_LASHLINE",
     ],
+    "doActions": [],
     "evidenceKeys": [
       "userFaceProfile.geometry.eyeTiltDeg",
       "refFaceProfile.geometry.eyeTiltDeg",
@@ -71,11 +75,12 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3
       "A center-focused gloss effect is a safe way to match finish and enhance shape without over-lining.",
     ],
     "confidence": "medium",
-    "doActions": [
-      "Keep the lip line soft.",
-      "Concentrate gloss in the center of the lips.",
-      "Stay in the closest shade family to the reference.",
+    "doActionIds": [
+      "T_LIP_SOFT_EDGE",
+      "T_LIP_GLOSS_CENTER",
+      "T_LIP_SHADE_CLOSE_FAMILY",
     ],
+    "doActions": [],
     "evidenceKeys": [
       "lookSpec.breakdown.lip.finish",
       "userFaceProfile.geometry.lipFullnessRatio",

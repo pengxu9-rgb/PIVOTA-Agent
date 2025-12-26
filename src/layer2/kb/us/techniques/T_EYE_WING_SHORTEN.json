@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_WING_SHORTEN",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Keep the wing shorter",
+    "steps": [
+      "Keep the wing shorter than you think at first.",
+      "Extend only if you still need more emphasis."
+    ]
+  },
+  "rationaleTemplate": [
+    "A shorter wing is easier to control and reduces sensitivity to geometry differences."
+  ],
+  "productRoleHints": ["liner"]
+}
+

@@ -10,6 +10,8 @@ import {
 } from "../../src/layer2/personalization/rephraseAdjustments";
 import { AdjustmentSkeletonV0Schema } from "../../src/layer2/schemas/adjustmentSkeletonV0";
 import { LlmProvider } from "../../src/llm/provider";
+import { loadTechniqueKBUS } from "../../src/layer2/kb/loadTechniqueKBUS";
+import { renderSkeletonFromKB } from "../../src/layer2/personalization/renderSkeletonFromKB";
 
 function loadFixture(name: string) {
   const p = path.join(__dirname, "..", "fixtures", "layer2", name);
@@ -33,6 +35,7 @@ describe("Layer2 US adjustment rules-first", () => {
       const parsed = AdjustmentSkeletonV0Schema.parse(s);
       expect(parsed.ruleId).toBeTruthy();
       expect(parsed.evidenceKeys.length).toBeGreaterThan(0);
+      expect(parsed.doActionIds?.length).toBeGreaterThan(0);
     }
 
     expect(skeletons).toMatchSnapshot();
@@ -40,13 +43,23 @@ describe("Layer2 US adjustment rules-first", () => {
 
   test("rephraseAdjustments accepts valid LLM output and passes validator", async () => {
     const fixture = loadFixture("us_adjustments_rules_input.json");
-    const skeletons = runAdjustmentRulesUS({
+    const rawSkeletons = runAdjustmentRulesUS({
       userFaceProfile: fixture.userFaceProfile,
       refFaceProfile: fixture.refFaceProfile,
       similarityReport: fixture.similarityReport,
       lookSpec: fixture.lookSpec,
       preferenceMode: "structure",
     });
+
+    const kb = loadTechniqueKBUS();
+    const rendered = renderSkeletonFromKB(rawSkeletons, kb, {
+      userFaceProfile: fixture.userFaceProfile,
+      refFaceProfile: fixture.refFaceProfile,
+      similarityReport: fixture.similarityReport,
+      lookSpec: fixture.lookSpec,
+      preferenceMode: "structure",
+    });
+    const skeletons = rendered.skeletons;
 
     const allowedEvidenceByArea = Object.fromEntries(skeletons.map((s) => [s.impactArea, s.evidenceKeys])) as Record<
       "base" | "eye" | "lip",
@@ -80,13 +93,23 @@ describe("Layer2 US adjustment rules-first", () => {
 
   test("rephraseAdjustments falls back when LLM adds identity language", async () => {
     const fixture = loadFixture("us_adjustments_rules_input.json");
-    const skeletons = runAdjustmentRulesUS({
+    const rawSkeletons = runAdjustmentRulesUS({
       userFaceProfile: fixture.userFaceProfile,
       refFaceProfile: fixture.refFaceProfile,
       similarityReport: fixture.similarityReport,
       lookSpec: fixture.lookSpec,
       preferenceMode: "structure",
     });
+
+    const kb = loadTechniqueKBUS();
+    const rendered = renderSkeletonFromKB(rawSkeletons, kb, {
+      userFaceProfile: fixture.userFaceProfile,
+      refFaceProfile: fixture.refFaceProfile,
+      similarityReport: fixture.similarityReport,
+      lookSpec: fixture.lookSpec,
+      preferenceMode: "structure",
+    });
+    const skeletons = rendered.skeletons;
 
     const provider: LlmProvider = {
       analyzeImageToJson: async () => {

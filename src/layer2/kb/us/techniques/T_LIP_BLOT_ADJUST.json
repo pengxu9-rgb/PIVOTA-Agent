@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_BLOT_ADJUST",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Adjust intensity with a blot",
+    "steps": [
+      "Apply color, then blot once to reduce intensity.",
+      "Re-apply a small amount only where you want more focus."
+    ]
+  },
+  "rationaleTemplate": [
+    "Blotting adjusts intensity without changing the shade family."
+  ],
+  "productRoleHints": ["lip color", "tissue"]
+}
+

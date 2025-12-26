@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_HYDRATE_PREP",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [{ "key": "lookSpec.breakdown.base.finish", "op": "in", "value": ["dewy", "glow", "radiant"] }]
+  },
+  "actionTemplate": {
+    "title": "Prep with light hydration",
+    "steps": [
+      "Apply a small amount of moisturizer and let it absorb.",
+      "Press off excess in areas that get shiny quickly."
+    ]
+  },
+  "rationaleTemplate": [
+    "Balanced prep helps a radiant finish look intentional instead of patchy."
+  ],
+  "productRoleHints": ["light moisturizer"]
+}
+

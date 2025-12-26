@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LINER_THIN_LINE",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Keep liner thin",
+    "steps": [
+      "Keep the line thin at the lash line instead of wide.",
+      "Build thickness only at the very outer corner if needed."
+    ]
+  },
+  "rationaleTemplate": [
+    "A thin line preserves lid space and is easier to adjust."
+  ],
+  "productRoleHints": ["liner"]
+}
+

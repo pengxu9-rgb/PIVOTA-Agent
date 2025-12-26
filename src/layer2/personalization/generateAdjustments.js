@@ -5,6 +5,8 @@ const { SimilarityReportV0Schema } = require('../../layer1/schemas/similarityRep
 
 const { runAdjustmentRulesUS } = require('./rules/runAdjustmentRulesUS');
 const { Layer2AdjustmentV0Schema, rephraseAdjustments } = require('./rephraseAdjustments');
+const { loadTechniqueKBUS } = require('../kb/loadTechniqueKBUS');
+const { renderSkeletonFromKB } = require('./renderSkeletonFromKB');
 
 async function generateAdjustments(input) {
   if (input.market !== 'US') throw new Error('Only market=US is supported for Layer2 personalization.');
@@ -29,10 +31,20 @@ async function generateAdjustments(input) {
     preferenceMode,
   });
 
+  const kb = loadTechniqueKBUS();
+  const rendered = renderSkeletonFromKB(skeletons, kb, {
+    userFaceProfile: userFace,
+    refFaceProfile: refFace,
+    similarityReport,
+    lookSpec,
+    preferenceMode,
+  });
+  warnings.push(...(rendered.warnings || []));
+
   const rephrased = await rephraseAdjustments({
     market: 'US',
     locale,
-    skeletons,
+    skeletons: rendered.skeletons,
     provider: input.provider,
   });
 
@@ -40,7 +52,7 @@ async function generateAdjustments(input) {
   for (const a of parsed) {
     if (!a.evidence?.length) {
       warnings.push(`Adjustment ${a.impactArea} missing evidence: using skeleton evidenceKeys.`);
-      const sk = skeletons.find((s) => s.impactArea === a.impactArea);
+      const sk = rendered.skeletons.find((s) => s.impactArea === a.impactArea);
       if (sk) a.evidence = sk.evidenceKeys;
     }
   }

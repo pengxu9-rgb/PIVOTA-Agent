@@ -17,9 +17,23 @@ export const AdjustmentSkeletonV0Schema = z
     confidence: AdjustmentSkeletonConfidenceSchema,
 
     becauseFacts: z.array(z.string().min(1)).min(1),
-    doActions: z.array(z.string().min(1)).min(1),
+    // Backward compatible: rule engine can emit `doActionIds` first, and a later renderer can fill `doActions`.
+    doActionIds: z.array(z.string().min(1)).min(1).optional(),
+    doActions: z.array(z.string().min(1)).default([]),
     whyMechanism: z.array(z.string().min(1)).min(1),
     evidenceKeys: z.array(z.string().min(1)).min(1),
+
+    // Optional references to technique cards used to render actions.
+    techniqueRefs: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            area: AdjustmentSkeletonImpactAreaSchema,
+          })
+          .strict()
+      )
+      .optional(),
 
     safetyNotes: z.array(z.string().min(1)).optional(),
     tags: z.array(z.string().min(1)).optional(),

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_TIGHTLINE_UPPER_LASHLINE",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [{ "key": "userFaceProfile.geometry.eyeOpennessRatio", "op": "lte", "value": 0.32 }]
+  },
+  "actionTemplate": {
+    "title": "Tightline the upper lashline",
+    "steps": [
+      "Press liner into the upper lashline to add definition.",
+      "Keep it at the lashes so it does not take up lid space."
+    ]
+  },
+  "rationaleTemplate": [
+    "Tightlining boosts definition without needing a thicker liner."
+  ],
+  "productRoleHints": ["waterproof pencil", "gel liner"],
+  "safetyNotes": ["If eyes are sensitive, tightline just at the lashes and avoid the waterline."]
+}
+

@@ -20,6 +20,7 @@
     "contract:test": "jest tests/layer1/contracts_us.test.js tests/layer2_3/contracts_us.test.js tests/layer1/contracts_manifest_us.test.js --runInBand",
     "ci:layer1": "npm run test && npm run contract:test && npm run eval:layer1:us",
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
+    "lint:kb:us": "node scripts/lint-technique-kb-us.js",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"

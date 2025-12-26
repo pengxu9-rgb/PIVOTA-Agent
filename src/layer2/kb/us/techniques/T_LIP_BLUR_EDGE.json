@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_BLUR_EDGE",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      { "key": "lookSpec.breakdown.lip.intent", "op": "in", "value": ["soft", "blur", "diffused"] }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Blur the lip edge",
+    "steps": [
+      "Apply color, then soften the edge with a finger or small brush.",
+      "Keep the border diffused instead of sharp."
+    ]
+  },
+  "rationaleTemplate": [
+    "A blurred edge stays closer to the reference mood without requiring exact lip shape."
+  ],
+  "productRoleHints": ["lip brush"]
+}
+

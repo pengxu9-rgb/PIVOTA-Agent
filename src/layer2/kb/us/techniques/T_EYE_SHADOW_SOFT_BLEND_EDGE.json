@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_SHADOW_SOFT_BLEND_EDGE",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Blend edges softly",
+    "steps": [
+      "Blend the outer edge with small circular motions.",
+      "Keep the edge diffused rather than sharply cut."
+    ]
+  },
+  "rationaleTemplate": [
+    "Soft edges reduce shape sensitivity and keep the look wearable."
+  ],
+  "productRoleHints": ["blending brush"]
+}
+

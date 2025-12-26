@@ -17,6 +17,16 @@ const Layer2AdjustmentV0Schema = z
     confidence: z.enum(['high', 'medium', 'low']),
     evidence: z.array(z.string().min(1)).min(1),
     ruleId: z.string().min(1),
+    techniqueRefs: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            area: z.enum(['base', 'eye', 'lip']),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -53,15 +63,27 @@ function humanTitleForRule(ruleId, impactArea) {
 }
 
 function renderAdjustmentFromSkeleton(s) {
+  const doActions =
+    Array.isArray(s.doActions) && s.doActions.length
+      ? s.doActions
+      : [
+          ...(s.impactArea === 'base'
+            ? ['Apply a thin base layer.', 'Spot-correct only where needed.']
+            : s.impactArea === 'eye'
+              ? ['Start liner from the outer third.', 'Keep the line thin and wing short.']
+              : ['Match the reference finish.', 'Stay in a close shade family.']),
+        ];
+
   return Layer2AdjustmentV0Schema.parse({
     impactArea: s.impactArea,
     ruleId: s.ruleId,
     title: humanTitleForRule(s.ruleId, s.impactArea),
     because: ensurePeriod(s.becauseFacts.join(' ')),
-    do: ensurePeriod(s.doActions.join(' ')),
+    do: ensurePeriod(doActions.join(' ')),
     why: ensurePeriod(s.whyMechanism.join(' ')),
     confidence: s.confidence,
     evidence: s.evidenceKeys,
+    techniqueRefs: s.techniqueRefs,
   });
 }
 
@@ -79,6 +101,43 @@ function collectAllowedNumbers(skeletons) {
 function numbersOnlyFromSkeleton(text, allowed) {
   const nums = text.match(/\d+(\.\d+)?/g) || [];
   return nums.every((n) => allowed.has(n));
+}
+
+function collectAllowedDoVerbsByArea(skeletons) {
+  const out = { base: new Set(), eye: new Set(), lip: new Set() };
+  const toVerb = (s) => String(s || '').trim().split(/\s+/)[0]?.toLowerCase() || '';
+  for (const sk of skeletons) {
+    const area = sk.impactArea;
+    const steps = Array.isArray(sk.doActions) ? sk.doActions : [];
+    for (const step of steps) {
+      const v = toVerb(step);
+      if (v) out[area].add(v);
+    }
+  }
+  return out;
+}
+
+function extractDoVerbs(text) {
+  const verbs = new Set();
+  const pieces = String(text || '')
+    .split(/[.!?;\n]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const p of pieces) {
+    const v = p.split(/\s+/)[0]?.toLowerCase() || '';
+    if (v) verbs.add(v);
+  }
+  return verbs;
+}
+
+function onlyUsesAllowedDoVerbs(doText, allowed) {
+  const okAux = new Set(['and', 'then', 'also', 'try', 'aim', 'keep', 'use', 'add', 'apply', 'blend', 'press']);
+  const verbs = extractDoVerbs(doText);
+  for (const v of verbs) {
+    if (okAux.has(v)) continue;
+    if (!allowed.has(v)) return false;
+  }
+  return true;
 }
 
 function textContainsForbiddenAttributes(outputText, allowedText) {
@@ -124,6 +183,7 @@ function ensureExactAreas(items, warnings) {
 function validateNoNewFactsOrIdentity(skeletons, adjustments) {
   const allowedText = JSON.stringify(skeletons);
   const allowedNumbers = collectAllowedNumbers(skeletons);
+  const allowedDoVerbsByArea = collectAllowedDoVerbsByArea(skeletons);
 
   const skeletonByArea = {
     base: skeletons.find((s) => s.impactArea === 'base'),
@@ -137,6 +197,7 @@ function validateNoNewFactsOrIdentity(skeletons, adjustments) {
     if (!numbersOnlyFromSkeleton(textBlob, allowedNumbers)) return { ok: false, reason: 'new_numeric_claim' };
     const forbiddenAttr = textContainsForbiddenAttributes(textBlob, allowedText);
     if (forbiddenAttr) return { ok: false, reason: `new_trait:${forbiddenAttr}` };
+    if (!onlyUsesAllowedDoVerbs(a.do, allowedDoVerbsByArea[a.impactArea])) return { ok: false, reason: 'new_action_verb' };
 
     const sk = skeletonByArea[a.impactArea];
     if (a.ruleId !== sk.ruleId) return { ok: false, reason: 'ruleId_mismatch' };

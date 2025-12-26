@@ -100,9 +100,10 @@ export const US_ADJUSTMENT_RULES: readonly UsAdjustmentRule[] = [
           "The reference eye look relies on liner direction/wing control.",
           "Eye tilt differs between user and reference, so wing angle needs adjustment.",
         ],
-        doActions: isEase
-          ? ["Keep the liner thin and short at the outer third.", "Angle the wing a bit more horizontal.", "Smudge softly to reduce harsh edges."]
-          : ["Start liner from the outer third.", "Keep the wing shorter.", "Angle slightly more horizontal, then connect back with a thin stroke."],
+        doActionIds: isEase
+          ? ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"]
+          : ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE"],
+        doActions: [],
         whyMechanism: [
           "A slightly more horizontal, shorter wing reduces emphasis on tilt differences while preserving the reference mood.",
         ],
@@ -141,9 +142,10 @@ export const US_ADJUSTMENT_RULES: readonly UsAdjustmentRule[] = [
         severity,
         confidence: baseConfidence(ctx),
         becauseFacts: ["The lid space is limited, so thick liner can take over the eye area.", "The reference calls for noticeable eye emphasis."],
-        doActions: isEase
-          ? ["Tightline the upper lash line.", "Add a small smudge at the outer corner.", "Keep the line thin rather than wide."]
-          : ["Tightline the upper waterline.", "Smudge the outer corner for lift.", "Use a thinner line instead of a wide band."],
+        doActionIds: isEase
+          ? ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_LINER_THIN_LINE"]
+          : ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_FILL_GAP_LASHLINE", "T_EYE_LINER_THIN_LINE"],
+        doActions: [],
         whyMechanism: ["Tightlining keeps definition at the lash line without consuming lid space; smudging adds emphasis with less heaviness."],
         evidenceKeys: ["userFaceProfile.geometry.eyeOpennessRatio", "lookSpec.breakdown.eye.intent"],
         safetyNotes: ["If your eyes are sensitive, skip waterline and tightline just at the lashes."],
@@ -168,9 +170,10 @@ export const US_ADJUSTMENT_RULES: readonly UsAdjustmentRule[] = [
         severity: 0.6,
         confidence: baseConfidence(ctx),
         becauseFacts: ["The reference base finish is dewy/radiant.", "A thin base keeps texture controlled while still allowing glow."],
-        doActions: isEase
-          ? ["Apply a thin base layer.", "Add glow only on high points.", "Set only where needed (like the T-zone)."]
-          : ["Apply a thin base layer first.", "Spot-conceal only where needed and re-blend.", "Add glow on high points and set the T-zone lightly."],
+        doActionIds: isEase
+          ? ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"]
+          : ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"],
+        doActions: [],
         whyMechanism: ["Targeting glow keeps the finish aligned with the reference without amplifying texture everywhere."],
         evidenceKeys: ["lookSpec.breakdown.base.finish", "lookSpec.breakdown.base.intent"],
         safetyNotes: ["Avoid heavy powder over glow areas; it can flatten the intended finish."],
@@ -191,7 +194,8 @@ export const US_ADJUSTMENT_RULES: readonly UsAdjustmentRule[] = [
       severity: 0.7,
       confidence: baseConfidence(ctx),
       becauseFacts: ["The reference base coverage is higher.", "Building coverage in thin passes reduces caking while still matching the reference."],
-      doActions: ["Build coverage in thin layers.", "Conceal only where needed, then re-blend edges.", "Set strategically to preserve the intended finish."],
+      doActionIds: ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"],
+      doActions: [],
       whyMechanism: ["Thin passes reduce buildup while letting you reach the desired coverage level."],
       evidenceKeys: ["lookSpec.breakdown.base.coverage", "lookSpec.breakdown.base.finish"],
       safetyNotes: ["If the base starts to look heavy, stop layering and spot-correct instead."],
@@ -223,7 +227,8 @@ export const US_ADJUSTMENT_RULES: readonly UsAdjustmentRule[] = [
         severity,
         confidence: baseConfidence(ctx),
         becauseFacts: ["The reference lip finish is glossy.", "A center-focused gloss effect is a safe way to match finish and enhance shape without over-lining."],
-        doActions: ["Keep the lip line soft.", "Concentrate gloss in the center of the lips.", "Stay in the closest shade family to the reference."],
+        doActionIds: ["T_LIP_SOFT_EDGE", "T_LIP_GLOSS_CENTER", "T_LIP_SHADE_CLOSE_FAMILY"],
+        doActions: [],
         whyMechanism: ["Center gloss increases dimension and keeps the glossy finish aligned with the reference."],
         evidenceKeys: ["lookSpec.breakdown.lip.finish", ...(ctx.userFaceProfile ? ["userFaceProfile.geometry.lipFullnessRatio"] : [])],
         safetyNotes: ["Avoid heavy over-lining; keep changes subtle to stay faithful to the reference."],
@@ -244,7 +249,8 @@ export const US_ADJUSTMENT_RULES: readonly UsAdjustmentRule[] = [
       severity: 0.45,
       confidence: baseConfidence(ctx),
       becauseFacts: ["The reference lip reads softer/diffused.", "A blurred edge stays within the reference vibe without requiring exact lip shape."],
-      doActions: ["Apply color, then blur the lip edge with a finger or brush.", "Keep the center slightly stronger than the edges.", "Match the reference finish (gloss/satin/matte)."],
+      doActionIds: ["T_LIP_BLUR_EDGE", "T_LIP_CENTER_STRONGER", "T_LIP_MATCH_FINISH"],
+      doActions: [],
       whyMechanism: ["Soft edges reduce shape sensitivity and keep the lip mood consistent with the reference."],
       evidenceKeys: ["lookSpec.breakdown.lip.intent", "lookSpec.breakdown.lip.finish"],
       safetyNotes: ["If unsure on shade, stay within a close shade family rather than jumping to a different hue."],
@@ -267,7 +273,8 @@ export const US_ADJUSTMENT_FALLBACK_RULES: Record<AdjustmentSkeletonV0["impactAr
       severity: 0.2,
       confidence: baseConfidence(ctx),
       becauseFacts: ["A thin base is the safest path to preserve texture and match the reference finish."],
-      doActions: ["Apply a light layer first, then spot-correct only where needed."],
+      doActionIds: ["T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT"],
+      doActions: [],
       whyMechanism: ["Thin layers are more forgiving and keep the finish closer to the reference."],
       evidenceKeys: ["lookSpec.breakdown.base.finish"],
       tags: ["fallback"],
@@ -286,7 +293,8 @@ export const US_ADJUSTMENT_FALLBACK_RULES: Record<AdjustmentSkeletonV0["impactAr
       severity: 0.2,
       confidence: baseConfidence(ctx),
       becauseFacts: ["Liner direction strongly affects the eye emphasis, so keep control and stay subtle."],
-      doActions: ["Start liner at the outer third, keep it thin, and keep the wing short."],
+      doActionIds: ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"],
+      doActions: [],
       whyMechanism: ["A thin, short wing is forgiving and still aligns with many reference looks."],
       evidenceKeys: ["lookSpec.breakdown.eye.intent"],
       tags: ["fallback"],
@@ -305,7 +313,8 @@ export const US_ADJUSTMENT_FALLBACK_RULES: Record<AdjustmentSkeletonV0["impactAr
       severity: 0.2,
       confidence: baseConfidence(ctx),
       becauseFacts: ["Lip finish (gloss/satin/matte) is the most reliable match when details are uncertain."],
-      doActions: ["Match the reference finish and stay in a close shade family; blot lightly to adjust intensity."],
+      doActionIds: ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"],
+      doActions: [],
       whyMechanism: ["Finish carries the lip mood more reliably than precise shape tweaks."],
       evidenceKeys: ["lookSpec.breakdown.lip.finish"],
       tags: ["fallback"],

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_SOFT_EDGE",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Keep the edge soft",
+    "steps": [
+      "Keep the lip line soft instead of sharply outlined.",
+      "Clean up only if needed, and avoid harsh corners."
+    ]
+  },
+  "rationaleTemplate": [
+    "Soft edges keep the look closer to the reference vibe with fewer shape assumptions."
+  ]
+}
+

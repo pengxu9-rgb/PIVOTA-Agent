@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_SMUDGE_OUTER_CORNER",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Smudge the outer corner",
+    "steps": [
+      "Smudge the outer corner slightly to soften harsh lines.",
+      "Keep the smudge small and lifted."
+    ]
+  },
+  "rationaleTemplate": [
+    "A small smudge adds lift and hides small shape differences."
+  ],
+  "productRoleHints": ["smudge brush", "dark shadow"]
+}
+

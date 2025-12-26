@@ -14,9 +14,21 @@ const AdjustmentSkeletonV0Schema = z
     confidence: AdjustmentSkeletonConfidenceSchema,
 
     becauseFacts: z.array(z.string().min(1)).min(1),
-    doActions: z.array(z.string().min(1)).min(1),
+    doActionIds: z.array(z.string().min(1)).min(1).optional(),
+    doActions: z.array(z.string().min(1)).default([]),
     whyMechanism: z.array(z.string().min(1)).min(1),
     evidenceKeys: z.array(z.string().min(1)).min(1),
+
+    techniqueRefs: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            area: AdjustmentSkeletonImpactAreaSchema,
+          })
+          .strict(),
+      )
+      .optional(),
 
     safetyNotes: z.array(z.string().min(1)).optional(),
     tags: z.array(z.string().min(1)).optional(),
