@@ -80,6 +80,22 @@ function isRetryableError(err: unknown): boolean {
   return false;
 }
 
+async function resolveImageForGemini(image: ImageInput): Promise<{ mimeType: string; dataB64: string }> {
+  if (image.kind === "bytes") {
+    return { mimeType: image.contentType, dataB64: image.bytes.toString("base64") };
+  }
+
+  // Gemini inlineData requires bytes; fetch them from the URL.
+  const res = await axios.get<ArrayBuffer>(image.url, {
+    responseType: "arraybuffer",
+    timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000"),
+    validateStatus: (s) => s >= 200 && s < 300,
+  });
+  const contentType = String(res.headers?.["content-type"] || "").split(";")[0].trim();
+  const mimeType = contentType || "image/jpeg";
+  return { mimeType, dataB64: Buffer.from(res.data).toString("base64") };
+}
+
 export function createOpenAiCompatibleProvider(): LlmProvider {
   const baseUrl = getEnv("LLM_BASE_URL");
   const apiKey = getEnv("LLM_API_KEY");
@@ -179,3 +195,195 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
   };
 }
 
+export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "generic"): LlmProvider {
+  const primary =
+    (getEnv(purpose === "layer2_lookspec" ? "PIVOTA_LAYER2_LLM_PROVIDER" : "") ||
+      getEnv("PIVOTA_INTENT_LLM_PROVIDER") ||
+      "openai").toLowerCase();
+  const fallback =
+    (getEnv(purpose === "layer2_lookspec" ? "PIVOTA_LAYER2_LLM_FALLBACK_PROVIDER" : "") ||
+      getEnv("PIVOTA_INTENT_LLM_FALLBACK_PROVIDER") ||
+      "").toLowerCase();
+
+  const run = (provider: string): LlmProvider => {
+    if (provider === "openai") {
+      const apiKey = getEnv("OPENAI_API_KEY");
+      const baseUrl = getEnv("OPENAI_BASE_URL") || "https://api.openai.com";
+      const model =
+        getEnv("PIVOTA_LAYER2_MODEL_OPENAI") ||
+        getEnv("PIVOTA_LAYER2_MODEL") ||
+        "gpt-4o-mini";
+      if (!apiKey) {
+        throw new LlmError("LLM_CONFIG_MISSING", "Missing required env var: OPENAI_API_KEY");
+      }
+      const client = axios.create({
+        baseURL: baseUrl.replace(/\/$/, ""),
+        timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000"),
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      return {
+        async analyzeImageToJson({ prompt, image, schema }) {
+          const imageUrl = image.kind === "url" ? image.url : toDataUrl(image.bytes, image.contentType);
+          const maxAttempts = 1 + 2;
+          let lastErr: unknown = null;
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+              const response = await client.post("/v1/chat/completions", {
+                model,
+                temperature: 0.2,
+                max_tokens: 900,
+                messages: [
+                  {
+                    role: "system",
+                    content:
+                      "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+                  },
+                  {
+                    role: "user",
+                    content: [
+                      { type: "text", text: prompt },
+                      { type: "image_url", image_url: { url: imageUrl } },
+                    ],
+                  },
+                ],
+              });
+
+              const content =
+                response.data?.choices?.[0]?.message?.content ??
+                response.data?.choices?.[0]?.message?.content?.[0]?.text ??
+                "";
+
+              const json = extractJsonObject(String(content));
+              const parsed = schema.safeParse(json);
+              if (!parsed.success) {
+                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
+              }
+              return parsed.data;
+            } catch (err) {
+              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
+
+              if (err instanceof AxiosError) {
+                const status = err.response?.status;
+                if (err.code === "ECONNABORTED") {
+                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+                } else {
+                  const msg = status ? `LLM request failed (HTTP ${status})` : "LLM request failed";
+                  lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+                }
+              } else {
+                lastErr = err;
+              }
+
+              if (attempt < maxAttempts && isRetryableError(lastErr)) {
+                await sleep(250 * attempt);
+                continue;
+              }
+              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+            }
+          }
+
+          throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+        },
+      };
+    }
+
+    if (provider === "gemini") {
+      const apiKey = getEnv("GEMINI_API_KEY");
+      const baseURL = (getEnv("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com").replace(/\/$/, "");
+      const model =
+        getEnv("PIVOTA_LAYER2_MODEL_GEMINI") ||
+        getEnv("PIVOTA_LAYER2_MODEL") ||
+        "gemini-1.5-flash";
+      if (!apiKey) {
+        throw new LlmError("LLM_CONFIG_MISSING", "Missing required env var: GEMINI_API_KEY");
+      }
+
+      const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
+        apiKey
+      )}`;
+
+      return {
+        async analyzeImageToJson({ prompt, image, schema }) {
+          const maxAttempts = 1 + 2;
+          let lastErr: unknown = null;
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+              const { mimeType, dataB64 } = await resolveImageForGemini(image);
+
+              const body = {
+                systemInstruction: {
+                  parts: [
+                    {
+                      text: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+                    },
+                  ],
+                },
+                contents: [
+                  {
+                    role: "user",
+                    parts: [
+                      { text: prompt },
+                      { inlineData: { mimeType, data: dataB64 } },
+                    ],
+                  },
+                ],
+                generationConfig: {
+                  temperature: 0,
+                  responseMimeType: "application/json",
+                },
+              };
+
+              const res = await axios.post(url, body, { timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000") });
+              const text =
+                res?.data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("\n") || "";
+
+              const json = extractJsonObject(String(text));
+              const parsed = schema.safeParse(json);
+              if (!parsed.success) {
+                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
+              }
+              return parsed.data;
+            } catch (err) {
+              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
+
+              if (err instanceof AxiosError) {
+                if (err.code === "ECONNABORTED") {
+                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+                } else {
+                  lastErr = new LlmError("LLM_REQUEST_FAILED", "LLM request failed", err);
+                }
+              } else if (err instanceof LlmError) {
+                lastErr = err;
+              } else {
+                lastErr = err;
+              }
+
+              if (attempt < maxAttempts && isRetryableError(lastErr)) {
+                await sleep(250 * attempt);
+                continue;
+              }
+              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+            }
+          }
+
+          throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
+        },
+      };
+    }
+
+    throw new LlmError("LLM_CONFIG_MISSING", `Unsupported provider: ${provider}`);
+  };
+
+  try {
+    return run(primary);
+  } catch (primaryErr) {
+    if (!fallback || fallback === primary) throw primaryErr;
+    return run(fallback);
+  }
+}

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 
-import { createOpenAiCompatibleProvider, ImageInput, LlmError, LlmProvider } from "../llm/provider";
+import { createProviderFromEnv, ImageInput, LlmError, LlmProvider } from "../llm/provider";
 import { LookSpecBreakdownAreaV0Schema, LookSpecV0, LookSpecV0Schema } from "./schemas/lookSpecV0";
 
 const LookSpecExtractCoreSchema = z
@@ -74,7 +74,7 @@ export async function extractLookSpec(input: ExtractLookSpecInput): Promise<Look
     throw new Error("Only market=US is supported for LookSpec extraction.");
   }
 
-  const provider = input.provider ?? createOpenAiCompatibleProvider();
+  const provider = input.provider ?? createProviderFromEnv("layer2_lookspec");
   const prompt = loadPrompt();
 
   try {
@@ -100,4 +100,3 @@ export async function extractLookSpec(input: ExtractLookSpecInput): Promise<Look
     return unknownLookSpec(locale, toWarning(err));
   }
 }
-
