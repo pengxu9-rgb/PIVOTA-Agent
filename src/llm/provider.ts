@@ -53,11 +53,14 @@ function geminiApiKey(): string | undefined {
 }
 
 function geminiBaseUrl(): string {
-  return (
+  const raw = String(
     getEnv("GEMINI_BASE_URL") ||
-    getEnv("GOOGLE_GENAI_BASE_URL") ||
-    "https://generativelanguage.googleapis.com"
-  ).replace(/\/$/, "");
+      getEnv("GOOGLE_GENAI_BASE_URL") ||
+      "https://generativelanguage.googleapis.com"
+  ).trim();
+  const noTrailingSlash = raw.replace(/\/+$/, "");
+  // Some deploy configs include the API version in the base URL already.
+  return noTrailingSlash.replace(/\/v1beta$/i, "").replace(/\/v1$/i, "");
 }
 
 function geminiModelName(model: string): string {
