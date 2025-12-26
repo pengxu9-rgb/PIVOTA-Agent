@@ -155,6 +155,9 @@ function createProviderFromEnv(purpose = 'generic') {
 
   const fallback = String(inferredFallback || '').toLowerCase();
 
+  const shouldUseFallback = (err) =>
+    err instanceof LlmError && (err.code === 'LLM_TIMEOUT' || err.code === 'LLM_REQUEST_FAILED');
+
   const run = (provider) => {
     if (provider === 'openai') {
       const apiKey = getEnv('OPENAI_API_KEY');
@@ -397,12 +400,35 @@ function createProviderFromEnv(purpose = 'generic') {
     throw new LlmError('LLM_CONFIG_MISSING', `Unsupported provider: ${provider}`);
   };
 
+  const primaryProvider = run(primary);
+  if (!fallback || fallback === primary) return primaryProvider;
+
+  let fallbackProvider = null;
   try {
-    return run(primary);
-  } catch (err) {
-    if (!fallback) throw err;
-    return run(fallback);
+    fallbackProvider = run(fallback);
+  } catch {
+    return primaryProvider;
   }
+
+  return {
+    async analyzeImageToJson(input) {
+      try {
+        return await primaryProvider.analyzeImageToJson(input);
+      } catch (err) {
+        if (!fallbackProvider || !shouldUseFallback(err)) throw err;
+        return fallbackProvider.analyzeImageToJson(input);
+      }
+    },
+
+    async analyzeTextToJson(input) {
+      try {
+        return await primaryProvider.analyzeTextToJson(input);
+      } catch (err) {
+        if (!fallbackProvider || !shouldUseFallback(err)) throw err;
+        return fallbackProvider.analyzeTextToJson(input);
+      }
+    },
+  };
 }
 
 function createOpenAiCompatibleProvider() {
