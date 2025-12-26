@@ -38,16 +38,22 @@ function sampleStep(order: number, impactArea: "base" | "eye" | "lip") {
   });
 }
 
-function sampleProduct(skuId: string) {
+function sampleProduct(skuId: string, category: "base" | "eye" | "lip") {
   return ProductAttributesV0Schema.parse({
     ...baseMeta(),
+    category,
     skuId,
     name: "Example Product",
     brand: "Example Brand",
     price: { currency: "USD", amount: 19.99 },
+    priceTier: "mid",
     imageUrl: "https://example.com/p.png",
     productUrl: "https://example.com/p",
     availability: "in_stock",
+    availabilityByMarket: { US: "in_stock" },
+    tags: { finish: ["satin"], texture: ["cream"], coverage: ["medium"], effect: ["long-wear"] },
+    undertoneFit: "neutral",
+    shadeDescriptor: "neutral beige",
     whyThis: "Matches the target finish.",
     evidence: ["catalog.match.finish"],
   });
@@ -70,9 +76,9 @@ describe("Layer2/3 contract schemas (US v0)", () => {
     const kit = KitPlanV0Schema.parse({
       ...baseMeta(),
       kit: {
-        base: { best: sampleProduct("sku_base_best"), dupe: sampleProduct("sku_base_dupe") },
-        eye: { best: sampleProduct("sku_eye_best"), dupe: sampleProduct("sku_eye_dupe") },
-        lip: { best: sampleProduct("sku_lip_best"), dupe: sampleProduct("sku_lip_dupe") },
+        base: { best: sampleProduct("sku_base_best", "base"), dupe: sampleProduct("sku_base_dupe", "base") },
+        eye: { best: sampleProduct("sku_eye_best", "eye"), dupe: sampleProduct("sku_eye_dupe", "eye") },
+        lip: { best: sampleProduct("sku_lip_best", "lip"), dupe: sampleProduct("sku_lip_dupe", "lip") },
       },
     });
 
@@ -127,9 +133,9 @@ describe("Layer2/3 contract schemas (US v0)", () => {
       kit: {
         ...baseMeta(),
         kit: {
-          base: { best: sampleProduct("sku_base_best"), dupe: sampleProduct("sku_base_dupe") },
-          eye: { best: sampleProduct("sku_eye_best"), dupe: sampleProduct("sku_eye_dupe") },
-          lip: { best: sampleProduct("sku_lip_best"), dupe: sampleProduct("sku_lip_dupe") },
+          base: { best: sampleProduct("sku_base_best", "base"), dupe: sampleProduct("sku_base_dupe", "base") },
+          eye: { best: sampleProduct("sku_eye_best", "eye"), dupe: sampleProduct("sku_eye_dupe", "eye") },
+          lip: { best: sampleProduct("sku_lip_best", "lip"), dupe: sampleProduct("sku_lip_dupe", "lip") },
         },
       },
       warnings: ["Example warning"],
