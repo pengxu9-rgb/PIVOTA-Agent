@@ -5,7 +5,9 @@ export type TechniqueMatchContext = {
   refFaceProfile?: unknown | null;
   similarityReport?: unknown | null;
   lookSpec: unknown;
-  preferenceMode: "structure" | "vibe" | "ease";
+  // NOTE: Despite the name, KB triggers use this as a generic routing knob.
+  // Today it may represent either a UX style mode (structure/vibe/ease) OR a language mode (en/zh).
+  preferenceMode: string;
 };
 
 function getByPath(root: unknown, pathKey: string): unknown {
@@ -98,4 +100,3 @@ function evalTriggers(ctx: TechniqueMatchContext, card: TechniqueCardV0): boolea
 export function matchTechniques(ctx: TechniqueMatchContext, cards: readonly TechniqueCardV0[]): TechniqueCardV0[] {
   return cards.filter((c) => evalTriggers(ctx, c));
 }
-

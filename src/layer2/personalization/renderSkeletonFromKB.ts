@@ -2,6 +2,7 @@ import { AdjustmentSkeletonV0, AdjustmentSkeletonImpactArea } from "../schemas/a
 import type { TechniqueKB } from "../kb/loadTechniqueKB";
 import type { TechniqueMatchContext } from "../kb/evalTechniqueTriggers";
 import { buildRoleNormalizer } from "../dicts/roles";
+import { resolveTechniqueCardForLanguage } from "../kb/resolveTechniqueCardForLanguage";
 
 function uniqueStrings(items: readonly string[]): string[] {
   return Array.from(new Set(items.map((s) => String(s || "").trim()).filter(Boolean)));
@@ -31,7 +32,12 @@ export type RenderSkeletonsFromKBOutput = {
 export function renderSkeletonFromKB(
   inputSkeletons: readonly AdjustmentSkeletonV0[],
   kb: TechniqueKB,
-  ctx: TechniqueMatchContext & { market?: "US" | "JP" },
+  ctx: (TechniqueMatchContext & { market?: "US" | "JP" }) & {
+    locale?: string;
+    acceptLanguage?: string;
+    appLanguage?: string;
+    userLanguage?: string;
+  },
 ): RenderSkeletonsFromKBOutput {
   const warnings: string[] = [];
   let usedFallback = false;
@@ -46,11 +52,22 @@ export function renderSkeletonFromKB(
     const tags: string[] = Array.isArray(s.tags) ? [...s.tags] : [];
 
     for (const id of doActionIds) {
-      const card = kb.byId.get(id);
+      const resolved = resolveTechniqueCardForLanguage({
+        id,
+        kb,
+        locale: ctx.locale,
+        acceptLanguage: ctx.acceptLanguage,
+        appLanguage: ctx.appLanguage,
+        userLanguage: ctx.userLanguage,
+      });
+      const card = resolved.card;
       if (!card) {
-        warnings.push(`Missing technique card: ${id} (area=${s.impactArea}).`);
+        warnings.push(`Missing technique card: ${id} (area=${s.impactArea}). Tried: ${resolved.triedIds.join(", ")}`);
         usedFallback = true;
         continue;
+      }
+      if (resolved.usedFallbackLanguage) {
+        warnings.push(`Technique language fallback for ${id}: missing zh, used en (${card.id}).`);
       }
       if (card.market !== market) {
         warnings.push(`Technique card ${id} market mismatch (expected ${market}, got ${card.market}).`);

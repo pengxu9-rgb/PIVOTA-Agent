@@ -24,6 +24,7 @@ function normalizeMarket(v) {
 }
 
 const { buildRoleNormalizer } = require('../dicts/roles');
+const { resolveTechniqueCardForLanguage } = require('../kb/resolveTechniqueCardForLanguage');
 
 function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
   const warnings = [];
@@ -39,11 +40,24 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
     const tags = Array.isArray(s.tags) ? [...s.tags] : [];
 
     for (const id of doActionIds) {
-      const card = kb.byId.get(id);
+      const resolved = resolveTechniqueCardForLanguage({
+        id,
+        kb,
+        locale: ctx?.locale,
+        acceptLanguage: ctx?.acceptLanguage,
+        appLanguage: ctx?.appLanguage,
+        userLanguage: ctx?.userLanguage,
+      });
+      const card = resolved.card;
       if (!card) {
-        warnings.push(`Missing technique card: ${id} (area=${s.impactArea}).`);
+        warnings.push(
+          `Missing technique card: ${id} (area=${s.impactArea}). Tried: ${(resolved.triedIds || []).join(', ')}`
+        );
         usedFallback = true;
         continue;
+      }
+      if (resolved.usedFallbackLanguage) {
+        warnings.push(`Technique language fallback for ${id}: missing zh, used en (${card.id}).`);
       }
       if (String(card.market) !== market) {
         warnings.push(`Technique card ${id} market mismatch (expected ${market}, got ${card.market}).`);

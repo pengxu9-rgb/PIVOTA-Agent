@@ -34,6 +34,7 @@ async function generateAdjustments(input) {
   const kb = loadTechniqueKB(input.market);
   const rendered = renderSkeletonFromKB(skeletons, kb, {
     market: input.market,
+    locale,
     userFaceProfile: userFace,
     refFaceProfile: refFace,
     similarityReport,

@@ -2,11 +2,23 @@ const { loadTechniqueKBUS } = require('../src/layer2/kb/loadTechniqueKBUS');
 
 const { loadTriggerKeysV0, isTriggerKeyAllowed } = require('../src/layer2/dicts/triggerKeys');
 
+function hasLanguageRoutingTrigger(card, lang) {
+  const triggers = card.triggers || {};
+  const conditions = [...(triggers.all || []), ...(triggers.any || []), ...(triggers.none || [])];
+  return conditions.some((c) => {
+    if (!c || c.key !== 'preferenceMode') return false;
+    if (c.op === 'eq') return c.value === lang;
+    if (c.op === 'in') return Array.isArray(c.value) && c.value.includes(lang);
+    return false;
+  });
+}
+
 function main() {
   const kb = loadTechniqueKBUS();
   const triggerKeys = loadTriggerKeysV0();
   const ids = new Set();
   const errors = [];
+  const langPairs = new Map();
 
   for (const c of kb.list) {
     if (!c.id) errors.push(`Missing id in card: ${JSON.stringify(c).slice(0, 120)}`);
@@ -24,6 +36,38 @@ function main() {
     for (const cond of conditions) {
       if (!isTriggerKeyAllowed(cond.key, triggerKeys)) errors.push(`Disallowed trigger key (${c.id}): ${cond.key}`);
     }
+
+    const id = String(c.id || '');
+    const baseId = id.replace(/-(zh|en)$/, '');
+    if (id.endsWith('-zh') || id.endsWith('-en')) {
+      const cur = langPairs.get(baseId) || { zh: false, en: false };
+      if (id.endsWith('-zh')) cur.zh = true;
+      if (id.endsWith('-en')) cur.en = true;
+      langPairs.set(baseId, cur);
+    }
+    if (id.endsWith('-zh')) {
+      if (!hasLanguageRoutingTrigger(c, 'zh')) {
+        errors.push(`Card id ends with -zh but triggers missing preferenceMode eq/in zh: ${id}`);
+      }
+    }
+    if (id.endsWith('-en')) {
+      if (!hasLanguageRoutingTrigger(c, 'en')) {
+        errors.push(`Card id ends with -en but triggers missing preferenceMode eq/in en: ${id}`);
+      }
+    }
+  }
+
+  // Optional pairing check: warn by default, fail if explicitly enabled.
+  const requirePairs = process.argv.includes('--strict-pairs') || process.env.KB_LINT_REQUIRE_LANG_PAIRS === '1';
+  const pairErrors = [];
+  for (const [baseId, pair] of langPairs.entries()) {
+    if (!pair.zh || !pair.en) pairErrors.push(`Missing bilingual pair for baseId=${baseId} (zh=${pair.zh}, en=${pair.en})`);
+  }
+  if (pairErrors.length) {
+    const tag = requirePairs ? 'FAILED' : 'WARN';
+    console.warn(`[lint:kb:us] ${tag}: bilingual pairing check`);
+    for (const e of pairErrors) console.warn(`- ${e}`);
+    if (requirePairs) errors.push(...pairErrors);
   }
 
   if (errors.length) {

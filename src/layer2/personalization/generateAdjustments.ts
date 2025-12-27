@@ -70,6 +70,7 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
       refFaceProfile: refFace,
       similarityReport,
       lookSpec,
+      locale,
       preferenceMode: preferenceMode as any,
     },
   );
