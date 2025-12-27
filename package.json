@@ -25,6 +25,7 @@
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
     "lint:kb:us": "node scripts/lint-technique-kb-us.js",
     "lint:kb:jp": "node scripts/lint-technique-kb-jp.js",
+    "kb:import:csv": "node scripts/kb-import-csv.js",
     "kb:analyze": "node src/kb/runAnalyzeKBHealth.js",
     "kb:analyze:us": "node src/kb/runAnalyzeKBHealth.js --market=US",
     "kb:analyze:jp": "node src/kb/runAnalyzeKBHealth.js --market=JP",

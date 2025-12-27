@@ -60,6 +60,9 @@ export const TechniqueCardV0Schema = z
     rationaleTemplate: z.array(z.string().min(1)).min(1),
     productRoleHints: z.array(z.string().min(1)).optional(),
     safetyNotes: z.array(z.string().min(1)).optional(),
+    sourceId: z.string().min(1).optional(),
+    sourcePointer: z.string().min(1).optional(),
+    tags: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
