@@ -25,8 +25,8 @@ const InvokeRequestSchema = z.object({
   operation: OperationEnum,
   payload: z.object({
     // ACP / AP2 states are opaque; pass through without inspection.
-    acp_state: z.record(z.any()).optional(),
-    ap2_state: z.record(z.any()).optional(),
+    acp_state: z.record(z.string(), z.any()).optional(),
+    ap2_state: z.record(z.string(), z.any()).optional(),
 
     // Business payload fields; different operations use different keys.
     // See docs/pivota-api-mapping.md for detailed field requirements.

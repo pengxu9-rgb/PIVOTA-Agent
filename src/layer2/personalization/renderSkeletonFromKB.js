@@ -23,10 +23,13 @@ function normalizeMarket(v) {
   return 'US';
 }
 
+const { buildRoleNormalizer } = require('../dicts/roles');
+
 function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
   const warnings = [];
   let usedFallback = false;
   const market = normalizeMarket(ctx?.market);
+  const roleNormalizer = buildRoleNormalizer();
 
   const out = (inputSkeletons || []).map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
@@ -60,7 +63,10 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
       doActions.push(...renderedSteps);
 
       if (Array.isArray(card.productRoleHints)) {
-        for (const hint of card.productRoleHints) tags.push(`role:${String(hint).trim()}`);
+        for (const hint of card.productRoleHints) {
+          const normalized = roleNormalizer.normalizeRoleHint(hint);
+          if (normalized) tags.push(`role:${normalized}`);
+        }
       }
     }
 

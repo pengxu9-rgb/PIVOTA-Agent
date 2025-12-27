@@ -4,8 +4,7 @@ const path = require('path');
 const { normalizeMarket, requireMarketEnabled } = require('./market');
 const { loadTechniqueKB } = require('../layer2/kb/loadTechniqueKB');
 
-const { usLookSpecLexicon } = require('../layer2/config/usLookSpecLexicon');
-const { jpLookSpecLexicon } = require('../layer2/config/jpLookSpecLexicon');
+const { loadLookSpecLexiconV0 } = require('../layer2/dicts/lookSpecLexicon');
 
 const promptCache = new Map();
 
@@ -44,8 +43,7 @@ function getPromptPack({ market, locale }) {
 }
 
 function getLookSpecLexicon(market) {
-  if (market === 'US') return usLookSpecLexicon;
-  return jpLookSpecLexicon;
+  return loadLookSpecLexiconV0(market);
 }
 
 function getMarketPack(input) {
@@ -68,4 +66,3 @@ function getMarketPack(input) {
 module.exports = {
   getMarketPack,
 };
-

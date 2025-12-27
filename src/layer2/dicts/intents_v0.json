@@ -1,516 +1,106 @@
 {
-  "intent_layer_version": "v0",
+  "schemaVersion": "v0",
+  "placeholders": [],
   "intents": [
     {
-      "intent_id": "INTENT:base_reduce_shine_target_zones",
+      "id": "EYE_LINER_DIRECTION_ADAPT",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE"] },
+        "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE"] }
+      }
+    },
+    {
+      "id": "EYE_LINER_DIRECTION_ADAPT_EASE",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] },
+        "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] }
+      }
+    },
+    {
+      "id": "EYE_TIGHTLINE_AND_SMUDGE",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_FILL_GAP_LASHLINE", "T_EYE_LINER_THIN_LINE"] },
+        "JP": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_FILL_GAP_LASHLINE", "T_EYE_LINER_THIN_LINE"] }
+      }
+    },
+    {
+      "id": "EYE_TIGHTLINE_AND_SMUDGE_EASE",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_LINER_THIN_LINE"] },
+        "JP": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_LINER_THIN_LINE"] }
+      }
+    },
+
+    {
+      "id": "BASE_THIN_LAYERS_TARGET_GLOW",
       "area": "base",
-      "description": "Reduce shine in targeted zones while preserving overall base finish.",
-      "trigger_summary": "rule_id indicates excess shine OR lookSpec.base.finish == 'matte' but user base appears dewy; prioritize T-zone control.",
-      "expected_outcomes": [
-        "less shine in T-zone",
-        "base looks smoother",
-        "finish stays consistent with LookSpec"
-      ]
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] },
+        "JP": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] }
+      }
     },
     {
-      "intent_id": "INTENT:base_increase_glow_high_points",
+      "id": "BASE_THIN_LAYERS_TARGET_GLOW_EASE",
       "area": "base",
-      "description": "Increase glow on high points without making the whole face shiny.",
-      "trigger_summary": "lookSpec.base.finish == 'dewy' AND rule_id indicates insufficient luminosity; add controlled radiance.",
-      "expected_outcomes": [
-        "more luminosity",
-        "glow concentrated on high points",
-        "avoid greasy look"
-      ]
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] },
+        "JP": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] }
+      }
     },
     {
-      "intent_id": "INTENT:base_thin_layers_for_skinlike",
+      "id": "BASE_BUILD_COVERAGE_SPOT",
       "area": "base",
-      "description": "Shift base application to thinner layers for a more skin-like finish.",
-      "trigger_summary": "lookSpec.base.coverage == 'light' OR rule_id indicates cakey/heavy base; reduce product load.",
-      "expected_outcomes": [
-        "less cakey appearance",
-        "more skin texture realism",
-        "even tone retained"
-      ]
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] },
+        "JP": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] }
+      }
+    },
+
+    {
+      "id": "LIP_GLOSS_CENTER_GRADIENT",
+      "area": "lip",
+      "markets": {
+        "US": { "techniqueIds": ["T_LIP_SOFT_EDGE", "T_LIP_GLOSS_CENTER", "T_LIP_SHADE_CLOSE_FAMILY"] },
+        "JP": { "techniqueIds": ["T_LIP_SOFT_EDGE", "T_LIP_GLOSS_CENTER", "T_LIP_SHADE_CLOSE_FAMILY"] }
+      }
     },
     {
-      "intent_id": "INTENT:base_build_coverage_spot",
+      "id": "LIP_SOFT_EDGE_BLUR",
+      "area": "lip",
+      "markets": {
+        "US": { "techniqueIds": ["T_LIP_BLUR_EDGE", "T_LIP_CENTER_STRONGER", "T_LIP_MATCH_FINISH"] },
+        "JP": { "techniqueIds": ["T_LIP_BLUR_EDGE", "T_LIP_CENTER_STRONGER", "T_LIP_MATCH_FINISH"] }
+      }
+    },
+
+    {
+      "id": "BASE_FALLBACK_THIN_LAYER",
       "area": "base",
-      "description": "Build coverage only where needed using spot concealing.",
-      "trigger_summary": "lookSpec.base.coverage in ['medium','full'] AND rule_id indicates uneven coverage; localize coverage.",
-      "expected_outcomes": [
-        "improved correction where needed",
-        "avoid heavy all-over base",
-        "more natural finish"
-      ]
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT"] },
+        "JP": { "techniqueIds": ["T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT"] }
+      }
     },
     {
-      "intent_id": "INTENT:base_color_correct_before_conceal",
-      "area": "base",
-      "description": "Use color correction before concealer to reduce discoloration.",
-      "trigger_summary": "rule_id indicates under-eye/blemish discoloration mismatch; apply corrector then conceal.",
-      "expected_outcomes": [
-        "neutralized discoloration",
-        "less concealer needed",
-        "more natural coverage"
-      ]
-    },
-    {
-      "intent_id": "INTENT:base_set_for_longevity",
-      "area": "base",
-      "description": "Increase wear time and reduce transfer with setting strategy.",
-      "trigger_summary": "rule_id indicates breakdown/transfer risk; apply setting powder/spray appropriately.",
-      "expected_outcomes": [
-        "improved longevity",
-        "reduced transfer",
-        "finish preserved"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_liner_angle_adapt",
+      "id": "EYE_FALLBACK_SAFE_CONTROL",
       "area": "eye",
-      "description": "Adapt liner direction/degree to suit user eye geometry while keeping the LookSpec intent.",
-      "trigger_summary": "lookSpec.eye.liner_direction.direction in ['up','down'] AND rule_id indicates liner-angle/geometry mismatch; adjust outer-third angle and placement.",
-      "expected_outcomes": [
-        "less droop or harsh lift",
-        "preserve lid space",
-        "shape reads closer to reference"
-      ]
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] },
+        "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] }
+      }
     },
     {
-      "intent_id": "INTENT:eye_liner_degree_soften",
-      "area": "eye",
-      "description": "Soften liner degree toward straight for subtlety and balance.",
-      "trigger_summary": "ABS(lookSpec.eye.liner_direction.degree) is high AND rule_id indicates overemphasis; reduce degree and thickness.",
-      "expected_outcomes": [
-        "more subtle liner",
-        "better symmetry impression",
-        "less harsh outer corner"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_liner_thin_and_tightline",
-      "area": "eye",
-      "description": "Achieve definition with thin liner plus tightlining rather than a thick wing.",
-      "trigger_summary": "rule_id indicates limited lid space OR desire for clean definition; use tightline + thin outer-third line.",
-      "expected_outcomes": [
-        "defined lashline",
-        "more lid space visible",
-        "cleaner, lighter look"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_shadow_shape_adapt",
-      "area": "eye",
-      "description": "Adjust shadow placement to match the shadow_shape bucket on user anatomy.",
-      "trigger_summary": "lookSpec.eye.shadow_shape != 'unknown' AND rule_id indicates shape mismatch; shift placement and blending pattern.",
-      "expected_outcomes": [
-        "shadow shape matches bucket intent",
-        "balanced proportions",
-        "crease/outer corner reads correctly"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_soft_smoky_blend",
-      "area": "eye",
-      "description": "Create a soft smoky impression with blended edges and controlled depth.",
-      "trigger_summary": "lookSpec.eye.shadow_shape == 'smoky' OR rule_id requests smoky effect; emphasize blending and gradient.",
-      "expected_outcomes": [
-        "soft gradient",
-        "depth without harsh edges",
-        "smoky mood preserved"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_halo_center_brighten",
-      "area": "eye",
-      "description": "Create or reinforce a halo effect with a brighter center and deeper inner/outer.",
-      "trigger_summary": "lookSpec.eye.shadow_shape == 'halo' OR rule_id indicates center lacks brightness; add center pop.",
-      "expected_outcomes": [
-        "brighter center",
-        "dimension and roundness",
-        "halo reads clearly"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_reduce_fallout_smudgeproof",
-      "area": "eye",
-      "description": "Reduce smudging/fallout and improve wear around the lashline/under-eye.",
-      "trigger_summary": "rule_id indicates smudge risk OR similarity warnings for under-eye darkness; set and seal liner/shadow.",
-      "expected_outcomes": [
-        "less smudging",
-        "cleaner under-eye",
-        "longer wear"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_lash_intensity_match",
-      "area": "eye",
-      "description": "Match lash intensity to LookSpec (natural/medium/bold) using mascara and optional lashes.",
-      "trigger_summary": "lookSpec.eye.lash_intensity != 'unknown' AND rule_id indicates mismatch; adjust mascara type and layering.",
-      "expected_outcomes": [
-        "lash impact matches LookSpec",
-        "balanced with liner/shadow",
-        "eye openness preserved"
-      ]
-    },
-    {
-      "intent_id": "INTENT:eye_inner_corner_brighten",
-      "area": "eye",
-      "description": "Brighten inner corner to open the eyes and increase freshness.",
-      "trigger_summary": "rule_id indicates eye looks closed/dull OR halo/soft glam needs lift; add inner-corner highlight.",
-      "expected_outcomes": [
-        "more open eye impression",
-        "brighter inner corner",
-        "freshness increased"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_finish_match_matte",
+      "id": "LIP_FALLBACK_FINISH_FOCUS",
       "area": "lip",
-      "description": "Shift lip finish toward matte while maintaining color intent.",
-      "trigger_summary": "lookSpec.lip.finish == 'matte' AND rule_id indicates too much shine; use matte texture strategy.",
-      "expected_outcomes": [
-        "reduced shine",
-        "crisper lip shape",
-        "matte finish holds"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_finish_match_satin",
-      "area": "lip",
-      "description": "Shift lip finish toward satin for comfortable, moderate shine.",
-      "trigger_summary": "lookSpec.lip.finish == 'satin' AND rule_id indicates too glossy or too flat; balance shine and opacity.",
-      "expected_outcomes": [
-        "moderate shine",
-        "even color",
-        "comfortable wear"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_finish_match_gloss",
-      "area": "lip",
-      "description": "Increase gloss/shine while keeping hue and shape aligned.",
-      "trigger_summary": "lookSpec.lip.finish == 'gloss' AND rule_id indicates insufficient shine; add gloss/oil strategically.",
-      "expected_outcomes": [
-        "higher reflectivity",
-        "fuller appearance",
-        "color preserved"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_hue_adjust_warmer",
-      "area": "lip",
-      "description": "Nudge lip hue warmer to better match reference intent.",
-      "trigger_summary": "rule_id indicates lip hue too cool OR similarity lip hue delta suggests warm shift; adjust hue direction.",
-      "expected_outcomes": [
-        "warmer lip tone",
-        "closer hue match",
-        "avoid muddy shift"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_hue_adjust_cooler",
-      "area": "lip",
-      "description": "Nudge lip hue cooler to better match reference intent.",
-      "trigger_summary": "rule_id indicates lip hue too warm OR similarity lip hue delta suggests cool shift; adjust hue direction.",
-      "expected_outcomes": [
-        "cooler lip tone",
-        "closer hue match",
-        "avoid gray cast"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_blur_edges_soft",
-      "area": "lip",
-      "description": "Soften lip edges for a diffused, gentle impression.",
-      "trigger_summary": "rule_id indicates harsh lip edge OR LookSpec wants soft lip impression; blur perimeter.",
-      "expected_outcomes": [
-        "softer edges",
-        "less harsh outline",
-        "gentler overall look"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_define_edges_precise",
-      "area": "lip",
-      "description": "Define lip edges and cupid's bow for a crisp, structured lip.",
-      "trigger_summary": "rule_id indicates lip shape under-defined OR LookSpec needs stronger definition; use liner + clean edges.",
-      "expected_outcomes": [
-        "crisper lip shape",
-        "improved symmetry impression",
-        "color contained"
-      ]
-    },
-    {
-      "intent_id": "INTENT:lip_center_gloss_gradient",
-      "area": "lip",
-      "description": "Add center emphasis/gradient with a glossy center for dimension.",
-      "trigger_summary": "rule_id indicates flat lip OR desired gradient effect; deepen edges and brighten center.",
-      "expected_outcomes": [
-        "more dimension",
-        "plumper center highlight",
-        "softer perimeter"
-      ]
+      "markets": {
+        "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] },
+        "JP": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] }
+      }
     }
-  ],
-  "intent_to_techniques": {
-    "US": {
-      "INTENT:base_reduce_shine_target_zones": [
-        "TUS_BASE_SET_TZONE_OIL_CONTROL",
-        "TUS_BASE_POWDER_PRESS_TARGETED",
-        "TUS_BASE_MATTE_PRIMER_TZONE"
-      ],
-      "INTENT:base_increase_glow_high_points": [
-        "TUS_BASE_HIGHLIGHT_HIGH_POINTS_SOFT",
-        "TUS_BASE_DEWY_MIST_MELT_LAYERS",
-        "TUS_BASE_ILLUMINATOR_UNDERPAINT_LIGHT"
-      ],
-      "INTENT:base_thin_layers_for_skinlike": [
-        "TUS_BASE_SHEER_OUT_WITH_SPAWNGE",
-        "TUS_BASE_THIN_LAYER_BUFFING",
-        "TUS_BASE_SPOT_ONLY_BUILD"
-      ],
-      "INTENT:base_build_coverage_spot": [
-        "TUS_BASE_SPOT_CONCEAL_BUILD",
-        "TUS_BASE_COLOR_CORRECT_THEN_CONCEAL",
-        "TUS_BASE_FOUNDATION_TARGETED_SECOND_PASS"
-      ],
-      "INTENT:base_color_correct_before_conceal": [
-        "TUS_BASE_COLOR_CORRECT_UNDEREYE",
-        "TUS_BASE_COLOR_CORRECT_BLEMISH",
-        "TUS_BASE_THIN_CONCEAL_OVER_CORRECT"
-      ],
-      "INTENT:base_set_for_longevity": [
-        "TUS_BASE_SET_POWDER_LIGHT_PRESS",
-        "TUS_BASE_LONGWEAR_SETTING_SPRAY",
-        "TUS_BASE_LAYER_SET_LAYER"
-      ],
-      "INTENT:eye_liner_angle_adapt": [
-        "TUS_EYE_WING_SHORTER_OUTER_THIRD",
-        "TUS_EYE_THIN_LINE_OUTER_THIRD",
-        "TUS_EYE_LINER_RAISE_PLACEMENT"
-      ],
-      "INTENT:eye_liner_degree_soften": [
-        "TUS_EYE_LINER_SOFTEN_DEGREE_TOWARD_STRAIGHT",
-        "TUS_EYE_LINER_THIN_OUTER_EDGE",
-        "TUS_EYE_SMUDGE_EDGE_MICRO"
-      ],
-      "INTENT:eye_liner_thin_and_tightline": [
-        "TUS_EYE_TIGHTLINE_UPPER_LASH",
-        "TUS_EYE_THIN_PEN_LINER_LASHLINE",
-        "TUS_EYE_SHADOW_LINER_SOFT_BROWN"
-      ],
-      "INTENT:eye_shadow_shape_adapt": [
-        "TUS_EYE_SHADOW_PLACE_SHAPE_MATCH",
-        "TUS_EYE_TRANSITION_BLEND_FOR_SHAPE",
-        "TUS_EYE_OUTER_V_REBALANCE"
-      ],
-      "INTENT:eye_soft_smoky_blend": [
-        "TUS_EYE_SMOKY_SOFT_BLEND",
-        "TUS_EYE_SMUDGE_LINER_INTO_SHADOW",
-        "TUS_EYE_GRADIENT_BUILD_DEPTH"
-      ],
-      "INTENT:eye_halo_center_brighten": [
-        "TUS_EYE_HALO_CENTER_POP_SHIMMER",
-        "TUS_EYE_CENTER_BRIGHTEN_SATIN",
-        "TUS_EYE_INNER_OUTER_DEEPEN_BALANCE"
-      ],
-      "INTENT:eye_reduce_fallout_smudgeproof": [
-        "TUS_EYE_SET_LINER_SMUDGEPROOF",
-        "TUS_EYE_UNDEREYE_CLEAN_SET",
-        "TUS_EYE_PRIME_LID_FOR_HOLD"
-      ],
-      "INTENT:eye_lash_intensity_match": [
-        "TUS_EYE_MASCARA_LAYER_MATCH_INTENSITY",
-        "TUS_EYE_WATERPROOF_FOR_HOLD",
-        "TUS_EYE_ADD_OUTER_CORNER_LASHES"
-      ],
-      "INTENT:eye_inner_corner_brighten": [
-        "TUS_EYE_INNER_CORNER_HIGHLIGHT",
-        "TUS_EYE_TEARDUCT_BRIGHTEN_SATIN",
-        "TUS_EYE_INNER_CORNER_PENCIL_POP"
-      ],
-      "INTENT:lip_finish_match_matte": [
-        "TUS_LIP_MATTE_BLUR_LAYER",
-        "TUS_LIP_BLOT_SET_MATTE",
-        "TUS_LIP_LINER_FILL_MATTE"
-      ],
-      "INTENT:lip_finish_match_satin": [
-        "TUS_LIP_SATIN_BULLET_SMOOTH",
-        "TUS_LIP_THIN_LAYER_SATIN_BUILD",
-        "TUS_LIP_SOFTEN_EDGES_SATIN"
-      ],
-      "INTENT:lip_finish_match_gloss": [
-        "TUS_LIP_GLOSS_TOPPER_CENTER",
-        "TUS_LIP_OIL_SHINE_LAYER",
-        "TUS_LIP_GLOSS_OVER_TINT"
-      ],
-      "INTENT:lip_hue_adjust_warmer": [
-        "TUS_LIP_WARM_SHIFT_LAYER",
-        "TUS_LIP_WARM_LINER_UNDER",
-        "TUS_LIP_WARM_TOPPER_TINT"
-      ],
-      "INTENT:lip_hue_adjust_cooler": [
-        "TUS_LIP_COOL_SHIFT_LAYER",
-        "TUS_LIP_COOL_LINER_UNDER",
-        "TUS_LIP_COOL_TOPPER_TINT"
-      ],
-      "INTENT:lip_blur_edges_soft": [
-        "TUS_LIP_BLUR_EDGES_FINGER_PRESS",
-        "TUS_LIP_SOFT_GRADIENT_OUTLINE",
-        "TUS_LIP_DIFFUSE_LINER_INWARD"
-      ],
-      "INTENT:lip_define_edges_precise": [
-        "TUS_LIP_LINE_AND_CLEAN_EDGE",
-        "TUS_LIP_DEFINE_CUPIDS_BOW",
-        "TUS_LIP_LINER_FULL_FILL_PRECISION"
-      ],
-      "INTENT:lip_center_gloss_gradient": [
-        "TUS_LIP_GRADIENT_CENTER_GLOSS",
-        "TUS_LIP_OMBRE_INNER_POP",
-        "TUS_LIP_CENTER_HIGHLIGHT_BALM"
-      ]
-    },
-    "JP": {
-      "INTENT:base_reduce_shine_target_zones": [
-        "TJP_BASE_SET_TZONE_SEBUM_CONTROL",
-        "TJP_BASE_POWDER_PRESS_TARGETED",
-        "TJP_BASE_MATTE_PRIMER_TZONE"
-      ],
-      "INTENT:base_increase_glow_high_points": [
-        "TJP_BASE_TSUYA_HIGHLIGHT_SOFT",
-        "TJP_BASE_DEWY_MIST_MELT",
-        "TJP_BASE_ILLUMINATOR_UNDER_LIGHT"
-      ],
-      "INTENT:base_thin_layers_for_skinlike": [
-        "TJP_BASE_THIN_LAYER_RUB_IN",
-        "TJP_BASE_SHEER_OUT_SPONGE",
-        "TJP_BASE_SPOT_ONLY_BUILD"
-      ],
-      "INTENT:base_build_coverage_spot": [
-        "TJP_BASE_SPOT_CONCEAL_BUILD",
-        "TJP_BASE_COLOR_CORRECT_THEN_CONCEAL",
-        "TJP_BASE_TARGETED_SECOND_PASS"
-      ],
-      "INTENT:base_color_correct_before_conceal": [
-        "TJP_BASE_CORRECT_UNDEREYE",
-        "TJP_BASE_CORRECT_REDNESS",
-        "TJP_BASE_THIN_CONCEAL_OVER_CORRECT"
-      ],
-      "INTENT:base_set_for_longevity": [
-        "TJP_BASE_SET_POWDER_LIGHT_PRESS",
-        "TJP_BASE_FIX_MIST_LONGWEAR",
-        "TJP_BASE_LAYER_SET_LAYER"
-      ],
-      "INTENT:eye_liner_angle_adapt": [
-        "TJP_EYE_WING_SHORTER_OUTER_THIRD",
-        "TJP_EYE_SOFT_BROWN_TIGHTLINE",
-        "TJP_EYE_LINER_RAISE_PLACEMENT"
-      ],
-      "INTENT:eye_liner_degree_soften": [
-        "TJP_EYE_LINER_SOFTEN_DEGREE",
-        "TJP_EYE_LINER_THIN_OUTER",
-        "TJP_EYE_SMUDGE_EDGE_MICRO"
-      ],
-      "INTENT:eye_liner_thin_and_tightline": [
-        "TJP_EYE_TIGHTLINE_UPPER",
-        "TJP_EYE_THIN_LINE_LASHLINE",
-        "TJP_EYE_SHADOW_LINER_BROWN"
-      ],
-      "INTENT:eye_shadow_shape_adapt": [
-        "TJP_EYE_SHADOW_SHAPE_MATCH",
-        "TJP_EYE_GRADATION_BLEND",
-        "TJP_EYE_OUTER_CORNER_REBALANCE"
-      ],
-      "INTENT:eye_soft_smoky_blend": [
-        "TJP_EYE_SOFT_SMOKY_BLEND",
-        "TJP_EYE_SMUDGE_LINER_INTO_SHADOW",
-        "TJP_EYE_GRADATION_BUILD_DEPTH"
-      ],
-      "INTENT:eye_halo_center_brighten": [
-        "TJP_EYE_HALO_CENTER_POP",
-        "TJP_EYE_CENTER_BRIGHTEN_SATIN",
-        "TJP_EYE_INNER_OUTER_DEEPEN"
-      ],
-      "INTENT:eye_reduce_fallout_smudgeproof": [
-        "TJP_EYE_SET_LINER_SMUDGEPROOF",
-        "TJP_EYE_UNDEREYE_CLEAN_SET",
-        "TJP_EYE_PRIME_LID_FOR_HOLD"
-      ],
-      "INTENT:eye_lash_intensity_match": [
-        "TJP_EYE_MASCARA_LAYER_MATCH",
-        "TJP_EYE_WATERPROOF_HOLD",
-        "TJP_EYE_ADD_PARTIAL_LASH"
-      ],
-      "INTENT:eye_inner_corner_brighten": [
-        "TJP_EYE_INNER_CORNER_HIGHLIGHT",
-        "TJP_EYE_TEARDUCT_BRIGHTEN",
-        "TJP_EYE_INNER_PENCIL_POP"
-      ],
-      "INTENT:lip_finish_match_matte": [
-        "TJP_LIP_MATTE_BLUR_LAYER",
-        "TJP_LIP_BLOT_SET_MATTE",
-        "TJP_LIP_LINER_FILL_MATTE"
-      ],
-      "INTENT:lip_finish_match_satin": [
-        "TJP_LIP_TSUYA_SATIN_SMOOTH",
-        "TJP_LIP_THIN_LAYER_BUILD",
-        "TJP_LIP_SOFTEN_EDGES_SATIN"
-      ],
-      "INTENT:lip_finish_match_gloss": [
-        "TJP_LIP_GLOSS_CENTER",
-        "TJP_LIP_OIL_SHINE_LAYER",
-        "TJP_LIP_GLOSS_OVER_TINT"
-      ],
-      "INTENT:lip_hue_adjust_warmer": [
-        "TJP_LIP_WARM_SHIFT_LAYER",
-        "TJP_LIP_WARM_LINER_UNDER",
-        "TJP_LIP_WARM_TOPPER"
-      ],
-      "INTENT:lip_hue_adjust_cooler": [
-        "TJP_LIP_COOL_SHIFT_LAYER",
-        "TJP_LIP_COOL_LINER_UNDER",
-        "TJP_LIP_COOL_TOPPER"
-      ],
-      "INTENT:lip_blur_edges_soft": [
-        "TJP_LIP_BOKASHI_EDGE_PRESS",
-        "TJP_LIP_SOFT_GRADIENT",
-        "TJP_LIP_DIFFUSE_LINER_INWARD"
-      ],
-      "INTENT:lip_define_edges_precise": [
-        "TJP_LIP_LINE_AND_CLEAN_EDGE",
-        "TJP_LIP_DEFINE_CUPIDS_BOW",
-        "TJP_LIP_LINER_FULL_FILL"
-      ],
-      "INTENT:lip_center_gloss_gradient": [
-        "TJP_LIP_GRADIENT_CENTER_GLOSS",
-        "TJP_LIP_OMBRE_INNER_POP",
-        "TJP_LIP_CENTER_HIGHLIGHT_BALM"
-      ]
-    }
-  },
-  "fallback_per_area": {
-    "base": [
-      "INTENT:base_thin_layers_for_skinlike",
-      "INTENT:base_set_for_longevity",
-      "INTENT:base_reduce_shine_target_zones"
-    ],
-    "eye": [
-      "INTENT:eye_liner_thin_and_tightline",
-      "INTENT:eye_shadow_shape_adapt",
-      "INTENT:eye_lash_intensity_match"
-    ],
-    "lip": [
-      "INTENT:lip_center_gloss_gradient",
-      "INTENT:lip_blur_edges_soft",
-      "INTENT:lip_finish_match_satin"
-    ]
-  },
-  "maintenance_policy": {
-    "add_intent_only": true,
-    "deprecate_intent_method": "deprecated:true + replacement",
-    "mapping_update_allowed": true
-  }
+  ]
 }
+

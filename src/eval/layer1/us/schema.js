@@ -10,11 +10,10 @@ const EvalSampleSchema = z
     preferenceMode: PreferenceModeSchema,
     userFaceProfile: FaceProfileV0Schema.nullable().optional(),
     refFaceProfile: FaceProfileV0Schema,
-    labels: z.record(z.any()).optional(),
+    labels: z.record(z.string(), z.any()).optional(),
   })
   .strict();
 
 module.exports = {
   EvalSampleSchema,
 };
-

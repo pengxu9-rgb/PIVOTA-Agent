@@ -4,6 +4,7 @@ const { z } = require('zod');
 
 const { createProviderFromEnv, LlmError } = require('../llm/provider');
 const { LookSpecBreakdownAreaV0Schema, LookSpecV0Schema } = require('./schemas/lookSpecV0');
+const { normalizeVibeTagsForMarket } = require('./dicts/lookSpecLexicon');
 
 const LookSpecExtractCoreSchema = z
   .object({
@@ -90,7 +91,7 @@ async function extractLookSpec(input) {
       layer3EngineVersion: versions.layer3,
       orchestratorVersion: versions.orchestrator,
       lookTitle: core.lookTitle,
-      styleTags: core.styleTags,
+      styleTags: normalizeVibeTagsForMarket(core.styleTags, market),
       breakdown: core.breakdown,
       warnings: core.warnings,
     });

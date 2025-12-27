@@ -1,10 +1,12 @@
-# Contracts (US)
+# Contracts (US + JP)
 
-This repo publishes versioned, machine-readable contract artifacts for Layer 1 and Layer 2/3 (US-only) so other repos (e.g. frontend) can validate payloads and responses without importing backend code.
+This repo publishes versioned, machine-readable contract artifacts for Layer 1 and Layer 2/3 (US + JP) so other repos (e.g. frontend) can validate payloads and responses without importing backend code.
 
 ## What gets published
 
 - JSON Schemas:
+  - (US) `contracts/us/*`
+  - (JP) `contracts/jp/*`
   - `contracts/us/faceProfileV0.schema.json`
   - `contracts/us/similarityReportV0.schema.json`
   - `contracts/us/layer1BundleV0.schema.json`
@@ -12,7 +14,13 @@ This repo publishes versioned, machine-readable contract artifacts for Layer 1 a
   - `contracts/us/stepPlanV0.schema.json`
   - `contracts/us/kitPlanV0.schema.json`
   - `contracts/us/lookReplicateResultV0.schema.json`
+  - `contracts/jp/lookSpecV0.schema.json`
+  - `contracts/jp/stepPlanV0.schema.json`
+  - `contracts/jp/kitPlanV0.schema.json`
+  - `contracts/jp/lookReplicateResultV0.schema.json`
 - Canonical fixtures (golden samples for CI):
+  - (US) `fixtures/contracts/us/*`
+  - (JP) `fixtures/contracts/jp/*`
   - `fixtures/contracts/us/faceProfileV0.sample.json`
   - `fixtures/contracts/us/compatibility.request.sample.json`
   - `fixtures/contracts/us/similarityReportV0.sample.json`
@@ -22,6 +30,7 @@ This repo publishes versioned, machine-readable contract artifacts for Layer 1 a
   - `fixtures/contracts/us/lookResultV0.sample.json`
 - Deterministic manifest (integrity + completeness):
   - `contracts/us/manifest.json` (sha256 for every contract file)
+  - `contracts/jp/manifest.json` (sha256 for every contract file)
 
 ## How to update
 
@@ -31,6 +40,8 @@ Run:
 - `npm run contract:export:l2l3` (Layer2/3 only)
 
 This regenerates schemas, fixtures, and the manifest deterministically (stable formatting and key ordering) and overwrites the files in-place.
+
+If you update frozen dicts under `src/layer2/dicts/` (vibe tags, roles, intents, lexicon, trigger keys), rerun `npm run contract:export` to keep fixtures and manifests in sync.
 
 ## Smoke checks
 

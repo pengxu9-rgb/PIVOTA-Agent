@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { createProviderFromEnv, ImageInput, LlmError, LlmProvider } from "../llm/provider";
 import { LookSpecBreakdownAreaV0Schema, LookSpecV0, LookSpecV0Schema } from "./schemas/lookSpecV0";
+import { normalizeVibeTagsForMarket } from "./dicts/lookSpecLexicon";
 
 const LookSpecExtractCoreSchema = z
   .object({
@@ -94,7 +95,7 @@ export async function extractLookSpec(input: ExtractLookSpecInput): Promise<Look
       layer3EngineVersion: "l3-us-0.1.0",
       orchestratorVersion: "orchestrator-us-0.1.0",
       lookTitle: core.lookTitle,
-      styleTags: core.styleTags,
+      styleTags: normalizeVibeTagsForMarket(core.styleTags, "US"),
       breakdown: core.breakdown,
       warnings: core.warnings,
     });

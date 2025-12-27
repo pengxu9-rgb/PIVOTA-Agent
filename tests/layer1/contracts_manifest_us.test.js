@@ -11,7 +11,7 @@ function readJson(relPath) {
   return JSON.parse(fs.readFileSync(full, 'utf8'));
 }
 
-describe('Layer1 contract manifest (US)', () => {
+describe('Contract manifest (US)', () => {
   test('manifest lists existing files with matching sha256', () => {
     const manifest = readJson('contracts/us/manifest.json');
 
@@ -34,4 +34,3 @@ describe('Layer1 contract manifest (US)', () => {
     }
   });
 });
-

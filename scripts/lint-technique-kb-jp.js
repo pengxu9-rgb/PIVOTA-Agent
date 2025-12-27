@@ -1,28 +1,9 @@
 const { loadTechniqueKB } = require('../src/layer2/kb/loadTechniqueKB');
-
-const ALLOWED_PREFIXES = [
-  'preferenceMode',
-  'userFaceProfile.geometry.',
-  'userFaceProfile.quality.',
-  'userFaceProfile.categorical.',
-  'refFaceProfile.geometry.',
-  'refFaceProfile.quality.',
-  'refFaceProfile.categorical.',
-  'lookSpec.breakdown.base.',
-  'lookSpec.breakdown.eye.',
-  'lookSpec.breakdown.lip.',
-  'similarityReport.',
-];
-
-function isAllowedKey(key) {
-  const s = String(key || '');
-  if (!s) return false;
-  if (s.includes('__proto__') || s.includes('constructor') || s.includes('prototype')) return false;
-  return ALLOWED_PREFIXES.some((p) => s === p || s.startsWith(p));
-}
+const { loadTriggerKeysV0, isTriggerKeyAllowed } = require('../src/layer2/dicts/triggerKeys');
 
 function main() {
   const kb = loadTechniqueKB('JP');
+  const triggerKeys = loadTriggerKeysV0();
   const ids = new Set();
   const errors = [];
 
@@ -40,7 +21,7 @@ function main() {
     const triggers = c.triggers || {};
     const conditions = [...(triggers.all || []), ...(triggers.any || []), ...(triggers.none || [])];
     for (const cond of conditions) {
-      if (!isAllowedKey(cond.key)) errors.push(`Disallowed trigger key (${c.id}): ${cond.key}`);
+      if (!isTriggerKeyAllowed(cond.key, triggerKeys)) errors.push(`Disallowed trigger key (${c.id}): ${cond.key}`);
     }
   }
 
@@ -54,4 +35,3 @@ function main() {
 }
 
 main();
-

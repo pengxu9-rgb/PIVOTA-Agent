@@ -1,6 +1,7 @@
 import { AdjustmentSkeletonV0, AdjustmentSkeletonImpactArea } from "../schemas/adjustmentSkeletonV0";
 import type { TechniqueKB } from "../kb/loadTechniqueKB";
 import type { TechniqueMatchContext } from "../kb/evalTechniqueTriggers";
+import { buildRoleNormalizer } from "../dicts/roles";
 
 function uniqueStrings(items: readonly string[]): string[] {
   return Array.from(new Set(items.map((s) => String(s || "").trim()).filter(Boolean)));
@@ -35,6 +36,7 @@ export function renderSkeletonFromKB(
   const warnings: string[] = [];
   let usedFallback = false;
   const market = ctx.market === "JP" ? "JP" : "US";
+  const roleNormalizer = buildRoleNormalizer();
 
   const out = inputSkeletons.map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
@@ -67,7 +69,10 @@ export function renderSkeletonFromKB(
       doActions.push(...renderedSteps);
 
       if (Array.isArray(card.productRoleHints)) {
-        for (const hint of card.productRoleHints) tags.push(`role:${String(hint).trim()}`);
+        for (const hint of card.productRoleHints) {
+          const normalized = roleNormalizer.normalizeRoleHint(hint);
+          if (normalized) tags.push(`role:${normalized}`);
+        }
       }
     }
 
