@@ -385,6 +385,8 @@ function makeLookResultSample() {
   const locale = lookSpec.locale;
   const steps = makeStepPlanSamples(locale);
   const kit = makeKitPlanSample({ locale });
+  const seed = 'contracts:lookResultV0:US';
+  const exposureId = deterministicId('exposure', seed, 0);
 
   const adjustments = [
     {
@@ -507,12 +509,16 @@ function makeLookResultSample() {
     schemaVersion: 'v0',
     market: 'US',
     locale,
+    exposureId,
     layer2EngineVersion: 'l2-us-0.1.0',
     layer3EngineVersion: 'l3-us-0.1.0',
     orchestratorVersion: 'orchestrator-us-0.1.0',
     breakdown: lookSpec.breakdown,
     adjustments,
-    adjustmentCandidates,
+    adjustmentCandidates: adjustmentCandidates.map((c, idx) => ({
+      ...c,
+      impressionId: deterministicId('impression', exposureId, idx + 1),
+    })),
     experiments: { variant: 'control_more_v0', explorationRate: 0.1 },
     steps,
     kit,

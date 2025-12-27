@@ -27,6 +27,15 @@ function pickPrimaryTechniqueId(adjustment) {
   return id || null;
 }
 
+function newUuidish() {
+  try {
+    if (crypto?.randomUUID) return crypto.randomUUID();
+  } catch {
+    // ignore
+  }
+  return crypto.randomBytes(16).toString('hex');
+}
+
 function shuffleInPlace(items, rng) {
   for (let i = items.length - 1; i > 0; i -= 1) {
     const j = Math.floor(clamp01(rng()) * (i + 1));
@@ -118,10 +127,13 @@ function buildPlaceholderCandidate({ area, rank }) {
 function buildAdjustmentCandidates({
   layer2Adjustments,
   rng = Math.random,
+  idGen = newUuidish,
   enabled = shouldEnableMoreCandidates(),
   explorationRate = getExplorationRate(),
 } = {}) {
   if (!enabled) return { adjustmentCandidates: undefined, experiments: undefined };
+
+  const exposureId = String(idGen()).trim() || newUuidish();
 
   const base = [];
   const raw = Array.isArray(layer2Adjustments) ? layer2Adjustments : [];
@@ -144,10 +156,12 @@ function buildAdjustmentCandidates({
 
   const combined = [...base, ...more];
   for (let i = 0; i < combined.length; i += 1) {
-    combined[i] = { ...combined[i], rank: i + 1 };
+    const impressionId = String(idGen()).trim() || newUuidish();
+    combined[i] = { ...combined[i], impressionId, rank: i + 1 };
   }
 
   return {
+    exposureId,
     adjustmentCandidates: combined,
     experiments: {
       variant: explore ? 'explore_more_v0' : 'control_more_v0',
@@ -163,4 +177,3 @@ module.exports = {
   confidenceToScore,
   pickPrimaryTechniqueId,
 };
-

@@ -319,6 +319,8 @@ function makeLookResultSampleJP() {
   const locale = lookSpec.locale;
   const steps = makeStepPlanSamplesJP(locale);
   const kit = makeKitPlanSampleJP({ locale });
+  const seed = 'contracts:lookResultV0:JP';
+  const exposureId = deterministicId('exposure', seed, 0);
 
   const adjustments = [
     {
@@ -437,6 +439,11 @@ function makeLookResultSampleJP() {
     },
   ];
 
+  const adjustmentCandidatesWithIds = adjustmentCandidates.map((c, idx) => ({
+    ...c,
+    impressionId: deterministicId('impression', exposureId, idx + 1),
+  }));
+
   return LookReplicateResultV0Schema.parse({
     schemaVersion: 'v0',
     market: 'JP',
@@ -447,7 +454,8 @@ function makeLookResultSampleJP() {
     commerceEnabled: false,
     breakdown: lookSpec.breakdown,
     adjustments,
-    adjustmentCandidates,
+    adjustmentCandidates: adjustmentCandidatesWithIds,
+    exposureId,
     experiments: { variant: 'control_more_v0', explorationRate: 0.1 },
     steps,
     kit,

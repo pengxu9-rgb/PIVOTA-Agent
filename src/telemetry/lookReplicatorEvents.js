@@ -53,6 +53,27 @@ function appendJsonlSink({ dir, row }) {
   fs.appendFileSync(filePath, `${JSON.stringify(row)}\n`);
 }
 
+function newRequestId() {
+  try {
+    if (crypto?.randomUUID) return crypto.randomUUID();
+  } catch {
+    // ignore
+  }
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function requiresExposureId(eventName) {
+  return new Set([
+    'lr_adjustments_exposed',
+    'lr_more_opened',
+    'lr_candidate_clicked',
+    'lr_steps_viewed',
+    'lr_kit_clicked',
+    'lr_checkout_started',
+    'lr_share_clicked',
+  ]).has(String(eventName || ''));
+}
+
 function mountLookReplicatorEventRoutes(app, { logger } = {}) {
   app.post('/v1/events/look-replicator', async (req, res) => {
     const parsed = LookReplicatorEventIngestV0Schema.safeParse(req.body);
@@ -69,9 +90,22 @@ function mountLookReplicatorEventRoutes(app, { logger } = {}) {
       sessionId: parsed.data.sessionId,
     });
 
+    const requestId = newRequestId();
+    const serverReceivedAt = new Date().toISOString();
+
+    const properties = { ...(parsed.data.properties || {}) };
+    if (requiresExposureId(parsed.data.event)) {
+      const exposureId = safeString(properties.exposureId);
+      if (!exposureId) {
+        properties.missingExposureId = true;
+      }
+    }
+    properties.serverReceivedAt = serverReceivedAt;
+    properties.requestId = requestId;
+
     const row = {
       event: parsed.data.event,
-      properties: parsed.data.properties || {},
+      properties,
       timestamp: parsed.data.timestamp || new Date().toISOString(),
       distinctId,
     };
@@ -107,4 +141,3 @@ function mountLookReplicatorEventRoutes(app, { logger } = {}) {
 module.exports = {
   mountLookReplicatorEventRoutes,
 };
-

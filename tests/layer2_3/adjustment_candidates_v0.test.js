@@ -13,8 +13,18 @@ function assertCandidateList(result) {
   expect(result.adjustmentCandidates.length).toBeGreaterThanOrEqual(3);
   expect(result.adjustmentCandidates.length).toBeLessThanOrEqual(7);
 
+  // If candidates are present, the response should include correlation IDs.
+  expect(typeof result.exposureId).toBe('string');
+  expect(result.exposureId.length).toBeGreaterThan(0);
+
   const ranks = result.adjustmentCandidates.map((c) => c.rank);
   expect(new Set(ranks).size).toBe(ranks.length);
+  const impressionIds = result.adjustmentCandidates.map((c) => c.impressionId);
+  for (const id of impressionIds) {
+    expect(typeof id).toBe('string');
+    expect(id.length).toBeGreaterThan(0);
+  }
+  expect(new Set(impressionIds).size).toBe(impressionIds.length);
   for (const c of result.adjustmentCandidates) {
     expect(typeof c.id).toBe('string');
     expect(c.id.length).toBeGreaterThan(0);
@@ -52,4 +62,3 @@ describe('AdjustmentCandidates (v0, Phase 1.5)', () => {
     expect(parsed.commerceEnabled).toBe(false);
   });
 });
-

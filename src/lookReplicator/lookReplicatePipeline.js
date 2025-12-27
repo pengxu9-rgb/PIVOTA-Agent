@@ -156,6 +156,7 @@ async function runLookReplicatePipeline(input) {
     schemaVersion: 'v0',
     market: pack.market,
     locale,
+    ...(candidateOut.adjustmentCandidates ? { exposureId: candidateOut.exposureId } : {}),
     layer2EngineVersion: versions.layer2,
     layer3EngineVersion: versions.layer3,
     orchestratorVersion: versions.orchestrator,

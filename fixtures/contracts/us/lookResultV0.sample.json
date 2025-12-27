@@ -6,6 +6,7 @@
         "status": "ok"
       },
       "id": "default:base",
+      "impressionId": "impression_18b9952356601574",
       "isDefault": true,
       "rank": 1,
       "ruleId": null,
@@ -20,6 +21,7 @@
         "status": "low_confidence"
       },
       "id": "default:eye",
+      "impressionId": "impression_1eac7677d5a11c5b",
       "isDefault": true,
       "rank": 2,
       "ruleId": null,
@@ -34,6 +36,7 @@
         "status": "ok"
       },
       "id": "default:lip",
+      "impressionId": "impression_fdfebbf198f741a5",
       "isDefault": true,
       "rank": 3,
       "ruleId": null,
@@ -49,6 +52,7 @@
         "status": "low_coverage"
       },
       "id": "more:prep",
+      "impressionId": "impression_5eb1fe8ea990aecd",
       "isDefault": false,
       "rank": 4,
       "ruleId": null,
@@ -64,6 +68,7 @@
         "status": "low_coverage"
       },
       "id": "more:brow",
+      "impressionId": "impression_4f32544c9c0ff72e",
       "isDefault": false,
       "rank": 5,
       "ruleId": null,
@@ -79,6 +84,7 @@
         "status": "low_coverage"
       },
       "id": "more:blush",
+      "impressionId": "impression_331463f856b8a33d",
       "isDefault": false,
       "rank": 6,
       "ruleId": null,
@@ -94,6 +100,7 @@
         "status": "low_coverage"
       },
       "id": "more:contour",
+      "impressionId": "impression_1d5f07ef24189fe7",
       "isDefault": false,
       "rank": 7,
       "ruleId": null,
@@ -189,6 +196,7 @@
     "explorationRate": 0.1,
     "variant": "control_more_v0"
   },
+  "exposureId": "exposure_0cd73cc7fdd7e011",
   "kit": {
     "kit": {
       "base": {

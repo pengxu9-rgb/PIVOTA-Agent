@@ -22,6 +22,7 @@ const AdjustmentCandidateAreaV0Schema = z.enum(['prep', 'base', 'contour', 'brow
 const AdjustmentCandidateV0Schema = z
   .object({
     id: z.string().min(1),
+    impressionId: z.string().min(1).optional(),
     area: AdjustmentCandidateAreaV0Schema,
     title: z.string().min(1),
     why: z.string().min(1).max(120),
@@ -52,6 +53,7 @@ const LookReplicateResultV0Schema = z
     schemaVersion: z.literal('v0'),
     market: z.enum(['US', 'JP']),
     locale: z.string().min(1),
+    exposureId: z.string().min(1).optional(),
 
     layer2EngineVersion: z.union([z.literal('l2-us-0.1.0'), z.literal('l2-jp-0.1.0')]),
     layer3EngineVersion: z.union([z.literal('l3-us-0.1.0'), z.literal('l3-jp-0.1.0')]),

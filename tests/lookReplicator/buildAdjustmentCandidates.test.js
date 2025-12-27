@@ -10,6 +10,14 @@ function makeRng(seq) {
 }
 
 describe('buildAdjustmentCandidates', () => {
+  function makeIdGen(prefix = 'id') {
+    let i = 0;
+    return () => {
+      i += 1;
+      return `${prefix}_${i}`;
+    };
+  }
+
   test('disabled returns undefined fields', () => {
     const out = buildAdjustmentCandidates({ enabled: false, layer2Adjustments: [] });
     expect(out.adjustmentCandidates).toBeUndefined();
@@ -26,8 +34,21 @@ describe('buildAdjustmentCandidates', () => {
       enabled: true,
       explorationRate: 0,
       rng: makeRng([0.9]),
+      idGen: makeIdGen('uuid'),
       layer2Adjustments,
     });
+
+    expect(typeof out.exposureId).toBe('string');
+    expect(out.exposureId).toBe('uuid_1');
+    expect(out.adjustmentCandidates.map((c) => c.impressionId)).toEqual([
+      'uuid_2',
+      'uuid_3',
+      'uuid_4',
+      'uuid_5',
+      'uuid_6',
+      'uuid_7',
+      'uuid_8',
+    ]);
 
     expect(out.adjustmentCandidates).toHaveLength(7);
     expect(out.adjustmentCandidates.slice(0, 3).every((c) => c.isDefault)).toBe(true);
@@ -47,6 +68,7 @@ describe('buildAdjustmentCandidates', () => {
       enabled: true,
       explorationRate: 0.5,
       rng: makeRng([0.1, 0.9, 0.8, 0.7, 0.6]),
+      idGen: makeIdGen('uuid'),
       layer2Adjustments,
     });
 
@@ -55,6 +77,8 @@ describe('buildAdjustmentCandidates', () => {
 
     const moreIds = out.adjustmentCandidates.slice(3).map((c) => c.id);
     expect(new Set(moreIds)).toEqual(new Set(['more:prep', 'more:brow', 'more:blush', 'more:contour']));
+
+    const impressionIds = out.adjustmentCandidates.map((c) => c.impressionId);
+    expect(new Set(impressionIds).size).toBe(impressionIds.length);
   });
 });
-
