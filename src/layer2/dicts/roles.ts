@@ -2,17 +2,16 @@ import { z } from "zod";
 
 import { readDictJson } from "./loadDicts";
 
-const RoleV0Schema = z
+const RoleSchema = z
   .object({
     id: z.string().min(1),
     synonyms: z.array(z.string().min(1)).default([]),
   })
   .strict();
 
-const RolesV0Schema = z
+const RolesCommonSchema = z
   .object({
-    schemaVersion: z.literal("v0"),
-    roles: z.array(RoleV0Schema).min(1),
+    roles: z.array(RoleSchema).min(1),
     normalization_rules: z
       .object({
         lowercase: z.boolean().default(true),
@@ -33,13 +32,32 @@ const RolesV0Schema = z
   })
   .strict();
 
+const RolesV0Schema = RolesCommonSchema.extend({
+  schemaVersion: z.literal("v0"),
+}).strict();
+
+const RolesV1Schema = RolesCommonSchema.extend({
+  schemaVersion: z.literal("v1"),
+}).strict();
+
 export type RolesV0 = z.infer<typeof RolesV0Schema>;
+export type RolesV1 = z.infer<typeof RolesV1Schema>;
+export type RolesAny = RolesV0 | RolesV1;
 
 export function loadRolesV0(): RolesV0 {
   return RolesV0Schema.parse(readDictJson("roles_v0.json"));
 }
 
-function applyNormalization(s: string, rules: RolesV0["normalization_rules"]): string {
+export function loadRolesV1(): RolesV1 {
+  return RolesV1Schema.parse(readDictJson("roles_v1.json"));
+}
+
+export function loadRolesLatest(): RolesAny {
+  // v1 is a strict superset of v0; prefer it when present.
+  return loadRolesV1();
+}
+
+function applyNormalization(s: string, rules: RolesAny["normalization_rules"]): string {
   let out = s;
   if (rules.trim) out = out.trim();
   for (const r of rules.replace_chars || []) out = out.split(r.from).join(r.to);
@@ -48,8 +66,8 @@ function applyNormalization(s: string, rules: RolesV0["normalization_rules"]): s
   return out;
 }
 
-export function buildRoleNormalizer(dict?: RolesV0) {
-  const d = dict ?? loadRolesV0();
+export function buildRoleNormalizer(dict?: RolesAny) {
+  const d = dict ?? loadRolesLatest();
   const rules = d.normalization_rules;
   const byNormalized = new Map<string, string>();
   for (const role of d.roles) {
@@ -66,4 +84,3 @@ export function buildRoleNormalizer(dict?: RolesV0) {
     },
   };
 }
-

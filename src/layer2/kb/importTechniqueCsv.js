@@ -2,8 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { TechniqueCardV0Schema } = require('../schemas/techniqueCardV0');
-const { loadTriggerKeysV0, isTriggerKeyAllowed } = require('../dicts/triggerKeys');
-const { loadRolesV0, buildRoleNormalizer } = require('../dicts/roles');
+const { loadTriggerKeysLatest, isTriggerKeyAllowed } = require('../dicts/triggerKeys');
+const { loadRolesLatest, buildRoleNormalizer } = require('../dicts/roles');
 
 function assertNever(x) {
   throw new Error(`Unexpected value: ${x}`);
@@ -223,8 +223,8 @@ function buildTechniqueCardFromCsvRow(row, options) {
   const market = String(options.market ?? '').toUpperCase();
   if (market !== 'US' && market !== 'JP') throw new Error(`Invalid market "${options.market}"`);
 
-  const triggerKeyDict = options.triggerKeyDict ?? loadTriggerKeysV0();
-  const rolesDict = options.rolesDict ?? loadRolesV0();
+  const triggerKeyDict = options.triggerKeyDict ?? loadTriggerKeysLatest();
+  const rolesDict = options.rolesDict ?? loadRolesLatest();
   const roleNormalizer = options.roleNormalizer ?? buildRoleNormalizer(rolesDict);
 
   const id = String(row.id ?? '').trim();

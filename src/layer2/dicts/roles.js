@@ -1,17 +1,16 @@
 const { z } = require('zod');
 const { readDictJson } = require('./loadDicts');
 
-const RoleV0Schema = z
+const RoleSchema = z
   .object({
     id: z.string().min(1),
     synonyms: z.array(z.string().min(1)).default([]),
   })
   .strict();
 
-const RolesV0Schema = z
+const RolesCommonSchema = z
   .object({
-    schemaVersion: z.literal('v0'),
-    roles: z.array(RoleV0Schema).min(1),
+    roles: z.array(RoleSchema).min(1),
     normalization_rules: z
       .object({
         lowercase: z.boolean().default(true),
@@ -32,8 +31,25 @@ const RolesV0Schema = z
   })
   .strict();
 
+const RolesV0Schema = RolesCommonSchema.extend({
+  schemaVersion: z.literal('v0'),
+}).strict();
+
+const RolesV1Schema = RolesCommonSchema.extend({
+  schemaVersion: z.literal('v1'),
+}).strict();
+
 function loadRolesV0() {
   return RolesV0Schema.parse(readDictJson('roles_v0.json'));
+}
+
+function loadRolesV1() {
+  return RolesV1Schema.parse(readDictJson('roles_v1.json'));
+}
+
+function loadRolesLatest() {
+  // v1 is a strict superset of v0; prefer it when present.
+  return loadRolesV1();
 }
 
 function applyNormalization(s, rules) {
@@ -46,7 +62,7 @@ function applyNormalization(s, rules) {
 }
 
 function buildRoleNormalizer(dict) {
-  const d = dict ?? loadRolesV0();
+  const d = dict ?? loadRolesLatest();
   const rules = d.normalization_rules || {};
   const byNormalized = new Map();
 
@@ -68,6 +84,7 @@ function buildRoleNormalizer(dict) {
 
 module.exports = {
   loadRolesV0,
+  loadRolesV1,
+  loadRolesLatest,
   buildRoleNormalizer,
 };
-

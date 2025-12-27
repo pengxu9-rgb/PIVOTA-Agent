@@ -69,6 +69,7 @@ function pickLexiconValue(lexicon, market, area, field, fallback = "unknown") {
 
 function generateTriggerCheatsheet({ triggerDict, lookspecLexicon, observedKeys }) {
   const allowedPrefixes = Array.isArray(triggerDict?.allowedPrefixes) ? triggerDict.allowedPrefixes : [];
+  const triggerSchemaVersion = String(triggerDict?.schemaVersion ?? "unknown");
   const groups = new Map();
   for (const p of allowedPrefixes) {
     const g = groupPrefix(String(p));
@@ -94,7 +95,7 @@ function generateTriggerCheatsheet({ triggerDict, lookspecLexicon, observedKeys 
   });
 
   const lines = [];
-  lines.push("# Trigger Keys Cheatsheet (v0)");
+  lines.push(`# Trigger Keys Cheatsheet (${triggerSchemaVersion})`);
   lines.push("");
   lines.push("This is generated from frozen dicts and KB. Do not edit by hand.");
   lines.push("");
@@ -149,9 +150,10 @@ function generateTriggerCheatsheet({ triggerDict, lookspecLexicon, observedKeys 
   renderObservedGroup("similarityReport.*", observedSim);
 
   if (lookspecLexicon) {
+    const lexiconSchemaVersion = String(lookspecLexicon?.schemaVersion ?? "unknown");
     lines.push("## LookSpec value lexicon (optional)");
     lines.push("");
-    lines.push("Allowed enum values (from `lookspec_lexicon_v0.json`):");
+    lines.push(`Allowed enum values (from \`lookspec_lexicon_${lexiconSchemaVersion}.json\`):`);
     lines.push("");
     for (const market of ["US", "JP"]) {
       if (!lookspecLexicon?.markets?.[market]) continue;
@@ -175,7 +177,7 @@ function generateRolesDropdownCsv(rolesDict) {
   const rows = [];
   rows.push(["role_id", "area", "description", "synonyms"].join(","));
 
-  // roles_v0 does not currently define area/description. Keep deterministic placeholders.
+  // roles_v1 does not currently define area/description. Keep deterministic placeholders.
   const sorted = roles
     .map((r) => ({ id: String(r?.id ?? "").trim(), synonyms: Array.isArray(r?.synonyms) ? r.synonyms : [] }))
     .filter((r) => r.id)
@@ -283,9 +285,10 @@ function main() {
 
   ensureDir(outDir);
 
-  const triggerDict = readJson(path.join(dictDir, "trigger_keys_v0.json"));
-  const rolesDict = readJson(path.join(dictDir, "roles_v0.json"));
-  const lookspecLexicon = tryReadJson(path.join(dictDir, "lookspec_lexicon_v0.json"));
+  const triggerDict =
+    tryReadJson(path.join(dictDir, "trigger_keys_v1.json")) ?? readJson(path.join(dictDir, "trigger_keys_v0.json"));
+  const rolesDict = tryReadJson(path.join(dictDir, "roles_v1.json")) ?? readJson(path.join(dictDir, "roles_v0.json"));
+  const lookspecLexicon = tryReadJson(path.join(dictDir, "lookspec_lexicon_v1.json"));
 
   const observedKeys = walkTechniqueDirsForObservedTriggerKeys(repoRoot);
 
@@ -307,4 +310,3 @@ function main() {
 }
 
 main();
-
