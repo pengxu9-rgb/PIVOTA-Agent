@@ -207,6 +207,18 @@ function parseTagsCell(cell) {
     .filter(Boolean);
 }
 
+function normalizeReviewStatusTag(reviewStatusRaw) {
+  const s = String(reviewStatusRaw ?? '').trim();
+  if (!s) return null;
+  const slug = s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  if (!slug) return null;
+  return `reviewStatus:${slug}`;
+}
+
 function buildTechniqueCardFromCsvRow(row, options) {
   const market = String(options.market ?? '').toUpperCase();
   if (market !== 'US' && market !== 'JP') throw new Error(`Invalid market "${options.market}"`);
@@ -269,6 +281,12 @@ function buildTechniqueCardFromCsvRow(row, options) {
   const sourceId = String(row.sourceId ?? '').trim();
   const sourcePointer = String(row.sourcePointer ?? '').trim();
   const tags = parseTagsCell(row.tags);
+  const reviewStatusTag = normalizeReviewStatusTag(row.reviewStatus);
+  const tagsFinal = [];
+  if (reviewStatusTag) tagsFinal.push(reviewStatusTag);
+  for (const t of tags) {
+    if (!tagsFinal.includes(t)) tagsFinal.push(t);
+  }
 
   // Construct in stable key order for deterministic JSON output.
   const card = {
@@ -290,7 +308,7 @@ function buildTechniqueCardFromCsvRow(row, options) {
     ...(roleHints.length ? { productRoleHints: roleHints } : {}),
     ...(sourceId ? { sourceId } : {}),
     ...(sourcePointer ? { sourcePointer } : {}),
-    ...(tags.length ? { tags } : {}),
+    ...(tagsFinal.length ? { tags: tagsFinal } : {}),
   };
 
   const parsed = TechniqueCardV0Schema.safeParse(card);

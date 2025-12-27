@@ -62,6 +62,7 @@ describe('kb CSV import helpers', () => {
         step2: 'Keep the wing shorter.',
         why1: 'Helps match the intended liner direction with less risk.',
         productRoleHint1: 'thin felt-tip liner',
+        reviewStatus: 'approved',
         tags: 'kb_import,test',
       },
       { market: 'US' },
@@ -70,7 +71,7 @@ describe('kb CSV import helpers', () => {
     expect(card.market).toBe('US');
     expect(card.id).toBe('T_TEST_IMPORT');
     expect(card.productRoleHints).toEqual(['thin_felt_tip_liner']);
-    expect(card.tags).toEqual(['kb_import', 'test']);
+    expect(card.tags).toEqual(['reviewStatus:approved', 'kb_import', 'test']);
     expect(card.triggers.all).toHaveLength(2);
     expect(card.actionTemplate.steps).toHaveLength(2);
 
@@ -123,6 +124,7 @@ describe('kb CSV import helpers', () => {
     "thin_felt_tip_liner"
   ],
   "tags": [
+    "reviewStatus:approved",
     "kb_import",
     "test"
   ]

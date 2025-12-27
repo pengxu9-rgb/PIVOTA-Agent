@@ -39,6 +39,7 @@ Role hints (optional):
 Metadata (optional):
 - `sourceId`
 - `sourcePointer`
+- `reviewStatus` (optional; stored as `tags` entry `reviewStatus:<value>` after normalization)
 - `tags` (comma- or semicolon-separated list)
 
 ## Trigger DSL
@@ -67,4 +68,3 @@ Trigger keys are validated against `src/layer2/dicts/trigger_keys_v0.json`.
 
 `productRoleHint*` values are normalized and validated using `src/layer2/dicts/roles_v0.json`.
 Use canonical role IDs or their defined synonyms (e.g. `thin felt-tip liner` → `thin_felt_tip_liner`).
-
