@@ -1,0 +1,1475 @@
+{
+  "assumptions": [
+    "role_id strings must be stable ASCII and market-neutral, using the required prefix 'ROLE:' and snake_case.",
+    "Role hints are used to map to SKUs (US DTC first), but the taxonomy itself must not encode any retailer/brand specifics.",
+    "Technique cards can emit multiple productRoleHints per look; downstream ranking handles “primary vs optional” selection.",
+    "Synonyms and normalization_rules are primarily for ingestion/search/matching and can be expanded per market later without changing role_ids.",
+    "Areas are constrained to: base, eye, lip, tools (as requested). Cheek and brow functions are included under base or eye in P0 to keep the schema stable and minimal.",
+    "This taxonomy is for makeup look replication (cosmetics + application tools), not skincare routines; however, minimal prep roles are included where they directly affect the replicated finish (e.g., primer, lip prep)."
+  ],
+  "deliverable": {
+    "role_taxonomy_version": "v0",
+    "roles": [
+      {
+        "role_id": "ROLE:hydrating_moisturizer_prep",
+        "area": "base",
+        "description": "Hydrating prep layer to reduce dryness and improve base laydown.",
+        "typical_attributes": [
+          "function:hydrate",
+          "finish:plump",
+          "texture:cream_or_gel",
+          "wear:improves_blend"
+        ],
+        "synonyms": [
+          "moisturizer",
+          "hydrating cream",
+          "hydrating gel",
+          "skin prep moisturizer"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:sunscreen_prep",
+        "area": "base",
+        "description": "UV-protection prep layer compatible with makeup application.",
+        "typical_attributes": [
+          "function:uv_protection",
+          "finish:varies",
+          "texture:lotion_or_gel",
+          "wear:compatible_under_makeup"
+        ],
+        "synonyms": [
+          "sunscreen",
+          "spf moisturizer",
+          "uv gel",
+          "sunblock"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:blurring_primer",
+        "area": "base",
+        "description": "Primer that smooths texture and diffuses pores for a soft-focus base.",
+        "typical_attributes": [
+          "function:blur",
+          "finish:soft_matte_or_satin",
+          "texture:silicone_or_gel",
+          "concern:pores_texture"
+        ],
+        "synonyms": [
+          "blurring primer",
+          "pore minimizing primer",
+          "smoothing primer",
+          "soft-focus primer"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:gripping_primer",
+        "area": "base",
+        "description": "Primer that increases adherence to extend wear and reduce breakdown.",
+        "typical_attributes": [
+          "function:grip",
+          "finish:neutral",
+          "texture:tacky_gel",
+          "wear:long_wear"
+        ],
+        "synonyms": [
+          "gripping primer",
+          "sticky primer",
+          "adhesion primer",
+          "long-wear primer"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:illuminating_primer",
+        "area": "base",
+        "description": "Primer that adds luminosity and glow under complexion products.",
+        "typical_attributes": [
+          "function:glow",
+          "finish:luminous",
+          "texture:cream_or_liquid",
+          "effect:light_reflecting"
+        ],
+        "synonyms": [
+          "illuminating primer",
+          "glow primer",
+          "radiance primer",
+          "luminous base"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:color_corrector",
+        "area": "base",
+        "description": "Corrective color product to neutralize discoloration before concealer/foundation.",
+        "typical_attributes": [
+          "function:neutralize",
+          "finish:varies",
+          "format:cream_or_liquid",
+          "use:targeted"
+        ],
+        "synonyms": [
+          "color corrector",
+          "correcting concealer",
+          "peach corrector",
+          "green corrector",
+          "lavender corrector"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:light_coverage_complexion",
+        "area": "base",
+        "description": "Sheer-to-light coverage complexion product for a natural base.",
+        "typical_attributes": [
+          "coverage:light",
+          "finish:varies",
+          "format:liquid_or_tint",
+          "effect:skinlike"
+        ],
+        "synonyms": [
+          "skin tint",
+          "tinted moisturizer",
+          "light coverage foundation",
+          "bb cream",
+          "cc cream"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:medium_coverage_complexion",
+        "area": "base",
+        "description": "Medium coverage complexion product for noticeable evening of tone.",
+        "typical_attributes": [
+          "coverage:medium",
+          "finish:varies",
+          "format:liquid_or_cream",
+          "effect:evening"
+        ],
+        "synonyms": [
+          "medium coverage foundation",
+          "buildable foundation",
+          "everyday foundation"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:full_coverage_complexion",
+        "area": "base",
+        "description": "High coverage complexion product for strong correction and uniformity.",
+        "typical_attributes": [
+          "coverage:full",
+          "finish:varies",
+          "format:liquid_or_cream",
+          "effect:high_correction"
+        ],
+        "synonyms": [
+          "full coverage foundation",
+          "camouflage foundation",
+          "high coverage base"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:spot_concealer",
+        "area": "base",
+        "description": "Targeted concealer for blemishes and localized coverage.",
+        "typical_attributes": [
+          "use:spot",
+          "coverage:medium_to_full",
+          "finish:neutral",
+          "format:cream_or_liquid"
+        ],
+        "synonyms": [
+          "spot concealer",
+          "blemish concealer",
+          "camouflage concealer"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:under_eye_concealer",
+        "area": "base",
+        "description": "Concealer optimized for under-eye brightening and smoothing.",
+        "typical_attributes": [
+          "use:under_eye",
+          "coverage:light_to_medium",
+          "finish:satin",
+          "texture:thin"
+        ],
+        "synonyms": [
+          "under eye concealer",
+          "brightening concealer",
+          "eye concealer"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:setting_powder_translucent",
+        "area": "base",
+        "description": "Loose/pressed translucent powder to set makeup and reduce transfer.",
+        "typical_attributes": [
+          "function:set",
+          "finish:matte_or_soft_matte",
+          "format:loose_or_pressed",
+          "shade:translucent"
+        ],
+        "synonyms": [
+          "setting powder",
+          "translucent powder",
+          "loose powder",
+          "pressed setting powder"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:finishing_powder_blurring",
+        "area": "base",
+        "description": "Finishing powder that softens texture and refines the final look.",
+        "typical_attributes": [
+          "function:finish",
+          "function:blur",
+          "finish:satin_or_soft_matte",
+          "use:final_pass"
+        ],
+        "synonyms": [
+          "finishing powder",
+          "blurring powder",
+          "filter powder",
+          "soft-focus powder"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:oil_control_powder",
+        "area": "base",
+        "description": "Powder aimed at controlling oil/shine in targeted zones.",
+        "typical_attributes": [
+          "function:oil_control",
+          "finish:matte",
+          "use:t_zone",
+          "wear:shine_reduction"
+        ],
+        "synonyms": [
+          "oil control powder",
+          "mattifying powder",
+          "shine control powder"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:cream_contour",
+        "area": "base",
+        "description": "Cream product to add shadow and sculpt facial structure.",
+        "typical_attributes": [
+          "function:sculpt",
+          "format:cream_or_stick",
+          "finish:satin",
+          "tone:neutral_or_cool"
+        ],
+        "synonyms": [
+          "cream contour",
+          "contour stick",
+          "cream sculpt",
+          "cream bronzer (contour use)"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:powder_contour",
+        "area": "base",
+        "description": "Powder product to add shadow and sculpt facial structure.",
+        "typical_attributes": [
+          "function:sculpt",
+          "format:powder",
+          "finish:matte",
+          "tone:neutral_or_cool"
+        ],
+        "synonyms": [
+          "powder contour",
+          "contour powder",
+          "sculpting powder"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:bronzer_warming",
+        "area": "base",
+        "description": "Bronzer to add warmth and sun-kissed dimension.",
+        "typical_attributes": [
+          "function:warmth",
+          "format:powder_or_cream",
+          "finish:matte_or_satin",
+          "tone:warm"
+        ],
+        "synonyms": [
+          "bronzer",
+          "warming bronzer",
+          "sun-kissed powder",
+          "bronzing cream"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:highlighter_luminous",
+        "area": "base",
+        "description": "Highlight product for reflective high points and glow.",
+        "typical_attributes": [
+          "function:highlight",
+          "finish:luminous",
+          "format:powder_or_cream_or_liquid",
+          "effect:light_reflecting"
+        ],
+        "synonyms": [
+          "highlighter",
+          "illuminator",
+          "highlighting powder",
+          "liquid highlight"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:blush_natural_flush",
+        "area": "base",
+        "description": "Blush to add natural cheek color and liveliness.",
+        "typical_attributes": [
+          "function:flush",
+          "format:powder_or_cream_or_liquid",
+          "finish:satin_or_dewy",
+          "placement:cheeks"
+        ],
+        "synonyms": [
+          "blush",
+          "cheek color",
+          "cheek tint",
+          "cream blush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:setting_spray_long_wear",
+        "area": "base",
+        "description": "Setting spray to improve wear time and reduce transfer.",
+        "typical_attributes": [
+          "function:set",
+          "wear:long_wear",
+          "finish:neutral",
+          "format:spray"
+        ],
+        "synonyms": [
+          "setting spray",
+          "long-wear setting spray",
+          "fixing spray",
+          "makeup seal"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:setting_spray_glow",
+        "area": "base",
+        "description": "Setting spray that adds a dewy glow while helping meld layers.",
+        "typical_attributes": [
+          "function:set",
+          "finish:dewy",
+          "effect:meld",
+          "format:spray"
+        ],
+        "synonyms": [
+          "dewy setting spray",
+          "glow mist",
+          "hydrating mist (makeup use)"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:eye_primer_grip",
+        "area": "eye",
+        "description": "Eye primer to improve shadow/liner adherence and longevity.",
+        "typical_attributes": [
+          "function:grip",
+          "use:eyelid",
+          "finish:neutral",
+          "wear:crease_resistant"
+        ],
+        "synonyms": [
+          "eye primer",
+          "eyeshadow primer",
+          "lid primer",
+          "base for eyeshadow"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:neutral_matte_transition_shadow",
+        "area": "eye",
+        "description": "Matte shadow used to create a soft transition and shape in the crease.",
+        "typical_attributes": [
+          "finish:matte",
+          "tone:neutral",
+          "use:transition",
+          "format:powder"
+        ],
+        "synonyms": [
+          "transition shade",
+          "crease shade",
+          "matte neutral shadow"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:deep_matte_definer_shadow",
+        "area": "eye",
+        "description": "Deeper matte shadow used to add depth (outer V, lash line, crease).",
+        "typical_attributes": [
+          "finish:matte",
+          "tone:deep",
+          "use:define_depth",
+          "format:powder"
+        ],
+        "synonyms": [
+          "deepening shade",
+          "outer corner shade",
+          "matte definer"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:shimmer_lid_shadow",
+        "area": "eye",
+        "description": "Shimmer/satin shadow for lid brightness and dimension.",
+        "typical_attributes": [
+          "finish:shimmer_or_satin",
+          "use:lid",
+          "effect:brighten",
+          "format:powder_or_cream"
+        ],
+        "synonyms": [
+          "shimmer eyeshadow",
+          "lid shimmer",
+          "satin shadow",
+          "metallic shadow"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:glitter_topper_eye",
+        "area": "eye",
+        "description": "Sparkle topper for accent points on the lid or inner corner.",
+        "typical_attributes": [
+          "finish:glitter",
+          "use:accent",
+          "opacity:sheer_to_buildable",
+          "format:gel_or_liquid_or_powder"
+        ],
+        "synonyms": [
+          "glitter topper",
+          "sparkle topper",
+          "glitter shadow topper",
+          "eye glitter"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:inner_corner_brightener",
+        "area": "eye",
+        "description": "Light-reflecting product for inner-corner highlight and eye opening.",
+        "typical_attributes": [
+          "use:inner_corner",
+          "effect:brighten",
+          "finish:shimmer_or_satin",
+          "format:powder_or_pencil"
+        ],
+        "synonyms": [
+          "inner corner highlight",
+          "inner corner brightener",
+          "tear duct highlight"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:thin_felt_tip_liner",
+        "area": "eye",
+        "description": "Precision felt-tip liquid liner for thin, crisp lines and wings.",
+        "typical_attributes": [
+          "format:pen",
+          "tip:felt_thin",
+          "finish:matte_or_satin",
+          "color:often_black_or_brown"
+        ],
+        "synonyms": [
+          "felt-tip liner",
+          "precision eyeliner pen",
+          "liquid liner pen",
+          "thin tip eyeliner"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:brush_tip_liner",
+        "area": "eye",
+        "description": "Brush-tip liquid liner for flexible strokes and variable thickness.",
+        "typical_attributes": [
+          "format:pen_or_bottle",
+          "tip:brush",
+          "finish:matte_or_satin",
+          "stroke:flexible"
+        ],
+        "synonyms": [
+          "brush tip liner",
+          "liquid brush liner",
+          "eyeliner with brush tip"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:kohl_pencil_liner",
+        "area": "eye",
+        "description": "Soft pencil liner for smudged definition and smoky effects.",
+        "typical_attributes": [
+          "format:pencil",
+          "texture:soft_kohl",
+          "use:smudge",
+          "finish:matte"
+        ],
+        "synonyms": [
+          "kohl eyeliner",
+          "soft pencil liner",
+          "smudge liner",
+          "kajal"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:gel_pot_liner",
+        "area": "eye",
+        "description": "Gel liner in pot format applied with a brush for long wear and precision.",
+        "typical_attributes": [
+          "format:pot",
+          "texture:gel",
+          "use:precise_or_smoked",
+          "wear:long_wear"
+        ],
+        "synonyms": [
+          "gel pot liner",
+          "gel eyeliner pot",
+          "cream gel liner"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:tightline_liner",
+        "area": "eye",
+        "description": "Waterline/tightline-safe liner for subtle lashline density.",
+        "typical_attributes": [
+          "use:tightline",
+          "wear:smudge_resistant",
+          "format:pencil_or_gel",
+          "finish:matte"
+        ],
+        "synonyms": [
+          "tightline pencil",
+          "waterline liner",
+          "inner rim liner"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:mascara_lengthening",
+        "area": "eye",
+        "description": "Mascara emphasizing lash length, separation, and lift.",
+        "typical_attributes": [
+          "function:lengthen",
+          "effect:separate",
+          "finish:defined",
+          "wear:smudge_resistant"
+        ],
+        "synonyms": [
+          "lengthening mascara",
+          "separating mascara",
+          "lifting mascara"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:mascara_volumizing",
+        "area": "eye",
+        "description": "Mascara emphasizing thickness and volume for bold lashes.",
+        "typical_attributes": [
+          "function:volume",
+          "effect:thicken",
+          "finish:dramatic",
+          "wear:smudge_resistant"
+        ],
+        "synonyms": [
+          "volumizing mascara",
+          "thickening mascara",
+          "dramatic mascara"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:mascara_waterproof",
+        "area": "eye",
+        "description": "Waterproof mascara for maximum hold and smudge resistance.",
+        "typical_attributes": [
+          "wear:waterproof",
+          "hold:high",
+          "smudge_resistant:high",
+          "removal:requires_oil"
+        ],
+        "synonyms": [
+          "waterproof mascara",
+          "smudgeproof mascara",
+          "long-lasting waterproof mascara"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:false_lashes_strip",
+        "area": "eye",
+        "description": "Strip lashes for added lash intensity and shape change.",
+        "typical_attributes": [
+          "format:strip",
+          "effect:dramatic_or_natural",
+          "use:upper_lash",
+          "requires:lash_glue"
+        ],
+        "synonyms": [
+          "strip lashes",
+          "false eyelashes strip",
+          "band lashes"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:false_lashes_individual_clusters",
+        "area": "eye",
+        "description": "Individual or cluster lashes for customizable intensity and placement.",
+        "typical_attributes": [
+          "format:individual_or_cluster",
+          "effect:customizable",
+          "use:outer_corner_or_full",
+          "requires:lash_glue"
+        ],
+        "synonyms": [
+          "individual lashes",
+          "cluster lashes",
+          "lash clusters",
+          "single lashes"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lash_adhesive",
+        "area": "eye",
+        "description": "Adhesive for applying false lashes.",
+        "typical_attributes": [
+          "function:adhere",
+          "format:brush_on_or_tube",
+          "drydown:clear_or_black",
+          "wear:long_wear"
+        ],
+        "synonyms": [
+          "lash glue",
+          "lash adhesive",
+          "false lash glue"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lip_prep_balm",
+        "area": "lip",
+        "description": "Lip conditioning prep to smooth dryness before color.",
+        "typical_attributes": [
+          "function:condition",
+          "finish:balmy",
+          "use:prep",
+          "comfort:high"
+        ],
+        "synonyms": [
+          "lip balm",
+          "lip prep",
+          "conditioning balm",
+          "hydrating lip balm"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lip_liner_precision",
+        "area": "lip",
+        "description": "Lip liner for defining edges, reshaping, and improving wear.",
+        "typical_attributes": [
+          "function:define",
+          "format:pencil",
+          "wear:improves_longevity",
+          "use:edge_or_full_fill"
+        ],
+        "synonyms": [
+          "lip liner",
+          "lip pencil",
+          "precision lip liner"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lipstick_matte",
+        "area": "lip",
+        "description": "Matte lipstick for bold color with low shine.",
+        "typical_attributes": [
+          "finish:matte",
+          "coverage:medium_to_full",
+          "format:bullet_or_liquid",
+          "wear:long_wear"
+        ],
+        "synonyms": [
+          "matte lipstick",
+          "matte lip color",
+          "matte bullet lipstick"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lipstick_satin",
+        "area": "lip",
+        "description": "Satin lipstick for creamy color with moderate shine.",
+        "typical_attributes": [
+          "finish:satin",
+          "coverage:medium_to_full",
+          "format:bullet",
+          "comfort:medium_high"
+        ],
+        "synonyms": [
+          "satin lipstick",
+          "cream lipstick",
+          "creamy lipstick"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lip_tint_stain",
+        "area": "lip",
+        "description": "Tint or stain for longer wear with lower transfer.",
+        "typical_attributes": [
+          "finish:sheer_to_satin",
+          "wear:stain",
+          "transfer:low",
+          "format:liquid"
+        ],
+        "synonyms": [
+          "lip tint",
+          "lip stain",
+          "tinted stain",
+          "long wear tint"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lip_gloss_high_shine",
+        "area": "lip",
+        "description": "High-shine gloss to add reflectivity and fullness effect.",
+        "typical_attributes": [
+          "finish:gloss",
+          "shine:high",
+          "coverage:sheer_to_medium",
+          "effect:plump_visual"
+        ],
+        "synonyms": [
+          "lip gloss",
+          "high shine gloss",
+          "gloss topper",
+          "shine lip"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lip_oil_glossy",
+        "area": "lip",
+        "description": "Oil-like glossy product for lightweight shine and comfort.",
+        "typical_attributes": [
+          "finish:gloss",
+          "texture:oil",
+          "comfort:high",
+          "shine:medium_high"
+        ],
+        "synonyms": [
+          "lip oil",
+          "lip serum oil",
+          "glossy oil lip"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lip_plumper",
+        "area": "lip",
+        "description": "Plumping product to enhance fullness sensation and shine.",
+        "typical_attributes": [
+          "effect:plump",
+          "finish:gloss_or_satin",
+          "sensation:tingle_optional",
+          "use:topper_or_alone"
+        ],
+        "synonyms": [
+          "lip plumper",
+          "plumping gloss",
+          "volumizing lip"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:makeup_sponge",
+        "area": "tools",
+        "description": "Sponge for applying and blending liquid/cream complexion products.",
+        "typical_attributes": [
+          "tool:sponge",
+          "use:blend",
+          "finish:skinlike",
+          "application:damp_optional"
+        ],
+        "synonyms": [
+          "makeup sponge",
+          "blending sponge",
+          "beauty sponge"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:foundation_brush_dense",
+        "area": "tools",
+        "description": "Dense brush for applying and buffing foundation/complexion products.",
+        "typical_attributes": [
+          "tool:brush",
+          "density:dense",
+          "use:foundation",
+          "shape:flat_or_round"
+        ],
+        "synonyms": [
+          "foundation brush",
+          "buffing brush",
+          "dense base brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:concealer_brush_small",
+        "area": "tools",
+        "description": "Small brush for precise concealer placement and blending.",
+        "typical_attributes": [
+          "tool:brush",
+          "size:small",
+          "use:concealer",
+          "precision:high"
+        ],
+        "synonyms": [
+          "concealer brush",
+          "small blending brush",
+          "detail concealer brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:powder_brush_fluffy",
+        "area": "tools",
+        "description": "Large fluffy brush for sweeping setting/finishing powder.",
+        "typical_attributes": [
+          "tool:brush",
+          "shape:large_fluffy",
+          "use:powder",
+          "application:sweep"
+        ],
+        "synonyms": [
+          "powder brush",
+          "fluffy powder brush",
+          "large face brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:blush_brush_medium",
+        "area": "tools",
+        "description": "Medium brush for blush placement and diffusion.",
+        "typical_attributes": [
+          "tool:brush",
+          "size:medium",
+          "use:blush",
+          "application:diffuse"
+        ],
+        "synonyms": [
+          "blush brush",
+          "cheek brush",
+          "medium face brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:contour_brush_angled",
+        "area": "tools",
+        "description": "Angled brush for contour/bronzer placement with controlled shape.",
+        "typical_attributes": [
+          "tool:brush",
+          "shape:angled",
+          "use:contour_bronzer",
+          "precision:medium_high"
+        ],
+        "synonyms": [
+          "angled contour brush",
+          "bronzer contour brush",
+          "sculpt brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:highlight_brush_tapered",
+        "area": "tools",
+        "description": "Tapered brush for highlighting cheekbones and precise glow placement.",
+        "typical_attributes": [
+          "tool:brush",
+          "shape:tapered",
+          "use:highlighter",
+          "precision:high"
+        ],
+        "synonyms": [
+          "highlight brush",
+          "tapered highlighter brush",
+          "fan brush (highlight use)"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:eye_shader_brush_flat",
+        "area": "tools",
+        "description": "Flat brush for packing shadow onto the lid.",
+        "typical_attributes": [
+          "tool:brush",
+          "shape:flat",
+          "use:lid_shadow",
+          "application:pack"
+        ],
+        "synonyms": [
+          "flat shader brush",
+          "lid shader brush",
+          "packing brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:eye_blending_brush_fluffy",
+        "area": "tools",
+        "description": "Fluffy brush for blending shadow edges and transitions.",
+        "typical_attributes": [
+          "tool:brush",
+          "shape:fluffy",
+          "use:blend",
+          "application:diffuse"
+        ],
+        "synonyms": [
+          "blending brush",
+          "fluffy eye brush",
+          "crease blending brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:eyeliner_brush_fine",
+        "area": "tools",
+        "description": "Fine brush for gel/pot liner or precise shadow-liner.",
+        "typical_attributes": [
+          "tool:brush",
+          "tip:fine",
+          "use:liner",
+          "precision:high"
+        ],
+        "synonyms": [
+          "eyeliner brush",
+          "fine liner brush",
+          "angle liner brush"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      },
+      {
+        "role_id": "ROLE:lash_curler",
+        "area": "tools",
+        "description": "Tool for curling lashes to increase lift and openness.",
+        "typical_attributes": [
+          "tool:curler",
+          "use:curl",
+          "effect:lift",
+          "step:pre_mascara"
+        ],
+        "synonyms": [
+          "lash curler",
+          "eyelash curler",
+          "curler"
+        ],
+        "exclusions": [
+          "brand names",
+          "shade codes"
+        ]
+      }
+    ],
+    "normalization_rules": [
+      {
+        "if_contains": "blurring primer",
+        "map_to": "ROLE:blurring_primer"
+      },
+      {
+        "if_contains": "pore primer",
+        "map_to": "ROLE:blurring_primer"
+      },
+      {
+        "if_contains": "gripping primer",
+        "map_to": "ROLE:gripping_primer"
+      },
+      {
+        "if_contains": "sticky primer",
+        "map_to": "ROLE:gripping_primer"
+      },
+      {
+        "if_contains": "illuminating primer",
+        "map_to": "ROLE:illuminating_primer"
+      },
+      {
+        "if_contains": "glow primer",
+        "map_to": "ROLE:illuminating_primer"
+      },
+      {
+        "if_contains": "skin tint",
+        "map_to": "ROLE:light_coverage_complexion"
+      },
+      {
+        "if_contains": "tinted moisturizer",
+        "map_to": "ROLE:light_coverage_complexion"
+      },
+      {
+        "if_contains": "bb cream",
+        "map_to": "ROLE:light_coverage_complexion"
+      },
+      {
+        "if_contains": "cc cream",
+        "map_to": "ROLE:light_coverage_complexion"
+      },
+      {
+        "if_contains": "medium coverage foundation",
+        "map_to": "ROLE:medium_coverage_complexion"
+      },
+      {
+        "if_contains": "full coverage foundation",
+        "map_to": "ROLE:full_coverage_complexion"
+      },
+      {
+        "if_contains": "spot concealer",
+        "map_to": "ROLE:spot_concealer"
+      },
+      {
+        "if_contains": "under eye concealer",
+        "map_to": "ROLE:under_eye_concealer"
+      },
+      {
+        "if_contains": "translucent powder",
+        "map_to": "ROLE:setting_powder_translucent"
+      },
+      {
+        "if_contains": "setting powder",
+        "map_to": "ROLE:setting_powder_translucent"
+      },
+      {
+        "if_contains": "finishing powder",
+        "map_to": "ROLE:finishing_powder_blurring"
+      },
+      {
+        "if_contains": "blurring powder",
+        "map_to": "ROLE:finishing_powder_blurring"
+      },
+      {
+        "if_contains": "mattifying powder",
+        "map_to": "ROLE:oil_control_powder"
+      },
+      {
+        "if_contains": "oil control powder",
+        "map_to": "ROLE:oil_control_powder"
+      },
+      {
+        "if_contains": "cream contour",
+        "map_to": "ROLE:cream_contour"
+      },
+      {
+        "if_contains": "contour stick",
+        "map_to": "ROLE:cream_contour"
+      },
+      {
+        "if_contains": "powder contour",
+        "map_to": "ROLE:powder_contour"
+      },
+      {
+        "if_contains": "bronzer",
+        "map_to": "ROLE:bronzer_warming"
+      },
+      {
+        "if_contains": "highlighter",
+        "map_to": "ROLE:highlighter_luminous"
+      },
+      {
+        "if_contains": "blush",
+        "map_to": "ROLE:blush_natural_flush"
+      },
+      {
+        "if_contains": "setting spray",
+        "map_to": "ROLE:setting_spray_long_wear"
+      },
+      {
+        "if_contains": "fixing spray",
+        "map_to": "ROLE:setting_spray_long_wear"
+      },
+      {
+        "if_contains": "dewy mist",
+        "map_to": "ROLE:setting_spray_glow"
+      },
+      {
+        "if_contains": "glow mist",
+        "map_to": "ROLE:setting_spray_glow"
+      },
+      {
+        "if_contains": "eye primer",
+        "map_to": "ROLE:eye_primer_grip"
+      },
+      {
+        "if_contains": "eyeshadow primer",
+        "map_to": "ROLE:eye_primer_grip"
+      },
+      {
+        "if_contains": "transition shade",
+        "map_to": "ROLE:neutral_matte_transition_shadow"
+      },
+      {
+        "if_contains": "crease shade",
+        "map_to": "ROLE:neutral_matte_transition_shadow"
+      },
+      {
+        "if_contains": "deepening shade",
+        "map_to": "ROLE:deep_matte_definer_shadow"
+      },
+      {
+        "if_contains": "outer v shade",
+        "map_to": "ROLE:deep_matte_definer_shadow"
+      },
+      {
+        "if_contains": "shimmer shadow",
+        "map_to": "ROLE:shimmer_lid_shadow"
+      },
+      {
+        "if_contains": "metallic shadow",
+        "map_to": "ROLE:shimmer_lid_shadow"
+      },
+      {
+        "if_contains": "glitter topper",
+        "map_to": "ROLE:glitter_topper_eye"
+      },
+      {
+        "if_contains": "inner corner highlight",
+        "map_to": "ROLE:inner_corner_brightener"
+      },
+      {
+        "if_contains": "felt tip liner",
+        "map_to": "ROLE:thin_felt_tip_liner"
+      },
+      {
+        "if_contains": "eyeliner pen",
+        "map_to": "ROLE:thin_felt_tip_liner"
+      },
+      {
+        "if_contains": "brush tip liner",
+        "map_to": "ROLE:brush_tip_liner"
+      },
+      {
+        "if_contains": "kohl liner",
+        "map_to": "ROLE:kohl_pencil_liner"
+      },
+      {
+        "if_contains": "gel liner pot",
+        "map_to": "ROLE:gel_pot_liner"
+      },
+      {
+        "if_contains": "tightline",
+        "map_to": "ROLE:tightline_liner"
+      },
+      {
+        "if_contains": "lengthening mascara",
+        "map_to": "ROLE:mascara_lengthening"
+      },
+      {
+        "if_contains": "volumizing mascara",
+        "map_to": "ROLE:mascara_volumizing"
+      },
+      {
+        "if_contains": "waterproof mascara",
+        "map_to": "ROLE:mascara_waterproof"
+      },
+      {
+        "if_contains": "strip lashes",
+        "map_to": "ROLE:false_lashes_strip"
+      },
+      {
+        "if_contains": "lash clusters",
+        "map_to": "ROLE:false_lashes_individual_clusters"
+      },
+      {
+        "if_contains": "lash glue",
+        "map_to": "ROLE:lash_adhesive"
+      },
+      {
+        "if_contains": "lip balm",
+        "map_to": "ROLE:lip_prep_balm"
+      },
+      {
+        "if_contains": "lip liner",
+        "map_to": "ROLE:lip_liner_precision"
+      },
+      {
+        "if_contains": "matte lipstick",
+        "map_to": "ROLE:lipstick_matte"
+      },
+      {
+        "if_contains": "satin lipstick",
+        "map_to": "ROLE:lipstick_satin"
+      },
+      {
+        "if_contains": "lip tint",
+        "map_to": "ROLE:lip_tint_stain"
+      },
+      {
+        "if_contains": "lip stain",
+        "map_to": "ROLE:lip_tint_stain"
+      },
+      {
+        "if_contains": "lip gloss",
+        "map_to": "ROLE:lip_gloss_high_shine"
+      },
+      {
+        "if_contains": "lip oil",
+        "map_to": "ROLE:lip_oil_glossy"
+      },
+      {
+        "if_contains": "lip plumper",
+        "map_to": "ROLE:lip_plumper"
+      },
+      {
+        "if_contains": "makeup sponge",
+        "map_to": "ROLE:makeup_sponge"
+      },
+      {
+        "if_contains": "foundation brush",
+        "map_to": "ROLE:foundation_brush_dense"
+      },
+      {
+        "if_contains": "powder brush",
+        "map_to": "ROLE:powder_brush_fluffy"
+      },
+      {
+        "if_contains": "blush brush",
+        "map_to": "ROLE:blush_brush_medium"
+      },
+      {
+        "if_contains": "blending brush",
+        "map_to": "ROLE:eye_blending_brush_fluffy"
+      },
+      {
+        "if_contains": "shader brush",
+        "map_to": "ROLE:eye_shader_brush_flat"
+      },
+      {
+        "if_contains": "eyeliner brush",
+        "map_to": "ROLE:eyeliner_brush_fine"
+      },
+      {
+        "if_contains": "lash curler",
+        "map_to": "ROLE:lash_curler"
+      }
+    ],
+    "maintenance_policy": {
+      "add_only": true,
+      "deprecate_method": "mark deprecated:true + replacement role_id",
+      "max_new_roles_per_month": 10
+    }
+  },
+  "notes": [
+    "The taxonomy is intentionally compact (~45 roles) to stay within the 30–80 constraint while covering the highest-leverage functions for look replication.",
+    "Cheek and brow functions are represented minimally (blush + contour/bronzer/highlighter) and can be expanded later via additive roles if technique cards require more specificity.",
+    "Tool roles are a minimal cross-area set focused on high-frequency mapping and easy SKU matching; adding niche brush variants is deferred to avoid over-expansion.",
+    "Synonyms are written to support SKU title parsing and user query normalization; market-specific synonym extensions can be layered later without changing any role_id."
+  ],
+  "open_questions": [
+    "Do you want brow products included in P0 (e.g., brow pencil, tinted brow gel), or should brow remain handled implicitly via eye roles until a later expansion?",
+    "Do you need explicit 'matte vs dewy' variants for complexion roles (e.g., ROLE:medium_coverage_complexion_matte), or should finish remain a LookSpec/technique attribute rather than a product role split?",
+    "Should we include a dedicated ROLE:cream_blush and ROLE:powder_blush split for more accurate SKU mapping, or keep the single ROLE:blush_natural_flush until SKU inventory proves the need?",
+    "Are there any US DTC catalog constraints (e.g., no false lashes sold) that require excluding certain roles from recommendation while still keeping them in taxonomy for replication completeness?"
+  ]
+}

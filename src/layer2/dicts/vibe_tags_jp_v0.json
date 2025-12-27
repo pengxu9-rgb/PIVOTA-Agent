@@ -1,0 +1,395 @@
+{
+  "assumptions": [
+    "Market isolation is enforced by validation (US tags only in US packs; JP tags only in JP packs).",
+    "Tag IDs are stable ASCII, snake_case, and prefixed by market (us_ / jp_) to prevent accidental cross-market reuse.",
+    "Display labels are primarily for UI; internal systems rely only on IDs.",
+    "Tags are assigned based on LookSpecV0 fields (base.finish, base.coverage, eye.shadow_shape, eye.liner_direction, eye.lash_intensity, lip.finish, lip.hue) plus controlled heuristics; no identity or demographic inference is allowed.",
+    "Tags should be used for personalization and growth analytics and must remain culturally appropriate; JP includes Japanese labels and optional English translations for internal tooling."
+  ],
+  "deliverable": {
+    "vibe_tags_version": "v0",
+    "market": "JP",
+    "language": [
+      "ja",
+      "en"
+    ],
+    "vibe_tags": [
+      {
+        "id": "jp_shizen_kirei",
+        "label_ja": "ナチュラルきれい",
+        "label_en": "Naturally polished",
+        "category": "style"
+      },
+      {
+        "id": "jp_seiketsu_kirei",
+        "label_ja": "清潔感",
+        "label_en": "Clean impression",
+        "category": "style"
+      },
+      {
+        "id": "jp_tomeikan",
+        "label_ja": "透明感",
+        "label_en": "Clear/soft",
+        "category": "finish"
+      },
+      {
+        "id": "jp_tsuya",
+        "label_ja": "ツヤ",
+        "label_en": "Glow",
+        "category": "finish"
+      },
+      {
+        "id": "jp_semi_matte",
+        "label_ja": "セミマット",
+        "label_en": "Soft matte",
+        "category": "finish"
+      },
+      {
+        "id": "jp_skinlike_base",
+        "label_ja": "素肌感ベース",
+        "label_en": "Skin-like base",
+        "category": "base"
+      },
+      {
+        "id": "jp_cover_base",
+        "label_ja": "カバーベース",
+        "label_en": "Higher coverage base",
+        "category": "base"
+      },
+      {
+        "id": "jp_soft_blur",
+        "label_ja": "ふんわり",
+        "label_en": "Soft blur",
+        "category": "technique"
+      },
+      {
+        "id": "jp_kicchiri",
+        "label_ja": "きっちり",
+        "label_en": "Crisp/defined",
+        "category": "technique"
+      },
+      {
+        "id": "jp_brown_make",
+        "label_ja": "ブラウンメイク",
+        "label_en": "Brown tones",
+        "category": "color"
+      },
+      {
+        "id": "jp_coral_make",
+        "label_ja": "コーラルメイク",
+        "label_en": "Coral tones",
+        "category": "color"
+      },
+      {
+        "id": "jp_pink_make",
+        "label_ja": "ピンクメイク",
+        "label_en": "Pink tones",
+        "category": "color"
+      },
+      {
+        "id": "jp_warm_tones",
+        "label_ja": "イエベ寄り",
+        "label_en": "Warm-leaning",
+        "category": "color"
+      },
+      {
+        "id": "jp_cool_tones",
+        "label_ja": "ブルベ寄り",
+        "label_en": "Cool-leaning",
+        "category": "color"
+      },
+      {
+        "id": "jp_neutral_tones",
+        "label_ja": "ニュートラル",
+        "label_en": "Neutral tones",
+        "category": "color"
+      },
+      {
+        "id": "jp_nukekan",
+        "label_ja": "抜け感",
+        "label_en": "Effortless/light",
+        "category": "style"
+      },
+      {
+        "id": "jp_otona",
+        "label_ja": "大人っぽい",
+        "label_en": "Mature refined",
+        "category": "style"
+      },
+      {
+        "id": "jp_kawaii_soft",
+        "label_ja": "かわいい（やわらか）",
+        "label_en": "Cute/soft",
+        "category": "style"
+      },
+      {
+        "id": "jp_eye_soft_smoky",
+        "label_ja": "やわらかスモーキー",
+        "label_en": "Soft smoky",
+        "category": "eye"
+      },
+      {
+        "id": "jp_eye_halo",
+        "label_ja": "ハロー",
+        "label_en": "Halo eye",
+        "category": "eye"
+      },
+      {
+        "id": "jp_eye_gradation",
+        "label_ja": "グラデーション",
+        "label_en": "Gradient shadow",
+        "category": "eye"
+      },
+      {
+        "id": "jp_eye_lift",
+        "label_ja": "目元リフト",
+        "label_en": "Lifted eye",
+        "category": "eye"
+      },
+      {
+        "id": "jp_eye_down_soft",
+        "label_ja": "たれ目風",
+        "label_en": "Downturned/soft",
+        "category": "eye"
+      },
+      {
+        "id": "jp_liner_defined",
+        "label_ja": "ラインくっきり",
+        "label_en": "Defined liner",
+        "category": "eye"
+      },
+      {
+        "id": "jp_liner_subtle",
+        "label_ja": "ライン控えめ",
+        "label_en": "Subtle liner",
+        "category": "eye"
+      },
+      {
+        "id": "jp_lash_natural",
+        "label_ja": "まつげナチュラル",
+        "label_en": "Natural lashes",
+        "category": "eye"
+      },
+      {
+        "id": "jp_lash_emphasis",
+        "label_ja": "まつげ強調",
+        "label_en": "Lash emphasis",
+        "category": "eye"
+      },
+      {
+        "id": "jp_lip_glossy",
+        "label_ja": "ちゅるんリップ",
+        "label_en": "Glossy lip",
+        "category": "lip"
+      },
+      {
+        "id": "jp_lip_satin",
+        "label_ja": "つやリップ",
+        "label_en": "Satin lip",
+        "category": "lip"
+      },
+      {
+        "id": "jp_lip_matte",
+        "label_ja": "マットリップ",
+        "label_en": "Matte lip",
+        "category": "lip"
+      },
+      {
+        "id": "jp_lip_blur",
+        "label_ja": "ぼかしリップ",
+        "label_en": "Blurred lip",
+        "category": "lip"
+      },
+      {
+        "id": "jp_focus_eye",
+        "label_ja": "目元主役",
+        "label_en": "Eye focus",
+        "category": "style"
+      },
+      {
+        "id": "jp_focus_lip",
+        "label_ja": "リップ主役",
+        "label_en": "Lip focus",
+        "category": "style"
+      },
+      {
+        "id": "jp_balanced",
+        "label_ja": "バランス",
+        "label_en": "Balanced focus",
+        "category": "style"
+      },
+      {
+        "id": "jp_daily",
+        "label_ja": "デイリー",
+        "label_en": "Everyday",
+        "category": "occasion"
+      },
+      {
+        "id": "jp_formal",
+        "label_ja": "きちんと",
+        "label_en": "Formal/office",
+        "category": "occasion"
+      },
+      {
+        "id": "jp_special",
+        "label_ja": "特別",
+        "label_en": "Special occasion",
+        "category": "occasion"
+      }
+    ],
+    "tag_assignment_guidelines": {
+      "max_tags": 6,
+      "min_tags": 3,
+      "rules": [
+        {
+          "when": "lookSpec.base.finish == 'dewy'",
+          "tags": [
+            "jp_tsuya"
+          ]
+        },
+        {
+          "when": "lookSpec.base.finish == 'matte'",
+          "tags": [
+            "jp_semi_matte"
+          ]
+        },
+        {
+          "when": "lookSpec.base.coverage == 'light'",
+          "tags": [
+            "jp_skinlike_base",
+            "jp_tomeikan"
+          ]
+        },
+        {
+          "when": "lookSpec.base.coverage == 'full'",
+          "tags": [
+            "jp_cover_base",
+            "jp_kicchiri"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.shadow_shape in ['soft_wash','defined_crease']",
+          "tags": [
+            "jp_eye_gradation"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.shadow_shape in ['smoky']",
+          "tags": [
+            "jp_eye_soft_smoky"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.shadow_shape in ['halo']",
+          "tags": [
+            "jp_eye_halo"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.liner_direction.direction == 'up' AND lookSpec.eye.liner_direction.degree >= 8",
+          "tags": [
+            "jp_eye_lift",
+            "jp_liner_defined"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.liner_direction.direction == 'down' AND lookSpec.eye.liner_direction.degree <= -8",
+          "tags": [
+            "jp_eye_down_soft",
+            "jp_liner_subtle"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.lash_intensity == 'natural'",
+          "tags": [
+            "jp_lash_natural"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.lash_intensity == 'bold'",
+          "tags": [
+            "jp_lash_emphasis"
+          ]
+        },
+        {
+          "when": "lookSpec.lip.finish == 'gloss'",
+          "tags": [
+            "jp_lip_glossy"
+          ]
+        },
+        {
+          "when": "lookSpec.lip.finish == 'matte'",
+          "tags": [
+            "jp_lip_matte"
+          ]
+        },
+        {
+          "when": "lookSpec.lip.finish == 'satin'",
+          "tags": [
+            "jp_lip_satin"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.lash_intensity in ['natural','medium'] AND lookSpec.base.coverage in ['light','medium'] AND lookSpec.lip.finish in ['satin','gloss']",
+          "tags": [
+            "jp_daily",
+            "jp_shizen_kirei",
+            "jp_nukekan"
+          ]
+        },
+        {
+          "when": "lookSpec.base.coverage in ['medium','full'] AND lookSpec.eye.lash_intensity in ['medium','bold']",
+          "tags": [
+            "jp_formal"
+          ]
+        },
+        {
+          "when": "lookSpec.eye.lash_intensity == 'bold' AND lookSpec.base.coverage in ['medium','full']",
+          "tags": [
+            "jp_special"
+          ]
+        }
+      ],
+      "avoid": [
+        "celebrity references",
+        "age/race descriptors",
+        "body/weight descriptors",
+        "religion/politics",
+        "sexual content framing",
+        "medical/diagnostic framing",
+        "slurs or reclaimed slurs",
+        "trend slang likely to age quickly",
+        "identity-based labels (ethnicity, nationality, gender identity, disability)"
+      ],
+      "anti_over_tagging_guidance": [
+        "Always assign exactly one base/finish tag at most (e.g., dewy OR soft matte OR radiant glow).",
+        "Always assign at most one focus tag (eye_focus OR lip_focus OR balanced_focus).",
+        "Do not assign both 'blurred_edges' and 'defined_edges' in the same look; choose the dominant technique impression.",
+        "Do not assign more than two eye tags; prefer the most defining feature (e.g., sharp wing OR soft smoky).",
+        "Only assign an occasion tag if it is strongly implied by intensity (e.g., bold lashes + medium/full coverage) or explicitly set by the pack; otherwise default to 'everyday/daily'.",
+        "If LookSpec contains many 'unknown' values or low confidence, reduce tagging to 3 tags: one finish/base, one style, one occasion."
+      ],
+      "priority_order_for_assignment": [
+        "finish (base.finish, lip.finish)",
+        "base (coverage, skinlike vs cover)",
+        "eye (liner direction/degree, shadow shape, lash intensity)",
+        "focus (eye/lip/balanced)",
+        "occasion (everyday/formal/special)",
+        "color family (warm/cool/neutral, brown/pink/coral where available)"
+      ],
+      "market_isolation_checks": [
+        "JP: reject any tag id not starting with 'jp_'",
+        "Never translate IDs across markets; translation is display-only via labels."
+      ]
+    }
+  },
+  "notes": [
+    "JP tags include culturally common makeup descriptors in Japanese (透明感, 抜け感, 清潔感) while avoiding identity-based or potentially sensitive labels.",
+    "Both markets share parallel semantic coverage (finish, base, eye, lip, focus, occasion, color), but with distinct IDs and culturally appropriate phrasing."
+  ],
+  "open_questions": [
+    "Do you want tone-family tags (warm/cool/neutral) to be derived directly from lip.hue HSV ranges in MVP, or should they be assigned only when upstream classification is confident?",
+    "Should 'formal/office' be a first-class occasion tag in US as well (to mirror JP_formal), or keep it JP-only to avoid overlap with US_everyday?",
+    "Do you plan to expose tags directly in user-facing UI? If yes, we may want to refine English wording for a consistent brand voice while keeping IDs stable."
+  ]
+}

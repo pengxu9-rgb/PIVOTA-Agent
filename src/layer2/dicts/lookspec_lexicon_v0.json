@@ -1,0 +1,120 @@
+{
+  "assumptions": [
+    "LookSpecV0 supports an explicit 'unknown' bucket for enums to avoid breaking validation when upstream inference is uncertain."
+  ],
+  "lookSpec_lexicon": {
+    "base.finish": {
+      "allowed": [
+        "unknown",
+        "matte",
+        "satin",
+        "dewy"
+      ],
+      "default": "unknown",
+      "notes": [
+        "Use 'unknown' when base finish cannot be reliably inferred; do not overload satin as a catch-all."
+      ]
+    },
+    "base.coverage": {
+      "allowed": [
+        "unknown",
+        "light",
+        "medium",
+        "full"
+      ],
+      "default": "unknown",
+      "notes": [
+        "Coverage is an appearance bucket, not product category; do not infer solely from recommended products."
+      ]
+    },
+    "eye.shadow_shape": {
+      "allowed": [
+        "unknown",
+        "none_minimal",
+        "soft_wash",
+        "defined_crease",
+        "outer_v",
+        "halo",
+        "smoky",
+        "cut_crease"
+      ],
+      "default": "unknown",
+      "notes": [
+        "Keep the bucket set stable; prefer technique actions to adjust intensity rather than adding new shapes."
+      ]
+    },
+    "eye.liner_direction.direction": {
+      "allowed": [
+        "unknown",
+        "down",
+        "straight",
+        "up"
+      ],
+      "default": "unknown",
+      "notes": [
+        "Direction is coarse; degree supplies fine control."
+      ]
+    },
+    "eye.liner_direction.degree": {
+      "min": -20,
+      "max": 20,
+      "default": 0,
+      "units": "degrees",
+      "constraints": [
+        "If direction == 'unknown', degree must be 0.",
+        "If direction == 'straight', degree must be between -5 and 5 (validation clamp allowed).",
+        "If direction == 'up', degree must be between 1 and 20.",
+        "If direction == 'down', degree must be between -20 and -1.",
+        "If degree is outside [-20,20], clamp to range and record a warning in SimilarityReportV0 (not a trigger)."
+      ]
+    },
+    "eye.lash_intensity": {
+      "allowed": [
+        "unknown",
+        "natural",
+        "medium",
+        "bold"
+      ],
+      "default": "unknown",
+      "notes": [
+        "Intensity is about visual impact; it can be achieved via mascara, lashes, or both."
+      ]
+    },
+    "lip.finish": {
+      "allowed": [
+        "unknown",
+        "matte",
+        "satin",
+        "gloss"
+      ],
+      "default": "unknown",
+      "notes": [
+        "gloss includes oil-like high shine; if later splitting is needed, add new enum and deprecate none."
+      ]
+    },
+    "lip.hue": {
+      "model": "HSV",
+      "h_range": [
+        0,
+        360
+      ],
+      "s_range": [
+        0,
+        1
+      ],
+      "v_range": [
+        0,
+        1
+      ],
+      "constraints": [
+        "h is circular; values outside [0,360] should be normalized (mod 360).",
+        "s and v must be clamped to [0,1].",
+        "If lip.finish == 'unknown', hue may still be present (finish and hue are independent).",
+        "If hue is missing or unreliable, omit hue fields entirely rather than inserting arbitrary defaults."
+      ],
+      "notes": [
+        "HSV chosen for MVP portability; if switching to Lab later, add lip.hue.model == 'LAB' as an additive option and do not change HSV semantics."
+      ]
+    }
+  }
+}
