@@ -17,9 +17,16 @@ function fallbackStepsForArea(area) {
   return ['Match the reference finish.', 'Stay in a close shade family.', 'Blot lightly to adjust intensity.'];
 }
 
+function normalizeMarket(v) {
+  const s = String(v || '').trim().toUpperCase();
+  if (s === 'US' || s === 'JP') return s;
+  return 'US';
+}
+
 function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
   const warnings = [];
   let usedFallback = false;
+  const market = normalizeMarket(ctx?.market);
 
   const out = (inputSkeletons || []).map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
@@ -35,8 +42,8 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
         usedFallback = true;
         continue;
       }
-      if (card.market !== 'US') {
-        warnings.push(`Technique card ${id} market is not US.`);
+      if (String(card.market) !== market) {
+        warnings.push(`Technique card ${id} market mismatch (expected ${market}, got ${card.market}).`);
         usedFallback = true;
         continue;
       }

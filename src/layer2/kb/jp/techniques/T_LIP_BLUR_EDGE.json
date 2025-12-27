@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_BLUR_EDGE",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "輪郭をぼかす",
+    "steps": ["境目を指やブラシで外側に向けてぼかす。", "はみ出しすぎないように少しずつ。"]
+  },
+  "rationaleTemplate": ["輪郭をぼかすと自然で、参照の雰囲気に寄せやすい。"],
+  "productRoleHints": ["lip_brush"]
+}
+

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_WING_SHORTEN",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "ウィングは短めに",
+    "steps": ["まずは短めに止めて、足りなければ少しずつ伸ばす。", "伸ばす場合も細い線で足す。"]
+  },
+  "rationaleTemplate": ["短いウィングはコントロールしやすく、形の違いに左右されにくい。"],
+  "productRoleHints": ["liner"]
+}
+

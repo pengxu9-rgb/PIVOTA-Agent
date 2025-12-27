@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_BASE_HYDRATE_PREP",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.base.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "ベース前に保湿で整える",
+    "steps": [
+      "スキンケアは薄くなじませ、余分な油分は軽くオフする。",
+      "乾きやすい部分だけ、うすく重ねてうるおいを足す。"
+    ]
+  },
+  "rationaleTemplate": ["下地のなじみが安定し、仕上がりのムラを減らせる。"],
+  "productRoleHints": ["moisturizer", "primer"]
+}
+

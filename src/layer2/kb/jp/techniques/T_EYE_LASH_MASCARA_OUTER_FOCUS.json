@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_LASH_MASCARA_OUTER_FOCUS",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "マスカラは目尻寄りに",
+    "steps": [
+      "マスカラは目尻側を重点的に塗る。",
+      "根元を中心に、毛先は軽く。"
+    ]
+  },
+  "rationaleTemplate": ["目尻の方向性を作りやすく、参照の印象に合わせやすい。"],
+  "productRoleHints": ["mascara"]
+}
+

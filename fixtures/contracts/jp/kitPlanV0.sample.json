@@ -1,0 +1,265 @@
+{
+  "kit": {
+    "base": {
+      "best": {
+        "availability": "unknown",
+        "availabilityByMarket": {
+          "JP": "unknown"
+        },
+        "brand": "Chydan",
+        "category": "base",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-jp-0.1.0",
+        "layer3EngineVersion": "l3-jp-0.1.0",
+        "locale": "ja",
+        "market": "JP",
+        "name": "BASE 役割サンプル 1",
+        "orchestratorVersion": "orchestrator-jp-0.1.0",
+        "price": {
+          "amount": 1600,
+          "currency": "JPY"
+        },
+        "priceTier": "mid",
+        "purchaseEnabled": false,
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "role_916983d6a39206c2",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "JPサンプル（購入不可・役割ベース）: base (mid)."
+      },
+      "dupe": {
+        "availability": "unknown",
+        "availabilityByMarket": {
+          "JP": "unknown"
+        },
+        "brand": "Chydan",
+        "category": "base",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-jp-0.1.0",
+        "layer3EngineVersion": "l3-jp-0.1.0",
+        "locale": "ja",
+        "market": "JP",
+        "name": "BASE 役割サンプル 2",
+        "orchestratorVersion": "orchestrator-jp-0.1.0",
+        "price": {
+          "amount": 1700,
+          "currency": "JPY"
+        },
+        "priceTier": "budget",
+        "purchaseEnabled": false,
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "role_cdbc083411330e85",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "JPサンプル（購入不可・役割ベース）: base (budget)."
+      }
+    },
+    "eye": {
+      "best": {
+        "availability": "unknown",
+        "availabilityByMarket": {
+          "JP": "unknown"
+        },
+        "brand": "Chydan",
+        "category": "eye",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-jp-0.1.0",
+        "layer3EngineVersion": "l3-jp-0.1.0",
+        "locale": "ja",
+        "market": "JP",
+        "name": "EYE 役割サンプル 3",
+        "orchestratorVersion": "orchestrator-jp-0.1.0",
+        "price": {
+          "amount": 1800,
+          "currency": "JPY"
+        },
+        "priceTier": "mid",
+        "purchaseEnabled": false,
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "role_267b6daf5b063028",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "JPサンプル（購入不可・役割ベース）: eye (mid)."
+      },
+      "dupe": {
+        "availability": "unknown",
+        "availabilityByMarket": {
+          "JP": "unknown"
+        },
+        "brand": "Chydan",
+        "category": "eye",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-jp-0.1.0",
+        "layer3EngineVersion": "l3-jp-0.1.0",
+        "locale": "ja",
+        "market": "JP",
+        "name": "EYE 役割サンプル 4",
+        "orchestratorVersion": "orchestrator-jp-0.1.0",
+        "price": {
+          "amount": 1900,
+          "currency": "JPY"
+        },
+        "priceTier": "budget",
+        "purchaseEnabled": false,
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "role_aabcb11ee815638b",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "JPサンプル（購入不可・役割ベース）: eye (budget)."
+      }
+    },
+    "lip": {
+      "best": {
+        "availability": "unknown",
+        "availabilityByMarket": {
+          "JP": "unknown"
+        },
+        "brand": "Chydan",
+        "category": "lip",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-jp-0.1.0",
+        "layer3EngineVersion": "l3-jp-0.1.0",
+        "locale": "ja",
+        "market": "JP",
+        "name": "LIP 役割サンプル 5",
+        "orchestratorVersion": "orchestrator-jp-0.1.0",
+        "price": {
+          "amount": 2000,
+          "currency": "JPY"
+        },
+        "priceTier": "mid",
+        "purchaseEnabled": false,
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "role_89672b45dfaf511e",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "JPサンプル（購入不可・役割ベース）: lip (mid)."
+      },
+      "dupe": {
+        "availability": "unknown",
+        "availabilityByMarket": {
+          "JP": "unknown"
+        },
+        "brand": "Chydan",
+        "category": "lip",
+        "evidence": [
+          "contract.fixture"
+        ],
+        "imageUrl": "https://example.com/product.png",
+        "layer2EngineVersion": "l2-jp-0.1.0",
+        "layer3EngineVersion": "l3-jp-0.1.0",
+        "locale": "ja",
+        "market": "JP",
+        "name": "LIP 役割サンプル 6",
+        "orchestratorVersion": "orchestrator-jp-0.1.0",
+        "price": {
+          "amount": 2100,
+          "currency": "JPY"
+        },
+        "priceTier": "budget",
+        "purchaseEnabled": false,
+        "schemaVersion": "v0",
+        "shadeDescriptor": "neutral",
+        "skuId": "role_96110e71c3b55137",
+        "tags": {
+          "coverage": [
+            "light"
+          ],
+          "effect": [],
+          "finish": [
+            "natural"
+          ],
+          "texture": [
+            "cream"
+          ]
+        },
+        "undertoneFit": "unknown",
+        "whyThis": "JPサンプル（購入不可・役割ベース）: lip (budget)."
+      }
+    }
+  },
+  "layer2EngineVersion": "l2-jp-0.1.0",
+  "layer3EngineVersion": "l3-jp-0.1.0",
+  "locale": "ja",
+  "market": "JP",
+  "orchestratorVersion": "orchestrator-jp-0.1.0",
+  "schemaVersion": "v0",
+  "warnings": [
+    "COMMERCE_DISABLED:JP"
+  ]
+}

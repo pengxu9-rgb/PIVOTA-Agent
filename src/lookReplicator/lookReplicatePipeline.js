@@ -8,6 +8,18 @@ const { LookReplicateResultV0Schema } = require('../schemas/lookReplicateResultV
 
 const { Layer1BundleV0Schema } = require('../layer1/schemas/layer1BundleV0');
 const { buildContextFingerprintUS } = require('../telemetry/contextFingerprintUS');
+const { buildContextFingerprintJP } = require('../telemetry/contextFingerprintJP');
+const { normalizeMarket } = require('../markets/market');
+const { getMarketPack } = require('../markets/getMarketPack');
+
+function engineVersionFor(market) {
+  const m = String(market || 'US').toLowerCase();
+  return {
+    layer2: `l2-${m}-0.1.0`,
+    layer3: `l3-${m}-0.1.0`,
+    orchestrator: `orchestrator-${m}-0.1.0`,
+  };
+}
 
 function parseOptionalJsonField(raw) {
   const s = String(raw || '').trim();
@@ -88,6 +100,8 @@ function computeQualityFlags({ lookSpec, layer2Adjustments, usedFallback }) {
 async function runLookReplicatePipeline(input) {
   const locale = normalizeLocale(input.locale);
   const preferenceMode = normalizePreferenceMode(input.preferenceMode);
+  const market = normalizeMarket(input.market, normalizeMarket(process.env.DEFAULT_MARKET, 'US'));
+  const pack = getMarketPack({ market, locale });
 
   const layer1Bundle = input.layer1Bundle ?? null;
   const layer1 = layer1Bundle ? Layer1BundleV0Schema.parse(layer1Bundle) : null;
@@ -97,32 +111,36 @@ async function runLookReplicatePipeline(input) {
   const similarityReport = layer1?.similarityReport ?? null;
 
   const referenceBytes = fs.readFileSync(input.referenceImage.path);
+  const versions = engineVersionFor(pack.market);
 
   const lookSpec = await extractLookSpec({
-    market: 'US',
+    market: pack.market,
     locale,
     referenceImage: { kind: 'bytes', bytes: referenceBytes, contentType: input.referenceImage.contentType },
+    promptPack: pack.getPromptPack(locale),
   });
 
   const adjOut = await generateAdjustments({
-    market: 'US',
+    market: pack.market,
     locale,
     userFaceProfile,
     refFaceProfile,
     similarityReport,
     lookSpec,
     preferenceMode,
+    promptPack: pack.getPromptPack(locale),
   });
 
   const stepsOut = await generateSteps({
-    market: 'US',
+    market: pack.market,
     locale,
     lookSpec,
     adjustments: adjOut.adjustments,
     userFaceProfile,
+    promptPack: pack.getPromptPack(locale),
   });
 
-  const kitPlan = await buildKitPlan({ market: 'US', locale, lookSpec });
+  const kitPlan = await buildKitPlan({ market: pack.market, locale, lookSpec, commerceEnabled: pack.commerceEnabled });
 
   const warnings = [
     ...(Array.isArray(lookSpec.warnings) ? lookSpec.warnings : []),
@@ -133,11 +151,12 @@ async function runLookReplicatePipeline(input) {
 
   const result = LookReplicateResultV0Schema.parse({
     schemaVersion: 'v0',
-    market: 'US',
+    market: pack.market,
     locale,
-    layer2EngineVersion: 'l2-us-0.1.0',
-    layer3EngineVersion: 'l3-us-0.1.0',
-    orchestratorVersion: 'orchestrator-us-0.1.0',
+    layer2EngineVersion: versions.layer2,
+    layer3EngineVersion: versions.layer3,
+    orchestratorVersion: versions.orchestrator,
+    commerceEnabled: pack.commerceEnabled,
     breakdown: lookSpec.breakdown,
     adjustments: toResultAdjustments(adjOut.adjustments),
     steps: stepsOut.steps,
@@ -148,6 +167,7 @@ async function runLookReplicatePipeline(input) {
   const telemetrySample = input.jobId
     ? {
         jobId: input.jobId,
+        market: pack.market,
         locale,
         preferenceMode,
         createdAt: new Date().toISOString(),
@@ -163,7 +183,10 @@ async function runLookReplicatePipeline(input) {
         }),
         usedTechniques: extractUsedTechniques(adjOut.adjustments),
         usedRules: extractUsedRules(adjOut.adjustments),
-        contextFingerprint: buildContextFingerprintUS({ userFaceProfile, refFaceProfile, lookSpec }),
+        contextFingerprint:
+          pack.market === 'US'
+            ? buildContextFingerprintUS({ userFaceProfile, refFaceProfile, lookSpec })
+            : buildContextFingerprintJP({ userFaceProfile, refFaceProfile, lookSpec }),
         replayContext: adjOut.skeletons ? { adjustmentSkeletons: adjOut.skeletons } : undefined,
       }
     : null;

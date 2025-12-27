@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_BASE_BUILD_COVERAGE_THIN_PASSES",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.base.coverage", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "薄く重ねてカバーを作る",
+    "steps": [
+      "薄い層を1回のせて、足りないところだけ2回目を薄く重ねる。",
+      "境目が消えるまでなじませてから次の層に進む。"
+    ]
+  },
+  "rationaleTemplate": ["薄く重ねると厚塗り感を出しにくく、参照の質感に寄せやすい。"],
+  "productRoleHints": ["foundation", "sponge"]
+}
+

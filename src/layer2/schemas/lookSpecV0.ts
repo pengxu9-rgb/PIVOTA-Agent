@@ -15,12 +15,12 @@ export const LookSpecBreakdownAreaV0Schema = z
 export const LookSpecV0Schema = z
   .object({
     schemaVersion: z.literal("v0"),
-    market: z.literal("US"),
+    market: z.enum(["US", "JP"]),
     locale: z.string().min(1),
 
-    layer2EngineVersion: z.literal("l2-us-0.1.0"),
-    layer3EngineVersion: z.literal("l3-us-0.1.0"),
-    orchestratorVersion: z.literal("orchestrator-us-0.1.0"),
+    layer2EngineVersion: z.union([z.literal("l2-us-0.1.0"), z.literal("l2-jp-0.1.0")]),
+    layer3EngineVersion: z.union([z.literal("l3-us-0.1.0"), z.literal("l3-jp-0.1.0")]),
+    orchestratorVersion: z.union([z.literal("orchestrator-us-0.1.0"), z.literal("orchestrator-jp-0.1.0")]),
 
     lookTitle: z.string().min(1).optional(),
     styleTags: z.array(z.string().min(1)).default([]),
@@ -38,4 +38,3 @@ export const LookSpecV0Schema = z
   .strict();
 
 export type LookSpecV0 = z.infer<typeof LookSpecV0Schema>;
-

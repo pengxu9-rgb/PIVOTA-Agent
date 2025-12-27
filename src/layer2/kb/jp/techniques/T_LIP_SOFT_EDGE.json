@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_SOFT_EDGE",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "エッジをやわらかく",
+    "steps": ["輪郭の外側を軽くぼかして柔らかくする。", "中心は残してメリハリを付ける。"]
+  },
+  "rationaleTemplate": ["エッジを柔らかくすると不確実性が高いときも破綻しにくい。"],
+  "productRoleHints": ["lip_brush"]
+}
+

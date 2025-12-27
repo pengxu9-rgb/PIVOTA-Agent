@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_SHADE_CLOSE_FAMILY",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "近い色味の系統に寄せる",
+    "steps": ["参照に近い色味の系統を選ぶ。", "濃さは薄くしてから調整する。"]
+  },
+  "rationaleTemplate": ["色は環境で見え方が変わるため、まず系統を合わせると再現しやすい。"],
+  "productRoleHints": ["lip_color"]
+}
+

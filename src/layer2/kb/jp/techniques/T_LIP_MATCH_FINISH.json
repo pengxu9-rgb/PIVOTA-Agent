@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_MATCH_FINISH",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "質感（ツヤ/マット）を合わせる",
+    "steps": ["まずは参照の質感に合わせる（ツヤ/サテン/マット）。", "色より先に質感を優先する。"]
+  },
+  "rationaleTemplate": ["質感は印象を決めやすく、色の誤差を吸収しやすい。"],
+  "productRoleHints": ["lip_color"]
+}
+

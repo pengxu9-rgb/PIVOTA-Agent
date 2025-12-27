@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const MarketSchema = z.literal('US');
+const MarketSchema = z.enum(['US', 'JP']);
 
 const OutcomeEventTypeSchema = z.enum([
   'rating',
@@ -27,4 +27,3 @@ module.exports = {
   OutcomeEventTypeSchema,
   OutcomeEventV0Schema,
 };
-

@@ -1,0 +1,34 @@
+{
+  "files": [
+    {
+      "path": "contracts/jp/kitPlanV0.schema.json",
+      "sha256": "64723365069ce87ebc6be6965d014ae54231029a5a54b4a6a1a1719ca3c8dcba"
+    },
+    {
+      "path": "contracts/jp/lookReplicateResultV0.schema.json",
+      "sha256": "657025030ac5ff985e043802e0264d95c05f3bdea293cfb6ee6b925c588bc57c"
+    },
+    {
+      "path": "contracts/jp/lookSpecV0.schema.json",
+      "sha256": "ad62811d0ddf7f57d2492840044d54a9a1080f92d706edc8d380a2a87e2cecd4"
+    },
+    {
+      "path": "contracts/jp/stepPlanV0.schema.json",
+      "sha256": "a5e1ae865dd3dce31540342d23dd4ff178e7cd0c82bd85ce13d6a885fb001821"
+    },
+    {
+      "path": "fixtures/contracts/jp/kitPlanV0.sample.json",
+      "sha256": "846b4863bf7008e3c05c623d42446bb29895d12dbcab45831f4071d948eb36e2"
+    },
+    {
+      "path": "fixtures/contracts/jp/lookResultV0.sample.json",
+      "sha256": "d891947a0d00b5788484d2cb65f209b3ced754cc7ff841d8da6f8ea8a7db8c55"
+    },
+    {
+      "path": "fixtures/contracts/jp/lookSpecV0.sample.json",
+      "sha256": "e7a1a64438dbed620f13902a9c699f8795c7b5866c68185760de29dffb0c13b3"
+    }
+  ],
+  "generatedAt": "2025-01-01T00:00:00.000Z",
+  "refHint": "7e58a5c8a1d4acc5747d19ca13307bfd012612b0"
+}

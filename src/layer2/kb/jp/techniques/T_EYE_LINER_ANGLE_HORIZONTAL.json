@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_LINER_ANGLE_HORIZONTAL",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "角度は水平寄りに",
+    "steps": [
+      "ラインの角度は上げすぎず、水平寄りにする。",
+      "短い線をつないで調整する。"
+    ]
+  },
+  "rationaleTemplate": ["角度を水平寄りにすると、目の形の違いの影響を受けにくい。"],
+  "productRoleHints": ["liner"]
+}
+

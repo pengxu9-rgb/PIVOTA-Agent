@@ -5,11 +5,11 @@ const { SimilarityReportV0Schema } = require('../../layer1/schemas/similarityRep
 
 const { runAdjustmentRulesUS } = require('./rules/runAdjustmentRulesUS');
 const { Layer2AdjustmentV0Schema, rephraseAdjustments } = require('./rephraseAdjustments');
-const { loadTechniqueKBUS } = require('../kb/loadTechniqueKBUS');
+const { loadTechniqueKB } = require('../kb/loadTechniqueKB');
 const { renderSkeletonFromKB } = require('./renderSkeletonFromKB');
 
 async function generateAdjustments(input) {
-  if (input.market !== 'US') throw new Error('Only market=US is supported for Layer2 personalization.');
+  if (input.market !== 'US' && input.market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
 
   const locale = String(input.locale || 'en').trim() || 'en';
   const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
@@ -31,8 +31,9 @@ async function generateAdjustments(input) {
     preferenceMode,
   });
 
-  const kb = loadTechniqueKBUS();
+  const kb = loadTechniqueKB(input.market);
   const rendered = renderSkeletonFromKB(skeletons, kb, {
+    market: input.market,
     userFaceProfile: userFace,
     refFaceProfile: refFace,
     similarityReport,
@@ -41,11 +42,15 @@ async function generateAdjustments(input) {
   });
   warnings.push(...(rendered.warnings || []));
 
+  // Ensure skeletons are tagged to the request market for downstream telemetry/replay.
+  const marketSkeletons = rendered.skeletons.map((s) => ({ ...s, market: input.market }));
+
   const rephrased = await rephraseAdjustments({
-    market: 'US',
+    market: input.market,
     locale,
-    skeletons: rendered.skeletons,
+    skeletons: marketSkeletons,
     provider: input.provider,
+    promptPack: input.promptPack,
   });
 
   const parsed = rephrased.adjustments.map((a) => Layer2AdjustmentV0Schema.parse(a));
@@ -58,7 +63,7 @@ async function generateAdjustments(input) {
   }
   warnings.push(...(rephrased.warnings || []));
   const usedFallback = Boolean(rendered.usedFallback) || Boolean(rephrased.usedFallback);
-  return { adjustments: parsed, warnings, usedFallback, skeletons: rendered.skeletons };
+  return { adjustments: parsed, warnings, usedFallback, skeletons: marketSkeletons };
 }
 
 module.exports = {

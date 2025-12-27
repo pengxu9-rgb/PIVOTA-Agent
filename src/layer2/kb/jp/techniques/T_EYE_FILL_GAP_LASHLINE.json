@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_FILL_GAP_LASHLINE",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "まつ毛の隙間を埋める",
+    "steps": [
+      "まつ毛の生え際の隙間だけを埋めるように描く。",
+      "ラインを太くせず、点でつなぐ。"
+    ]
+  },
+  "rationaleTemplate": ["太いラインにせずに締まりを出せる。"],
+  "productRoleHints": ["liner"]
+}
+

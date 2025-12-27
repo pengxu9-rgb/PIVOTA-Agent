@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_CENTER_STRONGER",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "中心を少し濃くする",
+    "steps": ["唇の中心に色を少し足す。", "外側に向けてなじませる。"]
+  },
+  "rationaleTemplate": ["中心を濃くすると立体感が出て、輪郭を強くしなくても印象を作れる。"],
+  "productRoleHints": ["lip_color"]
+}
+

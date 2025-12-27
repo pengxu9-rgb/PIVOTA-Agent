@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_BASE_THIN_LAYER",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.base.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "ベースは薄く",
+    "steps": [
+      "まずは薄く1層だけのせ、必要なら少しずつ足す。",
+      "少量ずつなじませてから追加する。"
+    ]
+  },
+  "rationaleTemplate": ["薄いベースは失敗しにくく、参照の質感に近づけやすい。"],
+  "productRoleHints": ["foundation", "sponge"]
+}
+

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_LINER_THIN_LINE",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "ラインは細く",
+    "steps": [
+      "ラインは細く、まつ毛の際に沿わせる。",
+      "太くなったら綿棒で外側だけ整える。"
+    ]
+  },
+  "rationaleTemplate": ["細いラインは失敗しにくく、目の形の違いにも強い。"],
+  "productRoleHints": ["liner", "cotton_swab"]
+}
+

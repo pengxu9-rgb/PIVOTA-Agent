@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_WING_ANGLE_MORE_HORIZONTAL",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": { "any": [{ "key": "userFaceProfile.geometry.eyeTiltDeg", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "目尻は水平寄りに調整",
+    "steps": [
+      "ウィングの角度を少し水平寄りにする（上げすぎない）。",
+      "最後に短い線で微調整する。"
+    ]
+  },
+  "rationaleTemplate": ["角度差の影響を減らしつつ、参照の意図を保ちやすい。"],
+  "productRoleHints": ["liner"]
+}
+

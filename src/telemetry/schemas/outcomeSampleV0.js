@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const MarketSchema = z.literal('US');
+const MarketSchema = z.enum(['US', 'JP']);
 const AreaSchema = z.enum(['base', 'eye', 'lip']);
 const PreferenceModeSchema = z.enum(['structure', 'vibe', 'ease']);
 
@@ -91,4 +91,3 @@ module.exports = {
   UsedTechniqueSchema,
   UsedRuleSchema,
 };
-

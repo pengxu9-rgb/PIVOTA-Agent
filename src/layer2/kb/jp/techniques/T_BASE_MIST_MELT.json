@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_BASE_MIST_MELT",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.base.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "ミストで一体感を出す",
+    "steps": [
+      "仕上げにミストを軽く吹きかけ、乾く前にやさしく押さえる。",
+      "こすらず、点で押さえてなじませる。"
+    ]
+  },
+  "rationaleTemplate": ["粉っぽさを抑え、参照の質感に近い一体感が出やすい。"],
+  "productRoleHints": ["setting_spray"]
+}
+

@@ -35,6 +35,16 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeMarket(v) {
+  const s = String(v || '').trim().toUpperCase();
+  if (s === 'JP') return 'JP';
+  return 'US';
+}
+
+function tableForMarket(market) {
+  return market === 'JP' ? 'outcome_samples_jp' : 'outcome_samples_us';
+}
+
 function hashSessionId(sessionId) {
   const raw = String(sessionId || '').trim();
   if (!raw) return null;
@@ -70,10 +80,10 @@ function normalizeIssueTags(tags) {
   return out.length ? out : null;
 }
 
-function baseSample({ jobId, locale, preferenceMode, createdAt }) {
+function baseSample({ market, jobId, locale, preferenceMode, createdAt }) {
   return OutcomeSampleV0Schema.parse({
     schemaVersion: 'v0',
-    market: 'US',
+    market: normalizeMarket(market),
     jobId,
     locale: locale || 'en',
     preferenceMode: preferenceMode || 'structure',
@@ -134,19 +144,20 @@ function mergeCreatedAt(sample, event) {
 
 function upsertSqlParams(sample) {
   const rating = typeof sample.signals?.rating === 'number' ? sample.signals.rating : null;
-  return [sample.jobId, 'US', sample.locale, sample.preferenceMode, sample, rating];
+  return [sample.jobId, sample.market, sample.locale, sample.preferenceMode, sample, rating];
 }
 
-async function upsertOutcomeSampleUS(sample) {
+async function upsertOutcomeSample(sample) {
   const okDb = await ensureDbReady();
   if (!okDb) {
     mem.set(sample.jobId, sample);
     return sample;
   }
 
+  const table = tableForMarket(sample.market);
   await query(
     `
-    INSERT INTO outcome_samples_us (
+    INSERT INTO ${table} (
       job_id, market, locale, preference_mode,
       sample_json, rating,
       updated_at
@@ -168,10 +179,11 @@ async function upsertOutcomeSampleUS(sample) {
   return sample;
 }
 
-async function getOutcomeSampleUS(jobId) {
+async function getOutcomeSample({ market, jobId }) {
   const okDb = await ensureDbReady();
   if (!okDb) return mem.get(jobId) || null;
-  const res = await query('SELECT sample_json FROM outcome_samples_us WHERE job_id = $1', [jobId]);
+  const table = tableForMarket(normalizeMarket(market));
+  const res = await query(`SELECT sample_json FROM ${table} WHERE job_id = $1`, [jobId]);
   const row = res.rows?.[0];
   if (!row) return null;
   return OutcomeSampleV0Schema.parse(row.sample_json);
@@ -180,22 +192,26 @@ async function getOutcomeSampleUS(jobId) {
 async function ingestOutcomeEventV0(event) {
   const jobId = String(event.jobId || '').trim();
   if (!jobId) throw new Error('jobId required');
+  const market = normalizeMarket(event.market);
 
-  const existing = (await getOutcomeSampleUS(jobId)) || baseSample({ jobId, locale: 'en', preferenceMode: 'structure' });
+  const existing =
+    (await getOutcomeSample({ market, jobId })) || baseSample({ market, jobId, locale: 'en', preferenceMode: 'structure' });
   const withCreatedAt = mergeCreatedAt(existing, event);
   const withSignals = mergeSignalsFromEvent(withCreatedAt, event);
   const withSession = mergeSessionHash(withSignals, event);
 
   const validated = OutcomeSampleV0Schema.parse(withSession);
-  return upsertOutcomeSampleUS(validated);
+  return upsertOutcomeSample(validated);
 }
 
 async function upsertOutcomeSampleFromJobCompletion(samplePatch) {
   const jobId = String(samplePatch.jobId || '').trim();
   if (!jobId) throw new Error('jobId required');
+  const market = normalizeMarket(samplePatch.market);
   const existing =
-    (await getOutcomeSampleUS(jobId)) ||
+    (await getOutcomeSample({ market, jobId })) ||
     baseSample({
+      market,
       jobId,
       locale: samplePatch.locale || 'en',
       preferenceMode: samplePatch.preferenceMode || 'structure',
@@ -206,18 +222,19 @@ async function upsertOutcomeSampleFromJobCompletion(samplePatch) {
     ...existing,
     ...samplePatch,
     jobId,
-    market: 'US',
+    market,
     ...(samplePatch.sessionIdHash ? { sessionIdHash: samplePatch.sessionIdHash } : {}),
   });
 
-  return upsertOutcomeSampleUS(merged);
+  return upsertOutcomeSample(merged);
 }
 
-async function listOutcomeSamplesUS({ limit = 1000 } = {}) {
+async function listOutcomeSamples({ market, limit = 1000 } = {}) {
   const okDb = await ensureDbReady();
   if (!okDb) return Array.from(mem.values()).slice(0, limit);
+  const table = tableForMarket(normalizeMarket(market));
   const res = await query(
-    'SELECT sample_json FROM outcome_samples_us ORDER BY created_at DESC LIMIT $1',
+    `SELECT sample_json FROM ${table} ORDER BY created_at DESC LIMIT $1`,
     [Math.max(0, Math.min(Number(limit) || 1000, 50000))],
   );
   return (res.rows || []).map((r) => OutcomeSampleV0Schema.parse(r.sample_json));
@@ -226,8 +243,10 @@ async function listOutcomeSamplesUS({ limit = 1000 } = {}) {
 module.exports = {
   ingestOutcomeEventV0,
   upsertOutcomeSampleFromJobCompletion,
-  listOutcomeSamplesUS,
+  listOutcomeSamples,
+  // Backward compatible exports
+  listOutcomeSamplesUS: (opts) => listOutcomeSamples({ market: 'US', ...(opts || {}) }),
+  listOutcomeSamplesJP: (opts) => listOutcomeSamples({ market: 'JP', ...(opts || {}) }),
   hashSessionId,
   ensureDbReady,
 };
-

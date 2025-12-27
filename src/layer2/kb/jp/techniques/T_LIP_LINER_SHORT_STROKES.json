@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_LINER_SHORT_STROKES",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "短い線で輪郭を整える",
+    "steps": ["輪郭は短い線で少しずつつなぐ。", "一気に引かず、左右を見ながら調整する。"]
+  },
+  "rationaleTemplate": ["短いストロークの方が形をコントロールしやすい。"],
+  "productRoleHints": ["lip_liner"]
+}
+

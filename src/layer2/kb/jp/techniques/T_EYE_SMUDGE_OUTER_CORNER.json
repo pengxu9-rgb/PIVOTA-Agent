@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_SMUDGE_OUTER_CORNER",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "目尻を軽くぼかす",
+    "steps": [
+      "目尻側だけ、ラインや影を少しぼかしてなじませる。",
+      "こすらず短い動きで外側に広げる。"
+    ]
+  },
+  "rationaleTemplate": ["くっきりしすぎず、自然に強調できる。"],
+  "productRoleHints": ["smudge_brush"]
+}
+

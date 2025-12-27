@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_BASE_PRIMER_TEXTURE_BLUR",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.base.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "凹凸が気になる部分だけ下地でぼかす",
+    "steps": [
+      "下地は必要な部分だけ、少量を薄く伸ばす。",
+      "全顔に厚くのせず、質感を整えたいところに限定する。"
+    ]
+  },
+  "rationaleTemplate": ["狙った部分だけ整えると、参照の仕上がりを保ちつつ崩れにくくなる。"],
+  "productRoleHints": ["primer"]
+}
+

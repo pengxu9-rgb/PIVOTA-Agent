@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_TIGHTLINE_UPPER_LASHLINE",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "上まつ毛の際をタイトライン",
+    "steps": [
+      "上まつ毛の生え際にだけ色を入れる。",
+      "まぶた側に太く描かない。"
+    ]
+  },
+  "rationaleTemplate": ["まぶたの面積を取らずに目元の締まりを出せる。"],
+  "productRoleHints": ["liner"]
+}
+

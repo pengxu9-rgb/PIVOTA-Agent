@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const MarketSchema = z.literal('US');
+export const MarketSchema = z.enum(['US', 'JP']);
 export const AreaSchema = z.enum(['base', 'eye', 'lip']);
 export const PreferenceModeSchema = z.enum(['structure', 'vibe', 'ease']);
 
@@ -84,4 +84,3 @@ export const OutcomeSampleV0Schema = z
   .strict();
 
 export type OutcomeSampleV0 = z.infer<typeof OutcomeSampleV0Schema>;
-

@@ -14,7 +14,13 @@ const ProductTagsV0Schema = z
   })
   .strict();
 
-const AvailabilityByMarketV0Schema = z.object({ US: AvailabilitySchema }).strict();
+const AvailabilityByMarketV0Schema = z
+  .object({
+    US: AvailabilitySchema.optional(),
+    JP: AvailabilitySchema.optional(),
+  })
+  .strict()
+  .refine((v) => Boolean(v.US || v.JP), 'availabilityByMarket must include US or JP');
 
 const MoneyV0Schema = z
   .object({
@@ -26,12 +32,12 @@ const MoneyV0Schema = z
 const ProductAttributesV0Schema = z
   .object({
     schemaVersion: z.literal('v0'),
-    market: z.literal('US'),
+    market: z.enum(['US', 'JP']),
     locale: z.string().min(1),
 
-    layer2EngineVersion: z.literal('l2-us-0.1.0'),
-    layer3EngineVersion: z.literal('l3-us-0.1.0'),
-    orchestratorVersion: z.literal('orchestrator-us-0.1.0'),
+    layer2EngineVersion: z.union([z.literal('l2-us-0.1.0'), z.literal('l2-jp-0.1.0')]),
+    layer3EngineVersion: z.union([z.literal('l3-us-0.1.0'), z.literal('l3-jp-0.1.0')]),
+    orchestratorVersion: z.union([z.literal('orchestrator-us-0.1.0'), z.literal('orchestrator-jp-0.1.0')]),
 
     category: ProductCategorySchema,
     skuId: z.string().min(1),
@@ -48,6 +54,7 @@ const ProductAttributesV0Schema = z
     shadeDescriptor: z.string().min(1).optional(),
     whyThis: z.string().min(1),
     evidence: z.array(z.string().min(1)).default([]),
+    purchaseEnabled: z.boolean().optional(),
   })
   .strict();
 
@@ -61,4 +68,3 @@ module.exports = {
   MoneyV0Schema,
   ProductAttributesV0Schema,
 };
-

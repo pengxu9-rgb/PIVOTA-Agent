@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_BASE_SPOT_CONCEAL_ONLY",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.base.coverage", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "必要なところだけスポットで隠す",
+    "steps": [
+      "隠したい部分だけ、少量を点でのせる。",
+      "境目だけをなじませ、全体を厚くしない。"
+    ]
+  },
+  "rationaleTemplate": ["厚塗りを避けつつ、参照に必要なカバーだけを足せる。"],
+  "productRoleHints": ["concealer", "brush"]
+}
+

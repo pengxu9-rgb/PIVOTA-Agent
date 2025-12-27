@@ -5,27 +5,37 @@ const { normalizeSkuToAttributes } = require('./normalize/normalizeSkuToAttribut
 const { rankCandidates } = require('./ranking/rankCandidates');
 const { buildWhyThis } = require('./copy/whyThis');
 
-function makePlaceholder({ category, locale, kind, lookSpec, reason }) {
+function engineVersionFor(market) {
+  const m = String(market || 'US').toLowerCase();
+  return {
+    layer2: `l2-${m}-0.1.0`,
+    layer3: `l3-${m}-0.1.0`,
+    orchestrator: `orchestrator-${m}-0.1.0`,
+  };
+}
+
+function makePlaceholder({ market, locale, kind, lookSpec, category, reason, purchaseEnabled }) {
   const area = lookSpec.breakdown[category];
   const whyThis = `No catalog match found (${reason}). Placeholder for ${category} to target ${area.finish} finish and ${area.coverage} coverage.`;
+  const versions = engineVersionFor(market);
 
   return ProductAttributesV0Schema.parse({
     schemaVersion: 'v0',
-    market: 'US',
+    market,
     locale,
-    layer2EngineVersion: 'l2-us-0.1.0',
-    layer3EngineVersion: 'l3-us-0.1.0',
-    orchestratorVersion: 'orchestrator-us-0.1.0',
+    layer2EngineVersion: versions.layer2,
+    layer3EngineVersion: versions.layer3,
+    orchestratorVersion: versions.orchestrator,
     category,
     skuId: `placeholder_${category}_${kind}`,
     name: `Placeholder ${category} (${kind})`,
     brand: 'Unknown',
-    price: { currency: 'USD', amount: 0 },
+    price: { currency: market === 'JP' ? 'JPY' : 'USD', amount: 0 },
     priceTier: 'unknown',
     imageUrl: undefined,
     productUrl: undefined,
     availability: 'unknown',
-    availabilityByMarket: { US: 'unknown' },
+    availabilityByMarket: { ...(market === 'US' ? { US: 'unknown' } : { JP: 'unknown' }) },
     tags: { finish: [], texture: [], coverage: [], effect: [] },
     undertoneFit: 'unknown',
     shadeDescriptor: undefined,
@@ -34,8 +44,9 @@ function makePlaceholder({ category, locale, kind, lookSpec, reason }) {
       `lookSpec.breakdown.${category}.finish`,
       `lookSpec.breakdown.${category}.coverage`,
       'product.priceTier',
-      'product.availabilityByMarket.US',
+      market === 'US' ? 'product.availabilityByMarket.US' : 'product.availabilityByMarket.JP',
     ],
+    ...(purchaseEnabled != null ? { purchaseEnabled } : {}),
   });
 }
 
@@ -68,7 +79,37 @@ function toProductAttributes({ locale, lookSpec, normalized, category }) {
 
 async function buildKitPlan(input) {
   const { market, locale, lookSpec } = input;
-  if (market !== 'US') throw new Error('MARKET_NOT_SUPPORTED');
+  if (market !== 'US' && market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
+  const versions = engineVersionFor(market);
+
+  // JP internal experiment: commerce is disabled; return role-based placeholders without blocking Layer2.
+  if (market === 'JP' && input.commerceEnabled === false) {
+    const kit = {
+      base: {
+        best: makePlaceholder({ market, locale, kind: 'best', lookSpec, category: 'base', reason: 'COMMERCE_DISABLED', purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, locale, kind: 'dupe', lookSpec, category: 'base', reason: 'COMMERCE_DISABLED', purchaseEnabled: false }),
+      },
+      eye: {
+        best: makePlaceholder({ market, locale, kind: 'best', lookSpec, category: 'eye', reason: 'COMMERCE_DISABLED', purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, locale, kind: 'dupe', lookSpec, category: 'eye', reason: 'COMMERCE_DISABLED', purchaseEnabled: false }),
+      },
+      lip: {
+        best: makePlaceholder({ market, locale, kind: 'best', lookSpec, category: 'lip', reason: 'COMMERCE_DISABLED', purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, locale, kind: 'dupe', lookSpec, category: 'lip', reason: 'COMMERCE_DISABLED', purchaseEnabled: false }),
+      },
+    };
+
+    return KitPlanV0Schema.parse({
+      schemaVersion: 'v0',
+      market,
+      locale,
+      layer2EngineVersion: versions.layer2,
+      layer3EngineVersion: versions.layer3,
+      orchestratorVersion: versions.orchestrator,
+      kit,
+      warnings: ['COMMERCE_DISABLED:JP'],
+    });
+  }
 
   const warnings = [];
   const candidatesByCategory =
@@ -84,8 +125,8 @@ async function buildKitPlan(input) {
     if (!rawCandidates.length) {
       warnings.push(`NO_CANDIDATES:${category}`);
       return {
-        best: makePlaceholder({ category, locale, kind: 'best', lookSpec, reason: 'NO_CANDIDATES' }),
-        dupe: makePlaceholder({ category, locale, kind: 'dupe', lookSpec, reason: 'NO_CANDIDATES' }),
+        best: makePlaceholder({ market, category, locale, kind: 'best', lookSpec, reason: 'NO_CANDIDATES' }),
+        dupe: makePlaceholder({ market, category, locale, kind: 'dupe', lookSpec, reason: 'NO_CANDIDATES' }),
       };
     }
 
@@ -115,11 +156,11 @@ async function buildKitPlan(input) {
 
   return KitPlanV0Schema.parse({
     schemaVersion: 'v0',
-    market: 'US',
+    market,
     locale,
-    layer2EngineVersion: 'l2-us-0.1.0',
-    layer3EngineVersion: 'l3-us-0.1.0',
-    orchestratorVersion: 'orchestrator-us-0.1.0',
+    layer2EngineVersion: versions.layer2,
+    layer3EngineVersion: versions.layer3,
+    orchestratorVersion: versions.orchestrator,
     kit,
     ...(warnings.length ? { warnings } : {}),
   });
@@ -128,4 +169,3 @@ async function buildKitPlan(input) {
 module.exports = {
   buildKitPlan,
 };
-

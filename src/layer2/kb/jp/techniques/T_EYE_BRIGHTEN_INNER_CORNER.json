@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_BRIGHTEN_INNER_CORNER",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "目頭を少し明るくする",
+    "steps": [
+      "目頭に明るい色を少量置き、境目をぼかす。",
+      "入れすぎないように点で足す。"
+    ]
+  },
+  "rationaleTemplate": ["目元の抜け感が出て、参照の印象に寄せやすい。"],
+  "productRoleHints": ["shimmer_shadow"]
+}
+

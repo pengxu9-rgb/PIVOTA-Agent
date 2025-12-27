@@ -36,13 +36,26 @@ const RephraseOutputSchema = z
   })
   .strict();
 
-let cachedPrompt = null;
+const promptCache = new Map();
 
-function loadPrompt() {
-  if (cachedPrompt) return cachedPrompt;
-  const p = path.join(__dirname, '..', 'prompts', 'adjustments_rephrase_en.txt');
-  cachedPrompt = fs.readFileSync(p, 'utf8');
-  return cachedPrompt;
+function readPromptOnce(filePath) {
+  const abs = path.resolve(filePath);
+  const cached = promptCache.get(abs);
+  if (cached) return cached;
+  const txt = fs.readFileSync(abs, 'utf8');
+  promptCache.set(abs, txt);
+  return txt;
+}
+
+function isJaLocale(locale) {
+  const s = String(locale || '').trim().toLowerCase();
+  return s === 'ja' || s.startsWith('ja-') || s.startsWith('ja_');
+}
+
+function loadPromptForMarket(market, locale) {
+  if (market === 'US') return readPromptOnce(path.join(__dirname, '..', 'prompts', 'adjustments_rephrase_en.txt'));
+  // JP prompts are Japanese-first.
+  return readPromptOnce(path.join(__dirname, '..', 'prompts', 'jp', 'adjustments_rephrase_ja.txt'));
 }
 
 function normalizeText(s) {
@@ -89,7 +102,8 @@ function renderAdjustmentFromSkeleton(s) {
 
 function containsIdentityLanguage(text) {
   const s = text.toLowerCase();
-  return /look like|resemble|celebrity|famous|actor|actress|singer|model/.test(s);
+  if (/look like|resemble|celebrity|famous|actor|actress|singer|model/.test(s)) return true;
+  return /有名人|芸能人|セレブ|そっくり|似ている|似てる|○○みたい/.test(text);
 }
 
 function collectAllowedNumbers(skeletons) {
@@ -180,10 +194,11 @@ function ensureExactAreas(items, warnings) {
   return out;
 }
 
-function validateNoNewFactsOrIdentity(skeletons, adjustments) {
+function validateNoNewFactsOrIdentity(skeletons, adjustments, locale) {
   const allowedText = JSON.stringify(skeletons);
   const allowedNumbers = collectAllowedNumbers(skeletons);
   const allowedDoVerbsByArea = collectAllowedDoVerbsByArea(skeletons);
+  const skipVerbCheck = isJaLocale(locale);
 
   const skeletonByArea = {
     base: skeletons.find((s) => s.impactArea === 'base'),
@@ -197,7 +212,9 @@ function validateNoNewFactsOrIdentity(skeletons, adjustments) {
     if (!numbersOnlyFromSkeleton(textBlob, allowedNumbers)) return { ok: false, reason: 'new_numeric_claim' };
     const forbiddenAttr = textContainsForbiddenAttributes(textBlob, allowedText);
     if (forbiddenAttr) return { ok: false, reason: `new_trait:${forbiddenAttr}` };
-    if (!onlyUsesAllowedDoVerbs(a.do, allowedDoVerbsByArea[a.impactArea])) return { ok: false, reason: 'new_action_verb' };
+    if (!skipVerbCheck && !onlyUsesAllowedDoVerbs(a.do, allowedDoVerbsByArea[a.impactArea])) {
+      return { ok: false, reason: 'new_action_verb' };
+    }
 
     const sk = skeletonByArea[a.impactArea];
     if (a.ruleId !== sk.ruleId) return { ok: false, reason: 'ruleId_mismatch' };
@@ -210,7 +227,7 @@ function validateNoNewFactsOrIdentity(skeletons, adjustments) {
 }
 
 async function rephraseAdjustments(input) {
-  if (input.market !== 'US') throw new Error('rephraseAdjustments only supports market=US.');
+  if (input.market !== 'US' && input.market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
   const locale = String(input.locale || 'en').trim() || 'en';
 
   const skeletons = (input.skeletons || []).map((s) => AdjustmentSkeletonV0Schema.parse(s));
@@ -231,13 +248,14 @@ async function rephraseAdjustments(input) {
     }
   }
 
-  const promptTemplate = loadPrompt();
-  const prompt = `${promptTemplate}\n\n` + `INPUT_JSON:\n` + JSON.stringify({ market: 'US', locale, skeletons }, null, 2);
+  const promptTemplate = input?.promptPack?.adjustmentsRephrase || loadPromptForMarket(input.market, locale);
+  const promptJson = JSON.stringify({ market: input.market, locale, skeletons }, null, 2);
+  const prompt2 = `${promptTemplate}\n\n` + `INPUT_JSON:\n` + promptJson;
 
   try {
-    const parsed = await provider.analyzeTextToJson({ prompt, schema: RephraseOutputSchema });
+    const parsed = await provider.analyzeTextToJson({ prompt: prompt2, schema: RephraseOutputSchema });
     const fixed = ensureExactAreas(parsed.adjustments, warnings);
-    const validation = validateNoNewFactsOrIdentity(skeletons, fixed);
+    const validation = validateNoNewFactsOrIdentity(skeletons, fixed, locale);
     if (!validation.ok) {
       warnings.push(`LLM output rejected (${validation.reason}): using deterministic adjustment renderer.`);
       return fallback();

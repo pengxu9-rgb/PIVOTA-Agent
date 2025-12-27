@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_GLOSS_CENTER",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "ツヤは中心にだけ",
+    "steps": ["グロスは中心に少量だけのせる。", "外側まで広げすぎない。"]
+  },
+  "rationaleTemplate": ["中心のツヤは立体感を出しつつ、参照の質感に合わせやすい。"],
+  "productRoleHints": ["gloss"]
+}
+

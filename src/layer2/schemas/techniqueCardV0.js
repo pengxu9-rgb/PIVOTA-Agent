@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const TechniqueMarketSchema = z.literal('US');
+const TechniqueMarketSchema = z.enum(['US', 'JP']);
 const TechniqueAreaSchema = z.enum(['base', 'eye', 'lip']);
 const TechniqueDifficultySchema = z.enum(['easy', 'medium', 'hard']);
 
@@ -57,4 +57,3 @@ module.exports = {
   TechniqueActionTemplateV0Schema,
   TechniqueCardV0Schema,
 };
-

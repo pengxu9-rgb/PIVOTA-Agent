@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_BASE_SET_TZONE_LIGHT",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.base.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Tゾーンだけ軽くセットする",
+    "steps": [
+      "パウダーはTゾーンなど必要なところだけ、少量をのせる。",
+      "ツヤを残したい部分は触りすぎない。"
+    ]
+  },
+  "rationaleTemplate": ["必要な部分だけセットすると、参照の質感（ツヤ/マット）を崩しにくい。"],
+  "productRoleHints": ["powder", "puff"]
+}
+

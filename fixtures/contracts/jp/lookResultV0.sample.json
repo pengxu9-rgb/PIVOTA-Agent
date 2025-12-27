@@ -1,0 +1,525 @@
+{
+  "adjustments": [
+    {
+      "because": "質感を残しながら整えるため。",
+      "confidence": "medium",
+      "do": "薄く重ねて、必要な部分だけをスポット補正する。",
+      "evidence": [
+        "lookSpec.breakdown.base.coverage"
+      ],
+      "impactArea": "base",
+      "title": "薄く仕上げる",
+      "why": "薄い層は自然な質感を保ちやすい。"
+    },
+    {
+      "because": "強すぎない印象にするため。",
+      "confidence": "low",
+      "do": "目尻寄りから細くラインを入れて、角度は水平寄りに整える。",
+      "evidence": [
+        "lookSpec.breakdown.eye.finish"
+      ],
+      "impactArea": "eye",
+      "title": "目尻から細く",
+      "why": "太さと角度を抑えると、やわらかい印象になりやすい。"
+    },
+    {
+      "because": "透け感と立体感を出すため。",
+      "confidence": "medium",
+      "do": "中央にツヤを残して薄く色をのせ、輪郭はぼかす。",
+      "evidence": [
+        "lookSpec.breakdown.lip.finish"
+      ],
+      "impactArea": "lip",
+      "title": "中心にツヤ",
+      "why": "中心のツヤは自然な立体感を作りやすい。"
+    }
+  ],
+  "breakdown": {
+    "base": {
+      "coverage": "薄め",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "ナチュラル",
+      "intent": "素肌っぽく整える",
+      "keyNotes": [
+        "薄づき",
+        "自然なツヤ",
+        "厚塗りしない"
+      ]
+    },
+    "eye": {
+      "coverage": "薄め",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "ソフト",
+      "intent": "目元を自然に引き立てる",
+      "keyNotes": [
+        "細めライン",
+        "軽い陰影",
+        "抜け感"
+      ]
+    },
+    "lip": {
+      "coverage": "薄め",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "ツヤ",
+      "intent": "うるおい感のある色味",
+      "keyNotes": [
+        "透け感",
+        "中央にツヤ",
+        "輪郭は柔らかく"
+      ]
+    }
+  },
+  "commerceEnabled": false,
+  "kit": {
+    "kit": {
+      "base": {
+        "best": {
+          "availability": "unknown",
+          "availabilityByMarket": {
+            "JP": "unknown"
+          },
+          "brand": "Chydan",
+          "category": "base",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-jp-0.1.0",
+          "layer3EngineVersion": "l3-jp-0.1.0",
+          "locale": "ja",
+          "market": "JP",
+          "name": "BASE 役割サンプル 1",
+          "orchestratorVersion": "orchestrator-jp-0.1.0",
+          "price": {
+            "amount": 1600,
+            "currency": "JPY"
+          },
+          "priceTier": "mid",
+          "purchaseEnabled": false,
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "role_916983d6a39206c2",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "JPサンプル（購入不可・役割ベース）: base (mid)."
+        },
+        "dupe": {
+          "availability": "unknown",
+          "availabilityByMarket": {
+            "JP": "unknown"
+          },
+          "brand": "Chydan",
+          "category": "base",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-jp-0.1.0",
+          "layer3EngineVersion": "l3-jp-0.1.0",
+          "locale": "ja",
+          "market": "JP",
+          "name": "BASE 役割サンプル 2",
+          "orchestratorVersion": "orchestrator-jp-0.1.0",
+          "price": {
+            "amount": 1700,
+            "currency": "JPY"
+          },
+          "priceTier": "budget",
+          "purchaseEnabled": false,
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "role_cdbc083411330e85",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "JPサンプル（購入不可・役割ベース）: base (budget)."
+        }
+      },
+      "eye": {
+        "best": {
+          "availability": "unknown",
+          "availabilityByMarket": {
+            "JP": "unknown"
+          },
+          "brand": "Chydan",
+          "category": "eye",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-jp-0.1.0",
+          "layer3EngineVersion": "l3-jp-0.1.0",
+          "locale": "ja",
+          "market": "JP",
+          "name": "EYE 役割サンプル 3",
+          "orchestratorVersion": "orchestrator-jp-0.1.0",
+          "price": {
+            "amount": 1800,
+            "currency": "JPY"
+          },
+          "priceTier": "mid",
+          "purchaseEnabled": false,
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "role_267b6daf5b063028",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "JPサンプル（購入不可・役割ベース）: eye (mid)."
+        },
+        "dupe": {
+          "availability": "unknown",
+          "availabilityByMarket": {
+            "JP": "unknown"
+          },
+          "brand": "Chydan",
+          "category": "eye",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-jp-0.1.0",
+          "layer3EngineVersion": "l3-jp-0.1.0",
+          "locale": "ja",
+          "market": "JP",
+          "name": "EYE 役割サンプル 4",
+          "orchestratorVersion": "orchestrator-jp-0.1.0",
+          "price": {
+            "amount": 1900,
+            "currency": "JPY"
+          },
+          "priceTier": "budget",
+          "purchaseEnabled": false,
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "role_aabcb11ee815638b",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "JPサンプル（購入不可・役割ベース）: eye (budget)."
+        }
+      },
+      "lip": {
+        "best": {
+          "availability": "unknown",
+          "availabilityByMarket": {
+            "JP": "unknown"
+          },
+          "brand": "Chydan",
+          "category": "lip",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-jp-0.1.0",
+          "layer3EngineVersion": "l3-jp-0.1.0",
+          "locale": "ja",
+          "market": "JP",
+          "name": "LIP 役割サンプル 5",
+          "orchestratorVersion": "orchestrator-jp-0.1.0",
+          "price": {
+            "amount": 2000,
+            "currency": "JPY"
+          },
+          "priceTier": "mid",
+          "purchaseEnabled": false,
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "role_89672b45dfaf511e",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "JPサンプル（購入不可・役割ベース）: lip (mid)."
+        },
+        "dupe": {
+          "availability": "unknown",
+          "availabilityByMarket": {
+            "JP": "unknown"
+          },
+          "brand": "Chydan",
+          "category": "lip",
+          "evidence": [
+            "contract.fixture"
+          ],
+          "imageUrl": "https://example.com/product.png",
+          "layer2EngineVersion": "l2-jp-0.1.0",
+          "layer3EngineVersion": "l3-jp-0.1.0",
+          "locale": "ja",
+          "market": "JP",
+          "name": "LIP 役割サンプル 6",
+          "orchestratorVersion": "orchestrator-jp-0.1.0",
+          "price": {
+            "amount": 2100,
+            "currency": "JPY"
+          },
+          "priceTier": "budget",
+          "purchaseEnabled": false,
+          "schemaVersion": "v0",
+          "shadeDescriptor": "neutral",
+          "skuId": "role_96110e71c3b55137",
+          "tags": {
+            "coverage": [
+              "light"
+            ],
+            "effect": [],
+            "finish": [
+              "natural"
+            ],
+            "texture": [
+              "cream"
+            ]
+          },
+          "undertoneFit": "unknown",
+          "whyThis": "JPサンプル（購入不可・役割ベース）: lip (budget)."
+        }
+      }
+    },
+    "layer2EngineVersion": "l2-jp-0.1.0",
+    "layer3EngineVersion": "l3-jp-0.1.0",
+    "locale": "ja",
+    "market": "JP",
+    "orchestratorVersion": "orchestrator-jp-0.1.0",
+    "schemaVersion": "v0",
+    "warnings": [
+      "COMMERCE_DISABLED:JP"
+    ]
+  },
+  "layer2EngineVersion": "l2-jp-0.1.0",
+  "layer3EngineVersion": "l3-jp-0.1.0",
+  "locale": "ja",
+  "market": "JP",
+  "orchestratorVersion": "orchestrator-jp-0.1.0",
+  "schemaVersion": "v0",
+  "steps": [
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.base.intent"
+      ],
+      "fitConditions": [],
+      "impactArea": "base",
+      "instruction": "保湿して、必要なら下地を薄く仕込む。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 0,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_0",
+      "tips": [
+        "スキンケアがなじんでから次へ。"
+      ],
+      "title": "ベース準備"
+    },
+    {
+      "cautions": [
+        "厚塗りで質感が消えないように。"
+      ],
+      "evidence": [
+        "lookSpec.breakdown.base.coverage"
+      ],
+      "fitConditions": [],
+      "impactArea": "base",
+      "instruction": "薄づきで均一に伸ばす。必要な部分だけ重ねる。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 1,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_1",
+      "tips": [
+        "一度に厚くしない。"
+      ],
+      "title": "薄くのせる"
+    },
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.base.keyNotes[0]"
+      ],
+      "fitConditions": [],
+      "impactArea": "base",
+      "instruction": "気になる部分だけをスポットで補正して境目をぼかす。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 2,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_2",
+      "tips": [],
+      "title": "ポイント補正"
+    },
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.eye.keyNotes[2]"
+      ],
+      "fitConditions": [],
+      "impactArea": "eye",
+      "instruction": "毛流れを整えて、足りない部分だけを軽く足す。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 3,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_3",
+      "tips": [
+        "短いストロークで自然に。"
+      ],
+      "title": "眉を整える"
+    },
+    {
+      "cautions": [
+        "太くすると印象が強くなりすぎる。"
+      ],
+      "evidence": [
+        "lookSpec.breakdown.eye.finish"
+      ],
+      "fitConditions": [],
+      "impactArea": "eye",
+      "instruction": "目尻寄りから細く入れ、強くしすぎない。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 4,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_4",
+      "tips": [
+        "まつ毛の隙間を埋める意識で。"
+      ],
+      "title": "ラインは細く"
+    },
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.eye.keyNotes[0]"
+      ],
+      "fitConditions": [],
+      "impactArea": "eye",
+      "instruction": "ダマにならない程度に、軽くまつ毛を強調する。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 5,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_5",
+      "tips": [
+        "根元から軽く左右に揺らす。"
+      ],
+      "title": "軽いマスカラ"
+    },
+    {
+      "cautions": [],
+      "evidence": [
+        "lookSpec.breakdown.lip.finish"
+      ],
+      "fitConditions": [],
+      "impactArea": "lip",
+      "instruction": "薄く保湿してから、余分な油分をティッシュオフ。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 6,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_6",
+      "tips": [],
+      "title": "リップ下準備"
+    },
+    {
+      "cautions": [
+        "濃くしすぎない。"
+      ],
+      "evidence": [
+        "lookSpec.breakdown.lip.coverage"
+      ],
+      "fitConditions": [],
+      "impactArea": "lip",
+      "instruction": "中央にツヤを残しつつ、薄く色をのせる。",
+      "layer2EngineVersion": "l2-jp-0.1.0",
+      "layer3EngineVersion": "l3-jp-0.1.0",
+      "locale": "ja",
+      "market": "JP",
+      "orchestratorVersion": "orchestrator-jp-0.1.0",
+      "order": 7,
+      "schemaVersion": "v0",
+      "stepId": "l2_step_7",
+      "tips": [
+        "指でなじませると柔らかい。"
+      ],
+      "title": "透け感の色味"
+    }
+  ],
+  "warnings": [
+    "COMMERCE_DISABLED:JP"
+  ]
+}

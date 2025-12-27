@@ -39,10 +39,11 @@ const RephraseOutputSchema = z
   .strict();
 
 export type RephraseAdjustmentsInput = {
-  market: "US";
+  market: "US" | "JP";
   locale: string;
   skeletons: readonly AdjustmentSkeletonV0[];
   provider?: LlmProvider;
+  promptPack?: { adjustmentsRephrase?: string };
 };
 
 export type RephraseAdjustmentsOutput = {
@@ -51,13 +52,26 @@ export type RephraseAdjustmentsOutput = {
   usedFallback: boolean;
 };
 
-let cachedPrompt: string | null = null;
+const promptCache = new Map<string, string>();
 
-function loadPrompt(): string {
-  if (cachedPrompt) return cachedPrompt;
-  const p = path.join(__dirname, "..", "prompts", "adjustments_rephrase_en.txt");
-  cachedPrompt = fs.readFileSync(p, "utf8");
-  return cachedPrompt;
+function readPromptOnce(filePath: string): string {
+  const abs = path.resolve(filePath);
+  const cached = promptCache.get(abs);
+  if (cached) return cached;
+  const txt = fs.readFileSync(abs, "utf8");
+  promptCache.set(abs, txt);
+  return txt;
+}
+
+function isJaLocale(locale: string): boolean {
+  const s = String(locale || "").trim().toLowerCase();
+  return s === "ja" || s.startsWith("ja-") || s.startsWith("ja_");
+}
+
+function loadPromptForMarket(market: "US" | "JP", locale: string): string {
+  if (market === "US") return readPromptOnce(path.join(__dirname, "..", "prompts", "adjustments_rephrase_en.txt"));
+  // JP prompts are Japanese-first; keep schema keys identical.
+  return readPromptOnce(path.join(__dirname, "..", "prompts", "jp", "adjustments_rephrase_ja.txt"));
 }
 
 function normalizeText(s: string): string {
@@ -101,7 +115,9 @@ export function renderAdjustmentFromSkeleton(s: AdjustmentSkeletonV0): Layer2Adj
 
 function containsIdentityLanguage(text: string): boolean {
   const s = text.toLowerCase();
-  return /look like|resemble|celebrity|famous|actor|actress|singer|model/.test(s);
+  if (/look like|resemble|celebrity|famous|actor|actress|singer|model/.test(s)) return true;
+  // Japanese identity/celebrity phrasing (best-effort).
+  return /有名人|芸能人|セレブ|そっくり|似ている|似てる|○○みたい/.test(text);
 }
 
 function collectAllowedNumbers(skeletons: readonly AdjustmentSkeletonV0[]): Set<string> {
@@ -201,11 +217,13 @@ function ensureExactAreas(items: readonly Layer2AdjustmentV0[], warnings: string
 
 export function validateNoNewFactsOrIdentity(
   skeletons: readonly AdjustmentSkeletonV0[],
-  adjustments: readonly Layer2AdjustmentV0[]
+  adjustments: readonly Layer2AdjustmentV0[],
+  locale?: string
 ): { ok: true } | { ok: false; reason: string } {
   const allowedText = JSON.stringify(skeletons);
   const allowedNumbers = collectAllowedNumbers(skeletons);
   const allowedDoVerbsByArea = collectAllowedDoVerbsByArea(skeletons);
+  const skipVerbCheck = isJaLocale(String(locale || ""));
 
   const skeletonByArea: Record<"base" | "eye" | "lip", AdjustmentSkeletonV0> = {
     base: skeletons.find((s) => s.impactArea === "base")!,
@@ -219,7 +237,10 @@ export function validateNoNewFactsOrIdentity(
     if (!numbersOnlyFromSkeleton(textBlob, allowedNumbers)) return { ok: false, reason: "new_numeric_claim" };
     const forbiddenAttr = textContainsForbiddenAttributes(textBlob, allowedText);
     if (forbiddenAttr) return { ok: false, reason: `new_trait:${forbiddenAttr}` };
-    if (!onlyUsesAllowedDoVerbs(a.do, allowedDoVerbsByArea[a.impactArea])) return { ok: false, reason: "new_action_verb" };
+    // For Japanese output, verb tokenization is unreliable; skip and rely on evidence + no-new-numbers.
+    if (!skipVerbCheck && !onlyUsesAllowedDoVerbs(a.do, allowedDoVerbsByArea[a.impactArea])) {
+      return { ok: false, reason: "new_action_verb" };
+    }
 
     const sk = skeletonByArea[a.impactArea];
     if (a.ruleId !== sk.ruleId) return { ok: false, reason: "ruleId_mismatch" };
@@ -232,7 +253,7 @@ export function validateNoNewFactsOrIdentity(
 }
 
 export async function rephraseAdjustments(input: RephraseAdjustmentsInput): Promise<RephraseAdjustmentsOutput> {
-  if (input.market !== "US") throw new Error("rephraseAdjustments only supports market=US.");
+  if (input.market !== "US" && input.market !== "JP") throw new Error("MARKET_NOT_SUPPORTED");
   const locale = String(input.locale || "en").trim() || "en";
 
   const skeletons = input.skeletons.map((s) => AdjustmentSkeletonV0Schema.parse(s));
@@ -253,13 +274,13 @@ export async function rephraseAdjustments(input: RephraseAdjustmentsInput): Prom
     }
   }
 
-  const promptTemplate = loadPrompt();
+  const promptTemplate = input.promptPack?.adjustmentsRephrase || loadPromptForMarket(input.market, locale);
   const prompt =
     `${promptTemplate}\n\n` +
     `INPUT_JSON:\n` +
     JSON.stringify(
       {
-        market: "US",
+        market: input.market,
         locale,
         skeletons,
       },
@@ -274,7 +295,7 @@ export async function rephraseAdjustments(input: RephraseAdjustmentsInput): Prom
     });
 
     const fixed = ensureExactAreas(parsed.adjustments, warnings);
-    const validation = validateNoNewFactsOrIdentity(skeletons, fixed);
+    const validation = validateNoNewFactsOrIdentity(skeletons, fixed, locale);
     if (!validation.ok) {
       warnings.push(`LLM output rejected (${validation.reason}): using deterministic adjustment renderer.`);
       return fallback();

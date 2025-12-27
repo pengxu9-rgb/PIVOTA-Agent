@@ -9,7 +9,7 @@ export type AdjustmentSkeletonConfidence = z.infer<typeof AdjustmentSkeletonConf
 export const AdjustmentSkeletonV0Schema = z
   .object({
     schemaVersion: z.literal("v0"),
-    market: z.literal("US"),
+    market: z.enum(["US", "JP"]),
     impactArea: AdjustmentSkeletonImpactAreaSchema,
 
     ruleId: z.string().min(1),

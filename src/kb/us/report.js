@@ -17,7 +17,7 @@ function renderKBHealthReportMD(summary) {
   const topRules = Array.isArray(summary?.rule_metrics) ? summary.rule_metrics.slice(0, 10) : [];
 
   const lines = [];
-  lines.push(`# KB Health Report (US)`);
+  lines.push(`# KB Health Report (${summary?.market || 'US'})`);
   lines.push(``);
   lines.push(`Generated: ${summary?.generatedAt || ''}`);
   lines.push(``);
@@ -77,4 +77,3 @@ function renderKBHealthReportMD(summary) {
 module.exports = {
   renderKBHealthReportMD,
 };
-

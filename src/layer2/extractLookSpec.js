@@ -29,14 +29,24 @@ function loadPrompt() {
   return cachedPrompt;
 }
 
-function unknownLookSpec(locale, warnings) {
+function engineVersionFor(market) {
+  const m = String(market || 'US').toLowerCase();
+  return {
+    layer2: `l2-${m}-0.1.0`,
+    layer3: `l3-${m}-0.1.0`,
+    orchestrator: `orchestrator-${m}-0.1.0`,
+  };
+}
+
+function unknownLookSpec(market, locale, warnings) {
+  const versions = engineVersionFor(market);
   return LookSpecV0Schema.parse({
     schemaVersion: 'v0',
-    market: 'US',
+    market,
     locale,
-    layer2EngineVersion: 'l2-us-0.1.0',
-    layer3EngineVersion: 'l3-us-0.1.0',
-    orchestratorVersion: 'orchestrator-us-0.1.0',
+    layer2EngineVersion: versions.layer2,
+    layer3EngineVersion: versions.layer3,
+    orchestratorVersion: versions.orchestrator,
     lookTitle: 'unknown',
     styleTags: [],
     breakdown: {
@@ -59,9 +69,10 @@ function toWarning(err) {
 
 async function extractLookSpec(input) {
   const { market, locale, referenceImage } = input;
-  if (market !== 'US') throw new Error('Only market=US is supported for LookSpec extraction.');
+  if (market !== 'US' && market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
 
-  const prompt = loadPrompt();
+  const prompt = input?.promptPack?.lookSpecExtract || loadPrompt();
+  const versions = engineVersionFor(market);
 
   try {
     const provider = input.provider ?? createProviderFromEnv('layer2_lookspec');
@@ -73,18 +84,18 @@ async function extractLookSpec(input) {
 
     return LookSpecV0Schema.parse({
       schemaVersion: 'v0',
-      market: 'US',
+      market,
       locale,
-      layer2EngineVersion: 'l2-us-0.1.0',
-      layer3EngineVersion: 'l3-us-0.1.0',
-      orchestratorVersion: 'orchestrator-us-0.1.0',
+      layer2EngineVersion: versions.layer2,
+      layer3EngineVersion: versions.layer3,
+      orchestratorVersion: versions.orchestrator,
       lookTitle: core.lookTitle,
       styleTags: core.styleTags,
       breakdown: core.breakdown,
       warnings: core.warnings,
     });
   } catch (err) {
-    return unknownLookSpec(String(locale || 'en').trim() || 'en', toWarning(err));
+    return unknownLookSpec(market, String(locale || 'en').trim() || 'en', toWarning(err));
   }
 }
 

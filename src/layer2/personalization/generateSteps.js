@@ -38,7 +38,16 @@ function loadPrompt() {
   return cachedPrompt;
 }
 
-function fallbackSteps(locale, adjustments, lowConfidence) {
+function engineVersionFor(market) {
+  const m = String(market || 'US').toLowerCase();
+  return {
+    layer2: `l2-${m}-0.1.0`,
+    layer3: `l3-${m}-0.1.0`,
+    orchestrator: `orchestrator-${m}-0.1.0`,
+  };
+}
+
+function fallbackSteps(market, locale, adjustments, lowConfidence) {
   const baseLead = lowConfidence ? 'To match the reference look, ' : '';
   const core = [
     { impactArea: 'base', title: 'Prep base', instruction: `${baseLead}prep skin and apply primer as needed.`, evidence: ['lookSpec.breakdown.base.intent'] },
@@ -51,14 +60,15 @@ function fallbackSteps(locale, adjustments, lowConfidence) {
     { impactArea: 'lip', title: 'Apply lip', instruction: `${baseLead}${adjustments.find((a) => a.impactArea === 'lip')?.do || 'match lip finish and shade family.'}`, evidence: ['adjustments[lip].do'] },
   ];
 
+  const versions = engineVersionFor(market);
   return core.map((s, idx) =>
     StepPlanV0Schema.parse({
       schemaVersion: 'v0',
-      market: 'US',
+      market,
       locale,
-      layer2EngineVersion: 'l2-us-0.1.0',
-      layer3EngineVersion: 'l3-us-0.1.0',
-      orchestratorVersion: 'orchestrator-us-0.1.0',
+      layer2EngineVersion: versions.layer2,
+      layer3EngineVersion: versions.layer3,
+      orchestratorVersion: versions.orchestrator,
       stepId: `l2_step_${idx}`,
       order: idx,
       impactArea: s.impactArea,
@@ -73,7 +83,7 @@ function fallbackSteps(locale, adjustments, lowConfidence) {
 }
 
 async function generateSteps(input) {
-  if (input.market !== 'US') throw new Error('Only market=US is supported for Layer2 personalization.');
+  if (input.market !== 'US' && input.market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
 
   const locale = String(input.locale || 'en').trim() || 'en';
   const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
@@ -88,17 +98,17 @@ async function generateSteps(input) {
       provider = createProviderFromEnv('layer2_lookspec');
     } catch (err) {
       warnings.push('LLM config missing: using fallback steps.');
-      return { steps: fallbackSteps(locale, adjustments, lowConfidence), warnings };
+      return { steps: fallbackSteps(input.market, locale, adjustments, lowConfidence), warnings };
     }
   }
 
-  const promptTemplate = loadPrompt();
+  const promptTemplate = input?.promptPack?.stepsGenerate || loadPrompt();
   const prompt =
     `${promptTemplate}\n\n` +
     `INPUT_JSON:\n` +
     JSON.stringify(
       {
-        market: 'US',
+        market: input.market,
         locale,
         lookSpec,
         adjustments,
@@ -110,14 +120,15 @@ async function generateSteps(input) {
 
   try {
     const parsed = await provider.analyzeTextToJson({ prompt, schema: StepsCoreSchema });
+    const versions = engineVersionFor(input.market);
     const steps = parsed.steps.map((s, idx) =>
       StepPlanV0Schema.parse({
         schemaVersion: 'v0',
-        market: 'US',
+        market: input.market,
         locale,
-        layer2EngineVersion: 'l2-us-0.1.0',
-        layer3EngineVersion: 'l3-us-0.1.0',
-        orchestratorVersion: 'orchestrator-us-0.1.0',
+        layer2EngineVersion: versions.layer2,
+        layer3EngineVersion: versions.layer3,
+        orchestratorVersion: versions.orchestrator,
         stepId: `l2_step_${idx}`,
         order: idx,
         impactArea: s.impactArea,
@@ -136,7 +147,7 @@ async function generateSteps(input) {
     } else {
       warnings.push('LLM failed: using fallback steps.');
     }
-    return { steps: fallbackSteps(locale, adjustments, lowConfidence), warnings };
+    return { steps: fallbackSteps(input.market, locale, adjustments, lowConfidence), warnings };
   }
 }
 

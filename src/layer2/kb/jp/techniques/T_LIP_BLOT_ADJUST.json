@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_LIP_BLOT_ADJUST",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.lip.coverage", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "軽くティッシュオフして濃さを調整",
+    "steps": ["ティッシュで軽く押さえて余分を取る。", "必要なら中心にだけ少し足す。"]
+  },
+  "rationaleTemplate": ["濃さをコントロールしやすく、参照の印象に合わせやすい。"],
+  "productRoleHints": ["tissue"]
+}
+

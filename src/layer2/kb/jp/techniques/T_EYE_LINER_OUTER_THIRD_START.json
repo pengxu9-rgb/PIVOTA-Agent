@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_LINER_OUTER_THIRD_START",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "ラインは外側1/3から",
+    "steps": [
+      "アイラインは目尻側1/3から描き始める。",
+      "内側は薄く、外側に重心を置く。"
+    ]
+  },
+  "rationaleTemplate": ["濃さのコントロールがしやすく、参照の雰囲気に寄せやすい。"],
+  "productRoleHints": ["liner"]
+}
+

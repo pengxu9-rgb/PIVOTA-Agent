@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const TechniqueMarketSchema = z.literal("US");
+export const TechniqueMarketSchema = z.enum(["US", "JP"]);
 export const TechniqueAreaSchema = z.enum(["base", "eye", "lip"]);
 export const TechniqueDifficultySchema = z.enum(["easy", "medium", "hard"]);
 
@@ -64,4 +64,3 @@ export const TechniqueCardV0Schema = z
   .strict();
 
 export type TechniqueCardV0 = z.infer<typeof TechniqueCardV0Schema>;
-

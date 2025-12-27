@@ -1,39 +1,57 @@
 import { z } from "zod";
+
 import { LookSpecV0 } from "../layer2/schemas/lookSpecV0";
+
 import { KitPlanV0, KitPlanV0Schema } from "./schemas/kitPlanV0";
 import { ProductAttributesV0, ProductAttributesV0Schema, ProductCategorySchema } from "./schemas/productAttributesV0";
+
 import { getCandidates, CandidatesByCategory, RawSkuCandidate } from "./retrieval/getCandidates";
 import { normalizeSkuToAttributes } from "./normalize/normalizeSkuToAttributes";
 import { rankCandidates } from "./ranking/rankCandidates";
 import { buildWhyThis } from "./copy/whyThis";
 
+type Market = "US" | "JP";
+
+function engineVersionFor(market: Market) {
+  const m = String(market || "US").toLowerCase();
+  return {
+    layer2: `l2-${m}-0.1.0`,
+    layer3: `l3-${m}-0.1.0`,
+    orchestrator: `orchestrator-${m}-0.1.0`,
+  };
+}
+
 function makePlaceholder(input: {
+  market: Market;
   category: z.infer<typeof ProductCategorySchema>;
   locale: string;
   kind: "best" | "dupe";
   lookSpec: LookSpecV0;
   reason: string;
+  purchaseEnabled?: boolean;
 }): ProductAttributesV0 {
-  const { category, locale, kind, lookSpec, reason } = input;
+  const { market, category, locale, kind, lookSpec, reason, purchaseEnabled } = input;
   const area = lookSpec.breakdown[category];
   const whyThis = `No catalog match found (${reason}). Placeholder for ${category} to target ${area.finish} finish and ${area.coverage} coverage.`;
+  const versions = engineVersionFor(market);
+
   return ProductAttributesV0Schema.parse({
     schemaVersion: "v0",
-    market: "US",
+    market,
     locale,
-    layer2EngineVersion: "l2-us-0.1.0",
-    layer3EngineVersion: "l3-us-0.1.0",
-    orchestratorVersion: "orchestrator-us-0.1.0",
+    layer2EngineVersion: versions.layer2 as any,
+    layer3EngineVersion: versions.layer3 as any,
+    orchestratorVersion: versions.orchestrator as any,
     category,
     skuId: `placeholder_${category}_${kind}`,
     name: `Placeholder ${category} (${kind})`,
     brand: "Unknown",
-    price: { currency: "USD", amount: 0 },
+    price: { currency: market === "JP" ? "JPY" : "USD", amount: 0 },
     priceTier: "unknown",
     imageUrl: undefined,
     productUrl: undefined,
     availability: "unknown",
-    availabilityByMarket: { US: "unknown" },
+    availabilityByMarket: market === "US" ? { US: "unknown" } : { JP: "unknown" },
     tags: { finish: [], texture: [], coverage: [], effect: [] },
     undertoneFit: "unknown",
     shadeDescriptor: undefined,
@@ -42,8 +60,9 @@ function makePlaceholder(input: {
       `lookSpec.breakdown.${category}.finish`,
       `lookSpec.breakdown.${category}.coverage`,
       "product.priceTier",
-      "product.availabilityByMarket.US",
+      market === "US" ? "product.availabilityByMarket.US" : "product.availabilityByMarket.JP",
     ],
+    ...(purchaseEnabled != null ? { purchaseEnabled } : {}),
   });
 }
 
@@ -82,22 +101,52 @@ function toProductAttributes(input: {
   });
 
   if (additionalWarnings.length) {
-    // Do not mutate schema; warnings live on KitPlanV0.
     return product;
   }
   return product;
 }
 
 export async function buildKitPlan(input: {
-  market: "US";
+  market: Market;
   locale: string;
   lookSpec: LookSpecV0;
+  commerceEnabled?: boolean;
   candidatesByCategory?: CandidatesByCategory;
   limitPerCategory?: number;
 }): Promise<KitPlanV0> {
   const { market, locale, lookSpec } = input;
-  if (market !== "US") {
-    throw new Error("MARKET_NOT_SUPPORTED");
+  if (market !== "US" && market !== "JP") throw new Error("MARKET_NOT_SUPPORTED");
+
+  const versions = engineVersionFor(market);
+
+  if (market === "JP") {
+    if (input.commerceEnabled !== false) throw new Error("MARKET_NOT_SUPPORTED");
+
+    const kit = {
+      base: {
+        best: makePlaceholder({ market, category: "base", locale, kind: "best", lookSpec, reason: "COMMERCE_DISABLED", purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, category: "base", locale, kind: "dupe", lookSpec, reason: "COMMERCE_DISABLED", purchaseEnabled: false }),
+      },
+      eye: {
+        best: makePlaceholder({ market, category: "eye", locale, kind: "best", lookSpec, reason: "COMMERCE_DISABLED", purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, category: "eye", locale, kind: "dupe", lookSpec, reason: "COMMERCE_DISABLED", purchaseEnabled: false }),
+      },
+      lip: {
+        best: makePlaceholder({ market, category: "lip", locale, kind: "best", lookSpec, reason: "COMMERCE_DISABLED", purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, category: "lip", locale, kind: "dupe", lookSpec, reason: "COMMERCE_DISABLED", purchaseEnabled: false }),
+      },
+    };
+
+    return KitPlanV0Schema.parse({
+      schemaVersion: "v0",
+      market,
+      locale,
+      layer2EngineVersion: versions.layer2 as any,
+      layer3EngineVersion: versions.layer3 as any,
+      orchestratorVersion: versions.orchestrator as any,
+      kit,
+      warnings: ["COMMERCE_DISABLED:JP"],
+    });
   }
 
   const warnings: string[] = [];
@@ -114,8 +163,8 @@ export async function buildKitPlan(input: {
     if (!rawCandidates.length) {
       warnings.push(`NO_CANDIDATES:${category}`);
       return {
-        best: makePlaceholder({ category, locale, kind: "best", lookSpec, reason: "NO_CANDIDATES" }),
-        dupe: makePlaceholder({ category, locale, kind: "dupe", lookSpec, reason: "NO_CANDIDATES" }),
+        best: makePlaceholder({ market, category, locale, kind: "best", lookSpec, reason: "NO_CANDIDATES" }),
+        dupe: makePlaceholder({ market, category, locale, kind: "dupe", lookSpec, reason: "NO_CANDIDATES" }),
       };
     }
 
@@ -162,16 +211,14 @@ export async function buildKitPlan(input: {
     lip: buildArea("lip", candidatesByCategory.lip || []),
   };
 
-  const result: KitPlanV0 = KitPlanV0Schema.parse({
+  return KitPlanV0Schema.parse({
     schemaVersion: "v0",
-    market: "US",
+    market,
     locale,
-    layer2EngineVersion: "l2-us-0.1.0",
-    layer3EngineVersion: "l3-us-0.1.0",
-    orchestratorVersion: "orchestrator-us-0.1.0",
+    layer2EngineVersion: versions.layer2 as any,
+    layer3EngineVersion: versions.layer3 as any,
+    orchestratorVersion: versions.orchestrator as any,
     kit,
     ...(warnings.length ? { warnings } : {}),
   });
-
-  return result;
 }

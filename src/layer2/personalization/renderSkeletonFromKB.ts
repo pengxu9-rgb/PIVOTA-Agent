@@ -1,5 +1,5 @@
 import { AdjustmentSkeletonV0, AdjustmentSkeletonImpactArea } from "../schemas/adjustmentSkeletonV0";
-import type { TechniqueKBUS } from "../kb/loadTechniqueKBUS";
+import type { TechniqueKB } from "../kb/loadTechniqueKB";
 import type { TechniqueMatchContext } from "../kb/evalTechniqueTriggers";
 
 function uniqueStrings(items: readonly string[]): string[] {
@@ -29,11 +29,12 @@ export type RenderSkeletonsFromKBOutput = {
 
 export function renderSkeletonFromKB(
   inputSkeletons: readonly AdjustmentSkeletonV0[],
-  kb: TechniqueKBUS,
-  ctx: TechniqueMatchContext,
+  kb: TechniqueKB,
+  ctx: TechniqueMatchContext & { market?: "US" | "JP" },
 ): RenderSkeletonsFromKBOutput {
   const warnings: string[] = [];
   let usedFallback = false;
+  const market = ctx.market === "JP" ? "JP" : "US";
 
   const out = inputSkeletons.map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
@@ -49,8 +50,8 @@ export function renderSkeletonFromKB(
         usedFallback = true;
         continue;
       }
-      if (card.market !== "US") {
-        warnings.push(`Technique card ${id} market is not US.`);
+      if (card.market !== market) {
+        warnings.push(`Technique card ${id} market mismatch (expected ${market}, got ${card.market}).`);
         usedFallback = true;
         continue;
       }

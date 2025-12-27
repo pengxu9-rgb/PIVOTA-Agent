@@ -7,6 +7,7 @@ const { parseMultipart, rmrf } = require('./multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
 const { randomUUID } = require('crypto');
 const { upsertOutcomeSampleFromJobCompletion } = require('../telemetry/outcomeStore');
+const { normalizeMarket, parseMarketFromRequest, requireMarketEnabled } = require('../markets/market');
 
 const DEFAULT_JOB_CONCURRENCY = Number(process.env.LOOK_REPLICATOR_JOB_CONCURRENCY || 2);
 const queue = new JobQueue({ concurrency: DEFAULT_JOB_CONCURRENCY });
@@ -206,10 +207,21 @@ function mountLookReplicatorRoutes(app, { logger }) {
       return res.status(400).json({ error: 'MISSING_REFERENCE_IMAGE' });
     }
 
-    const market = String(fields.market || 'US').trim() || 'US';
-    if (market !== 'US') {
+    const defaultMarket = normalizeMarket(process.env.DEFAULT_MARKET, 'US');
+    let market;
+    try {
+      market = parseMarketFromRequest(fields.market, defaultMarket);
+    } catch (err) {
       rmrf(tmpDir);
-      return res.status(400).json({ error: 'MARKET_NOT_SUPPORTED' });
+      return res.status(Number(err?.httpStatus) || 400).json({ error: err?.code || 'MARKET_NOT_SUPPORTED', message: err?.message });
+    }
+    try {
+      requireMarketEnabled(market);
+    } catch (err) {
+      rmrf(tmpDir);
+      return res
+        .status(Number(err?.httpStatus) || 403)
+        .json({ error: err?.code || 'MARKET_DISABLED', message: err?.message || 'Market disabled' });
     }
 
     const locale = normalizeLocale(fields.locale);
@@ -226,7 +238,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
     try {
       const job = await createJob({
-        market: 'US',
+        market,
         locale,
         referenceImageUrl: null,
         selfieImageUrl: null,
@@ -242,7 +254,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
           await updateJob(jobId, { status: 'processing', progress: 10 });
           const { result, telemetrySample } = await runLookReplicatePipeline({
             jobId,
-            market: 'US',
+            market,
             locale,
             preferenceMode,
             optInTraining,

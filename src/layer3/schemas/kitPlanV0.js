@@ -13,12 +13,12 @@ const KitSlotV0Schema = z
 const KitPlanV0Schema = z
   .object({
     schemaVersion: z.literal('v0'),
-    market: z.literal('US'),
+    market: z.enum(['US', 'JP']),
     locale: z.string().min(1),
 
-    layer2EngineVersion: z.literal('l2-us-0.1.0'),
-    layer3EngineVersion: z.literal('l3-us-0.1.0'),
-    orchestratorVersion: z.literal('orchestrator-us-0.1.0'),
+    layer2EngineVersion: z.union([z.literal('l2-us-0.1.0'), z.literal('l2-jp-0.1.0')]),
+    layer3EngineVersion: z.union([z.literal('l3-us-0.1.0'), z.literal('l3-jp-0.1.0')]),
+    orchestratorVersion: z.union([z.literal('orchestrator-us-0.1.0'), z.literal('orchestrator-jp-0.1.0')]),
 
     kit: z
       .object({
@@ -37,4 +37,3 @@ module.exports = {
   KitSlotV0Schema,
   KitPlanV0Schema,
 };
-

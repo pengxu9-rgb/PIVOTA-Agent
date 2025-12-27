@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "T_EYE_SHADOW_SOFT_BLEND_EDGE",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.finish", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "エッジをやわらかくぼかす",
+    "steps": [
+      "境目はブラシでやさしくぼかす。",
+      "濃さが出たら、何も付いていないブラシで外側を薄くする。"
+    ]
+  },
+  "rationaleTemplate": ["エッジを柔らかくすると、参照の質感に近づけやすい。"],
+  "productRoleHints": ["blending_brush"]
+}
+
