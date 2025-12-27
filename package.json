@@ -31,6 +31,7 @@
     "kb:analyze:us": "node src/kb/runAnalyzeKBHealth.js --market=US",
     "kb:analyze:jp": "node src/kb/runAnalyzeKBHealth.js --market=JP",
     "kb:propose:us": "node src/kb/us/proposeNewTechniqueCards.js",
+    "handbook:generate": "node scripts/generate-content-handbook.js",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"
