@@ -192,9 +192,16 @@
       ]
     }
   },
+  "experiment": {
+    "explorationBucket": 0,
+    "explorationEnabled": true,
+    "explorationRate": 0.1,
+    "seed": "ca472641c811da33",
+    "variantId": "lr_more_v1"
+  },
   "experiments": {
     "explorationRate": 0.1,
-    "variant": "control_more_v0"
+    "variant": "control_more_v1"
   },
   "exposureId": "exposure_0cd73cc7fdd7e011",
   "kit": {

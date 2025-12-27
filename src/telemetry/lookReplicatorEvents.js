@@ -74,6 +74,12 @@ function requiresExposureId(eventName) {
   ]).has(String(eventName || ''));
 }
 
+function extractExperiment(properties) {
+  const exp = properties?.experiment;
+  if (exp && typeof exp === 'object' && !Array.isArray(exp)) return exp;
+  return null;
+}
+
 function mountLookReplicatorEventRoutes(app, { logger } = {}) {
   app.post('/v1/events/look-replicator', async (req, res) => {
     const parsed = LookReplicatorEventIngestV0Schema.safeParse(req.body);
@@ -98,6 +104,14 @@ function mountLookReplicatorEventRoutes(app, { logger } = {}) {
       const exposureId = safeString(properties.exposureId);
       if (!exposureId) {
         properties.missingExposureId = true;
+      }
+
+      const experiment = extractExperiment(properties);
+      const variantId = safeString(experiment?.variantId) || safeString(properties.variantId);
+      const explorationBucket = experiment?.explorationBucket ?? properties.explorationBucket;
+      const bucketOk = explorationBucket === 0 || explorationBucket === 1 || explorationBucket === '0' || explorationBucket === '1';
+      if (!variantId || !bucketOk) {
+        properties.missingExperiment = true;
       }
     }
     properties.serverReceivedAt = serverReceivedAt;

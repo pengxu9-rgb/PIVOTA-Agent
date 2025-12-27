@@ -387,6 +387,7 @@ function makeLookResultSample() {
   const kit = makeKitPlanSample({ locale });
   const seed = 'contracts:lookResultV0:US';
   const exposureId = deterministicId('exposure', seed, 0);
+  const experimentSeed = crypto.createHash('sha256').update(`lr_more_v1:${exposureId}`).digest('hex').slice(0, 16);
 
   const adjustments = [
     {
@@ -519,7 +520,14 @@ function makeLookResultSample() {
       ...c,
       impressionId: deterministicId('impression', exposureId, idx + 1),
     })),
-    experiments: { variant: 'control_more_v0', explorationRate: 0.1 },
+    experiment: {
+      variantId: 'lr_more_v1',
+      explorationEnabled: true,
+      explorationRate: 0.1,
+      explorationBucket: 0,
+      seed: experimentSeed,
+    },
+    experiments: { variant: 'control_more_v1', explorationRate: 0.1 },
     steps,
     kit,
     warnings: [],

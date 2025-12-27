@@ -22,7 +22,7 @@
     },
     {
       "path": "fixtures/contracts/jp/lookResultV0.sample.json",
-      "sha256": "481b08730b6a40501a21059479a72cc70fe43c1de105f272646a78d936588507"
+      "sha256": "bf7e1712b4e17462c049db2c2a452748e1b43b75555545edd499397c1a7a20a6"
     },
     {
       "path": "fixtures/contracts/jp/lookSpecV0.sample.json",
@@ -30,5 +30,5 @@
     }
   ],
   "generatedAt": "2025-01-01T00:00:00.000Z",
-  "refHint": "f15d54a646042caf2cf381a611b6e31486262afd"
+  "refHint": "4243ba65717d4fcac1f6f6546f8c072b29f3bb08"
 }

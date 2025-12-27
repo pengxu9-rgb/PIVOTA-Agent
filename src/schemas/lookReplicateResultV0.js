@@ -80,6 +80,16 @@ const LookReplicateResultV0Schema = z
     share: ShareInfoV0Schema.optional(),
     commerceEnabled: z.boolean().optional(),
     adjustmentCandidates: z.array(AdjustmentCandidateV0Schema).max(7).optional(),
+    experiment: z
+      .object({
+        variantId: z.string().min(1),
+        explorationEnabled: z.boolean(),
+        explorationRate: z.number().min(0).max(1),
+        explorationBucket: z.union([z.literal(0), z.literal(1)]),
+        seed: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
     experiments: z
       .object({
         variant: z.string().min(1).optional(),

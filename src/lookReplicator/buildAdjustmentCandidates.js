@@ -1,3 +1,7 @@
+const crypto = require('crypto');
+
+const EXPERIMENT_VARIANT_ID = 'lr_more_v1';
+
 function clamp01(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return 0;
@@ -43,6 +47,27 @@ function shuffleInPlace(items, rng) {
     items[i] = items[j];
     items[j] = tmp;
   }
+}
+
+function seedToUint32(seed) {
+  const s = String(seed || '');
+  const hex = crypto.createHash('sha256').update(s).digest('hex').slice(0, 8);
+  return parseInt(hex, 16) >>> 0;
+}
+
+function mulberry32(a) {
+  let t = a >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let x = t;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildExperimentSeed({ exposureId }) {
+  return crypto.createHash('sha256').update(`${EXPERIMENT_VARIANT_ID}:${exposureId}`).digest('hex').slice(0, 16);
 }
 
 function shouldEnableMoreCandidates() {
@@ -134,6 +159,8 @@ function buildAdjustmentCandidates({
   if (!enabled) return { adjustmentCandidates: undefined, experiments: undefined };
 
   const exposureId = String(idGen()).trim() || newUuidish();
+  const experimentSeed = buildExperimentSeed({ exposureId });
+  const seededShuffleRng = mulberry32(seedToUint32(experimentSeed));
 
   const base = [];
   const raw = Array.isArray(layer2Adjustments) ? layer2Adjustments : [];
@@ -149,9 +176,11 @@ function buildAdjustmentCandidates({
     if (more.length >= 4) break;
   }
 
-  const explore = clamp01(rng()) < clamp01(explorationRate);
-  if (explore && more.length > 1) {
-    shuffleInPlace(more, rng);
+  const explorationEnabled = Boolean(enabled);
+  const explorationBucket = explorationEnabled && clamp01(rng()) < clamp01(explorationRate) ? 1 : 0;
+  if (explorationBucket === 1 && more.length > 1) {
+    // Deterministic shuffle (reproducible): seeded from exposureId-derived seed.
+    shuffleInPlace(more, seededShuffleRng);
   }
 
   const combined = [...base, ...more];
@@ -160,12 +189,21 @@ function buildAdjustmentCandidates({
     combined[i] = { ...combined[i], impressionId, rank: i + 1 };
   }
 
+  const experiment = {
+    variantId: EXPERIMENT_VARIANT_ID,
+    explorationEnabled,
+    explorationRate: clamp01(explorationRate),
+    explorationBucket,
+    ...(process.env.NODE_ENV !== 'production' ? { seed: experimentSeed } : {}),
+  };
+
   return {
     exposureId,
     adjustmentCandidates: combined,
+    experiment,
     experiments: {
-      variant: explore ? 'explore_more_v0' : 'control_more_v0',
-      explorationRate: clamp01(explorationRate),
+      variant: explorationBucket === 1 ? 'explore_more_v1' : 'control_more_v1',
+      explorationRate: experiment.explorationRate,
     },
   };
 }

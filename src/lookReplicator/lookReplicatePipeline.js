@@ -166,6 +166,7 @@ async function runLookReplicatePipeline(input) {
     steps: stepsOut.steps,
     kit: kitPlan,
     ...(candidateOut.adjustmentCandidates ? { adjustmentCandidates: candidateOut.adjustmentCandidates } : {}),
+    ...(candidateOut.experiment ? { experiment: candidateOut.experiment } : {}),
     ...(candidateOut.experiments ? { experiments: candidateOut.experiments } : {}),
     ...(warnings.length ? { warnings } : {}),
   });

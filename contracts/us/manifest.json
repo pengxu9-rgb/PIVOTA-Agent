@@ -46,7 +46,7 @@
     },
     {
       "path": "fixtures/contracts/us/lookResultV0.sample.json",
-      "sha256": "ee0feb4a4ee6048ac15c2e17e3ff177924cc669174fbaa7e18d3c452bf152065"
+      "sha256": "8e5bebdaaf222a2032e20878063c8ec48cf62671e6284f77eb723548e60eb1e0"
     },
     {
       "path": "fixtures/contracts/us/lookSpecV0.sample.json",
@@ -58,5 +58,5 @@
     }
   ],
   "generatedAt": "2025-01-01T00:00:00.000Z",
-  "refHint": "f15d54a646042caf2cf381a611b6e31486262afd"
+  "refHint": "4243ba65717d4fcac1f6f6546f8c072b29f3bb08"
 }

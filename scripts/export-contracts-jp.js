@@ -321,6 +321,7 @@ function makeLookResultSampleJP() {
   const kit = makeKitPlanSampleJP({ locale });
   const seed = 'contracts:lookResultV0:JP';
   const exposureId = deterministicId('exposure', seed, 0);
+  const experimentSeed = crypto.createHash('sha256').update(`lr_more_v1:${exposureId}`).digest('hex').slice(0, 16);
 
   const adjustments = [
     {
@@ -456,7 +457,14 @@ function makeLookResultSampleJP() {
     adjustments,
     adjustmentCandidates: adjustmentCandidatesWithIds,
     exposureId,
-    experiments: { variant: 'control_more_v0', explorationRate: 0.1 },
+    experiment: {
+      variantId: 'lr_more_v1',
+      explorationEnabled: true,
+      explorationRate: 0.1,
+      explorationBucket: 0,
+      seed: experimentSeed,
+    },
+    experiments: { variant: 'control_more_v1', explorationRate: 0.1 },
     steps,
     kit,
     warnings: ['COMMERCE_DISABLED:JP'],

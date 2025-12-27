@@ -1,4 +1,5 @@
 const { buildAdjustmentCandidates } = require('../../src/lookReplicator/buildAdjustmentCandidates');
+const crypto = require('crypto');
 
 function makeRng(seq) {
   let i = 0;
@@ -21,6 +22,7 @@ describe('buildAdjustmentCandidates', () => {
   test('disabled returns undefined fields', () => {
     const out = buildAdjustmentCandidates({ enabled: false, layer2Adjustments: [] });
     expect(out.adjustmentCandidates).toBeUndefined();
+    expect(out.experiment).toBeUndefined();
     expect(out.experiments).toBeUndefined();
   });
 
@@ -54,6 +56,16 @@ describe('buildAdjustmentCandidates', () => {
     expect(out.adjustmentCandidates.slice(0, 3).every((c) => c.isDefault)).toBe(true);
     expect(out.adjustmentCandidates.slice(3).every((c) => !c.isDefault)).toBe(true);
     expect(out.adjustmentCandidates.map((c) => c.rank)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+
+    const expectedSeed = crypto.createHash('sha256').update(`lr_more_v1:${out.exposureId}`).digest('hex').slice(0, 16);
+    expect(out.experiment).toEqual({
+      variantId: 'lr_more_v1',
+      explorationEnabled: true,
+      explorationRate: 0,
+      explorationBucket: 0,
+      seed: expectedSeed,
+    });
+    expect(out.experiments).toEqual({ variant: 'control_more_v1', explorationRate: 0 });
   });
 
   test('exploration shuffles only the More candidates', () => {
@@ -63,11 +75,11 @@ describe('buildAdjustmentCandidates', () => {
       { impactArea: 'lip', title: 'C', because: 'b', why: 'w', confidence: 'high', techniqueRefs: [] },
     ];
 
-    // First rng call triggers exploration (< 0.5). Next calls affect shuffling.
+    // First rng call triggers exploration (< explorationRate).
     const out = buildAdjustmentCandidates({
       enabled: true,
       explorationRate: 0.5,
-      rng: makeRng([0.1, 0.9, 0.8, 0.7, 0.6]),
+      rng: makeRng([0.1]),
       idGen: makeIdGen('uuid'),
       layer2Adjustments,
     });
@@ -80,5 +92,18 @@ describe('buildAdjustmentCandidates', () => {
 
     const impressionIds = out.adjustmentCandidates.map((c) => c.impressionId);
     expect(new Set(impressionIds).size).toBe(impressionIds.length);
+
+    // Deterministic shuffle is seeded from exposureId, not RNG.
+    const out2 = buildAdjustmentCandidates({
+      enabled: true,
+      explorationRate: 0.5,
+      rng: makeRng([0.1]),
+      idGen: makeIdGen('uuid'),
+      layer2Adjustments,
+    });
+    expect(out.adjustmentCandidates.slice(3).map((c) => c.id)).toEqual(out2.adjustmentCandidates.slice(3).map((c) => c.id));
+    expect(out.experiment.variantId).toBe('lr_more_v1');
+    expect(out.experiment.explorationBucket).toBe(1);
+    expect(out.experiments.variant).toBe('explore_more_v1');
   });
 });

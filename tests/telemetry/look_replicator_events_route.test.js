@@ -12,7 +12,13 @@ describe('look-replicator event ingestion', () => {
 
     const res = await request(app).post('/v1/events/look-replicator').send({
       event: 'lr_more_opened',
-      properties: { market: 'US', locale: 'en-US', moreIds: ['more:prep'], exposureId: 'exp_test_1' },
+      properties: {
+        market: 'US',
+        locale: 'en-US',
+        moreIds: ['more:prep'],
+        exposureId: 'exp_test_1',
+        experiment: { variantId: 'lr_more_v1', explorationBucket: 0, explorationRate: 0.1 },
+      },
     });
     expect([200, 204]).toContain(res.status);
 
@@ -24,6 +30,7 @@ describe('look-replicator event ingestion', () => {
     const row = JSON.parse(lines[lines.length - 1]);
     expect(row.event).toBe('lr_more_opened');
     expect(row.properties.exposureId).toBe('exp_test_1');
+    expect(row.properties.missingExperiment).toBeUndefined();
     expect(typeof row.properties.serverReceivedAt).toBe('string');
     expect(typeof row.properties.requestId).toBe('string');
   });
@@ -40,7 +47,14 @@ describe('look-replicator event ingestion', () => {
 
     const res = await request(app).post('/v1/events/look-replicator').send({
       event: 'lr_candidate_clicked',
-      properties: { market: 'US', locale: 'en-US', candidateId: 'more:prep', rank: 4, isDefault: false },
+      properties: {
+        market: 'US',
+        locale: 'en-US',
+        candidateId: 'more:prep',
+        rank: 4,
+        isDefault: false,
+        experiment: { variantId: 'lr_more_v1', explorationBucket: 0 },
+      },
     });
     expect([200, 204]).toContain(res.status);
 
@@ -52,5 +66,25 @@ describe('look-replicator event ingestion', () => {
     const row = JSON.parse(lines[lines.length - 1]);
     expect(row.event).toBe('lr_candidate_clicked');
     expect(row.properties.missingExposureId).toBe(true);
+  });
+
+  test('missing experiment is accepted but flagged', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lr-events-'));
+    process.env.LR_EVENTS_JSONL_SINK_DIR = tmpDir;
+
+    const res = await request(app).post('/v1/events/look-replicator').send({
+      event: 'lr_steps_viewed',
+      properties: { market: 'US', locale: 'en-US', exposureId: 'exp_test_2', candidateId: 'default:base', rank: 1 },
+    });
+    expect([200, 204]).toContain(res.status);
+
+    await new Promise((r) => setTimeout(r, 25));
+    const files = fs.readdirSync(tmpDir).filter((f) => f.endsWith('.jsonl'));
+    expect(files.length).toBeGreaterThan(0);
+    const jsonlPath = path.join(tmpDir, files[0]);
+    const lines = fs.readFileSync(jsonlPath, 'utf8').trim().split('\n');
+    const row = JSON.parse(lines[lines.length - 1]);
+    expect(row.event).toBe('lr_steps_viewed');
+    expect(row.properties.missingExperiment).toBe(true);
   });
 });

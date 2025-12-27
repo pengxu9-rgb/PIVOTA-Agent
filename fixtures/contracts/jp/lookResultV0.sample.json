@@ -187,9 +187,16 @@
     }
   },
   "commerceEnabled": false,
+  "experiment": {
+    "explorationBucket": 0,
+    "explorationEnabled": true,
+    "explorationRate": 0.1,
+    "seed": "7ba5292f08f67ae9",
+    "variantId": "lr_more_v1"
+  },
   "experiments": {
     "explorationRate": 0.1,
-    "variant": "control_more_v0"
+    "variant": "control_more_v1"
   },
   "exposureId": "exposure_0f5773b3548e1252",
   "kit": {
