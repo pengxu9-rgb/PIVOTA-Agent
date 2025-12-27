@@ -31,6 +31,7 @@
     "kb:analyze:us": "node src/kb/runAnalyzeKBHealth.js --market=US",
     "kb:analyze:jp": "node src/kb/runAnalyzeKBHealth.js --market=JP",
     "kb:replay": "node src/kb/runReplayKB.js",
+    "kb:starter:generate": "node scripts/generate-starter-kb.js",
     "kb:propose:us": "node src/kb/us/proposeNewTechniqueCards.js",
     "handbook:generate": "node scripts/generate-content-handbook.js",
     "mock:pivota": "node scripts/mock-pivota-api.js",

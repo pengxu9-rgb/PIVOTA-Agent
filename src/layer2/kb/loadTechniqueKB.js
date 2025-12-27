@@ -11,17 +11,25 @@ function loadTechniqueKB(market) {
 
   if (cacheByMarket.has(m)) return cacheByMarket.get(m);
 
-  const dir = path.join(__dirname, m.toLowerCase(), 'techniques');
-  const files = fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith('.json'))
-    .sort((a, b) => a.localeCompare(b));
+  const marketDir = path.join(__dirname, m.toLowerCase());
+  const primaryDir = path.join(marketDir, 'techniques');
+  const starterDir = path.join(marketDir, 'starter');
+
+  const listJsonFiles = (dir) => {
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.json'))
+      .sort((a, b) => a.localeCompare(b))
+      .map((f) => path.join(dir, f));
+  };
 
   const byId = new Map();
   const list = [];
 
-  for (const f of files) {
-    const raw = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+  // Load primary techniques first (canonical).
+  for (const filePath of listJsonFiles(primaryDir)) {
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     const parsed = TechniqueCardV0Schema.parse(raw);
     if (parsed.market !== m) {
       throw new Error(`Technique card ${parsed.id} market must be ${m} (got ${parsed.market}).`);
@@ -29,6 +37,18 @@ function loadTechniqueKB(market) {
     if (byId.has(parsed.id)) {
       throw new Error(`Duplicate technique id: ${parsed.id}`);
     }
+    byId.set(parsed.id, parsed);
+    list.push(parsed);
+  }
+
+  // Load starter cards as a fallback layer: only add when missing in primary.
+  for (const filePath of listJsonFiles(starterDir)) {
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const parsed = TechniqueCardV0Schema.parse(raw);
+    if (parsed.market !== m) {
+      throw new Error(`Technique card ${parsed.id} market must be ${m} (got ${parsed.market}).`);
+    }
+    if (byId.has(parsed.id)) continue;
     byId.set(parsed.id, parsed);
     list.push(parsed);
   }
@@ -41,4 +61,3 @@ function loadTechniqueKB(market) {
 module.exports = {
   loadTechniqueKB,
 };
-

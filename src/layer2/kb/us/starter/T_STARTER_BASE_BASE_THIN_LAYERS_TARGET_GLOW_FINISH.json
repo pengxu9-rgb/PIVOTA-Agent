@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_STARTER_BASE_BASE_THIN_LAYERS_TARGET_GLOW_FINISH",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "dewy",
+          "matte"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Base Thin Layers Target Glow (starter)",
+    "steps": [
+      "Apply a thin, even base layer.",
+      "Spot-correct only where needed and re-blend.",
+      "Set only where needed to keep the intended finish."
+    ]
+  },
+  "rationaleTemplate": [
+    "These steps are a safe baseline and can be tuned once more context is available."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "cream_highlighter",
+    "foundation"
+  ],
+  "safetyNotes": [
+    "Avoid identity/celebrity comparisons."
+  ],
+  "sourceId": "INTERNAL_STARTER",
+  "sourcePointer": "generated",
+  "tags": [
+    "starter"
+  ]
+}

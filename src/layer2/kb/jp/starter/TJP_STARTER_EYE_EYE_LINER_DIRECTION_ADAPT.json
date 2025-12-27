@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "TJP_STARTER_EYE_EYE_LINER_DIRECTION_ADAPT",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Eye Liner Direction Adapt (starter)",
+    "steps": [
+      "Start detail work from the outer third and build gradually.",
+      "Keep lines thin first, then adjust the outer corner.",
+      "Fill small gaps along the lash line for a clean edge."
+    ]
+  },
+  "rationaleTemplate": [
+    "These steps are a safe baseline and can be tuned once more context is available."
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "blending_brush",
+    "brush"
+  ],
+  "safetyNotes": [
+    "Avoid identity/celebrity comparisons."
+  ],
+  "sourceId": "INTERNAL_STARTER",
+  "sourcePointer": "generated",
+  "tags": [
+    "starter"
+  ]
+}
