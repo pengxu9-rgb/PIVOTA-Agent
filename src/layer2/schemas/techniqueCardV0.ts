@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const TechniqueMarketSchema = z.enum(["US", "JP"]);
-export const TechniqueAreaSchema = z.enum(["base", "eye", "lip"]);
+export const TechniqueAreaSchema = z.enum(["prep", "base", "contour", "brow", "eye", "blush", "lip"]);
 export const TechniqueDifficultySchema = z.enum(["easy", "medium", "hard"]);
 
 export const TechniqueConditionOpSchema = z.enum([

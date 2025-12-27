@@ -21,6 +21,10 @@
       "sha256": "ad62811d0ddf7f57d2492840044d54a9a1080f92d706edc8d380a2a87e2cecd4"
     },
     {
+      "path": "contracts/us/lookSpecV1.schema.json",
+      "sha256": "2043e817951043fa9e6717069d41091073e89ff5c2201f9210809428f3a31515"
+    },
+    {
       "path": "contracts/us/similarityReportV0.schema.json",
       "sha256": "2f711f32be18767ac4c9b03f6b73fd1aa7401d2917dfd44d6c15af8a1606798b"
     },
@@ -53,10 +57,14 @@
       "sha256": "a382b19f0d5d43230edc7e41a767b2394953d2b66dd3fc6c78105523dea9d998"
     },
     {
+      "path": "fixtures/contracts/us/lookSpecV1.sample.json",
+      "sha256": "8290395a7331ef049423ac54f9300cd0970e56944e4106163eed67584979e6e8"
+    },
+    {
       "path": "fixtures/contracts/us/similarityReportV0.sample.json",
       "sha256": "b4e6e764279afdd02b46b71ee9494b0c838ad7c80797987c3202d8447943242e"
     }
   ],
   "generatedAt": "2025-01-01T00:00:00.000Z",
-  "refHint": "4243ba65717d4fcac1f6f6546f8c072b29f3bb08"
+  "refHint": "3fc27daa635037097ac3dc3d766361fc39dde0b1"
 }

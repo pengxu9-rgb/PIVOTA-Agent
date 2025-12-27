@@ -87,4 +87,38 @@ describe('look-replicator event ingestion', () => {
     expect(row.event).toBe('lr_steps_viewed');
     expect(row.properties.missingExperiment).toBe(true);
   });
+
+  test('posthog forwarding failures do not block ingestion', async () => {
+    process.env.POSTHOG_API_KEY = 'test_key';
+    process.env.POSTHOG_HOST = 'https://example.com';
+
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => {
+      throw new Error('posthog down');
+    });
+
+    const res = await request(app).post('/v1/events/look-replicator').send({
+      event: 'lr_adjustments_exposed',
+      properties: {
+        market: 'US',
+        locale: 'en-US',
+        exposureId: 'exp_test_3',
+        experiment: { variantId: 'lr_more_v1', explorationBucket: 1, explorationRate: 0.1 },
+        candidates: [{ candidateId: 'default:eye', impressionId: 'imp_1' }],
+      },
+    });
+    expect([200, 204]).toContain(res.status);
+
+    await new Promise((r) => setTimeout(r, 25));
+    expect(global.fetch).toHaveBeenCalled();
+    const fetchArgs = global.fetch.mock.calls[0];
+    const body = JSON.parse(fetchArgs[1].body);
+    expect(body.event).toBe('lr_adjustments_exposed');
+    expect(body.properties.serverReceivedAt).toBeTruthy();
+    expect(body.properties.requestId).toBeTruthy();
+
+    global.fetch = originalFetch;
+    delete process.env.POSTHOG_API_KEY;
+    delete process.env.POSTHOG_HOST;
+  });
 });

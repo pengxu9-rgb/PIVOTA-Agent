@@ -13,6 +13,10 @@
       "sha256": "ad62811d0ddf7f57d2492840044d54a9a1080f92d706edc8d380a2a87e2cecd4"
     },
     {
+      "path": "contracts/jp/lookSpecV1.schema.json",
+      "sha256": "2043e817951043fa9e6717069d41091073e89ff5c2201f9210809428f3a31515"
+    },
+    {
       "path": "contracts/jp/stepPlanV0.schema.json",
       "sha256": "a5e1ae865dd3dce31540342d23dd4ff178e7cd0c82bd85ce13d6a885fb001821"
     },
@@ -27,8 +31,12 @@
     {
       "path": "fixtures/contracts/jp/lookSpecV0.sample.json",
       "sha256": "e7a1a64438dbed620f13902a9c699f8795c7b5866c68185760de29dffb0c13b3"
+    },
+    {
+      "path": "fixtures/contracts/jp/lookSpecV1.sample.json",
+      "sha256": "def48674929e1039da33cbc30992d82967b3076f765ca97eb42339d3005a06c1"
     }
   ],
   "generatedAt": "2025-01-01T00:00:00.000Z",
-  "refHint": "4243ba65717d4fcac1f6f6546f8c072b29f3bb08"
+  "refHint": "3fc27daa635037097ac3dc3d766361fc39dde0b1"
 }

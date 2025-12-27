@@ -7,6 +7,7 @@ const childProcess = require('child_process');
 const { zodToJsonSchema } = require('zod-to-json-schema');
 
 const { LookSpecV0Schema } = require('../src/layer2/schemas/lookSpecV0');
+const { LookSpecV1Schema } = require('../src/layer2/schemas/lookSpecV1');
 const { StepPlanV0Schema } = require('../src/layer2/schemas/stepPlanV0');
 const { KitPlanV0Schema } = require('../src/layer3/schemas/kitPlanV0');
 const { LookReplicateResultV0Schema } = require('../src/schemas/lookReplicateResultV0');
@@ -154,6 +155,48 @@ function makeLookSpecSampleJP() {
       },
     },
     warnings: [],
+  });
+}
+
+function makeLookSpecV1SampleJP() {
+  const v0 = makeLookSpecSampleJP();
+  return LookSpecV1Schema.parse({
+    ...v0,
+    schemaVersion: 'v1',
+    breakdown: {
+      ...v0.breakdown,
+      prep: {
+        intent: 'unknown',
+        finish: 'unknown',
+        coverage: 'unknown',
+        keyNotes: [],
+        evidence: ['contract.fixture'],
+      },
+      brow: {
+        intent: 'unknown',
+        finish: 'unknown',
+        coverage: 'unknown',
+        keyNotes: [],
+        evidence: ['contract.fixture'],
+      },
+      blush: {
+        intent: 'unknown',
+        finish: 'unknown',
+        coverage: 'unknown',
+        keyNotes: [],
+        evidence: ['contract.fixture'],
+      },
+      contour: {
+        intent: 'unknown',
+        finish: 'unknown',
+        coverage: 'unknown',
+        keyNotes: [],
+        evidence: ['contract.fixture'],
+        highlight: {
+          intensity: 'unknown',
+        },
+      },
+    },
   });
 }
 
@@ -482,16 +525,19 @@ async function main() {
   const fixturesDir = path.join(repoRoot, 'fixtures', 'contracts', 'jp');
 
   const lookSpecSchema = zodToJsonSchema(LookSpecV0Schema, { name: 'LookSpecV0', $refStrategy: 'none' });
+  const lookSpecV1Schema = zodToJsonSchema(LookSpecV1Schema, { name: 'LookSpecV1', $refStrategy: 'none' });
   const stepPlanSchema = zodToJsonSchema(StepPlanV0Schema, { name: 'StepPlanV0', $refStrategy: 'none' });
   const kitPlanSchema = zodToJsonSchema(KitPlanV0Schema, { name: 'KitPlanV0', $refStrategy: 'none' });
   const lookResultSchema = zodToJsonSchema(LookReplicateResultV0Schema, { name: 'LookReplicateResultV0', $refStrategy: 'none' });
 
   await writeJson(path.join(contractsDir, 'lookSpecV0.schema.json'), lookSpecSchema);
+  await writeJson(path.join(contractsDir, 'lookSpecV1.schema.json'), lookSpecV1Schema);
   await writeJson(path.join(contractsDir, 'stepPlanV0.schema.json'), stepPlanSchema);
   await writeJson(path.join(contractsDir, 'kitPlanV0.schema.json'), kitPlanSchema);
   await writeJson(path.join(contractsDir, 'lookReplicateResultV0.schema.json'), lookResultSchema);
 
   await writeJson(path.join(fixturesDir, 'lookSpecV0.sample.json'), makeLookSpecSampleJP());
+  await writeJson(path.join(fixturesDir, 'lookSpecV1.sample.json'), makeLookSpecV1SampleJP());
   await writeJson(path.join(fixturesDir, 'kitPlanV0.sample.json'), makeKitPlanSampleJP({ locale: 'ja' }));
   await writeJson(path.join(fixturesDir, 'lookResultV0.sample.json'), makeLookResultSampleJP());
 

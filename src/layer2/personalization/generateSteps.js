@@ -3,7 +3,7 @@ const path = require('path');
 const { z } = require('zod');
 
 const { createProviderFromEnv, LlmError } = require('../../llm/provider');
-const { LookSpecV0Schema } = require('../schemas/lookSpecV0');
+const { normalizeLookSpecToV1 } = require('../schemas/lookSpecV1');
 const { StepPlanV0Schema, StepImpactAreaSchema } = require('../schemas/stepPlanV0');
 const { Layer2AdjustmentV0Schema } = require('./generateAdjustments');
 
@@ -86,7 +86,7 @@ async function generateSteps(input) {
   if (input.market !== 'US' && input.market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
 
   const locale = String(input.locale || 'en').trim() || 'en';
-  const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
+  const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   const adjustments = (input.adjustments || []).map((a) => Layer2AdjustmentV0Schema.parse(a));
   const lowConfidence = input.userFaceProfile == null;
 

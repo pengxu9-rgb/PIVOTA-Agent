@@ -75,14 +75,14 @@ function lintVibeTags(market) {
   assertUniqueIds(`${file} tag`, tags.map((t) => t?.id));
 }
 
-function lintRoles() {
-  const dict = readDictJson('roles_v0.json');
-  if (dict?.schemaVersion !== 'v0') fail(`roles_v0.json: schemaVersion must be "v0".`);
+function lintRoles(dictFile, version) {
+  const dict = readDictJson(dictFile);
+  if (dict?.schemaVersion !== version) fail(`${dictFile}: schemaVersion must be "${version}".`);
   const roles = Array.isArray(dict?.roles) ? dict.roles : [];
 
-  assertCount('roles_v0.json roles', roles.length, 30, 80);
+  assertCount(`${dictFile} roles`, roles.length, 30, 80);
   assertUniqueIds(
-    'roles_v0.json role',
+    `${dictFile} role`,
     roles.map((r) => r?.id),
   );
 
@@ -104,15 +104,20 @@ function techniqueIdSetForMarket(market) {
 }
 
 function lintIntents() {
-  const dict = readDictJson('intents_v0.json');
-  if (dict?.schemaVersion !== 'v0') fail(`intents_v0.json: schemaVersion must be "v0".`);
+  lintIntentsFile('intents_v0.json', 'v0');
+  lintIntentsFile('intents_v1.json', 'v1');
+}
+
+function lintIntentsFile(dictFile, version) {
+  const dict = readDictJson(dictFile);
+  if (dict?.schemaVersion !== version) fail(`${dictFile}: schemaVersion must be "${version}".`);
   const placeholders = Array.isArray(dict?.placeholders) ? dict.placeholders : [];
   const intents = Array.isArray(dict?.intents) ? dict.intents : [];
 
-  assertCount('intents_v0.json intents', intents.length, 12, 30);
-  const placeholderSet = assertUniqueIds('intents_v0.json placeholder', placeholders);
+  assertCount(`${dictFile} intents`, intents.length, 12, 30);
+  const placeholderSet = assertUniqueIds(`${dictFile} placeholder`, placeholders);
   const intentIdSet = assertUniqueIds(
-    'intents_v0.json intent',
+    `${dictFile} intent`,
     intents.map((i) => i?.id),
   );
 
@@ -121,11 +126,17 @@ function lintIntents() {
     JP: techniqueIdSetForMarket('JP'),
   };
 
+  const allowedAreasV0 = new Set(['base', 'eye', 'lip']);
+  const allowedAreasV1 = new Set(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
+
   for (const intent of intents) {
     if (!intent || typeof intent !== 'object') continue;
     const area = intent.area;
-    if (!['base', 'eye', 'lip'].includes(area)) {
-      fail(`intents_v0.json: intent ${intent?.id} area must be base|eye|lip (got ${JSON.stringify(area)}).`);
+    const allowedAreas = version === 'v1' ? allowedAreasV1 : allowedAreasV0;
+    if (!allowedAreas.has(area)) {
+      fail(
+        `${dictFile}: intent ${intent?.id} area must be ${Array.from(allowedAreas).join('|')} (got ${JSON.stringify(area)}).`,
+      );
     }
 
     const markets = intent.markets || {};
@@ -133,20 +144,20 @@ function lintIntents() {
       const m = markets[market] || {};
       const techniqueIds = Array.isArray(m.techniqueIds) ? m.techniqueIds : [];
       if (techniqueIds.length === 0) {
-        fail(`intents_v0.json: intent ${intent?.id} must define markets.${market}.techniqueIds (non-empty).`);
+        fail(`${dictFile}: intent ${intent?.id} must define markets.${market}.techniqueIds (non-empty).`);
         continue;
       }
 
       for (const tid of techniqueIds) {
         if (!isId(tid)) {
-          fail(`intents_v0.json: intent ${intent?.id} markets.${market}.techniqueIds contains invalid id ${JSON.stringify(tid)}.`);
+          fail(`${dictFile}: intent ${intent?.id} markets.${market}.techniqueIds contains invalid id ${JSON.stringify(tid)}.`);
           continue;
         }
         const exists = knownTechniqueIds[market].has(tid);
         const isPlaceholder = placeholderSet.has(tid);
         if (!exists && !isPlaceholder) {
           fail(
-            `intents_v0.json: intent ${intent?.id} markets.${market}.techniqueIds references missing technique id ${tid}.`,
+            `${dictFile}: intent ${intent?.id} markets.${market}.techniqueIds references missing technique id ${tid}.`,
           );
         }
       }
@@ -154,17 +165,22 @@ function lintIntents() {
   }
 
   // A tiny sanity check: if something references a placeholder, it must be declared.
-  ok(`Validated intents (${intentIdSet.size}) and placeholders (${placeholderSet.size}).`);
+  ok(`Validated ${dictFile}: intents (${intentIdSet.size}) and placeholders (${placeholderSet.size}).`);
 }
 
 function lintTriggerKeysDict() {
-  const dict = readDictJson('trigger_keys_v0.json');
-  if (dict?.schemaVersion !== 'v0') fail(`trigger_keys_v0.json: schemaVersion must be "v0".`);
+  lintTriggerKeysFile('trigger_keys_v0.json', 'v0');
+  lintTriggerKeysFile('trigger_keys_v1.json', 'v1');
+}
+
+function lintTriggerKeysFile(dictFile, version) {
+  const dict = readDictJson(dictFile);
+  if (dict?.schemaVersion !== version) fail(`${dictFile}: schemaVersion must be "${version}".`);
   const allowedPrefixes = Array.isArray(dict?.allowedPrefixes) ? dict.allowedPrefixes : [];
-  if (allowedPrefixes.length === 0) fail(`trigger_keys_v0.json: allowedPrefixes must be non-empty.`);
+  if (allowedPrefixes.length === 0) fail(`${dictFile}: allowedPrefixes must be non-empty.`);
   for (const p of allowedPrefixes) {
-    if (typeof p !== 'string' || !p.trim()) fail(`trigger_keys_v0.json: allowedPrefixes contains empty entry.`);
-    if (!isAsciiString(p)) fail(`trigger_keys_v0.json: allowedPrefixes must be ASCII (got ${JSON.stringify(p)}).`);
+    if (typeof p !== 'string' || !p.trim()) fail(`${dictFile}: allowedPrefixes contains empty entry.`);
+    if (!isAsciiString(p)) fail(`${dictFile}: allowedPrefixes must be ASCII (got ${JSON.stringify(p)}).`);
   }
 }
 
@@ -186,11 +202,14 @@ function lintTechniqueKBTriggers(market) {
 }
 
 function lintLookSpecLexicon() {
-  const dict = readDictJson('lookspec_lexicon_v0.json');
-  if (dict?.schemaVersion !== 'v0') fail(`lookspec_lexicon_v0.json: schemaVersion must be "v0".`);
-  if (!dict?.markets?.US || !dict?.markets?.JP) {
-    fail(`lookspec_lexicon_v0.json: markets must include US and JP.`);
-  }
+  lintLookSpecLexiconFile('lookspec_lexicon_v0.json', 'v0');
+  lintLookSpecLexiconFile('lookspec_lexicon_v1.json', 'v1');
+}
+
+function lintLookSpecLexiconFile(dictFile, version) {
+  const dict = readDictJson(dictFile);
+  if (dict?.schemaVersion !== version) fail(`${dictFile}: schemaVersion must be "${version}".`);
+  if (!dict?.markets?.US || !dict?.markets?.JP) fail(`${dictFile}: markets must include US and JP.`);
 }
 
 function main() {
@@ -203,7 +222,8 @@ function main() {
   lintVibeTags('JP');
   ok('Validated vibe tag dicts.');
 
-  lintRoles();
+  lintRoles('roles_v0.json', 'v0');
+  lintRoles('roles_v1.json', 'v1');
   ok('Validated roles dict.');
 
   lintIntents();
@@ -212,4 +232,3 @@ function main() {
 }
 
 main();
-

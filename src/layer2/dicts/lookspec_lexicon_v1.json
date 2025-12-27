@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "v1",
+  "markets": {
+    "US": {
+      "prep": {
+        "hydration_level": ["low", "medium", "high", "unknown"],
+        "primer_type": ["none", "hydrating", "blurring", "gripping", "unknown"]
+      },
+      "base": {
+        "finish": ["matte", "satin", "dewy", "unknown"],
+        "coverage": ["light", "medium", "full", "unknown"]
+      },
+      "brow": {
+        "shape": ["straight", "soft_arch", "high_arch", "unknown"],
+        "definition": ["soft", "defined", "unknown"]
+      },
+      "eye": {
+        "shadow_shape": [
+          "soft_gradient",
+          "halo",
+          "smoked",
+          "cut_crease",
+          "mono_wash",
+          "defined_outer_v",
+          "unknown"
+        ],
+        "liner_direction": { "direction": ["down", "straight", "up", "unknown"], "degreeMin": -20, "degreeMax": 20 },
+        "lash_intensity": ["natural", "medium", "bold", "unknown"],
+        "inner_corner": ["none", "brightened", "unknown"]
+      },
+      "blush": {
+        "tone": ["peach", "rose", "mauve", "neutral", "unknown"],
+        "placement": ["apples", "cheekbone", "under_eye", "temple", "unknown"],
+        "diffusion": ["soft", "defined", "unknown"]
+      },
+      "contour": {
+        "intensity": ["subtle", "medium", "strong", "unknown"],
+        "placement": ["cheek", "jaw", "nose", "temple", "unknown"],
+        "highlight": { "intensity": ["subtle", "medium", "strong", "unknown"] }
+      },
+      "lip": {
+        "finish": ["matte", "satin", "gloss", "unknown"],
+        "edge": ["crisp", "blurred", "gradient", "unknown"]
+      }
+    },
+    "JP": {
+      "prep": {
+        "hydration_level": ["low", "medium", "high", "unknown"],
+        "primer_type": ["none", "hydrating", "blurring", "gripping", "unknown"]
+      },
+      "base": {
+        "finish": ["matte", "satin", "dewy", "unknown"],
+        "coverage": ["light", "medium", "full", "unknown"]
+      },
+      "brow": {
+        "shape": ["straight", "soft_arch", "high_arch", "unknown"],
+        "definition": ["soft", "defined", "unknown"]
+      },
+      "eye": {
+        "shadow_shape": [
+          "soft_gradient",
+          "halo",
+          "smoked",
+          "cut_crease",
+          "mono_wash",
+          "defined_outer_v",
+          "unknown"
+        ],
+        "liner_direction": { "direction": ["down", "straight", "up", "unknown"], "degreeMin": -20, "degreeMax": 20 },
+        "lash_intensity": ["natural", "medium", "bold", "unknown"],
+        "inner_corner": ["none", "brightened", "unknown"]
+      },
+      "blush": {
+        "tone": ["peach", "rose", "mauve", "neutral", "unknown"],
+        "placement": ["apples", "cheekbone", "under_eye", "temple", "unknown"],
+        "diffusion": ["soft", "defined", "unknown"]
+      },
+      "contour": {
+        "intensity": ["subtle", "medium", "strong", "unknown"],
+        "placement": ["cheek", "jaw", "nose", "temple", "unknown"],
+        "highlight": { "intensity": ["subtle", "medium", "strong", "unknown"] }
+      },
+      "lip": {
+        "finish": ["matte", "satin", "gloss", "unknown"],
+        "edge": ["crisp", "blurred", "gradient", "unknown"]
+      }
+    }
+  }
+}
+

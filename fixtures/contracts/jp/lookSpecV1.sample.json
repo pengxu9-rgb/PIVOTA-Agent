@@ -1,0 +1,94 @@
+{
+  "breakdown": {
+    "base": {
+      "coverage": "薄め",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "ナチュラル",
+      "intent": "素肌っぽく整える",
+      "keyNotes": [
+        "薄づき",
+        "自然なツヤ",
+        "厚塗りしない"
+      ]
+    },
+    "blush": {
+      "coverage": "unknown",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "unknown",
+      "intent": "unknown",
+      "keyNotes": []
+    },
+    "brow": {
+      "coverage": "unknown",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "unknown",
+      "intent": "unknown",
+      "keyNotes": []
+    },
+    "contour": {
+      "coverage": "unknown",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "unknown",
+      "highlight": {
+        "intensity": "unknown"
+      },
+      "intent": "unknown",
+      "keyNotes": []
+    },
+    "eye": {
+      "coverage": "薄め",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "ソフト",
+      "intent": "目元を自然に引き立てる",
+      "keyNotes": [
+        "細めライン",
+        "軽い陰影",
+        "抜け感"
+      ]
+    },
+    "lip": {
+      "coverage": "薄め",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "ツヤ",
+      "intent": "うるおい感のある色味",
+      "keyNotes": [
+        "透け感",
+        "中央にツヤ",
+        "輪郭は柔らかく"
+      ]
+    },
+    "prep": {
+      "coverage": "unknown",
+      "evidence": [
+        "contract.fixture"
+      ],
+      "finish": "unknown",
+      "intent": "unknown",
+      "keyNotes": []
+    }
+  },
+  "layer2EngineVersion": "l2-jp-0.1.0",
+  "layer3EngineVersion": "l3-jp-0.1.0",
+  "locale": "ja",
+  "lookTitle": "ナチュラルツヤ",
+  "market": "JP",
+  "orchestratorVersion": "orchestrator-jp-0.1.0",
+  "schemaVersion": "v1",
+  "styleTags": [
+    "jp_clear_soft",
+    "jp_natural"
+  ],
+  "warnings": []
+}

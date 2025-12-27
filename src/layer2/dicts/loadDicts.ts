@@ -3,9 +3,13 @@ import path from "path";
 
 type DictName =
   | "trigger_keys_v0.json"
+  | "trigger_keys_v1.json"
   | "lookspec_lexicon_v0.json"
+  | "lookspec_lexicon_v1.json"
   | "roles_v0.json"
   | "intents_v0.json"
+  | "roles_v1.json"
+  | "intents_v1.json"
   | "vibe_tags_us_v0.json"
   | "vibe_tags_jp_v0.json";
 
@@ -26,4 +30,3 @@ export function readDictJson(name: DictName): unknown {
 export function resetDictCacheForTests() {
   cache.clear();
 }
-

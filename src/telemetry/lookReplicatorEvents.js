@@ -80,6 +80,36 @@ function extractExperiment(properties) {
   return null;
 }
 
+function flagMissingFields(properties, fields) {
+  const missing = [];
+  for (const field of fields) {
+    if (properties[field] === undefined || properties[field] === null || properties[field] === '') missing.push(field);
+  }
+  if (missing.length > 0) {
+    properties.missingEventFields = Array.isArray(properties.missingEventFields)
+      ? Array.from(new Set([...properties.missingEventFields, ...missing]))
+      : missing;
+  }
+}
+
+function hasCandidateImpressionList(properties) {
+  const candidateListKeys = ['candidates', 'defaultCandidates', 'moreCandidates', 'candidateImpressions'];
+  for (const key of candidateListKeys) {
+    const value = properties[key];
+    if (!Array.isArray(value)) continue;
+    const ok = value.some(
+      (row) =>
+        row &&
+        typeof row === 'object' &&
+        !Array.isArray(row) &&
+        safeString(row.candidateId) &&
+        safeString(row.impressionId)
+    );
+    if (ok) return true;
+  }
+  return false;
+}
+
 function mountLookReplicatorEventRoutes(app, { logger } = {}) {
   app.post('/v1/events/look-replicator', async (req, res) => {
     const parsed = LookReplicatorEventIngestV0Schema.safeParse(req.body);
@@ -114,6 +144,25 @@ function mountLookReplicatorEventRoutes(app, { logger } = {}) {
         properties.missingExperiment = true;
       }
     }
+
+    // Light taxonomy checks (do not reject; mark derived flags for data quality).
+    const eventName = String(parsed.data.event || '');
+    if (eventName === 'lr_adjustments_exposed') {
+      flagMissingFields(properties, ['market', 'locale', 'exposureId']);
+      if (!hasCandidateImpressionList(properties)) properties.missingCandidateImpressionIds = true;
+    } else if (eventName === 'lr_more_opened') {
+      flagMissingFields(properties, ['market', 'locale', 'exposureId']);
+    } else if (eventName === 'lr_candidate_clicked') {
+      flagMissingFields(properties, ['market', 'locale', 'exposureId', 'candidateId', 'impressionId', 'rank', 'area']);
+    } else if (
+      eventName === 'lr_steps_viewed' ||
+      eventName === 'lr_kit_clicked' ||
+      eventName === 'lr_checkout_started' ||
+      eventName === 'lr_share_clicked'
+    ) {
+      flagMissingFields(properties, ['market', 'locale', 'exposureId']);
+    }
+
     properties.serverReceivedAt = serverReceivedAt;
     properties.requestId = requestId;
 

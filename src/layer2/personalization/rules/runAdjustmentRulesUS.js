@@ -1,14 +1,14 @@
 const { z } = require('zod');
 
 const { AdjustmentSkeletonV0Schema } = require('../../schemas/adjustmentSkeletonV0');
-const { LookSpecV0Schema } = require('../../schemas/lookSpecV0');
+const { normalizeLookSpecToV1 } = require('../../schemas/lookSpecV1');
 
 const { US_ADJUSTMENT_RULES, US_ADJUSTMENT_FALLBACK_RULES } = require('./usAdjustmentRules');
 
 const PreferenceModeSchema = z.enum(['structure', 'vibe', 'ease']);
 
 function runAdjustmentRulesUS(input) {
-  const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
+  const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   if (lookSpec.market !== 'US') throw new Error('runAdjustmentRulesUS only supports market=US.');
 
   const preferenceMode = PreferenceModeSchema.parse(input.preferenceMode);

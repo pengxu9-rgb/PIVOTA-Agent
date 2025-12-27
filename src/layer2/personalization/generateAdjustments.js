@@ -1,4 +1,4 @@
-const { LookSpecV0Schema } = require('../schemas/lookSpecV0');
+const { normalizeLookSpecToV1 } = require('../schemas/lookSpecV1');
 
 const { FaceProfileV0Schema } = require('../../layer1/schemas/faceProfileV0');
 const { SimilarityReportV0Schema } = require('../../layer1/schemas/similarityReportV0');
@@ -12,7 +12,7 @@ async function generateAdjustments(input) {
   if (input.market !== 'US' && input.market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
 
   const locale = String(input.locale || 'en').trim() || 'en';
-  const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
+  const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   const userFace = input.userFaceProfile == null ? null : FaceProfileV0Schema.parse(input.userFaceProfile);
   const refFace = input.refFaceProfile == null ? null : FaceProfileV0Schema.parse(input.refFaceProfile);
   const similarityReport =

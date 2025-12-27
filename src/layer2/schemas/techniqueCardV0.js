@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
 const TechniqueMarketSchema = z.enum(['US', 'JP']);
-const TechniqueAreaSchema = z.enum(['base', 'eye', 'lip']);
+const TechniqueAreaSchema = z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
 const TechniqueDifficultySchema = z.enum(['easy', 'medium', 'hard']);
 
 const TechniqueConditionOpSchema = z.enum(['lt', 'lte', 'gt', 'gte', 'eq', 'neq', 'in', 'between', 'exists']);

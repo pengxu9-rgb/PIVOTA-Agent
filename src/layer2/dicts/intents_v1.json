@@ -1,0 +1,144 @@
+{
+  "schemaVersion": "v1",
+  "placeholders": [
+    "T_PREP_HYDRATE_AND_PRIME",
+    "T_BROW_SOFT_SHAPING",
+    "T_BLUSH_SOFT_LIFT",
+    "T_CONTOUR_SOFT_SCULPT"
+  ],
+  "intents": [
+    {
+      "id": "EYE_LINER_DIRECTION_ADAPT",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE"] },
+        "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE"] }
+      }
+    },
+    {
+      "id": "EYE_LINER_DIRECTION_ADAPT_EASE",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] },
+        "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] }
+      }
+    },
+    {
+      "id": "EYE_TIGHTLINE_AND_SMUDGE",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_FILL_GAP_LASHLINE", "T_EYE_LINER_THIN_LINE"] },
+        "JP": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_FILL_GAP_LASHLINE", "T_EYE_LINER_THIN_LINE"] }
+      }
+    },
+    {
+      "id": "EYE_TIGHTLINE_AND_SMUDGE_EASE",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_LINER_THIN_LINE"] },
+        "JP": { "techniqueIds": ["T_EYE_TIGHTLINE_UPPER_LASHLINE", "T_EYE_SMUDGE_OUTER_CORNER", "T_EYE_LINER_THIN_LINE"] }
+      }
+    },
+
+    {
+      "id": "BASE_THIN_LAYERS_TARGET_GLOW",
+      "area": "base",
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] },
+        "JP": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] }
+      }
+    },
+    {
+      "id": "BASE_THIN_LAYERS_TARGET_GLOW_EASE",
+      "area": "base",
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] },
+        "JP": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_THIN_LAYER", "T_BASE_TARGET_GLOW_HIGHLIGHTS", "T_BASE_SET_TZONE_LIGHT"] }
+      }
+    },
+    {
+      "id": "BASE_BUILD_COVERAGE_SPOT",
+      "area": "base",
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] },
+        "JP": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] }
+      }
+    },
+
+    {
+      "id": "LIP_GLOSS_CENTER_GRADIENT",
+      "area": "lip",
+      "markets": {
+        "US": { "techniqueIds": ["T_LIP_SOFT_EDGE", "T_LIP_GLOSS_CENTER", "T_LIP_SHADE_CLOSE_FAMILY"] },
+        "JP": { "techniqueIds": ["T_LIP_SOFT_EDGE", "T_LIP_GLOSS_CENTER", "T_LIP_SHADE_CLOSE_FAMILY"] }
+      }
+    },
+    {
+      "id": "LIP_SOFT_EDGE_BLUR",
+      "area": "lip",
+      "markets": {
+        "US": { "techniqueIds": ["T_LIP_BLUR_EDGE", "T_LIP_CENTER_STRONGER", "T_LIP_MATCH_FINISH"] },
+        "JP": { "techniqueIds": ["T_LIP_BLUR_EDGE", "T_LIP_CENTER_STRONGER", "T_LIP_MATCH_FINISH"] }
+      }
+    },
+
+    {
+      "id": "BASE_FALLBACK_THIN_LAYER",
+      "area": "base",
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT"] },
+        "JP": { "techniqueIds": ["T_BASE_THIN_LAYER", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT"] }
+      }
+    },
+    {
+      "id": "EYE_FALLBACK_SAFE_CONTROL",
+      "area": "eye",
+      "markets": {
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] },
+        "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] }
+      }
+    },
+    {
+      "id": "LIP_FALLBACK_FINISH_FOCUS",
+      "area": "lip",
+      "markets": {
+        "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] },
+        "JP": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] }
+      }
+    },
+
+    {
+      "id": "PREP_HYDRATE_AND_PRIME",
+      "area": "prep",
+      "markets": {
+        "US": { "techniqueIds": ["T_PREP_HYDRATE_AND_PRIME"] },
+        "JP": { "techniqueIds": ["T_PREP_HYDRATE_AND_PRIME"] }
+      }
+    },
+    {
+      "id": "BROW_SOFT_SHAPING",
+      "area": "brow",
+      "markets": {
+        "US": { "techniqueIds": ["T_BROW_SOFT_SHAPING"] },
+        "JP": { "techniqueIds": ["T_BROW_SOFT_SHAPING"] }
+      }
+    },
+    {
+      "id": "BLUSH_SOFT_LIFT",
+      "area": "blush",
+      "markets": {
+        "US": { "techniqueIds": ["T_BLUSH_SOFT_LIFT"] },
+        "JP": { "techniqueIds": ["T_BLUSH_SOFT_LIFT"] }
+      }
+    },
+    {
+      "id": "CONTOUR_SOFT_SCULPT",
+      "area": "contour",
+      "markets": {
+        "US": { "techniqueIds": ["T_CONTOUR_SOFT_SCULPT"] },
+        "JP": { "techniqueIds": ["T_CONTOUR_SOFT_SCULPT"] }
+      }
+    }
+  ]
+}
+

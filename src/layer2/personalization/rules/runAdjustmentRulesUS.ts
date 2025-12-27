@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { AdjustmentSkeletonV0, AdjustmentSkeletonV0Schema } from "../../schemas/adjustmentSkeletonV0";
-import { LookSpecV0, LookSpecV0Schema } from "../../schemas/lookSpecV0";
+import { normalizeLookSpecToV1 } from "../../schemas/lookSpecV1";
 
 import { PreferenceMode, US_ADJUSTMENT_FALLBACK_RULES, US_ADJUSTMENT_RULES } from "./usAdjustmentRules";
 
@@ -16,7 +16,7 @@ export type RunAdjustmentRulesUSInput = {
 };
 
 export function runAdjustmentRulesUS(input: RunAdjustmentRulesUSInput): [AdjustmentSkeletonV0, AdjustmentSkeletonV0, AdjustmentSkeletonV0] {
-  const lookSpec: LookSpecV0 = LookSpecV0Schema.parse(input.lookSpec);
+  const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   if (lookSpec.market !== "US") {
     throw new Error("runAdjustmentRulesUS only supports market=US.");
   }

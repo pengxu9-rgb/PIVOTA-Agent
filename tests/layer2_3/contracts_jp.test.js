@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { LookSpecV0Schema } = require('../../src/layer2/schemas/lookSpecV0');
+const { LookSpecV1Schema } = require('../../src/layer2/schemas/lookSpecV1');
 const { KitPlanV0Schema } = require('../../src/layer3/schemas/kitPlanV0');
 const { LookReplicateResultV0Schema } = require('../../src/schemas/lookReplicateResultV0');
 
@@ -25,10 +26,12 @@ function assertKitCompleteness(kitPlan) {
 describe('Layer2/3 contracts (JP)', () => {
   test('fixtures validate against Zod schemas', () => {
     const lookSpec = readJson('fixtures/contracts/jp/lookSpecV0.sample.json');
+    const lookSpecV1 = readJson('fixtures/contracts/jp/lookSpecV1.sample.json');
     const kitPlan = readJson('fixtures/contracts/jp/kitPlanV0.sample.json');
     const lookResult = readJson('fixtures/contracts/jp/lookResultV0.sample.json');
 
     LookSpecV0Schema.parse(lookSpec);
+    LookSpecV1Schema.parse(lookSpecV1);
     KitPlanV0Schema.parse(kitPlan);
     LookReplicateResultV0Schema.parse(lookResult);
   });
@@ -48,4 +51,3 @@ describe('Layer2/3 contracts (JP)', () => {
     expect(lookResult.commerceEnabled).toBe(false);
   });
 });
-

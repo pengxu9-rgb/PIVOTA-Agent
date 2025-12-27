@@ -1,6 +1,6 @@
 const { loadTechniqueKBUS } = require('../src/layer2/kb/loadTechniqueKBUS');
 
-const { loadTriggerKeysV0, isTriggerKeyAllowed } = require('../src/layer2/dicts/triggerKeys');
+const { loadTriggerKeysLatest, isTriggerKeyAllowed } = require('../src/layer2/dicts/triggerKeys');
 
 function hasLanguageRoutingTrigger(card, lang) {
   const triggers = card.triggers || {};
@@ -15,7 +15,7 @@ function hasLanguageRoutingTrigger(card, lang) {
 
 function main() {
   const kb = loadTechniqueKBUS();
-  const triggerKeys = loadTriggerKeysV0();
+  const triggerKeys = loadTriggerKeysLatest();
   const ids = new Set();
   const errors = [];
   const langPairs = new Map();

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "v1",
+  "allowedPrefixes": [
+    "preferenceMode",
+    "userFaceProfile.geometry.",
+    "userFaceProfile.quality.",
+    "userFaceProfile.categorical.",
+    "refFaceProfile.geometry.",
+    "refFaceProfile.quality.",
+    "refFaceProfile.categorical.",
+    "lookSpec.breakdown.prep.",
+    "lookSpec.breakdown.base.",
+    "lookSpec.breakdown.brow.",
+    "lookSpec.breakdown.eye.",
+    "lookSpec.breakdown.blush.",
+    "lookSpec.breakdown.contour.",
+    "lookSpec.breakdown.lip.",
+    "similarityReport."
+  ],
+  "disallowedSubstrings": ["__proto__", "constructor", "prototype"]
+}
+

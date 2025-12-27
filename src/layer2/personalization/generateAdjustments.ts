@@ -1,5 +1,5 @@
 import { LlmProvider } from "../../llm/provider";
-import { LookSpecV0Schema } from "../schemas/lookSpecV0";
+import { normalizeLookSpecToV1 } from "../schemas/lookSpecV1";
 import { rephraseAdjustments, Layer2AdjustmentV0, Layer2AdjustmentV0Schema } from "./rephraseAdjustments";
 import { runAdjustmentRulesUS } from "./rules/runAdjustmentRulesUS";
 import { loadTechniqueKBUS } from "../kb/loadTechniqueKBUS";
@@ -40,7 +40,7 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
 
   const locale = String(input.locale || "en").trim() || "en";
 
-  const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
+  const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   const userFace = input.userFaceProfile == null ? null : FaceProfileV0Schema.parse(input.userFaceProfile);
   const refFace = input.refFaceProfile == null ? null : FaceProfileV0Schema.parse(input.refFaceProfile);
   const similarityReport = input.similarityReport == null ? null : SimilarityReportV0Schema.parse(input.similarityReport);

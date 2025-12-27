@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "v1",
+  "roles": [
+    { "id": "angled_brush", "synonyms": ["angled brush"] },
+    { "id": "blending_brush", "synonyms": ["blending brush", "blending_brush"] },
+    { "id": "smudge_brush", "synonyms": ["smudge brush", "smudge_brush"] },
+    { "id": "small_brush", "synonyms": ["small brush"] },
+    { "id": "small_concealer_brush", "synonyms": ["small concealer brush"] },
+    { "id": "small_powder_brush", "synonyms": ["small powder brush"] },
+    { "id": "brush", "synonyms": ["brush"] },
+
+    { "id": "liner", "synonyms": ["liner"] },
+    { "id": "felt_tip_liner", "synonyms": ["felt-tip liner"] },
+    { "id": "thin_felt_tip_liner", "synonyms": ["thin felt-tip liner"] },
+    { "id": "gel_liner", "synonyms": ["gel liner"] },
+    { "id": "waterproof_pencil", "synonyms": ["waterproof pencil"] },
+
+    { "id": "lash_comb", "synonyms": ["lash comb"] },
+    { "id": "mascara", "synonyms": ["mascara"] },
+    { "id": "cotton_swab", "synonyms": ["cotton_swab"] },
+
+    { "id": "foundation", "synonyms": ["foundation"] },
+    { "id": "medium_coverage_base", "synonyms": ["medium-coverage base"] },
+    { "id": "concealer", "synonyms": ["concealer"] },
+    { "id": "sponge", "synonyms": ["sponge"] },
+
+    { "id": "moisturizer", "synonyms": ["moisturizer"] },
+    { "id": "light_moisturizer", "synonyms": ["light moisturizer"] },
+    { "id": "primer", "synonyms": ["primer"] },
+    { "id": "smoothing_primer", "synonyms": ["smoothing primer"] },
+
+    { "id": "powder", "synonyms": ["powder"] },
+    { "id": "loose_powder", "synonyms": ["loose powder"] },
+    { "id": "puff", "synonyms": ["puff"] },
+    { "id": "setting_spray", "synonyms": ["setting spray", "setting_spray"] },
+
+    { "id": "dark_shadow", "synonyms": ["dark shadow"] },
+    { "id": "shimmer_shadow", "synonyms": ["shimmer_shadow"] },
+    { "id": "light_shimmer_shadow", "synonyms": ["light shimmer shadow"] },
+
+    { "id": "highlighter", "synonyms": ["highlighter"] },
+    { "id": "liquid_highlighter", "synonyms": ["liquid highlighter"] },
+    { "id": "cream_highlighter", "synonyms": ["cream highlighter"] },
+
+    { "id": "lip_brush", "synonyms": ["lip brush", "lip_brush"] },
+    { "id": "lip_color", "synonyms": ["lip color", "lip_color"] },
+    { "id": "lip_liner", "synonyms": ["lip liner", "lip_liner"] },
+    { "id": "gloss", "synonyms": ["gloss"] },
+    { "id": "clear_gloss", "synonyms": ["clear gloss"] },
+    { "id": "tissue", "synonyms": ["tissue"] },
+
+    { "id": "hydrating_mist", "synonyms": ["hydrating mist", "face mist"] },
+    { "id": "hydrating_primer", "synonyms": ["hydrating primer"] },
+    { "id": "blurring_primer", "synonyms": ["blurring primer"] },
+    { "id": "gripping_primer", "synonyms": ["gripping primer"] },
+
+    { "id": "translucent_setting_powder", "synonyms": ["translucent powder", "setting powder"] },
+    { "id": "powder_puff", "synonyms": ["powder puff"] },
+
+    { "id": "brow_pencil", "synonyms": ["brow pencil", "eyebrow pencil"] },
+    { "id": "brow_powder", "synonyms": ["brow powder", "eyebrow powder"] },
+    { "id": "brow_gel_clear", "synonyms": ["clear brow gel", "brow gel clear"] },
+    { "id": "brow_gel_tinted", "synonyms": ["tinted brow gel", "brow gel tinted"] },
+    { "id": "brow_brush_spoolie", "synonyms": ["spoolie", "brow spoolie", "brow brush spoolie"] },
+
+    { "id": "powder_blush", "synonyms": ["powder blush", "blush powder"] },
+    { "id": "cream_blush", "synonyms": ["cream blush"] },
+    { "id": "blush_brush", "synonyms": ["blush brush"] },
+
+    { "id": "contour_powder", "synonyms": ["contour powder"] },
+    { "id": "contour_stick", "synonyms": ["contour stick"] },
+    { "id": "highlighter_powder", "synonyms": ["powder highlighter", "highlighter powder"] },
+    { "id": "fan_brush", "synonyms": ["fan brush"] }
+  ],
+  "normalization_rules": {
+    "lowercase": true,
+    "trim": true,
+    "collapse_whitespace": true,
+    "replace_chars": [
+      { "from": "-", "to": " " },
+      { "from": "_", "to": " " }
+    ]
+  }
+}
+

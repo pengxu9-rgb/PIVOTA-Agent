@@ -3,7 +3,7 @@ import path from "path";
 import { z } from "zod";
 
 import { createProviderFromEnv, LlmError, LlmProvider } from "../../llm/provider";
-import { LookSpecV0Schema } from "../schemas/lookSpecV0";
+import { normalizeLookSpecToV1 } from "../schemas/lookSpecV1";
 import { StepPlanV0, StepPlanV0Schema, StepImpactAreaSchema } from "../schemas/stepPlanV0";
 import { Layer2AdjustmentV0, Layer2AdjustmentV0Schema } from "./generateAdjustments";
 
@@ -96,7 +96,7 @@ export async function generateSteps(input: GenerateStepsInput): Promise<Generate
   }
 
   const locale = String(input.locale || "en").trim() || "en";
-  const lookSpec = LookSpecV0Schema.parse(input.lookSpec);
+  const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   const adjustments = input.adjustments.map((a) => Layer2AdjustmentV0Schema.parse(a));
 
   const lowConfidence = input.userFaceProfile == null;
