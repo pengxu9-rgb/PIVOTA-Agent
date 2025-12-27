@@ -5,6 +5,7 @@ const { generateAdjustments } = require('../layer2/personalization/generateAdjus
 const { generateSteps } = require('../layer2/personalization/generateSteps');
 const { buildKitPlan } = require('../layer3/buildKitPlan');
 const { LookReplicateResultV0Schema } = require('../schemas/lookReplicateResultV0');
+const { buildAdjustmentCandidates } = require('./buildAdjustmentCandidates');
 
 const { Layer1BundleV0Schema } = require('../layer1/schemas/layer1BundleV0');
 const { buildContextFingerprintUS } = require('../telemetry/contextFingerprintUS');
@@ -149,6 +150,8 @@ async function runLookReplicatePipeline(input) {
     ...(Array.isArray(kitPlan.warnings) ? kitPlan.warnings : []),
   ].filter(Boolean);
 
+  const candidateOut = buildAdjustmentCandidates({ layer2Adjustments: adjOut.adjustments });
+
   const result = LookReplicateResultV0Schema.parse({
     schemaVersion: 'v0',
     market: pack.market,
@@ -161,6 +164,8 @@ async function runLookReplicatePipeline(input) {
     adjustments: toResultAdjustments(adjOut.adjustments),
     steps: stepsOut.steps,
     kit: kitPlan,
+    ...(candidateOut.adjustmentCandidates ? { adjustmentCandidates: candidateOut.adjustmentCandidates } : {}),
+    ...(candidateOut.experiments ? { experiments: candidateOut.experiments } : {}),
     ...(warnings.length ? { warnings } : {}),
   });
 

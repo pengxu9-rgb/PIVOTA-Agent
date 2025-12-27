@@ -38,7 +38,7 @@ const {
   scorePairOverlap,
 } = require('./services/productTagSignals');
 const { mountLookReplicatorRoutes } = require('./lookReplicator');
-const { mountOutcomeTelemetryRoutes } = require('./telemetry');
+const { mountOutcomeTelemetryRoutes, mountLookReplicatorEventRoutes } = require('./telemetry');
 const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compatibility');
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 
@@ -1729,6 +1729,10 @@ mountLookReplicatorRoutes(app, { logger });
 // ---------------- Telemetry (US): Outcome signals ----------------
 
 mountOutcomeTelemetryRoutes(app, { logger });
+
+// ---------------- Telemetry (internal): Look Replicator events ----------------
+
+mountLookReplicatorEventRoutes(app, { logger });
 
 // ---------------- Layer 1 (US): Compatibility ----------------
 

@@ -1,4 +1,108 @@
 {
+  "adjustmentCandidates": [
+    {
+      "area": "base",
+      "gating": {
+        "status": "ok"
+      },
+      "id": "default:base",
+      "isDefault": true,
+      "rank": 1,
+      "ruleId": null,
+      "score": 0.7,
+      "techniqueId": null,
+      "title": "Keep base light",
+      "why": "Preserve skin texture while evening tone."
+    },
+    {
+      "area": "eye",
+      "gating": {
+        "status": "low_confidence"
+      },
+      "id": "default:eye",
+      "isDefault": true,
+      "rank": 2,
+      "ruleId": null,
+      "score": 0.4,
+      "techniqueId": null,
+      "title": "Subtle lash definition",
+      "why": "Maintain natural enhancement without harsh lines."
+    },
+    {
+      "area": "lip",
+      "gating": {
+        "status": "ok"
+      },
+      "id": "default:lip",
+      "isDefault": true,
+      "rank": 3,
+      "ruleId": null,
+      "score": 0.7,
+      "techniqueId": null,
+      "title": "Soft tinted balm",
+      "why": "Match the hydrated, slightly tinted lip."
+    },
+    {
+      "area": "prep",
+      "gating": {
+        "reason": "No technique coverage yet for this area.",
+        "status": "low_coverage"
+      },
+      "id": "more:prep",
+      "isDefault": false,
+      "rank": 4,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "Prep option",
+      "why": "Optional prep tips may help the base sit better."
+    },
+    {
+      "area": "brow",
+      "gating": {
+        "reason": "No technique coverage yet for this area.",
+        "status": "low_coverage"
+      },
+      "id": "more:brow",
+      "isDefault": false,
+      "rank": 5,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "Brow option",
+      "why": "Optional brow shaping can change the overall balance."
+    },
+    {
+      "area": "blush",
+      "gating": {
+        "reason": "No technique coverage yet for this area.",
+        "status": "low_coverage"
+      },
+      "id": "more:blush",
+      "isDefault": false,
+      "rank": 6,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "Blush option",
+      "why": "Optional blush placement can shift the look’s mood."
+    },
+    {
+      "area": "contour",
+      "gating": {
+        "reason": "No technique coverage yet for this area.",
+        "status": "low_coverage"
+      },
+      "id": "more:contour",
+      "isDefault": false,
+      "rank": 7,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "Contour option",
+      "why": "Optional contour can add structure if needed."
+    }
+  ],
   "adjustments": [
     {
       "because": "Preserve skin texture while evening tone.",
@@ -80,6 +184,10 @@
         "soft sheen"
       ]
     }
+  },
+  "experiments": {
+    "explorationRate": 0.1,
+    "variant": "control_more_v0"
   },
   "kit": {
     "kit": {

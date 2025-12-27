@@ -1,4 +1,108 @@
 {
+  "adjustmentCandidates": [
+    {
+      "area": "base",
+      "gating": {
+        "status": "ok"
+      },
+      "id": "default:base",
+      "isDefault": true,
+      "rank": 1,
+      "ruleId": null,
+      "score": 0.7,
+      "techniqueId": null,
+      "title": "薄く仕上げる",
+      "why": "質感を残しながら整えるため。"
+    },
+    {
+      "area": "eye",
+      "gating": {
+        "status": "low_confidence"
+      },
+      "id": "default:eye",
+      "isDefault": true,
+      "rank": 2,
+      "ruleId": null,
+      "score": 0.4,
+      "techniqueId": null,
+      "title": "目尻から細く",
+      "why": "強すぎない印象にするため。"
+    },
+    {
+      "area": "lip",
+      "gating": {
+        "status": "ok"
+      },
+      "id": "default:lip",
+      "isDefault": true,
+      "rank": 3,
+      "ruleId": null,
+      "score": 0.7,
+      "techniqueId": null,
+      "title": "中心にツヤ",
+      "why": "透け感と立体感を出すため。"
+    },
+    {
+      "area": "prep",
+      "gating": {
+        "reason": "この領域のテクニックがまだ不足しています。",
+        "status": "low_coverage"
+      },
+      "id": "more:prep",
+      "isDefault": false,
+      "rank": 4,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "下地の提案",
+      "why": "ベースの密着感を上げたいときの追加オプション。"
+    },
+    {
+      "area": "brow",
+      "gating": {
+        "reason": "この領域のテクニックがまだ不足しています。",
+        "status": "low_coverage"
+      },
+      "id": "more:brow",
+      "isDefault": false,
+      "rank": 5,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "眉の提案",
+      "why": "眉の形を整えると全体のバランスが変わります。"
+    },
+    {
+      "area": "blush",
+      "gating": {
+        "reason": "この領域のテクニックがまだ不足しています。",
+        "status": "low_coverage"
+      },
+      "id": "more:blush",
+      "isDefault": false,
+      "rank": 6,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "チークの提案",
+      "why": "チークの位置で雰囲気を調整できます。"
+    },
+    {
+      "area": "contour",
+      "gating": {
+        "reason": "この領域のテクニックがまだ不足しています。",
+        "status": "low_coverage"
+      },
+      "id": "more:contour",
+      "isDefault": false,
+      "rank": 7,
+      "ruleId": null,
+      "score": 0.15,
+      "techniqueId": null,
+      "title": "シェーディングの提案",
+      "why": "必要に応じて立体感を足す追加オプション。"
+    }
+  ],
   "adjustments": [
     {
       "because": "質感を残しながら整えるため。",
@@ -76,6 +180,10 @@
     }
   },
   "commerceEnabled": false,
+  "experiments": {
+    "explorationRate": 0.1,
+    "variant": "control_more_v0"
+  },
   "kit": {
     "kit": {
       "base": {

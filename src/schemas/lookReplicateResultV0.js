@@ -17,6 +17,29 @@ const AdjustmentV0Schema = z
   })
   .strict();
 
+const AdjustmentCandidateAreaV0Schema = z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
+
+const AdjustmentCandidateV0Schema = z
+  .object({
+    id: z.string().min(1),
+    area: AdjustmentCandidateAreaV0Schema,
+    title: z.string().min(1),
+    why: z.string().min(1).max(120),
+    techniqueId: z.string().min(1).nullable(),
+    ruleId: z.string().min(1).nullable(),
+    score: z.number().min(0).max(1),
+    rank: z.number().int().min(1).max(7),
+    isDefault: z.boolean(),
+    gating: z
+      .object({
+        status: z.enum(['ok', 'low_confidence', 'low_coverage', 'fallback_only']),
+        reason: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const ShareInfoV0Schema = z
   .object({
     shareId: z.string().min(1),
@@ -54,12 +77,22 @@ const LookReplicateResultV0Schema = z
     warnings: z.array(z.string().min(1)).optional(),
     share: ShareInfoV0Schema.optional(),
     commerceEnabled: z.boolean().optional(),
+    adjustmentCandidates: z.array(AdjustmentCandidateV0Schema).max(7).optional(),
+    experiments: z
+      .object({
+        variant: z.string().min(1).optional(),
+        explorationRate: z.number().min(0).max(1).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
 module.exports = {
   ImpactAreaSchema,
   AdjustmentV0Schema,
+  AdjustmentCandidateAreaV0Schema,
+  AdjustmentCandidateV0Schema,
   ShareInfoV0Schema,
   LookReplicateResultV0Schema,
 };
