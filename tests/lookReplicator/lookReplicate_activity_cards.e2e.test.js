@@ -103,7 +103,7 @@ function buildFailureDiagnostic({ name, expectedActivityIds, telemetrySample }) 
   ].join("\n");
 }
 
-async function runPipelineWithFixture({ locale, lookSpecFixturePath }) {
+async function runPipelineWithFixture({ locale, lookSpecFixturePath, enableExtendedAreas }) {
   const referenceImagePath = writeTempJpeg();
   const envBackup = { ...process.env };
 
@@ -119,6 +119,7 @@ async function runPipelineWithFixture({ locale, lookSpecFixturePath }) {
     process.env.GOOGLE_API_KEY = "";
     process.env.ENABLE_STARTER_KB = "0";
     process.env.EXPERIMENT_MORE_CANDIDATES_ENABLED = "0";
+    process.env.LAYER2_ENABLE_EXTENDED_AREAS = enableExtendedAreas ? "1" : "0";
 
     let runLookReplicatePipeline = null;
     await new Promise((resolve, reject) => {
@@ -233,6 +234,54 @@ describe("look-replicator activity cards reachability (production path)", () => 
     }
     if (!lipFound.length) {
       throw new Error(buildFailureDiagnostic({ name: "ZH/lip-shaping", expectedActivityIds: lipExpected, telemetrySample }));
+    }
+  });
+
+  test("EN: extended areas render at least one activity technique when flag enabled", async () => {
+    const expected = [
+      "US_prep_primer_01-en",
+      "US_prep_skincare_prep_steps_01-en",
+      "US_contour_nose_soft_shadow_01-en",
+      "US_brow_five_point_mapping_01-en",
+      "US_blush_soft_diffuse_01-en",
+    ];
+
+    const out = await runPipelineWithFixture({
+      locale: "en-US",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      enableExtendedAreas: true,
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const techniqueRefs = collectTechniqueRefs(telemetrySample);
+    const found = expected.filter((id) => techniqueRefs.includes(id));
+
+    if (!found.length) {
+      throw new Error(buildFailureDiagnostic({ name: "EN/extended-areas", expectedActivityIds: expected, telemetrySample }));
+    }
+  });
+
+  test("ZH: extended areas resolve to -zh via locale when flag enabled", async () => {
+    const expected = [
+      "US_prep_primer_01-zh",
+      "US_prep_skincare_prep_steps_01-zh",
+      "US_contour_nose_soft_shadow_01-zh",
+      "US_brow_five_point_mapping_01-zh",
+      "US_blush_soft_diffuse_01-zh",
+    ];
+
+    const out = await runPipelineWithFixture({
+      locale: "zh-CN",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      enableExtendedAreas: true,
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const techniqueRefs = collectTechniqueRefs(telemetrySample);
+    const found = expected.filter((id) => techniqueRefs.includes(id));
+
+    if (!found.length) {
+      throw new Error(buildFailureDiagnostic({ name: "ZH/extended-areas", expectedActivityIds: expected, telemetrySample }));
     }
   });
 });

@@ -62,7 +62,7 @@ describe("Layer2 US adjustment rules-first", () => {
     const skeletons = rendered.skeletons;
 
     const allowedEvidenceByArea = Object.fromEntries(skeletons.map((s) => [s.impactArea, s.evidenceKeys])) as Record<
-      "base" | "eye" | "lip",
+      string,
       string[]
     >;
 
@@ -88,7 +88,7 @@ describe("Layer2 US adjustment rules-first", () => {
             do: s.doActions.map((step) => firstSentence(step)).join(" "),
             why: s.whyMechanism.join(" "),
             confidence: s.confidence,
-            evidence: [allowedEvidenceByArea[s.impactArea][0]],
+            evidence: [allowedEvidenceByArea[s.impactArea]?.[0] ?? s.evidenceKeys[0]],
           })),
         }) as z.infer<TSchema>,
     };

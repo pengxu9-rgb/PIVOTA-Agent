@@ -20,11 +20,17 @@ function defaultVariablesForArea(area: AdjustmentSkeletonImpactArea): Record<str
 function fallbackStepsForArea(area: AdjustmentSkeletonImpactArea): string[] {
   if (area === "base") return ["Apply a thin base layer.", "Spot-correct only where needed.", "Set only where needed."];
   if (area === "eye") return ["Start liner from the outer third.", "Keep the line thin.", "Keep the wing short."];
-  return ["Match the reference finish.", "Stay in a close shade family.", "Blot lightly to adjust intensity."];
+  if (area === "lip") return ["Match the reference finish.", "Stay in a close shade family.", "Blot lightly to adjust intensity."];
+  if (area === "prep") return ["Prep skin.", "Moisturize as needed.", "Use primer only if it helps longevity."];
+  if (area === "contour") return ["Keep contour soft and light.", "Blend thoroughly.", "Avoid harsh lines."];
+  if (area === "brow") return ["Map brow shape lightly.", "Fill with hair-like strokes.", "Brush through for softness."];
+  if (area === "blush") return ["Apply a soft diffuse blush.", "Blend edges.", "Build gradually."];
+  return ["Use light, blendable steps.", "Blend thoroughly.", "Keep it subtle."];
 }
 
 export type RenderSkeletonsFromKBOutput = {
   skeletons: [AdjustmentSkeletonV0, AdjustmentSkeletonV0, AdjustmentSkeletonV0];
+  allSkeletons?: AdjustmentSkeletonV0[];
   warnings: string[];
   usedFallback: boolean;
 };
@@ -109,7 +115,7 @@ export function renderSkeletonFromKB(
   });
 
   // Preserve canonical ordering: base, eye, lip.
-  const byArea: Record<AdjustmentSkeletonImpactArea, AdjustmentSkeletonV0 | undefined> = {
+  const byArea: Partial<Record<AdjustmentSkeletonImpactArea, AdjustmentSkeletonV0>> = {
     base: out.find((s) => s.impactArea === "base"),
     eye: out.find((s) => s.impactArea === "eye"),
     lip: out.find((s) => s.impactArea === "lip"),
@@ -118,5 +124,5 @@ export function renderSkeletonFromKB(
     throw new Error("renderSkeletonFromKB requires one skeleton per impactArea.");
   }
 
-  return { skeletons: [byArea.base, byArea.eye, byArea.lip], warnings, usedFallback };
+  return { skeletons: [byArea.base, byArea.eye, byArea.lip], allSkeletons: out, warnings, usedFallback };
 }

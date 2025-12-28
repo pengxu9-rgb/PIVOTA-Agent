@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const AdjustmentSkeletonImpactAreaSchema = z.enum(['base', 'eye', 'lip']);
+const AdjustmentSkeletonImpactAreaSchema = z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
 const AdjustmentSkeletonConfidenceSchema = z.enum(['high', 'medium', 'low']);
 
 const AdjustmentSkeletonV0Schema = z

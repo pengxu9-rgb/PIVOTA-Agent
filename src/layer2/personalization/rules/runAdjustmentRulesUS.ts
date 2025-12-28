@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AdjustmentSkeletonV0, AdjustmentSkeletonV0Schema } from "../../schemas/adjustmentSkeletonV0";
 import { normalizeLookSpecToV1 } from "../../schemas/lookSpecV1";
+import { getTechniqueIdsForIntent } from "../../dicts/intents";
 
 import { PreferenceMode, US_ADJUSTMENT_FALLBACK_RULES, US_ADJUSTMENT_RULES } from "./usAdjustmentRules";
 
@@ -15,7 +16,37 @@ export type RunAdjustmentRulesUSInput = {
   preferenceMode: PreferenceMode;
 };
 
-export function runAdjustmentRulesUS(input: RunAdjustmentRulesUSInput): [AdjustmentSkeletonV0, AdjustmentSkeletonV0, AdjustmentSkeletonV0] {
+function parseEnvBool(v: unknown): boolean | null {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return null;
+  if (["1", "true", "yes", "y", "on"].includes(s)) return true;
+  if (["0", "false", "no", "n", "off"].includes(s)) return false;
+  return null;
+}
+
+function extendedAreasEnabled(): boolean {
+  return parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS) === true;
+}
+
+function buildExtendedFallbackSkeleton(input: { impactArea: AdjustmentSkeletonV0["impactArea"]; ruleId: string; intentId: string }): AdjustmentSkeletonV0 {
+  const doActionIds = getTechniqueIdsForIntent(input.intentId, "US") ?? [];
+  return AdjustmentSkeletonV0Schema.parse({
+    schemaVersion: "v0",
+    market: "US",
+    impactArea: input.impactArea,
+    ruleId: input.ruleId,
+    severity: 0.15,
+    confidence: "low",
+    becauseFacts: ["Extended areas enabled: include a safe starter technique for this area."],
+    ...(doActionIds.length ? { doActionIds } : {}),
+    doActions: [],
+    whyMechanism: ["A single conservative technique keeps output stable while expanding coverage."],
+    evidenceKeys: ["flag:LAYER2_ENABLE_EXTENDED_AREAS"],
+    tags: ["extended_area", "fallback"],
+  });
+}
+
+export function runAdjustmentRulesUS(input: RunAdjustmentRulesUSInput): AdjustmentSkeletonV0[] {
   const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   if (lookSpec.market !== "US") {
     throw new Error("runAdjustmentRulesUS only supports market=US.");
@@ -59,5 +90,14 @@ export function runAdjustmentRulesUS(input: RunAdjustmentRulesUSInput): [Adjustm
     outByArea[area] = AdjustmentSkeletonV0Schema.parse(chosen);
   }
 
-  return [outByArea.base!, outByArea.eye!, outByArea.lip!];
+  if (!extendedAreasEnabled()) {
+    return [outByArea.base!, outByArea.eye!, outByArea.lip!];
+  }
+
+  const prep = buildExtendedFallbackSkeleton({ impactArea: "prep", ruleId: "PREP_FALLBACK_SAFE", intentId: "PREP_FALLBACK_SAFE" });
+  const contour = buildExtendedFallbackSkeleton({ impactArea: "contour", ruleId: "CONTOUR_FALLBACK_SAFE", intentId: "CONTOUR_FALLBACK_SAFE" });
+  const brow = buildExtendedFallbackSkeleton({ impactArea: "brow", ruleId: "BROW_FALLBACK_SAFE", intentId: "BROW_FALLBACK_SAFE" });
+  const blush = buildExtendedFallbackSkeleton({ impactArea: "blush", ruleId: "BLUSH_FALLBACK_SAFE", intentId: "BLUSH_FALLBACK_SAFE" });
+
+  return [prep, outByArea.base!, contour, brow, outByArea.eye!, blush, outByArea.lip!];
 }
