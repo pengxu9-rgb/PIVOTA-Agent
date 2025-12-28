@@ -30,7 +30,7 @@ export type GenerateAdjustmentsOutput = {
   adjustments: [Layer2AdjustmentV0, Layer2AdjustmentV0, Layer2AdjustmentV0];
   warnings: string[];
   usedFallback: boolean;
-  skeletons: [AdjustmentSkeletonV0, AdjustmentSkeletonV0, AdjustmentSkeletonV0];
+  skeletons: AdjustmentSkeletonV0[];
 };
 
 export async function generateAdjustments(input: GenerateAdjustmentsInput): Promise<GenerateAdjustmentsOutput> {
@@ -101,5 +101,5 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
   warnings.push(...(rephrased.warnings || []));
 
   const usedFallback = Boolean(rendered.usedFallback) || Boolean(rephrased.usedFallback);
-  return { adjustments: parsed, warnings, usedFallback, skeletons: rendered.skeletons };
+  return { adjustments: parsed, warnings, usedFallback, skeletons: rendered.allSkeletons ?? rendered.skeletons };
 }

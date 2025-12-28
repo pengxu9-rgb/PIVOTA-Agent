@@ -10,7 +10,7 @@ const IntentMarketMappingSchema = z
 const IntentV0Schema = z
   .object({
     id: z.string().min(1),
-    area: z.enum(['base', 'eye', 'lip']),
+    area: z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']),
     markets: z
       .object({
         US: IntentMarketMappingSchema,
@@ -47,4 +47,3 @@ module.exports = {
   loadIntentsV0,
   getTechniqueIdsForIntent,
 };
-

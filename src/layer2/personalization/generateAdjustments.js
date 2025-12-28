@@ -44,12 +44,13 @@ async function generateAdjustments(input) {
   warnings.push(...(rendered.warnings || []));
 
   // Ensure skeletons are tagged to the request market for downstream telemetry/replay.
-  const marketSkeletons = rendered.skeletons.map((s) => ({ ...s, market: input.market }));
+  const skeletonsForTelemetry = (rendered.allSkeletons ?? rendered.skeletons).map((s) => ({ ...s, market: input.market }));
+  const skeletonsForRephrase = rendered.skeletons.map((s) => ({ ...s, market: input.market }));
 
   const rephrased = await rephraseAdjustments({
     market: input.market,
     locale,
-    skeletons: marketSkeletons,
+    skeletons: skeletonsForRephrase,
     provider: input.provider,
     promptPack: input.promptPack,
   });
@@ -64,7 +65,7 @@ async function generateAdjustments(input) {
   }
   warnings.push(...(rephrased.warnings || []));
   const usedFallback = Boolean(rendered.usedFallback) || Boolean(rephrased.usedFallback);
-  return { adjustments: parsed, warnings, usedFallback, skeletons: marketSkeletons };
+  return { adjustments: parsed, warnings, usedFallback, skeletons: skeletonsForTelemetry };
 }
 
 module.exports = {

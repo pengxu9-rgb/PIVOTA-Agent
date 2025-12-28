@@ -1,6 +1,14 @@
 import { z } from "zod";
 
-export const AdjustmentSkeletonImpactAreaSchema = z.enum(["base", "eye", "lip"]);
+export const AdjustmentSkeletonImpactAreaSchema = z.enum([
+  "prep",
+  "base",
+  "contour",
+  "brow",
+  "eye",
+  "blush",
+  "lip",
+]);
 export type AdjustmentSkeletonImpactArea = z.infer<typeof AdjustmentSkeletonImpactAreaSchema>;
 
 export const AdjustmentSkeletonConfidenceSchema = z.enum(["high", "medium", "low"]);

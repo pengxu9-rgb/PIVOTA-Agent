@@ -100,6 +100,39 @@
         "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST", "US_lip_thin_lower_fuller_01-en", "US_lip_flat_lips_define_01-en"] },
         "JP": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] }
       }
+    },
+
+    {
+      "id": "PREP_FALLBACK_SAFE",
+      "area": "prep",
+      "markets": {
+        "US": { "techniqueIds": ["US_prep_skincare_prep_steps_01-en", "US_prep_primer_01-en"] },
+        "JP": { "techniqueIds": ["T_BASE_HYDRATE_PREP", "T_BASE_PRIMER_TEXTURE_BLUR"] }
+      }
+    },
+    {
+      "id": "CONTOUR_FALLBACK_SAFE",
+      "area": "contour",
+      "markets": {
+        "US": { "techniqueIds": ["US_contour_nose_soft_shadow_01-en"] },
+        "JP": { "techniqueIds": ["T_BASE_TARGET_GLOW_HIGHLIGHTS"] }
+      }
+    },
+    {
+      "id": "BROW_FALLBACK_SAFE",
+      "area": "brow",
+      "markets": {
+        "US": { "techniqueIds": ["US_brow_five_point_mapping_01-en"] },
+        "JP": { "techniqueIds": ["T_EYE_FILL_GAP_LASHLINE"] }
+      }
+    },
+    {
+      "id": "BLUSH_FALLBACK_SAFE",
+      "area": "blush",
+      "markets": {
+        "US": { "techniqueIds": ["US_blush_soft_diffuse_01-en"] },
+        "JP": { "techniqueIds": ["T_BASE_MIST_MELT"] }
+      }
     }
   ]
 }

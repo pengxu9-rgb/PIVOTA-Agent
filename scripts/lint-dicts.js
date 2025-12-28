@@ -126,7 +126,7 @@ function lintIntentsFile(dictFile, version) {
     JP: techniqueIdSetForMarket('JP'),
   };
 
-  const allowedAreasV0 = new Set(['base', 'eye', 'lip']);
+  const allowedAreasV0 = new Set(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
   const allowedAreasV1 = new Set(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
 
   for (const intent of intents) {
