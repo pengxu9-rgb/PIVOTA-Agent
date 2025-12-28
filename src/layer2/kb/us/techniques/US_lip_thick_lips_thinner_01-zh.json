@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_thick_lips_thinner_01-zh",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "厚唇显薄画法（内M）",
+    "steps": [
+      "遮瑕轻盖住外唇线一圈",
+      "上唇用唇色在内侧画出M形",
+      "下唇只在内侧上色不超出唇线",
+      "用手指或唇刷向外晕成柔边",
+      "嘴角细节收干净更利落"
+    ]
+  },
+  "rationaleTemplate": [
+    "把颜色往里收会视觉变薄",
+    "柔边过渡更自然不突兀"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "lip_color",
+    "lip_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 102",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

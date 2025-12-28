@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_tip_diamond_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Refine the nose tip with a diamond shadow",
+    "steps": [
+      "With leftover contour, sketch a small diamond on the tip",
+      "Keep the diamond centered and narrow",
+      "Blend outward lightly so the shape stays soft",
+      "Add a tiny highlight dot on the tip if desired"
+    ]
+  },
+  "rationaleTemplate": [
+    "A centered diamond visually shrinks and sharpens the tip",
+    "Soft blending keeps it natural in daylight"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "highlighter"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 43",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

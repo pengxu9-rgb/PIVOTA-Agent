@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_oily_base_routine_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "oily"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "油皮底妆步骤",
+    "steps": [
+      "定妆喷雾轻喷一层打底",
+      "控油妆前：尽量在这步校正肤色减少粉底用量",
+      "遮瑕膏少量多次点涂瑕疵",
+      "薄涂粉底后再用遮瑕液查漏补缺",
+      "散粉少量多次按压定妆，最后喷雾去粉感"
+    ]
+  },
+  "rationaleTemplate": [
+    "减少粉质堆积更不易脱妆",
+    "喷雾+散粉分层让持妆更稳"
+  ],
+  "productRoleHints": [
+    "setting_spray",
+    "primer",
+    "foundation",
+    "concealer",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 37",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

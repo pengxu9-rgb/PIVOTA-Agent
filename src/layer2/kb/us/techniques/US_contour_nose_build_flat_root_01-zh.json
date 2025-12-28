@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_build_flat_root_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "塌山根立体修容",
+    "steps": [
+      "鼻根阴影从眉下约1/3处开始，内眼角处更深",
+      "阴影与眼窝自然过渡",
+      "内眼角加月牙形提亮增强对比",
+      "鼻梁提亮分段叠加更立体"
+    ]
+  },
+  "rationaleTemplate": [
+    "鼻根对比越强越显高挺",
+    "分段提亮比一条亮线更有层次"
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "dark_shadow",
+    "highlighter",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 49",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

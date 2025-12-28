@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_palette_role_mapping_01-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Assign roles in a 9-pan eyeshadow palette",
+    "steps": [
+      "Use a light matte shade to set the lid and eye socket",
+      "Place your main color on the mobile lid",
+      "Use shimmer to brighten center of lid and inner corner",
+      "Blend crease with a medium matte to soften transitions",
+      "Deepen outer corner with a dark shade; optional: use matte brown as shadow liner"
+    ]
+  },
+  "rationaleTemplate": [
+    "Role-based mapping makes any palette easier to use",
+    "Layering from light to dark builds depth cleanly"
+  ],
+  "productRoleHints": [
+    "shimmer_shadow",
+    "dark_shadow",
+    "blending_brush",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 71",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

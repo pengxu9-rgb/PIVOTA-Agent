@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_root_contour_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Contour the nose bridge start",
+    "steps": [
+      "Pick a small amount of contour (shadow) with an angled brush",
+      "Deepen where brow head meets nose root",
+      "Blend into the eye socket with a rounded arc",
+      "Keep the deepest point near the root; soften edges"
+    ]
+  },
+  "rationaleTemplate": [
+    "A defined start makes the nose look higher and cleaner",
+    "Blending into the socket avoids two harsh lines"
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "dark_shadow",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 43",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

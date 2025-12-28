@@ -12,7 +12,7 @@
         "value": "en"
       },
       {
-        "key": "lookSpec.breakdown.base.finish",
+        "key": "lookSpec.breakdown.base.coverage",
         "op": "exists"
       }
     ]
@@ -29,16 +29,16 @@
   },
   "rationaleTemplate": [
     "Correcting undertone makes concealer look seamless.",
-    "Warming and blending prevent patchy or over-pigmented spots."
+    "Warming and blending prevent patchy, over-pigmented spots."
   ],
   "productRoleHints": [
     "concealer",
     "small_concealer_brush",
     "sponge"
   ],
-  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 34",
   "tags": [
-    "reviewStatus:ppt_slide_10",
-    "draft"
+    "reviewStatus:draft"
   ]
 }

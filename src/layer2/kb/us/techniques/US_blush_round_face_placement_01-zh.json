@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_round_face_placement_01-zh",
+  "area": "blush",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "圆脸腮红打法",
+    "steps": [
+      "膨胀色点在笑肌中央",
+      "外圈用氛围色晕成圆形包围",
+      "边缘要虚化，避免往下拖太多",
+      "氛围色少量点鼻头与下巴更统一",
+      "可微微往太阳穴带一点点提拉"
+    ]
+  },
+  "rationaleTemplate": [
+    "中心腮红更适合圆脸不显更胖",
+    "虚化边缘更自然不突兀"
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 98",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

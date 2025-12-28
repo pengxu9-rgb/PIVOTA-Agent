@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_light_mixed_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "up"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "轻混血眼线（上下外眼角连接）",
+    "steps": [
+      "外眼角画细细上扬尾翼",
+      "沿上睫毛根部连接到尾翼",
+      "用眼线笔轻拉下睫毛外侧",
+      "把上下线在外眼角汇合",
+      "补空隙并保持眼头干净"
+    ]
+  },
+  "rationaleTemplate": [
+    "上下外侧连接能显眼睛更大更深邃",
+    "线条细会更高级不厚重"
+  ],
+  "productRoleHints": [
+    "felt_tip_liner",
+    "waterproof_pencil",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 78",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

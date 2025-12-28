@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_build_flat_root_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Build a higher nose root on a flat bridge",
+    "steps": [
+      "Start root shading about 1/3 under the brows; deepen near inner corners",
+      "Blend into the eye socket to create natural depth",
+      "Add a moon-shaped highlight at the inner corner to increase contrast",
+      "Use segmented bridge highlights for more dimension"
+    ]
+  },
+  "rationaleTemplate": [
+    "Contrast at the root creates the illusion of height",
+    "Segmented highlight looks more 3D than one flat stripe"
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "dark_shadow",
+    "highlighter",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 49",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

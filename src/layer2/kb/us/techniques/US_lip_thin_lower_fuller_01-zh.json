@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_thin_lower_fuller_01-zh",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "下唇薄的丰唇画法",
+    "steps": [
+      "先把唇色完整涂满，重点照顾下唇",
+      "用棉签把下唇中间唇线往下晕开一点",
+      "两侧嘴角保持干净别外扩",
+      "小刷蘸遮瑕修整外轮廓",
+      "下唇中间叠一点唇蜜更显饱满"
+    ]
+  },
+  "rationaleTemplate": [
+    "只放大中间最自然不显假",
+    "修边后唇形更精致上镜"
+  ],
+  "productRoleHints": [
+    "lip_color",
+    "cotton_swab",
+    "concealer",
+    "small_concealer_brush",
+    "gloss"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 102",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

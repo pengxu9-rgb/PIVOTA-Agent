@@ -3,7 +3,7 @@
   "market": "US",
   "id": "US_base_concealer_two_tone_correct_brighten_01-zh",
   "area": "base",
-  "difficulty": "medium",
+  "difficulty": "easy",
   "triggers": {
     "all": [
       {
@@ -12,7 +12,7 @@
         "value": "zh"
       },
       {
-        "key": "lookSpec.breakdown.base.finish",
+        "key": "lookSpec.breakdown.base.coverage",
         "op": "exists"
       }
     ]
@@ -38,7 +38,7 @@
     "loose_powder"
   ],
   "sourceId": "SRC_PPTX_LICENSED_001",
-  "sourcePointer": "ppt slide 11",
+  "sourcePointer": "ppt slide 35",
   "tags": [
     "reviewStatus:draft"
   ]

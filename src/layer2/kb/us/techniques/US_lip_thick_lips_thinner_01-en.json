@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_thick_lips_thinner_01-en",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Make thick lips look thinner with an inner M-shape",
+    "steps": [
+      "Use concealer to cover the outer lip line slightly",
+      "On the upper lip, draw an inner M-shape with lip color",
+      "On the lower lip, apply color only inside the natural lip line",
+      "Blur outward with finger or lip brush to a soft edge",
+      "Clean the corners for a neat finish"
+    ]
+  },
+  "rationaleTemplate": [
+    "Pulling color inward reduces visual lip volume",
+    "Soft blur keeps it natural instead of looking erased"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "lip_color",
+    "lip_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 102",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

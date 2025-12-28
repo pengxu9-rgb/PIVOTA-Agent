@@ -3,7 +3,7 @@
   "market": "US",
   "id": "US_base_concealer_two_tone_correct_brighten_01-en",
   "area": "base",
-  "difficulty": "medium",
+  "difficulty": "easy",
   "triggers": {
     "all": [
       {
@@ -12,7 +12,7 @@
         "value": "en"
       },
       {
-        "key": "lookSpec.breakdown.base.finish",
+        "key": "lookSpec.breakdown.base.coverage",
         "op": "exists"
       }
     ]
@@ -21,7 +21,7 @@
     "title": "Two-tone concealer: correct + brighten",
     "steps": [
       "Use a correcting tone to neutralize dullness and darkness (redness/under-eyes).",
-      "Use a brightening tone on hollows: tear trough; nasolabial; under-eye bag.",
+      "Use a brightening tone on hollows: tear trough, nasolabial, under-eye bag.",
       "Mix corrector+brightener for local dull patches and acne marks.",
       "Apply with tiny taps; blend edges with sponge.",
       "Set only creasy zones; keep the rest natural."
@@ -38,7 +38,7 @@
     "loose_powder"
   ],
   "sourceId": "SRC_PPTX_LICENSED_001",
-  "sourcePointer": "ppt slide 11",
+  "sourcePointer": "ppt slide 35",
   "tags": [
     "reviewStatus:draft"
   ]

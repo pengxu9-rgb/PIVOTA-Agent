@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_shorten_long_bridge_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "长鼻梁缩短修容",
+    "steps": [
+      "鼻根提亮高度不超过内眼角",
+      "鼻影起点略下移，眉下留出三角区",
+      "鼻梁提亮用分段而非一条长亮线",
+      "鼻头少提亮多留阴影强调收短"
+    ]
+  },
+  "rationaleTemplate": [
+    "降低起点会视觉缩短鼻梁",
+    "分段提亮避免一条过长竖线"
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "dark_shadow",
+    "highlighter"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 46",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

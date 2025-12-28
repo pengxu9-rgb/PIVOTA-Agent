@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_straighten_crooked_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "歪鼻矫正修容",
+    "steps": [
+      "较宽/较低的一侧阴影加深加长",
+      "另一侧阴影缩短变浅",
+      "鼻梁提亮按更“直”的中线走",
+      "鼻翼阴影左右平衡到看起来对称"
+    ]
+  },
+  "rationaleTemplate": [
+    "利用不对称修容可视觉纠正歪斜",
+    "提亮中线会引导视线回到对称"
+  ],
+  "productRoleHints": [
+    "dark_shadow",
+    "highlighter",
+    "small_brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 49",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

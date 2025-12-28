@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_subtle_elongate_01-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "straight"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "心机日常眼线（拉长）",
+    "steps": [
+      "外眼角先拉出一点点尾巴",
+      "沿睫毛根部画到眼睛约2/3处",
+      "把尾巴与眼线连接顺滑",
+      "补齐睫毛空隙，线条保持细",
+      "太锐利可用棉签或小刷轻柔一下"
+    ]
+  },
+  "rationaleTemplate": [
+    "线条细更显拉长不厚重",
+    "补睫毛缝隙更精致放大"
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 77",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

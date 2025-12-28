@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_highlight_points_01-zh",
+  "area": "contour",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "鼻部提亮点位",
+    "steps": [
+      "小刷在内眼角点提亮",
+      "鼻头点少量高光",
+      "提亮要窄，避免把鼻梁提宽",
+      "边缘轻晕让高光融进底妆"
+    ]
+  },
+  "rationaleTemplate": [
+    "点位提亮能立刻增加立体感",
+    "窄提亮更显鼻子精致不显油"
+  ],
+  "productRoleHints": [
+    "highlighter",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 44",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

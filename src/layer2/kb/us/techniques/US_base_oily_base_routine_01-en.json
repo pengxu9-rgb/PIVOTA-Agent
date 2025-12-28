@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_oily_base_routine_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "oily"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Oil-control base routine",
+    "steps": [
+      "Mist setting spray lightly as a prep layer",
+      "Apply oil-control primer; color-correct here to use less foundation",
+      "Spot conceal with small amounts",
+      "Apply thin even foundation; then touch up with liquid concealer",
+      "Press loose powder in thin layers; finish with spray to reduce powdery look"
+    ]
+  },
+  "rationaleTemplate": [
+    "Less product buildup helps reduce creasing and breakup",
+    "Layering spray and powder improves wear on oily areas"
+  ],
+  "productRoleHints": [
+    "setting_spray",
+    "primer",
+    "foundation",
+    "concealer",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 37",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

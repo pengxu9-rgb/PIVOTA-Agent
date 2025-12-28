@@ -3,7 +3,7 @@
   "market": "US",
   "id": "US_base_concealer_three_tone_mixing_01-zh",
   "area": "base",
-  "difficulty": "medium",
+  "difficulty": "easy",
   "triggers": {
     "all": [
       {
@@ -12,7 +12,7 @@
         "value": "zh"
       },
       {
-        "key": "lookSpec.breakdown.base.finish",
+        "key": "lookSpec.breakdown.base.coverage",
         "op": "exists"
       }
     ]
@@ -36,9 +36,9 @@
     "small_concealer_brush",
     "sponge"
   ],
-  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 36",
   "tags": [
-    "reviewStatus:ppt_slide_12",
-    "draft"
+    "reviewStatus:draft"
   ]
 }

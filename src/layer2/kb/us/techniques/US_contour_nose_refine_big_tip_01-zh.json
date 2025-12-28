@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_refine_big_tip_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "大鼻头缩小修容",
+    "steps": [
+      "鼻梁提亮别太宽，鼻头避免大面积提亮",
+      "鼻头两侧画括号阴影收紧轮廓",
+      "鼻头中间点倒三角形提亮",
+      "边缘充分晕开让鼻头圆润不生硬"
+    ]
+  },
+  "rationaleTemplate": [
+    "窄提亮+两侧压暗可视觉缩小鼻头",
+    "倒三角提亮能聚焦更精致"
+  ],
+  "productRoleHints": [
+    "dark_shadow",
+    "highlighter",
+    "small_brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 48",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

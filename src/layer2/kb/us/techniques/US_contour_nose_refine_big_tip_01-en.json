@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_refine_big_tip_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Make a large nose tip look smaller",
+    "steps": [
+      "Keep bridge highlight narrow; avoid a wide tip highlight",
+      "Add parenthesis shadows on both sides of the tip",
+      "Place an inverted-triangle highlight in the center of the tip",
+      "Blend edges so the tip stays rounded, not harsh"
+    ]
+  },
+  "rationaleTemplate": [
+    "Narrow highlight and side shadows visually shrink the tip",
+    "Triangle highlight creates a tighter focal point"
+  ],
+  "productRoleHints": [
+    "dark_shadow",
+    "highlighter",
+    "small_brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 48",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

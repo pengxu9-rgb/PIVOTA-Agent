@@ -12,7 +12,7 @@
         "value": "zh"
       },
       {
-        "key": "lookSpec.breakdown.base.finish",
+        "key": "lookSpec.breakdown.base.coverage",
         "op": "exists"
       }
     ]
@@ -36,9 +36,9 @@
     "small_concealer_brush",
     "sponge"
   ],
-  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 32",
   "tags": [
-    "reviewStatus:ppt_slide_15",
-    "draft"
+    "reviewStatus:draft"
   ]
 }

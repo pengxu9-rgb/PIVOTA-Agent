@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_halo_segmented_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "eq",
+        "value": "halo"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "段式法（光晕眼影）",
+    "steps": [
+      "浅哑光先铺满眼皮与眼窝打底",
+      "内侧与外侧叠加更深的颜色",
+      "眼皮中间留浅并叠珠光提亮",
+      "把深浅交界处充分晕开过渡",
+      "需要可再加深外眼角增加层次"
+    ]
+  },
+  "rationaleTemplate": [
+    "两侧深中间亮会更显眼部立体",
+    "晕染干净才能避免分段生硬"
+  ],
+  "productRoleHints": [
+    "shimmer_shadow",
+    "dark_shadow",
+    "blending_brush",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 73",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

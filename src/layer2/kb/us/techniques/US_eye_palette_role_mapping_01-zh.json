@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_palette_role_mapping_01-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "九宫格眼影角色分配法",
+    "steps": [
+      "用浅哑光先铺满眼皮与眼窝打底",
+      "主色铺在眼皮范围",
+      "珠光提亮眼皮中部与内眼角",
+      "中间色在眼窝晕染过渡",
+      "深色加深外眼角；可用哑光棕画眼影眼线"
+    ]
+  },
+  "rationaleTemplate": [
+    "先分角色再上色更不容易出错",
+    "由浅到深叠加更显层次"
+  ],
+  "productRoleHints": [
+    "shimmer_shadow",
+    "dark_shadow",
+    "blending_brush",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 71",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -12,7 +12,7 @@
         "value": "en"
       },
       {
-        "key": "lookSpec.breakdown.base.finish",
+        "key": "lookSpec.breakdown.base.coverage",
         "op": "exists"
       }
     ]
@@ -34,11 +34,10 @@
   "productRoleHints": [
     "concealer",
     "small_concealer_brush",
-    "sponge",
-    "loose_powder"
+    "sponge"
   ],
   "sourceId": "SRC_PPTX_LICENSED_001",
-  "sourcePointer": "ppt slide 14",
+  "sourcePointer": "ppt slide 31",
   "tags": [
     "reviewStatus:draft"
   ]

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_connect_blend_01-zh",
+  "area": "contour",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "连接鼻根与鼻头的阴影",
+    "steps": [
+      "用干净晕染刷蘸余粉",
+      "沿鼻梁轻扫把鼻根与鼻头连接",
+      "反复晕开到看不见断层",
+      "中间留亮，两侧留阴影"
+    ]
+  },
+  "rationaleTemplate": [
+    "连贯渐变更显鼻梁顺直",
+    "中间留亮更自然立体"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 44",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_thin_lower_fuller_01-en",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Make a thin lower lip look fuller",
+    "steps": [
+      "Fill the lips with lip color, focusing on the lower lip",
+      "Use a cotton swab to blur the lower lip line slightly downward in the center",
+      "Keep corners clean; avoid overlining the sides",
+      "Use concealer on a small brush to sharpen the outer edge",
+      "Add a touch of gloss to the lower center for volume"
+    ]
+  },
+  "rationaleTemplate": [
+    "Center-only overline adds fullness without looking fake",
+    "Clean edges keep the shape polished on camera"
+  ],
+  "productRoleHints": [
+    "lip_color",
+    "cotton_swab",
+    "concealer",
+    "small_concealer_brush",
+    "gloss"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 102",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

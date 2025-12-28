@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_halo_segmented_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "eq",
+        "value": "halo"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Halo eyeshadow (segment method)",
+    "steps": [
+      "Apply a light matte base across the lid and socket",
+      "Place a deeper shade on inner and outer lid",
+      "Keep the center of lid lighter; add shimmer to pop",
+      "Blend the borders so inner/outer fade into the center",
+      "Optional: deepen outer corner slightly for more depth"
+    ]
+  },
+  "rationaleTemplate": [
+    "Dark sides + bright center creates a rounder, deeper eye",
+    "Blending removes harsh edges and looks cleaner on camera"
+  ],
+  "productRoleHints": [
+    "shimmer_shadow",
+    "dark_shadow",
+    "blending_brush",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 73",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

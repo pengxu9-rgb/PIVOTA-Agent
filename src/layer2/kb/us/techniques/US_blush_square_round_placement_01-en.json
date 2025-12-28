@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_square_round_placement_01-en",
+  "area": "blush",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Blush placement for square-round faces",
+    "steps": [
+      "Sweep a soft “atmosphere” blush across upper cheek area",
+      "Place a brighter “plumping” blush on the apple of the cheek",
+      "Add a deeper “contracting” blush toward the outer cheek to slim",
+      "Blend upward toward temples; avoid placing blush too low",
+      "Lightly tap leftover blush on nose tip for harmony if desired"
+    ]
+  },
+  "rationaleTemplate": [
+    "Layering 3 blush depths adds lift and reduces squareness",
+    "Higher placement keeps the face from looking wider"
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 98",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

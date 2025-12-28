@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_gradient_01-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "eq",
+        "value": "gradient"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Gradient eyeshadow layering",
+    "steps": [
+      "Pick 2–3 shades from the same color family",
+      "Apply lightest shade as base, then medium in crease",
+      "Add deepest shade at outer corner and lash line",
+      "Blend until there are no visible boundary lines",
+      "Stop at 3 colors max to keep it clean"
+    ]
+  },
+  "rationaleTemplate": [
+    "Smooth gradients slim puffy lids and add dimension",
+    "Staying in one color family avoids muddy transitions"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "small_brush",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 73",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

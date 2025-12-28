@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_fix_wide_set_heads_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Fix brows that are too far apart",
+    "steps": [
+      "Check brow-head spacing: roughly one eye width is a good reference",
+      "Shade slightly closer to the center with light strokes",
+      "Draw hair-like strokes following growth for a natural brow head",
+      "Keep brow head lighter; deepen the brow body gradually",
+      "Blend with a brush so the new brow head has no hard edge"
+    ]
+  },
+  "rationaleTemplate": [
+    "Bringing brow heads inward balances facial proportions",
+    "Soft strokes avoid a stamped, blocky brow head"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 66",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

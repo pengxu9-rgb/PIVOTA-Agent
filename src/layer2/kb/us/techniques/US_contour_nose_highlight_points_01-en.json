@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_highlight_points_01-en",
+  "area": "contour",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Add highlight to lift the nose",
+    "steps": [
+      "Use a small brush to place highlight at inner eye corners",
+      "Tap a tiny dot of highlight on the nose tip",
+      "Keep highlight narrow; avoid widening the bridge",
+      "Blend the edges so it melts into base"
+    ]
+  },
+  "rationaleTemplate": [
+    "Strategic highlight adds dimension without looking oily",
+    "Narrow placement keeps the nose looking slim"
+  ],
+  "productRoleHints": [
+    "highlighter",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 44",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

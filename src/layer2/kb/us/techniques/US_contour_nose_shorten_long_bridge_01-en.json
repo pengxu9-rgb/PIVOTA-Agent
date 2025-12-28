@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_shorten_long_bridge_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Shorten a long nose bridge with placement",
+    "steps": [
+      "Keep nose-root highlight below or within inner eye corner height",
+      "Start bridge shadow a bit lower; avoid shading too high near brows",
+      "Use segmented highlights instead of one long line",
+      "Reduce tip highlight; keep more shadow near the tip"
+    ]
+  },
+  "rationaleTemplate": [
+    "Lower placement visually shortens the bridge length",
+    "Broken highlights prevent an overly long vertical line"
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "dark_shadow",
+    "highlighter"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 46",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

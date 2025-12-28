@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_light_mixed_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "up"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Light “mixed” liner: connect upper and lower outer corners",
+    "steps": [
+      "Draw a thin upturned wing from the outer corner",
+      "Line upper lashes and connect to the wing",
+      "Extend the lower outer lash line slightly with a pencil",
+      "Join upper and lower lines at the outer corner",
+      "Fill gaps and keep the inner corner clean"
+    ]
+  },
+  "rationaleTemplate": [
+    "Connecting upper and lower outer corners makes eyes look bigger",
+    "Keeping it thin avoids a heavy, harsh look"
+  ],
+  "productRoleHints": [
+    "felt_tip_liner",
+    "waterproof_pencil",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 78",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_fix_drooping_tail_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "修正垂眉（眉尾下垂）",
+    "steps": [
+      "目标：眉尾与眉头齐平或略高",
+      "修整：眉头上缘与眉尾下缘多余杂毛",
+      "眉头补下缘，眉尾补上缘把眉尾抬起",
+      "线条尽量平缓不下坠",
+      "晕染让眉头更柔和偏浅"
+    ]
+  },
+  "rationaleTemplate": [
+    "抬眉尾会让眼神更精神更上扬",
+    "改边缘就能调整眉角不必重画"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 68",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

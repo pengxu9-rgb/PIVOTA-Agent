@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_square_round_placement_01-zh",
+  "area": "blush",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "方圆脸腮红打法",
+    "steps": [
+      "氛围色扫在偏上方的颧区做底",
+      "膨胀色点在笑肌位置增加气色",
+      "收缩色放在外侧颧区帮助收窄",
+      "整体向太阳穴方向提拉晕开，避免过低",
+      "余粉可轻点鼻头增加统一感"
+    ]
+  },
+  "rationaleTemplate": [
+    "三色分区能提拉并弱化方感",
+    "腮红放高可避免显脸更宽"
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 98",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_shift_back_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Shift eyeshadow back to elongate the eye",
+    "steps": [
+      "Set the lid with a light matte base",
+      "Focus the darkest shade on outer half of the eye",
+      "Pull the color slightly outward and upward for length",
+      "Blend toward the center so it fades smoothly",
+      "Keep the inner lid cleaner and brighter"
+    ]
+  },
+  "rationaleTemplate": [
+    "Back placement elongates round eyes and increases eye spacing",
+    "A clean inner lid keeps the look fresh and lifted"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "small_brush",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 74",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}
