@@ -204,14 +204,14 @@ describe("look-replicator activity cards reachability (production path)", () => 
 	    expect(macroInResult).toHaveLength(0);
 	  });
 
-  test("EN: eye-liner activity slot still returns exactly one macro card (matching ON)", async () => {
-    const expectedMacro = [
-      "US_eye_liner_daily_upwing_01-en",
-      "US_eye_liner_winged_western_01-en",
-      "US_eye_liner_light_mixed_01-en",
-      "US_eye_liner_subtle_elongate_01-en",
-      "US_eye_liner_downturned_soft_01-en",
-    ];
+	  test("EN: eye-liner activity slot still returns exactly one macro card (matching ON)", async () => {
+	    const expectedMacro = [
+	      "US_eye_liner_daily_upwing_01-en",
+	      "US_eye_liner_winged_western_01-en",
+	      "US_eye_liner_light_mixed_01-en",
+	      "US_eye_liner_subtle_elongate_01-en",
+	      "US_eye_liner_downturned_soft_01-en",
+	    ];
 
     const out = await runPipelineWithFixture({
       locale: "en-US",
@@ -229,19 +229,18 @@ describe("look-replicator activity cards reachability (production path)", () => 
       throw new Error(buildFailureDiagnostic({ name: "EN/eye-liner-slot-matching", expectedActivityIds: expectedMacro, telemetrySample }));
     }
     const slotRefs = Array.isArray(slot?.techniqueRefs) ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(slotRefs).toHaveLength(1);
-    expect(expectedMacro).toContain(slotRefs[0]);
-  });
+	    expect(slotRefs).toHaveLength(1);
+	    expect(expectedMacro).toContain(slotRefs[0]);
+	  });
 
-	  test("EN: eye-liner macro slot is NOT emitted when linerDirection is missing (matching ON)", async () => {
 	  test("EN: eye-liner macro slot chooses subtle_elongate for direction=straight (matching ON)", async () => {
 	    const out = await runPipelineWithFixture({
 	      locale: "en-US",
 	      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_straight.json",
 	      enableTriggerMatching: true,
-      enableEyeActivitySlot: true,
-      preferenceMode: "structure",
-    });
+	      enableEyeActivitySlot: true,
+	      preferenceMode: "structure",
+	    });
 
     const telemetrySample = out?.telemetrySample;
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);
