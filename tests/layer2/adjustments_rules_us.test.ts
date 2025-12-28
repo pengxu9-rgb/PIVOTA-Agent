@@ -66,6 +66,14 @@ describe("Layer2 US adjustment rules-first", () => {
       string[]
     >;
 
+    const firstSentence = (text: string): string => {
+      const s = String(text || "").trim();
+      if (!s) return s;
+      const idx = s.search(/[.!?;\n]/);
+      if (idx === -1) return s;
+      return s.slice(0, idx + 1).trim();
+    };
+
     const provider: LlmProvider = {
       analyzeImageToJson: async () => {
         throw new Error("not used");
@@ -77,7 +85,7 @@ describe("Layer2 US adjustment rules-first", () => {
             ruleId: s.ruleId,
             title: "Safe paraphrase",
             because: s.becauseFacts.join(" "),
-            do: s.doActions.join(" "),
+            do: s.doActions.map((step) => firstSentence(step)).join(" "),
             why: s.whyMechanism.join(" "),
             confidence: s.confidence,
             evidence: [allowedEvidenceByArea[s.impactArea][0]],

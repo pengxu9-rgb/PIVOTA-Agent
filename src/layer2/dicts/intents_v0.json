@@ -6,7 +6,7 @@
       "id": "EYE_LINER_DIRECTION_ADAPT",
       "area": "eye",
       "markets": {
-        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE"] },
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE", "US_eye_liner_daily_upwing_01-en", "US_eye_liner_light_mixed_01-en", "US_eye_liner_winged_western_01-en"] },
         "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_WING_SHORTEN", "T_EYE_WING_ANGLE_MORE_HORIZONTAL", "T_EYE_FILL_GAP_LASHLINE"] }
       }
     },
@@ -14,7 +14,7 @@
       "id": "EYE_LINER_DIRECTION_ADAPT_EASE",
       "area": "eye",
       "markets": {
-        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] },
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN", "US_eye_liner_daily_upwing_01-en", "US_eye_liner_light_mixed_01-en", "US_eye_liner_winged_western_01-en"] },
         "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] }
       }
     },
@@ -55,7 +55,7 @@
       "id": "BASE_BUILD_COVERAGE_SPOT",
       "area": "base",
       "markets": {
-        "US": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] },
+        "US": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT", "US_base_fix_caking_01-en", "US_base_fix_floating_powder_01-en"] },
         "JP": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] }
       }
     },
@@ -89,7 +89,7 @@
       "id": "EYE_FALLBACK_SAFE_CONTROL",
       "area": "eye",
       "markets": {
-        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] },
+        "US": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN", "US_eye_liner_daily_upwing_01-en", "US_eye_liner_light_mixed_01-en", "US_eye_liner_winged_western_01-en"] },
         "JP": { "techniqueIds": ["T_EYE_LINER_OUTER_THIRD_START", "T_EYE_LINER_THIN_LINE", "T_EYE_WING_SHORTEN"] }
       }
     },
@@ -97,10 +97,9 @@
       "id": "LIP_FALLBACK_FINISH_FOCUS",
       "area": "lip",
       "markets": {
-        "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] },
+        "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST", "US_lip_thin_lower_fuller_01-en", "US_lip_flat_lips_define_01-en"] },
         "JP": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] }
       }
     }
   ]
 }
-
