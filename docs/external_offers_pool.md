@@ -46,13 +46,17 @@ Columns (required unless noted):
   - Passes with a warning if `external_offers_pool.csv` is missing.
 - Optional local health check (best-effort network fetch; not for CI):
   - `npm run external:check-links`
+- Coverage/gap report (local files only):
+  - `npm run external:report -- --market US`
+  - `npm run external:report -- --market JP`
 
 ## Operational workflow
 
 1) Update `src/layer3/data/external_offers_pool.csv` and allowlist/partners files.
 2) Run `npm run external:lint` and fix any errors.
 3) Run `npm run external:build-pool`.
-4) Commit:
+4) (Optional) Run `npm run external:report -- --market US|JP` to generate a coverage report under `artifacts/reports/`.
+5) Commit:
    - `src/layer3/data/externalLinks_US.json`
    - `src/layer3/data/externalLinks_JP.json`
    - and the updated CSV/allowlists as needed.
@@ -63,3 +67,15 @@ Columns (required unless noted):
 - Deduplication is per `(market, scope, scope_id)` after canonicalization; highest priority wins.
 - A domain diversity cap is applied during build (default max 2 offers per domain within each scope group).
 
+## Optional targets
+
+If present, `external:report` will use:
+- `src/layer3/data/external_pool_targets_US.json`
+- `src/layer3/data/external_pool_targets_JP.json`
+
+Format (v0):
+```json
+{
+  "categoryTargets": { "base": 12, "eye": 12 }
+}
+```

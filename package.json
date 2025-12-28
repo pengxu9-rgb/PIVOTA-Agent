@@ -41,6 +41,9 @@
     "handbook:generate": "node scripts/generate-content-handbook.js",
     "external:build-pool": "node scripts/build-external-links-pool.js",
     "external:lint": "node scripts/lint-external-offers-pool.js",
+    "external:report": "node scripts/report-external-links-pool.js",
+    "external:report:us": "node scripts/report-external-links-pool.js --market US",
+    "external:report:jp": "node scripts/report-external-links-pool.js --market JP",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"
