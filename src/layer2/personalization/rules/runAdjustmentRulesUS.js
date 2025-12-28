@@ -24,6 +24,10 @@ function eyeActivitySlotEnabled() {
   return parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT) === true;
 }
 
+function triggerMatchingEnabled() {
+  return parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
+}
+
 function buildExtendedFallbackSkeleton({ impactArea, ruleId, intentId }) {
   const doActionIds = getTechniqueIdsForIntent(intentId, 'US') ?? [];
   return AdjustmentSkeletonV0Schema.parse({
@@ -43,7 +47,10 @@ function buildExtendedFallbackSkeleton({ impactArea, ruleId, intentId }) {
   });
 }
 
-function buildEyeLinerActivitySlotSkeleton() {
+function buildEyeLinerActivitySlotSkeleton(input) {
+  const dir = String(input && input.lookSpec && input.lookSpec.breakdown && input.lookSpec.breakdown.eye && input.lookSpec.breakdown.eye.linerDirection && input.lookSpec.breakdown.eye.linerDirection.direction || '').trim();
+  if (!dir || dir === 'unknown') return null;
+
   const doActionIds = getTechniqueIdsForIntent('EYE_LINER_ACTIVITY_PICK', 'US') ?? [];
   if (!doActionIds.length) return null;
 
@@ -104,8 +111,8 @@ function runAdjustmentRulesUS(input) {
   }
 
   const eyeActivitySlot =
-    eyeActivitySlotEnabled() && outByArea.eye?.ruleId === 'EYE_LINER_DIRECTION_ADAPT'
-      ? buildEyeLinerActivitySlotSkeleton()
+    eyeActivitySlotEnabled() && triggerMatchingEnabled() && outByArea.eye?.ruleId === 'EYE_LINER_DIRECTION_ADAPT'
+      ? buildEyeLinerActivitySlotSkeleton({ lookSpec })
       : null;
 
   if (!extendedAreasEnabled()) {

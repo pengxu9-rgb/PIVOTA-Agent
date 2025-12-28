@@ -32,6 +32,10 @@ function eyeActivitySlotEnabled(): boolean {
   return parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT) === true;
 }
 
+function triggerMatchingEnabled(): boolean {
+  return parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
+}
+
 function buildExtendedFallbackSkeleton(input: { impactArea: AdjustmentSkeletonV0["impactArea"]; ruleId: string; intentId: string }): AdjustmentSkeletonV0 {
   const doActionIds = getTechniqueIdsForIntent(input.intentId, "US") ?? [];
   return AdjustmentSkeletonV0Schema.parse({
@@ -51,7 +55,10 @@ function buildExtendedFallbackSkeleton(input: { impactArea: AdjustmentSkeletonV0
   });
 }
 
-function buildEyeLinerActivitySlotSkeleton(): AdjustmentSkeletonV0 | null {
+function buildEyeLinerActivitySlotSkeleton(input: { lookSpec: unknown }): AdjustmentSkeletonV0 | null {
+  const dir = String((input as any)?.lookSpec?.breakdown?.eye?.linerDirection?.direction ?? "").trim();
+  if (!dir || dir === "unknown") return null;
+
   const doActionIds = getTechniqueIdsForIntent("EYE_LINER_ACTIVITY_PICK", "US") ?? [];
   if (!doActionIds.length) return null;
 
@@ -117,8 +124,8 @@ export function runAdjustmentRulesUS(input: RunAdjustmentRulesUSInput): Adjustme
   }
 
   const eyeActivitySlot =
-    eyeActivitySlotEnabled() && outByArea.eye?.ruleId === "EYE_LINER_DIRECTION_ADAPT"
-      ? buildEyeLinerActivitySlotSkeleton()
+    eyeActivitySlotEnabled() && triggerMatchingEnabled() && outByArea.eye?.ruleId === "EYE_LINER_DIRECTION_ADAPT"
+      ? buildEyeLinerActivitySlotSkeleton({ lookSpec })
       : null;
 
   if (!extendedAreasEnabled()) {

@@ -171,63 +171,47 @@ async function runPipelineWithFixture({
 }
 
 describe("look-replicator activity cards reachability (production path)", () => {
-  test("EN: eye-liner micro steps stay sequence; activity slot picks exactly one macro card (matching OFF)", async () => {
-    const expectedMacro = [
-      "US_eye_liner_daily_upwing_01-en",
-      "US_eye_liner_winged_western_01-en",
-      "US_eye_liner_light_mixed_01-en",
-      "US_eye_liner_subtle_elongate_01-en",
-      "US_eye_liner_downturned_soft_01-en",
-    ];
-
-    const out = await runPipelineWithFixture({
-      locale: "en-US",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_up.json",
-      enableTriggerMatching: false,
+	  test("EN: eye-liner micro steps stay sequence; macro slot is NOT emitted when matching is OFF", async () => {
+	    const out = await runPipelineWithFixture({
+	      locale: "en-US",
+	      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_up.json",
+	      enableTriggerMatching: false,
       enableEyeActivitySlot: true,
     });
 
     const telemetrySample = out?.telemetrySample;
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);
-    const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
+    const allSkeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
       ? telemetrySample.replayContext.adjustmentSkeletons
       : [];
 
-    const eyeMain = skeletons.find((s) => String(s?.ruleId || "") === "EYE_LINER_DIRECTION_ADAPT");
-    const slot = skeletons.find((s) => String(s?.ruleId || "") === "EYE_LINER_ACTIVITY_SLOT");
-    if (!eyeMain || !slot) {
-      throw new Error(buildFailureDiagnostic({ name: "EN/eye-liner-slot", expectedActivityIds: expectedMacro, telemetrySample }));
+    const eyeMain = allSkeletons.find((s) => String(s?.ruleId || "") === "EYE_LINER_DIRECTION_ADAPT");
+    if (!eyeMain) {
+      throw new Error(buildFailureDiagnostic({ name: "EN/eye-liner-main", expectedActivityIds: [], telemetrySample }));
     }
 
     const mainRefs = Array.isArray(eyeMain?.techniqueRefs)
       ? eyeMain.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean)
       : [];
-    expect(mainRefs.some((id) => id.startsWith("T_EYE_"))).toBe(true);
-    expect(mainRefs.some((id) => id.startsWith("US_eye_liner_"))).toBe(false);
+	    expect(mainRefs.some((id) => id.startsWith("T_EYE_"))).toBe(true);
+	    expect(mainRefs.some((id) => id.startsWith("US_eye_liner_"))).toBe(false);
 
-    expect(String(slot.doActionSelection || "")).toBe("choose_one");
-    const slotRefs = Array.isArray(slot?.techniqueRefs) ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(slotRefs).toHaveLength(1);
-    expect(expectedMacro).toContain(slotRefs[0]);
-    // Deterministic fallback when matching is OFF: pick the first candidate in intents list.
-    expect(slotRefs[0]).toBe("US_eye_liner_light_mixed_01-en");
+	    expect(allSkeletons.some((s) => String(s?.ruleId || "") === "EYE_LINER_ACTIVITY_SLOT")).toBe(false);
 
-    // User-visible technique refs: includes micro + exactly one macro.
-    const macroInResult = resultTechniqueIds.filter((id) => id.startsWith("US_eye_") && id.includes("liner"));
-    const microInResult = resultTechniqueIds.filter((id) => id.startsWith("T_EYE_"));
-    expect(microInResult.length).toBeGreaterThanOrEqual(3);
-    expect(macroInResult).toHaveLength(1);
-    expect(expectedMacro).toContain(macroInResult[0]);
-  });
+	    const macroInResult = resultTechniqueIds.filter((id) => id.startsWith("US_eye_") && id.includes("liner"));
+	    const microInResult = resultTechniqueIds.filter((id) => id.startsWith("T_EYE_"));
+	    expect(microInResult.length).toBeGreaterThanOrEqual(3);
+	    expect(macroInResult).toHaveLength(0);
+	  });
 
-  test("EN: eye-liner activity slot still returns exactly one macro card (matching ON)", async () => {
-    const expectedMacro = [
-      "US_eye_liner_daily_upwing_01-en",
-      "US_eye_liner_winged_western_01-en",
-      "US_eye_liner_light_mixed_01-en",
-      "US_eye_liner_subtle_elongate_01-en",
-      "US_eye_liner_downturned_soft_01-en",
-    ];
+	  test("EN: eye-liner activity slot still returns exactly one macro card (matching ON)", async () => {
+	    const expectedMacro = [
+	      "US_eye_liner_daily_upwing_01-en",
+	      "US_eye_liner_winged_western_01-en",
+	      "US_eye_liner_light_mixed_01-en",
+	      "US_eye_liner_subtle_elongate_01-en",
+	      "US_eye_liner_downturned_soft_01-en",
+	    ];
 
     const out = await runPipelineWithFixture({
       locale: "en-US",
@@ -245,18 +229,18 @@ describe("look-replicator activity cards reachability (production path)", () => 
       throw new Error(buildFailureDiagnostic({ name: "EN/eye-liner-slot-matching", expectedActivityIds: expectedMacro, telemetrySample }));
     }
     const slotRefs = Array.isArray(slot?.techniqueRefs) ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(slotRefs).toHaveLength(1);
-    expect(expectedMacro).toContain(slotRefs[0]);
-  });
+	    expect(slotRefs).toHaveLength(1);
+	    expect(expectedMacro).toContain(slotRefs[0]);
+	  });
 
-  test("EN: eye-liner macro slot chooses subtle_elongate for direction=straight (matching ON)", async () => {
-    const out = await runPipelineWithFixture({
-      locale: "en-US",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_straight.json",
-      enableTriggerMatching: true,
-      enableEyeActivitySlot: true,
-      preferenceMode: "structure",
-    });
+	  test("EN: eye-liner macro slot chooses subtle_elongate for direction=straight (matching ON)", async () => {
+	    const out = await runPipelineWithFixture({
+	      locale: "en-US",
+	      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_straight.json",
+	      enableTriggerMatching: true,
+	      enableEyeActivitySlot: true,
+	      preferenceMode: "structure",
+	    });
 
     const telemetrySample = out?.telemetrySample;
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);
@@ -275,11 +259,11 @@ describe("look-replicator activity cards reachability (production path)", () => 
     }
 
     const slotRefs = Array.isArray(slot?.techniqueRefs) ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(slotRefs).toEqual(["US_eye_liner_subtle_elongate_01-en"]);
-    expect(resultTechniqueIds).toContain("US_eye_liner_subtle_elongate_01-en");
-  });
+	    expect(slotRefs).toEqual(["US_eye_liner_subtle_elongate_01-en"]);
+	    expect(resultTechniqueIds).toContain("US_eye_liner_subtle_elongate_01-en");
+	  });
 
-  test("EN: eye-liner macro slot chooses downturned_soft for direction=down (matching ON)", async () => {
+	  test("EN: eye-liner macro slot chooses downturned_soft for direction=down (matching ON)", async () => {
     const out = await runPipelineWithFixture({
       locale: "en-US",
       lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_down.json",
@@ -305,15 +289,15 @@ describe("look-replicator activity cards reachability (production path)", () => 
     }
 
     const slotRefs = Array.isArray(slot?.techniqueRefs) ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(slotRefs).toEqual(["US_eye_liner_downturned_soft_01-en"]);
-    expect(resultTechniqueIds).toContain("US_eye_liner_downturned_soft_01-en");
-  });
+	    expect(slotRefs).toEqual(["US_eye_liner_downturned_soft_01-en"]);
+	    expect(resultTechniqueIds).toContain("US_eye_liner_downturned_soft_01-en");
+	  });
 
-  test("EN: eye-liner macro slot chooses light_mixed when direction is missing (matching ON)", async () => {
-    const lookSpec = readJson("fixtures/look_replicator/lookspec_eye_liner_up.json");
-    if (lookSpec?.breakdown?.eye) {
-      delete lookSpec.breakdown.eye.linerDirection;
-    }
+	  test("EN: eye-liner macro slot is NOT emitted when linerDirection is missing (matching ON)", async () => {
+	    const lookSpec = readJson("fixtures/look_replicator/lookspec_eye_liner_up.json");
+	    if (lookSpec?.breakdown?.eye) {
+	      delete lookSpec.breakdown.eye.linerDirection;
+	    }
 
     const out = await runPipelineWithFixture({
       locale: "en-US",
@@ -325,22 +309,14 @@ describe("look-replicator activity cards reachability (production path)", () => 
     });
 
     const telemetrySample = out?.telemetrySample;
-    const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
+    const allSkeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
       ? telemetrySample.replayContext.adjustmentSkeletons
       : [];
-    const slot = skeletons.find((s) => String(s?.ruleId || "") === "EYE_LINER_ACTIVITY_SLOT");
-    if (!slot) {
-      throw new Error(
-        buildFailureDiagnostic({
-          name: "EN/eye-liner-slot-missing-direction",
-          expectedActivityIds: ["US_eye_liner_light_mixed_01-en"],
-          telemetrySample,
-        })
-      );
-    }
+    expect(allSkeletons.some((s) => String(s?.ruleId || "") === "EYE_LINER_ACTIVITY_SLOT")).toBe(false);
 
-    const slotRefs = Array.isArray(slot?.techniqueRefs) ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(slotRefs).toEqual(["US_eye_liner_light_mixed_01-en"]);
+    const macroInResult = resultTechniqueIds.filter((id) => id.startsWith("US_eye_") && id.includes("liner"));
+    expect(macroInResult).toHaveLength(0);
   });
 
   test("EN: eye-liner macro slot chooses winged_western for direction=up + preferenceMode=structure (matching ON)", async () => {
@@ -519,6 +495,25 @@ describe("look-replicator activity cards reachability (production path)", () => 
     const macroInResult = resultTechniqueIds.filter((id) => id.startsWith("US_eye_") && id.includes("liner"));
     expect(macroInResult).toHaveLength(1);
     expect(macroInResult[0]).toMatch(/-zh$/);
+  });
+
+  test("EN: base coverage fixture does NOT emit eye macro slot when linerDirection is absent", async () => {
+    const out = await runPipelineWithFixture({
+      locale: "en-US",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      enableTriggerMatching: true,
+      enableEyeActivitySlot: true,
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
+    const allSkeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
+      ? telemetrySample.replayContext.adjustmentSkeletons
+      : [];
+    expect(allSkeletons.some((s) => String(s?.ruleId || "") === "EYE_LINER_ACTIVITY_SLOT")).toBe(false);
+
+    const macroInResult = resultTechniqueIds.filter((id) => id.startsWith("US_eye_") && id.includes("liner"));
+    expect(macroInResult).toHaveLength(0);
   });
 
   test("EN: base-fix + lip-shaping activity techniques are rendered via intents_v0.json", async () => {
