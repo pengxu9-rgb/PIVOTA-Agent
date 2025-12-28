@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { TechniqueCardV0Schema } = require('../../src/layer2/schemas/techniqueCardV0');
-const { loadTriggerKeysV0, isTriggerKeyAllowed } = require('../../src/layer2/dicts/triggerKeys');
-const { loadRolesV0 } = require('../../src/layer2/dicts/roles');
+const { loadTriggerKeysV1, isTriggerKeyAllowed } = require('../../src/layer2/dicts/triggerKeys');
+const { loadRolesV1 } = require('../../src/layer2/dicts/roles');
 
 function listJson(dir) {
   if (!fs.existsSync(dir)) return [];
@@ -28,16 +28,27 @@ function collectAllStrings(card) {
 }
 
 describe('starter KB', () => {
-  const triggerKeys = loadTriggerKeysV0();
-  const roles = loadRolesV0();
+  const triggerKeys = loadTriggerKeysV1();
+  const roles = loadRolesV1();
   const roleIds = new Set((roles.roles || []).map((r) => r.id));
   const bannedTokens = ['kendall', 'tiktok', 'sephora'];
+  const requiredAreaCounts = {
+    prep: 3,
+    base: 5,
+    brow: 3,
+    eye: 5,
+    blush: 2,
+    contour: 1,
+    lip: 1,
+  };
 
   for (const market of ['us', 'jp']) {
     test(`${market.toUpperCase()} starter cards are valid and safe`, () => {
       const dir = path.join(__dirname, '..', '..', 'src', 'layer2', 'kb', market, 'starter');
       const files = listJson(dir);
-      expect(files.length).toBeGreaterThan(0);
+      expect(files.length).toBe(20);
+
+      const areaCounts = {};
 
       for (const filePath of files) {
         const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -46,7 +57,10 @@ describe('starter KB', () => {
         expect(card.sourceId).toBe('INTERNAL_STARTER');
         expect(card.sourcePointer).toBe('generated');
         expect(card.tags || []).toContain('starter');
+        expect(card.tags || []).toContain('reviewStatus:approved');
         expect(card.difficulty).toBe('easy');
+
+        areaCounts[card.area] = (areaCounts[card.area] || 0) + 1;
 
         const steps = card.actionTemplate.steps;
         expect(steps.length).toBeGreaterThanOrEqual(2);
@@ -71,7 +85,10 @@ describe('starter KB', () => {
           expect(blob.includes(tok)).toBe(false);
         }
       }
+
+      for (const [area, n] of Object.entries(requiredAreaCounts)) {
+        expect(areaCounts[area] || 0).toBe(n);
+      }
     });
   }
 });
-

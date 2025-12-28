@@ -9,8 +9,9 @@ This repo includes a small, generic **starter** Technique KB to make Layer2 demo
 - Every starter card must:
   - have `sourceId: "INTERNAL_STARTER"`
   - be brand-free, generic, and original (no copied tutorial wording)
-  - use only trigger keys allowed by `src/layer2/dicts/trigger_keys_v0.json`
-  - use only canonical role ids in `src/layer2/dicts/roles_v0.json` for `productRoleHints`
+  - use only trigger keys allowed by `src/layer2/dicts/trigger_keys_v1.json`
+  - use only canonical role ids in `src/layer2/dicts/roles_v1.json` for `productRoleHints`
+  - include tags `starter` and `reviewStatus:approved` (we keep schema strict, so review status is encoded as a tag)
 
 ## How it’s used
 The KB loader loads technique cards in this order:
@@ -18,6 +19,12 @@ The KB loader loads technique cards in this order:
 2) `src/layer2/kb/<market>/starter/` (fallback)
 
 If a canonical technique id exists, it wins. Starter cards are only used when no canonical card exists for an id.
+
+Starter cards are gated by `ENABLE_STARTER_KB`:
+- Default: enabled when `NODE_ENV !== "production"`, disabled in production.
+- Override:
+  - `ENABLE_STARTER_KB=1` to force-enable
+  - `ENABLE_STARTER_KB=0` to force-disable
 
 ## Regenerating
 Generate deterministically from dicts and commit the results:
@@ -32,4 +39,3 @@ When licensed TechniqueCards are ready:
 - Starter cards are **internal/demo** scaffolding.
 - Do not introduce brand names or identity/celebrity language.
 - Treat `sourceId="INTERNAL_STARTER"` as a strict marker; tests enforce it.
-

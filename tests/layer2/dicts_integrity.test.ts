@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 
 import { loadLookSpecLexiconV0, normalizeVibeTagsForMarket } from "../../src/layer2/dicts/lookSpecLexicon";
-import { buildRoleNormalizer, loadRolesV0 } from "../../src/layer2/dicts/roles";
-import { isTriggerKeyAllowed, loadTriggerKeysV0 } from "../../src/layer2/dicts/triggerKeys";
+import { buildRoleNormalizer, loadRolesV1 } from "../../src/layer2/dicts/roles";
+import { isTriggerKeyAllowed, loadTriggerKeysV1 } from "../../src/layer2/dicts/triggerKeys";
 import { loadIntentsV0 } from "../../src/layer2/dicts/intents";
 import { LookSpecV0Schema } from "../../src/layer2/schemas/lookSpecV0";
 import { loadTechniqueKB } from "../../src/layer2/kb/loadTechniqueKB";
@@ -27,7 +27,7 @@ function getTriggerKeysFromCard(card: any): string[] {
   return out;
 }
 
-describe("dicts integrity (v0)", () => {
+describe("dicts integrity", () => {
   test("LookSpec fixtures stay within lexicon + vibe tags dicts", () => {
     for (const market of ["US", "JP"] as const) {
       const lookSpecRaw = readJson(`fixtures/contracts/${market.toLowerCase()}/lookSpecV0.sample.json`);
@@ -44,8 +44,8 @@ describe("dicts integrity (v0)", () => {
     }
   });
 
-  test("Technique KB trigger keys are whitelisted by trigger_keys_v0.json", () => {
-    loadTriggerKeysV0(); // ensures schema-valid
+  test("Technique KB trigger keys are whitelisted by trigger_keys_v1.json", () => {
+    loadTriggerKeysV1(); // ensures schema-valid
 
     for (const market of ["US", "JP"] as const) {
       const kb = loadTechniqueKB(market);
@@ -58,8 +58,8 @@ describe("dicts integrity (v0)", () => {
     }
   });
 
-  test("Technique KB role hints normalize to roles_v0.json ids", () => {
-    const roles = loadRolesV0();
+  test("Technique KB role hints normalize to roles_v1.json ids", () => {
+    const roles = loadRolesV1();
     const allowedRoleIds = new Set(roles.roles.map((r) => r.id));
     const { normalizeRoleHint } = buildRoleNormalizer(roles);
 
@@ -92,4 +92,3 @@ describe("dicts integrity (v0)", () => {
     }
   });
 });
-

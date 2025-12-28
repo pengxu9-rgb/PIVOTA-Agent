@@ -1,13 +1,13 @@
 {
   "schemaVersion": "v0",
-  "market": "US",
-  "id": "T_STARTER_LIP_LIP_FALLBACK_FINISH_FOCUS",
-  "area": "lip",
+  "market": "JP",
+  "id": "TJP_STARTER_BROW_BROW_SOFT_SHAPING_V1",
+  "area": "brow",
   "difficulty": "easy",
   "triggers": {
     "any": [
       {
-        "key": "lookSpec.breakdown.lip.intent",
+        "key": "lookSpec.breakdown.brow.intent",
         "op": "exists"
       },
       {
@@ -17,20 +17,20 @@
     ]
   },
   "actionTemplate": {
-    "title": "LIP FALLBACK FINISH FOCUS (lip) (starter)",
+    "title": "BROW SOFT SHAPING (brow) (starter)",
     "steps": [
-      "Match the reference finish first (matte/satin/gloss).",
-      "Stay in a close shade family and adjust intensity with a light blot.",
-      "Concentrate color slightly more in the center if needed."
+      "Brush brows up to see the natural shape.",
+      "Fill sparse areas with light strokes, then soften with a spoolie.",
+      "Set hairs with a small amount of brow gel."
     ]
   },
   "rationaleTemplate": [
     "Starter steps are generic defaults and can be refined once more context is available."
   ],
   "productRoleHints": [
-    "clear_gloss",
-    "gloss",
-    "lip_brush"
+    "brow_brush_spoolie",
+    "brow_gel_clear",
+    "brow_gel_tinted"
   ],
   "safetyNotes": [
     "Avoid identity or celebrity comparisons."

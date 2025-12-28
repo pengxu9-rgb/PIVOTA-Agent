@@ -9,19 +9,23 @@
       {
         "key": "lookSpec.breakdown.lip.intent",
         "op": "exists"
+      },
+      {
+        "key": "preferenceMode",
+        "op": "exists"
       }
     ]
   },
   "actionTemplate": {
-    "title": "Lip Fallback Finish Focus (starter)",
+    "title": "LIP FALLBACK FINISH FOCUS (lip) (starter)",
     "steps": [
-      "Match the reference finish first (matte/satin/gloss/tint).",
+      "Match the reference finish first (matte/satin/gloss).",
       "Stay in a close shade family and adjust intensity with a light blot.",
       "Concentrate color slightly more in the center if needed."
     ]
   },
   "rationaleTemplate": [
-    "These steps are a safe baseline and can be tuned once more context is available."
+    "Starter steps are generic defaults and can be refined once more context is available."
   ],
   "productRoleHints": [
     "clear_gloss",
@@ -29,11 +33,12 @@
     "lip_brush"
   ],
   "safetyNotes": [
-    "Avoid identity/celebrity comparisons."
+    "Avoid identity or celebrity comparisons."
   ],
   "sourceId": "INTERNAL_STARTER",
   "sourcePointer": "generated",
   "tags": [
-    "starter"
+    "starter",
+    "reviewStatus:approved"
   ]
 }

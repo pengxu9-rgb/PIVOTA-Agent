@@ -1,13 +1,13 @@
 {
   "schemaVersion": "v0",
-  "market": "US",
-  "id": "T_STARTER_LIP_LIP_FALLBACK_FINISH_FOCUS",
-  "area": "lip",
+  "market": "JP",
+  "id": "TJP_STARTER_BLUSH_BLUSH_SOFT_LIFT_V1",
+  "area": "blush",
   "difficulty": "easy",
   "triggers": {
     "any": [
       {
-        "key": "lookSpec.breakdown.lip.intent",
+        "key": "lookSpec.breakdown.blush.intent",
         "op": "exists"
       },
       {
@@ -17,20 +17,20 @@
     ]
   },
   "actionTemplate": {
-    "title": "LIP FALLBACK FINISH FOCUS (lip) (starter)",
+    "title": "BLUSH SOFT LIFT (blush) (starter)",
     "steps": [
-      "Match the reference finish first (matte/satin/gloss).",
-      "Stay in a close shade family and adjust intensity with a light blot.",
-      "Concentrate color slightly more in the center if needed."
+      "Place blush on the cheeks, then blend outward.",
+      "Keep edges soft and build in thin layers.",
+      "If needed, tap a small amount of base over edges to soften."
     ]
   },
   "rationaleTemplate": [
     "Starter steps are generic defaults and can be refined once more context is available."
   ],
   "productRoleHints": [
-    "clear_gloss",
-    "gloss",
-    "lip_brush"
+    "blush_brush",
+    "cream_blush",
+    "powder_blush"
   ],
   "safetyNotes": [
     "Avoid identity or celebrity comparisons."

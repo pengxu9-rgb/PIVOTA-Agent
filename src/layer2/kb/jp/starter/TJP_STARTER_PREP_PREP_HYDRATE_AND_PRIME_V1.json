@@ -1,13 +1,13 @@
 {
   "schemaVersion": "v0",
-  "market": "US",
-  "id": "T_STARTER_LIP_LIP_FALLBACK_FINISH_FOCUS",
-  "area": "lip",
+  "market": "JP",
+  "id": "TJP_STARTER_PREP_PREP_HYDRATE_AND_PRIME_V1",
+  "area": "prep",
   "difficulty": "easy",
   "triggers": {
     "any": [
       {
-        "key": "lookSpec.breakdown.lip.intent",
+        "key": "lookSpec.breakdown.prep.intent",
         "op": "exists"
       },
       {
@@ -17,20 +17,20 @@
     ]
   },
   "actionTemplate": {
-    "title": "LIP FALLBACK FINISH FOCUS (lip) (starter)",
+    "title": "PREP HYDRATE AND PRIME (prep) (starter)",
     "steps": [
-      "Match the reference finish first (matte/satin/gloss).",
-      "Stay in a close shade family and adjust intensity with a light blot.",
-      "Concentrate color slightly more in the center if needed."
+      "Cleanse and moisturize, then let it settle.",
+      "Apply a small amount of primer where you want the base to grip or blur.",
+      "Mist lightly to re-hydrate if skin feels tight before base."
     ]
   },
   "rationaleTemplate": [
     "Starter steps are generic defaults and can be refined once more context is available."
   ],
   "productRoleHints": [
-    "clear_gloss",
-    "gloss",
-    "lip_brush"
+    "blurring_primer",
+    "gripping_primer",
+    "hydrating_mist"
   ],
   "safetyNotes": [
     "Avoid identity or celebrity comparisons."
