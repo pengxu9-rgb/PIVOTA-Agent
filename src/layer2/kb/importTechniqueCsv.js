@@ -196,6 +196,30 @@ function parseTriggerCell(cell) {
   return out;
 }
 
+function stripLanguagePreferenceModeConditions(conditions) {
+  if (!Array.isArray(conditions) || conditions.length === 0) return [];
+
+  // This repo uses `preferenceMode` for "structure|vibe|ease". Some content CSVs
+  // include `preferenceMode eq en/zh` as a language gate; we intentionally strip
+  // those so language routing is handled by the `-en` / `-zh` id suffix resolver.
+  const forbidden = new Set(['en', 'zh', 'ja']);
+
+  return conditions.filter((c) => {
+    if (!c || c.key !== 'preferenceMode') return true;
+
+    if (c.op === 'eq' || c.op === 'neq') {
+      return typeof c.value !== 'string' || !forbidden.has(c.value);
+    }
+
+    if (c.op === 'in') {
+      if (!Array.isArray(c.value)) return true;
+      return !c.value.some((v) => typeof v === 'string' && forbidden.has(v));
+    }
+
+    return true;
+  });
+}
+
 function parseTagsCell(cell) {
   const s = String(cell ?? '').trim();
   if (!s) return [];
@@ -239,9 +263,9 @@ function buildTechniqueCardFromCsvRow(row, options) {
   if (!difficulty) throw new Error('Missing difficulty');
   if (!title) throw new Error('Missing title');
 
-  const triggerAll = parseTriggerCell(row.trigger_all);
-  const triggerAny = parseTriggerCell(row.trigger_any);
-  const triggerNone = parseTriggerCell(row.trigger_none);
+  const triggerAll = stripLanguagePreferenceModeConditions(parseTriggerCell(row.trigger_all));
+  const triggerAny = stripLanguagePreferenceModeConditions(parseTriggerCell(row.trigger_any));
+  const triggerNone = stripLanguagePreferenceModeConditions(parseTriggerCell(row.trigger_none));
   const allConditions = [...triggerAll, ...triggerAny, ...triggerNone];
 
   for (const c of allConditions) {
