@@ -38,6 +38,19 @@ function parseAllowlist(dictJson) {
   return parsed.data.allowUnproducibleKeys.map((s) => String(s).trim()).filter(Boolean);
 }
 
+function parseExternalKeys(dictJson) {
+  const parsed = z
+    .object({
+      schemaVersion: z.literal('v0'),
+      externalKeys: z.array(z.string().min(1)).default([]),
+    })
+    .strict()
+    .safeParse(dictJson);
+
+  if (!parsed.success) return [];
+  return parsed.data.externalKeys.map((s) => String(s).trim()).filter(Boolean);
+}
+
 function keyMatchesAllowPattern(key, pattern) {
   const k = String(key || '').trim();
   const p = String(pattern || '').trim();
@@ -249,6 +262,7 @@ function buildTriggerProducibilityReport({ market, kbCards, isTriggerKeyAllowed,
 module.exports = {
   splitTriggerKey,
   parseAllowlist,
+  parseExternalKeys,
   isAllowlistedKey,
   checkPathInSchema,
   checkTriggerKeyProducible,

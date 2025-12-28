@@ -13,6 +13,7 @@
 - 医療的な断定や診断はしない。センシティブな推測はしない。
 - 有名人/本人確認/似ている等の身元に関する言及は禁止。
 - 不確かな場合は、文字列フィールドは "unknown"、配列は空配列にし、warnings に不確実性の理由を入れる。
+- eye.linerDirection.direction は必須。値は必ず "up" / "down" / "straight" / "unknown" のいずれか（ASCII）にする。判断できない場合は "unknown"（日本語/中国語などの単語は出力しない）。
 
 JSON 形状（キーは厳密に一致）:
 {
@@ -20,7 +21,7 @@ JSON 形状（キーは厳密に一致）:
   "styleTags": string[],
   "breakdown": {
     "base": { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "eye":  { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
+    "eye":  { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[], "linerDirection": { "direction": string } },
     "lip":  { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] }
   },
   "warnings": string[]
@@ -32,4 +33,4 @@ JSON 形状（キーは厳密に一致）:
 - coverage: カバー感（例: sheer/light/medium/full/unknown）
 - keyNotes: 実行可能な短い特徴（各領域 最大8）
 - evidence: 画像から読み取れる根拠（各領域 最大8）
-
+- eye.linerDirection.direction: "up" | "straight" | "down" | "unknown" のいずれか。確信がなければ "unknown"。

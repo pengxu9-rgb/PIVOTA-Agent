@@ -33,6 +33,8 @@ const AdjustmentSchema = z
   })
   .strict();
 
+const LinerDirectionSchema = z.enum(['down', 'straight', 'up', 'unknown']);
+
 const SimilarityReportV0Schema = z
   .object({
     version: z.literal('v0'),
@@ -77,6 +79,23 @@ const SimilarityReportV0Schema = z
       })
       .strict(),
     warnings: z.array(z.string()).optional(),
+    lookDiff: z
+      .object({
+        eye: z
+          .object({
+            linerDirection: z
+              .object({
+                user: LinerDirectionSchema,
+                target: LinerDirectionSchema,
+                needsChange: z.boolean(),
+              })
+              .strict(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

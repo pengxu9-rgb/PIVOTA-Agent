@@ -2,9 +2,19 @@ const { z } = require('zod');
 
 const LookAreaSchema = z.enum(['base', 'eye', 'lip']);
 
+const LinerDirectionEnumSchema = z.enum(['down', 'straight', 'up', 'unknown']);
+
+function normalizeLinerDirection(input) {
+  const s = String(input ?? '').trim().toLowerCase();
+  if (s === 'up' || s === 'upward' || s === 'upwards') return 'up';
+  if (s === 'down' || s === 'downward' || s === 'downwards') return 'down';
+  if (s === 'straight' || s === 'horizontal' || s === 'flat') return 'straight';
+  return 'unknown';
+}
+
 const LookSpecLinerDirectionSchema = z
   .object({
-    direction: z.enum(['down', 'straight', 'up', 'unknown']),
+    direction: z.preprocess(normalizeLinerDirection, LinerDirectionEnumSchema),
   })
   .strict();
 
@@ -19,7 +29,8 @@ const LookSpecBreakdownAreaV0Schema = z
   .strict();
 
 const LookSpecBreakdownEyeV0Schema = LookSpecBreakdownAreaV0Schema.extend({
-  linerDirection: LookSpecLinerDirectionSchema.optional(),
+  linerDirection: LookSpecLinerDirectionSchema.default({ direction: 'unknown' }),
+  shadowShape: z.string().min(1).optional(),
 }).strict();
 
 const LookSpecV0Schema = z
@@ -49,6 +60,7 @@ const LookSpecV0Schema = z
 
 module.exports = {
   LookAreaSchema,
+  normalizeLinerDirection,
   LookSpecLinerDirectionSchema,
   LookSpecBreakdownAreaV0Schema,
   LookSpecBreakdownEyeV0Schema,

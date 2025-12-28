@@ -48,6 +48,7 @@ const FaceCategoricalSchema = z
     faceShape: z.enum(['round', 'oval', 'square', 'heart', 'long', 'unknown']),
     eyeType: z.enum(['almond', 'round', 'downturned', 'upturned', 'hooded_like', 'unknown']),
     lipType: z.enum(['thin', 'balanced', 'full', 'unknown']),
+    skinType: z.enum(['dry', 'oily', 'combo', 'normal', 'sensitive', 'unknown']).optional(),
   })
   .strict();
 
@@ -74,4 +75,3 @@ const FaceProfileV0Schema = z
 module.exports = {
   FaceProfileV0Schema,
 };
-
