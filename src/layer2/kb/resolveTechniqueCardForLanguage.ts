@@ -8,10 +8,17 @@ function stripLangSuffix(id: string): string {
 
 function candidateIdsFor(baseId: string, lang: TechniqueLanguagePreferenceMode): string[] {
   const b = stripLangSuffix(baseId);
-  if (/-zh$/i.test(baseId)) return [baseId, `${b}-en`, b];
-  if (/-en$/i.test(baseId)) return [baseId, b];
+  // If the caller already provided a language-specific id, prefer the requested language variant first.
+  if (/-zh$/i.test(baseId)) {
+    if (lang === "en") return [`${b}-en`, baseId, b];
+    return [baseId, `${b}-en`, b];
+  }
+  if (/-en$/i.test(baseId)) {
+    if (lang === "zh") return [`${b}-zh`, baseId, b];
+    return [baseId, b];
+  }
   if (lang === "zh") return [`${b}-zh`, `${b}-en`, b];
-  return [`${b}-en`, b];
+  return [`${b}-en`, `${b}-zh`, b];
 }
 
 function hasPreferenceModeConditions(triggers: TechniqueTriggersV0 | undefined): boolean {
@@ -93,9 +100,12 @@ export function resolveTechniqueCardForLanguage(
 
   const primary = candidates.find((c) => cardAllowsLanguage(c, inferredLanguage)) ?? null;
   if (primary) {
+    const usedFallbackLanguage =
+      (inferredLanguage === "zh" && /-en$/i.test(primary.id)) ||
+      (inferredLanguage === "en" && /-zh$/i.test(primary.id));
     return {
       inferredLanguage,
-      usedFallbackLanguage: false,
+      usedFallbackLanguage,
       resolvedId: primary.id,
       triedIds,
       card: primary,
@@ -117,4 +127,3 @@ export function resolveTechniqueCardForLanguage(
 
   return { inferredLanguage, usedFallbackLanguage: false, resolvedId: null, triedIds, card: null };
 }
-
