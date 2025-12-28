@@ -7,11 +7,6 @@
   "triggers": {
     "all": [
       {
-        "key": "preferenceMode",
-        "op": "eq",
-        "value": "en"
-      },
-      {
         "key": "lookSpec.breakdown.base.finish",
         "op": "exists"
       }
