@@ -2,14 +2,14 @@ const { loadTechniqueKBUS } = require('../src/layer2/kb/loadTechniqueKBUS');
 
 const { loadTriggerKeysLatest, isTriggerKeyAllowed } = require('../src/layer2/dicts/triggerKeys');
 
-function hasLanguageRoutingTrigger(card, lang) {
+function hasForbiddenLanguageGatingTrigger(card) {
   const triggers = card.triggers || {};
   const conditions = [...(triggers.all || []), ...(triggers.any || []), ...(triggers.none || [])];
   return conditions.some((c) => {
     if (!c || c.key !== 'preferenceMode') return false;
-    if (c.op === 'eq') return c.value === lang;
-    if (c.op === 'in') return Array.isArray(c.value) && c.value.includes(lang);
-    return false;
+    if (c.op === 'eq' || c.op === 'neq') return c.value === 'en' || c.value === 'zh';
+    if (c.op === 'in') return Array.isArray(c.value) && (c.value.includes('en') || c.value.includes('zh'));
+    return Array.isArray(c.value) && (c.value.includes('en') || c.value.includes('zh'));
   });
 }
 
@@ -45,15 +45,8 @@ function main() {
       if (id.endsWith('-en')) cur.en = true;
       langPairs.set(baseId, cur);
     }
-    if (id.endsWith('-zh')) {
-      if (!hasLanguageRoutingTrigger(c, 'zh')) {
-        errors.push(`Card id ends with -zh but triggers missing preferenceMode eq/in zh: ${id}`);
-      }
-    }
-    if (id.endsWith('-en')) {
-      if (!hasLanguageRoutingTrigger(c, 'en')) {
-        errors.push(`Card id ends with -en but triggers missing preferenceMode eq/in en: ${id}`);
-      }
+    if ((id.endsWith('-zh') || id.endsWith('-en')) && hasForbiddenLanguageGatingTrigger(c)) {
+      errors.push(`Bilingual card must not gate language via triggers.preferenceMode (en/zh): ${id}`);
     }
   }
 

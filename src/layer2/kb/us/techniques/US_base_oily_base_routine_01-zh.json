@@ -7,11 +7,6 @@
   "triggers": {
     "all": [
       {
-        "key": "preferenceMode",
-        "op": "eq",
-        "value": "zh"
-      },
-      {
         "key": "userFaceProfile.categorical.skinType",
         "op": "eq",
         "value": "oily"

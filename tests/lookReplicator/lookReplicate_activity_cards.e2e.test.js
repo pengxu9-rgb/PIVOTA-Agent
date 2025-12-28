@@ -171,6 +171,27 @@ describe("look-replicator activity cards reachability (production path)", () => 
     }
   });
 
+  test("ZH: eye-liner activity techniques resolve to -zh via locale", async () => {
+    const expected = [
+      "US_eye_liner_daily_upwing_01-zh",
+      "US_eye_liner_winged_western_01-zh",
+      "US_eye_liner_light_mixed_01-zh",
+    ];
+
+    const out = await runPipelineWithFixture({
+      locale: "zh-CN",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_up.json",
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const techniqueRefs = collectTechniqueRefs(telemetrySample);
+    const found = expected.filter((id) => techniqueRefs.includes(id));
+
+    if (!found.length) {
+      throw new Error(buildFailureDiagnostic({ name: "ZH/eye-liner", expectedActivityIds: expected, telemetrySample }));
+    }
+  });
+
   test("EN: base-fix + lip-shaping activity techniques are rendered via intents_v0.json", async () => {
     const baseExpected = ["US_base_fix_caking_01-en", "US_base_fix_floating_powder_01-en"];
     const lipExpected = ["US_lip_thin_lower_fuller_01-en", "US_lip_flat_lips_define_01-en"];
@@ -192,5 +213,26 @@ describe("look-replicator activity cards reachability (production path)", () => 
       throw new Error(buildFailureDiagnostic({ name: "EN/lip-shaping", expectedActivityIds: lipExpected, telemetrySample }));
     }
   });
-});
 
+  test("ZH: base-fix + lip-shaping activity techniques resolve to -zh via locale", async () => {
+    const baseExpected = ["US_base_fix_caking_01-zh", "US_base_fix_floating_powder_01-zh"];
+    const lipExpected = ["US_lip_thin_lower_fuller_01-zh", "US_lip_flat_lips_define_01-zh"];
+
+    const out = await runPipelineWithFixture({
+      locale: "zh-CN",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const techniqueRefs = collectTechniqueRefs(telemetrySample);
+    const baseFound = baseExpected.filter((id) => techniqueRefs.includes(id));
+    const lipFound = lipExpected.filter((id) => techniqueRefs.includes(id));
+
+    if (!baseFound.length) {
+      throw new Error(buildFailureDiagnostic({ name: "ZH/base-fix", expectedActivityIds: baseExpected, telemetrySample }));
+    }
+    if (!lipFound.length) {
+      throw new Error(buildFailureDiagnostic({ name: "ZH/lip-shaping", expectedActivityIds: lipExpected, telemetrySample }));
+    }
+  });
+});

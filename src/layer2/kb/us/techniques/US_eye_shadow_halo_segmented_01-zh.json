@@ -7,11 +7,6 @@
   "triggers": {
     "all": [
       {
-        "key": "preferenceMode",
-        "op": "eq",
-        "value": "zh"
-      },
-      {
         "key": "lookSpec.breakdown.eye.shadowShape",
         "op": "eq",
         "value": "halo"
