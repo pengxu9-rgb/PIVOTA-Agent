@@ -34,7 +34,6 @@
     "kb:starter:generate": "node scripts/generate-starter-kb.js",
     "kb:propose:us": "node src/kb/us/proposeNewTechniqueCards.js",
     "handbook:generate": "node scripts/generate-content-handbook.js",
-    "layer2:audit": "node scripts/layer2-audit.js",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"
