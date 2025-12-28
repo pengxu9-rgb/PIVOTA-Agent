@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "locale": "en-US",
+  "layer2EngineVersion": "l2-us-0.1.0",
+  "layer3EngineVersion": "l3-us-0.1.0",
+  "orchestratorVersion": "orchestrator-us-0.1.0",
+  "lookTitle": "fixture_eye_liner_straight",
+  "styleTags": [],
+  "breakdown": {
+    "base": { "intent": "unknown", "finish": "unknown", "coverage": "unknown", "keyNotes": [], "evidence": [] },
+    "eye": {
+      "intent": "unknown",
+      "finish": "unknown",
+      "coverage": "unknown",
+      "keyNotes": [],
+      "evidence": [],
+      "linerDirection": { "direction": "straight" }
+    },
+    "lip": { "intent": "unknown", "finish": "unknown", "coverage": "unknown", "keyNotes": [], "evidence": [] }
+  },
+  "warnings": []
+}
