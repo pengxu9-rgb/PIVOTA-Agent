@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { LookSpecV0Schema } from "./lookSpecV0";
+import { LookSpecLinerDirectionSchema, LookSpecV0Schema } from "./lookSpecV0";
 
 export const LookSpecBreakdownAreaV1Schema = z
   .object({
@@ -11,6 +11,10 @@ export const LookSpecBreakdownAreaV1Schema = z
     evidence: z.array(z.string().min(1)).default([]),
   })
   .strict();
+
+export const LookSpecBreakdownEyeV1Schema = LookSpecBreakdownAreaV1Schema.extend({
+  linerDirection: LookSpecLinerDirectionSchema.optional(),
+}).strict();
 
 export const LookSpecBreakdownContourV1Schema = LookSpecBreakdownAreaV1Schema.extend({
   highlight: z
@@ -46,7 +50,7 @@ export const LookSpecV1Schema = z
     breakdown: z
       .object({
         base: LookSpecBreakdownAreaV1Schema,
-        eye: LookSpecBreakdownAreaV1Schema,
+        eye: LookSpecBreakdownEyeV1Schema,
         lip: LookSpecBreakdownAreaV1Schema,
         prep: LookSpecBreakdownAreaV1Schema.optional(),
         brow: LookSpecBreakdownAreaV1Schema.optional(),
@@ -73,4 +77,3 @@ export function normalizeLookSpecToV1(input: unknown): LookSpecV1 {
     schemaVersion: "v1",
   });
 }
-

@@ -3,7 +3,7 @@ const path = require('path');
 const { z } = require('zod');
 
 const { createProviderFromEnv, LlmError } = require('../llm/provider');
-const { LookSpecBreakdownAreaV0Schema, LookSpecV0Schema } = require('./schemas/lookSpecV0');
+const { LookSpecBreakdownAreaV0Schema, LookSpecBreakdownEyeV0Schema, LookSpecV0Schema } = require('./schemas/lookSpecV0');
 const { normalizeVibeTagsForMarket } = require('./dicts/lookSpecLexicon');
 
 const LookSpecExtractCoreSchema = z
@@ -13,7 +13,7 @@ const LookSpecExtractCoreSchema = z
     breakdown: z
       .object({
         base: LookSpecBreakdownAreaV0Schema,
-        eye: LookSpecBreakdownAreaV0Schema,
+        eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
       })
       .strict(),

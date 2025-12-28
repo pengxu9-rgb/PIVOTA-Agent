@@ -9,9 +9,15 @@
   "styleTags": [],
   "breakdown": {
     "base": { "intent": "unknown", "finish": "unknown", "coverage": "unknown", "keyNotes": [], "evidence": [] },
-    "eye": { "intent": "unknown", "finish": "unknown", "coverage": "unknown", "keyNotes": [], "evidence": [] },
+    "eye": {
+      "intent": "unknown",
+      "finish": "unknown",
+      "coverage": "unknown",
+      "keyNotes": [],
+      "evidence": [],
+      "linerDirection": { "direction": "up" }
+    },
     "lip": { "intent": "unknown", "finish": "unknown", "coverage": "unknown", "keyNotes": [], "evidence": [] }
   },
   "warnings": []
 }
-

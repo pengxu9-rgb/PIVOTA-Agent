@@ -20,7 +20,7 @@ JSON shape (exact keys):
   "styleTags": string[],                      // 0..10 short tags; can be []
   "breakdown": {
     "base": { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "eye":  { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
+    "eye":  { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[], "linerDirection": { "direction": string } },
     "lip":  { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] }
   },
   "warnings": string[]                        // optional quality/uncertainty notes; can be []
@@ -32,3 +32,4 @@ Guidelines:
 - "coverage": describe coverage (e.g., sheer/light/medium/full/unknown).
 - "keyNotes": short actionable descriptors (max 8 each area).
 - "evidence": short observations from the image that justify the fields (max 8 each area).
+- eye.linerDirection.direction: one of "up" | "straight" | "down" | "unknown".

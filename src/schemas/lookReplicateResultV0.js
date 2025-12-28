@@ -1,7 +1,7 @@
 const { z } = require('zod');
 const { StepPlanV0Schema } = require('../layer2/schemas/stepPlanV0');
 const { KitPlanV0Schema } = require('../layer3/schemas/kitPlanV0');
-const { LookSpecBreakdownAreaV0Schema } = require('../layer2/schemas/lookSpecV0');
+const { LookSpecBreakdownAreaV0Schema, LookSpecBreakdownEyeV0Schema } = require('../layer2/schemas/lookSpecV0');
 
 const ImpactAreaSchema = z.enum(['base', 'eye', 'lip']);
 
@@ -62,7 +62,7 @@ const LookReplicateResultV0Schema = z
     breakdown: z
       .object({
         base: LookSpecBreakdownAreaV0Schema,
-        eye: LookSpecBreakdownAreaV0Schema,
+        eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
       })
       .strict(),

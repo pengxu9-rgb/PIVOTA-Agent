@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { StepPlanV0Schema } from "../layer2/schemas/stepPlanV0";
 import { KitPlanV0Schema } from "../layer3/schemas/kitPlanV0";
-import { LookSpecBreakdownAreaV0Schema } from "../layer2/schemas/lookSpecV0";
+import { LookSpecBreakdownAreaV0Schema, LookSpecBreakdownEyeV0Schema } from "../layer2/schemas/lookSpecV0";
 
 export const ImpactAreaSchema = z.enum(["base", "eye", "lip"]);
 
@@ -75,7 +75,7 @@ export const LookReplicateResultV0Schema = z
     breakdown: z
       .object({
         base: LookSpecBreakdownAreaV0Schema,
-        eye: LookSpecBreakdownAreaV0Schema,
+        eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
       })
       .strict(),

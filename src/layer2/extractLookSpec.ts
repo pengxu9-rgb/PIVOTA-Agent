@@ -3,7 +3,12 @@ import path from "path";
 import { z } from "zod";
 
 import { createProviderFromEnv, ImageInput, LlmError, LlmProvider } from "../llm/provider";
-import { LookSpecBreakdownAreaV0Schema, LookSpecV0, LookSpecV0Schema } from "./schemas/lookSpecV0";
+import {
+  LookSpecBreakdownAreaV0Schema,
+  LookSpecBreakdownEyeV0Schema,
+  LookSpecV0,
+  LookSpecV0Schema,
+} from "./schemas/lookSpecV0";
 import { normalizeVibeTagsForMarket } from "./dicts/lookSpecLexicon";
 
 const LookSpecExtractCoreSchema = z
@@ -13,7 +18,7 @@ const LookSpecExtractCoreSchema = z
     breakdown: z
       .object({
         base: LookSpecBreakdownAreaV0Schema,
-        eye: LookSpecBreakdownAreaV0Schema,
+        eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
       })
       .strict(),

@@ -2,6 +2,12 @@ const { z } = require('zod');
 
 const LookAreaSchema = z.enum(['base', 'eye', 'lip']);
 
+const LookSpecLinerDirectionSchema = z
+  .object({
+    direction: z.enum(['down', 'straight', 'up', 'unknown']),
+  })
+  .strict();
+
 const LookSpecBreakdownAreaV0Schema = z
   .object({
     intent: z.string().min(1),
@@ -11,6 +17,10 @@ const LookSpecBreakdownAreaV0Schema = z
     evidence: z.array(z.string().min(1)).default([]),
   })
   .strict();
+
+const LookSpecBreakdownEyeV0Schema = LookSpecBreakdownAreaV0Schema.extend({
+  linerDirection: LookSpecLinerDirectionSchema.optional(),
+}).strict();
 
 const LookSpecV0Schema = z
   .object({
@@ -28,7 +38,7 @@ const LookSpecV0Schema = z
     breakdown: z
       .object({
         base: LookSpecBreakdownAreaV0Schema,
-        eye: LookSpecBreakdownAreaV0Schema,
+        eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
       })
       .strict(),
@@ -39,6 +49,8 @@ const LookSpecV0Schema = z
 
 module.exports = {
   LookAreaSchema,
+  LookSpecLinerDirectionSchema,
   LookSpecBreakdownAreaV0Schema,
+  LookSpecBreakdownEyeV0Schema,
   LookSpecV0Schema,
 };

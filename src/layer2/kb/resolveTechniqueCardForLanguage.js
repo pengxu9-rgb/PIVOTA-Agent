@@ -19,12 +19,20 @@ function candidateIdsFor(baseId, lang) {
   return [`${b}-en`, `${b}-zh`, b];
 }
 
-function hasPreferenceModeConditions(triggers) {
-  const t = triggers || {};
-  const all = Array.isArray(t.all) ? t.all : [];
-  const any = Array.isArray(t.any) ? t.any : [];
-  const none = Array.isArray(t.none) ? t.none : [];
-  return [...all, ...any, ...none].some((c) => c && c.key === "preferenceMode");
+function isLanguageToken(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "en" || s === "zh";
+}
+
+function isLanguagePreferenceModeCondition(cond) {
+  if (!cond || cond.key !== "preferenceMode") return false;
+  const op = String(cond.op || "");
+  if (op === "eq" || op === "neq") return isLanguageToken(cond.value);
+  if (op === "in") {
+    const list = Array.isArray(cond.value) ? cond.value : [];
+    return list.some((x) => isLanguageToken(x));
+  }
+  return false;
 }
 
 function evalPreferenceModeCond(lang, cond) {
@@ -47,11 +55,10 @@ function evalPreferenceModeCond(lang, cond) {
 
 function cardAllowsLanguage(card, lang) {
   const triggers = card.triggers || {};
-  if (!hasPreferenceModeConditions(triggers)) return true;
-
-  const all = Array.isArray(triggers.all) ? triggers.all.filter((c) => c.key === "preferenceMode") : [];
-  const any = Array.isArray(triggers.any) ? triggers.any.filter((c) => c.key === "preferenceMode") : [];
-  const none = Array.isArray(triggers.none) ? triggers.none.filter((c) => c.key === "preferenceMode") : [];
+  const all = Array.isArray(triggers.all) ? triggers.all.filter((c) => isLanguagePreferenceModeCondition(c)) : [];
+  const any = Array.isArray(triggers.any) ? triggers.any.filter((c) => isLanguagePreferenceModeCondition(c)) : [];
+  const none = Array.isArray(triggers.none) ? triggers.none.filter((c) => isLanguagePreferenceModeCondition(c)) : [];
+  if (!all.length && !any.length && !none.length) return true;
 
   if (all.length && !all.every((c) => evalPreferenceModeCond(lang, c))) return false;
   if (any.length && !any.some((c) => evalPreferenceModeCond(lang, c))) return false;

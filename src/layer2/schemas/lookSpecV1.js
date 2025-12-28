@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const { LookSpecV0Schema } = require('./lookSpecV0');
+const { LookSpecLinerDirectionSchema, LookSpecV0Schema } = require('./lookSpecV0');
 
 const LookSpecBreakdownAreaV1Schema = z
   .object({
@@ -11,6 +11,10 @@ const LookSpecBreakdownAreaV1Schema = z
     evidence: z.array(z.string().min(1)).default([]),
   })
   .strict();
+
+const LookSpecBreakdownEyeV1Schema = LookSpecBreakdownAreaV1Schema.extend({
+  linerDirection: LookSpecLinerDirectionSchema.optional(),
+}).strict();
 
 const LookSpecBreakdownContourV1Schema = LookSpecBreakdownAreaV1Schema.extend({
   highlight: z
@@ -37,7 +41,7 @@ const LookSpecV1Schema = z
     breakdown: z
       .object({
         base: LookSpecBreakdownAreaV1Schema,
-        eye: LookSpecBreakdownAreaV1Schema,
+        eye: LookSpecBreakdownEyeV1Schema,
         lip: LookSpecBreakdownAreaV1Schema,
         prep: LookSpecBreakdownAreaV1Schema.optional(),
         brow: LookSpecBreakdownAreaV1Schema.optional(),
@@ -59,10 +63,10 @@ function normalizeLookSpecToV1(input) {
 }
 
 module.exports = {
+  LookSpecBreakdownEyeV1Schema,
   LookSpecBreakdownAreaV1Schema,
   LookSpecBreakdownContourV1Schema,
   LookSpecV1Schema,
   LookSpecAnySchema,
   normalizeLookSpecToV1,
 };
-
