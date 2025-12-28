@@ -25,6 +25,8 @@
     "demo:openai": "node scripts/demo-openai-pivota.mjs",
     "lint:kb:us": "node scripts/lint-technique-kb-us.js",
     "lint:kb:jp": "node scripts/lint-technique-kb-jp.js",
+    "lint:kb:trigger-producibility:us": "node scripts/lint-kb-trigger-producibility.js --market US",
+    "lint:kb:trigger-producibility:jp": "node scripts/lint-kb-trigger-producibility.js --market JP",
     "kb:import:csv": "node scripts/kb-import-csv.js",
     "kb:check:mapping": "node scripts/kb-check-mapping.js",
     "kb:analyze": "node src/kb/runAnalyzeKBHealth.js",
