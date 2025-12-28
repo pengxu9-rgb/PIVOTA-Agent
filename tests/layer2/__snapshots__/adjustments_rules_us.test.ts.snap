@@ -13,6 +13,8 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3
       "T_BASE_SPOT_CONCEAL_ONLY",
       "T_BASE_SET_TZONE_LIGHT",
       "T_BASE_MIST_MELT",
+      "US_base_fix_caking_01-en",
+      "US_base_fix_floating_powder_01-en",
     ],
     "doActions": [],
     "evidenceKeys": [
@@ -45,6 +47,9 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3
       "T_EYE_WING_SHORTEN",
       "T_EYE_WING_ANGLE_MORE_HORIZONTAL",
       "T_EYE_FILL_GAP_LASHLINE",
+      "US_eye_liner_daily_upwing_01-en",
+      "US_eye_liner_light_mixed_01-en",
+      "US_eye_liner_winged_western_01-en",
     ],
     "doActions": [],
     "evidenceKeys": [
