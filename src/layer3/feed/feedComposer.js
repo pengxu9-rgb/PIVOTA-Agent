@@ -4,12 +4,52 @@ const path = require("node:path");
 const { resolveExternalOffer } = require("../external/externalOfferResolver");
 
 function loadExternalLinksIndexFromDisk(market) {
-  const filename = market === "JP" ? "externalLinks_jp.json" : "externalLinks_us.json";
-  const filePath = path.join(__dirname, "..", "data", filename);
-  if (!fs.existsSync(filePath)) return {};
-  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  if (!parsed || typeof parsed !== "object") return {};
-  return parsed;
+  const legacyFilename = market === "JP" ? "externalLinks_jp.json" : "externalLinks_us.json";
+
+  const tryReadJson = (filePath) => {
+    if (!fs.existsSync(filePath)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    } catch {
+      return null;
+    }
+  };
+
+  const coerceIndexFromPool = (raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+    // New pool format: { byRole: { [ROLE:...]: [{ url, ... }] } }
+    if (raw.byRole && typeof raw.byRole === "object" && !Array.isArray(raw.byRole)) {
+      const out = {};
+      for (const roleId of Object.keys(raw.byRole).sort()) {
+        const entries = raw.byRole[roleId];
+        if (!Array.isArray(entries)) continue;
+        const urls = entries
+          .map((e) => (e && typeof e === "object" ? e.url : null))
+          .filter((u) => typeof u === "string" && u.length > 0);
+        if (urls.length) out[roleId] = urls;
+      }
+      return out;
+    }
+
+    // Legacy format: { [ROLE:...]: string[] }
+    const out = {};
+    for (const key of Object.keys(raw)) {
+      const v = raw[key];
+      if (!Array.isArray(v)) continue;
+      const urls = v.filter((u) => typeof u === "string");
+      if (urls.length) out[key] = urls;
+    }
+    return Object.keys(out).length ? out : null;
+  };
+
+  const poolFilename = `externalLinks_${market}.json`;
+  const poolPath = path.join(__dirname, "..", "data", poolFilename);
+  const poolIndex = coerceIndexFromPool(tryReadJson(poolPath));
+  if (poolIndex) return poolIndex;
+
+  const legacyPath = path.join(__dirname, "..", "data", legacyFilename);
+  return coerceIndexFromPool(tryReadJson(legacyPath)) ?? {};
 }
 
 async function mapWithConcurrency(items, concurrency, mapper) {
@@ -71,4 +111,3 @@ async function composeExternalFirstFeed(params) {
 module.exports = {
   composeExternalFirstFeed,
 };
-

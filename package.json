@@ -15,7 +15,7 @@
     "db:seed": "node src/db/cli.js seed",
     "db:setup": "node src/db/cli.js all",
     "lint:dicts": "node scripts/lint-dicts.js",
-    "pretest": "npm run lint:dicts && npm run lint:kb:us && npm run lint:kb:jp",
+    "pretest": "npm run lint:dicts && npm run lint:kb:us && npm run lint:kb:jp && npm run external:lint",
     "test": "jest --runInBand",
     "eval:layer1:us": "node src/eval/layer1/us/runEval.js",
     "eval:layer2_3:us": "node src/eval/layer2_3/us/runEval.js",
@@ -39,6 +39,8 @@
     "kb:starter:generate": "node scripts/generate-starter-kb.js",
     "kb:propose:us": "node src/kb/us/proposeNewTechniqueCards.js",
     "handbook:generate": "node scripts/generate-content-handbook.js",
+    "external:build-pool": "node scripts/build-external-links-pool.js",
+    "external:lint": "node scripts/lint-external-offers-pool.js",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"

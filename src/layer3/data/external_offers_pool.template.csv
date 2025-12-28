@@ -1,0 +1,4 @@
+market,scope,scope_id,url,priority,partner_type,partner_program,partner_name,disclosure_text,tags,notes
+US,role,ROLE:thin_felt_tip_liner,https://example.com/product,90,unknown,,,,starter,Example row (replace with real CSV in external_offers_pool.csv)
+JP,category,eye,https://example.jp/item,90,unknown,,,,starter,Example row (replace with real CSV in external_offers_pool.csv)
+

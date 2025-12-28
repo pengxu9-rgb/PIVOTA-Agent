@@ -1,0 +1,4 @@
+# One domain per line (no scheme). Subdomains are allowed.
+# Example:
+# example.com
+
