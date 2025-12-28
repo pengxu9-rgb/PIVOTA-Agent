@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "PLACEHOLDER_JP_EYE_LINER_ACTIVITY_PICK",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": { "any": [{ "key": "lookSpec.breakdown.eye.intent", "op": "exists" }] },
+  "actionTemplate": {
+    "title": "Eyeliner: pick one safe variation",
+    "steps": [
+      "Keep liner thin and close to the lashes.",
+      "Start at the outer third; extend a short tail.",
+      "Connect the tail back to the lash line; fill gaps.",
+      "Clean edges with a cotton swab if needed."
+    ]
+  },
+  "rationaleTemplate": [
+    "A conservative shape works for most eyes.",
+    "Thin lines stay clean and beginner-friendly."
+  ],
+  "productRoleHints": ["felt_tip_liner", "cotton_swab"]
+}

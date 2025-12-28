@@ -175,15 +175,22 @@ describe("Layer3 KitPlanV0", () => {
   });
 
   it("returns placeholders + warnings when a category has no candidates", async () => {
+    const envBackup = process.env.LAYER2_TRIGGER_MATCH_DEBUG;
     const lookSpec = makeLookSpec();
-    const result = await buildKitPlan({
-      market: "US",
-      locale: "en",
-      lookSpec,
-      candidatesByCategory: { base: [], eye: [], lip: [] },
-    });
+    try {
+      process.env.LAYER2_TRIGGER_MATCH_DEBUG = "1";
+      const result = await buildKitPlan({
+        market: "US",
+        locale: "en",
+        lookSpec,
+        candidatesByCategory: { base: [], eye: [], lip: [] },
+      });
 
-    expect(result.warnings || []).toContain("NO_CANDIDATES:base");
-    expect(result.kit.base.best.skuId).toContain("placeholder_base_best");
+      expect(result.warnings || []).toContain("NO_CANDIDATES market=US category=base candidates=0");
+      expect(result.kit.base.best.skuId).toContain("placeholder_base_best");
+    } finally {
+      if (envBackup == null) delete process.env.LAYER2_TRIGGER_MATCH_DEBUG;
+      else process.env.LAYER2_TRIGGER_MATCH_DEBUG = envBackup;
+    }
   });
 });

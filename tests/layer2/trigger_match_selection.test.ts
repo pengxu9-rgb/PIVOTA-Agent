@@ -53,7 +53,7 @@ describe("triggerMatchSelection", () => {
     expect(out.selectedId).toBe("T_BASE_THIN_LAYER");
   });
 
-  test("deterministically breaks ties by id asc", () => {
+  test("deterministically breaks ties by candidate order", () => {
     const ctx = {
       lookSpec: { breakdown: { base: { finish: "matte" } } },
       preferenceMode: "structure",
@@ -70,7 +70,6 @@ describe("triggerMatchSelection", () => {
       fallbackId: "B_card",
     });
 
-    expect(out.selectedId).toBe("A_card");
+    expect(out.selectedId).toBe("B_card");
   });
 });
-

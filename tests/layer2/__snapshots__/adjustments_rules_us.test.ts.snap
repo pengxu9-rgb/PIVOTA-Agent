@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
-exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3 skeletons with evidenceKeys and ruleId 1`] = `
+exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns base/eye/lip skeletons with evidenceKeys and ruleId 1`] = `
 [
   {
     "becauseFacts": [
@@ -47,9 +47,6 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3
       "T_EYE_WING_SHORTEN",
       "T_EYE_WING_ANGLE_MORE_HORIZONTAL",
       "T_EYE_FILL_GAP_LASHLINE",
-      "US_eye_liner_daily_upwing_01-en",
-      "US_eye_liner_light_mixed_01-en",
-      "US_eye_liner_winged_western_01-en",
     ],
     "doActions": [],
     "evidenceKeys": [
@@ -72,6 +69,35 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns exactly 3
     ],
     "whyMechanism": [
       "A slightly more horizontal, shorter wing reduces emphasis on tilt differences while preserving the reference mood.",
+    ],
+  },
+  {
+    "becauseFacts": [
+      "Optional: add one macro activity technique card after the micro-steps.",
+    ],
+    "confidence": "low",
+    "doActionIds": [
+      "US_eye_liner_daily_upwing_01-en",
+      "US_eye_liner_light_mixed_01-en",
+      "US_eye_liner_winged_western_01-en",
+    ],
+    "doActionSelection": "choose_one",
+    "doActions": [],
+    "evidenceKeys": [
+      "intent:EYE_LINER_ACTIVITY_PICK",
+      "lookSpec.breakdown.eye.linerDirection.direction",
+    ],
+    "impactArea": "eye",
+    "market": "US",
+    "ruleId": "EYE_LINER_ACTIVITY_SLOT",
+    "schemaVersion": "v0",
+    "severity": 0.1,
+    "tags": [
+      "activity_slot",
+      "eye_liner",
+    ],
+    "whyMechanism": [
+      "Choose exactly one activity card to avoid mixing granularity inside the micro-step sequence.",
     ],
   },
   {

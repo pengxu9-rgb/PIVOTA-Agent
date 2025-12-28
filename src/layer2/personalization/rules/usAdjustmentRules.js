@@ -3,6 +3,7 @@ const { LookSpecV0Schema } = require('../../schemas/lookSpecV0');
 const { FaceProfileV0Schema } = require('../../../layer1/schemas/faceProfileV0');
 const { SimilarityReportV0Schema } = require('../../../layer1/schemas/similarityReportV0');
 const { getTechniqueIdsForIntent } = require('../../dicts/intents');
+const { getIntentSelection } = require('../../dicts/intentSelection');
 
 function clamp01(n) {
   if (!Number.isFinite(n)) return 0;
@@ -33,6 +34,27 @@ function includesAny(haystack, needles) {
 function techniqueIdsForIntent(intentId, input) {
   const variant = input.preferenceMode === 'ease' ? `${intentId}_EASE` : intentId;
   return getTechniqueIdsForIntent(variant, input.market) ?? getTechniqueIdsForIntent(intentId, input.market) ?? [];
+}
+
+function parseEnvBool(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (!s) return null;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(s)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(s)) return false;
+  return null;
+}
+
+function triggerMatchingEnabled() {
+  return parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
+}
+
+function doActionSpecForIntent(intentId, input) {
+  const doActionIds = techniqueIdsForIntent(intentId, input);
+  const selection = getIntentSelection(intentId, input.market);
+  if (selection === 'choose_one' && triggerMatchingEnabled()) {
+    return { doActionIds, doActionSelection: 'choose_one' };
+  }
+  return { doActionIds };
 }
 
 const RULE_TITLES_US = {
@@ -81,7 +103,7 @@ const US_ADJUSTMENT_RULES = [
           'The reference eye look relies on liner direction/wing control.',
           'Eye tilt differs between user and reference, so wing angle needs adjustment.',
         ],
-        doActionIds: techniqueIdsForIntent('EYE_LINER_DIRECTION_ADAPT', { market: 'US', preferenceMode: ctx.preferenceMode }),
+        ...doActionSpecForIntent('EYE_LINER_DIRECTION_ADAPT', { market: 'US', preferenceMode: ctx.preferenceMode }),
         doActions: [],
         whyMechanism: ['A slightly more horizontal, shorter wing reduces emphasis on tilt differences while preserving the reference mood.'],
         evidenceKeys: [
@@ -119,7 +141,7 @@ const US_ADJUSTMENT_RULES = [
         severity,
         confidence: baseConfidence(ctx),
         becauseFacts: ['The lid space is limited, so thick liner can take over the eye area.', 'The reference calls for noticeable eye emphasis.'],
-        doActionIds: techniqueIdsForIntent('EYE_TIGHTLINE_AND_SMUDGE', { market: 'US', preferenceMode: ctx.preferenceMode }),
+        ...doActionSpecForIntent('EYE_TIGHTLINE_AND_SMUDGE', { market: 'US', preferenceMode: ctx.preferenceMode }),
         doActions: [],
         whyMechanism: ['Tightlining keeps definition at the lash line without consuming lid space; smudging adds emphasis with less heaviness.'],
         evidenceKeys: ['userFaceProfile.geometry.eyeOpennessRatio', 'lookSpec.breakdown.eye.intent'],
@@ -144,7 +166,7 @@ const US_ADJUSTMENT_RULES = [
         severity: 0.6,
         confidence: baseConfidence(ctx),
         becauseFacts: ['The reference base finish is dewy/radiant.', 'A thin base keeps texture controlled while still allowing glow.'],
-        doActionIds: techniqueIdsForIntent('BASE_THIN_LAYERS_TARGET_GLOW', { market: 'US', preferenceMode: ctx.preferenceMode }),
+        ...doActionSpecForIntent('BASE_THIN_LAYERS_TARGET_GLOW', { market: 'US', preferenceMode: ctx.preferenceMode }),
         doActions: [],
         whyMechanism: ['Targeting glow keeps the finish aligned with the reference without amplifying texture everywhere.'],
         evidenceKeys: ['lookSpec.breakdown.base.finish', 'lookSpec.breakdown.base.intent'],
@@ -166,7 +188,7 @@ const US_ADJUSTMENT_RULES = [
       severity: 0.7,
       confidence: baseConfidence(ctx),
       becauseFacts: ['The reference base coverage is higher.', 'Building coverage in thin passes reduces caking while still matching the reference.'],
-      doActionIds: techniqueIdsForIntent('BASE_BUILD_COVERAGE_SPOT', { market: 'US', preferenceMode: ctx.preferenceMode }),
+      ...doActionSpecForIntent('BASE_BUILD_COVERAGE_SPOT', { market: 'US', preferenceMode: ctx.preferenceMode }),
       doActions: [],
       whyMechanism: ['Thin passes reduce buildup while letting you reach the desired coverage level.'],
       evidenceKeys: ['lookSpec.breakdown.base.coverage', 'lookSpec.breakdown.base.finish'],
@@ -198,7 +220,7 @@ const US_ADJUSTMENT_RULES = [
         severity,
         confidence: baseConfidence(ctx),
         becauseFacts: ['The reference lip finish is glossy.', 'A center-focused gloss effect is a safe way to match finish and enhance shape without over-lining.'],
-        doActionIds: techniqueIdsForIntent('LIP_GLOSS_CENTER_GRADIENT', { market: 'US', preferenceMode: ctx.preferenceMode }),
+        ...doActionSpecForIntent('LIP_GLOSS_CENTER_GRADIENT', { market: 'US', preferenceMode: ctx.preferenceMode }),
         doActions: [],
         whyMechanism: ['Center gloss increases dimension and keeps the glossy finish aligned with the reference.'],
         evidenceKeys: ['lookSpec.breakdown.lip.finish', ...(ctx.userFaceProfile ? ['userFaceProfile.geometry.lipFullnessRatio'] : [])],
@@ -220,7 +242,7 @@ const US_ADJUSTMENT_RULES = [
       severity: 0.45,
       confidence: baseConfidence(ctx),
       becauseFacts: ['The reference lip reads softer/diffused.', 'A blurred edge stays within the reference vibe without requiring exact lip shape.'],
-      doActionIds: techniqueIdsForIntent('LIP_SOFT_EDGE_BLUR', { market: 'US', preferenceMode: ctx.preferenceMode }),
+      ...doActionSpecForIntent('LIP_SOFT_EDGE_BLUR', { market: 'US', preferenceMode: ctx.preferenceMode }),
       doActions: [],
       whyMechanism: ['Soft edges reduce shape sensitivity and keep the lip mood consistent with the reference.'],
       evidenceKeys: ['lookSpec.breakdown.lip.intent', 'lookSpec.breakdown.lip.finish'],
@@ -244,7 +266,7 @@ const US_ADJUSTMENT_FALLBACK_RULES = {
       severity: 0.2,
       confidence: baseConfidence(ctx),
       becauseFacts: ['A thin base is the safest path to preserve texture and match the reference finish.'],
-      doActionIds: techniqueIdsForIntent('BASE_FALLBACK_THIN_LAYER', { market: 'US', preferenceMode: ctx.preferenceMode }),
+      ...doActionSpecForIntent('BASE_FALLBACK_THIN_LAYER', { market: 'US', preferenceMode: ctx.preferenceMode }),
       doActions: [],
       whyMechanism: ['Thin layers are more forgiving and keep the finish closer to the reference.'],
       evidenceKeys: ['lookSpec.breakdown.base.finish'],
@@ -264,7 +286,7 @@ const US_ADJUSTMENT_FALLBACK_RULES = {
       severity: 0.2,
       confidence: baseConfidence(ctx),
       becauseFacts: ['Liner direction strongly affects the eye emphasis, so keep control and stay subtle.'],
-      doActionIds: techniqueIdsForIntent('EYE_FALLBACK_SAFE_CONTROL', { market: 'US', preferenceMode: ctx.preferenceMode }),
+      ...doActionSpecForIntent('EYE_FALLBACK_SAFE_CONTROL', { market: 'US', preferenceMode: ctx.preferenceMode }),
       doActions: [],
       whyMechanism: ['A thin, short wing is forgiving and still aligns with many reference looks.'],
       evidenceKeys: ['lookSpec.breakdown.eye.intent'],
@@ -284,7 +306,7 @@ const US_ADJUSTMENT_FALLBACK_RULES = {
       severity: 0.2,
       confidence: baseConfidence(ctx),
       becauseFacts: ['Lip finish (gloss/satin/matte) is the most reliable match when details are uncertain.'],
-      doActionIds: techniqueIdsForIntent('LIP_FALLBACK_FINISH_FOCUS', { market: 'US', preferenceMode: ctx.preferenceMode }),
+      ...doActionSpecForIntent('LIP_FALLBACK_FINISH_FOCUS', { market: 'US', preferenceMode: ctx.preferenceMode }),
       doActions: [],
       whyMechanism: ['Finish carries the lip mood more reliably than precise shape tweaks.'],
       evidenceKeys: ['lookSpec.breakdown.lip.finish'],

@@ -14,11 +14,21 @@ function scoreTechniqueCard(card) {
 
 function rankMatchedTechniqueIds({ ctx, cards }) {
   const list = Array.isArray(cards) ? cards : [];
+  const indexById = new Map();
+  for (let i = 0; i < list.length; i += 1) {
+    const id = String(list[i]?.id || "");
+    if (!id) continue;
+    if (!indexById.has(id)) indexById.set(id, i);
+  }
   const matched = matchTechniques(ctx, list);
   return matched
-    .map((c) => ({ id: String(c.id || ""), score: scoreTechniqueCard(c) }))
+    .map((c) => {
+      const id = String(c.id || "");
+      return { id, score: scoreTechniqueCard(c), originalIndex: indexById.get(id) ?? Number.MAX_SAFE_INTEGER };
+    })
     .filter((x) => x.id)
-    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+    .sort((a, b) => b.score - a.score || a.originalIndex - b.originalIndex || a.id.localeCompare(b.id))
+    .map((x) => ({ id: x.id, score: x.score }));
 }
 
 function selectBestTechniqueId({ ctx, cards, fallbackId }) {
@@ -32,4 +42,3 @@ module.exports = {
   rankMatchedTechniqueIds,
   selectBestTechniqueId,
 };
-

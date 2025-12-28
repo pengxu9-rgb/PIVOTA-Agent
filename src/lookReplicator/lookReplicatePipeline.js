@@ -188,8 +188,8 @@ async function runLookReplicatePipeline(input) {
           layer2Adjustments: adjOut.adjustments,
           usedFallback: Boolean(adjOut.usedFallback),
         }),
-        usedTechniques: extractUsedTechniques(adjOut.adjustments),
-        usedRules: extractUsedRules(adjOut.adjustments),
+        usedTechniques: extractUsedTechniques(adjOut.skeletons),
+        usedRules: extractUsedRules(adjOut.skeletons),
         contextFingerprint:
           pack.market === 'US'
             ? buildContextFingerprintUS({ userFaceProfile, refFaceProfile, lookSpec })

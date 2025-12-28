@@ -20,6 +20,12 @@ function extendedAreasEnabled() {
   return parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS) === true;
 }
 
+function eyeActivitySlotEnabled() {
+  const fromEnv = parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT);
+  if (fromEnv === null) return true;
+  return fromEnv === true;
+}
+
 function buildExtendedFallbackSkeleton({ impactArea, ruleId, intentId }) {
   const doActionIds = getTechniqueIdsForIntent(intentId, 'US') ?? [];
   return AdjustmentSkeletonV0Schema.parse({
@@ -29,12 +35,34 @@ function buildExtendedFallbackSkeleton({ impactArea, ruleId, intentId }) {
     ruleId,
     severity: 0.15,
     confidence: 'low',
-    becauseFacts: ['Extended areas enabled: include a safe starter technique for this area.'],
+    becauseFacts: ['Extended areas enabled: include a minimal safe set of techniques for this area.'],
+    doActionSelection: 'sequence',
     ...(doActionIds.length ? { doActionIds } : {}),
     doActions: [],
-    whyMechanism: ['A single conservative technique keeps output stable while expanding coverage.'],
+    whyMechanism: ['A minimal conservative set keeps output stable while expanding coverage.'],
     evidenceKeys: ['flag:LAYER2_ENABLE_EXTENDED_AREAS'],
     tags: ['extended_area', 'fallback'],
+  });
+}
+
+function buildEyeLinerActivitySlotSkeleton() {
+  const doActionIds = getTechniqueIdsForIntent('EYE_LINER_ACTIVITY_PICK', 'US') ?? [];
+  if (!doActionIds.length) return null;
+
+  return AdjustmentSkeletonV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    impactArea: 'eye',
+    ruleId: 'EYE_LINER_ACTIVITY_SLOT',
+    severity: 0.1,
+    confidence: 'low',
+    becauseFacts: ['Optional: add one macro activity technique card after the micro-steps.'],
+    doActionSelection: 'choose_one',
+    doActionIds,
+    doActions: [],
+    whyMechanism: ['Choose exactly one activity card to avoid mixing granularity inside the micro-step sequence.'],
+    evidenceKeys: ['intent:EYE_LINER_ACTIVITY_PICK', 'lookSpec.breakdown.eye.linerDirection.direction'],
+    tags: ['activity_slot', 'eye_liner'],
   });
 }
 
@@ -77,8 +105,13 @@ function runAdjustmentRulesUS(input) {
     outByArea[area] = AdjustmentSkeletonV0Schema.parse(chosen);
   }
 
+  const eyeActivitySlot =
+    eyeActivitySlotEnabled() && outByArea.eye?.ruleId === 'EYE_LINER_DIRECTION_ADAPT'
+      ? buildEyeLinerActivitySlotSkeleton()
+      : null;
+
   if (!extendedAreasEnabled()) {
-    return [outByArea.base, outByArea.eye, outByArea.lip];
+    return [outByArea.base, outByArea.eye, ...(eyeActivitySlot ? [eyeActivitySlot] : []), outByArea.lip];
   }
 
   const prep = buildExtendedFallbackSkeleton({ impactArea: 'prep', ruleId: 'PREP_FALLBACK_SAFE', intentId: 'PREP_FALLBACK_SAFE' });
@@ -94,7 +127,16 @@ function runAdjustmentRulesUS(input) {
     intentId: 'BLUSH_FALLBACK_SAFE',
   });
 
-  return [prep, outByArea.base, contour, brow, outByArea.eye, blush, outByArea.lip];
+  return [
+    prep,
+    outByArea.base,
+    contour,
+    brow,
+    outByArea.eye,
+    ...(eyeActivitySlot ? [eyeActivitySlot] : []),
+    blush,
+    outByArea.lip,
+  ];
 }
 
 module.exports = {

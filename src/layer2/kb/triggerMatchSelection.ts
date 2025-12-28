@@ -17,11 +17,26 @@ export function rankMatchedTechniqueIds(input: {
   ctx: TechniqueMatchContext;
   cards: readonly TechniqueCardV0[];
 }): Array<{ id: string; score: number }> {
+  const indexById = new Map<string, number>();
+  for (let i = 0; i < input.cards.length; i += 1) {
+    const id = String((input.cards[i] as any)?.id || "");
+    if (!id) continue;
+    if (!indexById.has(id)) indexById.set(id, i);
+  }
+
   const matched = matchTechniques(input.ctx, input.cards);
   return matched
-    .map((c) => ({ id: String((c as any).id || ""), score: scoreTechniqueCard(c) }))
+    .map((c) => {
+      const id = String((c as any).id || "");
+      return {
+        id,
+        score: scoreTechniqueCard(c),
+        originalIndex: indexById.get(id) ?? Number.MAX_SAFE_INTEGER,
+      };
+    })
     .filter((x) => x.id)
-    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+    .sort((a, b) => b.score - a.score || a.originalIndex - b.originalIndex || a.id.localeCompare(b.id))
+    .map((x) => ({ id: x.id, score: x.score }));
 }
 
 export function selectBestTechniqueId(input: {
@@ -33,4 +48,3 @@ export function selectBestTechniqueId(input: {
   if (ranked.length) return { selectedId: ranked[0].id, ranked };
   return { selectedId: String(input.fallbackId || ""), ranked: [] };
 }
-

@@ -63,9 +63,13 @@ export function renderSkeletonFromKB(
 
   const out = inputSkeletons.map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
+    const selection = s.doActionSelection ?? "sequence";
     const selectedActionIds =
-      triggerMatchingEnabled && doActionIds.length > 1
+      selection === "choose_one"
         ? (() => {
+            if (!doActionIds.length) return [];
+            if (!triggerMatchingEnabled || doActionIds.length === 1) return [doActionIds[0]];
+
             const candidateCards = [];
             const missingIds: string[] = [];
             for (const id of doActionIds) {
