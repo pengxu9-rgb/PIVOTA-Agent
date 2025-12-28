@@ -76,6 +76,17 @@ const LookReplicateResultV0Schema = z
 
     kit: KitPlanV0Schema,
 
+    techniqueRefs: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            area: AdjustmentCandidateAreaV0Schema,
+          })
+          .strict(),
+      )
+      .optional(),
+
     warnings: z.array(z.string().min(1)).optional(),
     share: ShareInfoV0Schema.optional(),
     commerceEnabled: z.boolean().optional(),

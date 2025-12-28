@@ -39,6 +39,12 @@ function normalizePreferenceMode(v) {
   return 'structure';
 }
 
+function parseEnvBool(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (!s) return false;
+  return ['1', 'true', 'yes', 'y', 'on'].includes(s);
+}
+
 function toResultAdjustments(layer2Adjustments) {
   return layer2Adjustments.map((a) => ({
     impactArea: a.impactArea,
@@ -151,6 +157,9 @@ async function runLookReplicatePipeline(input) {
   ].filter(Boolean);
 
   const candidateOut = buildAdjustmentCandidates({ layer2Adjustments: adjOut.adjustments });
+  const includeTechniqueRefs =
+    parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT) ||
+    parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS);
 
   const result = LookReplicateResultV0Schema.parse({
     schemaVersion: 'v0',
@@ -165,6 +174,7 @@ async function runLookReplicatePipeline(input) {
     adjustments: toResultAdjustments(adjOut.adjustments),
     steps: stepsOut.steps,
     kit: kitPlan,
+    ...(includeTechniqueRefs ? { techniqueRefs: extractUsedTechniques(adjOut.skeletons) } : {}),
     ...(candidateOut.adjustmentCandidates ? { adjustmentCandidates: candidateOut.adjustmentCandidates } : {}),
     ...(candidateOut.experiment ? { experiment: candidateOut.experiment } : {}),
     ...(candidateOut.experiments ? { experiments: candidateOut.experiments } : {}),

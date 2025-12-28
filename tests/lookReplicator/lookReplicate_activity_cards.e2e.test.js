@@ -36,6 +36,12 @@ function collectUsedTechniqueIds(telemetrySample) {
   return stableSort(Array.from(new Set(ids)));
 }
 
+function collectResultTechniqueIds(result) {
+  const refs = Array.isArray(result?.techniqueRefs) ? result.techniqueRefs : [];
+  const ids = refs.map((r) => String(r?.id || "").trim()).filter(Boolean);
+  return stableSort(Array.from(new Set(ids)));
+}
+
 function summarizePipelineSelection(telemetrySample) {
   const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
     ? telemetrySample.replayContext.adjustmentSkeletons
@@ -172,6 +178,7 @@ describe("look-replicator activity cards reachability (production path)", () => 
     });
 
     const telemetrySample = out?.telemetrySample;
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
     const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
       ? telemetrySample.replayContext.adjustmentSkeletons
       : [];
@@ -194,6 +201,13 @@ describe("look-replicator activity cards reachability (production path)", () => 
     expect(expectedMacro).toContain(slotRefs[0]);
     // Deterministic fallback when matching is OFF: pick the first candidate in intents list.
     expect(slotRefs[0]).toBe("US_eye_liner_daily_upwing_01-en");
+
+    // User-visible technique refs: includes micro + exactly one macro.
+    const macroInResult = resultTechniqueIds.filter((id) => id.startsWith("US_eye_") && id.includes("liner"));
+    const microInResult = resultTechniqueIds.filter((id) => id.startsWith("T_EYE_"));
+    expect(microInResult.length).toBeGreaterThanOrEqual(3);
+    expect(macroInResult).toHaveLength(1);
+    expect(expectedMacro).toContain(macroInResult[0]);
   });
 
   test("EN: eye-liner activity slot still returns exactly one macro card (matching ON)", async () => {
@@ -238,6 +252,7 @@ describe("look-replicator activity cards reachability (production path)", () => 
     });
 
     const telemetrySample = out?.telemetrySample;
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
     const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
       ? telemetrySample.replayContext.adjustmentSkeletons
       : [];
@@ -248,6 +263,10 @@ describe("look-replicator activity cards reachability (production path)", () => 
     const slotRefs = Array.isArray(slot?.techniqueRefs) ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
     expect(slotRefs).toHaveLength(1);
     expect(expectedMacro).toContain(slotRefs[0]);
+
+    const macroInResult = resultTechniqueIds.filter((id) => id.startsWith("US_eye_") && id.includes("liner"));
+    expect(macroInResult).toHaveLength(1);
+    expect(macroInResult[0]).toMatch(/-zh$/);
   });
 
   test("EN: base-fix + lip-shaping activity techniques are rendered via intents_v0.json", async () => {
@@ -310,12 +329,16 @@ describe("look-replicator activity cards reachability (production path)", () => 
     });
 
     const telemetrySample = out?.telemetrySample;
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
     const techniqueRefs = collectTechniqueRefs(telemetrySample);
     const found = expected.filter((id) => techniqueRefs.includes(id));
 
     if (!found.length) {
       throw new Error(buildFailureDiagnostic({ name: "EN/extended-areas", expectedActivityIds: expected, telemetrySample }));
     }
+
+    const foundInResult = expected.filter((id) => resultTechniqueIds.includes(id));
+    expect(foundInResult.length).toBeGreaterThan(0);
   });
 
   test("ZH: extended areas resolve to -zh via locale when flag enabled", async () => {
@@ -334,12 +357,16 @@ describe("look-replicator activity cards reachability (production path)", () => 
     });
 
     const telemetrySample = out?.telemetrySample;
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
     const techniqueRefs = collectTechniqueRefs(telemetrySample);
     const found = expected.filter((id) => techniqueRefs.includes(id));
 
     if (!found.length) {
       throw new Error(buildFailureDiagnostic({ name: "ZH/extended-areas", expectedActivityIds: expected, telemetrySample }));
     }
+
+    const foundInResult = expected.filter((id) => resultTechniqueIds.includes(id));
+    expect(foundInResult.length).toBeGreaterThan(0);
   });
 
   test("Trigger matching OFF: base skeleton renders multiple techniqueRefs", async () => {

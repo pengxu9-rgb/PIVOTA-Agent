@@ -29,9 +29,7 @@ function extendedAreasEnabled(): boolean {
 }
 
 function eyeActivitySlotEnabled(): boolean {
-  const fromEnv = parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT);
-  if (fromEnv === null) return true;
-  return fromEnv === true;
+  return parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT) === true;
 }
 
 function buildExtendedFallbackSkeleton(input: { impactArea: AdjustmentSkeletonV0["impactArea"]; ruleId: string; intentId: string }): AdjustmentSkeletonV0 {

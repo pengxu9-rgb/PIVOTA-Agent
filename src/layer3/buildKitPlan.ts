@@ -118,7 +118,7 @@ export async function buildKitPlan(input: {
   if (market !== "US" && market !== "JP") throw new Error("MARKET_NOT_SUPPORTED");
 
   const versions = engineVersionFor(market);
-  const debugTriggerMatch = String(process.env.LAYER2_TRIGGER_MATCH_DEBUG || "").trim() === "1";
+  const debugTriggerMatch = String(process.env.LAYER3_TRIGGER_MATCH_DEBUG || "").trim() === "1";
 
   if (market === "JP") {
     if (input.commerceEnabled !== false) throw new Error("MARKET_NOT_SUPPORTED");

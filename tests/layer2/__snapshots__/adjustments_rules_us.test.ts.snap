@@ -73,35 +73,6 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns base/eye/
   },
   {
     "becauseFacts": [
-      "Optional: add one macro activity technique card after the micro-steps.",
-    ],
-    "confidence": "low",
-    "doActionIds": [
-      "US_eye_liner_daily_upwing_01-en",
-      "US_eye_liner_light_mixed_01-en",
-      "US_eye_liner_winged_western_01-en",
-    ],
-    "doActionSelection": "choose_one",
-    "doActions": [],
-    "evidenceKeys": [
-      "intent:EYE_LINER_ACTIVITY_PICK",
-      "lookSpec.breakdown.eye.linerDirection.direction",
-    ],
-    "impactArea": "eye",
-    "market": "US",
-    "ruleId": "EYE_LINER_ACTIVITY_SLOT",
-    "schemaVersion": "v0",
-    "severity": 0.1,
-    "tags": [
-      "activity_slot",
-      "eye_liner",
-    ],
-    "whyMechanism": [
-      "Choose exactly one activity card to avoid mixing granularity inside the micro-step sequence.",
-    ],
-  },
-  {
-    "becauseFacts": [
       "The reference lip finish is glossy.",
       "A center-focused gloss effect is a safe way to match finish and enhance shape without over-lining.",
     ],

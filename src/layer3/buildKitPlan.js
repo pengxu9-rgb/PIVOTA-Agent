@@ -81,7 +81,7 @@ async function buildKitPlan(input) {
   const { market, locale, lookSpec } = input;
   if (market !== 'US' && market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
   const versions = engineVersionFor(market);
-  const debugTriggerMatch = String(process.env.LAYER2_TRIGGER_MATCH_DEBUG || '').trim() === '1';
+  const debugTriggerMatch = String(process.env.LAYER3_TRIGGER_MATCH_DEBUG || '').trim() === '1';
 
   // JP internal experiment: commerce is disabled; return role-based placeholders without blocking Layer2.
   if (market === 'JP' && input.commerceEnabled === false) {
