@@ -3,6 +3,12 @@ const path = require('path');
 const { readDictJson } = require('../src/layer2/dicts/loadDicts');
 const { loadTechniqueKB } = require('../src/layer2/kb/loadTechniqueKB');
 const { isTriggerKeyAllowed } = require('../src/layer2/dicts/triggerKeys');
+const { parseAllowlist, parseExternalKeys, buildTriggerProducibilityReport } = require('../src/layer2/kb/triggerProducibility');
+
+const { LookSpecV0Schema } = require('../src/layer2/schemas/lookSpecV0');
+const { LookSpecV1Schema } = require('../src/layer2/schemas/lookSpecV1');
+const { FaceProfileV0Schema } = require('../src/layer1/schemas/faceProfileV0');
+const { SimilarityReportV0Schema } = require('../src/layer1/schemas/similarityReportV0');
 
 function fail(message) {
   // eslint-disable-next-line no-console
@@ -254,6 +260,45 @@ function lintTechniqueKBTriggers(market) {
   if (bad === 0) ok(`Technique KB ${market}: all trigger keys are whitelisted.`);
 }
 
+function lintTriggerExternalKeysV0() {
+  const dictFile = 'trigger_external_keys_v0.json';
+  const dict = readDictJson(dictFile);
+  if (dict?.schemaVersion !== 'v0') fail(`${dictFile}: schemaVersion must be "v0".`);
+  const keys = Array.isArray(dict?.externalKeys) ? dict.externalKeys : [];
+  for (const k of keys) {
+    if (typeof k !== 'string' || !k.trim()) fail(`${dictFile}: externalKeys contains empty entry.`);
+    if (!isAsciiString(k)) fail(`${dictFile}: externalKeys must be ASCII (got ${JSON.stringify(k)}).`);
+  }
+  ok(`Validated ${dictFile}: external trigger keys (${keys.length}).`);
+}
+
+function lintTechniqueKBTriggerProducibility(market) {
+  const kb = loadTechniqueKB(market);
+  const allowUnproducibleKeys = parseAllowlist(readDictJson('trigger_producibility_allowlist_v0.json'));
+  const externalKeys = parseExternalKeys(readDictJson('trigger_external_keys_v0.json'));
+
+  const rootSchemas = {
+    lookSpec: [LookSpecV0Schema, LookSpecV1Schema],
+    userFaceProfile: [FaceProfileV0Schema],
+    refFaceProfile: [FaceProfileV0Schema],
+    similarityReport: [SimilarityReportV0Schema],
+  };
+
+  const report = buildTriggerProducibilityReport({
+    market,
+    kbCards: kb.list,
+    isTriggerKeyAllowed,
+    allowUnproducibleKeys: [...allowUnproducibleKeys, ...externalKeys],
+    rootSchemas,
+  });
+
+  if (report.summary.unproducibleKeysCount > 0) {
+    fail(`Technique KB ${market}: found ${report.summary.unproducibleKeysCount} unproducible trigger keys (see scripts/lint-kb-trigger-producibility.js --market ${market} --json).`);
+  } else {
+    ok(`Technique KB ${market}: all trigger keys are producible from contracts.`);
+  }
+}
+
 function lintLookSpecLexicon() {
   lintLookSpecLexiconFile('lookspec_lexicon_v0.json', 'v0');
   lintLookSpecLexiconFile('lookspec_lexicon_v1.json', 'v1');
@@ -269,6 +314,7 @@ function main() {
   ok(`cwd=${path.resolve(process.cwd())}`);
 
   lintTriggerKeysDict();
+  lintTriggerExternalKeysV0();
   lintLookSpecLexicon();
 
   lintVibeTags('US');
@@ -283,6 +329,8 @@ function main() {
   lintIntentSelectionV0();
   lintTechniqueKBTriggers('US');
   lintTechniqueKBTriggers('JP');
+  lintTechniqueKBTriggerProducibility('US');
+  lintTechniqueKBTriggerProducibility('JP');
 }
 
 main();

@@ -13,7 +13,8 @@ const LookSpecBreakdownAreaV1Schema = z
   .strict();
 
 const LookSpecBreakdownEyeV1Schema = LookSpecBreakdownAreaV1Schema.extend({
-  linerDirection: LookSpecLinerDirectionSchema.optional(),
+  linerDirection: LookSpecLinerDirectionSchema.default({ direction: 'unknown' }),
+  shadowShape: z.string().min(1).optional(),
 }).strict();
 
 const LookSpecBreakdownContourV1Schema = LookSpecBreakdownAreaV1Schema.extend({

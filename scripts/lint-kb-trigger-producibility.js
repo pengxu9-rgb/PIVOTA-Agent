@@ -11,7 +11,7 @@ const { LookSpecV1Schema } = require('../src/layer2/schemas/lookSpecV1');
 const { FaceProfileV0Schema } = require('../src/layer1/schemas/faceProfileV0');
 const { SimilarityReportV0Schema } = require('../src/layer1/schemas/similarityReportV0');
 
-const { parseAllowlist, buildTriggerProducibilityReport } = require('../src/layer2/kb/triggerProducibility');
+const { parseAllowlist, parseExternalKeys, buildTriggerProducibilityReport } = require('../src/layer2/kb/triggerProducibility');
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -54,6 +54,13 @@ function readAllowlistDict() {
   return parseAllowlist(raw);
 }
 
+function readExternalKeysDict() {
+  const filePath = path.join(__dirname, '..', 'src', 'layer2', 'dicts', 'trigger_external_keys_v0.json');
+  if (!fs.existsSync(filePath)) return [];
+  const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  return parseExternalKeys(raw);
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const market = String(args.market || args.m || args._[0] || '').trim().toUpperCase();
@@ -72,7 +79,7 @@ function main() {
   process.env.ENABLE_STARTER_KB = includeStarter ? '1' : '0';
 
   const kb = loadTechniqueKB(market);
-  const allowUnproducibleKeys = readAllowlistDict();
+  const allowUnproducibleKeys = [...readAllowlistDict(), ...readExternalKeysDict()];
 
   const rootSchemas = {
     lookSpec: [LookSpecV0Schema, LookSpecV1Schema],
