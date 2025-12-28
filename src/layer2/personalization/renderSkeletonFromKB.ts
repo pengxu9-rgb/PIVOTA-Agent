@@ -3,6 +3,15 @@ import type { TechniqueKB } from "../kb/loadTechniqueKB";
 import type { TechniqueMatchContext } from "../kb/evalTechniqueTriggers";
 import { buildRoleNormalizer } from "../dicts/roles";
 import { resolveTechniqueCardForLanguage } from "../kb/resolveTechniqueCardForLanguage";
+import { selectBestTechniqueId } from "../kb/triggerMatchSelection";
+
+function parseEnvBool(v: unknown): boolean | null {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return null;
+  if (["1", "true", "yes", "y", "on"].includes(s)) return true;
+  if (["0", "false", "no", "n", "off"].includes(s)) return false;
+  return null;
+}
 
 function uniqueStrings(items: readonly string[]): string[] {
   return Array.from(new Set(items.map((s) => String(s || "").trim()).filter(Boolean)));
@@ -49,15 +58,52 @@ export function renderSkeletonFromKB(
   let usedFallback = false;
   const market = ctx.market === "JP" ? "JP" : "US";
   const roleNormalizer = buildRoleNormalizer();
+  const triggerMatchingEnabled = parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
+  const triggerMatchDebug = parseEnvBool(process.env.LAYER2_TRIGGER_MATCH_DEBUG) === true;
 
   const out = inputSkeletons.map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
+    const selectedActionIds =
+      triggerMatchingEnabled && doActionIds.length > 1
+        ? (() => {
+            const candidateCards = [];
+            const missingIds: string[] = [];
+            for (const id of doActionIds) {
+              const card = kb.byId.get(String(id));
+              if (!card) {
+                missingIds.push(String(id));
+                continue;
+              }
+              if (card.market !== market) continue;
+              if (card.area !== s.impactArea) continue;
+              candidateCards.push(card);
+            }
+
+            const { selectedId, ranked } = selectBestTechniqueId({
+              ctx,
+              cards: candidateCards,
+              fallbackId: doActionIds[0],
+            });
+
+            if (triggerMatchDebug) {
+              const rankedPreview = ranked
+                .slice(0, 5)
+                .map((r) => `${r.id}:${r.score}`)
+                .join(",");
+              warnings.push(
+                `[trigger_match] area=${s.impactArea} ruleId=${String(s.ruleId)} selected=${selectedId || "(empty)"} matched=${rankedPreview || "(none)"} missingCandidates=${missingIds.length}`,
+              );
+            }
+
+            return selectedId ? [selectedId] : [doActionIds[0]];
+          })()
+        : doActionIds;
     const variables = defaultVariablesForArea(s.impactArea);
     const doActions: string[] = [];
     const techniqueRefs: Array<{ id: string; area: AdjustmentSkeletonImpactArea }> = [];
     const tags: string[] = Array.isArray(s.tags) ? [...s.tags] : [];
 
-    for (const id of doActionIds) {
+    for (const id of selectedActionIds) {
       const resolved = resolveTechniqueCardForLanguage({
         id,
         kb,

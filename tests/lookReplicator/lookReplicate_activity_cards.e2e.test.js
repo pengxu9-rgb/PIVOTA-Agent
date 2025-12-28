@@ -103,7 +103,7 @@ function buildFailureDiagnostic({ name, expectedActivityIds, telemetrySample }) 
   ].join("\n");
 }
 
-async function runPipelineWithFixture({ locale, lookSpecFixturePath, enableExtendedAreas }) {
+async function runPipelineWithFixture({ locale, lookSpecFixturePath, enableExtendedAreas, enableTriggerMatching }) {
   const referenceImagePath = writeTempJpeg();
   const envBackup = { ...process.env };
 
@@ -120,6 +120,7 @@ async function runPipelineWithFixture({ locale, lookSpecFixturePath, enableExten
     process.env.ENABLE_STARTER_KB = "0";
     process.env.EXPERIMENT_MORE_CANDIDATES_ENABLED = "0";
     process.env.LAYER2_ENABLE_EXTENDED_AREAS = enableExtendedAreas ? "1" : "0";
+    process.env.LAYER2_ENABLE_TRIGGER_MATCHING = enableTriggerMatching ? "1" : "0";
 
     let runLookReplicatePipeline = null;
     await new Promise((resolve, reject) => {
@@ -283,5 +284,55 @@ describe("look-replicator activity cards reachability (production path)", () => 
     if (!found.length) {
       throw new Error(buildFailureDiagnostic({ name: "ZH/extended-areas", expectedActivityIds: expected, telemetrySample }));
     }
+  });
+
+  test("Trigger matching OFF: base skeleton renders multiple techniqueRefs", async () => {
+    const out = await runPipelineWithFixture({
+      locale: "en-US",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      enableTriggerMatching: false,
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
+      ? telemetrySample.replayContext.adjustmentSkeletons
+      : [];
+    const base = skeletons.find((s) => String(s?.impactArea || "") === "base");
+    const refs = Array.isArray(base?.techniqueRefs) ? base.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
+    expect(refs.length).toBeGreaterThan(1);
+    expect(refs).toContain("T_BASE_BUILD_COVERAGE_THIN_PASSES");
+    expect(refs).toContain("US_base_fix_caking_01-en");
+  });
+
+  test("Trigger matching ON (EN): selects a single best base technique", async () => {
+    const out = await runPipelineWithFixture({
+      locale: "en-US",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      enableTriggerMatching: true,
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
+      ? telemetrySample.replayContext.adjustmentSkeletons
+      : [];
+    const base = skeletons.find((s) => String(s?.impactArea || "") === "base");
+    const refs = Array.isArray(base?.techniqueRefs) ? base.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
+    expect(refs).toEqual(["US_base_fix_caking_01-en"]);
+  });
+
+  test("Trigger matching ON (ZH): resolves chosen base technique to -zh via locale", async () => {
+    const out = await runPipelineWithFixture({
+      locale: "zh-CN",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      enableTriggerMatching: true,
+    });
+
+    const telemetrySample = out?.telemetrySample;
+    const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
+      ? telemetrySample.replayContext.adjustmentSkeletons
+      : [];
+    const base = skeletons.find((s) => String(s?.impactArea || "") === "base");
+    const refs = Array.isArray(base?.techniqueRefs) ? base.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
+    expect(refs).toEqual(["US_base_fix_caking_01-zh"]);
   });
 });
