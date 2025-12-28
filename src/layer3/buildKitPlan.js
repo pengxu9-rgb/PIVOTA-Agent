@@ -81,6 +81,7 @@ async function buildKitPlan(input) {
   const { market, locale, lookSpec } = input;
   if (market !== 'US' && market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
   const versions = engineVersionFor(market);
+  const debugTriggerMatch = String(process.env.LAYER2_TRIGGER_MATCH_DEBUG || '').trim() === '1';
 
   // JP internal experiment: commerce is disabled; return role-based placeholders without blocking Layer2.
   if (market === 'JP' && input.commerceEnabled === false) {
@@ -123,7 +124,7 @@ async function buildKitPlan(input) {
 
   function buildArea(category, rawCandidates) {
     if (!rawCandidates.length) {
-      warnings.push(`NO_CANDIDATES:${category}`);
+      if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=0`);
       return {
         best: makePlaceholder({ market, category, locale, kind: 'best', lookSpec, reason: 'NO_CANDIDATES' }),
         dupe: makePlaceholder({ market, category, locale, kind: 'dupe', lookSpec, reason: 'NO_CANDIDATES' }),
@@ -135,7 +136,13 @@ async function buildKitPlan(input) {
       .filter(Boolean);
 
     const ranked = rankCandidates({ category, lookSpec, candidates: normalized });
-    for (const w of ranked.warnings) warnings.push(`${w}:${category}`);
+    for (const w of ranked.warnings) {
+      if (w === 'NO_CANDIDATES') {
+        if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=${normalized.length}`);
+      } else {
+        warnings.push(`${w}:${category}`);
+      }
+    }
 
     const best = ranked.best ?? normalizeSkuToAttributes({ market, locale, category, sku: rawCandidates[0] });
     const dupe =

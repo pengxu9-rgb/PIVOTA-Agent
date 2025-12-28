@@ -87,6 +87,13 @@ describe("dicts integrity", () => {
         const ids = intent.markets[market].techniqueIds;
         for (const id of ids) {
           expect(knownTechniqueIds.has(id) || placeholderIds.has(id)).toBe(true);
+
+          if (id.endsWith("-en")) {
+            expect(knownTechniqueIds.has(`${id.slice(0, -3)}-zh`)).toBe(true);
+          }
+          if (id.endsWith("-zh")) {
+            expect(knownTechniqueIds.has(`${id.slice(0, -3)}-en`)).toBe(true);
+          }
         }
       }
     }

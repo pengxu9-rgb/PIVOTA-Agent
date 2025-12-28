@@ -15,6 +15,11 @@ function ok(message) {
   console.log(`[lint:dicts] ${message}`);
 }
 
+function warn(message) {
+  // eslint-disable-next-line no-console
+  console.warn(`[lint:dicts] WARN: ${message}`);
+}
+
 function isAsciiString(value) {
   if (typeof value !== 'string') return false;
   for (const ch of value) {
@@ -108,6 +113,13 @@ function lintIntents() {
   lintIntentsFile('intents_v1.json', 'v1');
 }
 
+function getPairedLanguageId(id) {
+  const s = String(id || '');
+  if (s.endsWith('-en')) return `${s.slice(0, -3)}-zh`;
+  if (s.endsWith('-zh')) return `${s.slice(0, -3)}-en`;
+  return null;
+}
+
 function lintIntentsFile(dictFile, version) {
   const dict = readDictJson(dictFile);
   if (dict?.schemaVersion !== version) fail(`${dictFile}: schemaVersion must be "${version}".`);
@@ -160,12 +172,53 @@ function lintIntentsFile(dictFile, version) {
             `${dictFile}: intent ${intent?.id} markets.${market}.techniqueIds references missing technique id ${tid}.`,
           );
         }
+
+        const paired = getPairedLanguageId(tid);
+        if (paired && exists) {
+          const strictPairs = String(process.env.KB_LINT_REQUIRE_LANG_PAIRS || '').trim() === '1';
+          const pairExists = knownTechniqueIds[market].has(paired);
+          if (!pairExists) {
+            const msg = `${dictFile}: intent ${intent?.id} markets.${market}.techniqueIds references bilingual id ${tid} but missing pair ${paired}.`;
+            if (strictPairs) fail(msg);
+            else warn(msg);
+          }
+        }
       }
     }
   }
 
   // A tiny sanity check: if something references a placeholder, it must be declared.
   ok(`Validated ${dictFile}: intents (${intentIdSet.size}) and placeholders (${placeholderSet.size}).`);
+}
+
+function lintIntentSelectionV0() {
+  const dictFile = 'intent_selection_v0.json';
+  const dict = readDictJson(dictFile);
+  if (dict?.schemaVersion !== 'v0') fail(`${dictFile}: schemaVersion must be "v0".`);
+  const markets = dict?.markets || {};
+  if (!markets?.US || !markets?.JP) fail(`${dictFile}: markets must include US and JP.`);
+
+  const allowed = new Set(['sequence', 'choose_one']);
+  const intentsV0 = readDictJson('intents_v0.json');
+  const knownIntentIds = new Set((Array.isArray(intentsV0?.intents) ? intentsV0.intents : []).map((i) => i?.id).filter(Boolean));
+
+  for (const market of ['US', 'JP']) {
+    const mapping = markets[market] || {};
+    if (typeof mapping !== 'object' || Array.isArray(mapping) || mapping == null) {
+      fail(`${dictFile}: markets.${market} must be an object mapping intentId -> selection.`);
+      continue;
+    }
+    for (const [intentId, sel] of Object.entries(mapping)) {
+      if (!knownIntentIds.has(intentId)) {
+        fail(`${dictFile}: markets.${market} contains unknown intentId ${intentId}.`);
+      }
+      if (!allowed.has(String(sel))) {
+        fail(`${dictFile}: markets.${market}.${intentId} must be one of ${Array.from(allowed).join('|')} (got ${JSON.stringify(sel)}).`);
+      }
+    }
+  }
+
+  ok(`Validated ${dictFile}: intent selection policy.`);
 }
 
 function lintTriggerKeysDict() {
@@ -227,6 +280,7 @@ function main() {
   ok('Validated roles dict.');
 
   lintIntents();
+  lintIntentSelectionV0();
   lintTechniqueKBTriggers('US');
   lintTechniqueKBTriggers('JP');
 }

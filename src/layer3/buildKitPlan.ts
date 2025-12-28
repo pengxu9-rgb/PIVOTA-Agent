@@ -118,6 +118,7 @@ export async function buildKitPlan(input: {
   if (market !== "US" && market !== "JP") throw new Error("MARKET_NOT_SUPPORTED");
 
   const versions = engineVersionFor(market);
+  const debugTriggerMatch = String(process.env.LAYER2_TRIGGER_MATCH_DEBUG || "").trim() === "1";
 
   if (market === "JP") {
     if (input.commerceEnabled !== false) throw new Error("MARKET_NOT_SUPPORTED");
@@ -161,7 +162,7 @@ export async function buildKitPlan(input: {
 
   function buildArea(category: z.infer<typeof ProductCategorySchema>, rawCandidates: RawSkuCandidate[]) {
     if (!rawCandidates.length) {
-      warnings.push(`NO_CANDIDATES:${category}`);
+      if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=0`);
       return {
         best: makePlaceholder({ market, category, locale, kind: "best", lookSpec, reason: "NO_CANDIDATES" }),
         dupe: makePlaceholder({ market, category, locale, kind: "dupe", lookSpec, reason: "NO_CANDIDATES" }),
@@ -180,7 +181,13 @@ export async function buildKitPlan(input: {
       .filter(Boolean);
 
     const ranked = rankCandidates({ category, lookSpec, candidates: normalized });
-    for (const w of ranked.warnings) warnings.push(`${w}:${category}`);
+    for (const w of ranked.warnings) {
+      if (w === "NO_CANDIDATES") {
+        if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=${normalized.length}`);
+      } else {
+        warnings.push(`${w}:${category}`);
+      }
+    }
 
     const best =
       ranked.best ??

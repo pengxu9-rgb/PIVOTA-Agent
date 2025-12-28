@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v0",
+  "markets": {
+    "US": {
+      "BASE_BUILD_COVERAGE_SPOT": "choose_one",
+      "EYE_LINER_ACTIVITY_PICK": "choose_one",
+      "LIP_FALLBACK_FINISH_FOCUS": "choose_one"
+    },
+    "JP": {}
+  }
+}

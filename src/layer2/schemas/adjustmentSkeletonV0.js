@@ -2,6 +2,7 @@ const { z } = require('zod');
 
 const AdjustmentSkeletonImpactAreaSchema = z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
 const AdjustmentSkeletonConfidenceSchema = z.enum(['high', 'medium', 'low']);
+const AdjustmentSkeletonDoActionSelectionSchema = z.enum(['sequence', 'choose_one']);
 
 const AdjustmentSkeletonV0Schema = z
   .object({
@@ -14,6 +15,7 @@ const AdjustmentSkeletonV0Schema = z
     confidence: AdjustmentSkeletonConfidenceSchema,
 
     becauseFacts: z.array(z.string().min(1)).min(1),
+    doActionSelection: AdjustmentSkeletonDoActionSelectionSchema.optional(),
     doActionIds: z.array(z.string().min(1)).min(1).optional(),
     doActions: z.array(z.string().min(1)).default([]),
     whyMechanism: z.array(z.string().min(1)).min(1),
@@ -38,5 +40,6 @@ const AdjustmentSkeletonV0Schema = z
 module.exports = {
   AdjustmentSkeletonImpactAreaSchema,
   AdjustmentSkeletonConfidenceSchema,
+  AdjustmentSkeletonDoActionSelectionSchema,
   AdjustmentSkeletonV0Schema,
 };

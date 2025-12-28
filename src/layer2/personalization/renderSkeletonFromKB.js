@@ -30,21 +30,68 @@ function normalizeMarket(v) {
 
 const { buildRoleNormalizer } = require('../dicts/roles');
 const { resolveTechniqueCardForLanguage } = require('../kb/resolveTechniqueCardForLanguage');
+const { selectBestTechniqueId } = require('../kb/triggerMatchSelection');
+
+function parseEnvBool(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (!s) return null;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(s)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(s)) return false;
+  return null;
+}
 
 function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
   const warnings = [];
   let usedFallback = false;
   const market = normalizeMarket(ctx?.market);
   const roleNormalizer = buildRoleNormalizer();
+  const triggerMatchingEnabled = parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
+  const triggerMatchDebug = parseEnvBool(process.env.LAYER2_TRIGGER_MATCH_DEBUG) === true;
 
   const out = (inputSkeletons || []).map((s) => {
     const doActionIds = Array.isArray(s.doActionIds) ? s.doActionIds : [];
+    const selection = s.doActionSelection || 'sequence';
+    const selectedActionIds =
+      selection === 'choose_one'
+        ? (() => {
+            if (!doActionIds.length) return [];
+            if (!triggerMatchingEnabled || doActionIds.length === 1) return [doActionIds[0]];
+
+            const candidateCards = [];
+            const missingIds = [];
+            for (const id of doActionIds) {
+              const card = kb?.byId?.get(String(id));
+              if (!card) {
+                missingIds.push(String(id));
+                continue;
+              }
+              if (String(card.market) !== market) continue;
+              if (card.area !== s.impactArea) continue;
+              candidateCards.push(card);
+            }
+
+            const { selectedId, ranked } = selectBestTechniqueId({
+              ctx,
+              cards: candidateCards,
+              fallbackId: doActionIds[0],
+            });
+
+            if (triggerMatchDebug) {
+              const rankedPreview = ranked.slice(0, 5).map((r) => `${r.id}:${r.score}`).join(',');
+              warnings.push(
+                `[trigger_match] area=${s.impactArea} ruleId=${String(s.ruleId)} selected=${selectedId || '(empty)'} matched=${rankedPreview || '(none)'} missingCandidates=${missingIds.length}`,
+              );
+            }
+
+            return selectedId ? [selectedId] : [doActionIds[0]];
+          })()
+        : doActionIds;
     const variables = defaultVariablesForArea(s.impactArea);
     const doActions = [];
     const techniqueRefs = [];
     const tags = Array.isArray(s.tags) ? [...s.tags] : [];
 
-    for (const id of doActionIds) {
+    for (const id of selectedActionIds) {
       const resolved = resolveTechniqueCardForLanguage({
         id,
         kb,
