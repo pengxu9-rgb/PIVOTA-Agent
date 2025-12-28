@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_colorcorrect_palette_basics_01-zh",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "矫色盘基础用法",
+    "steps": [
+      "中庭提亮用浅色；阴影只在需要处用稍深色，少量即可。",
+      "泛红用绿色；暗黄可用淡紫/偏蓝矫色（按需）。",
+      "黑眼圈用桃/鲑色；痘印斑点用接近肤色遮瑕。",
+      "可混合：绿色+遮瑕盖泛红；桃色+提亮覆盖青紫色暗沉。",
+      "先回温再晕染，直到看不到明显色边。"
+    ]
+  },
+  "rationaleTemplate": [
+    "先校正底色，遮瑕更自然更贴肤。",
+    "回温+充分晕染能避免局部过饱和、斑驳。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_10",
+    "draft"
+  ]
+}

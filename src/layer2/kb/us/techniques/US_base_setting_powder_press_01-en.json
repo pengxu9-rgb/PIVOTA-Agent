@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_setting_powder_press_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Press powder to lock base",
+    "steps": [
+      "Pick up loose powder with puff.",
+      "Press into oily zones first.",
+      "Dust off excess with a brush.",
+      "Mist setting spray lightly."
+    ]
+  },
+  "rationaleTemplate": [
+    "Pressing increases longevity and oil control.",
+    "Mist helps powders melt into skin."
+  ],
+  "productRoleHints": [
+    "loose_powder",
+    "puff",
+    "brush",
+    "setting_spray"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 3",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

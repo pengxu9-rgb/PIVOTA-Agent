@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_inner_corner_fine_liner_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "内眼角细眼线",
+    "steps": [
+      "用细头眼线笔画内眼角。",
+      "顺着睫毛方向画短线即可。",
+      "贴近睫毛根部，不要加粗。",
+      "用棉签轻微修正。"
+    ]
+  },
+  "rationaleTemplate": [
+    "细笔头更不易失手。",
+    "小范围调整更自然。"
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 7",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_mix_map_multitone_01-zh",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "多色遮瑕调色思路",
+    "steps": [
+      "用“遮瑕色+肤色遮瑕”调和，覆盖痘印/斑点。",
+      "用“提亮色+遮瑕”覆盖泪沟与法令纹阴影。",
+      "嘴角下垂用更深色轻提拉；轻微黑眼圈用桃色调和。",
+      "用更深的中性阴影色少量修饰鼻梁阴影。",
+      "轻点拍开，少量多次；只在易卡纹处定妆。"
+    ]
+  },
+  "rationaleTemplate": [
+    "按问题调色能用更少用量达到更干净的遮盖。",
+    "薄涂更不易显干、显厚。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 14",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

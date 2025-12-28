@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_prep_moisturize_01-zh",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "妆前保湿",
+    "steps": [
+      "干燥部位薄涂保湿乳。",
+      "等 1–2 分钟吸收。",
+      "如有浮油，用纸巾轻压带走多余油分。"
+    ]
+  },
+  "rationaleTemplate": [
+    "补水可减少卡粉、起皮。",
+    "薄涂更贴肤。"
+  ],
+  "productRoleHints": [
+    "moisturizer",
+    "tissue"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 1",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

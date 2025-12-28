@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_soft_diffuse_01-zh",
+  "area": "blush",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "腮红柔雾晕染",
+    "steps": [
+      "腮红点在苹果肌上方。",
+      "向太阳穴方向轻轻晕开。",
+      "边缘保持透明感。",
+      "需要时薄定妆。"
+    ]
+  },
+  "rationaleTemplate": [
+    "边缘柔和更自然。",
+    "薄层能避免结块显脏。"
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush",
+    "powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 8",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

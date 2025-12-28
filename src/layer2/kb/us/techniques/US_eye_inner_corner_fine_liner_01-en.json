@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_inner_corner_fine_liner_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Fine inner-corner liner",
+    "steps": [
+      "Use a thin tip liner for inner corner.",
+      "Draw a short line following lash direction.",
+      "Keep it close to lash roots.",
+      "Soften mistakes with cotton swab."
+    ]
+  },
+  "rationaleTemplate": [
+    "A fine tip prevents over-thick lines.",
+    "Small adjustments keep eyes balanced."
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 7",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

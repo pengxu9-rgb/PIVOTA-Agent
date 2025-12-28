@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_fill_natural_strokes_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Natural brow fill",
+    "steps": [
+      "Brush brow hairs upward.",
+      "Fill sparse areas with light strokes.",
+      "Blend with a clean brush.",
+      "Set with clear gel if needed."
+    ]
+  },
+  "rationaleTemplate": [
+    "Hair-like strokes look natural.",
+    "Brushing blends pigment and softens edges."
+  ],
+  "productRoleHints": [
+    "brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 5",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

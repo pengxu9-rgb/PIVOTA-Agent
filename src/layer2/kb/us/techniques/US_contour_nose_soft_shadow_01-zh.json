@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_soft_shadow_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "柔和鼻影更立体",
+    "steps": [
+      "用小刷子蘸取中性阴影色。",
+      "轻扫鼻梁两侧阴影。",
+      "边缘向上晕开，不要向外扩散。",
+      "鼻梁中线点少量高光。"
+    ]
+  },
+  "rationaleTemplate": [
+    "柔和阴影能改变立体感。",
+    "控制晕染可避免显鼻翼更宽。"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "highlighter",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 4",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_two_tone_correct_brighten_01-zh",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "双色遮瑕：矫色+提亮",
+    "steps": [
+      "用矫色调中和暗沉与黑眼圈/泛红区域。",
+      "用提亮调点在泪沟、法令纹、眼袋凹陷处。",
+      "局部暗沉/痘印可将两色调和后薄涂覆盖。",
+      "轻点上脸，边缘用海绵拍开。",
+      "只在易卡纹处薄定妆，其余保持自然。"
+    ]
+  },
+  "rationaleTemplate": [
+    "矫色+提亮两步更自然、也更适合新手。",
+    "分区定妆能保留贴肤感又不易干。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 11",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

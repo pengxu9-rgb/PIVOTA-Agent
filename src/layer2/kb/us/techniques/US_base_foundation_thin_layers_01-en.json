@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_foundation_thin_layers_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.coverage",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Thin-layer foundation method",
+    "steps": [
+      "Apply foundation in small dots.",
+      "Blend outward with sponge or brush.",
+      "Build only where needed.",
+      "Set lightly on T-zone."
+    ]
+  },
+  "rationaleTemplate": [
+    "Thin layers look more skin-like.",
+    "Targeted build prevents heaviness."
+  ],
+  "productRoleHints": [
+    "foundation",
+    "sponge",
+    "brush",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 2",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

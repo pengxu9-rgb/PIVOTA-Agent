@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_classic_wing_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Classic wing liner",
+    "steps": [
+      "Map the wing angle with small strokes.",
+      "Connect to lash line in thin layers.",
+      "Fill the gap close to lashes.",
+      "Clean edge with cotton swab."
+    ]
+  },
+  "rationaleTemplate": [
+    "Layering keeps liner crisp.",
+    "Cleaning the edge sharpens the eye shape."
+  ],
+  "productRoleHints": [
+    "felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 6",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

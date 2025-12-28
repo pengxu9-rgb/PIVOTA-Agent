@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_3d_center_gloss_01-en",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "3D lip with center shine",
+    "steps": [
+      "Outline lip shape with liner.",
+      "Fill with lip color.",
+      "Blur edges with a lip brush.",
+      "Add clear gloss to center only."
+    ]
+  },
+  "rationaleTemplate": [
+    "Center shine adds volume without heavy overline.",
+    "Blurring edges makes lips look softer."
+  ],
+  "productRoleHints": [
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "clear_gloss"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 9",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_colorcorrect_palette_basics_01-en",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Color-correcting palette basics",
+    "steps": [
+      "Use a brightener for center-face; use a slightly deeper shade only for soft shadow.",
+      "Use green to neutralize redness; use lavender/blue for sallowness if needed.",
+      "Use peach/salmon for dark circles; use skin-tone concealer for spots.",
+      "Optional mixes: green+concealer for redness; peach+brightener for blue/purple circles.",
+      "Warm product first; blend until no color edges remain."
+    ]
+  },
+  "rationaleTemplate": [
+    "Correcting undertone makes concealer look seamless.",
+    "Warming and blending prevent patchy or over-pigmented spots."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_10",
+    "draft"
+  ]
+}

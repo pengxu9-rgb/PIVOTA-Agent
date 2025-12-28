@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_tone_selection_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "按问题选遮瑕色调",
+    "steps": [
+      "毛孔/小瑕疵：用接近肤色的遮瑕。",
+      "黑眼圈：先用桃/鲑色矫色再叠遮瑕。",
+      "泛红/红血丝：用绿色矫色。",
+      "泪沟/细纹：用偏黄或中性的提亮色薄薄覆盖。",
+      "点拍晕开，眼下保持薄层。"
+    ]
+  },
+  "rationaleTemplate": [
+    "选对底色更容易遮住问题，不必叠太厚。",
+    "眼下薄涂更不易卡纹。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_13",
+    "draft"
+  ]
+}

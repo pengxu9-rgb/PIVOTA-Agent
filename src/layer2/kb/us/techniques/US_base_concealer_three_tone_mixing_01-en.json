@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_three_tone_mixing_01-en",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "3-tone concealer mixing for mild flaws",
+    "steps": [
+      "Mix brightener with peach corrector to lift under-eye shadows.",
+      "Mix brightener with skin-tone concealer for nasolabial shadows and small blemishes.",
+      "Mix skin-tone concealer with a corrector to cover darker marks or redness.",
+      "Tap on with a small brush; build thin layers.",
+      "Blend edges with sponge for a skin-like finish."
+    ]
+  },
+  "rationaleTemplate": [
+    "Simple mixes cover concerns without heavy layers.",
+    "Blending edges prevents a visible patch."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_12",
+    "draft"
+  ]
+}

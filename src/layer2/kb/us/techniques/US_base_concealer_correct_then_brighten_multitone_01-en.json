@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_correct_then_brighten_multitone_01-en",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Multi-tone concealer: correct then brighten",
+    "steps": [
+      "Warm cream slightly; pick up tiny amounts with a small concealer brush.",
+      "Correct redness/blemishes with a green or neutral corrector; blend edges.",
+      "Brighten tear trough and hollows with a light neutral/peach concealer.",
+      "Add subtle contour with a deeper neutral shade; keep it soft.",
+      "For dark circles/dull spots: peach corrector first; then a brightener; press with sponge."
+    ]
+  },
+  "rationaleTemplate": [
+    "Correcting first makes brightening look cleaner.",
+    "Small amounts prevent dryness and cracking."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_15",
+    "draft"
+  ]
+}

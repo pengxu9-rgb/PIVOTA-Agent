@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_prep_moisturize_01-en",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Moisturize before makeup",
+    "steps": [
+      "Apply a light moisturizer to dry areas.",
+      "Wait 1–2 minutes to absorb.",
+      "Press off excess with tissue if needed."
+    ]
+  },
+  "rationaleTemplate": [
+    "Hydration reduces patchiness and caking.",
+    "A thin layer helps base sit smoothly."
+  ],
+  "productRoleHints": [
+    "moisturizer",
+    "tissue"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 1",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

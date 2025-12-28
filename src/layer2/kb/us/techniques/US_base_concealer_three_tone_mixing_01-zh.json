@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_three_tone_mixing_01-zh",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "三色遮瑕调色覆盖轻瑕疵",
+    "steps": [
+      "提亮色+桃色矫色：提亮眼下阴影。",
+      "提亮色+肤色遮瑕：覆盖法令纹阴影与小瑕疵。",
+      "肤色遮瑕+矫色：覆盖更深的痘印或泛红。",
+      "小刷子轻点，少量多次叠加。",
+      "边缘用海绵拍匀，妆面更贴肤。"
+    ]
+  },
+  "rationaleTemplate": [
+    "简单调色就能覆盖多种问题，不用叠太厚。",
+    "边缘拍匀能避免一块一块的遮瑕痕迹。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_12",
+    "draft"
+  ]
+}

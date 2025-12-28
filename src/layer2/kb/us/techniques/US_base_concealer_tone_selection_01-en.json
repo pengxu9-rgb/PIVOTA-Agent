@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_tone_selection_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Pick concealer tones for each concern",
+    "steps": [
+      "Use a skin-tone concealer for pores and small flaws.",
+      "Use a peach/salmon corrector for dark circles.",
+      "Use a green corrector for redness and visible capillaries.",
+      "Use a brightening yellow/neutral tone for tear trough and fine lines.",
+      "Blend by tapping; keep the under-eye layer thin."
+    ]
+  },
+  "rationaleTemplate": [
+    "Right undertone improves coverage without heaviness.",
+    "Thin under-eye layers reduce creasing."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_13",
+    "draft"
+  ]
+}

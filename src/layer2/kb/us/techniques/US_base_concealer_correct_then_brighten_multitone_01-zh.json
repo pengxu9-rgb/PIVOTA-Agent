@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_correct_then_brighten_multitone_01-zh",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "多色遮瑕：先矫色再提亮",
+    "steps": [
+      "先把膏体稍微回温，用小遮瑕刷少量取用。",
+      "发红/痘印先用绿色或中性矫色，边缘晕开。",
+      "泪沟与凹陷用浅色/桃色提亮遮瑕轻拍覆盖。",
+      "需要立体感时用更深中性阴影色轻扫，保持柔和。",
+      "重度黑眼圈/暗沉：先桃色矫色，再叠加提亮，海绵压实。"
+    ]
+  },
+  "rationaleTemplate": [
+    "先矫色再提亮，层次更干净不发灰。",
+    "少量多次能避免干裂起皮。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge"
+  ],
+  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "tags": [
+    "reviewStatus:ppt_slide_15",
+    "draft"
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_prep_primer_01-zh",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "妆前隔离/打底",
+    "steps": [
+      "毛孔与 T 区少量上妆前乳。",
+      "干燥区域减少用量。",
+      "静置 30 秒再上底妆。"
+    ]
+  },
+  "rationaleTemplate": [
+    "提升持妆与平滑度。",
+    "少量可减少搓泥。"
+  ],
+  "productRoleHints": [
+    "primer"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 1",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

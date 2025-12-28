@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_mix_map_multitone_01-en",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Multi-tone concealer mixing map",
+    "steps": [
+      "Mix a spot-concealing tone with skin-tone concealer to cover acne marks.",
+      "Mix a brightening tone with concealer for tear trough and nasolabial shadows.",
+      "Use a deeper tone to lift mouth corners; use peach mix for mild under-eye darkness.",
+      "Use a deeper neutral tone to softly contour the nose bridge (very little).",
+      "Tap to blend; keep layers thin and set only crease-prone zones."
+    ]
+  },
+  "rationaleTemplate": [
+    "Mixing tones targets each concern with less product.",
+    "Thin layers keep concealer from looking dry or heavy."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 14",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

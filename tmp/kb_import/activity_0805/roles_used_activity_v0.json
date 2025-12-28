@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "v0",
+  "rolePack": "roles_v0",
+  "generatedFrom": "TechniqueCardV0_*_activity_clean.csv",
+  "rolesUsed": [
+    {
+      "roleHint": "angled brush",
+      "normalizedRoleId": "angled_brush",
+      "why": "Precise nose contour placement at root and sides."
+    },
+    {
+      "roleHint": "blending brush",
+      "normalizedRoleId": "blending_brush",
+      "why": "Soften transitions for contour and eyeshadow."
+    },
+    { "roleHint": "brush", "normalizedRoleId": "brush", "why": "General brow/blush application and blending." },
+    {
+      "roleHint": "clear gloss",
+      "normalizedRoleId": "clear_gloss",
+      "why": "Center shine to enhance 3D effect without changing color."
+    },
+    { "roleHint": "concealer", "normalizedRoleId": "concealer", "why": "Targeted coverage and color correction steps." },
+    { "roleHint": "cotton_swab", "normalizedRoleId": "cotton_swab", "why": "Clean and sharpen liner edges; soften if needed." },
+    {
+      "roleHint": "dark shadow",
+      "normalizedRoleId": "dark_shadow",
+      "why": "Used as contour/shadow tone for nose sculpting and depth."
+    },
+    { "roleHint": "felt-tip liner", "normalizedRoleId": "felt_tip_liner", "why": "Main tool for classic and winged eyeliner." },
+    { "roleHint": "foundation", "normalizedRoleId": "foundation", "why": "Primary base layer in routines and fixes." },
+    { "roleHint": "gloss", "normalizedRoleId": "gloss", "why": "Add volume on lower lip center." },
+    { "roleHint": "highlighter", "normalizedRoleId": "highlighter", "why": "Add targeted highlight for nose dimension." },
+    { "roleHint": "lip brush", "normalizedRoleId": "lip_brush", "why": "Blend and soften lip edges for gradient." },
+    { "roleHint": "lip color", "normalizedRoleId": "lip_color", "why": "Lip shaping and fill steps." },
+    { "roleHint": "lip liner", "normalizedRoleId": "lip_liner", "why": "Sketch structure for 3D lip shaping." },
+    { "roleHint": "loose powder", "normalizedRoleId": "loose_powder", "why": "Set base with light layers for longevity." },
+    { "roleHint": "moisturizer", "normalizedRoleId": "moisturizer", "why": "Hydration prep to reduce dryness and caking." },
+    { "roleHint": "powder", "normalizedRoleId": "powder", "why": "Light setting on dry skin or general set step." },
+    { "roleHint": "primer", "normalizedRoleId": "primer", "why": "Smooth/prime to control oil or add hydration and grip." },
+    { "roleHint": "setting spray", "normalizedRoleId": "setting_spray", "why": "Spray layering to improve adhesion and melt powder." },
+    { "roleHint": "shimmer_shadow", "normalizedRoleId": "shimmer_shadow", "why": "Brighten lid center/inner corner and add sparkle." },
+    { "roleHint": "small brush", "normalizedRoleId": "small_brush", "why": "Detail placement for contour, highlight, and eye work." },
+    {
+      "roleHint": "small concealer brush",
+      "normalizedRoleId": "small_concealer_brush",
+      "why": "Precise placement and mixing of concealer."
+    },
+    { "roleHint": "sponge", "normalizedRoleId": "sponge", "why": "Tap to blend edges for skin-like finish." },
+    {
+      "roleHint": "thin felt-tip liner",
+      "normalizedRoleId": "thin_felt_tip_liner",
+      "why": "Fine tip for subtle and inner-corner liner."
+    },
+    {
+      "roleHint": "waterproof pencil",
+      "normalizedRoleId": "waterproof_pencil",
+      "why": "Lower lash/outer corner connection for mixed liner."
+    }
+  ],
+  "policy": {
+    "maxRoleHintsPerCard": 5,
+    "rejectUnknownRoleHint": true,
+    "normalization": "trim -> replace '-' with space -> collapse whitespace -> lowercase (per roles.js)"
+  }
+}

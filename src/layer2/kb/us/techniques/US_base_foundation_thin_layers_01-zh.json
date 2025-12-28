@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_foundation_thin_layers_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.coverage",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "薄涂底妆法",
+    "steps": [
+      "粉底少量点涂上脸。",
+      "海绵/粉底刷向外拍开。",
+      "需要处再局部叠加。",
+      "T 区轻定妆。"
+    ]
+  },
+  "rationaleTemplate": [
+    "薄涂更像皮肤。",
+    "局部叠加不显厚重。"
+  ],
+  "productRoleHints": [
+    "foundation",
+    "sponge",
+    "brush",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 2",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

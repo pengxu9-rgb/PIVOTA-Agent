@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_prep_primer_01-en",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Primer for smoother base",
+    "steps": [
+      "Apply primer to T-zone and pores.",
+      "Use less on dry areas.",
+      "Let it set for 30 seconds before base."
+    ]
+  },
+  "rationaleTemplate": [
+    "Primer improves grip and smooths texture.",
+    "Less product reduces pilling."
+  ],
+  "productRoleHints": [
+    "primer"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 1",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

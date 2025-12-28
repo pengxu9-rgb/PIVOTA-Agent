@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_classic_wing_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "经典上扬眼线",
+    "steps": [
+      "先用短线条确定眼尾上扬角度。",
+      "沿睫毛根部薄薄叠加连起来。",
+      "填满睫毛根部空隙。",
+      "用棉签清理外沿线条。"
+    ]
+  },
+  "rationaleTemplate": [
+    "分层更不易画粗。",
+    "清理边缘让眼型更利落。"
+  ],
+  "productRoleHints": [
+    "felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 6",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

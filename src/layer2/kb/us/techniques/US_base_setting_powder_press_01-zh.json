@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_setting_powder_press_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "按压定妆更持久",
+    "steps": [
+      "用粉扑蘸取散粉。",
+      "先按压在易出油区域。",
+      "再用刷子扫掉多余粉感。",
+      "最后轻喷定妆喷雾。"
+    ]
+  },
+  "rationaleTemplate": [
+    "按压提升控油与持妆。",
+    "喷雾能让粉感更贴肤。"
+  ],
+  "productRoleHints": [
+    "loose_powder",
+    "puff",
+    "brush",
+    "setting_spray"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 3",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

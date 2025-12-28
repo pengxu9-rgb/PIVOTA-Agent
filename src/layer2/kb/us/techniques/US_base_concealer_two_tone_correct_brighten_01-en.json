@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_concealer_two_tone_correct_brighten_01-en",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Two-tone concealer: correct + brighten",
+    "steps": [
+      "Use a correcting tone to neutralize dullness and darkness (redness/under-eyes).",
+      "Use a brightening tone on hollows: tear trough; nasolabial; under-eye bag.",
+      "Mix corrector+brightener for local dull patches and acne marks.",
+      "Apply with tiny taps; blend edges with sponge.",
+      "Set only creasy zones; keep the rest natural."
+    ]
+  },
+  "rationaleTemplate": [
+    "Correct + brighten looks natural and beginner-friendly.",
+    "Targeted setting keeps coverage without drying skin."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small_concealer_brush",
+    "sponge",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 11",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

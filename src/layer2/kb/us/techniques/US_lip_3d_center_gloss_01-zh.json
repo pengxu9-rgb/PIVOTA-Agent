@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_3d_center_gloss_01-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "中间加光打造嘟嘟唇",
+    "steps": [
+      "先用唇线笔勾勒唇形。",
+      "填满唇色。",
+      "用唇刷把边缘晕柔。",
+      "透明唇蜜只点在唇部中央。"
+    ]
+  },
+  "rationaleTemplate": [
+    "中间高光能放大体积感。",
+    "晕边让唇更柔和不生硬。"
+  ],
+  "productRoleHints": [
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "clear_gloss"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 9",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

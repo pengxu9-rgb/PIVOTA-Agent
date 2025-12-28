@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_fill_natural_strokes_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "自然眉填充",
+    "steps": [
+      "先把眉毛梳理向上。",
+      "稀疏处用轻短笔触填充。",
+      "再用干净刷子晕开过渡。",
+      "需要时用透明眉胶定型。"
+    ]
+  },
+  "rationaleTemplate": [
+    "毛流笔触更自然。",
+    "梳理可融合颜色与边界。"
+  ],
+  "productRoleHints": [
+    "brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 5",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

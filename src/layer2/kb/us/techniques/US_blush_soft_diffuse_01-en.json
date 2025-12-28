@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_soft_diffuse_01-en",
+  "area": "blush",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Soft diffused blush",
+    "steps": [
+      "Tap blush on high point of cheek.",
+      "Blend toward temples softly.",
+      "Keep edges sheer.",
+      "Set lightly if needed."
+    ]
+  },
+  "rationaleTemplate": [
+    "Diffused edges look more natural.",
+    "Sheer layers prevent harsh patches."
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush",
+    "powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 8",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

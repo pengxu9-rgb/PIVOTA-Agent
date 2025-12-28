@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_soft_shadow_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Soft nose contour for dimension",
+    "steps": [
+      "Use a small brush with a neutral shadow tone.",
+      "Shade along nose sides lightly.",
+      "Blend edges upward; do not pull outward.",
+      "Add a tiny highlight on bridge."
+    ]
+  },
+  "rationaleTemplate": [
+    "Soft shading changes perceived structure.",
+    "Controlled blending avoids widening the nose."
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "highlighter",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 4",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}
