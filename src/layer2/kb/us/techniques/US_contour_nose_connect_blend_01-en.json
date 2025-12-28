@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_connect_blend_01-en",
+  "area": "contour",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Connect nose contour smoothly",
+    "steps": [
+      "Use a clean blending brush with leftover shadow",
+      "Sweep lightly down the bridge to connect root and tip",
+      "Blend until there is no visible break or line",
+      "Keep the center lighter than the sides"
+    ]
+  },
+  "rationaleTemplate": [
+    "A continuous gradient makes the nose look straighter",
+    "Light center preserves a natural highlight path"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 44",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

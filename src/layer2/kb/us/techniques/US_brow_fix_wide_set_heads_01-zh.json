@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_fix_wide_set_heads_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "修正离心眉（眉头太远）",
+    "steps": [
+      "参考眉头间距：约一只眼的宽度更协调",
+      "用浅色轻压把眉头往中间收一点",
+      "按生长方向补画仿真毛流",
+      "眉头浅、眉身逐渐加深",
+      "用刷子晕开让眉头没有硬边"
+    ]
+  },
+  "rationaleTemplate": [
+    "眉头内收可改善五官比例",
+    "毛流笔触更自然不显假"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 66",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

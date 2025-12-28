@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_fix_caking_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Fix cakey base makeup",
+    "steps": [
+      "Hydrate first: sheet mask or extra moisturizer prep",
+      "Use a moisturizing primer to soften texture",
+      "Swap cream concealer for a more fluid concealer",
+      "Choose a more hydrating foundation and apply in thin layers"
+    ]
+  },
+  "rationaleTemplate": [
+    "More moisture lets base blend instead of catching on dry patches",
+    "Fluid products reduce thick buildup that causes caking"
+  ],
+  "productRoleHints": [
+    "moisturizer",
+    "primer",
+    "concealer",
+    "foundation"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 40",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

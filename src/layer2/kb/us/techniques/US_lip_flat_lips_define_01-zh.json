@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_flat_lips_define_01-zh",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "扁平唇的立体画法",
+    "steps": [
+      "用唇线笔在唇峰画小倒三角勾出唇峰",
+      "上唇内M区用更深一点的颜色加深",
+      "下唇画内T区制造阴影",
+      "用唇刷把边缘向外晕成渐变",
+      "中间叠透明唇蜜更嘭弹"
+    ]
+  },
+  "rationaleTemplate": [
+    "明暗分区能让唇部更立体",
+    "中心唇蜜会放大饱满度又自然"
+  ],
+  "productRoleHints": [
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "clear_gloss"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 102",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

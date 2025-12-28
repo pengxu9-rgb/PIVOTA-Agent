@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_downturned_soft_01-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "down"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "无害下垂眼线",
+    "steps": [
+      "只画上眼线外半段",
+      "尾部微微往下延伸并拉长",
+      "线条要轻薄不要太粗",
+      "补齐睫毛缝隙，别画到眼头",
+      "用棉签把尾巴修利落"
+    ]
+  },
+  "rationaleTemplate": [
+    "下垂尾会更温柔无攻击",
+    "半截眼线更适合新手和日常"
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 78",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

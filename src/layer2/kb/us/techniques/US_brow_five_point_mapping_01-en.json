@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_five_point_mapping_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Map brows with 5 key points",
+    "steps": [
+      "Mark lower brow head: vertical line up from inner eye corner",
+      "Mark upper brow head: 0.5 cm forward from inner corner, then up",
+      "Mark brow center: vertical above the outer iris/inner outer-corner zone",
+      "Mark brow peak: directly above brow center",
+      "Mark brow tail: line from nostril wing to outer eye corner; connect and fill"
+    ]
+  },
+  "rationaleTemplate": [
+    "5-point mapping keeps brows balanced and symmetrical",
+    "Correct tail placement prevents droopy or overlong brows"
+  ],
+  "productRoleHints": [
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 58",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

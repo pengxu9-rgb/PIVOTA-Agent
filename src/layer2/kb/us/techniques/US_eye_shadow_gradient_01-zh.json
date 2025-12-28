@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_gradient_01-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "eq",
+        "value": "gradient"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "渐层法（渐变眼影）",
+    "steps": [
+      "同一色系选2–3个色",
+      "浅色打底，中间色铺眼窝",
+      "深色压外眼角与睫毛根部",
+      "反复晕染到看不到分界线",
+      "最多3色更干净不显脏"
+    ]
+  },
+  "rationaleTemplate": [
+    "渐变过渡能显立体并弱化肿眼泡",
+    "同色系更不容易晕脏"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "small_brush",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 73",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

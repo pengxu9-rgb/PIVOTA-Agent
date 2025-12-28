@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_fix_caking_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "解决卡粉起皮",
+    "steps": [
+      "先补水：敷面膜或加强妆前保湿",
+      "用保湿型妆前乳软化纹理",
+      "膏状遮瑕改用液体遮瑕更服帖",
+      "选更水润粉底并薄涂上妆"
+    ]
+  },
+  "rationaleTemplate": [
+    "增加含水量更容易融合底妆",
+    "流动质地减少厚重堆积"
+  ],
+  "productRoleHints": [
+    "moisturizer",
+    "primer",
+    "concealer",
+    "foundation"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 40",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

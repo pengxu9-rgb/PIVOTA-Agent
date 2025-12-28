@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_narrow_wide_nostrils_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Narrow wide nostrils with wing contour",
+    "steps": [
+      "Keep the bridge highlight thin; avoid widening near the root",
+      "Shade along the sidewall and around the nostril edge",
+      "On each wing, draw a small parenthesis shadow and blend inward",
+      "Add a tiny highlight at the wing base to soften the edge"
+    ]
+  },
+  "rationaleTemplate": [
+    "Focused wing shading reduces nostril width visually",
+    "Thin highlight keeps the nose from looking broader"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "highlighter",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 46",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

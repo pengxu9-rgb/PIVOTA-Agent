@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_round_face_placement_01-en",
+  "area": "blush",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Blush placement for round faces",
+    "steps": [
+      "Place “plumping” blush on the apple of the cheek",
+      "Blend a softer “atmosphere” blush around it into a circle",
+      "Keep edges diffused; do not drag too far down",
+      "Tap a little atmosphere blush on nose tip and chin for cohesion",
+      "Optional: pull slightly toward temples to add lift"
+    ]
+  },
+  "rationaleTemplate": [
+    "Centered blush keeps the face cute without widening it",
+    "Soft edges prevent a harsh, flat round patch"
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 98",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

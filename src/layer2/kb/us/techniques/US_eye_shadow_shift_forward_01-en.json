@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_shift_forward_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Shift eyeshadow forward for wide-set eyes",
+    "steps": [
+      "Place the main color closer to the inner corner",
+      "Blend toward the nose bridge and socket softly",
+      "Layer depth: darker near lash line, lighter toward socket",
+      "Keep front-socket blending subtle; avoid a hard block",
+      "Finish with a small inner-corner highlight if desired"
+    ]
+  },
+  "rationaleTemplate": [
+    "Forward placement visually brings eyes closer together",
+    "Soft front blending avoids making the nose area look dirty"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "small_brush",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 74",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_shift_forward_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "前移法（拉近眼距）",
+    "steps": [
+      "主色重心放在更靠近内眼角的位置",
+      "向鼻梁和眼窝方向轻晕开",
+      "由深到浅分层：睫毛根部更深、眼窝更浅",
+      "前眼窝晕染要轻，避免一块突兀",
+      "需要可内眼角少量提亮"
+    ]
+  },
+  "rationaleTemplate": [
+    "前移重心能视觉缩短眼距",
+    "前眼窝轻晕更干净不显脏"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "small_brush",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 74",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_open_innercorner_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "straight"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Open inner-corner liner",
+    "steps": [
+      "Draw a thin upper liner close to the lashes",
+      "Extend a small inner-corner point along the natural angle",
+      "Connect the point back to the upper lash line to form a tiny V",
+      "Keep outer liner thin or add a small tail",
+      "Clean inner corner with a swab for sharpness"
+    ]
+  },
+  "rationaleTemplate": [
+    "A defined inner corner makes eyes look longer and sharper",
+    "Small V-shape stays natural and avoids looking messy"
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 78",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

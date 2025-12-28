@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_fix_high_arch_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Fix an overly arched, lifted brow tail",
+    "steps": [
+      "Aim for brow tail to be level with or slightly higher than brow head",
+      "Clean up: remove hair under brow head and above the arch/tail",
+      "Fill the top edge at brow head, and the bottom edge at arch/tail",
+      "Keep the brow shape flatter and smoother",
+      "Blend: brow head light, brow waist deeper"
+    ]
+  },
+  "rationaleTemplate": [
+    "A flatter brow reads softer and more youthful",
+    "Balancing top/bottom edges corrects the “hanging” look"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 67",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

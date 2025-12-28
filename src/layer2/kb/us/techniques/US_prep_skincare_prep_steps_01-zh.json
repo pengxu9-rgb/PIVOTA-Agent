@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_prep_skincare_prep_steps_01-zh",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "底妆前的护肤打底步骤",
+    "steps": [
+      "按肤质温和清洁",
+      "爽肤水补水：轻拍或湿敷3–5分钟",
+      "精华+面霜薄涂分层叠加",
+      "防晒收尾，等待成膜再上妆"
+    ]
+  },
+  "rationaleTemplate": [
+    "改善肤感让底妆更服帖",
+    "薄涂分层减少搓泥斑驳"
+  ],
+  "productRoleHints": [
+    "moisturizer"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 19",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

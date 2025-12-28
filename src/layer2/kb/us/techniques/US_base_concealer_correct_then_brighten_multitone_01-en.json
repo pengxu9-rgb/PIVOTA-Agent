@@ -12,7 +12,7 @@
         "value": "en"
       },
       {
-        "key": "lookSpec.breakdown.base.finish",
+        "key": "lookSpec.breakdown.base.coverage",
         "op": "exists"
       }
     ]
@@ -24,7 +24,7 @@
       "Correct redness/blemishes with a green or neutral corrector; blend edges.",
       "Brighten tear trough and hollows with a light neutral/peach concealer.",
       "Add subtle contour with a deeper neutral shade; keep it soft.",
-      "For dark circles/dull spots: peach corrector first; then a brightener; press with sponge."
+      "For dark circles/dull spots: peach corrector first, then a brightener; press with sponge."
     ]
   },
   "rationaleTemplate": [
@@ -36,9 +36,9 @@
     "small_concealer_brush",
     "sponge"
   ],
-  "sourcePointer": "SRC_PPTX_LICENSED_001",
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 32",
   "tags": [
-    "reviewStatus:ppt_slide_15",
-    "draft"
+    "reviewStatus:draft"
   ]
 }

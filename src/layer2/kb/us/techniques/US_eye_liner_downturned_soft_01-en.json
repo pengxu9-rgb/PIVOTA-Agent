@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_downturned_soft_01-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "down"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Soft downturned liner for an innocent look",
+    "steps": [
+      "Line only the outer half of the upper lash line",
+      "Extend the tail slightly down while lengthening outward",
+      "Keep the line light and not too thick",
+      "Fill lash gaps; stop before the inner corner",
+      "Clean the tail with a swab for a crisp shape"
+    ]
+  },
+  "rationaleTemplate": [
+    "Downturned tails soften the expression and look natural",
+    "Partial liner is easier for beginners and suits daily makeup"
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 78",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

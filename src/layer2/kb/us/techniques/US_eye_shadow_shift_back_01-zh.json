@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_shift_back_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "后移法（拉长眼型）",
+    "steps": [
+      "浅哑光先打底定型",
+      "深色重点放在外半段",
+      "向外上方轻带出拉长效果",
+      "向中间晕开做自然渐淡",
+      "内眼角区域保持更干净更亮"
+    ]
+  },
+  "rationaleTemplate": [
+    "后移重心能拉长圆眼并拉开眼距",
+    "内侧留亮更显清爽有精神"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "small_brush",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 74",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

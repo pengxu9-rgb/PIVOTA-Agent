@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_winged_western_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "up"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Bold winged eyeliner",
+    "steps": [
+      "Sketch a longer wing angled up from outer corner",
+      "Draw the top line of the wing back toward the lid",
+      "Connect to the lash line to form an outer triangle",
+      "Fill in the triangle and thicken outer third",
+      "Keep inner corner thinner for balance"
+    ]
+  },
+  "rationaleTemplate": [
+    "A bigger wing creates a sharper lifted eye shape",
+    "Tapered inner liner keeps the look clean"
+  ],
+  "productRoleHints": [
+    "felt_tip_liner"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 77",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

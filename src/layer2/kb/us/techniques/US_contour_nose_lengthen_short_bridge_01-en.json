@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_lengthen_short_bridge_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Lengthen a short nose bridge with contour",
+    "steps": [
+      "Place nose-root shadow slightly higher toward the brow head",
+      "Extend the bridge highlight into one long thin line",
+      "Keep side shadows parallel; blend softly into the socket",
+      "Put a small highlight on the tip to continue the line"
+    ]
+  },
+  "rationaleTemplate": [
+    "Higher root + longer highlight makes the bridge appear longer",
+    "Parallel shadows prevent a broken, short look"
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "dark_shadow",
+    "highlighter"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 45",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

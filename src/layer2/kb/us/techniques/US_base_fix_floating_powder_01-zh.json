@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_fix_floating_powder_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "解决浮粉与起颗粒",
+    "steps": [
+      "温和洁面去油并减少角质堆积",
+      "妆前保湿但避免厚重难吸收面霜",
+      "上妆前乳提升贴合度",
+      "选择更轻薄细腻的底妆产品",
+      "散粉少量多次薄定妆，边缘用刷子扫匀"
+    ]
+  },
+  "rationaleTemplate": [
+    "水油平衡后粉质更易贴肤",
+    "薄涂分层可减少结块斑驳"
+  ],
+  "productRoleHints": [
+    "primer",
+    "foundation",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 39",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

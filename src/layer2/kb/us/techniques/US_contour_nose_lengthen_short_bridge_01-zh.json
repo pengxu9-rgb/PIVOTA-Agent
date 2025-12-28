@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_lengthen_short_bridge_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "短鼻梁拉长修容",
+    "steps": [
+      "鼻根阴影位置适当上移靠近眉头",
+      "鼻梁提亮画一条细长连贯的亮线",
+      "两侧阴影保持平行并柔和过渡到眼窝",
+      "鼻头点少量高光延续亮线"
+    ]
+  },
+  "rationaleTemplate": [
+    "鼻根更高+亮线更长会显鼻梁更长",
+    "平行阴影避免看起来断裂偏短"
+  ],
+  "productRoleHints": [
+    "angled_brush",
+    "dark_shadow",
+    "highlighter"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 45",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

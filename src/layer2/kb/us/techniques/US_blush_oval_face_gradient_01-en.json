@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_oval_face_gradient_01-en",
+  "area": "blush",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "3-shade gradient blush for oval faces",
+    "steps": [
+      "Apply “atmosphere” blush as a light wash across the cheek area",
+      "Place “plumping” blush slightly forward on the cheeks",
+      "Add a small amount of “contracting” blush on outer cheekbone for depth",
+      "Blend into a smooth gradient with no hard borders",
+      "Tap a tiny bit above the upper lip and on the nose tip to shorten and sweeten"
+    ]
+  },
+  "rationaleTemplate": [
+    "Gradients add dimension on balanced face shapes",
+    "Small accents on philtrum and nose tip create a youthful vibe"
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 98",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

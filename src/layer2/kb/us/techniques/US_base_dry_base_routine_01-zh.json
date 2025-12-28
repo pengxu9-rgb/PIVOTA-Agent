@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_dry_base_routine_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "dry"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "干皮底妆步骤",
+    "steps": [
+      "保湿型定妆喷雾先全脸打底",
+      "保湿/提亮妆前均匀肤色，能少上粉底",
+      "明显黑眼圈等先少量多次遮瑕",
+      "粉底按区域薄铺，顺骨骼明暗可用不同色号",
+      "可跳过定妆粉，喷雾收尾增强光泽感"
+    ]
+  },
+  "rationaleTemplate": [
+    "先补水更容易与底妆融合",
+    "少粉更不显卡纹起皮"
+  ],
+  "productRoleHints": [
+    "setting_spray",
+    "primer",
+    "foundation",
+    "concealer",
+    "powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 38",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

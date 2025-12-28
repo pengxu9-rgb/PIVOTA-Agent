@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_subtle_elongate_01-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "straight"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Subtle daily liner to elongate eyes",
+    "steps": [
+      "Start at outer corner and extend a tiny tail",
+      "Draw liner along lash line to about 2/3 of the eye",
+      "Connect the tail back into the lash line",
+      "Fill gaps between lashes; keep thickness minimal",
+      "Soften with a swab or small brush if too sharp"
+    ]
+  },
+  "rationaleTemplate": [
+    "Minimal thickness makes eyes look longer without heaviness",
+    "Filling lash gaps gives definition even with short liner"
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab",
+    "small_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 77",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_straighten_crooked_01-en",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Straighten a crooked nose with asymmetric shading",
+    "steps": [
+      "Shade the side that looks wider or lower a bit stronger",
+      "On the other side, keep shadow shorter and lighter",
+      "Draw the bridge highlight following a straighter center path",
+      "Balance nostril shadows so both sides look even"
+    ]
+  },
+  "rationaleTemplate": [
+    "Asymmetry corrects the visual tilt without surgery",
+    "A straighter highlight path guides the eye to symmetry"
+  ],
+  "productRoleHints": [
+    "dark_shadow",
+    "highlighter",
+    "small_brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 49",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

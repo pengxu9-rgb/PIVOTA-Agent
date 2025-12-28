@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_tip_diamond_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "菱形鼻头修容",
+    "steps": [
+      "用余粉在鼻头画小菱形阴影",
+      "菱形要居中且偏窄",
+      "向外轻晕但保留形状",
+      "需要可在鼻头点少量高光"
+    ]
+  },
+  "rationaleTemplate": [
+    "居中的菱形能视觉缩小鼻头",
+    "柔和晕染更自然不显脏"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "highlighter"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 43",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_contour_nose_narrow_wide_nostrils_01-zh",
+  "area": "contour",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "缩小鼻翼修容",
+    "steps": [
+      "鼻梁提亮保持偏窄，鼻根处别提宽",
+      "沿鼻侧壁与鼻翼边缘压出阴影",
+      "鼻翼画小括号阴影并向内晕开",
+      "鼻翼根部少量提亮弱化边缘"
+    ]
+  },
+  "rationaleTemplate": [
+    "鼻翼定点压暗能视觉收窄",
+    "窄提亮可避免越修越宽"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "highlighter",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 46",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

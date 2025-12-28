@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_fix_floating_powder_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Fix powdery, floating foundation",
+    "steps": [
+      "Cleanse gently to remove excess oil and dead skin",
+      "Moisturize with fast-absorbing layers; avoid heavy cream",
+      "Apply primer to smooth and grip",
+      "Switch to a lighter, finer foundation formula",
+      "Set with very thin powder layers; press then sweep edges"
+    ]
+  },
+  "rationaleTemplate": [
+    "Balances skin so base can merge instead of sitting on top",
+    "Thin layers reduce clumping and patchy texture"
+  ],
+  "productRoleHints": [
+    "primer",
+    "foundation",
+    "loose_powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 39",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

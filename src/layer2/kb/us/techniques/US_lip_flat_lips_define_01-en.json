@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_flat_lips_define_01-en",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Add dimension to flat lips",
+    "steps": [
+      "Use a lip liner to sketch a small inverted triangle at the cupid’s bow",
+      "Deepen the inner M on the upper lip with a slightly darker shade",
+      "Create an inner T-shape on the lower lip for depth",
+      "Blend edges outward with a lip brush for a gradient",
+      "Add clear gloss on the center to enhance volume"
+    ]
+  },
+  "rationaleTemplate": [
+    "Light and shadow mapping makes lips look more 3D",
+    "Gloss at the center boosts fullness without overlining"
+  ],
+  "productRoleHints": [
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "clear_gloss"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 102",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

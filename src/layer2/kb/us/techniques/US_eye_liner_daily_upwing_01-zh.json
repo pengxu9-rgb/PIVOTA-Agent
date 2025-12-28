@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_daily_upwing_01-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "up"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "日常上挑眼线",
+    "steps": [
+      "外眼角先画短短上扬尾线做定位",
+      "沿上睫毛根部描到眼中",
+      "把尾线与睫毛根部连接成小三角",
+      "填满三角，眼头保持细",
+      "用棉签修干净边缘"
+    ]
+  },
+  "rationaleTemplate": [
+    "小尾翼能提拉眼型又不夸张",
+    "眼头细会更日常自然"
+  ],
+  "productRoleHints": [
+    "felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 77",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

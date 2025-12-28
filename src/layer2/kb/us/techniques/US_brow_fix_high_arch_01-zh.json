@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_fix_high_arch_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "修正吊眉（眉尾过挑）",
+    "steps": [
+      "眉尾高度尽量与眉头齐平或略高一点",
+      "修整：眉头下缘、眉峰和眉尾上缘多余杂毛",
+      "眉头补上缘，眉峰/眉尾补下缘",
+      "整体尽量走平缓线条更自然",
+      "晕染：眉头浅、眉腰深"
+    ]
+  },
+  "rationaleTemplate": [
+    "走平眉形会更温柔显年轻",
+    "上下缘平衡可改善吊眉感"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 67",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

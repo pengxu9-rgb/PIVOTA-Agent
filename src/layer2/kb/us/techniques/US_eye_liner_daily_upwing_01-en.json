@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_daily_upwing_01-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "up"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Everyday upturned wing liner",
+    "steps": [
+      "Draw a short line up from outer corner as the wing guide",
+      "Trace along upper lash line toward the center",
+      "Connect wing back to lash line to form a small triangle",
+      "Fill the triangle; keep inner line thin",
+      "Clean the edge with a cotton swab if needed"
+    ]
+  },
+  "rationaleTemplate": [
+    "A small wing lifts the eye without looking heavy",
+    "Thin inner liner keeps it natural for daytime"
+  ],
+  "productRoleHints": [
+    "felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 77",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

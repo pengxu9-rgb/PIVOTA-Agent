@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_oval_face_gradient_01-zh",
+  "area": "blush",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "鹅蛋脸三色渐变腮红",
+    "steps": [
+      "氛围色先薄扫整个腮红区域打底",
+      "膨胀色放在偏前的颧区增加气色",
+      "收缩色点在外侧颧骨增加层次",
+      "充分晕开做成自然渐变无边界",
+      "上唇上方与鼻头少量点氛围色更显幼态"
+    ]
+  },
+  "rationaleTemplate": [
+    "渐变更有层次适合鹅蛋脸",
+    "人中与鼻头点色会更显年轻甜美"
+  ],
+  "productRoleHints": [
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 98",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

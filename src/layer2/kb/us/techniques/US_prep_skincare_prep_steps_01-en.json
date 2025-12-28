@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_prep_skincare_prep_steps_01-en",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Skincare prep before base makeup",
+    "steps": [
+      "Cleanse gently for your skin type",
+      "Hydrate with toner; pat in or compress 3–5 min",
+      "Apply light serum then moisturizer in thin layers",
+      "Finish with sunscreen; let layers set before makeup"
+    ]
+  },
+  "rationaleTemplate": [
+    "Preps texture so foundation sits smoother",
+    "Thin layers reduce pilling and patchiness"
+  ],
+  "productRoleHints": [
+    "moisturizer"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 19",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

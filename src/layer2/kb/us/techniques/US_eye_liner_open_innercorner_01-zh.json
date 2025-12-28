@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_open_innercorner_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "straight"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "开眼角眼线",
+    "steps": [
+      "贴着睫毛根部画细上眼线",
+      "按内眼角走向延伸一个小尖角",
+      "把尖角与上眼线连成小V",
+      "外眼线保持细或加小尾巴",
+      "棉签清理内眼角保持利落"
+    ]
+  },
+  "rationaleTemplate": [
+    "内眼角明确能拉长眼型更妩媚",
+    "小V更自然不容易显脏"
+  ],
+  "productRoleHints": [
+    "thin_felt_tip_liner",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 78",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

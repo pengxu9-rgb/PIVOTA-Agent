@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_liner_winged_western_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "zh"
+      },
+      {
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "up"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "欧美大翅膀眼线",
+    "steps": [
+      "外眼角画更长更上扬的尾翼",
+      "再从尾翼上缘往回拉一条线",
+      "与上睫毛根部连接成外侧三角",
+      "填满三角并加粗外1/3",
+      "眼头保持细更平衡"
+    ]
+  },
+  "rationaleTemplate": [
+    "大尾翼会更显凌厉上扬",
+    "眼头细能避免厚重显脏"
+  ],
+  "productRoleHints": [
+    "felt_tip_liner"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 77",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

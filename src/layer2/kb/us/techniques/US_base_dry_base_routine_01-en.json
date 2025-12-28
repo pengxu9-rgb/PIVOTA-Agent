@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_dry_base_routine_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "preferenceMode",
+        "op": "eq",
+        "value": "en"
+      },
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "dry"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Hydrating base routine for dry skin",
+    "steps": [
+      "Mist a hydrating setting spray first",
+      "Use dewy/brightening primer; even tone so you can skip heavy foundation",
+      "Conceal obvious dark areas in thin layers",
+      "Apply foundation by zones; match shades to natural light/shadow",
+      "Skip powder or dust lightly; finish with spray for a fresh glow"
+    ]
+  },
+  "rationaleTemplate": [
+    "Hydration first helps makeup fuse with skin",
+    "Light powder keeps glow without emphasizing dryness"
+  ],
+  "productRoleHints": [
+    "setting_spray",
+    "primer",
+    "foundation",
+    "concealer",
+    "powder"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 38",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}
