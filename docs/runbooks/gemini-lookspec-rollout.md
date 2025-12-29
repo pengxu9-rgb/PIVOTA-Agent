@@ -51,6 +51,11 @@ GEMINI_API_KEY=... \
 npm run staging:gemini:e2e
 ```
 
+**Exit codes**
+- `exit=0`: completed and printed report
+- `exit=2`: missing `GEMINI_API_KEY` or required image paths (expected guardrail; no stacktrace)
+- `exit=1`: other error (unexpected)
+
 The script prints:
 - `lookDiffSource` (`telemetrySample.gemini.lookDiffSource`)
 - `needsChange` summary by area
@@ -66,6 +71,37 @@ The script prints:
 - `telemetrySample.gemini.lookDiffSource`
 
 These fields are for internal inspection only; they do not change the user-facing API response shape.
+
+Compatibility note:
+- `OutcomeSampleV0` is a **strict** schema; `telemetrySample.gemini` is optional, but any consumer parsing these samples must be upgraded in lockstep with the producer to avoid “unknown key” rejects.
+
+## Step 13: Staging evaluation + metrics
+
+Recommended sample size:
+- 20–50 target/selfie pairs to start (scale to 100 for confidence)
+
+Record / summarize:
+- Gemini ok rate and failure-code distribution (`MISSING_API_KEY` / `REQUEST_FAILED` / `SCHEMA_INVALID`)
+- Latency: `p50` / `p95` for reference + selfie (ms)
+- needsChange hit rate by area:
+  - eye: `linerDirection.direction`
+  - base: `finish`, `coverage`
+  - lip: `finish`
+  - extended: `prep/contour/brow/blush` intent
+- Slots emitted coverage:
+  - macro slot present rate
+  - `macroIds` distribution
+- Quality spot-check:
+  - manually inspect ~10 samples: Gemini LookSpec + derived lookDiff vs intuition
+
+Suggested rollout order:
+- Start with **reference** first (lower risk: safe fallback to existing `extractLookSpec`, gives immediate latency/error telemetry), then enable selfie lookDiff + slots.
+
+Rollback checklist (no revert needed):
+- `LAYER1_ENABLE_GEMINI_REFERENCE_LOOKSPEC=0`
+- `LAYER1_ENABLE_GEMINI_SELFIE_LOOKSPEC=0`
+- (optional) `LAYER2_ENABLE_SELFIE_LOOKSPEC=0`
+- Expected impact: pipeline falls back to deterministic extractors; slots stop emitting because lookDiff is absent (fail-closed).
 
 ## Rollout plan (suggested)
 
@@ -84,4 +120,3 @@ Disable any of the above flags. No revert needed:
 - Turn off Gemini: `LAYER1_ENABLE_GEMINI_REFERENCE_LOOKSPEC=0` and/or `LAYER1_ENABLE_GEMINI_SELFIE_LOOKSPEC=0`
 - Turn off selfie diff: `LAYER2_ENABLE_SELFIE_LOOKSPEC=0`
 - Turn off slot selection: `LAYER2_ENABLE_TRIGGER_MATCHING=0` and/or slot flags
-
