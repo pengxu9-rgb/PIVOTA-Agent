@@ -19,7 +19,7 @@ function parseBearer(authHeader) {
 }
 
 function requireLookReplicatorAuth(req, res) {
-  const required = process.env.LOOK_REPLICATOR_API_KEY;
+  const required = process.env.LOOK_REPLICATOR_API_KEY || process.env.LOOK_REPLICATOR_BACKEND_API_KEY;
   if (!required) return true;
   const token = parseBearer(req.header('Authorization')) || req.header('X-API-Key') || req.header('x-api-key');
   if (!token || token !== required) {
