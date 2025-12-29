@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const LookAreaSchema = z.enum(["base", "eye", "lip"]);
+export const LookAreaSchema = z.enum(["prep", "base", "contour", "brow", "eye", "blush", "lip"]);
 
 const LinerDirectionEnumSchema = z.enum(["down", "straight", "up", "unknown"]);
 
@@ -33,6 +33,14 @@ export const LookSpecBreakdownEyeV0Schema = LookSpecBreakdownAreaV0Schema.extend
   shadowShape: z.string().min(1).optional(),
 }).strict();
 
+export const UnknownLookSpecBreakdownAreaV0 = {
+  intent: "unknown",
+  finish: "unknown",
+  coverage: "unknown",
+  keyNotes: [],
+  evidence: [],
+} as const;
+
 export const LookSpecV0Schema = z
   .object({
     schemaVersion: z.literal("v0"),
@@ -51,6 +59,10 @@ export const LookSpecV0Schema = z
         base: LookSpecBreakdownAreaV0Schema,
         eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
+        prep: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
+        contour: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
+        brow: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
+        blush: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
       })
       .strict(),
 

@@ -101,10 +101,34 @@ const SimilarityReportV0Schema = z
           })
           .strict()
           .optional(),
+        prep: z
+          .object({
+            intent: LookDiffFieldSchema.optional(),
+          })
+          .strict()
+          .optional(),
         base: z
           .object({
             finish: LookDiffFieldSchema.optional(),
             coverage: LookDiffFieldSchema.optional(),
+          })
+          .strict()
+          .optional(),
+        contour: z
+          .object({
+            intent: LookDiffFieldSchema.optional(),
+          })
+          .strict()
+          .optional(),
+        brow: z
+          .object({
+            intent: LookDiffFieldSchema.optional(),
+          })
+          .strict()
+          .optional(),
+        blush: z
+          .object({
+            intent: LookDiffFieldSchema.optional(),
           })
           .strict()
           .optional(),

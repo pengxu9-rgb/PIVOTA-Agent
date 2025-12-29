@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { LookSpecLinerDirectionSchema, LookSpecV0Schema } from "./lookSpecV0";
+import { LookSpecLinerDirectionSchema, LookSpecV0Schema, UnknownLookSpecBreakdownAreaV0 } from "./lookSpecV0";
 
 export const LookSpecBreakdownAreaV1Schema = z
   .object({
@@ -25,6 +25,8 @@ export const LookSpecBreakdownContourV1Schema = LookSpecBreakdownAreaV1Schema.ex
     .strict()
     .optional(),
 }).strict();
+
+export const UnknownLookSpecBreakdownAreaV1 = UnknownLookSpecBreakdownAreaV0;
 
 export const LookSpecV1Schema = z
   .object({
@@ -53,10 +55,10 @@ export const LookSpecV1Schema = z
         base: LookSpecBreakdownAreaV1Schema,
         eye: LookSpecBreakdownEyeV1Schema,
         lip: LookSpecBreakdownAreaV1Schema,
-        prep: LookSpecBreakdownAreaV1Schema.optional(),
-        brow: LookSpecBreakdownAreaV1Schema.optional(),
-        blush: LookSpecBreakdownAreaV1Schema.optional(),
-        contour: LookSpecBreakdownContourV1Schema.optional(),
+        prep: LookSpecBreakdownAreaV1Schema.default(UnknownLookSpecBreakdownAreaV1),
+        brow: LookSpecBreakdownAreaV1Schema.default(UnknownLookSpecBreakdownAreaV1),
+        blush: LookSpecBreakdownAreaV1Schema.default(UnknownLookSpecBreakdownAreaV1),
+        contour: LookSpecBreakdownContourV1Schema.default(UnknownLookSpecBreakdownAreaV1),
       })
       .strict(),
 

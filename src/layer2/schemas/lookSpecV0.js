@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const LookAreaSchema = z.enum(['base', 'eye', 'lip']);
+const LookAreaSchema = z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
 
 const LinerDirectionEnumSchema = z.enum(['down', 'straight', 'up', 'unknown']);
 
@@ -33,6 +33,14 @@ const LookSpecBreakdownEyeV0Schema = LookSpecBreakdownAreaV0Schema.extend({
   shadowShape: z.string().min(1).optional(),
 }).strict();
 
+const UnknownLookSpecBreakdownAreaV0 = {
+  intent: 'unknown',
+  finish: 'unknown',
+  coverage: 'unknown',
+  keyNotes: [],
+  evidence: [],
+};
+
 const LookSpecV0Schema = z
   .object({
     schemaVersion: z.literal('v0'),
@@ -51,6 +59,10 @@ const LookSpecV0Schema = z
         base: LookSpecBreakdownAreaV0Schema,
         eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
+        prep: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
+        contour: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
+        brow: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
+        blush: LookSpecBreakdownAreaV0Schema.default(UnknownLookSpecBreakdownAreaV0),
       })
       .strict(),
 
@@ -64,5 +76,6 @@ module.exports = {
   LookSpecLinerDirectionSchema,
   LookSpecBreakdownAreaV0Schema,
   LookSpecBreakdownEyeV0Schema,
+  UnknownLookSpecBreakdownAreaV0,
   LookSpecV0Schema,
 };

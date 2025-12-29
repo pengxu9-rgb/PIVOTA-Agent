@@ -1,6 +1,14 @@
 {
   "schemaVersion": "v0",
-  "placeholders": ["PLACEHOLDER_JP_EYE_LINER_ACTIVITY_PICK", "PLACEHOLDER_JP_BASE_ACTIVITY_PICK", "PLACEHOLDER_JP_LIP_ACTIVITY_PICK"],
+  "placeholders": [
+    "PLACEHOLDER_JP_EYE_LINER_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_BASE_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_LIP_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_PREP_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_BROW_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK"
+  ],
   "intents": [
     {
       "id": "EYE_LINER_DIRECTION_ADAPT",
@@ -159,11 +167,43 @@
       }
     },
     {
+      "id": "PREP_FALLBACK_SAFE_MICRO",
+      "area": "prep",
+      "markets": {
+        "US": { "techniqueIds": ["US_prep_skincare_prep_steps_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_PREP_ACTIVITY_PICK"] }
+      }
+    },
+    {
+      "id": "PREP_ACTIVITY_PICK",
+      "area": "prep",
+      "markets": {
+        "US": { "techniqueIds": ["US_prep_moisturize_01-en", "US_prep_primer_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_PREP_ACTIVITY_PICK"] }
+      }
+    },
+    {
       "id": "CONTOUR_FALLBACK_SAFE",
       "area": "contour",
       "markets": {
         "US": { "techniqueIds": ["US_contour_nose_soft_shadow_01-en"] },
         "JP": { "techniqueIds": ["T_BASE_TARGET_GLOW_HIGHLIGHTS"] }
+      }
+    },
+    {
+      "id": "CONTOUR_FALLBACK_SAFE_MICRO",
+      "area": "contour",
+      "markets": {
+        "US": { "techniqueIds": ["US_contour_nose_soft_shadow_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK"] }
+      }
+    },
+    {
+      "id": "CONTOUR_ACTIVITY_PICK",
+      "area": "contour",
+      "markets": {
+        "US": { "techniqueIds": ["US_contour_nose_root_contour_01-en", "US_contour_nose_highlight_points_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK"] }
       }
     },
     {
@@ -175,11 +215,43 @@
       }
     },
     {
+      "id": "BROW_FALLBACK_SAFE_MICRO",
+      "area": "brow",
+      "markets": {
+        "US": { "techniqueIds": ["US_brow_five_point_mapping_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_BROW_ACTIVITY_PICK"] }
+      }
+    },
+    {
+      "id": "BROW_ACTIVITY_PICK",
+      "area": "brow",
+      "markets": {
+        "US": { "techniqueIds": ["US_brow_fill_natural_strokes_01-en", "US_brow_fix_high_arch_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_BROW_ACTIVITY_PICK"] }
+      }
+    },
+    {
       "id": "BLUSH_FALLBACK_SAFE",
       "area": "blush",
       "markets": {
         "US": { "techniqueIds": ["US_blush_soft_diffuse_01-en"] },
         "JP": { "techniqueIds": ["T_BASE_MIST_MELT"] }
+      }
+    },
+    {
+      "id": "BLUSH_FALLBACK_SAFE_MICRO",
+      "area": "blush",
+      "markets": {
+        "US": { "techniqueIds": ["US_blush_soft_diffuse_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK"] }
+      }
+    },
+    {
+      "id": "BLUSH_ACTIVITY_PICK",
+      "area": "blush",
+      "markets": {
+        "US": { "techniqueIds": ["US_blush_round_face_placement_01-en", "US_blush_oval_face_gradient_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK"] }
       }
     }
   ]

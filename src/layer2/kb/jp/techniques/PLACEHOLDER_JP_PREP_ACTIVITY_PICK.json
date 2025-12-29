@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "PLACEHOLDER_JP_PREP_ACTIVITY_PICK",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {},
+  "actionTemplate": {
+    "title": "Prep: add one safe improvement",
+    "steps": ["Use a simple prep step to help the look last longer."]
+  },
+  "rationaleTemplate": ["A minimal prep step is a safe default."]
+}
+

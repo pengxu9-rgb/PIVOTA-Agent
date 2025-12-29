@@ -57,12 +57,26 @@ function computeLookDiffField({ user, target }) {
   return { user: u, target: t, needsChange };
 }
 
+function computeIntentDiffField({ user, target }) {
+  const u = normalizeLookToken(user);
+  const t = normalizeLookToken(target);
+  const needsChange = t !== 'unknown' && u !== t;
+  return { user: u, target: t, needsChange };
+}
+
 function mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec, userLookSpec }) {
   if (!similarityReport) return null;
   if (!targetLookSpec || !userLookSpec) return similarityReport;
 
   const lookDiff = {
     ...(similarityReport.lookDiff || {}),
+    prep: {
+      ...(similarityReport.lookDiff?.prep || {}),
+      intent: computeIntentDiffField({
+        user: userLookSpec?.breakdown?.prep?.intent,
+        target: targetLookSpec?.breakdown?.prep?.intent,
+      }),
+    },
     base: {
       ...(similarityReport.lookDiff?.base || {}),
       finish: computeLookDiffField({
@@ -72,6 +86,27 @@ function mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec, u
       coverage: computeLookDiffField({
         user: userLookSpec?.breakdown?.base?.coverage,
         target: targetLookSpec?.breakdown?.base?.coverage,
+      }),
+    },
+    contour: {
+      ...(similarityReport.lookDiff?.contour || {}),
+      intent: computeIntentDiffField({
+        user: userLookSpec?.breakdown?.contour?.intent,
+        target: targetLookSpec?.breakdown?.contour?.intent,
+      }),
+    },
+    brow: {
+      ...(similarityReport.lookDiff?.brow || {}),
+      intent: computeIntentDiffField({
+        user: userLookSpec?.breakdown?.brow?.intent,
+        target: targetLookSpec?.breakdown?.brow?.intent,
+      }),
+    },
+    blush: {
+      ...(similarityReport.lookDiff?.blush || {}),
+      intent: computeIntentDiffField({
+        user: userLookSpec?.breakdown?.blush?.intent,
+        target: targetLookSpec?.breakdown?.blush?.intent,
       }),
     },
     lip: {

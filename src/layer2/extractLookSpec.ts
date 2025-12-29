@@ -11,6 +11,14 @@ import {
 } from "./schemas/lookSpecV0";
 import { normalizeVibeTagsForMarket } from "./dicts/lookSpecLexicon";
 
+const UnknownBreakdownAreaV0 = {
+  intent: "unknown",
+  finish: "unknown",
+  coverage: "unknown",
+  keyNotes: [],
+  evidence: [],
+} as const;
+
 const LookSpecExtractCoreSchema = z
   .object({
     lookTitle: z.string().min(1).default("unknown"),
@@ -20,6 +28,10 @@ const LookSpecExtractCoreSchema = z
         base: LookSpecBreakdownAreaV0Schema,
         eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
+        prep: LookSpecBreakdownAreaV0Schema.default(UnknownBreakdownAreaV0),
+        contour: LookSpecBreakdownAreaV0Schema.default(UnknownBreakdownAreaV0),
+        brow: LookSpecBreakdownAreaV0Schema.default(UnknownBreakdownAreaV0),
+        blush: LookSpecBreakdownAreaV0Schema.default(UnknownBreakdownAreaV0),
       })
       .strict(),
     warnings: z.array(z.string().min(1)).default([]),

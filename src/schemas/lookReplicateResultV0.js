@@ -64,6 +64,10 @@ const LookReplicateResultV0Schema = z
         base: LookSpecBreakdownAreaV0Schema,
         eye: LookSpecBreakdownEyeV0Schema,
         lip: LookSpecBreakdownAreaV0Schema,
+        prep: LookSpecBreakdownAreaV0Schema.optional(),
+        contour: LookSpecBreakdownAreaV0Schema.optional(),
+        brow: LookSpecBreakdownAreaV0Schema.optional(),
+        blush: LookSpecBreakdownAreaV0Schema.optional(),
       })
       .strict(),
 

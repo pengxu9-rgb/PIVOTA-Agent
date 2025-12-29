@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK",
+  "area": "blush",
+  "difficulty": "easy",
+  "triggers": {},
+  "actionTemplate": {
+    "title": "Blush: add one safe improvement",
+    "steps": ["Apply a soft diffuse blush and blend edges; build gradually."]
+  },
+  "rationaleTemplate": ["A soft blush placement is easy to adjust and suits most looks."]
+}
+

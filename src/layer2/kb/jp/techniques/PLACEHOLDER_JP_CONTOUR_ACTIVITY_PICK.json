@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK",
+  "area": "contour",
+  "difficulty": "easy",
+  "triggers": {},
+  "actionTemplate": {
+    "title": "Contour: add one safe improvement",
+    "steps": ["Keep contour soft and light; blend thoroughly for a natural result."]
+  },
+  "rationaleTemplate": ["A subtle contour approach is beginner-friendly and low-risk."]
+}
+

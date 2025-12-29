@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "PLACEHOLDER_JP_BROW_ACTIVITY_PICK",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {},
+  "actionTemplate": {
+    "title": "Brows: add one safe improvement",
+    "steps": ["Fill brows lightly with hair-like strokes and brush through for softness."]
+  },
+  "rationaleTemplate": ["Light, sparse strokes keep brows natural and balanced."]
+}
+

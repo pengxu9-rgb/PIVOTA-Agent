@@ -15,6 +15,10 @@ function main() {
     "PLACEHOLDER_JP_EYE_LINER_ACTIVITY_PICK",
     "PLACEHOLDER_JP_BASE_ACTIVITY_PICK",
     "PLACEHOLDER_JP_LIP_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_PREP_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_BROW_ACTIVITY_PICK",
+    "PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK",
   ];
 
   const missingInKb = expected.filter((id) => !kb.byId.has(id));
@@ -25,6 +29,21 @@ function main() {
   }
 
   const skeletons = [
+    AdjustmentSkeletonV0Schema.parse({
+      schemaVersion: "v0",
+      market: "JP",
+      impactArea: "prep",
+      ruleId: "VERIFY_JP_PREP_PLACEHOLDER",
+      severity: 0.1,
+      confidence: "low",
+      becauseFacts: ["verify JP prep placeholder renders"],
+      doActionSelection: "sequence",
+      doActionIds: ["PLACEHOLDER_JP_PREP_ACTIVITY_PICK"],
+      doActions: [],
+      whyMechanism: ["verify placeholder card is present and renderable"],
+      evidenceKeys: ["verify:PLACEHOLDER_JP_PREP_ACTIVITY_PICK"],
+      tags: ["verify"],
+    }),
     AdjustmentSkeletonV0Schema.parse({
       schemaVersion: "v0",
       market: "JP",
@@ -43,6 +62,36 @@ function main() {
     AdjustmentSkeletonV0Schema.parse({
       schemaVersion: "v0",
       market: "JP",
+      impactArea: "contour",
+      ruleId: "VERIFY_JP_CONTOUR_PLACEHOLDER",
+      severity: 0.1,
+      confidence: "low",
+      becauseFacts: ["verify JP contour placeholder renders"],
+      doActionSelection: "sequence",
+      doActionIds: ["PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK"],
+      doActions: [],
+      whyMechanism: ["verify placeholder card is present and renderable"],
+      evidenceKeys: ["verify:PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK"],
+      tags: ["verify"],
+    }),
+    AdjustmentSkeletonV0Schema.parse({
+      schemaVersion: "v0",
+      market: "JP",
+      impactArea: "brow",
+      ruleId: "VERIFY_JP_BROW_PLACEHOLDER",
+      severity: 0.1,
+      confidence: "low",
+      becauseFacts: ["verify JP brow placeholder renders"],
+      doActionSelection: "sequence",
+      doActionIds: ["PLACEHOLDER_JP_BROW_ACTIVITY_PICK"],
+      doActions: [],
+      whyMechanism: ["verify placeholder card is present and renderable"],
+      evidenceKeys: ["verify:PLACEHOLDER_JP_BROW_ACTIVITY_PICK"],
+      tags: ["verify"],
+    }),
+    AdjustmentSkeletonV0Schema.parse({
+      schemaVersion: "v0",
+      market: "JP",
       impactArea: "eye",
       ruleId: "VERIFY_JP_EYE_PLACEHOLDER",
       severity: 0.1,
@@ -53,6 +102,21 @@ function main() {
       doActions: [],
       whyMechanism: ["verify placeholder card is present and renderable"],
       evidenceKeys: ["verify:PLACEHOLDER_JP_EYE_LINER_ACTIVITY_PICK"],
+      tags: ["verify"],
+    }),
+    AdjustmentSkeletonV0Schema.parse({
+      schemaVersion: "v0",
+      market: "JP",
+      impactArea: "blush",
+      ruleId: "VERIFY_JP_BLUSH_PLACEHOLDER",
+      severity: 0.1,
+      confidence: "low",
+      becauseFacts: ["verify JP blush placeholder renders"],
+      doActionSelection: "sequence",
+      doActionIds: ["PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK"],
+      doActions: [],
+      whyMechanism: ["verify placeholder card is present and renderable"],
+      evidenceKeys: ["verify:PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK"],
       tags: ["verify"],
     }),
     AdjustmentSkeletonV0Schema.parse({
@@ -92,4 +156,3 @@ function main() {
 }
 
 main();
-

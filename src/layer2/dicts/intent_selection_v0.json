@@ -4,8 +4,20 @@
     "US": {
       "EYE_LINER_ACTIVITY_PICK": "choose_one",
       "BASE_BUILD_COVERAGE_SPOT_ACTIVITY_PICK": "choose_one",
-      "LIP_FALLBACK_FINISH_FOCUS_ACTIVITY_PICK": "choose_one"
+      "LIP_FALLBACK_FINISH_FOCUS_ACTIVITY_PICK": "choose_one",
+      "PREP_ACTIVITY_PICK": "choose_one",
+      "CONTOUR_ACTIVITY_PICK": "choose_one",
+      "BROW_ACTIVITY_PICK": "choose_one",
+      "BLUSH_ACTIVITY_PICK": "choose_one"
     },
-    "JP": {}
+    "JP": {
+      "EYE_LINER_ACTIVITY_PICK": "choose_one",
+      "BASE_BUILD_COVERAGE_SPOT_ACTIVITY_PICK": "choose_one",
+      "LIP_FALLBACK_FINISH_FOCUS_ACTIVITY_PICK": "choose_one",
+      "PREP_ACTIVITY_PICK": "choose_one",
+      "CONTOUR_ACTIVITY_PICK": "choose_one",
+      "BROW_ACTIVITY_PICK": "choose_one",
+      "BLUSH_ACTIVITY_PICK": "choose_one"
+    }
   }
 }
