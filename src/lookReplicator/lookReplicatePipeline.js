@@ -8,6 +8,7 @@ const { LookReplicateResultV0Schema } = require('../schemas/lookReplicateResultV
 const { buildAdjustmentCandidates } = require('./buildAdjustmentCandidates');
 
 const { Layer1BundleV0Schema } = require('../layer1/schemas/layer1BundleV0');
+const { extractSelfieLookSpecGemini } = require('../layer1/selfie/extractSelfieLookSpecGemini');
 const { buildContextFingerprintUS } = require('../telemetry/contextFingerprintUS');
 const { buildContextFingerprintJP } = require('../telemetry/contextFingerprintJP');
 const { normalizeMarket } = require('../markets/market');
@@ -220,6 +221,7 @@ async function runLookReplicatePipeline(input) {
   });
 
   const selfieLookSpecEnabled = parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC);
+  const geminiSelfieLookSpecEnabled = parseEnvBool(process.env.LAYER1_ENABLE_GEMINI_SELFIE_LOOKSPEC);
   const selfieImage = input.selfieImage ?? null;
   const selfieBytes = selfieLookSpecEnabled && selfieImage?.path ? fs.readFileSync(selfieImage.path) : null;
 
@@ -244,6 +246,26 @@ async function runLookReplicatePipeline(input) {
       ? similarityReport
       : mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec: lookSpec, userLookSpec });
     debugSelfie(`using layer1 contract (hasLookDiff=${Boolean(lookDiffFromLayer1)} hasSelfieLookSpec=${Boolean(selfieLookSpecFromLayer1)})`);
+  } else if (selfieLookSpecEnabled && geminiSelfieLookSpecEnabled && selfieImage?.path) {
+    const geminiOut = await extractSelfieLookSpecGemini({
+      market: pack.market,
+      locale,
+      imagePath: selfieImage.path,
+      promptText: pack.getPromptPack(locale)?.lookSpecExtract,
+    });
+
+    if (geminiOut?.ok) {
+      lookDiffSource = 'gemini';
+      userLookSpec = geminiOut.value;
+      similarityReportWithLookDiff = mergeLookDiffIntoSimilarityReport({
+        similarityReport,
+        targetLookSpec: lookSpec,
+        userLookSpec,
+      });
+      debugSelfie('computed lookDiff via gemini');
+    } else {
+      debugSelfie(`gemini selfie lookspec failed (fail-closed): ${String(geminiOut?.error?.code || 'UNKNOWN')}`);
+    }
   } else if (selfieLookSpecEnabled && selfieBytes) {
     lookDiffSource = 'pipeline_fallback';
     userLookSpec = await extractLookSpec({

@@ -90,7 +90,7 @@ const SimilarityReportV0Schema = z
     selfieAnalysis: z
       .object({
         selfieLookSpec: z.unknown().optional(),
-        lookDiffSource: z.enum(['layer1', 'pipeline_fallback']).optional(),
+        lookDiffSource: z.enum(['layer1', 'pipeline_fallback', 'gemini']).optional(),
       })
       .strict()
       .optional(),
