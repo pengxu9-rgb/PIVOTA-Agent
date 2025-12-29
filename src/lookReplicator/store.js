@@ -169,9 +169,47 @@ async function updateJob(jobId, patch) {
   return getJob(jobId);
 }
 
+function uniqueJobsFromMem() {
+  const unique = new Map();
+  for (const job of mem.values()) {
+    if (!job || !job.jobId) continue;
+    unique.set(job.jobId, job);
+  }
+  return Array.from(unique.values());
+}
+
+async function listJobs({ limit = 20, before, market, locale } = {}) {
+  const okDb = await ensureDbReady();
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 50));
+
+  if (!okDb) {
+    let items = uniqueJobsFromMem();
+    if (market) items = items.filter((j) => j.market === market);
+    if (locale) items = items.filter((j) => j.locale === locale);
+    if (before) items = items.filter((j) => j.createdAt < before);
+    items.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    return items.slice(0, safeLimit);
+  }
+
+  const res = await query(
+    `
+    SELECT * FROM look_replicator_jobs
+    WHERE ($1::timestamptz IS NULL OR created_at < $1)
+      AND ($2::text IS NULL OR market = $2)
+      AND ($3::text IS NULL OR locale = $3)
+    ORDER BY created_at DESC
+    LIMIT $4
+    `,
+    [before || null, market || null, locale || null, safeLimit],
+  );
+
+  return (res.rows || []).map(normalizeRow);
+}
+
 module.exports = {
   createJob,
   getJob,
   getShare,
   updateJob,
+  listJobs,
 };

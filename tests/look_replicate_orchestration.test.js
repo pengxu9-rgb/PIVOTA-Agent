@@ -94,9 +94,18 @@ describe('look replicator orchestration (US-only)', () => {
       expect(shareGet.body.shareId).toBe(shareId);
       expect(shareGet.body.jobId).toBe(jobId);
       LookReplicateResultV0Schema.parse(shareGet.body.result);
+
+      const historyA = await request(app).get('/api/look-replicate/history');
+      expect(historyA.status).toBe(200);
+      expect(Array.isArray(historyA.body.items)).toBe(true);
+      expect(historyA.body.items.some((it) => it.jobId === jobId)).toBe(true);
+
+      const historyB = await request(app).get('/api/lookreplicate/history');
+      expect(historyB.status).toBe(200);
+      expect(Array.isArray(historyB.body.items)).toBe(true);
+      expect(historyB.body.items.some((it) => it.jobId === jobId)).toBe(true);
     } finally {
       fs.rmSync(img, { force: true });
     }
   });
 });
-
