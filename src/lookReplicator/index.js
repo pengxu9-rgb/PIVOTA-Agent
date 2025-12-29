@@ -1,6 +1,6 @@
 const { CreateSignedUploadSchema, CreateLookJobSchema } = require('./schemas');
 const { createSignedUpload } = require('./storage');
-const { createJob, getJob, getShare, updateJob } = require('./store');
+const { createJob, getJob, getShare, updateJob, listJobs } = require('./store');
 const { makeMockLookResult } = require('./mockResult');
 const { JobQueue } = require('./jobQueue');
 const { parseMultipart, rmrf } = require('./multipart');
@@ -83,6 +83,15 @@ function parseBool(v) {
   const s = String(v || '').trim().toLowerCase();
   if (!s) return false;
   return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
+function clampInt(v, { min, max, fallback }) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.trunc(n);
+  if (i < min) return min;
+  if (i > max) return max;
+  return i;
 }
 
 function mountLookReplicatorRoutes(app, { logger }) {
@@ -317,6 +326,51 @@ function mountLookReplicatorRoutes(app, { logger }) {
       return res.status(500).json({ error: 'JOB_GET_FAILED' });
     }
   });
+
+  async function handleHistory(req, res) {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const limit = clampInt(req.query.limit, { min: 1, max: 50, fallback: 20 });
+    const before = req.query.before ? String(req.query.before) : null;
+    const market = req.query.market ? String(req.query.market) : null;
+    const locale = req.query.locale ? String(req.query.locale) : null;
+
+    try {
+      const jobs = await listJobs({ limit, before, market, locale });
+      const items = jobs.map((j) => {
+        const status = mapStatus(j.status);
+        const progressStep = progressStepFrom(j.progress, j.status);
+
+        const warningsCount = Array.isArray(j.result?.warnings) ? j.result.warnings.length : 0;
+        const stepsCount = Array.isArray(j.result?.steps) ? j.result.steps.length : null;
+
+        return {
+          jobId: j.jobId,
+          shareId: j.shareId || j.jobId,
+          market: j.market,
+          locale: j.locale,
+          status,
+          progressStep,
+          progress: j.progress,
+          createdAt: j.createdAt,
+          updatedAt: j.updatedAt,
+          hasResult: Boolean(j.result),
+          summary: j.result ? { stepsCount, warningsCount } : null,
+        };
+      });
+
+      const nextCursor = items.length === limit ? items[items.length - 1]?.createdAt : null;
+      return res.json({ items, nextCursor });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err) }, 'lookReplicate history get failed');
+      return res.status(500).json({ error: 'HISTORY_GET_FAILED' });
+    }
+  }
+
+  // History (two paths for compatibility; same handler)
+  app.get('/api/look-replicate/history', handleHistory);
+  app.get('/api/lookreplicate/history', handleHistory);
 
   app.post('/api/look-replicate/shares', async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
