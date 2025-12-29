@@ -121,6 +121,21 @@ function mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec, u
   return { ...similarityReport, lookDiff };
 }
 
+function hasAnyLookDiffNeedsChange(similarityReport) {
+  const ld = similarityReport?.lookDiff;
+  const candidates = [
+    ld?.eye?.linerDirection?.needsChange,
+    ld?.prep?.intent?.needsChange,
+    ld?.base?.finish?.needsChange,
+    ld?.base?.coverage?.needsChange,
+    ld?.contour?.intent?.needsChange,
+    ld?.brow?.intent?.needsChange,
+    ld?.blush?.intent?.needsChange,
+    ld?.lip?.finish?.needsChange,
+  ];
+  return candidates.some((v) => typeof v === 'boolean');
+}
+
 function toResultAdjustments(layer2Adjustments) {
   return layer2Adjustments.map((a) => ({
     impactArea: a.impactArea,
@@ -207,22 +222,55 @@ async function runLookReplicatePipeline(input) {
   const selfieLookSpecEnabled = parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC);
   const selfieImage = input.selfieImage ?? null;
   const selfieBytes = selfieLookSpecEnabled && selfieImage?.path ? fs.readFileSync(selfieImage.path) : null;
-  const userLookSpec =
-    selfieLookSpecEnabled && selfieBytes
-      ? await extractLookSpec({
-          market: pack.market,
-          locale,
-          referenceImage: { kind: 'bytes', bytes: selfieBytes, contentType: selfieImage.contentType || 'image/jpeg' },
-          imageKind: 'selfie',
-          promptPack: pack.getPromptPack(locale),
-        })
-      : null;
 
-  const similarityReportWithLookDiff = mergeLookDiffIntoSimilarityReport({
-    similarityReport,
-    targetLookSpec: lookSpec,
-    userLookSpec,
-  });
+  const selfieLookSpecFromLayer1 = similarityReport?.selfieAnalysis?.selfieLookSpec ?? null;
+  const lookDiffFromLayer1 = hasAnyLookDiffNeedsChange(similarityReport) ? similarityReport?.lookDiff ?? null : null;
+
+  const selfieDebugEnabled = parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
+  const debugSelfie = (msg) => {
+    if (!selfieDebugEnabled) return;
+    // eslint-disable-next-line no-console
+    console.log(`[selfie_contract] ${msg}`);
+  };
+
+  let userLookSpec = null;
+  let similarityReportWithLookDiff = similarityReport;
+  let lookDiffSource = null;
+
+  if (selfieLookSpecEnabled && (lookDiffFromLayer1 || selfieLookSpecFromLayer1)) {
+    lookDiffSource = 'layer1';
+    userLookSpec = selfieLookSpecFromLayer1;
+    similarityReportWithLookDiff = lookDiffFromLayer1
+      ? similarityReport
+      : mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec: lookSpec, userLookSpec });
+    debugSelfie(`using layer1 contract (hasLookDiff=${Boolean(lookDiffFromLayer1)} hasSelfieLookSpec=${Boolean(selfieLookSpecFromLayer1)})`);
+  } else if (selfieLookSpecEnabled && selfieBytes) {
+    lookDiffSource = 'pipeline_fallback';
+    userLookSpec = await extractLookSpec({
+      market: pack.market,
+      locale,
+      referenceImage: { kind: 'bytes', bytes: selfieBytes, contentType: selfieImage.contentType || 'image/jpeg' },
+      imageKind: 'selfie',
+      promptPack: pack.getPromptPack(locale),
+    });
+    similarityReportWithLookDiff = mergeLookDiffIntoSimilarityReport({
+      similarityReport,
+      targetLookSpec: lookSpec,
+      userLookSpec,
+    });
+    debugSelfie(`computed lookDiff via pipeline_fallback (selfieImageProvided=${Boolean(selfieImage?.path)})`);
+  }
+
+  if (selfieLookSpecEnabled && similarityReportWithLookDiff && lookDiffSource) {
+    similarityReportWithLookDiff = {
+      ...similarityReportWithLookDiff,
+      selfieAnalysis: {
+        ...(similarityReportWithLookDiff.selfieAnalysis || {}),
+        ...(userLookSpec ? { selfieLookSpec: userLookSpec } : {}),
+        lookDiffSource,
+      },
+    };
+  }
 
   const adjOut = await generateAdjustments({
     market: pack.market,

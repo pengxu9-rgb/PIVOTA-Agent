@@ -135,9 +135,14 @@ async function runLookReplicatePipelineWithMockLookSpecs({
   referenceLookSpec,
   selfieLookSpec,
   enableSelfieLookSpec,
+  provideSelfieImage,
+  similarityReportOverride,
   env,
 }) {
   const layer1Bundle = readJson("fixtures/contracts/us/layer1BundleV0.sample.json");
+  if (similarityReportOverride) {
+    layer1Bundle.similarityReport = similarityReportOverride;
+  }
   const referenceImagePath = writeTempJpeg("pivota-lookrep-verify");
 
   try {
@@ -156,13 +161,16 @@ async function runLookReplicatePipelineWithMockLookSpecs({
     return await withEnv(baseEnv, async () => {
       return await withMockedExtractLookSpec({ referenceLookSpec, selfieLookSpec }, async () => {
         const { runLookReplicatePipeline } = require(path.join(repoRoot(), "src", "lookReplicator", "lookReplicatePipeline"));
+        const shouldProvideSelfieImage = typeof provideSelfieImage === "boolean" ? provideSelfieImage : Boolean(enableSelfieLookSpec);
         return await runLookReplicatePipeline({
           market,
           locale,
           preferenceMode: preferenceMode ?? "structure",
           jobId: `verify_${market}_${locale}`,
           referenceImage: { path: referenceImagePath, contentType: "image/jpeg" },
-          ...(enableSelfieLookSpec ? { selfieImage: { path: referenceImagePath, contentType: "image/jpeg" } } : {}),
+          ...(enableSelfieLookSpec && shouldProvideSelfieImage
+            ? { selfieImage: { path: referenceImagePath, contentType: "image/jpeg" } }
+            : {}),
           layer1Bundle,
         });
       });
@@ -182,4 +190,3 @@ module.exports = {
   filterWarnings,
   runLookReplicatePipelineWithMockLookSpecs,
 };
-

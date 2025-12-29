@@ -168,6 +168,85 @@ async function runCase({ name, enableTriggerMatching, enableSlots, needsChange }
   return { ok: true };
 }
 
+function buildSimilarityReportWithLookDiff({ needsChange }) {
+  const sr = cloneJson(readJson("fixtures/contracts/us/layer1BundleV0.sample.json")).similarityReport;
+  const baseFinishUser = needsChange ? "matte" : "dewy";
+  const baseCoverageUser = needsChange ? "sheer" : "full";
+  const lipFinishUser = needsChange ? "gloss" : "velvet";
+  return {
+    ...sr,
+    lookDiff: {
+      ...(sr.lookDiff || {}),
+      base: {
+        ...(sr.lookDiff?.base || {}),
+        finish: { user: baseFinishUser, target: "dewy", needsChange: Boolean(needsChange) },
+        coverage: { user: baseCoverageUser, target: "full", needsChange: Boolean(needsChange) },
+      },
+      lip: {
+        ...(sr.lookDiff?.lip || {}),
+        finish: { user: lipFinishUser, target: "velvet", needsChange: Boolean(needsChange) },
+      },
+    },
+    selfieAnalysis: { ...(sr.selfieAnalysis || {}), lookDiffSource: "layer1" },
+  };
+}
+
+async function runLayer1ContractCase({ name, needsChange }) {
+  const locale = "en-US";
+  const targetLookSpec = buildTargetLookSpec({ locale, includeEyeDirection: true });
+  const similarityReportOverride = buildSimilarityReportWithLookDiff({ needsChange });
+
+  const out = await runLookReplicatePipelineWithMockLookSpecs({
+    market: "US",
+    locale,
+    preferenceMode: "structure",
+    referenceLookSpec: targetLookSpec,
+    selfieLookSpec: targetLookSpec,
+    enableSelfieLookSpec: true,
+    provideSelfieImage: false,
+    similarityReportOverride,
+    env: {
+      LAYER2_ENABLE_SELFIE_LOOKSPEC: "1",
+      LAYER2_ENABLE_TRIGGER_MATCHING: "1",
+      LAYER2_ENABLE_EYE_ACTIVITY_SLOT: "1",
+      LAYER2_ENABLE_BASE_ACTIVITY_SLOT: "1",
+      LAYER2_ENABLE_LIP_ACTIVITY_SLOT: "1",
+      LAYER2_ENABLE_EXTENDED_AREAS: "0",
+      LAYER2_TRIGGER_MATCH_DEBUG: "0",
+    },
+  });
+
+  const techniqueIds = collectTechniqueIds(out);
+  const macros = classifyMacroIds(techniqueIds);
+  const micros = countMicros(techniqueIds);
+
+  console.log(
+    `CASE=${name} locale=${locale} market=US needsChange=${needsChange} macroIds=[${macros.macroAll.join(",")}] microEyeCount=${micros.microEyeCount} microBaseCount=${micros.microBaseCount} microLipCount=${micros.microLipCount}`,
+  );
+
+  if (needsChange && !macros.macroAll.length) {
+    console.error(`[FAIL] CASE=${name} expected macroIds non-empty`);
+    printFailureDiagnostic({ out });
+    return { ok: false };
+  }
+
+  if (!needsChange && macros.macroAll.length) {
+    console.error(`[FAIL] CASE=${name} expected macroIds empty`);
+    printFailureDiagnostic({ out });
+    return { ok: false };
+  }
+
+  if (micros.microEyeCount < 1 || micros.microBaseCount < 1 || micros.microLipCount < 1) {
+    console.error(
+      `[FAIL] CASE=${name} expected micro counts >=1 (eye=${micros.microEyeCount}, base=${micros.microBaseCount}, lip=${micros.microLipCount})`,
+    );
+    printFailureDiagnostic({ out });
+    return { ok: false };
+  }
+
+  return { ok: true };
+}
+
 async function runExtendedAreasCase({ name, needsChange }) {
   const locale = "en-US";
 
@@ -286,6 +365,14 @@ async function main() {
   let failed = false;
   for (const c of cases) {
     const r = await runCase(c);
+    if (!r.ok) failed = true;
+  }
+
+  for (const c of [
+    { name: "G_LAYER1_CONTRACT_needsChange_true", needsChange: true },
+    { name: "H_LAYER1_CONTRACT_needsChange_false", needsChange: false },
+  ]) {
+    const r = await runLayer1ContractCase(c);
     if (!r.ok) failed = true;
   }
 

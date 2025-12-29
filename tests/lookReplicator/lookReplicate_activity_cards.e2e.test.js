@@ -114,13 +114,16 @@ async function runPipelineWithFixture({
   lookSpecFixturePath,
   lookSpecOverride,
   selfieLookSpecOverride,
+  similarityReportOverride,
   enableSelfieLookSpec,
   enableExtendedAreas,
   enableTriggerMatching,
   enableEyeActivitySlot,
   enableBaseActivitySlot,
   enableLipActivitySlot,
+  provideSelfieImage,
   preferenceMode,
+  throwOnSelfieExtract,
 }) {
   const referenceImagePath = writeTempJpeg();
   const envBackup = { ...process.env };
@@ -129,6 +132,9 @@ async function runPipelineWithFixture({
     const lookSpec = lookSpecOverride ?? readJson(lookSpecFixturePath);
     const selfieLookSpec = selfieLookSpecOverride ?? lookSpec;
     const layer1Bundle = readJson("fixtures/contracts/us/layer1BundleV0.sample.json");
+    if (similarityReportOverride) {
+      layer1Bundle.similarityReport = similarityReportOverride;
+    }
 
     process.env.API_MODE = "MOCK";
     process.env.PIVOTA_API_KEY = "";
@@ -152,17 +158,25 @@ async function runPipelineWithFixture({
       delete process.env.LAYER2_ENABLE_BASE_ACTIVITY_SLOT;
     }
     if (typeof enableLipActivitySlot === "boolean") {
-      process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT = enableLipActivitySlot ? "1" : "0";
+    process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT = enableLipActivitySlot ? "1" : "0";
     } else {
       delete process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT;
     }
 
     let runLookReplicatePipeline = null;
+    let selfieExtractCalls = 0;
     await new Promise((resolve, reject) => {
       jest.isolateModules(() => {
         try {
           jest.doMock("../../src/layer2/extractLookSpec", () => ({
-            extractLookSpec: async (input) => (input?.imageKind === "selfie" ? selfieLookSpec : lookSpec),
+            extractLookSpec: async (input) => {
+              if (input?.imageKind === "selfie") {
+                selfieExtractCalls += 1;
+                if (throwOnSelfieExtract) throw new Error("SELFIE_EXTRACT_CALLED");
+                return selfieLookSpec;
+              }
+              return lookSpec;
+            },
           }));
           ({ runLookReplicatePipeline } = require("../../src/lookReplicator/lookReplicatePipeline"));
           resolve();
@@ -172,15 +186,19 @@ async function runPipelineWithFixture({
       });
     });
 
-    return await runLookReplicatePipeline({
+    const shouldProvideSelfieImage = typeof provideSelfieImage === "boolean" ? provideSelfieImage : Boolean(enableSelfieLookSpec);
+    const out = await runLookReplicatePipeline({
       market: "US",
       locale,
       preferenceMode: preferenceMode ?? "structure",
       jobId: `e2e_${locale}`,
       referenceImage: { path: referenceImagePath, contentType: "image/jpeg" },
-      ...(enableSelfieLookSpec ? { selfieImage: { path: referenceImagePath, contentType: "image/jpeg" } } : {}),
+      ...(enableSelfieLookSpec && shouldProvideSelfieImage
+        ? { selfieImage: { path: referenceImagePath, contentType: "image/jpeg" } }
+        : {}),
       layer1Bundle,
     });
+    return { ...out, __selfieExtractCalls: selfieExtractCalls };
   } finally {
     process.env = envBackup;
     fs.rmSync(referenceImagePath, { force: true });
@@ -964,5 +982,123 @@ describe("look-replicator activity cards reachability (production path)", () => 
     expect(resultTechniqueIds.some((id) => id.startsWith("US_contour_") && id.endsWith("-zh"))).toBe(true);
     expect(resultTechniqueIds.some((id) => id.startsWith("US_brow_") && id.endsWith("-zh"))).toBe(true);
     expect(resultTechniqueIds.some((id) => id.startsWith("US_blush_") && id.endsWith("-zh"))).toBe(true);
+  });
+
+  test("EN: layer1 lookDiff contract drives base/lip macro slots without selfieImage", async () => {
+    const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
+    const targetLookSpec = {
+      ...baseTarget,
+      breakdown: {
+        ...baseTarget.breakdown,
+        base: { ...baseTarget.breakdown.base, finish: "dewy", coverage: "full" },
+        lip: { ...baseTarget.breakdown.lip, finish: "velvet" },
+      },
+    };
+
+    const sr = readJson("fixtures/contracts/us/layer1BundleV0.sample.json").similarityReport;
+    const similarityReportOverride = {
+      ...sr,
+      lookDiff: {
+        ...(sr.lookDiff || {}),
+        base: { ...(sr.lookDiff?.base || {}), finish: { user: "matte", target: "dewy", needsChange: true } },
+        lip: { ...(sr.lookDiff?.lip || {}), finish: { user: "gloss", target: "velvet", needsChange: true } },
+      },
+    };
+
+    const out = await runPipelineWithFixture({
+      locale: "en-US",
+      lookSpecOverride: targetLookSpec,
+      enableSelfieLookSpec: true,
+      provideSelfieImage: false,
+      enableTriggerMatching: true,
+      enableBaseActivitySlot: true,
+      enableLipActivitySlot: true,
+      enableEyeActivitySlot: false,
+      similarityReportOverride,
+    });
+
+    expect(out.__selfieExtractCalls).toBe(0);
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_base_fix_"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_lip_"))).toBe(true);
+  });
+
+  test("ZH: layer1 lookDiff contract drives macro slots and resolves to -zh without selfieImage", async () => {
+    const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
+    const targetLookSpec = {
+      ...baseTarget,
+      breakdown: {
+        ...baseTarget.breakdown,
+        base: { ...baseTarget.breakdown.base, finish: "dewy", coverage: "full" },
+        lip: { ...baseTarget.breakdown.lip, finish: "velvet" },
+      },
+    };
+
+    const sr = readJson("fixtures/contracts/us/layer1BundleV0.sample.json").similarityReport;
+    const similarityReportOverride = {
+      ...sr,
+      lookDiff: {
+        ...(sr.lookDiff || {}),
+        base: { ...(sr.lookDiff?.base || {}), finish: { user: "matte", target: "dewy", needsChange: true } },
+        lip: { ...(sr.lookDiff?.lip || {}), finish: { user: "gloss", target: "velvet", needsChange: true } },
+      },
+    };
+
+    const out = await runPipelineWithFixture({
+      locale: "zh-CN",
+      lookSpecOverride: targetLookSpec,
+      enableSelfieLookSpec: true,
+      provideSelfieImage: false,
+      enableTriggerMatching: true,
+      enableBaseActivitySlot: true,
+      enableLipActivitySlot: true,
+      enableEyeActivitySlot: false,
+      similarityReportOverride,
+    });
+
+    expect(out.__selfieExtractCalls).toBe(0);
+    const warnings = Array.isArray(out?.result?.warnings) ? out.result.warnings : [];
+    expect(warnings.some((w) => String(w).includes("Technique language fallback"))).toBe(false);
+
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_base_fix_") && id.endsWith("-zh"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_lip_") && id.endsWith("-zh"))).toBe(true);
+  });
+
+  test("EN: if layer1 lookDiff is present, pipeline does NOT call selfie extract even when selfieImage is provided", async () => {
+    const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
+    const targetLookSpec = {
+      ...baseTarget,
+      breakdown: {
+        ...baseTarget.breakdown,
+        base: { ...baseTarget.breakdown.base, finish: "dewy", coverage: "full" },
+        lip: { ...baseTarget.breakdown.lip, finish: "velvet" },
+      },
+    };
+
+    const sr = readJson("fixtures/contracts/us/layer1BundleV0.sample.json").similarityReport;
+    const similarityReportOverride = {
+      ...sr,
+      lookDiff: {
+        ...(sr.lookDiff || {}),
+        base: { ...(sr.lookDiff?.base || {}), finish: { user: "matte", target: "dewy", needsChange: true } },
+        lip: { ...(sr.lookDiff?.lip || {}), finish: { user: "gloss", target: "velvet", needsChange: true } },
+      },
+    };
+
+    const out = await runPipelineWithFixture({
+      locale: "en-US",
+      lookSpecOverride: targetLookSpec,
+      enableSelfieLookSpec: true,
+      provideSelfieImage: true,
+      enableTriggerMatching: true,
+      enableBaseActivitySlot: true,
+      enableLipActivitySlot: true,
+      enableEyeActivitySlot: false,
+      similarityReportOverride,
+      throwOnSelfieExtract: true,
+    });
+
+    expect(out.__selfieExtractCalls).toBe(0);
   });
 });

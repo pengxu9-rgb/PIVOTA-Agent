@@ -87,6 +87,13 @@ const SimilarityReportV0Schema = z
       })
       .strict(),
     warnings: z.array(z.string()).optional(),
+    selfieAnalysis: z
+      .object({
+        selfieLookSpec: z.unknown().optional(),
+        lookDiffSource: z.enum(['layer1', 'pipeline_fallback']).optional(),
+      })
+      .strict()
+      .optional(),
     lookDiff: z
       .object({
         eye: z
