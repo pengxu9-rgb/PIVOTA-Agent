@@ -138,11 +138,10 @@ function main() {
   const date = args.date ? String(args.date) : todayYYYYMMDD();
   const dataDir = path.join("src", "layer3", "data");
   const poolPath = path.join(dataDir, market === "JP" ? "internalPins_jp.json" : "internalPins_us.json");
-  const pool = readJsonOrNull(poolPath);
-  if (!pool) {
-    console.error(`[internal:report] Missing pool JSON at ${poolPath}`);
-    console.error(`[internal:report] Run: npm run internal:build-pins`);
-    process.exit(1);
+  const pool = readJsonOrNull(poolPath) || { market, byRole: {}, byCategory: {} };
+  if (!fs.existsSync(poolPath)) {
+    console.warn(`[internal:report] Missing pool JSON at ${poolPath}`);
+    console.warn(`[internal:report] Writing empty report (0 pins). To generate pins, add src/layer3/data/internal_role_sku_map.csv and run: npm run internal:build-pins`);
   }
 
   const outDir = path.join("artifacts", "reports");
@@ -161,4 +160,3 @@ if (require.main === module) {
 }
 
 module.exports = { buildReport };
-
