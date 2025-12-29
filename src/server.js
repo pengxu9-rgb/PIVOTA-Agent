@@ -12,7 +12,7 @@ const { randomUUID } = require('crypto');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { query } = require('./db');
-const { getCreatorConfig } = require('./creatorConfig');
+const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
 const { searchProducts, getProductById } = require('./mockProducts');
 const {
   getAllPromotions,
@@ -63,8 +63,9 @@ const ROUTE_DEBUG_ENABLED =
   process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1' ||
   process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG === '1';
 
-async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown') {
-  if (!ROUTE_DEBUG_ENABLED) return null;
+async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown', options = {}) {
+  const force = options && options.force === true;
+  if (!force && !ROUTE_DEBUG_ENABLED) return null;
   if (!process.env.DATABASE_URL) return { db_configured: false };
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) return { db_configured: true, merchant_ids_count: 0 };
 
@@ -110,6 +111,96 @@ async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown') {
       merchant_ids_count: merchantIds.length,
       error: String(err && err.message ? err.message : err),
     };
+  }
+}
+
+function uniqueStrings(values) {
+  const out = [];
+  const seen = new Set();
+  for (const v of values || []) {
+    const s = String(v || '').trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function getCreatorCatalogMerchantIds() {
+  const all = [];
+  for (const cfg of CREATOR_CONFIGS || []) {
+    if (Array.isArray(cfg.merchantIds)) {
+      for (const mid of cfg.merchantIds) all.push(mid);
+    }
+  }
+  return uniqueStrings(all);
+}
+
+const catalogSyncState = {
+  last_run_at: null,
+  last_success_at: null,
+  last_error: null,
+  per_merchant: {},
+};
+
+async function runCreatorCatalogAutoSync() {
+  const enabled = process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true';
+  if (!enabled) return;
+  if (!PIVOTA_API_BASE) return;
+
+  const adminKey = process.env.CREATOR_CATALOG_SYNC_ADMIN_KEY || ADMIN_API_KEY;
+  if (!adminKey) {
+    logger.warn('CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no admin key is configured');
+    return;
+  }
+
+  const merchantIds = getCreatorCatalogMerchantIds();
+  if (!merchantIds.length) {
+    logger.warn('CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no creator merchantIds are configured');
+    return;
+  }
+
+  const limit = Math.min(
+    Number(process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT || 200) || 200,
+    5000,
+  );
+
+  catalogSyncState.last_run_at = new Date().toISOString();
+  catalogSyncState.last_error = null;
+
+  for (const merchantId of merchantIds) {
+    const url = `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
+      merchantId,
+    )}?limit=${encodeURIComponent(String(limit))}`;
+    try {
+      const res = await axios.post(url, null, {
+        headers: { 'X-ADMIN-KEY': adminKey },
+        timeout: 30000,
+      });
+      catalogSyncState.per_merchant[merchantId] = {
+        ok: true,
+        last_run_at: new Date().toISOString(),
+        summary: res.data && res.data.summary ? res.data.summary : res.data,
+      };
+      catalogSyncState.last_success_at = new Date().toISOString();
+      logger.info({ merchantId, limit }, 'Creator catalog auto sync succeeded');
+    } catch (err) {
+      const status = err.response?.status;
+      const data = err.response?.data;
+      const message =
+        (data && data.detail && typeof data.detail === 'object' && data.detail.message) ||
+        (data && typeof data.detail === 'string' ? data.detail : null) ||
+        err.message;
+      catalogSyncState.per_merchant[merchantId] = {
+        ok: false,
+        last_run_at: new Date().toISOString(),
+        status: status || null,
+        error: message,
+      };
+      catalogSyncState.last_error = message;
+      logger.warn({ merchantId, status, message }, 'Creator catalog auto sync failed');
+    }
   }
 }
 
@@ -1716,7 +1807,26 @@ app.use((req, res, next) => {
 app.get('/healthz', (req, res) => {
   const dbConfigured = Boolean(process.env.DATABASE_URL);
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
-  res.json({ 
+  const minSellable = Math.max(Number(process.env.HEALTHZ_MIN_SELLABLE_PRODUCTS || 20) || 20, 0);
+  const includeCacheStats = process.env.HEALTHZ_INCLUDE_CACHE_STATS === 'true';
+
+  const creatorIdForStats = process.env.HEALTHZ_CACHE_STATS_CREATOR_ID || 'nina-studio';
+  const creatorConfig = getCreatorConfig(creatorIdForStats);
+  const merchantIds = uniqueStrings(creatorConfig?.merchantIds || []);
+
+  const cacheStatsPromise =
+    includeCacheStats && dbConfigured && merchantIds.length
+      ? probeCreatorCacheDbStats(merchantIds, 'unknown', { force: true })
+      : Promise.resolve(null);
+
+  cacheStatsPromise
+    .then((cacheStats) => {
+      const sellable = cacheStats && typeof cacheStats.products_cache_sellable_total === 'number'
+        ? cacheStats.products_cache_sellable_total
+        : null;
+      const cacheWarning = typeof sellable === 'number' ? sellable < minSellable : null;
+
+      res.json({
     ok: true,
     api_mode: API_MODE,
     modes: {
@@ -1733,6 +1843,22 @@ app.get('/healthz', (req, res) => {
       taxonomy_version: process.env.TAXONOMY_VERSION || null,
     },
     products_available: true,
+    catalog_cache: includeCacheStats
+      ? {
+          creator_id: creatorIdForStats,
+          merchant_ids: merchantIds,
+          min_sellable_products: minSellable,
+          warning: cacheWarning,
+          stats: cacheStats,
+        }
+      : undefined,
+    catalog_sync: {
+      enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+      interval_minutes: Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || 60) || 60,
+      last_run_at: catalogSyncState.last_run_at,
+      last_success_at: catalogSyncState.last_success_at,
+      last_error: catalogSyncState.last_error,
+    },
     features: {
       product_search: true,
       order_creation: true,
@@ -1743,7 +1869,18 @@ app.get('/healthz', (req, res) => {
         process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
     },
     message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
-  });
+      });
+    })
+    .catch((err) => {
+      logger.warn({ err: err.message }, 'healthz cache stats probe failed');
+      res.json({
+        ok: true,
+        api_mode: API_MODE,
+        backend: { api_base: PIVOTA_API_BASE, api_key_configured: !!PIVOTA_API_KEY, db_configured: dbConfigured },
+        products_available: true,
+        warning: 'healthz_cache_stats_failed',
+      });
+    });
 });
 
 app.get('/healthz/db', async (req, res) => {
@@ -3079,6 +3216,18 @@ module.exports._debug = {
 if (require.main === module) {
   app.listen(PORT, () => {
     logger.info(`Pivota Agent gateway listening on port ${PORT}, proxying to ${PIVOTA_API_BASE}`);
+
+    const intervalMin = Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || 60) || 60;
+    const initialDelayMs = Math.max(
+      Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INITIAL_DELAY_MS || 15000) || 15000,
+      0,
+    );
+    if (process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true') {
+      setTimeout(() => {
+        runCreatorCatalogAutoSync();
+        setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
+      }, initialDelayMs);
+    }
   });
 }
 
