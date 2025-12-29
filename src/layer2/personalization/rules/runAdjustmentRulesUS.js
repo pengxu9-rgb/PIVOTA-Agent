@@ -5,6 +5,7 @@ const { normalizeLookSpecToV1 } = require('../../schemas/lookSpecV1');
 const { getTechniqueIdsForIntent } = require('../../dicts/intents');
 
 const { US_ADJUSTMENT_RULES, US_ADJUSTMENT_FALLBACK_RULES } = require('./usAdjustmentRules');
+const { SimilarityReportV0Schema } = require('../../../layer1/schemas/similarityReportV0');
 
 const PreferenceModeSchema = z.enum(['structure', 'vibe', 'ease']);
 
@@ -22,6 +23,14 @@ function extendedAreasEnabled() {
 
 function eyeActivitySlotEnabled() {
   return parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT) === true;
+}
+
+function baseActivitySlotEnabled() {
+  return parseEnvBool(process.env.LAYER2_ENABLE_BASE_ACTIVITY_SLOT) === true;
+}
+
+function lipActivitySlotEnabled() {
+  return parseEnvBool(process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT) === true;
 }
 
 function triggerMatchingEnabled() {
@@ -71,6 +80,61 @@ function buildEyeLinerActivitySlotSkeleton(input) {
   });
 }
 
+function needsLookDiffChange(similarityReport, path) {
+  if (!similarityReport) return false;
+  const sr = SimilarityReportV0Schema.parse(similarityReport);
+  if (path === 'base.finish') return sr.lookDiff?.base?.finish?.needsChange === true;
+  if (path === 'base.coverage') return sr.lookDiff?.base?.coverage?.needsChange === true;
+  if (path === 'lip.finish') return sr.lookDiff?.lip?.finish?.needsChange === true;
+  return false;
+}
+
+function buildBaseActivitySlotSkeleton(input) {
+  if (!needsLookDiffChange(input.similarityReport, 'base.finish') && !needsLookDiffChange(input.similarityReport, 'base.coverage')) return null;
+  const doActionIds = getTechniqueIdsForIntent('BASE_BUILD_COVERAGE_SPOT_ACTIVITY_PICK', 'US') ?? [];
+  if (!doActionIds.length) return null;
+  return AdjustmentSkeletonV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    impactArea: 'base',
+    ruleId: 'BASE_ACTIVITY_SLOT',
+    severity: 0.1,
+    confidence: 'low',
+    becauseFacts: ['Optional: add one macro activity technique card after the micro-steps.'],
+    doActionSelection: 'choose_one',
+    doActionIds,
+    doActions: [],
+    whyMechanism: ['Choose exactly one activity card to avoid mixing granularity inside the micro-step sequence.'],
+    evidenceKeys: [
+      'intent:BASE_BUILD_COVERAGE_SPOT_ACTIVITY_PICK',
+      'similarityReport.lookDiff.base.finish.needsChange',
+      'similarityReport.lookDiff.base.coverage.needsChange',
+    ],
+    tags: ['activity_slot', 'base'],
+  });
+}
+
+function buildLipActivitySlotSkeleton(input) {
+  if (!needsLookDiffChange(input.similarityReport, 'lip.finish')) return null;
+  const doActionIds = getTechniqueIdsForIntent('LIP_FALLBACK_FINISH_FOCUS_ACTIVITY_PICK', 'US') ?? [];
+  if (!doActionIds.length) return null;
+  return AdjustmentSkeletonV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    impactArea: 'lip',
+    ruleId: 'LIP_ACTIVITY_SLOT',
+    severity: 0.1,
+    confidence: 'low',
+    becauseFacts: ['Optional: add one macro activity technique card after the micro-steps.'],
+    doActionSelection: 'choose_one',
+    doActionIds,
+    doActions: [],
+    whyMechanism: ['Choose exactly one activity card to avoid mixing granularity inside the micro-step sequence.'],
+    evidenceKeys: ['intent:LIP_FALLBACK_FINISH_FOCUS_ACTIVITY_PICK', 'similarityReport.lookDiff.lip.finish.needsChange'],
+    tags: ['activity_slot', 'lip'],
+  });
+}
+
 function runAdjustmentRulesUS(input) {
   const lookSpec = normalizeLookSpecToV1(input.lookSpec);
   if (lookSpec.market !== 'US') throw new Error('runAdjustmentRulesUS only supports market=US.');
@@ -115,8 +179,25 @@ function runAdjustmentRulesUS(input) {
       ? buildEyeLinerActivitySlotSkeleton({ lookSpec })
       : null;
 
+  const baseActivitySlot =
+    baseActivitySlotEnabled() && triggerMatchingEnabled() && outByArea.base?.ruleId === 'BASE_BUILD_COVERAGE_SPOT'
+      ? buildBaseActivitySlotSkeleton({ similarityReport: ctx.similarityReport })
+      : null;
+
+  const lipActivitySlot =
+    lipActivitySlotEnabled() && triggerMatchingEnabled() && outByArea.lip?.ruleId === 'LIP_FALLBACK_FINISH_FOCUS'
+      ? buildLipActivitySlotSkeleton({ similarityReport: ctx.similarityReport })
+      : null;
+
   if (!extendedAreasEnabled()) {
-    return [outByArea.base, outByArea.eye, ...(eyeActivitySlot ? [eyeActivitySlot] : []), outByArea.lip];
+    return [
+      outByArea.base,
+      ...(baseActivitySlot ? [baseActivitySlot] : []),
+      outByArea.eye,
+      ...(eyeActivitySlot ? [eyeActivitySlot] : []),
+      outByArea.lip,
+      ...(lipActivitySlot ? [lipActivitySlot] : []),
+    ];
   }
 
   const prep = buildExtendedFallbackSkeleton({ impactArea: 'prep', ruleId: 'PREP_FALLBACK_SAFE', intentId: 'PREP_FALLBACK_SAFE' });
@@ -135,12 +216,14 @@ function runAdjustmentRulesUS(input) {
   return [
     prep,
     outByArea.base,
+    ...(baseActivitySlot ? [baseActivitySlot] : []),
     contour,
     brow,
     outByArea.eye,
     ...(eyeActivitySlot ? [eyeActivitySlot] : []),
     blush,
     outByArea.lip,
+    ...(lipActivitySlot ? [lipActivitySlot] : []),
   ];
 }
 

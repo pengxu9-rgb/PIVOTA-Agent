@@ -13,8 +13,6 @@ exports[`Layer2 US adjustment rules-first runAdjustmentRulesUS returns base/eye/
       "T_BASE_SPOT_CONCEAL_ONLY",
       "T_BASE_SET_TZONE_LIGHT",
       "T_BASE_MIST_MELT",
-      "US_base_fix_caking_01-en",
-      "US_base_fix_floating_powder_01-en",
     ],
     "doActions": [],
     "evidenceKeys": [

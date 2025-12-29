@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v0",
-  "placeholders": ["PLACEHOLDER_JP_EYE_LINER_ACTIVITY_PICK"],
+  "placeholders": ["PLACEHOLDER_JP_EYE_LINER_ACTIVITY_PICK", "PLACEHOLDER_JP_BASE_ACTIVITY_PICK", "PLACEHOLDER_JP_LIP_ACTIVITY_PICK"],
   "intents": [
     {
       "id": "EYE_LINER_DIRECTION_ADAPT",
@@ -71,8 +71,24 @@
       "id": "BASE_BUILD_COVERAGE_SPOT",
       "area": "base",
       "markets": {
-        "US": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT", "US_base_fix_caking_01-en", "US_base_fix_floating_powder_01-en"] },
+        "US": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] },
         "JP": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] }
+      }
+    },
+    {
+      "id": "BASE_BUILD_COVERAGE_SPOT_MICRO",
+      "area": "base",
+      "markets": {
+        "US": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] },
+        "JP": { "techniqueIds": ["T_BASE_BUILD_COVERAGE_THIN_PASSES", "T_BASE_SPOT_CONCEAL_ONLY", "T_BASE_SET_TZONE_LIGHT", "T_BASE_MIST_MELT"] }
+      }
+    },
+    {
+      "id": "BASE_BUILD_COVERAGE_SPOT_ACTIVITY_PICK",
+      "area": "base",
+      "markets": {
+        "US": { "techniqueIds": ["US_base_fix_caking_01-en", "US_base_fix_floating_powder_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_BASE_ACTIVITY_PICK"] }
       }
     },
 
@@ -113,8 +129,24 @@
       "id": "LIP_FALLBACK_FINISH_FOCUS",
       "area": "lip",
       "markets": {
-        "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST", "US_lip_thin_lower_fuller_01-en", "US_lip_flat_lips_define_01-en"] },
+        "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] },
         "JP": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] }
+      }
+    },
+    {
+      "id": "LIP_FALLBACK_FINISH_FOCUS_MICRO",
+      "area": "lip",
+      "markets": {
+        "US": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] },
+        "JP": { "techniqueIds": ["T_LIP_MATCH_FINISH", "T_LIP_SHADE_CLOSE_FAMILY", "T_LIP_BLOT_ADJUST"] }
+      }
+    },
+    {
+      "id": "LIP_FALLBACK_FINISH_FOCUS_ACTIVITY_PICK",
+      "area": "lip",
+      "markets": {
+        "US": { "techniqueIds": ["US_lip_thin_lower_fuller_01-en", "US_lip_flat_lips_define_01-en"] },
+        "JP": { "techniqueIds": ["PLACEHOLDER_JP_LIP_ACTIVITY_PICK"] }
       }
     },
 

@@ -8,7 +8,6 @@ describe("intentSelection", () => {
 
   test("returns configured selection for known intents", () => {
     const dict = loadIntentSelectionV0();
-    expect(getIntentSelection("BASE_BUILD_COVERAGE_SPOT", "US", dict)).toBe("choose_one");
+    expect(getIntentSelection("BASE_BUILD_COVERAGE_SPOT_ACTIVITY_PICK", "US", dict)).toBe("choose_one");
   });
 });
-

@@ -44,6 +44,7 @@
     "external:report": "node scripts/report-external-links-pool.js",
     "external:report:us": "node scripts/report-external-links-pool.js --market US",
     "external:report:jp": "node scripts/report-external-links-pool.js --market JP",
+    "verify:premerge": "node scripts/verify-pr-file-boundary.js && node scripts/verify-premerge-layer2-slots.js && node scripts/verify-bilingual-resolution.js && node scripts/verify-jp-placeholder-noncrash.js && node scripts/verify-selection-stability.js",
     "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js"
