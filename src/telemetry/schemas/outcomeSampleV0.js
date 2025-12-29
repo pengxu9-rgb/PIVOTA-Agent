@@ -65,6 +65,29 @@ const ReplayContextSchema = z
   .strict()
   .optional();
 
+const GeminiTelemetrySchema = z
+  .object({
+    reference: z
+      .object({
+        okCount: z.number().int().min(0),
+        failCount: z.number().int().min(0),
+        lastErrorCode: z.string().min(1).nullable(),
+        latencyMs: z.number().int().min(0).nullable(),
+      })
+      .strict(),
+    selfie: z
+      .object({
+        okCount: z.number().int().min(0),
+        failCount: z.number().int().min(0),
+        lastErrorCode: z.string().min(1).nullable(),
+        latencyMs: z.number().int().min(0).nullable(),
+      })
+      .strict(),
+    lookDiffSource: z.enum(['layer1', 'gemini', 'pipeline_fallback']).nullable(),
+  })
+  .strict()
+  .optional();
+
 const OutcomeSampleV0Schema = z
   .object({
     schemaVersion: z.literal('v0'),
@@ -81,6 +104,7 @@ const OutcomeSampleV0Schema = z
     usedRules: z.array(UsedRuleSchema),
     contextFingerprint: ContextFingerprintSchema,
     replayContext: ReplayContextSchema,
+    gemini: GeminiTelemetrySchema,
   })
   .strict();
 

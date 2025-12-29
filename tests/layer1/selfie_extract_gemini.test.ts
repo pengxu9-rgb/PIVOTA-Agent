@@ -14,6 +14,10 @@ describe("extractSelfieLookSpecGemini", () => {
   beforeEach(() => {
     delete process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_MODEL;
+    delete process.env.GEMINI_TIMEOUT_MS;
+    delete process.env.GEMINI_MAX_RETRIES;
+    delete process.env.GEMINI_RETRY_BASE_DELAY_MS;
+    delete process.env.GEMINI_DEBUG;
     jest.resetModules();
   });
 
@@ -90,6 +94,102 @@ describe("extractSelfieLookSpecGemini", () => {
 
       expect(out.ok).toBe(false);
       expect(String(out.error.code)).toBe("JSON_PARSE_FAILED");
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+});
+
+describe("geminiClient.generateLookSpecFromImage hardening", () => {
+  beforeEach(() => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_MODEL;
+    delete process.env.GEMINI_TIMEOUT_MS;
+    delete process.env.GEMINI_MAX_RETRIES;
+    delete process.env.GEMINI_RETRY_BASE_DELAY_MS;
+    delete process.env.GEMINI_DEBUG;
+    jest.resetModules();
+  });
+
+  test("timeout returns ok=false REQUEST_FAILED (fail-closed)", async () => {
+    process.env.GEMINI_API_KEY = "test_key";
+    process.env.GEMINI_TIMEOUT_MS = "10";
+    process.env.GEMINI_MAX_RETRIES = "0";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempJpeg();
+
+    try {
+      const generateContent = jest.fn().mockImplementation(() => new Promise(() => {}));
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+      const out = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+
+      expect(out.ok).toBe(false);
+      expect(String(out.error.code)).toBe("REQUEST_FAILED");
+      expect(String(out.error.message)).toMatch(/timed out|timeout/i);
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+
+  test("retries once on transient errors (503) and succeeds on second attempt", async () => {
+    process.env.GEMINI_API_KEY = "test_key";
+    process.env.GEMINI_TIMEOUT_MS = "1000";
+    process.env.GEMINI_MAX_RETRIES = "1";
+    process.env.GEMINI_RETRY_BASE_DELAY_MS = "1";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempJpeg();
+
+    try {
+      const generateContent = jest
+        .fn()
+        .mockRejectedValueOnce(new Error("503 Service Unavailable"))
+        .mockResolvedValueOnce({ text: "{\"ok\":true}" });
+
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+      const out = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+
+      expect(out.ok).toBe(true);
+      expect(generateContent).toHaveBeenCalledTimes(2);
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+
+  test("does not call Gemini or retry when GEMINI_API_KEY missing", async () => {
+    process.env.GEMINI_MAX_RETRIES = "5";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempJpeg();
+
+    try {
+      const generateContent = jest.fn();
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+      const out = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+
+      expect(out.ok).toBe(false);
+      expect(String(out.error.code)).toBe("MISSING_API_KEY");
+      expect(genai.GoogleGenAI).toHaveBeenCalledTimes(0);
+      expect(generateContent).toHaveBeenCalledTimes(0);
     } finally {
       fs.rmSync(imgPath, { force: true });
     }
