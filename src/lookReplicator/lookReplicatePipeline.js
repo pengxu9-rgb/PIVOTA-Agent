@@ -9,6 +9,7 @@ const { buildAdjustmentCandidates } = require('./buildAdjustmentCandidates');
 
 const { Layer1BundleV0Schema } = require('../layer1/schemas/layer1BundleV0');
 const { extractSelfieLookSpecGemini } = require('../layer1/selfie/extractSelfieLookSpecGemini');
+const { extractReferenceLookSpecGemini } = require('../layer1/reference/extractReferenceLookSpecGemini');
 const { buildContextFingerprintUS } = require('../telemetry/contextFingerprintUS');
 const { buildContextFingerprintJP } = require('../telemetry/contextFingerprintJP');
 const { normalizeMarket } = require('../markets/market');
@@ -209,16 +210,44 @@ async function runLookReplicatePipeline(input) {
   const refFaceProfile = layer1?.refFaceProfile ?? null;
   const similarityReport = layer1?.similarityReport ?? null;
 
+  const promptPack = pack.getPromptPack(locale);
   const referenceBytes = fs.readFileSync(input.referenceImage.path);
   const versions = engineVersionFor(pack.market);
 
-  const lookSpec = await extractLookSpec({
-    market: pack.market,
-    locale,
-    referenceImage: { kind: 'bytes', bytes: referenceBytes, contentType: input.referenceImage.contentType },
-    imageKind: 'reference',
-    promptPack: pack.getPromptPack(locale),
-  });
+  const geminiReferenceLookSpecEnabled = parseEnvBool(process.env.LAYER1_ENABLE_GEMINI_REFERENCE_LOOKSPEC);
+  const geminiDebugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
+  const debugGemini = (msg) => {
+    if (!geminiDebugEnabled) return;
+    // eslint-disable-next-line no-console
+    console.log(`[gemini_reference] ${msg}`);
+  };
+
+  let lookSpec = null;
+  if (geminiReferenceLookSpecEnabled && input.referenceImage?.path) {
+    const geminiOut = await extractReferenceLookSpecGemini({
+      market: pack.market,
+      locale,
+      imagePath: input.referenceImage.path,
+      promptText: promptPack?.lookSpecExtract,
+    });
+
+    if (geminiOut?.ok) {
+      lookSpec = geminiOut.value;
+      debugGemini('using gemini reference lookSpec');
+    } else if (geminiOut) {
+      debugGemini(`gemini reference lookspec failed (fallback to extractLookSpec): ${String(geminiOut?.error?.code || 'UNKNOWN')}`);
+    }
+  }
+
+  if (!lookSpec) {
+    lookSpec = await extractLookSpec({
+      market: pack.market,
+      locale,
+      referenceImage: { kind: 'bytes', bytes: referenceBytes, contentType: input.referenceImage.contentType },
+      imageKind: 'reference',
+      promptPack,
+    });
+  }
 
   const selfieLookSpecEnabled = parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC);
   const geminiSelfieLookSpecEnabled = parseEnvBool(process.env.LAYER1_ENABLE_GEMINI_SELFIE_LOOKSPEC);
@@ -246,13 +275,13 @@ async function runLookReplicatePipeline(input) {
       ? similarityReport
       : mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec: lookSpec, userLookSpec });
     debugSelfie(`using layer1 contract (hasLookDiff=${Boolean(lookDiffFromLayer1)} hasSelfieLookSpec=${Boolean(selfieLookSpecFromLayer1)})`);
-  } else if (selfieLookSpecEnabled && geminiSelfieLookSpecEnabled && selfieImage?.path) {
-    const geminiOut = await extractSelfieLookSpecGemini({
-      market: pack.market,
-      locale,
-      imagePath: selfieImage.path,
-      promptText: pack.getPromptPack(locale)?.lookSpecExtract,
-    });
+	  } else if (selfieLookSpecEnabled && geminiSelfieLookSpecEnabled && selfieImage?.path) {
+	    const geminiOut = await extractSelfieLookSpecGemini({
+	      market: pack.market,
+	      locale,
+	      imagePath: selfieImage.path,
+	      promptText: promptPack?.lookSpecExtract,
+	    });
 
     if (geminiOut?.ok) {
       lookDiffSource = 'gemini';
@@ -302,7 +331,7 @@ async function runLookReplicatePipeline(input) {
     similarityReport: similarityReportWithLookDiff,
     lookSpec,
     preferenceMode,
-    promptPack: pack.getPromptPack(locale),
+    promptPack,
   });
 
   const stepsOut = await generateSteps({
@@ -311,7 +340,7 @@ async function runLookReplicatePipeline(input) {
     lookSpec,
     adjustments: adjOut.adjustments,
     userFaceProfile,
-    promptPack: pack.getPromptPack(locale),
+    promptPack,
   });
 
   const kitPlan = await buildKitPlan({ market: pack.market, locale, lookSpec, commerceEnabled: pack.commerceEnabled });
