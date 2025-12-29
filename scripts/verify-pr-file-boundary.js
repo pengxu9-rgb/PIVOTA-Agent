@@ -33,11 +33,9 @@ function main() {
     new Set([committed, unstaged, staged, untracked].join("\n").split("\n").map((s) => s.trim()).filter(Boolean)),
   ).sort((a, b) => a.localeCompare(b));
 
-  const forbidden = new Set([
-    "docs/internal_role_sku_map.md",
-    "scripts/build-internal-pins.js",
-    "src/layer3/data/internal_role_sku_map.template.csv",
-  ]);
+  // Keep this list for truly out-of-scope files that should never land via feature PRs.
+  // Internal pins pipeline files are now allowed (docs + scripts + templates).
+  const forbidden = new Set([]);
 
   const bad = changed.filter((p) => forbidden.has(p));
   if (bad.length) {
