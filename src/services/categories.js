@@ -994,37 +994,39 @@ async function loadCreatorProducts(creatorId) {
     }
   }
 
-  // REAL / HYBRID mode: call upstream Shopping Gateway find_products_multi.
+  // REAL / HYBRID mode: call upstream Agent Products Search.
+  //
+  // Rationale:
+  // - Some deployments of /agent/shop/v1/invoke reject empty queries
+  //   (e.g. TOOL_LOOP_DETECTED), which breaks category discovery.
+  // - /agent/v1/products/search supports empty queries by returning
+  //   a ranked pool for the merchant(s).
   try {
-    const payload = {
-      operation: 'find_products_multi',
-      payload: {
-        search: {
-          query: '',
-          category: null,
-          price_min: null,
-          price_max: null,
-          page: 1,
-          // Increase pool size while respecting backend validation (max 500).
-          limit: 500,
-          in_stock_only: false,
-        },
-        metadata: {
-          creator_id: creatorId,
-        },
-      },
-      metadata: {
-        creator_id: creatorId,
-        source: 'creator-category-service',
-      },
-    };
+    const maxProducts = Math.min(
+      Number(process.env.CREATOR_CATEGORIES_MAX_PRODUCTS || 100) || 100,
+      100,
+    );
 
-    const resp = await axios.post(`${PIVOTA_API_BASE}/agent/shop/v1/invoke`, payload, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 10000,
+    const resp = await axios.get(`${PIVOTA_API_BASE}/agent/v1/products/search`, {
+      params: {
+        ...(merchantIds.length === 1 ? { merchant_id: merchantIds[0] } : {}),
+        ...(merchantIds.length > 1 ? { merchant_ids: merchantIds } : {}),
+        in_stock_only: false,
+        limit: maxProducts,
+        offset: 0,
+      },
+      headers: {
+        ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+        ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+      },
+      timeout: 15000,
     });
 
-    const products = Array.isArray(resp.data?.products) ? resp.data.products : [];
+    const products = Array.isArray(resp.data?.products)
+      ? resp.data.products
+      : Array.isArray(resp.data?.results)
+        ? resp.data.results
+        : [];
     // For creator categories, we intentionally do not hard-filter by
     // merchantIds here so that the taxonomy and category tree can
     // leverage the full cross-merchant product pool returned by
@@ -1374,12 +1376,6 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
   const limit = Number(options.limit) > 0 ? Number(options.limit) : 20;
 
   const { indexedProducts } = await loadCreatorProducts(creatorId);
-  if (!indexedProducts.length) {
-    const err = new Error('Unknown category');
-    err.code = 'UNKNOWN_CATEGORY';
-    throw err;
-  }
-
   const taxonomy = await getTaxonomyView({
     viewId: options.viewId,
     locale: options.locale,
@@ -1397,6 +1393,19 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
       const err = new Error('Unknown category');
       err.code = 'UNKNOWN_CATEGORY';
       throw err;
+    }
+
+    if (!indexedProducts.length) {
+      return {
+        creatorId,
+        categorySlug,
+        products: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+        },
+      };
     }
 
     const targetIds = new Set();
@@ -1433,6 +1442,12 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
         total,
       },
     };
+  }
+
+  if (!indexedProducts.length) {
+    const err = new Error('Unknown category');
+    err.code = 'UNKNOWN_CATEGORY';
+    throw err;
   }
 
   const { categoryMap } = buildCategoryTree(indexedProducts);

@@ -2808,6 +2808,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       url,
       headers: {
         ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
+        // Pivota backend Agent API expects `X-API-Key` (some deployments used
+        // `Authorization: Bearer ...` historically). Send both for compatibility.
+        ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
         ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
       },
       // Slightly relaxed timeout to reduce flakiness on heavy searches.
@@ -2852,6 +2855,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               url: quoteUrl,
               headers: {
                 'Content-Type': 'application/json',
+                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
                 ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
               },
               timeout: 15000,
