@@ -206,6 +206,8 @@ async function main() {
       })),
     );
 
+    const limiter = runs.find((r) => r?.gemini?.limiter)?.gemini?.limiter || null;
+
     const okRateStr = summary.okRate == null ? "null" : (summary.okRate * 100).toFixed(1) + "%";
     const lines = [
       "=== staging:gemini:eval summary ===",
@@ -215,6 +217,7 @@ async function main() {
       `gemini.referenceLatencyMsP50=${summary.gemini.referenceLatencyMsP50 ?? "null"} referenceLatencyMsP95=${summary.gemini.referenceLatencyMsP95 ?? "null"}`,
       `gemini.selfieLatencyMsP50=${summary.gemini.selfieLatencyMsP50 ?? "null"} selfieLatencyMsP95=${summary.gemini.selfieLatencyMsP95 ?? "null"}`,
       `errorCodeCounts=${stableJsonStringify(summary.gemini.errorCodeCounts)}`,
+      `limiter=${stableJsonStringify(limiter)}`,
       `macroUnique=${summary.macroIdCounts.uniqueCount} macroTop=${stableJsonStringify(summary.macroIdCounts.top)}`,
     ];
     console.log(lines.join("\n"));
@@ -228,8 +231,18 @@ async function main() {
       const needsTrue = pickTrueKeys(extractNeedsChange(r.similarityReport));
       const slotsTrue = pickTrueKeys(extractSlotEmits(r.skeletons));
       const macros = extractMacroIds(r.result);
-      const refErr = r.gemini?.reference?.failCount ? r.gemini?.reference?.lastErrorCode : null;
-      const selfieErr = r.gemini?.selfie?.failCount ? r.gemini?.selfie?.lastErrorCode : null;
+      const refErr =
+        typeof r.gemini?.reference?.errorCode === "string"
+          ? r.gemini.reference.errorCode
+          : r.gemini?.reference?.failCount
+            ? r.gemini?.reference?.lastErrorCode
+            : null;
+      const selfieErr =
+        typeof r.gemini?.selfie?.errorCode === "string"
+          ? r.gemini.selfie.errorCode
+          : r.gemini?.selfie?.failCount
+            ? r.gemini?.selfie?.lastErrorCode
+            : null;
       console.log(
         `idx=${i} ok=${r.ok} market=${r.market} locale=${r.locale} totalMs=${r.totalMs} macroIds=${stableJsonStringify(
           macros,
@@ -250,4 +263,3 @@ async function main() {
 }
 
 main();
-

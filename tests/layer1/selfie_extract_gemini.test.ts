@@ -107,6 +107,10 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     delete process.env.GEMINI_TIMEOUT_MS;
     delete process.env.GEMINI_MAX_RETRIES;
     delete process.env.GEMINI_RETRY_BASE_DELAY_MS;
+    delete process.env.GEMINI_RATE_PER_MIN;
+    delete process.env.GEMINI_CONCURRENCY_MAX;
+    delete process.env.GEMINI_CIRCUIT_FAIL_THRESHOLD;
+    delete process.env.GEMINI_CIRCUIT_COOLDOWN_MS;
     delete process.env.GEMINI_DEBUG;
     jest.resetModules();
   });
@@ -190,6 +194,115 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
       expect(String(out.error.code)).toBe("MISSING_API_KEY");
       expect(genai.GoogleGenAI).toHaveBeenCalledTimes(0);
       expect(generateContent).toHaveBeenCalledTimes(0);
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+
+  test("rate limited returns ok=false RATE_LIMITED and does not call SDK", async () => {
+    process.env.GEMINI_API_KEY = "test_key";
+    process.env.GEMINI_TIMEOUT_MS = "1000";
+    process.env.GEMINI_MAX_RETRIES = "0";
+    process.env.GEMINI_RATE_PER_MIN = "0";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempJpeg();
+
+    try {
+      const generateContent = jest.fn().mockResolvedValue({ text: "{\"ok\":true}" });
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+      const out = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+
+      expect(out.ok).toBe(false);
+      expect(String(out.error.code)).toBe("RATE_LIMITED");
+      expect(genai.GoogleGenAI).toHaveBeenCalledTimes(1); // client construction is local
+      expect(generateContent).toHaveBeenCalledTimes(0);
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+
+  test("circuit opens after repeated failures and returns CIRCUIT_OPEN without calling SDK", async () => {
+    process.env.GEMINI_API_KEY = "test_key";
+    process.env.GEMINI_TIMEOUT_MS = "1000";
+    process.env.GEMINI_MAX_RETRIES = "0";
+    process.env.GEMINI_CIRCUIT_FAIL_THRESHOLD = "1";
+    process.env.GEMINI_CIRCUIT_COOLDOWN_MS = "60000";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempJpeg();
+
+    try {
+      const generateContent = jest.fn().mockRejectedValue(new Error("503 Service Unavailable"));
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+      const out1 = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+      const out2 = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+
+      expect(out1.ok).toBe(false);
+      expect(String(out1.error.code)).toBe("REQUEST_FAILED");
+      expect(out2.ok).toBe(false);
+      expect(String(out2.error.code)).toBe("CIRCUIT_OPEN");
+      expect(generateContent).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+
+  test("preprocess is invoked (best-effort) before SDK call", async () => {
+    process.env.GEMINI_API_KEY = "test_key";
+    process.env.GEMINI_TIMEOUT_MS = "1000";
+    process.env.GEMINI_MAX_RETRIES = "0";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempJpeg();
+
+    try {
+      const preprocessImageForGemini = jest.fn().mockResolvedValue({
+        ok: false,
+        error: { code: "PREPROCESS_FAILED", message: "no-op" },
+      });
+
+      const generateContent = jest.fn().mockResolvedValue({ text: "{\"ok\":true}" });
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      await new Promise<void>((resolve, reject) => {
+        jest.isolateModules(() => {
+          try {
+            jest.doMock("../../src/layer1/llm/geminiImagePreprocess", () => ({ preprocessImageForGemini }));
+            const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+            generateLookSpecFromImage({
+              imagePath: imgPath,
+              promptText: "prompt",
+              responseJsonSchema: { type: "object" },
+            })
+              .then((out: any) => {
+                expect(out.ok).toBe(true);
+                expect(preprocessImageForGemini).toHaveBeenCalledTimes(1);
+                expect(generateContent).toHaveBeenCalledTimes(1);
+                resolve();
+              })
+              .catch(reject);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     } finally {
       fs.rmSync(imgPath, { force: true });
     }

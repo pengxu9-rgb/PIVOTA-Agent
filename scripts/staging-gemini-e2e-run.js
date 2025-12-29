@@ -158,6 +158,7 @@ async function main() {
     const ids = collectTechniqueIds(out);
     const macroIds = collectMacroIds(ids);
     const lookDiffSource = out?.telemetrySample?.gemini?.lookDiffSource || null;
+    const limiter = out?.telemetrySample?.gemini?.limiter || null;
     const needsChangeSummary =
       referenceGemini?.ok && selfieGemini?.ok
         ? computeNeedsChangeOverview({ targetLookSpec: referenceGemini.value, selfieLookSpec: selfieGemini.value })
@@ -171,6 +172,7 @@ async function main() {
       "=== staging:gemini:e2e ===",
       `market=${market} locale=${locale} preferenceMode=${preferenceMode}`,
       `lookDiffSource=${String(lookDiffSource || "(unknown)")}`,
+      `limiter=${limiter ? JSON.stringify(limiter) : "(none)"}`,
       `gemini.reference.ok=${Boolean(referenceGemini?.ok)} gemini.selfie.ok=${Boolean(selfieGemini?.ok)}`,
       `needsChange={eye:${needsChangeSummary.eye},base:${needsChangeSummary.base},lip:${needsChangeSummary.lip},prep:${needsChangeSummary.prep},contour:${needsChangeSummary.contour},brow:${needsChangeSummary.brow},blush:${needsChangeSummary.blush}}`,
       `macroIds=${JSON.stringify(macroIds)}`,

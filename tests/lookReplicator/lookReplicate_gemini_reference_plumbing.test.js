@@ -70,7 +70,8 @@ describe("lookReplicatePipeline: gemini reference lookspec plumbing (fail-closed
                 const ids = collectResultTechniqueIds(out?.result);
                 expect(Array.isArray(ids)).toBe(true);
                 expect(ids.length).toBeGreaterThan(0);
-                expect(out?.telemetrySample?.gemini?.reference?.okCount).toBe(1);
+                expect(out?.telemetrySample?.gemini?.reference?.enabled).toBe(true);
+                expect(out?.telemetrySample?.gemini?.reference?.ok).toBe(true);
                 resolve();
               })
               .catch(reject);
@@ -122,7 +123,9 @@ describe("lookReplicatePipeline: gemini reference lookspec plumbing (fail-closed
               .then((out) => {
                 expect(out?.result?.schemaVersion).toBe("v0");
                 expect(extractLookSpec).toHaveBeenCalledTimes(1);
-                expect(out?.telemetrySample?.gemini?.reference?.failCount).toBe(1);
+                expect(out?.telemetrySample?.gemini?.reference?.enabled).toBe(true);
+                expect(out?.telemetrySample?.gemini?.reference?.ok).toBe(false);
+                expect(out?.telemetrySample?.gemini?.reference?.errorCode).toBe("REQUEST_FAILED");
                 resolve();
               })
               .catch(reject);

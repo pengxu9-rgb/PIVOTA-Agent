@@ -1,5 +1,9 @@
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+
+const { GeminiGuardError, getGeminiGuards } = require("./geminiGuards");
+const { preprocessImageForGemini } = require("./geminiImagePreprocess");
 
 function parseEnvString(v) {
   const s = String(v ?? "").trim();
@@ -80,26 +84,63 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
   const baseDelayMs = Math.max(1, parseEnvInt(process.env.GEMINI_RETRY_BASE_DELAY_MS, 200));
   const maxDelayMs = 1_000;
   const debugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
+  const imgMaxEdge = Math.max(64, parseEnvInt(process.env.GEMINI_IMAGE_MAX_EDGE, 1536));
+  const jpegQuality = Math.min(100, Math.max(1, parseEnvInt(process.env.GEMINI_IMAGE_JPEG_QUALITY, 85)));
+
+  const meta = {
+    model,
+    attempted: false,
+    retries: 0,
+    latencyMs: null,
+    limiter: getGeminiGuards().snapshot().limiter,
+    preprocess: { ok: null, usedOriginal: true, errorCode: null },
+  };
 
   if (!apiKey) {
-    return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY" } };
+    return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY" }, meta };
   }
 
   let GoogleGenAI = null;
   try {
     ({ GoogleGenAI } = require("@google/genai"));
   } catch (err) {
-    return { ok: false, error: { code: "MISSING_DEP", message: "Missing @google/genai dependency" } };
+    return { ok: false, error: { code: "MISSING_DEP", message: "Missing @google/genai dependency" }, meta };
   }
 
   const imgPath = String(imagePath || "").trim();
   if (!imgPath) {
-    return { ok: false, error: { code: "MISSING_IMAGE", message: "Missing imagePath" } };
+    return { ok: false, error: { code: "MISSING_IMAGE", message: "Missing imagePath" }, meta };
+  }
+
+  let effectivePath = imgPath;
+  let cleanupPreprocessed = null;
+  try {
+    const pre = await preprocessImageForGemini({
+      imagePath: imgPath,
+      maxEdge: imgMaxEdge,
+      quality: jpegQuality,
+      tmpDir: os.tmpdir(),
+    });
+    if (pre?.ok && pre.path) {
+      effectivePath = pre.path;
+      cleanupPreprocessed = typeof pre.cleanup === "function" ? pre.cleanup : null;
+      meta.preprocess.ok = true;
+      meta.preprocess.usedOriginal = false;
+    } else if (pre && pre.ok === false) {
+      meta.preprocess.ok = false;
+      meta.preprocess.usedOriginal = true;
+      meta.preprocess.errorCode = String(pre?.error?.code || "PREPROCESS_FAILED");
+    }
+  } catch {
+    meta.preprocess.ok = false;
+    meta.preprocess.usedOriginal = true;
+    meta.preprocess.errorCode = "PREPROCESS_FAILED";
   }
 
   try {
-    const bytes = fs.readFileSync(imgPath);
-    const mimeType = guessMimeTypeFromPath(imgPath);
+    const tStart = Date.now();
+    const bytes = fs.readFileSync(effectivePath);
+    const mimeType = effectivePath === imgPath ? guessMimeTypeFromPath(imgPath) : "image/jpeg";
     const data = bytes.toString("base64");
 
     const ai = new GoogleGenAI({ apiKey });
@@ -123,14 +164,28 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
     let lastErrMsg = "";
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const response = await withTimeout(ai.models.generateContent(request), timeoutMs);
+        const guards = getGeminiGuards();
+        meta.limiter = guards.snapshot().limiter;
+        meta.attempted = true;
+
+        const response = await guards.withGuards("gemini", () => withTimeout(ai.models.generateContent(request), timeoutMs));
         const text = String(await extractResponseText(response));
         if (!text.trim()) {
-          return { ok: false, error: { code: "EMPTY_RESPONSE", message: "Gemini returned empty response text" } };
+          meta.latencyMs = Date.now() - tStart;
+          meta.retries = attempt;
+          return { ok: false, error: { code: "EMPTY_RESPONSE", message: "Gemini returned empty response text" }, meta };
         }
 
-        return { ok: true, value: text };
+        meta.latencyMs = Date.now() - tStart;
+        meta.retries = attempt;
+        return { ok: true, value: text, meta };
       } catch (err) {
+        if (err instanceof GeminiGuardError) {
+          meta.latencyMs = Date.now() - tStart;
+          meta.retries = attempt;
+          return { ok: false, error: { code: err.code, message: String(err.message || "").slice(0, 220) }, meta };
+        }
+
         const msg = err instanceof Error ? err.message : String(err || "");
         lastErrMsg = msg.slice(0, 220);
         const retryable = isRetryableMessage(msg);
@@ -149,10 +204,14 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
       }
     }
 
-    return { ok: false, error: { code: "REQUEST_FAILED", message: lastErrMsg || "REQUEST_FAILED" } };
+    meta.latencyMs = meta.latencyMs ?? 0;
+    meta.retries = Math.max(0, maxAttempts - 1);
+    return { ok: false, error: { code: "REQUEST_FAILED", message: lastErrMsg || "REQUEST_FAILED" }, meta };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err || "");
-    return { ok: false, error: { code: "REQUEST_FAILED", message: msg.slice(0, 220) } };
+    return { ok: false, error: { code: "REQUEST_FAILED", message: msg.slice(0, 220) }, meta };
+  } finally {
+    if (cleanupPreprocessed) cleanupPreprocessed();
   }
 }
 

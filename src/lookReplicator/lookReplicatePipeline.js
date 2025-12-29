@@ -223,13 +223,16 @@ async function runLookReplicatePipeline(input) {
   };
 
   const geminiTelemetry = {
-    reference: { okCount: 0, failCount: 0, lastErrorCode: null, latencyMs: null },
-    selfie: { okCount: 0, failCount: 0, lastErrorCode: null, latencyMs: null },
+    limiter: { concurrencyMax: 2, ratePerMin: 60, circuitOpen: false },
+    reference: { enabled: false, attempted: false, ok: null, errorCode: null, latencyMs: null, retries: null, model: null },
+    selfie: { enabled: false, attempted: false, ok: null, errorCode: null, latencyMs: null, retries: null, model: null },
     lookDiffSource: null,
+    lookDiff: null,
   };
 
   let lookSpec = null;
   if (geminiReferenceLookSpecEnabled && input.referenceImage?.path) {
+    geminiTelemetry.reference.enabled = true;
     const t0 = Date.now();
     const geminiOut = await extractReferenceLookSpecGemini({
       market: pack.market,
@@ -237,17 +240,23 @@ async function runLookReplicatePipeline(input) {
       imagePath: input.referenceImage.path,
       promptText: promptPack?.lookSpecExtract,
     });
-    geminiTelemetry.reference.latencyMs = Date.now() - t0;
+    geminiTelemetry.reference.latencyMs = (geminiOut?.meta?.latencyMs ?? null) ?? Date.now() - t0;
+    geminiTelemetry.reference.model = geminiOut?.meta?.model ?? null;
+    geminiTelemetry.reference.retries = typeof geminiOut?.meta?.retries === 'number' ? geminiOut.meta.retries : null;
+    geminiTelemetry.reference.attempted = Boolean(geminiOut?.meta?.attempted);
 
     if (geminiOut?.ok) {
       lookSpec = geminiOut.value;
-      geminiTelemetry.reference.okCount = 1;
+      geminiTelemetry.reference.ok = true;
+      geminiTelemetry.reference.attempted = true;
       debugGemini('using gemini reference lookSpec');
     } else if (geminiOut) {
-      geminiTelemetry.reference.failCount = 1;
-      geminiTelemetry.reference.lastErrorCode = String(geminiOut?.error?.code || 'UNKNOWN');
+      geminiTelemetry.reference.ok = false;
+      geminiTelemetry.reference.errorCode = String(geminiOut?.error?.code || 'UNKNOWN');
       debugGemini(`gemini reference lookspec failed (fallback to extractLookSpec): ${String(geminiOut?.error?.code || 'UNKNOWN')}`);
     }
+
+    if (geminiOut?.meta?.limiter) geminiTelemetry.limiter = geminiOut.meta.limiter;
   }
 
   if (!lookSpec) {
@@ -287,6 +296,7 @@ async function runLookReplicatePipeline(input) {
       : mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec: lookSpec, userLookSpec });
     debugSelfie(`using layer1 contract (hasLookDiff=${Boolean(lookDiffFromLayer1)} hasSelfieLookSpec=${Boolean(selfieLookSpecFromLayer1)})`);
   } else if (selfieLookSpecEnabled && geminiSelfieLookSpecEnabled && selfieImage?.path) {
+    geminiTelemetry.selfie.enabled = true;
     const t0 = Date.now();
     const geminiOut = await extractSelfieLookSpecGemini({
       market: pack.market,
@@ -294,7 +304,10 @@ async function runLookReplicatePipeline(input) {
       imagePath: selfieImage.path,
       promptText: promptPack?.lookSpecExtract,
     });
-    geminiTelemetry.selfie.latencyMs = Date.now() - t0;
+    geminiTelemetry.selfie.latencyMs = (geminiOut?.meta?.latencyMs ?? null) ?? Date.now() - t0;
+    geminiTelemetry.selfie.model = geminiOut?.meta?.model ?? null;
+    geminiTelemetry.selfie.retries = typeof geminiOut?.meta?.retries === 'number' ? geminiOut.meta.retries : null;
+    geminiTelemetry.selfie.attempted = Boolean(geminiOut?.meta?.attempted);
 
     if (geminiOut?.ok) {
       lookDiffSource = 'gemini';
@@ -304,13 +317,16 @@ async function runLookReplicatePipeline(input) {
         targetLookSpec: lookSpec,
         userLookSpec,
       });
-      geminiTelemetry.selfie.okCount = 1;
+      geminiTelemetry.selfie.ok = true;
+      geminiTelemetry.selfie.attempted = true;
       debugSelfie('computed lookDiff via gemini');
     } else {
-      geminiTelemetry.selfie.failCount = 1;
-      geminiTelemetry.selfie.lastErrorCode = String(geminiOut?.error?.code || 'UNKNOWN');
+      geminiTelemetry.selfie.ok = false;
+      geminiTelemetry.selfie.errorCode = String(geminiOut?.error?.code || 'UNKNOWN');
       debugSelfie(`gemini selfie lookspec failed (fail-closed): ${String(geminiOut?.error?.code || 'UNKNOWN')}`);
     }
+
+    if (geminiOut?.meta?.limiter) geminiTelemetry.limiter = geminiOut.meta.limiter;
   } else if (selfieLookSpecEnabled && selfieBytes) {
     lookDiffSource = 'pipeline_fallback';
     userLookSpec = await extractLookSpec({
@@ -340,6 +356,7 @@ async function runLookReplicatePipeline(input) {
   }
 
   geminiTelemetry.lookDiffSource = lookDiffSource;
+  geminiTelemetry.lookDiff = similarityReportWithLookDiff?.lookDiff ?? null;
 
   const adjOut = await generateAdjustments({
     market: pack.market,
@@ -428,7 +445,7 @@ async function runLookReplicatePipeline(input) {
   if (telemetrySample && geminiDebugEnabled) {
     // eslint-disable-next-line no-console
     console.log(
-      `[gemini] reference_ok=${geminiTelemetry.reference.okCount} reference_fail=${geminiTelemetry.reference.failCount} reference_ms=${geminiTelemetry.reference.latencyMs ?? 'null'} selfie_ok=${geminiTelemetry.selfie.okCount} selfie_fail=${geminiTelemetry.selfie.failCount} selfie_ms=${geminiTelemetry.selfie.latencyMs ?? 'null'} lookDiffSource=${geminiTelemetry.lookDiffSource ?? 'null'}`,
+      `[gemini] limiter={concurrencyMax:${geminiTelemetry.limiter.concurrencyMax},ratePerMin:${geminiTelemetry.limiter.ratePerMin},circuitOpen:${geminiTelemetry.limiter.circuitOpen}} reference={enabled:${geminiTelemetry.reference.enabled},attempted:${geminiTelemetry.reference.attempted},ok:${geminiTelemetry.reference.ok},code:${geminiTelemetry.reference.errorCode ?? 'null'},ms:${geminiTelemetry.reference.latencyMs ?? 'null'},retries:${geminiTelemetry.reference.retries ?? 'null'}} selfie={enabled:${geminiTelemetry.selfie.enabled},attempted:${geminiTelemetry.selfie.attempted},ok:${geminiTelemetry.selfie.ok},code:${geminiTelemetry.selfie.errorCode ?? 'null'},ms:${geminiTelemetry.selfie.latencyMs ?? 'null'},retries:${geminiTelemetry.selfie.retries ?? 'null'}} lookDiffSource=${geminiTelemetry.lookDiffSource ?? 'null'}`,
     );
   }
 
