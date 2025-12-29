@@ -6,6 +6,18 @@ const path = require('path');
 const app = require('../../src/server');
 
 describe('look-replicator event ingestion', () => {
+  test('OPTIONS /v1/events/look-replicator returns credentialed CORS for look-replicator UI', async () => {
+    const res = await request(app)
+      .options('/v1/events/look-replicator')
+      .set('Origin', 'https://look-replicator.pivota.cc')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type');
+
+    expect([200, 204]).toContain(res.status);
+    expect(res.headers['access-control-allow-origin']).toBe('https://look-replicator.pivota.cc');
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+  });
+
   test('POST /v1/events/look-replicator accepts valid payload and returns 204', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lr-events-'));
     process.env.LR_EVENTS_JSONL_SINK_DIR = tmpDir;

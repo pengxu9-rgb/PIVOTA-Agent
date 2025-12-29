@@ -1646,19 +1646,54 @@ app.use(express.json({
 
 // CORS configuration - allow UI to call Gateway
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  const defaults = [
+    'https://look-replicator.pivota.cc',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+  ];
+
+  const fromEnv = String(process.env.ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const allowedOrigins = new Set([...defaults, ...fromEnv]);
+
+  const isAllowedOrigin = origin && origin !== 'null' && allowedOrigins.has(origin);
+  if (isAllowedOrigin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Vary', 'Origin');
+  } else if (origin) {
+    // Backwards-compat for non-credentialed requests.
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+
   // Allow both legacy and newer header names used by clients (Creator UI / SDKs).
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Content-Type, Authorization, X-API-Key, X-Agent-API-Key',
-  );
-  
+  // Also echo requested headers to avoid preflight failures when browsers add new ones.
+  const baseAllowedHeaders = ['content-type', 'authorization', 'x-api-key', 'x-agent-api-key'];
+  const requested = String(req.headers['access-control-request-headers'] || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const allowedHeaders = Array.from(new Set([...baseAllowedHeaders, ...requested]))
+    .map((h) => h
+      .split('-')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join('-'))
+    .join(', ');
+  res.header('Access-Control-Allow-Headers', allowedHeaders);
+
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
-  
+
   next();
 });
 
