@@ -63,10 +63,15 @@ async function main() {
     seen.add(JSON.stringify(macros));
   }
 
-  const macroIdsSetSize = seen.size;
-  console.log(`STABLE_OK runs=${runs} macroIdsSetSize=${macroIdsSetSize} macroIdsExample=[${example.join(",")}]`);
+  const macroIdsUniqueCount = seen.size;
+  const macroIdsAlwaysEmpty = macroIdsUniqueCount === 1 && example.length === 0;
+  console.log(
+    `STABLE_OK runs=${runs} macroIdsUniqueCount=${macroIdsUniqueCount} macroIdsAlwaysEmpty=${macroIdsAlwaysEmpty} macroIdsSample0=[${example.join(
+      ","
+    )}]`
+  );
 
-  if (macroIdsSetSize !== 1) {
+  if (macroIdsUniqueCount !== 1) {
     console.error("[FAIL] expected stable macroIds across runs");
     process.exit(1);
   }
@@ -81,4 +86,3 @@ main().catch((e) => {
   console.error("[FATAL]", e && e.stack ? e.stack : String(e));
   process.exit(1);
 });
-
