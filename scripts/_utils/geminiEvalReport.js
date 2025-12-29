@@ -80,6 +80,31 @@ function inc(map, key) {
   map[key] = (map[key] || 0) + 1;
 }
 
+function normalizeGeminiCall(gemini, kind) {
+  const g = gemini || null;
+  const k = String(kind || "").trim();
+  if (!g || !k) return { hasAny: false, attempted: false, ok: false, latencyMs: null, errorCode: null };
+
+  // New schema: { reference/selfie: { enabled, attempted, ok, errorCode, latencyMs, retries, model }, limiter, ... }
+  const call = g?.[k] || null;
+  if (call && typeof call === "object" && "attempted" in call && "enabled" in call) {
+    const attempted = call.attempted === true;
+    const ok = call.ok === true;
+    const latencyMs = Number.isFinite(call.latencyMs) ? call.latencyMs : null;
+    const errorCode = call.ok === false ? safeString(call.errorCode) : null;
+    return { hasAny: call.enabled === true || attempted, attempted, ok, latencyMs, errorCode };
+  }
+
+  // Legacy schema: { reference/selfie: { okCount, failCount, lastErrorCode, latencyMs } }
+  const okCount = Number(g?.[k]?.okCount) || 0;
+  const failCount = Number(g?.[k]?.failCount) || 0;
+  const attempted = okCount + failCount > 0;
+  const ok = okCount > 0;
+  const latencyMs = Number.isFinite(g?.[k]?.latencyMs) ? g[k].latencyMs : null;
+  const errorCode = failCount > 0 ? safeString(g?.[k]?.lastErrorCode) : null;
+  return { hasAny: attempted, attempted, ok, latencyMs, errorCode };
+}
+
 function topNCounts(counts, n) {
   return Object.entries(counts)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -121,25 +146,21 @@ function summarizeRuns(runs) {
     for (const id of macros) inc(macroCounts, id);
 
     const g = r?.gemini || null;
-    const refOkCount = Number(g?.reference?.okCount) || 0;
-    const refFailCount = Number(g?.reference?.failCount) || 0;
-    const selfieOkCount = Number(g?.selfie?.okCount) || 0;
-    const selfieFailCount = Number(g?.selfie?.failCount) || 0;
+    const ref = normalizeGeminiCall(g, "reference");
+    const selfie = normalizeGeminiCall(g, "selfie");
 
-    if (refOkCount + refFailCount > 0) {
+    if (ref.hasAny) {
       referenceAttempts += 1;
-      if (refOkCount > 0) referenceOk += 1;
-      const lat = g?.reference?.latencyMs;
-      if (Number.isFinite(lat)) geminiReferenceLatencies.push(lat);
-      if (refFailCount > 0) inc(errorCodeCounts, safeString(g?.reference?.lastErrorCode) || "UNKNOWN");
+      if (ref.ok) referenceOk += 1;
+      if (Number.isFinite(ref.latencyMs)) geminiReferenceLatencies.push(ref.latencyMs);
+      if (ref.attempted && !ref.ok) inc(errorCodeCounts, ref.errorCode || "UNKNOWN");
     }
 
-    if (selfieOkCount + selfieFailCount > 0) {
+    if (selfie.hasAny) {
       selfieAttempts += 1;
-      if (selfieOkCount > 0) selfieOk += 1;
-      const lat = g?.selfie?.latencyMs;
-      if (Number.isFinite(lat)) geminiSelfieLatencies.push(lat);
-      if (selfieFailCount > 0) inc(errorCodeCounts, safeString(g?.selfie?.lastErrorCode) || "UNKNOWN");
+      if (selfie.ok) selfieOk += 1;
+      if (Number.isFinite(selfie.latencyMs)) geminiSelfieLatencies.push(selfie.latencyMs);
+      if (selfie.attempted && !selfie.ok) inc(errorCodeCounts, selfie.errorCode || "UNKNOWN");
     }
   }
 
@@ -180,4 +201,3 @@ module.exports = {
   summarizeRuns,
   SLOT_RULE_IDS,
 };
-

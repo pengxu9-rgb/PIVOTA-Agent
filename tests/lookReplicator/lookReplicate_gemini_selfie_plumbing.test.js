@@ -91,7 +91,8 @@ describe("lookReplicatePipeline: gemini selfie lookspec plumbing (fail-closed)",
                 const ids = collectResultTechniqueIds(out?.result);
                 expect(geminiCalls).toBe(1);
                 expect(ids.some((id) => id.startsWith("US_base_fix_"))).toBe(true);
-                expect(out?.telemetrySample?.gemini?.selfie?.okCount).toBe(1);
+                expect(out?.telemetrySample?.gemini?.selfie?.enabled).toBe(true);
+                expect(out?.telemetrySample?.gemini?.selfie?.ok).toBe(true);
                 expect(out?.telemetrySample?.gemini?.lookDiffSource).toBe("gemini");
                 resolve();
               })
@@ -151,7 +152,9 @@ describe("lookReplicatePipeline: gemini selfie lookspec plumbing (fail-closed)",
               .then((out) => {
                 const ids = collectResultTechniqueIds(out?.result);
                 expect(ids.some((id) => id.startsWith("US_base_fix_"))).toBe(false);
-                expect(out?.telemetrySample?.gemini?.selfie?.failCount).toBe(1);
+                expect(out?.telemetrySample?.gemini?.selfie?.enabled).toBe(true);
+                expect(out?.telemetrySample?.gemini?.selfie?.ok).toBe(false);
+                expect(out?.telemetrySample?.gemini?.selfie?.errorCode).toBe("REQUEST_FAILED");
                 expect(out?.telemetrySample?.gemini?.lookDiffSource).toBe(null);
                 resolve();
               })

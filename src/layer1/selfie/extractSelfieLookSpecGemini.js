@@ -135,7 +135,7 @@ async function extractSelfieLookSpecGemini({ market, locale, imagePath, promptTe
     responseJsonSchema: LookSpecExtractCoreJsonSchema,
   });
 
-  if (!gen.ok) return { ok: false, error: toError(gen.error) };
+  if (!gen.ok) return { ok: false, error: toError(gen.error), ...(gen.meta ? { meta: gen.meta } : {}) };
 
   let parsedJson;
   try {
@@ -162,11 +162,10 @@ async function extractSelfieLookSpecGemini({ market, locale, imagePath, promptTe
     warnings: core.data.warnings,
   });
 
-  return { ok: true, value: lookSpec };
+  return { ok: true, value: lookSpec, ...(gen.meta ? { meta: gen.meta } : {}) };
 }
 
 module.exports = {
   LookSpecExtractCoreJsonSchema,
   extractSelfieLookSpecGemini,
 };
-

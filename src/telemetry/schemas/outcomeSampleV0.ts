@@ -64,7 +64,7 @@ export const ReplayContextSchema = z
   .strict()
   .optional();
 
-export const GeminiTelemetrySchema = z
+export const GeminiTelemetryLegacySchema = z
   .object({
     reference: z
       .object({
@@ -84,7 +84,41 @@ export const GeminiTelemetrySchema = z
       .strict(),
     lookDiffSource: z.enum(['layer1', 'gemini', 'pipeline_fallback']).nullable(),
   })
-  .strict()
+  .strict();
+
+export const GeminiCallTelemetrySchema = z
+  .object({
+    enabled: z.boolean(),
+    attempted: z.boolean(),
+    ok: z.boolean().nullable(),
+    errorCode: z.string().min(1).nullable(),
+    latencyMs: z.number().int().min(0).nullable(),
+    retries: z.number().int().min(0).nullable(),
+    model: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export const GeminiLimiterSchema = z
+  .object({
+    concurrencyMax: z.number().int().min(1),
+    ratePerMin: z.number().int().min(0),
+    circuitOpen: z.boolean(),
+  })
+  .strict();
+
+export const GeminiTelemetrySchema = z
+  .union([
+    GeminiTelemetryLegacySchema,
+    z
+      .object({
+        limiter: GeminiLimiterSchema,
+        reference: GeminiCallTelemetrySchema,
+        selfie: GeminiCallTelemetrySchema,
+        lookDiffSource: z.enum(['layer1', 'gemini', 'pipeline_fallback']).nullable(),
+        lookDiff: z.unknown().nullable(),
+      })
+      .strict(),
+  ])
   .optional();
 
 export const OutcomeSampleV0Schema = z

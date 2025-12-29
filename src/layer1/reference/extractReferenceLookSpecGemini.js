@@ -79,7 +79,7 @@ async function extractReferenceLookSpecGemini({ market, locale, imagePath, promp
       responseJsonSchema: LookSpecExtractCoreJsonSchema,
     });
 
-    if (!gen.ok) return { ok: false, error: toError(gen.error) };
+    if (!gen.ok) return { ok: false, error: toError(gen.error), ...(gen.meta ? { meta: gen.meta } : {}) };
 
     let parsedJson;
     try {
@@ -107,7 +107,7 @@ async function extractReferenceLookSpecGemini({ market, locale, imagePath, promp
     });
 
     debugLog("ok=true");
-    return { ok: true, value: lookSpec };
+    return { ok: true, value: lookSpec, ...(gen.meta ? { meta: gen.meta } : {}) };
   } catch (err) {
     const e = toError(err);
     debugLog(`ok=false code=${e.code}`);
@@ -118,4 +118,3 @@ async function extractReferenceLookSpecGemini({ market, locale, imagePath, promp
 module.exports = {
   extractReferenceLookSpecGemini,
 };
-
