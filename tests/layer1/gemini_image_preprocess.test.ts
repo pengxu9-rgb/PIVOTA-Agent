@@ -35,5 +35,32 @@ describe("geminiImagePreprocess", () => {
       for (const p of outPaths) fs.rmSync(p, { force: true });
     }
   });
-});
 
+  test("corrupt image returns ok=false (fail-closed) and does not throw", async () => {
+    const inputPath = path.join(os.tmpdir(), `pivota-pre-corrupt-${process.pid}-${Date.now()}.jpg`);
+    fs.writeFileSync(inputPath, Buffer.from("not-a-real-image", "utf8"));
+
+    try {
+      const out = await preprocessImageForGemini({ imagePath: inputPath, maxEdge: 128, quality: 80, tmpDir: os.tmpdir() });
+      expect(out).toBeTruthy();
+      expect(out.ok).toBe(false);
+      expect(String(out.error.code)).toBe("PREPROCESS_FAILED");
+    } finally {
+      fs.rmSync(inputPath, { force: true });
+    }
+  });
+
+  test("unsupported/invalid bytes returns ok=false (fail-closed) and does not throw", async () => {
+    const inputPath = path.join(os.tmpdir(), `pivota-pre-text-${process.pid}-${Date.now()}.txt`);
+    fs.writeFileSync(inputPath, "hello world", "utf8");
+
+    try {
+      const out = await preprocessImageForGemini({ imagePath: inputPath, maxEdge: 128, quality: 80, tmpDir: os.tmpdir() });
+      expect(out).toBeTruthy();
+      expect(out.ok).toBe(false);
+      expect(String(out.error.code)).toBe("PREPROCESS_FAILED");
+    } finally {
+      fs.rmSync(inputPath, { force: true });
+    }
+  });
+});
