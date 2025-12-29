@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_qing_petal_a_01-zh",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "清花瓣唇妆（款一·渐变花瓣）",
+    "steps": [
+      "唇部打底并保留外缘浅色空间",
+      "用口红在唇部内侧点涂，留出花瓣边缘",
+      "棉签向外轻晕开，形成由深到浅渐变",
+      "最后勾勒外缘并轻压定色"
+    ]
+  },
+  "rationaleTemplate": [
+    "由内向外渐变更显柔美与减龄。",
+    "外缘留白让唇形像花瓣一样轻盈。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_color",
+    "cotton_swab",
+    "lip_brush",
+    "tissue"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 145",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

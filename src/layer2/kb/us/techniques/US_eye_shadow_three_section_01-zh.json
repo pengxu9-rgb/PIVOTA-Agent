@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_three_section_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "三段式眼妆画法",
+    "steps": [
+      "浅色打底：覆盖眼头到眼尾的大范围",
+      "中间色叠在眼中到眼尾上方，制造过渡",
+      "深色集中在眼尾三角与睫毛根部",
+      "三色交界处晕染成自然渐层"
+    ]
+  },
+  "rationaleTemplate": [
+    "三段结构更好控制深浅与放大效果。",
+    "适合做精致眼妆但仍易上手。"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "small_brush",
+    "shimmer_shadow",
+    "liner"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 83",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

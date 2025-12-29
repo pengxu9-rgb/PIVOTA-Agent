@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_flat_straight_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Flat Straight Brow",
+    "steps": [
+      "Keep the brow close to a horizontal line with a flatter tail",
+      "Sketch a straight lower edge and extend the tail slightly",
+      "Lay color with powder, then add hair-like strokes with pencil",
+      "Gradient: lighter front, deeper tail",
+      "Brush to blend and clean the lower edge with concealer"
+    ]
+  },
+  "rationaleTemplate": [
+    "Easy, everyday-friendly, and works well for soft makeup looks.",
+    "A flatter line reads calm and less aggressive."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 108",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

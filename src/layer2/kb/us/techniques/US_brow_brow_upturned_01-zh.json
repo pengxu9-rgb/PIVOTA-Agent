@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_upturned_01-zh",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "上扬眉画法",
+    "steps": [
+      "眉峰清晰并略抬高，眉尾朝上延伸",
+      "眉下缘从眉头向眉峰上升，形成提拉线",
+      "眉尾细长收尖，尾端不要压低",
+      "眉峰、眉尾加深，眉头保持轻雾化",
+      "用遮瑕修出干净上扬角度"
+    ]
+  },
+  "rationaleTemplate": [
+    "提拉感最明显，适合想要利落气场。",
+    "适配猫眼/上扬眼线的整体风格。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 110",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

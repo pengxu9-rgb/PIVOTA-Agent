@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_qing_petal_b_01-zh",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "清花瓣唇妆（款二·更饱满）",
+    "steps": [
+      "遮瑕打底并用唇线笔先定花瓣轮廓",
+      "填充口红，内侧加深、外侧更浅",
+      "用唇刷把边缘晕柔，保持圆润花瓣感",
+      "修边后轻压纸巾，必要时补色"
+    ]
+  },
+  "rationaleTemplate": [
+    "更适合干唇/纹唇：先定型再渐变。",
+    "圆润边缘让唇看起来更饱满。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "tissue"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 145",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

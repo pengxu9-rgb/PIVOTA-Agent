@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_tang_butterfly_b_01-zh",
+  "area": "lip",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "唐蝴蝶唇妆（款二·偏尖锐）",
+    "steps": [
+      "用遮瑕抹平原唇线，建立干净画布",
+      "上唇勾出更尖的双峰，唇峰略上提",
+      "下唇中线略收，突出“蝴蝶”对比",
+      "填色后用遮瑕修边，保持线条锋利"
+    ]
+  },
+  "rationaleTemplate": [
+    "尖峰让妆感更凌厉、更具古妆张力。",
+    "适合想要“强气场”的造型。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 144",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

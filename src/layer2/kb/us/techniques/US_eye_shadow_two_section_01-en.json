@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_two_section_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Two-Section Eyeshadow",
+    "steps": [
+      "Apply a light shade over the full lid as a base",
+      "Layer a deeper shade from outer corner toward the center",
+      "Blend the seam with a transition shade",
+      "Deepen the outer corner and slightly elongate the eye"
+    ]
+  },
+  "rationaleTemplate": [
+    "Fast way to create depth with a simple light-to-deep structure.",
+    "Cleaner than darkening the whole lid, so it reads more polished."
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "small_brush",
+    "liner",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 82",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

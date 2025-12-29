@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_two_section_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "二段式眼妆画法",
+    "steps": [
+      "浅色铺满上眼皮作为底色",
+      "深色从眼尾向眼中叠加，形成两段层次",
+      "在分界处用过渡色来回晕染",
+      "细刷加深外眼角并轻微拉长"
+    ]
+  },
+  "rationaleTemplate": [
+    "用“浅+深”两段快速做出立体。",
+    "边界干净时，比全眼加深更显高级。"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "small_brush",
+    "liner",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 82",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

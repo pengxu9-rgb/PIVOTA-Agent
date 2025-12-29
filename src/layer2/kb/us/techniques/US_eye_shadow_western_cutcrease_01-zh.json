@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_western_cutcrease_01-zh",
+  "area": "eye",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "欧美眼妆画法（强调眼窝）",
+    "steps": [
+      "浅色打底，眉骨区域留干净空间",
+      "深色在眼窝上方描出线条并晕开成阴影",
+      "眼皮中央叠加亮片/浅色，突出立体",
+      "眼尾加深并拉长，眼线紧贴睫毛根部"
+    ]
+  },
+  "rationaleTemplate": [
+    "突出眼窝阴影与高光对比，立体度最强。",
+    "适合派对/舞台或需要强轮廓的场景。"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "shimmer_shadow",
+    "small_brush",
+    "liner"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 90",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_straight_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Straight Brow",
+    "steps": [
+      "Keep the brow body straight and minimize a strong arch",
+      "Draw near-parallel top and bottom lines and extend the tail",
+      "Blur the front; taper the tail with a fine tip",
+      "Brush to soften blocks and create a smooth gradient",
+      "Use concealer to sharpen a straighter lower edge if needed"
+    ]
+  },
+  "rationaleTemplate": [
+    "A softer arch reads youthful and gentle.",
+    "Straight structure can visually balance midface proportions."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 105",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

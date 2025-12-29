@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_prep_skincare_sunscreen_wait_01-zh",
+  "area": "prep",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "防晒收尾并等待成膜",
+    "steps": [
+      "防晒作为护肤最后一步",
+      "等待成膜后再开始上妆"
+    ]
+  },
+  "rationaleTemplate": [
+    "成膜后更不易搓泥斑驳",
+    "底妆更稳定更服帖"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 19",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

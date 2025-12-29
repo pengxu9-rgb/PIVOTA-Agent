@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_drooping_tail_01-en",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Drooping-Tail Brow",
+    "steps": [
+      "Keep the tail slightly lower and the arch modest for softness",
+      "Set the lower edge with the tail a bit below the brow head",
+      "Bring the top line down into a thinner tail (don't break it)",
+      "Blur the front and deepen the tail for a gentle gradient",
+      "Brush out the tail so it stays soft, not tired-looking"
+    ]
+  },
+  "rationaleTemplate": [
+    "Gives a gentle, tender vibe when done softly.",
+    "Managing tail intensity prevents a droopy, sleepy look."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 109",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

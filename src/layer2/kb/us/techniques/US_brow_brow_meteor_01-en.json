@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_meteor_01-en",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Meteor Brow",
+    "steps": [
+      "Place the arch slightly back and higher for an upward trajectory",
+      "Angle the lower line upward from the front toward the tail",
+      "Make the tail long, thin, and slightly lifted",
+      "Keep the front soft; deepen around the arch and tail",
+      "Soften the top edge with a brush so it doesn't look sharp"
+    ]
+  },
+  "rationaleTemplate": [
+    "An upward trajectory looks energetic and sharp.",
+    "Great when you want a subtle lifting effect."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 106",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

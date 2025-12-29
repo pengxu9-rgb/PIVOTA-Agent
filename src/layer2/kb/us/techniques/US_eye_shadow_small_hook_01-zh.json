@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_small_hook_01-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "小勾眼妆画法",
+    "steps": [
+      "深色在眼尾画小“勾”形轮廓",
+      "在勾内填色并向眼中轻晕开",
+      "过渡色柔化勾的外缘，避免生硬",
+      "眼线贴近睫毛根部，与小勾衔接拉长"
+    ]
+  },
+  "rationaleTemplate": [
+    "用小范围“勾”形强调外眼角，放大更自然。",
+    "适合日常拉长眼型，避免过度上扬。"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "blending_brush",
+    "liner",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 88",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

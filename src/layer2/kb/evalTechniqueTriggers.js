@@ -12,7 +12,9 @@ function getByPath(root, pathKey) {
 }
 
 function resolveKey(ctx, key) {
-  if (key === 'preferenceMode') return ctx.preferenceMode;
+  // Defensive default: some call sites may omit preferenceMode. In that case, treat it as "structure"
+  // so trigger matching does not silently degrade to "no matches" and fallbackId ordering.
+  if (key === 'preferenceMode') return String(ctx.preferenceMode || 'structure');
   if (key.startsWith('userFaceProfile.')) return getByPath(ctx.userFaceProfile, key.slice('userFaceProfile.'.length));
   if (key.startsWith('refFaceProfile.')) return getByPath(ctx.refFaceProfile, key.slice('refFaceProfile.'.length));
   if (key.startsWith('similarityReport.')) return getByPath(ctx.similarityReport, key.slice('similarityReport.'.length));
@@ -90,4 +92,3 @@ function matchTechniques(ctx, cards) {
 module.exports = {
   matchTechniques,
 };
-

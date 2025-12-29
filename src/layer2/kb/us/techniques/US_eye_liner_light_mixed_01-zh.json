@@ -5,10 +5,11 @@
   "area": "eye",
   "difficulty": "medium",
   "triggers": {
-    "any": [
+    "all": [
       {
-        "key": "preferenceMode",
-        "op": "exists"
+        "key": "lookSpec.breakdown.eye.linerDirection.direction",
+        "op": "eq",
+        "value": "up"
       }
     ]
   },

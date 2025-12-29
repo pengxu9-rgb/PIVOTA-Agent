@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_oily_base_oilcontrol_primer_01-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "oily"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "控油妆前与肤色校正",
+    "steps": [
+      "控油妆前重点在T区",
+      "尽量在这步校正肤色减少粉底用量"
+    ]
+  },
+  "rationaleTemplate": [
+    "控油区域更耐久不脱妆",
+    "粉底更薄更不易堆积"
+  ],
+  "productRoleHints": [
+    "primer"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 37",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

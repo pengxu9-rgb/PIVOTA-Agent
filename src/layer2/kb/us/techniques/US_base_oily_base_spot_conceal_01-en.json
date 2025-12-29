@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_oily_base_spot_conceal_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "oily"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Spot conceal in thin layers",
+    "steps": [
+      "Dot concealer only on blemishes",
+      "Tap to blend; add only if needed"
+    ]
+  },
+  "rationaleTemplate": [
+    "Targeted coverage looks cleaner",
+    "Thin layers stay put longer"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "sponge"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 37",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

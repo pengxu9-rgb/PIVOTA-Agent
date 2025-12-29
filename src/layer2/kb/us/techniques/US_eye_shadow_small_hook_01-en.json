@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_small_hook_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Small-Hook Eyeshadow",
+    "steps": [
+      "Sketch a small hook shape at the outer corner with a deep shade",
+      "Fill inside the hook and softly blend toward the center",
+      "Soften the outer edge with a transition shade",
+      "Connect tightline eyeliner into the hook for length"
+    ]
+  },
+  "rationaleTemplate": [
+    "A small hook defines the outer corner without looking heavy.",
+    "Elongates the eye for everyday looks with controlled lift."
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "blending_brush",
+    "liner",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 88",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_han_trapezoid_01-zh",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "汉梯形唇妆画法",
+    "steps": [
+      "用粉底/遮瑕薄薄打底，弱化原唇色",
+      "上唇画小圆弧，下唇画更饱满的梯形轮廓",
+      "用口红填充并在中心加深，做层次",
+      "棉签/遮瑕修边，纸巾轻压定色"
+    ]
+  },
+  "rationaleTemplate": [
+    "用“上小下饱满”塑造古妆比例与精致感。",
+    "先打底再勾形，边界更干净持久。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "cotton_swab",
+    "tissue"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 144",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

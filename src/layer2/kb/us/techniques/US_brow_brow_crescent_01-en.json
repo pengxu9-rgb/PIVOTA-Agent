@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_crescent_01-en",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Crescent Brow",
+    "steps": [
+      "Use a more visible curve with a rounded arch placed slightly forward",
+      "Draw a curved lower line and connect into a slender tail",
+      "Follow the curve on the top edge for a smooth silhouette",
+      "Blur the front; lightly deepen the arch to show the curve",
+      "Blend edges so the arc doesn't look harsh"
+    ]
+  },
+  "rationaleTemplate": [
+    "A rounded curve reads sweet and approachable.",
+    "Great for soft makeup without a sharp, strong vibe."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 118",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

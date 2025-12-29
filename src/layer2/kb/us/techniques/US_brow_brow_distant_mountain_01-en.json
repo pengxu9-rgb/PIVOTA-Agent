@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_distant_mountain_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Distant Mountain Brow",
+    "steps": [
+      "Keep the brow light overall; elongate but blur the outline",
+      "Use powder to sketch the shape—avoid hard edges",
+      "Create a soft matte gradient from front to tail",
+      "Blend repeatedly for a hazy, distant-mountain feel",
+      "Add only a few hair strokes if needed"
+    ]
+  },
+  "rationaleTemplate": [
+    "A soft, light brow reads classic and gentle.",
+    "Ideal for low-contrast or historical-style makeup."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 116",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_big_hook_01-en",
+  "area": "eye",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Big-Hook Eyeshadow",
+    "steps": [
+      "Draw a larger hook covering the outer crease area with a deep shade",
+      "Deepen inside the hook and lift the outer edge upward",
+      "Blend a transition shade through the crease for a wide gradient",
+      "Reinforce the lash line and outer corner for structure"
+    ]
+  },
+  "rationaleTemplate": [
+    "Camera-friendly: extension and lift in one shape.",
+    "Needs careful blending to stay clean and intentional."
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "blending_brush",
+    "liner",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 89",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

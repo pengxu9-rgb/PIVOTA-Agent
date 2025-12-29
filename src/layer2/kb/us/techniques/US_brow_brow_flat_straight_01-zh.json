@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_flat_straight_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "平直眉画法",
+    "steps": [
+      "眉头略低、眉尾略平，整体趋于水平线",
+      "画出平直眉下缘并轻拉长眉尾",
+      "用眉粉快速铺色，再用眉笔补毛流",
+      "眉头轻、眉尾深，保持干净渐变",
+      "刷开边界并用遮瑕修整下缘"
+    ]
+  },
+  "rationaleTemplate": [
+    "更日常耐看，适合清淡或通勤妆。",
+    "水平线让表情更平和、不强势。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 108",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

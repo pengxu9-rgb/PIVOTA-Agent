@@ -8,7 +8,15 @@
     "all": [
       {
         "key": "lookSpec.breakdown.eye.shadowShape",
-        "op": "exists"
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
       }
     ]
   },
@@ -16,7 +24,7 @@
     "title": "标准眉形五点定位",
     "steps": [
       "下眉头：内眼角垂直向上定点",
-      "上眉头：内眼角向前约0.5cm再垂直向上定点",
+      "上眉头：内眼角向前约0.5厘米再垂直向上定点",
       "眉心：黑眼球外缘到外眼角内侧区域的眼白约二分之一处垂直向上",
       "眉峰：眉心垂直向上定眉峰",
       "眉尖：鼻翼到外眼角延长线定位，连线并填充"

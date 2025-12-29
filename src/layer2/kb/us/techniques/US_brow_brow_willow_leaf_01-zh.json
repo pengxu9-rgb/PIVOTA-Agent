@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_willow_leaf_01-zh",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "柳叶眉画法",
+    "steps": [
+      "眉头细、眉身微弯，眉尾更细长",
+      "先画细长眉下缘，再画更柔的上缘",
+      "眉尾收尖并拉长，形成柳叶形",
+      "眉头轻雾化，眉尾加深但不发黑",
+      "刷开边界并修整尾部线条"
+    ]
+  },
+  "rationaleTemplate": [
+    "细长弧度能显眼神更妩媚、更拉长。",
+    "适合温柔或古典风格。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 117",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

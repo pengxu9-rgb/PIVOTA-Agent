@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_dry_base_brightening_primer_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "dry"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Moisturizing/brightening primer to even tone",
+    "steps": [
+      "Apply a moisturizing/brightening primer evenly",
+      "Use it to reduce foundation amount"
+    ]
+  },
+  "rationaleTemplate": [
+    "Evens tone without heavy layers",
+    "Helps keep a dewy finish"
+  ],
+  "productRoleHints": [
+    "primer"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 38",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}
