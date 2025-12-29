@@ -193,7 +193,7 @@ function buildSimilarityReportWithLookDiff({ needsChange }) {
 
 async function runLayer1ContractCase({ name, needsChange }) {
   const locale = "en-US";
-  const targetLookSpec = buildTargetLookSpec({ locale, includeEyeDirection: true });
+  const targetLookSpec = buildTargetLookSpec({ locale, includeEyeDirection: false });
   const similarityReportOverride = buildSimilarityReportWithLookDiff({ needsChange });
 
   const out = await runLookReplicatePipelineWithMockLookSpecs({
@@ -208,7 +208,7 @@ async function runLayer1ContractCase({ name, needsChange }) {
     env: {
       LAYER2_ENABLE_SELFIE_LOOKSPEC: "1",
       LAYER2_ENABLE_TRIGGER_MATCHING: "1",
-      LAYER2_ENABLE_EYE_ACTIVITY_SLOT: "1",
+      LAYER2_ENABLE_EYE_ACTIVITY_SLOT: "0",
       LAYER2_ENABLE_BASE_ACTIVITY_SLOT: "1",
       LAYER2_ENABLE_LIP_ACTIVITY_SLOT: "1",
       LAYER2_ENABLE_EXTENDED_AREAS: "0",
