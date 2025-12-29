@@ -1,0 +1,4 @@
+market,scope,scope_id,sku_id,merchant_id,priority,pin_reason,tags,notes,start_date,end_date
+US,category,base,sku_example_1,,80,promo,"starter,example","Replace with real SKU id",,
+US,role,ROLE:hydrating_primer,sku_example_2,,70,manual_test,"example","Pinned primer for demos",,
+JP,category,eye,sku_example_jp_1,,80,manual_test,"example","JP pin example (purchase disabled for JP internal offers)",,
