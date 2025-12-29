@@ -222,19 +222,30 @@ async function runLookReplicatePipeline(input) {
     console.log(`[gemini_reference] ${msg}`);
   };
 
+  const geminiTelemetry = {
+    reference: { okCount: 0, failCount: 0, lastErrorCode: null, latencyMs: null },
+    selfie: { okCount: 0, failCount: 0, lastErrorCode: null, latencyMs: null },
+    lookDiffSource: null,
+  };
+
   let lookSpec = null;
   if (geminiReferenceLookSpecEnabled && input.referenceImage?.path) {
+    const t0 = Date.now();
     const geminiOut = await extractReferenceLookSpecGemini({
       market: pack.market,
       locale,
       imagePath: input.referenceImage.path,
       promptText: promptPack?.lookSpecExtract,
     });
+    geminiTelemetry.reference.latencyMs = Date.now() - t0;
 
     if (geminiOut?.ok) {
       lookSpec = geminiOut.value;
+      geminiTelemetry.reference.okCount = 1;
       debugGemini('using gemini reference lookSpec');
     } else if (geminiOut) {
+      geminiTelemetry.reference.failCount = 1;
+      geminiTelemetry.reference.lastErrorCode = String(geminiOut?.error?.code || 'UNKNOWN');
       debugGemini(`gemini reference lookspec failed (fallback to extractLookSpec): ${String(geminiOut?.error?.code || 'UNKNOWN')}`);
     }
   }
@@ -275,13 +286,15 @@ async function runLookReplicatePipeline(input) {
       ? similarityReport
       : mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec: lookSpec, userLookSpec });
     debugSelfie(`using layer1 contract (hasLookDiff=${Boolean(lookDiffFromLayer1)} hasSelfieLookSpec=${Boolean(selfieLookSpecFromLayer1)})`);
-	  } else if (selfieLookSpecEnabled && geminiSelfieLookSpecEnabled && selfieImage?.path) {
-	    const geminiOut = await extractSelfieLookSpecGemini({
-	      market: pack.market,
-	      locale,
-	      imagePath: selfieImage.path,
-	      promptText: promptPack?.lookSpecExtract,
-	    });
+  } else if (selfieLookSpecEnabled && geminiSelfieLookSpecEnabled && selfieImage?.path) {
+    const t0 = Date.now();
+    const geminiOut = await extractSelfieLookSpecGemini({
+      market: pack.market,
+      locale,
+      imagePath: selfieImage.path,
+      promptText: promptPack?.lookSpecExtract,
+    });
+    geminiTelemetry.selfie.latencyMs = Date.now() - t0;
 
     if (geminiOut?.ok) {
       lookDiffSource = 'gemini';
@@ -291,8 +304,11 @@ async function runLookReplicatePipeline(input) {
         targetLookSpec: lookSpec,
         userLookSpec,
       });
+      geminiTelemetry.selfie.okCount = 1;
       debugSelfie('computed lookDiff via gemini');
     } else {
+      geminiTelemetry.selfie.failCount = 1;
+      geminiTelemetry.selfie.lastErrorCode = String(geminiOut?.error?.code || 'UNKNOWN');
       debugSelfie(`gemini selfie lookspec failed (fail-closed): ${String(geminiOut?.error?.code || 'UNKNOWN')}`);
     }
   } else if (selfieLookSpecEnabled && selfieBytes) {
@@ -322,6 +338,8 @@ async function runLookReplicatePipeline(input) {
       },
     };
   }
+
+  geminiTelemetry.lookDiffSource = lookDiffSource;
 
   const adjOut = await generateAdjustments({
     market: pack.market,
@@ -402,9 +420,17 @@ async function runLookReplicatePipeline(input) {
           pack.market === 'US'
             ? buildContextFingerprintUS({ userFaceProfile, refFaceProfile, lookSpec })
             : buildContextFingerprintJP({ userFaceProfile, refFaceProfile, lookSpec }),
-        replayContext: adjOut.skeletons ? { adjustmentSkeletons: adjOut.skeletons } : undefined,
-      }
-    : null;
+	        replayContext: adjOut.skeletons ? { adjustmentSkeletons: adjOut.skeletons } : undefined,
+          gemini: geminiTelemetry,
+	      }
+	    : null;
+
+  if (telemetrySample && geminiDebugEnabled) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[gemini] reference_ok=${geminiTelemetry.reference.okCount} reference_fail=${geminiTelemetry.reference.failCount} reference_ms=${geminiTelemetry.reference.latencyMs ?? 'null'} selfie_ok=${geminiTelemetry.selfie.okCount} selfie_fail=${geminiTelemetry.selfie.failCount} selfie_ms=${geminiTelemetry.selfie.latencyMs ?? 'null'} lookDiffSource=${geminiTelemetry.lookDiffSource ?? 'null'}`,
+    );
+  }
 
   return { result, locale, preferenceMode, telemetrySample };
 }
