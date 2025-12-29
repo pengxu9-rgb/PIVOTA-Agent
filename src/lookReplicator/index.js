@@ -289,6 +289,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
   app.get('/api/look-replicate/jobs/:jobId', async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
     try {
       const job = await getJob(req.params.jobId);
       if (!job) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -339,6 +340,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
   app.get('/api/look-replicate/shares/:shareId', async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
     const shareId = req.params.shareId;
     try {
       const job = await getShare(shareId);
