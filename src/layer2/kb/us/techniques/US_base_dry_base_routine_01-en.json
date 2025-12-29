@@ -13,7 +13,13 @@
       },
       {
         "key": "lookSpec.breakdown.base.finish",
-        "op": "exists"
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
       }
     ]
   },

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_blush_inverted_triangle_01-en",
+  "area": "blush",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Blush for Inverted Triangle Face",
+    "steps": [
+      "Begin slightly outside the apple and avoid the sides of the nose",
+      "Sweep along the cheekbone toward the temple",
+      "Blend upward to prevent droopiness or a harsh look",
+      "Buff off excess powder with a clean brush"
+    ]
+  },
+  "rationaleTemplate": [
+    "Moves visual focus upward to balance a narrow chin and wide upper face.",
+    "A lifted angle makes the face look fresher and brighter."
+  ],
+  "productRoleHints": [
+    "powder_blush",
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 137",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

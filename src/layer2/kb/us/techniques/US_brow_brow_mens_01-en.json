@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_mens_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Men's Brow",
+    "steps": [
+      "Keep the shape straighter with a subtle arch",
+      "Fill gaps with hair-like strokes, not hard outlines",
+      "Light front and slightly deeper tail without over-tapering",
+      "Brush through to follow hair direction and soften edges",
+      "Lightly clean stray edges with concealer if needed"
+    ]
+  },
+  "rationaleTemplate": [
+    "Hair-stroke filling looks more natural than heavy outlining.",
+    "Great for everyday, clean, understated looks."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 115",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

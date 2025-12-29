@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_tang_butterfly_a_01-zh",
+  "area": "lip",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "唐蝴蝶唇妆（款一·偏圆润）",
+    "steps": [
+      "遮盖原唇色并薄涂润唇打底",
+      "上唇勾出“蝴蝶”双峰并略圆润",
+      "下唇在中间加宽，形成对称饱满感",
+      "填色后修边，中心可略加深"
+    ]
+  },
+  "rationaleTemplate": [
+    "双峰轮廓更显古典与华丽。",
+    "适合拍照/舞台，轮廓感强。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 144",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_western_cutcrease_01-en",
+  "area": "eye",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Western Eye (Crease-Defined / Cut-Crease Style)",
+    "steps": [
+      "Apply a light base and keep the brow bone area clean",
+      "Sketch a crease line above the socket and blend into shadow",
+      "Pop shimmer or a light shade on the center lid for dimension",
+      "Deepen and elongate the outer corner; tightline the lashes"
+    ]
+  },
+  "rationaleTemplate": [
+    "Maximizes depth by pushing contrast between crease shadow and lid highlight.",
+    "Best for parties, stage looks, or strong-structure makeup."
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "shimmer_shadow",
+    "small_brush",
+    "liner"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 90",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

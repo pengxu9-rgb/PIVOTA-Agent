@@ -7,18 +7,31 @@ function sh(cmd) {
   return execSync(cmd, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }).trimEnd();
 }
 
+function allowDirtyTree() {
+  if (String(process.env.VERIFY_ALLOW_DIRTY || "").trim() === "1") return true;
+  return process.argv.includes("--allow-dirty");
+}
+
 function main() {
   const status = sh("git status --porcelain");
-  if (status.trim()) {
-    console.error("[FAIL] working tree is not clean:");
+  const clean = !status.trim();
+  const allowDirty = allowDirtyTree();
+  if (!clean && !allowDirty) {
+    console.error("[FAIL] working tree is not clean.");
+    console.error('Fix: commit/stash your changes, or re-run with VERIFY_ALLOW_DIRTY=1 (or "--allow-dirty").');
     console.error(status);
     process.exit(1);
   }
+  if (!clean && allowDirty) console.warn("[WARN] working tree is not clean; VERIFY_ALLOW_DIRTY enabled (boundary check still enforced)");
 
-  const changed = sh("git diff --name-only origin/main...HEAD || true")
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const committed = sh("git diff --name-only origin/main...HEAD || true");
+  const unstaged = sh("git diff --name-only || true");
+  const staged = sh("git diff --cached --name-only || true");
+  const untracked = sh("git ls-files --others --exclude-standard || true");
+
+  const changed = Array.from(
+    new Set([committed, unstaged, staged, untracked].join("\n").split("\n").map((s) => s.trim()).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b));
 
   const forbidden = new Set([
     "docs/internal_role_sku_map.md",
@@ -33,8 +46,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log("GIT_OK clean=true");
+  console.log(`GIT_OK clean=${clean} allowDirty=${allowDirty} changed=${changed.length}`);
 }
 
 main();
-

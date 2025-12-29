@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_flat_wash_01-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Flat Wash Eyeshadow (Base Laydown)",
+    "steps": [
+      "Sweep one main shade across the lid as a base",
+      "Build depth along the lash line and the outer V",
+      "Blend edges with a clean brush to avoid harsh blocks",
+      "Lightly highlight inner corner and brow bone"
+    ]
+  },
+  "rationaleTemplate": [
+    "Creates a clean base and quick depth with minimal steps.",
+    "Great for everyday looks and beginners; keeps the eye area fresh."
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "shimmer_shadow",
+    "small_brush",
+    "liner"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 81",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

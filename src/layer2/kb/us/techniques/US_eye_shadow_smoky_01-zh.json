@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_smoky_01-zh",
+  "area": "eye",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      },
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "eq",
+        "value": "smoky"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "烟熏眼妆画法",
+    "steps": [
+      "深色沿睫毛根部铺开并向上晕染",
+      "过渡色扩大到眼窝，上淡下深",
+      "眼尾外扩并拉长，形成烟熏轮廓",
+      "用浅色清理边界与提亮眼头，保持干净"
+    ]
+  },
+  "rationaleTemplate": [
+    "通过“上淡下深”制造浓郁但不脏的烟熏层次。",
+    "适合夜妆/拍摄，增强眼部立体与气场。"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "small_brush",
+    "shimmer_shadow",
+    "liner"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 84",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

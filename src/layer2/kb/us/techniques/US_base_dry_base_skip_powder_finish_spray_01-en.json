@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_dry_base_skip_powder_finish_spray_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "dry"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Skip powder if needed; finish with spray for glow",
+    "steps": [
+      "If skin is very dry, skip setting powder",
+      "Finish with spray to boost glow"
+    ]
+  },
+  "rationaleTemplate": [
+    "Avoids emphasizing flakes",
+    "Spray locks in a dewy look"
+  ],
+  "productRoleHints": [
+    "setting_spray"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 38",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

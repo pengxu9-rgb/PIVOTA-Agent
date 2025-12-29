@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_mens_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "男士眉画法",
+    "steps": [
+      "眉形偏直、眉峰弱化，整体更自然",
+      "用眉笔按毛流补空隙，避免画出硬边",
+      "眉头轻、眉尾略深，但不过分收尖",
+      "用刷子梳理毛流并淡化边界",
+      "需要时用遮瑕轻修杂边"
+    ]
+  },
+  "rationaleTemplate": [
+    "强调“毛流感”，比重描边更自然。",
+    "适合日常或清爽系造型。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 115",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

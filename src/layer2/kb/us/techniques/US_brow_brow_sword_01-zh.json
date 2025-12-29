@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_sword_01-zh",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "剑眉画法",
+    "steps": [
+      "眉峰明显且有“折角”，尾部利落收尖",
+      "先画硬朗的眉下缘，再画带折角的上缘",
+      "眉尾加深并拉长，形成“剑锋”感",
+      "眉头保持轻，避免全眉过黑过重",
+      "刷开色块并用遮瑕修出锋利边线"
+    ]
+  },
+  "rationaleTemplate": [
+    "折角与锋利尾部能增强英气与力量感。",
+    "适合中性风或需要强轮廓的妆面。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 122",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

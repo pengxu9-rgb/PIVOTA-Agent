@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_distant_mountain_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "远山眉画法",
+    "steps": [
+      "眉色整体偏浅，形状拉长但轮廓虚化",
+      "用眉粉轻扫出轮廓，不要画硬边",
+      "眉头到眉尾做雾面渐变，留出轻盈感",
+      "用刷子多次晕染，形成“远山”朦胧",
+      "必要时仅用细笔补少量毛流"
+    ]
+  },
+  "rationaleTemplate": [
+    "朦胧淡眉更显古典、温柔气质。",
+    "适合低对比度或古风妆容。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 116",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

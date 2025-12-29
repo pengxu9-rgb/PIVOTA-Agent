@@ -8,7 +8,14 @@
     "all": [
       {
         "key": "lookSpec.breakdown.lip.finish",
-        "op": "exists"
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
       }
     ]
   },

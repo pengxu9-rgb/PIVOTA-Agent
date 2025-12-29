@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_fix_floating_balance_cleanse_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Balance oil + buildup before makeup",
+    "steps": [
+      "Cleanse gently to remove excess oil and buildup",
+      "Avoid harsh scrubs right before makeup"
+    ]
+  },
+  "rationaleTemplate": [
+    "Reduces clumping with powder",
+    "Less irritation = smoother base"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 39",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

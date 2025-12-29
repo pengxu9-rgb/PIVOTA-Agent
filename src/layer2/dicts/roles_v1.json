@@ -63,7 +63,7 @@
     { "id": "brow_gel_tinted", "synonyms": ["tinted brow gel", "brow gel tinted"] },
     { "id": "brow_brush_spoolie", "synonyms": ["spoolie", "brow spoolie", "brow brush spoolie"] },
 
-    { "id": "powder_blush", "synonyms": ["powder blush", "blush powder"] },
+    { "id": "powder_blush", "synonyms": ["powder blush", "blush powder", "blush"] },
     { "id": "cream_blush", "synonyms": ["cream blush"] },
     { "id": "blush_brush", "synonyms": ["blush brush"] },
 
@@ -82,4 +82,3 @@
     ]
   }
 }
-

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_big_hook_01-zh",
+  "area": "eye",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "大勾眼妆画法",
+    "steps": [
+      "深色在眼尾画更大的“勾”覆盖眼窝外侧",
+      "勾内加深并向上提拉外缘",
+      "过渡色铺到眼窝，形成大面积渐层",
+      "加深睫毛根部与外眼角，强化轮廓"
+    ]
+  },
+  "rationaleTemplate": [
+    "更适合上镜：外扩+提拉同时完成。",
+    "轮廓清晰但需要更强的晕染控制。"
+  ],
+  "productRoleHints": [
+    "small_brush",
+    "dark_shadow",
+    "blending_brush",
+    "liner",
+    "shimmer_shadow"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 89",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

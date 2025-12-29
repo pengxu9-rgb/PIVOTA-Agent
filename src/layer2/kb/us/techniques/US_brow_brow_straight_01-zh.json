@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_straight_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "一字眉画法",
+    "steps": [
+      "眉身保持平直，眉峰弱化或不突出",
+      "画出上下两条近乎平行的眉线并拉长眉尾",
+      "眉头轻扫雾化，眉尾用细笔收尖",
+      "刷开色块，让眉头到眉尾自然过渡",
+      "必要时用遮瑕修直眉下缘线条"
+    ]
+  },
+  "rationaleTemplate": [
+    "弱化眉峰能显脸更幼态、气质更柔。",
+    "直线结构还能在视觉上拉宽中庭。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 105",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

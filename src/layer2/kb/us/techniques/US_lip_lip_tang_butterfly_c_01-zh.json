@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_tang_butterfly_c_01-zh",
+  "area": "lip",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "唐蝴蝶唇妆（款三·偏长形）",
+    "steps": [
+      "遮盖原唇色并保留唇部中心位置",
+      "上唇双峰拉宽，整体轮廓更横向",
+      "下唇向两侧延伸但保持薄，形成长形",
+      "填色后轻晕开边缘，避免过硬"
+    ]
+  },
+  "rationaleTemplate": [
+    "横向拉宽能拉长嘴型，适合镜头特写。",
+    "比尖锐版更柔和，适配更多脸型。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 145",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

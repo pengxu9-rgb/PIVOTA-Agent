@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_flat_wash_01-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "平涂眼妆画法（基础铺色）",
+    "steps": [
+      "选定主色，在上眼皮大范围轻扫打底",
+      "在睫毛根部与眼尾三角区叠加加深",
+      "用干净晕染刷柔化边界，避免色块",
+      "眼头与眉骨少量提亮，提升精神感"
+    ]
+  },
+  "rationaleTemplate": [
+    "最快建立干净的眼影底色与明暗层次。",
+    "适合新手/日常，减少显脏与斑驳。"
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "shimmer_shadow",
+    "small_brush",
+    "liner"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 81",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

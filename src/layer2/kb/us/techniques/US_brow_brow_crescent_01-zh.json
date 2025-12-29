@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_crescent_01-zh",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "新月眉画法",
+    "steps": [
+      "整体弧度更明显，眉峰偏前并圆润",
+      "用眉笔勾出弧线眉下缘，连接到细长眉尾",
+      "上缘顺弧度包住眉身，保持线条流畅",
+      "眉头雾化，眉峰轻加深突出弧度",
+      "刷开边界，避免弧线过硬"
+    ]
+  },
+  "rationaleTemplate": [
+    "圆润弧度更显甜美与亲和。",
+    "适合柔和妆面，避免过锐利气场。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 118",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

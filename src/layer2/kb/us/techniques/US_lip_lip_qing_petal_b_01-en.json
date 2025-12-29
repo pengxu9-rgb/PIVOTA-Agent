@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_qing_petal_b_01-en",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Qing Petal Lip B (Fuller Petal)",
+    "steps": [
+      "Neutralize and sketch a petal outline with lip liner",
+      "Fill: deeper inside, lighter toward the edge",
+      "Soften the border with a lip brush for rounded petals",
+      "Clean up, blot, and touch up if needed"
+    ]
+  },
+  "rationaleTemplate": [
+    "Great when you need more control: outline first, then gradient.",
+    "Rounded edges make the lips look fuller."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "tissue"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 145",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

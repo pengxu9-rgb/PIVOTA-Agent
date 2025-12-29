@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_meteor_01-zh",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "流星眉画法",
+    "steps": [
+      "眉峰略靠后并抬高，形成“上扬”走势",
+      "眉下缘从眉头向后微上升连接到眉尾",
+      "眉尾细长收尖，尾端微向上",
+      "眉头浅雾化，眉峰与眉尾加深强调走向",
+      "用刷子把上缘晕柔，避免太锋利"
+    ]
+  },
+  "rationaleTemplate": [
+    "上扬走向更显精神与利落气场。",
+    "适合想要“提拉”效果的妆容。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 106",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

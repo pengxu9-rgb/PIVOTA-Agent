@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_upturned_01-en",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Upturned Brow",
+    "steps": [
+      "Define and slightly lift the arch; extend the tail upward",
+      "Angle the lower line upward toward the arch for lift",
+      "Taper into a thin tail and avoid dropping the end",
+      "Deepen the arch and tail; keep the front airy",
+      "Use concealer to sharpen the lifted angle"
+    ]
+  },
+  "rationaleTemplate": [
+    "The most obvious lifting effect for a sharp, confident vibe.",
+    "Pairs well with cat-eye or upturned liner looks."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 110",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

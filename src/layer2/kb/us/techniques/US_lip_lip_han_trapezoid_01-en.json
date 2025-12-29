@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_han_trapezoid_01-en",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Han Trapezoid Lip",
+    "steps": [
+      "Neutralize the natural lip color with a thin base of concealer/foundation",
+      "Draw a small rounded upper lip and a fuller trapezoid lower lip outline",
+      "Fill with lipstick and deepen the center for dimension",
+      "Clean edges with a cotton swab/concealer; blot to set"
+    ]
+  },
+  "rationaleTemplate": [
+    "Creates a classic historical proportion: smaller top, fuller bottom.",
+    "A neutral base helps the shape look crisp and last longer."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "cotton_swab",
+    "tissue"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 144",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

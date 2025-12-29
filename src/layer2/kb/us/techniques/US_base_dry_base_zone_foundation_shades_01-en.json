@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_dry_base_zone_foundation_shades_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "dry"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Zone foundation: thin layers and optional shade split",
+    "steps": [
+      "Apply foundation by area in thin layers",
+      "Optional: use different shades for light/shadow zones"
+    ]
+  },
+  "rationaleTemplate": [
+    "Less product looks smoother on dry skin",
+    "Shade splitting adds dimension"
+  ],
+  "productRoleHints": [
+    "foundation",
+    "sponge"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 38",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

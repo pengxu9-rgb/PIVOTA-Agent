@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_sword_01-en",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Sword Brow",
+    "steps": [
+      "Make the arch pronounced with an angular 'break' and a sharp tail",
+      "Draw a firm lower line, then an angled top line",
+      "Deepen and extend the tail for a 'blade' feel",
+      "Keep the front lighter so the brow isn't too heavy",
+      "Blend and sharpen edges with concealer for crisp angles"
+    ]
+  },
+  "rationaleTemplate": [
+    "Angular structure adds a bold, strong presence.",
+    "Great for androgynous looks or strong facial structure makeup."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 122",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

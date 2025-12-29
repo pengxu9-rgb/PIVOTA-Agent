@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_blush_blush_babyface_01-en",
+  "area": "blush",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Blush for Babyface (Round/Cute Features)",
+    "steps": [
+      "Start at the highest point of the apple of the cheek",
+      "Place slightly lower and sweep horizontally for a short distance",
+      "Build in thin layers and diffuse the edges outward",
+      "Lightly set the perimeter so it melts into the base"
+    ]
+  },
+  "rationaleTemplate": [
+    "Keeps the center of the face from looking even rounder.",
+    "A horizontal sweep adds balance and proportion."
+  ],
+  "productRoleHints": [
+    "powder_blush",
+    "brush",
+    "blending_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 137",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

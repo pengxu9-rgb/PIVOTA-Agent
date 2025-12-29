@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_tang_butterfly_a_01-en",
+  "area": "lip",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Tang Butterfly Lip A (Softer Peaks)",
+    "steps": [
+      "Neutralize the lip color and add a thin balm base",
+      "Outline a butterfly-shaped cupid's bow with softer peaks",
+      "Widen the center of the lower lip for symmetrical fullness",
+      "Fill, refine edges, and deepen the center if desired"
+    ]
+  },
+  "rationaleTemplate": [
+    "A defined cupid's bow reads classic and ornate.",
+    "Great for photos or stage looks with strong shape."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 144",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

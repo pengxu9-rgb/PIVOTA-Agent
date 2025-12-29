@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_tang_butterfly_c_01-en",
+  "area": "lip",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Tang Butterfly Lip C (Elongated)",
+    "steps": [
+      "Neutralize the lips while keeping a guide at the center",
+      "Widen the butterfly peaks horizontally for a longer shape",
+      "Extend the lower lip sideways but keep it thinner overall",
+      "Fill and softly blur the edge to avoid stiffness"
+    ]
+  },
+  "rationaleTemplate": [
+    "A wider silhouette elongates the mouth in close-ups.",
+    "Softer than the sharp version, so it suits more faces."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 145",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

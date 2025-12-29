@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_base_dry_base_conceal_early_01-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "userFaceProfile.categorical.skinType",
+        "op": "eq",
+        "value": "dry"
+      },
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "natural",
+          "satin",
+          "dewy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Conceal heavy under-eye darkness early",
+    "steps": [
+      "Conceal dark circles in thin layers",
+      "Tap to blend; keep it minimal"
+    ]
+  },
+  "rationaleTemplate": [
+    "Early correction reduces later layers",
+    "Thin under-eyes crease less"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "sponge"
+  ],
+  "sourceId": "SRC_PPTX_LICENSED_001",
+  "sourcePointer": "ppt slide 38",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

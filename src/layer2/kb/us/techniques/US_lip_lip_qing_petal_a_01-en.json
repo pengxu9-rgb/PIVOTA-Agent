@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_qing_petal_a_01-en",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Qing Petal Lip A (Gradient Petal)",
+    "steps": [
+      "Neutralize the lips and keep the outer edge lighter",
+      "Tap lipstick on the inner lip area, leaving a petal-like border",
+      "Blend outward with a cotton swab for a deep-to-light gradient",
+      "Refine the edge and blot to set"
+    ]
+  },
+  "rationaleTemplate": [
+    "An inner gradient looks soft, youthful, and romantic.",
+    "A lighter border makes the lip shape feel airy like petals."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_color",
+    "cotton_swab",
+    "lip_brush",
+    "tissue"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 145",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

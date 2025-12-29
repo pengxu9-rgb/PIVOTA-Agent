@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_lip_lip_tang_butterfly_b_01-en",
+  "area": "lip",
+  "difficulty": "hard",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "matte",
+          "satin",
+          "gloss",
+          "tint",
+          "hydrated"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Tang Butterfly Lip B (Sharper Peaks)",
+    "steps": [
+      "Blank out the original lip line with concealer for a clean canvas",
+      "Draw sharper peaks on the cupid's bow and lift them slightly",
+      "Keep the lower-lip center a bit tighter to emphasize contrast",
+      "Fill and sharpen edges with concealer for crisp lines"
+    ]
+  },
+  "rationaleTemplate": [
+    "Sharper peaks give a bolder, more dramatic historical look.",
+    "Best when you want a strong, statement lip."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "lip_liner",
+    "lip_color",
+    "lip_brush",
+    "cotton_swab"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 144",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

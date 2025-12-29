@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_willow_leaf_01-en",
+  "area": "brow",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Willow-Leaf Brow",
+    "steps": [
+      "Thin front, gently curved body, and a long slender tail",
+      "Sketch a thin lower line, then a softer top line",
+      "Elongate and taper the tail to a leaf-like point",
+      "Keep the front airy; deepen the tail without going too dark",
+      "Blend and refine the tail line"
+    ]
+  },
+  "rationaleTemplate": [
+    "A slim curve makes the eyes look longer and more elegant.",
+    "Works well for soft, classic styles."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 117",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_standard_01-zh",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "标准眉画法",
+    "steps": [
+      "打点定位眉头、眉峰、眉尾，确定眉长与眉高",
+      "先画眉下缘，再画眉上缘并连接到眉尾",
+      "用眉笔/眉粉轻填空隙，眉头浅、眉尾深",
+      "用螺旋刷梳理毛流并晕开边界",
+      "用遮瑕修出干净眉线与眉骨边缘"
+    ]
+  },
+  "rationaleTemplate": [
+    "标准眉最通用，能快速让五官更精神。",
+    "定位+渐变能避免“画死眉”。"
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 104",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_eye_shadow_three_section_01-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Three-Section Eyeshadow",
+    "steps": [
+      "Lay a light base across the lid from inner to outer corner",
+      "Add a mid-tone from center to outer lid for transition",
+      "Place the deepest shade on the outer V and along the lash line",
+      "Blend intersections into a smooth gradient"
+    ]
+  },
+  "rationaleTemplate": [
+    "Gives you more control over depth placement and eye enlargement.",
+    "Detailed but still beginner-friendly with clear zones."
+  ],
+  "productRoleHints": [
+    "blending_brush",
+    "dark_shadow",
+    "small_brush",
+    "shimmer_shadow",
+    "liner"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 83",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}

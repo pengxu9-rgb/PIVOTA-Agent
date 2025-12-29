@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "US_brow_brow_standard_01-en",
+  "area": "brow",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.eye.shadowShape",
+        "op": "in",
+        "value": [
+          "washed",
+          "defined_crease",
+          "smoky",
+          "winged",
+          "halo",
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Standard Brow",
+    "steps": [
+      "Mark brow head, arch, and tail to set length and height",
+      "Draw the lower line first, then the upper line to meet the tail",
+      "Fill lightly: softer at the front, deeper toward the tail",
+      "Brush through to blend and follow hair direction",
+      "Clean edges with concealer for a crisp brow line"
+    ]
+  },
+  "rationaleTemplate": [
+    "A universal shape that instantly sharpens the face.",
+    "Mapping + gradient keeps brows natural, not blocky."
+  ],
+  "productRoleHints": [
+    "brow_pencil",
+    "small_brush",
+    "brush",
+    "concealer",
+    "small_concealer_brush"
+  ],
+  "sourceId": "SRC_PDF_OCR_001",
+  "sourcePointer": "ppt slide 104",
+  "tags": [
+    "reviewStatus:draft"
+  ]
+}
