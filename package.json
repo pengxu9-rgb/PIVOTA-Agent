@@ -11,6 +11,7 @@
     "smoke:layer2": "node scripts/smoke-layer2.js",
     "smoke:lookreplicate:activity": "node scripts/smoke-lookreplicate-activity-slot.js",
     "staging:gemini:e2e": "node scripts/staging-gemini-e2e-run.js",
+    "staging:gemini:eval": "node scripts/staging-gemini-eval-run.js",
     "smoke:real": "npm --prefix .. run smoke:real --",
     "db:migrate": "node src/db/cli.js migrate",
     "db:seed": "node src/db/cli.js seed",

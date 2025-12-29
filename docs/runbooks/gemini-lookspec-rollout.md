@@ -80,6 +80,22 @@ Compatibility note:
 Recommended sample size:
 - 20–50 target/selfie pairs to start (scale to 100 for confidence)
 
+Batch eval runner (manual-only):
+1) Prepare `pairs.json` (JSON array):
+   - Each item:
+     - `referenceImagePath` (required, absolute path recommended)
+     - `selfieImagePath` (required, absolute path recommended)
+     - optional: `market` (default `US`), `locale` (default `en-US`), `preferenceMode` (default `structure`)
+2) Run:
+```bash
+GEMINI_EVAL_PAIRS_JSON=/abs/path/pairs.json \
+GEMINI_API_KEY=... \
+npm run staging:gemini:eval
+```
+Output:
+- human summary + `REPORT_JSON=<...>` (machine-readable)
+- spot-check lines show: macroIds / needsChange(true only) / slots(true only) / error codes / totalMs
+
 Record / summarize:
 - Gemini ok rate and failure-code distribution (`MISSING_API_KEY` / `REQUEST_FAILED` / `SCHEMA_INVALID`)
 - Latency: `p50` / `p95` for reference + selfie (ms)
