@@ -45,6 +45,47 @@ function parseEnvBool(v) {
   return ['1', 'true', 'yes', 'y', 'on'].includes(s);
 }
 
+function normalizeLookToken(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  return s || 'unknown';
+}
+
+function computeLookDiffField({ user, target }) {
+  const u = normalizeLookToken(user);
+  const t = normalizeLookToken(target);
+  const needsChange = u !== 'unknown' && t !== 'unknown' && u !== t;
+  return { user: u, target: t, needsChange };
+}
+
+function mergeLookDiffIntoSimilarityReport({ similarityReport, targetLookSpec, userLookSpec }) {
+  if (!similarityReport) return null;
+  if (!targetLookSpec || !userLookSpec) return similarityReport;
+
+  const lookDiff = {
+    ...(similarityReport.lookDiff || {}),
+    base: {
+      ...(similarityReport.lookDiff?.base || {}),
+      finish: computeLookDiffField({
+        user: userLookSpec?.breakdown?.base?.finish,
+        target: targetLookSpec?.breakdown?.base?.finish,
+      }),
+      coverage: computeLookDiffField({
+        user: userLookSpec?.breakdown?.base?.coverage,
+        target: targetLookSpec?.breakdown?.base?.coverage,
+      }),
+    },
+    lip: {
+      ...(similarityReport.lookDiff?.lip || {}),
+      finish: computeLookDiffField({
+        user: userLookSpec?.breakdown?.lip?.finish,
+        target: targetLookSpec?.breakdown?.lip?.finish,
+      }),
+    },
+  };
+
+  return { ...similarityReport, lookDiff };
+}
+
 function toResultAdjustments(layer2Adjustments) {
   return layer2Adjustments.map((a) => ({
     impactArea: a.impactArea,
@@ -124,7 +165,28 @@ async function runLookReplicatePipeline(input) {
     market: pack.market,
     locale,
     referenceImage: { kind: 'bytes', bytes: referenceBytes, contentType: input.referenceImage.contentType },
+    imageKind: 'reference',
     promptPack: pack.getPromptPack(locale),
+  });
+
+  const selfieLookSpecEnabled = parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC);
+  const selfieImage = input.selfieImage ?? null;
+  const selfieBytes = selfieLookSpecEnabled && selfieImage?.path ? fs.readFileSync(selfieImage.path) : null;
+  const userLookSpec =
+    selfieLookSpecEnabled && selfieBytes
+      ? await extractLookSpec({
+          market: pack.market,
+          locale,
+          referenceImage: { kind: 'bytes', bytes: selfieBytes, contentType: selfieImage.contentType || 'image/jpeg' },
+          imageKind: 'selfie',
+          promptPack: pack.getPromptPack(locale),
+        })
+      : null;
+
+  const similarityReportWithLookDiff = mergeLookDiffIntoSimilarityReport({
+    similarityReport,
+    targetLookSpec: lookSpec,
+    userLookSpec,
   });
 
   const adjOut = await generateAdjustments({
@@ -132,7 +194,7 @@ async function runLookReplicatePipeline(input) {
     locale,
     userFaceProfile,
     refFaceProfile,
-    similarityReport,
+    similarityReport: similarityReportWithLookDiff,
     lookSpec,
     preferenceMode,
     promptPack: pack.getPromptPack(locale),
@@ -159,6 +221,8 @@ async function runLookReplicatePipeline(input) {
   const candidateOut = buildAdjustmentCandidates({ layer2Adjustments: adjOut.adjustments });
   const includeTechniqueRefs =
     parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT) ||
+    parseEnvBool(process.env.LAYER2_ENABLE_BASE_ACTIVITY_SLOT) ||
+    parseEnvBool(process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT) ||
     parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS);
 
   const result = LookReplicateResultV0Schema.parse({

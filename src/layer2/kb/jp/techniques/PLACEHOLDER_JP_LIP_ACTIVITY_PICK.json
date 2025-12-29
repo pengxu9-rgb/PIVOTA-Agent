@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "PLACEHOLDER_JP_LIP_ACTIVITY_PICK",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Lips: add one safe improvement",
+    "steps": [
+      "Match the reference lip finish first (gloss/satin/matte).",
+      "Stay in a close shade family.",
+      "Blot lightly to adjust intensity."
+    ]
+  },
+  "rationaleTemplate": [
+    "Finish and intensity are the most reliable levers for lip matching."
+  ]
+}

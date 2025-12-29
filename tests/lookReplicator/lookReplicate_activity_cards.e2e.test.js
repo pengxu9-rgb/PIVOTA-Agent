@@ -113,9 +113,13 @@ async function runPipelineWithFixture({
   locale,
   lookSpecFixturePath,
   lookSpecOverride,
+  selfieLookSpecOverride,
+  enableSelfieLookSpec,
   enableExtendedAreas,
   enableTriggerMatching,
   enableEyeActivitySlot,
+  enableBaseActivitySlot,
+  enableLipActivitySlot,
   preferenceMode,
 }) {
   const referenceImagePath = writeTempJpeg();
@@ -123,6 +127,7 @@ async function runPipelineWithFixture({
 
   try {
     const lookSpec = lookSpecOverride ?? readJson(lookSpecFixturePath);
+    const selfieLookSpec = selfieLookSpecOverride ?? lookSpec;
     const layer1Bundle = readJson("fixtures/contracts/us/layer1BundleV0.sample.json");
 
     process.env.API_MODE = "MOCK";
@@ -135,10 +140,21 @@ async function runPipelineWithFixture({
     process.env.EXPERIMENT_MORE_CANDIDATES_ENABLED = "0";
     process.env.LAYER2_ENABLE_EXTENDED_AREAS = enableExtendedAreas ? "1" : "0";
     process.env.LAYER2_ENABLE_TRIGGER_MATCHING = enableTriggerMatching ? "1" : "0";
+    process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC = enableSelfieLookSpec ? "1" : "0";
     if (typeof enableEyeActivitySlot === "boolean") {
       process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT = enableEyeActivitySlot ? "1" : "0";
     } else {
       delete process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT;
+    }
+    if (typeof enableBaseActivitySlot === "boolean") {
+      process.env.LAYER2_ENABLE_BASE_ACTIVITY_SLOT = enableBaseActivitySlot ? "1" : "0";
+    } else {
+      delete process.env.LAYER2_ENABLE_BASE_ACTIVITY_SLOT;
+    }
+    if (typeof enableLipActivitySlot === "boolean") {
+      process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT = enableLipActivitySlot ? "1" : "0";
+    } else {
+      delete process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT;
     }
 
     let runLookReplicatePipeline = null;
@@ -146,7 +162,7 @@ async function runPipelineWithFixture({
       jest.isolateModules(() => {
         try {
           jest.doMock("../../src/layer2/extractLookSpec", () => ({
-            extractLookSpec: async () => lookSpec,
+            extractLookSpec: async (input) => (input?.imageKind === "selfie" ? selfieLookSpec : lookSpec),
           }));
           ({ runLookReplicatePipeline } = require("../../src/lookReplicator/lookReplicatePipeline"));
           resolve();
@@ -162,6 +178,7 @@ async function runPipelineWithFixture({
       preferenceMode: preferenceMode ?? "structure",
       jobId: `e2e_${locale}`,
       referenceImage: { path: referenceImagePath, contentType: "image/jpeg" },
+      ...(enableSelfieLookSpec ? { selfieImage: { path: referenceImagePath, contentType: "image/jpeg" } } : {}),
       layer1Bundle,
     });
   } finally {
@@ -171,11 +188,11 @@ async function runPipelineWithFixture({
 }
 
 describe("look-replicator activity cards reachability (production path)", () => {
-	  test("EN: eye-liner micro steps stay sequence; macro slot is NOT emitted when matching is OFF", async () => {
-	    const out = await runPipelineWithFixture({
-	      locale: "en-US",
-	      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_up.json",
-	      enableTriggerMatching: false,
+  test("EN: eye-liner micro steps stay sequence; macro slot is NOT emitted when matching is OFF", async () => {
+    const out = await runPipelineWithFixture({
+      locale: "en-US",
+      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_up.json",
+      enableTriggerMatching: false,
       enableEyeActivitySlot: true,
     });
 
@@ -204,7 +221,7 @@ describe("look-replicator activity cards reachability (production path)", () => 
 	    expect(macroInResult).toHaveLength(0);
 	  });
 
-	  test("EN: eye-liner activity slot still returns exactly one macro card (matching ON)", async () => {
+  test("EN: eye-liner activity slot still returns exactly one macro card (matching ON)", async () => {
 	    const expectedMacro = [
 	      "US_eye_liner_daily_upwing_01-en",
 	      "US_eye_liner_winged_western_01-en",
@@ -233,7 +250,7 @@ describe("look-replicator activity cards reachability (production path)", () => 
 	    expect(expectedMacro).toContain(slotRefs[0]);
 	  });
 
-	  test("EN: eye-liner macro slot chooses subtle_elongate for direction=straight (matching ON)", async () => {
+  test("EN: eye-liner macro slot chooses subtle_elongate for direction=straight (matching ON)", async () => {
 	    const out = await runPipelineWithFixture({
 	      locale: "en-US",
 	      lookSpecFixturePath: "fixtures/look_replicator/lookspec_eye_liner_straight.json",
@@ -516,50 +533,6 @@ describe("look-replicator activity cards reachability (production path)", () => 
     expect(macroInResult).toHaveLength(0);
   });
 
-  test("EN: base-fix + lip-shaping activity techniques are rendered via intents_v0.json", async () => {
-    const baseExpected = ["US_base_fix_caking_01-en", "US_base_fix_floating_powder_01-en"];
-    const lipExpected = ["US_lip_thin_lower_fuller_01-en", "US_lip_flat_lips_define_01-en"];
-
-    const out = await runPipelineWithFixture({
-      locale: "en-US",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
-    });
-
-    const telemetrySample = out?.telemetrySample;
-    const techniqueRefs = collectTechniqueRefs(telemetrySample);
-    const baseFound = baseExpected.filter((id) => techniqueRefs.includes(id));
-    const lipFound = lipExpected.filter((id) => techniqueRefs.includes(id));
-
-    if (!baseFound.length) {
-      throw new Error(buildFailureDiagnostic({ name: "EN/base-fix", expectedActivityIds: baseExpected, telemetrySample }));
-    }
-    if (!lipFound.length) {
-      throw new Error(buildFailureDiagnostic({ name: "EN/lip-shaping", expectedActivityIds: lipExpected, telemetrySample }));
-    }
-  });
-
-  test("ZH: base-fix + lip-shaping activity techniques resolve to -zh via locale", async () => {
-    const baseExpected = ["US_base_fix_caking_01-zh", "US_base_fix_floating_powder_01-zh"];
-    const lipExpected = ["US_lip_thin_lower_fuller_01-zh", "US_lip_flat_lips_define_01-zh"];
-
-    const out = await runPipelineWithFixture({
-      locale: "zh-CN",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
-    });
-
-    const telemetrySample = out?.telemetrySample;
-    const techniqueRefs = collectTechniqueRefs(telemetrySample);
-    const baseFound = baseExpected.filter((id) => techniqueRefs.includes(id));
-    const lipFound = lipExpected.filter((id) => techniqueRefs.includes(id));
-
-    if (!baseFound.length) {
-      throw new Error(buildFailureDiagnostic({ name: "ZH/base-fix", expectedActivityIds: baseExpected, telemetrySample }));
-    }
-    if (!lipFound.length) {
-      throw new Error(buildFailureDiagnostic({ name: "ZH/lip-shaping", expectedActivityIds: lipExpected, telemetrySample }));
-    }
-  });
-
   test("EN: extended areas render at least one activity technique when flag enabled", async () => {
     const expected = [
       "US_prep_primer_01-en",
@@ -629,40 +602,113 @@ describe("look-replicator activity cards reachability (production path)", () => 
       : [];
     const base = skeletons.find((s) => String(s?.impactArea || "") === "base");
     const refs = Array.isArray(base?.techniqueRefs) ? base.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(refs.length).toBeGreaterThan(1);
+    expect(refs.length).toBeGreaterThanOrEqual(3);
     expect(refs).toContain("T_BASE_BUILD_COVERAGE_THIN_PASSES");
-    expect(refs).toContain("US_base_fix_caking_01-en");
+    expect(refs.some((id) => id.startsWith("US_base_fix_"))).toBe(false);
   });
 
-  test("Trigger matching ON (EN): choose_one intent selects exactly one base technique", async () => {
+  test("EN: base/lip activity slots are emitted only when lookDiff.needsChange is true (matching ON)", async () => {
+    const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
+    const targetLookSpec = {
+      ...baseTarget,
+      breakdown: {
+        ...baseTarget.breakdown,
+        base: { ...baseTarget.breakdown.base, finish: "dewy", coverage: "full" },
+        lip: { ...baseTarget.breakdown.lip, finish: "velvet" },
+      },
+    };
+    const selfieLookSpec = {
+      ...targetLookSpec,
+      breakdown: {
+        ...targetLookSpec.breakdown,
+        base: { ...targetLookSpec.breakdown.base, finish: "matte", coverage: "sheer" },
+        lip: { ...targetLookSpec.breakdown.lip, finish: "gloss" },
+      },
+    };
+
     const out = await runPipelineWithFixture({
       locale: "en-US",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      lookSpecOverride: targetLookSpec,
+      selfieLookSpecOverride: selfieLookSpec,
+      enableSelfieLookSpec: true,
       enableTriggerMatching: true,
+      enableBaseActivitySlot: true,
+      enableLipActivitySlot: true,
+      enableEyeActivitySlot: false,
     });
 
     const telemetrySample = out?.telemetrySample;
     const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
       ? telemetrySample.replayContext.adjustmentSkeletons
       : [];
-    const base = skeletons.find((s) => String(s?.impactArea || "") === "base");
-    const refs = Array.isArray(base?.techniqueRefs) ? base.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(refs).toEqual(["US_base_fix_caking_01-en"]);
+
+    const baseSlot = skeletons.find((s) => String(s?.ruleId || "") === "BASE_ACTIVITY_SLOT");
+    const lipSlot = skeletons.find((s) => String(s?.ruleId || "") === "LIP_ACTIVITY_SLOT");
+    expect(Boolean(baseSlot)).toBe(true);
+    expect(Boolean(lipSlot)).toBe(true);
+
+    const baseSlotRefs = Array.isArray(baseSlot?.techniqueRefs) ? baseSlot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
+    const lipSlotRefs = Array.isArray(lipSlot?.techniqueRefs) ? lipSlot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
+    expect(baseSlotRefs).toHaveLength(1);
+    expect(lipSlotRefs).toHaveLength(1);
+    expect(["US_base_fix_caking_01-en", "US_base_fix_floating_powder_01-en"]).toContain(baseSlotRefs[0]);
+    expect(["US_lip_thin_lower_fuller_01-en", "US_lip_flat_lips_define_01-en"]).toContain(lipSlotRefs[0]);
+
+    const resultTechniqueIds = collectResultTechniqueIds(out?.result);
+    expect(resultTechniqueIds.some((id) => id.startsWith("T_BASE_"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("T_LIP_"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_base_fix_"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_lip_"))).toBe(true);
   });
 
-  test("Trigger matching ON (ZH): chooses one base technique and resolves to -zh via locale", async () => {
-    const out = await runPipelineWithFixture({
+  test("ZH: base/lip activity slots resolve to -zh, and do NOT emit when needsChange=false", async () => {
+    const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
+    const targetLookSpec = {
+      ...baseTarget,
+      breakdown: {
+        ...baseTarget.breakdown,
+        base: { ...baseTarget.breakdown.base, finish: "dewy", coverage: "full" },
+        lip: { ...baseTarget.breakdown.lip, finish: "velvet" },
+      },
+    };
+
+    const outNoChange = await runPipelineWithFixture({
       locale: "zh-CN",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+      lookSpecOverride: targetLookSpec,
+      selfieLookSpecOverride: targetLookSpec,
+      enableSelfieLookSpec: true,
       enableTriggerMatching: true,
+      enableBaseActivitySlot: true,
+      enableLipActivitySlot: true,
+      enableEyeActivitySlot: false,
     });
 
-    const telemetrySample = out?.telemetrySample;
-    const skeletons = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
-      ? telemetrySample.replayContext.adjustmentSkeletons
-      : [];
-    const base = skeletons.find((s) => String(s?.impactArea || "") === "base");
-    const refs = Array.isArray(base?.techniqueRefs) ? base.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-    expect(refs).toEqual(["US_base_fix_caking_01-zh"]);
+    const noChangeIds = collectResultTechniqueIds(outNoChange?.result);
+    expect(noChangeIds.some((id) => id.startsWith("US_base_fix_"))).toBe(false);
+    expect(noChangeIds.some((id) => id.startsWith("US_lip_"))).toBe(false);
+
+    const selfieLookSpec = {
+      ...targetLookSpec,
+      breakdown: {
+        ...targetLookSpec.breakdown,
+        base: { ...targetLookSpec.breakdown.base, finish: "matte", coverage: "sheer" },
+        lip: { ...targetLookSpec.breakdown.lip, finish: "gloss" },
+      },
+    };
+
+    const outChange = await runPipelineWithFixture({
+      locale: "zh-CN",
+      lookSpecOverride: targetLookSpec,
+      selfieLookSpecOverride: selfieLookSpec,
+      enableSelfieLookSpec: true,
+      enableTriggerMatching: true,
+      enableBaseActivitySlot: true,
+      enableLipActivitySlot: true,
+      enableEyeActivitySlot: false,
+    });
+
+    const changeIds = collectResultTechniqueIds(outChange?.result);
+    expect(changeIds.some((id) => id.startsWith("US_base_fix_") && id.endsWith("-zh"))).toBe(true);
+    expect(changeIds.some((id) => id.startsWith("US_lip_") && id.endsWith("-zh"))).toBe(true);
   });
 });

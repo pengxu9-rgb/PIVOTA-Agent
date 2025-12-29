@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "v0",
+  "market": "JP",
+  "id": "PLACEHOLDER_JP_BASE_ACTIVITY_PICK",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Base: add one safe improvement",
+    "steps": [
+      "Apply base in thin layers; avoid heavy buildup.",
+      "Spot-correct only where needed.",
+      "Set only where needed to keep a clean finish."
+    ]
+  },
+  "rationaleTemplate": [
+    "A thin, targeted base is a safe default for most looks."
+  ]
+}

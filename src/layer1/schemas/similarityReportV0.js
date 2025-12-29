@@ -35,6 +35,14 @@ const AdjustmentSchema = z
 
 const LinerDirectionSchema = z.enum(['down', 'straight', 'up', 'unknown']);
 
+const LookDiffFieldSchema = z
+  .object({
+    user: z.string().min(1),
+    target: z.string().min(1),
+    needsChange: z.boolean(),
+  })
+  .strict();
+
 const SimilarityReportV0Schema = z
   .object({
     version: z.literal('v0'),
@@ -90,6 +98,19 @@ const SimilarityReportV0Schema = z
                 needsChange: z.boolean(),
               })
               .strict(),
+          })
+          .strict()
+          .optional(),
+        base: z
+          .object({
+            finish: LookDiffFieldSchema.optional(),
+            coverage: LookDiffFieldSchema.optional(),
+          })
+          .strict()
+          .optional(),
+        lip: z
+          .object({
+            finish: LookDiffFieldSchema.optional(),
           })
           .strict()
           .optional(),
