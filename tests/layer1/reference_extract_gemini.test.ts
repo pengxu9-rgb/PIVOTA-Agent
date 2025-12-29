@@ -5,8 +5,9 @@ import path from "node:path";
 jest.mock("@google/genai", () => ({ GoogleGenAI: jest.fn() }));
 
 function writeTempJpeg(): string {
-  const p = path.join(os.tmpdir(), `pivota-gemini-reference-${process.pid}-${Date.now()}.jpg`);
-  fs.writeFileSync(p, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  const p = path.join(os.tmpdir(), `pivota-gemini-reference-${process.pid}-${Date.now()}.png`);
+  const onePxPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X9qkAAAAASUVORK5CYII=";
+  fs.writeFileSync(p, Buffer.from(onePxPngBase64, "base64"));
   return p;
 }
 
@@ -76,4 +77,3 @@ describe("extractReferenceLookSpecGemini", () => {
     }
   });
 });
-

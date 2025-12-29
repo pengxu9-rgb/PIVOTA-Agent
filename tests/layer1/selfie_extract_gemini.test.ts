@@ -4,9 +4,16 @@ import path from "node:path";
 
 jest.mock("@google/genai", () => ({ GoogleGenAI: jest.fn() }));
 
-function writeTempJpeg(): string {
-  const p = path.join(os.tmpdir(), `pivota-gemini-selfie-${process.pid}-${Date.now()}.jpg`);
-  fs.writeFileSync(p, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+function writeTempImage(): string {
+  const p = path.join(os.tmpdir(), `pivota-gemini-selfie-${process.pid}-${Date.now()}.png`);
+  const onePxPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X9qkAAAAASUVORK5CYII=";
+  fs.writeFileSync(p, Buffer.from(onePxPngBase64, "base64"));
+  return p;
+}
+
+function writeTempTextFile(): string {
+  const p = path.join(os.tmpdir(), `pivota-gemini-selfie-${process.pid}-${Date.now()}.txt`);
+  fs.writeFileSync(p, "hello", "utf8");
   return p;
 }
 
@@ -26,7 +33,7 @@ describe("extractSelfieLookSpecGemini", () => {
     process.env.GEMINI_MODEL = "gemini-2.5-flash";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const generateContent = jest.fn().mockResolvedValue({
@@ -78,7 +85,7 @@ describe("extractSelfieLookSpecGemini", () => {
     process.env.GEMINI_API_KEY = "test_key";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const generateContent = jest.fn().mockResolvedValue({ text: "not-json" });
@@ -121,7 +128,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     process.env.GEMINI_MAX_RETRIES = "0";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const generateContent = jest.fn().mockImplementation(() => new Promise(() => {}));
@@ -149,7 +156,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     process.env.GEMINI_RETRY_BASE_DELAY_MS = "1";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const generateContent = jest
@@ -177,7 +184,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     process.env.GEMINI_MAX_RETRIES = "5";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const generateContent = jest.fn();
@@ -206,7 +213,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     process.env.GEMINI_RATE_PER_MIN = "0";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const generateContent = jest.fn().mockResolvedValue({ text: "{\"ok\":true}" });
@@ -236,7 +243,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     process.env.GEMINI_CIRCUIT_COOLDOWN_MS = "60000";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const generateContent = jest.fn().mockRejectedValue(new Error("503 Service Unavailable"));
@@ -270,7 +277,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     process.env.GEMINI_MAX_RETRIES = "0";
 
     const genai = require("@google/genai");
-    const imgPath = writeTempJpeg();
+    const imgPath = writeTempImage();
 
     try {
       const preprocessImageForGemini = jest.fn().mockResolvedValue({
@@ -303,6 +310,33 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
           }
         });
       });
+    } finally {
+      fs.rmSync(imgPath, { force: true });
+    }
+  });
+
+  test("non-image input fails closed and does not call SDK", async () => {
+    process.env.GEMINI_API_KEY = "test_key";
+    process.env.GEMINI_TIMEOUT_MS = "1000";
+    process.env.GEMINI_MAX_RETRIES = "0";
+
+    const genai = require("@google/genai");
+    const imgPath = writeTempTextFile();
+
+    try {
+      const generateContent = jest.fn().mockResolvedValue({ text: "{\"ok\":true}" });
+      genai.GoogleGenAI.mockImplementation(() => ({ models: { generateContent } }));
+
+      const { generateLookSpecFromImage } = require("../../src/layer1/llm/geminiClient");
+      const out = await generateLookSpecFromImage({
+        imagePath: imgPath,
+        promptText: "prompt",
+        responseJsonSchema: { type: "object" },
+      });
+
+      expect(out.ok).toBe(false);
+      expect(String(out.error.code)).toBe("PREPROCESS_FAILED");
+      expect(generateContent).toHaveBeenCalledTimes(0);
     } finally {
       fs.rmSync(imgPath, { force: true });
     }

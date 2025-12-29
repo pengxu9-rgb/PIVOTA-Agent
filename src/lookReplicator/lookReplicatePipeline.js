@@ -414,6 +414,8 @@ async function runLookReplicatePipeline(input) {
     ...(warnings.length ? { warnings } : {}),
   });
 
+  const includeGeminiTelemetry = geminiReferenceLookSpecEnabled || geminiSelfieLookSpecEnabled || geminiDebugEnabled || selfieDebugEnabled;
+
   const telemetrySample = input.jobId
     ? {
         jobId: input.jobId,
@@ -438,7 +440,7 @@ async function runLookReplicatePipeline(input) {
             ? buildContextFingerprintUS({ userFaceProfile, refFaceProfile, lookSpec })
             : buildContextFingerprintJP({ userFaceProfile, refFaceProfile, lookSpec }),
 	        replayContext: adjOut.skeletons ? { adjustmentSkeletons: adjOut.skeletons } : undefined,
-          gemini: geminiTelemetry,
+          ...(includeGeminiTelemetry ? { gemini: geminiTelemetry } : {}),
 	      }
 	    : null;
 

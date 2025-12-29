@@ -76,6 +76,38 @@ function withTimeout(promise, timeoutMs) {
   });
 }
 
+function isLikelyImageBytes(buf) {
+  if (!Buffer.isBuffer(buf)) return false;
+  if (buf.length < 12) return false;
+
+  // JPEG SOI: FF D8
+  if (buf[0] === 0xff && buf[1] === 0xd8) return true;
+
+  // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47 &&
+    buf[4] === 0x0d &&
+    buf[5] === 0x0a &&
+    buf[6] === 0x1a &&
+    buf[7] === 0x0a
+  )
+    return true;
+
+  // GIF: "GIF87a" / "GIF89a"
+  const hdr6 = buf.subarray(0, 6).toString("ascii");
+  if (hdr6 === "GIF87a" || hdr6 === "GIF89a") return true;
+
+  // WebP: "RIFF....WEBP"
+  const riff = buf.subarray(0, 4).toString("ascii");
+  const webp = buf.subarray(8, 12).toString("ascii");
+  if (riff === "RIFF" && webp === "WEBP") return true;
+
+  return false;
+}
+
 async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSchema }) {
   const apiKey = parseEnvString(process.env.GEMINI_API_KEY);
   const model = parseEnvString(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
@@ -141,6 +173,16 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
     const tStart = Date.now();
     const bytes = fs.readFileSync(effectivePath);
     const mimeType = effectivePath === imgPath ? guessMimeTypeFromPath(imgPath) : "image/jpeg";
+
+    if (effectivePath === imgPath && meta.preprocess.ok === false && !isLikelyImageBytes(bytes)) {
+      meta.preprocess.errorCode = meta.preprocess.errorCode || "PREPROCESS_FAILED";
+      return {
+        ok: false,
+        error: { code: "PREPROCESS_FAILED", message: "Input does not look like a supported image; skipping Gemini call" },
+        meta,
+      };
+    }
+
     const data = bytes.toString("base64");
 
     const ai = new GoogleGenAI({ apiKey });
