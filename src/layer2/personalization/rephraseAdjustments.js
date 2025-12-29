@@ -52,8 +52,16 @@ function isJaLocale(locale) {
   return s === 'ja' || s.startsWith('ja-') || s.startsWith('ja_');
 }
 
+function isZhLocale(locale) {
+  const s = String(locale || '').trim().toLowerCase().replace(/_/g, '-');
+  return s === 'zh' || s.startsWith('zh-');
+}
+
 function loadPromptForMarket(market, locale) {
-  if (market === 'US') return readPromptOnce(path.join(__dirname, '..', 'prompts', 'adjustments_rephrase_en.txt'));
+  if (market === 'US') {
+    if (isZhLocale(locale)) return readPromptOnce(path.join(__dirname, '..', 'prompts', 'adjustments_rephrase_zh.txt'));
+    return readPromptOnce(path.join(__dirname, '..', 'prompts', 'adjustments_rephrase_en.txt'));
+  }
   // JP prompts are Japanese-first.
   return readPromptOnce(path.join(__dirname, '..', 'prompts', 'jp', 'adjustments_rephrase_ja.txt'));
 }
@@ -62,38 +70,49 @@ function normalizeText(s) {
   return String(s || '').replace(/\s+/g, ' ').trim();
 }
 
-function ensurePeriod(s) {
+function ensureSentenceTerminator(s, locale) {
   const t = normalizeText(s);
   if (!t) return t;
-  return /[.!?]$/.test(t) ? t : `${t}.`;
+  if (/[.!?。！？]$/.test(t)) return t;
+  return isZhLocale(locale) ? `${t}。` : `${t}.`;
 }
 
-function humanTitleForRule(ruleId, impactArea) {
+function humanTitleForRule(ruleId, impactArea, locale) {
+  if (isZhLocale(locale)) {
+    const prefix = impactArea === 'base' ? '底妆' : impactArea === 'eye' ? '眼妆' : '唇妆';
+    return `${prefix}调整`;
+  }
   const t = RULE_TITLES_US[ruleId];
   if (t) return t;
   const prefix = impactArea === 'base' ? 'Base' : impactArea === 'eye' ? 'Eye' : 'Lip';
   return `${prefix} adjustment`;
 }
 
-function renderAdjustmentFromSkeleton(s) {
+function renderAdjustmentFromSkeleton(s, locale) {
   const doActions =
     Array.isArray(s.doActions) && s.doActions.length
       ? s.doActions
       : [
           ...(s.impactArea === 'base'
-            ? ['Apply a thin base layer.', 'Spot-correct only where needed.']
+            ? isZhLocale(locale)
+              ? ['薄涂底妆。', '仅在需要处点涂遮瑕。']
+              : ['Apply a thin base layer.', 'Spot-correct only where needed.']
             : s.impactArea === 'eye'
-              ? ['Start liner from the outer third.', 'Keep the line thin and wing short.']
-              : ['Match the reference finish.', 'Stay in a close shade family.']),
+              ? isZhLocale(locale)
+                ? ['眼线从外眼角后三分之一开始。', '线条保持细且拉长不要过长。']
+                : ['Start liner from the outer third.', 'Keep the line thin and wing short.']
+              : isZhLocale(locale)
+                ? ['对齐参考的唇部质感。', '保持在相近的色系。']
+                : ['Match the reference finish.', 'Stay in a close shade family.']),
         ];
 
   return Layer2AdjustmentV0Schema.parse({
     impactArea: s.impactArea,
     ruleId: s.ruleId,
-    title: humanTitleForRule(s.ruleId, s.impactArea),
-    because: ensurePeriod(s.becauseFacts.join(' ')),
-    do: ensurePeriod(doActions.join(' ')),
-    why: ensurePeriod(s.whyMechanism.join(' ')),
+    title: humanTitleForRule(s.ruleId, s.impactArea, locale),
+    because: ensureSentenceTerminator(s.becauseFacts.join(' '), locale),
+    do: ensureSentenceTerminator(doActions.join(' '), locale),
+    why: ensureSentenceTerminator(s.whyMechanism.join(' '), locale),
     confidence: s.confidence,
     evidence: s.evidenceKeys,
     techniqueRefs: s.techniqueRefs,
@@ -234,7 +253,7 @@ async function rephraseAdjustments(input) {
   const warnings = [];
 
   const fallback = () => {
-    const rendered = skeletons.map(renderAdjustmentFromSkeleton);
+    const rendered = skeletons.map((s) => renderAdjustmentFromSkeleton(s, locale));
     return { adjustments: rendered, warnings, usedFallback: true };
   };
 

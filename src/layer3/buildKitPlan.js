@@ -14,9 +14,23 @@ function engineVersionFor(market) {
   };
 }
 
+function isZhLocale(locale) {
+  const s = String(locale || '').trim().toLowerCase().replace(/_/g, '-');
+  return s === 'zh' || s.startsWith('zh-');
+}
+
+function zhCategoryLabel(category) {
+  if (category === 'base') return '底妆';
+  if (category === 'eye') return '眼妆';
+  if (category === 'lip') return '唇妆';
+  return String(category || '');
+}
+
 function makePlaceholder({ market, locale, kind, lookSpec, category, reason, purchaseEnabled }) {
   const area = lookSpec.breakdown[category];
-  const whyThis = `No catalog match found (${reason}). Placeholder for ${category} to target ${area.finish} finish and ${area.coverage} coverage.`;
+  const whyThis = isZhLocale(locale)
+    ? `暂未从商品库找到匹配（${reason}）。先用占位符：${zhCategoryLabel(category)}（目标妆效：${area.finish}，覆盖度：${area.coverage}）。`
+    : `No catalog match found (${reason}). Placeholder for ${category} to target ${area.finish} finish and ${area.coverage} coverage.`;
   const versions = engineVersionFor(market);
 
   return ProductAttributesV0Schema.parse({
@@ -28,8 +42,8 @@ function makePlaceholder({ market, locale, kind, lookSpec, category, reason, pur
     orchestratorVersion: versions.orchestrator,
     category,
     skuId: `placeholder_${category}_${kind}`,
-    name: `Placeholder ${category} (${kind})`,
-    brand: 'Unknown',
+    name: isZhLocale(locale) ? `占位符 ${zhCategoryLabel(category)}（${kind}）` : `Placeholder ${category} (${kind})`,
+    brand: isZhLocale(locale) ? '未知' : 'Unknown',
     price: { currency: market === 'JP' ? 'JPY' : 'USD', amount: 0 },
     priceTier: 'unknown',
     imageUrl: undefined,

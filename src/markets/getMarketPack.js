@@ -22,12 +22,20 @@ function isJaLocale(locale) {
   return s === 'ja' || s.startsWith('ja-') || s.startsWith('ja_');
 }
 
+function isZhLocale(locale) {
+  const s = String(locale || '').trim().toLowerCase().replace(/_/g, '-');
+  return s === 'zh' || s.startsWith('zh-');
+}
+
 function getPromptPack({ market, locale }) {
   if (market === 'US') {
+    const zh = isZhLocale(locale);
     return {
       lookSpecExtract: readPromptOnce(path.join(__dirname, '..', 'layer2', 'prompts', 'lookSpec_extract_en.txt')),
-      adjustmentsRephrase: readPromptOnce(path.join(__dirname, '..', 'layer2', 'prompts', 'adjustments_rephrase_en.txt')),
-      stepsGenerate: readPromptOnce(path.join(__dirname, '..', 'layer2', 'prompts', 'steps_generate_en.txt')),
+      adjustmentsRephrase: readPromptOnce(
+        path.join(__dirname, '..', 'layer2', 'prompts', zh ? 'adjustments_rephrase_zh.txt' : 'adjustments_rephrase_en.txt'),
+      ),
+      stepsGenerate: readPromptOnce(path.join(__dirname, '..', 'layer2', 'prompts', zh ? 'steps_generate_zh.txt' : 'steps_generate_en.txt')),
     };
   }
 

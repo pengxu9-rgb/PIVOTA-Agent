@@ -11,7 +11,24 @@ function defaultVariablesForArea(area) {
   return {};
 }
 
-function fallbackStepsForArea(area) {
+function isZhLocale(locale) {
+  const s = String(locale || '').trim().toLowerCase().replace(/_/g, '-');
+  return s === 'zh' || s.startsWith('zh-');
+}
+
+function fallbackStepsForArea(area, locale) {
+  const zh = isZhLocale(locale);
+  if (zh) {
+    if (area === 'base') return ['薄涂底妆。', '仅在需要处点涂遮瑕。', '只在需要区域轻扫定妆。'];
+    if (area === 'eye') return ['眼线从外眼角后三分之一开始。', '线条保持细。', '拉长不要过长。'];
+    if (area === 'lip') return ['对齐参考的唇部质感。', '保持在相近的色系。', '轻轻按压调整浓淡。'];
+    if (area === 'prep') return ['妆前清洁与保湿。', '干燥处重点补水。', '需要持妆时再使用妆前乳。'];
+    if (area === 'contour') return ['修容保持轻薄柔和。', '充分晕染。', '避免生硬边界。'];
+    if (area === 'brow') return ['轻描眉形。', '用毛流感笔触填充。', '刷开让边缘更自然。'];
+    if (area === 'blush') return ['少量多次上腮红。', '边缘晕开。', '逐步叠加。'];
+    return ['动作保持轻薄可晕染。', '充分晕染。', '整体更自然。'];
+  }
+
   if (area === 'base') return ['Apply a thin base layer.', 'Spot-correct only where needed.', 'Set only where needed.'];
   if (area === 'eye') return ['Start liner from the outer third.', 'Keep the line thin.', 'Keep the wing short.'];
   if (area === 'lip') return ['Match the reference finish.', 'Stay in a close shade family.', 'Blot lightly to adjust intensity.'];
@@ -44,6 +61,7 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
   const warnings = [];
   let usedFallback = false;
   const market = normalizeMarket(ctx?.market);
+  const zh = isZhLocale(ctx?.locale);
   const roleNormalizer = buildRoleNormalizer();
   const triggerMatchingEnabled = parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
   const triggerMatchDebug = parseEnvBool(process.env.LAYER2_TRIGGER_MATCH_DEBUG) === true;
@@ -90,6 +108,7 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
     const doActions = [];
     const techniqueRefs = [];
     const tags = Array.isArray(s.tags) ? [...s.tags] : [];
+    const rationaleFacts = [];
 
     for (const id of selectedActionIds) {
       const resolved = resolveTechniqueCardForLanguage({
@@ -128,6 +147,14 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
         .filter(Boolean);
       doActions.push(...renderedSteps);
 
+      if (zh && resolved.inferredLanguage === 'zh' && !resolved.usedFallbackLanguage) {
+        const rationale = Array.isArray(card.rationaleTemplate) ? card.rationaleTemplate : [];
+        for (const line of rationale) {
+          const t = String(line || '').trim();
+          if (t) rationaleFacts.push(t);
+        }
+      }
+
       if (Array.isArray(card.productRoleHints)) {
         for (const hint of card.productRoleHints) {
           const normalized = roleNormalizer.normalizeRoleHint(hint);
@@ -140,11 +167,19 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
     if (!finalDoActions.length) {
       warnings.push(`No rendered doActions for ${s.impactArea}: using safe fallback steps.`);
       usedFallback = true;
-      finalDoActions.push(...fallbackStepsForArea(s.impactArea));
+      finalDoActions.push(...fallbackStepsForArea(s.impactArea, ctx?.locale));
     }
 
     return {
       ...s,
+      ...(zh && rationaleFacts.length
+        ? {
+            // For zh UI, prefer Chinese rationales from the resolved technique cards so downstream
+            // renderers can stay localized even when rule facts are English-only.
+            becauseFacts: uniqueStrings(rationaleFacts),
+            whyMechanism: uniqueStrings(rationaleFacts),
+          }
+        : {}),
       doActions: finalDoActions,
       techniqueRefs: techniqueRefs.length ? techniqueRefs : undefined,
       tags: uniqueStrings(tags).length ? uniqueStrings(tags) : undefined,

@@ -49,6 +49,42 @@ function engineVersionFor(market) {
 
 function fallbackSteps(market, locale, adjustments, lowConfidence) {
   const baseLead = lowConfidence ? 'To match the reference look, ' : '';
+  const zh = String(locale || '').trim().toLowerCase().replace(/_/g, '-').startsWith('zh');
+  if (zh) {
+    const lead = lowConfidence ? '为了更贴近参考妆容，' : '';
+    const core = [
+      { impactArea: 'base', title: '妆前打底', instruction: `${lead}按需清洁与保湿，并视情况使用妆前乳。`, evidence: ['lookSpec.breakdown.base.intent'] },
+      { impactArea: 'base', title: '上底妆', instruction: `${lead}${adjustments.find((a) => a.impactArea === 'base')?.do || '薄涂底妆并分区叠加。'}`, evidence: ['adjustments[base].do'] },
+      { impactArea: 'base', title: '局部定妆', instruction: `${lead}只在需要的区域轻扫定妆，以保持目标妆效。`, evidence: ['lookSpec.breakdown.base.finish'] },
+      { impactArea: 'eye', title: '确定眼妆重心', instruction: `${lead}根据参考妆容的意图确定眼妆重心与走向。`, evidence: ['lookSpec.breakdown.eye.intent'] },
+      { impactArea: 'eye', title: '上眼影/眼线', instruction: `${lead}${adjustments.find((a) => a.impactArea === 'eye')?.do || '用可控的线条完成眼线与阴影。'}`, evidence: ['adjustments[eye].do'] },
+      { impactArea: 'eye', title: '晕染边缘', instruction: `${lead}把边缘晕染柔和，贴近参考妆效。`, evidence: ['lookSpec.breakdown.eye.finish'] },
+      { impactArea: 'lip', title: '唇部打底', instruction: `${lead}上色前先润唇并擦去多余油分。`, evidence: ['lookSpec.breakdown.lip.intent'] },
+      { impactArea: 'lip', title: '上唇妆', instruction: `${lead}${adjustments.find((a) => a.impactArea === 'lip')?.do || '对齐参考的唇部质感与色系。'}`, evidence: ['adjustments[lip].do'] },
+    ];
+
+    const versions = engineVersionFor(market);
+    return core.map((s, idx) =>
+      StepPlanV0Schema.parse({
+        schemaVersion: 'v0',
+        market,
+        locale,
+        layer2EngineVersion: versions.layer2,
+        layer3EngineVersion: versions.layer3,
+        orchestratorVersion: versions.orchestrator,
+        stepId: `l2_step_${idx}`,
+        order: idx,
+        impactArea: s.impactArea,
+        title: s.title,
+        instruction: s.instruction,
+        tips: [],
+        cautions: [],
+        fitConditions: [],
+        evidence: s.evidence,
+      })
+    );
+  }
+
   const core = [
     { impactArea: 'base', title: 'Prep base', instruction: `${baseLead}prep skin and apply primer as needed.`, evidence: ['lookSpec.breakdown.base.intent'] },
     { impactArea: 'base', title: 'Apply base', instruction: `${baseLead}${adjustments.find((a) => a.impactArea === 'base')?.do || 'apply a thin base layer.'}`, evidence: ['adjustments[base].do'] },
