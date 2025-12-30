@@ -6,6 +6,7 @@ const { getTechniqueIdsForIntent } = require('../../dicts/intents');
 
 const { US_ADJUSTMENT_RULES, US_ADJUSTMENT_FALLBACK_RULES } = require('./usAdjustmentRules');
 const { SimilarityReportV0Schema } = require('../../../layer1/schemas/similarityReportV0');
+const { FaceProfileV0Schema } = require('../../../layer1/schemas/faceProfileV0');
 
 const PreferenceModeSchema = z.enum(['structure', 'vibe', 'ease']);
 
@@ -59,6 +60,65 @@ function buildExtendedFallbackSkeleton({ impactArea, ruleId, intentId }) {
     whyMechanism: ['A minimal conservative set keeps output stable while expanding coverage.'],
     evidenceKeys: ['flag:LAYER2_ENABLE_EXTENDED_AREAS'],
     tags: ['extended_area', 'fallback'],
+  });
+}
+
+function uniqueStrings(items) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(items) ? items : []) {
+    const s = String(raw || '').trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function moveToFront(ids, preferredId) {
+  const list = Array.isArray(ids) ? [...ids] : [];
+  const pref = String(preferredId || '').trim();
+  if (!pref) return list;
+  const idx = list.indexOf(pref);
+  if (idx <= 0) return list;
+  return [list[idx], ...list.slice(0, idx), ...list.slice(idx + 1)];
+}
+
+function normalizeToken(v) {
+  return String(v ?? '').trim().toLowerCase();
+}
+
+function inferRefFaceShape(refFaceProfile) {
+  try {
+    const parsed = FaceProfileV0Schema.parse(refFaceProfile);
+    return normalizeToken(parsed?.categorical?.faceShape);
+  } catch {
+    return normalizeToken(refFaceProfile?.categorical?.faceShape);
+  }
+}
+
+function buildExtendedActivityCardSkeleton({ impactArea, ruleId, intentId, fallbackIntentId, preferredFirstId, evidenceKeys }) {
+  const primary = getTechniqueIdsForIntent(intentId, 'US') ?? [];
+  const fallback = getTechniqueIdsForIntent(fallbackIntentId, 'US') ?? [];
+  let doActionIds = uniqueStrings([...primary, ...fallback]);
+  if (!doActionIds.length) return null;
+  doActionIds = moveToFront(doActionIds, preferredFirstId);
+
+  return AdjustmentSkeletonV0Schema.parse({
+    schemaVersion: 'v0',
+    market: 'US',
+    impactArea,
+    ruleId,
+    severity: 0.15,
+    confidence: 'low',
+    becauseFacts: ['Extended areas enabled: include one targeted technique card for this area.'],
+    doActionSelection: 'choose_one',
+    doActionIds,
+    doActions: [],
+    whyMechanism: ['Choosing one focused card avoids noise while improving coverage across areas.'],
+    evidenceKeys: Array.isArray(evidenceKeys) && evidenceKeys.length ? evidenceKeys : ['flag:enableExtendedAreas', `intent:${intentId}`],
+    tags: ['extended_area', 'activity_card', impactArea],
   });
 }
 
@@ -300,46 +360,61 @@ function runAdjustmentRulesUS(input) {
     ];
   }
 
-  const selfieEnabled = selfieLookSpecEnabled(input);
+  const baseFinish = normalizeToken(lookSpec?.breakdown?.base?.finish);
+  const contourIntent = normalizeToken(lookSpec?.breakdown?.contour?.intent);
+  const browIntent = normalizeToken(lookSpec?.breakdown?.brow?.intent);
+  const faceShape = inferRefFaceShape(input.refFaceProfile ?? null);
 
-  const includePrep = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, 'prep');
-  const includeContour = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, 'contour');
-  const includeBrow = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, 'brow');
-  const includeBlush = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, 'blush');
+  const prepPreferred = baseFinish === 'matte' ? 'US_prep_primer_01-en' : 'US_prep_moisturize_01-en';
+  const contourPreferred = contourIntent.includes('highlight') ? 'US_contour_nose_highlight_points_01-en' : 'US_contour_nose_root_contour_01-en';
+  const browPreferred = browIntent.includes('arch') ? 'US_brow_fix_high_arch_01-en' : 'US_brow_fill_natural_strokes_01-en';
+  const blushPreferred = faceShape === 'round' ? 'US_blush_round_face_placement_01-en' : 'US_blush_oval_face_gradient_01-en';
 
-  const prep = includePrep
-    ? buildExtendedFallbackSkeleton({ impactArea: 'prep', ruleId: 'PREP_FALLBACK_SAFE', intentId: 'PREP_FALLBACK_SAFE_MICRO' })
-    : null;
-  const prepActivitySlot = selfieEnabled && triggerMatchingEnabled() && includePrep ? buildPrepActivitySlotSkeleton({ similarityReport: ctx.similarityReport }) : null;
+  const prepCard = buildExtendedActivityCardSkeleton({
+    impactArea: 'prep',
+    ruleId: 'PREP_ACTIVITY_CARD',
+    intentId: 'PREP_ACTIVITY_PICK',
+    fallbackIntentId: 'PREP_FALLBACK_SAFE_MICRO',
+    preferredFirstId: prepPreferred,
+    evidenceKeys: ['flag:enableExtendedAreas', 'intent:PREP_ACTIVITY_PICK', 'lookSpec.breakdown.base.finish'],
+  });
 
-  const contour = includeContour
-    ? buildExtendedFallbackSkeleton({ impactArea: 'contour', ruleId: 'CONTOUR_FALLBACK_SAFE', intentId: 'CONTOUR_FALLBACK_SAFE_MICRO' })
-    : null;
-  const contourActivitySlot = selfieEnabled && triggerMatchingEnabled() && includeContour ? buildContourActivitySlotSkeleton({ similarityReport: ctx.similarityReport }) : null;
+  const contourCard = buildExtendedActivityCardSkeleton({
+    impactArea: 'contour',
+    ruleId: 'CONTOUR_ACTIVITY_CARD',
+    intentId: 'CONTOUR_ACTIVITY_PICK',
+    fallbackIntentId: 'CONTOUR_FALLBACK_SAFE_MICRO',
+    preferredFirstId: contourPreferred,
+    evidenceKeys: ['flag:enableExtendedAreas', 'intent:CONTOUR_ACTIVITY_PICK', 'lookSpec.breakdown.contour.intent'],
+  });
 
-  const brow = includeBrow
-    ? buildExtendedFallbackSkeleton({ impactArea: 'brow', ruleId: 'BROW_FALLBACK_SAFE', intentId: 'BROW_FALLBACK_SAFE_MICRO' })
-    : null;
-  const browActivitySlot = selfieEnabled && triggerMatchingEnabled() && includeBrow ? buildBrowActivitySlotSkeleton({ similarityReport: ctx.similarityReport }) : null;
+  const browCard = buildExtendedActivityCardSkeleton({
+    impactArea: 'brow',
+    ruleId: 'BROW_ACTIVITY_CARD',
+    intentId: 'BROW_ACTIVITY_PICK',
+    fallbackIntentId: 'BROW_FALLBACK_SAFE_MICRO',
+    preferredFirstId: browPreferred,
+    evidenceKeys: ['flag:enableExtendedAreas', 'intent:BROW_ACTIVITY_PICK', 'lookSpec.breakdown.brow.intent'],
+  });
 
-  const blush = includeBlush
-    ? buildExtendedFallbackSkeleton({ impactArea: 'blush', ruleId: 'BLUSH_FALLBACK_SAFE', intentId: 'BLUSH_FALLBACK_SAFE_MICRO' })
-    : null;
-  const blushActivitySlot = selfieEnabled && triggerMatchingEnabled() && includeBlush ? buildBlushActivitySlotSkeleton({ similarityReport: ctx.similarityReport }) : null;
+  const blushCard = buildExtendedActivityCardSkeleton({
+    impactArea: 'blush',
+    ruleId: 'BLUSH_ACTIVITY_CARD',
+    intentId: 'BLUSH_ACTIVITY_PICK',
+    fallbackIntentId: 'BLUSH_FALLBACK_SAFE_MICRO',
+    preferredFirstId: blushPreferred,
+    evidenceKeys: ['flag:enableExtendedAreas', 'intent:BLUSH_ACTIVITY_PICK', 'refFaceProfile.categorical.faceShape'],
+  });
 
   return [
-    ...(prep ? [prep] : []),
-    ...(prepActivitySlot ? [prepActivitySlot] : []),
+    ...(prepCard ? [prepCard] : []),
     outByArea.base,
     ...(baseActivitySlot ? [baseActivitySlot] : []),
-    ...(contour ? [contour] : []),
-    ...(contourActivitySlot ? [contourActivitySlot] : []),
-    ...(brow ? [brow] : []),
-    ...(browActivitySlot ? [browActivitySlot] : []),
+    ...(contourCard ? [contourCard] : []),
+    ...(browCard ? [browCard] : []),
     outByArea.eye,
     ...(eyeActivitySlot ? [eyeActivitySlot] : []),
-    ...(blush ? [blush] : []),
-    ...(blushActivitySlot ? [blushActivitySlot] : []),
+    ...(blushCard ? [blushCard] : []),
     outByArea.lip,
     ...(lipActivitySlot ? [lipActivitySlot] : []),
   ];
