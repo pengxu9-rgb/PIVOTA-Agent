@@ -337,6 +337,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
     const optInTraining = parseBool(fields.optInTraining);
     const enableExtendedAreas = parseBool(fields.enableExtendedAreas);
     const enableSelfieLookSpec = parseBool(fields.enableSelfieLookSpec);
+    const userId = fields.userId ? String(fields.userId).trim() : null;
 
     let layer1Bundle = null;
     try {
@@ -375,6 +376,13 @@ function mountLookReplicatorRoutes(app, { logger }) {
         const log = logger || console;
         try {
           await updateJob(jobId, { status: 'processing', progress: 10 });
+          let onboardingProfileV0 = null;
+          try {
+            onboardingProfileV0 = fields.onboardingProfileV0 ? parseOptionalJsonField(fields.onboardingProfileV0) : null;
+          } catch (err) {
+            // ignore invalid onboarding JSON to avoid blocking the core flow
+            onboardingProfileV0 = null;
+          }
           const { result, telemetrySample } = await runLookReplicatePipeline({
             jobId,
             market,
@@ -386,6 +394,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
             layer1Bundle,
             enableExtendedAreas,
             enableSelfieLookSpec,
+            userId: userId || undefined,
+            onboardingProfileV0: onboardingProfileV0 || undefined,
             onProgress: async ({ progress }) => {
               await updateJob(jobId, { progress: Number(progress) || 0 });
             },

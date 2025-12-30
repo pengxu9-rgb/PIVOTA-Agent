@@ -26,6 +26,42 @@ function clamp01(x: number): number {
   return x;
 }
 
+function uniqueTokens(tokens: string[]): string[] {
+  return Array.from(new Set(tokens.filter(Boolean)));
+}
+
+function profileTokens(category: z.infer<typeof ProductCategorySchema>, userSignals: Record<string, unknown> | null): string[] {
+  const s = (userSignals || {}) as Record<string, unknown>;
+  const tokens: string[] = [];
+
+  const needsOilControl = s.needsOilControl === true;
+  const needsHydration = s.needsHydration === true;
+  const poreVisible = s.poreVisible === true;
+  const hasAcne = s.hasAcne === true;
+  const isSensitive = s.isSensitive === true;
+  const transfer = s.transfer === true;
+
+  if (category === "base") {
+    if (needsOilControl) tokens.push("matte", "oil", "control", "blur", "longwear");
+    if (needsHydration) tokens.push("hydrating", "moisturizing", "dewy", "glow");
+    if (poreVisible) tokens.push("pore", "blur", "smooth");
+    if (hasAcne) tokens.push("non-comedogenic", "acne", "blemish");
+    if (isSensitive) tokens.push("sensitive", "fragrance-free", "gentle");
+  }
+
+  if (category === "eye") {
+    if (needsOilControl) tokens.push("waterproof", "smudge", "proof", "longwear");
+    if (isSensitive) tokens.push("sensitive", "gentle");
+  }
+
+  if (category === "lip") {
+    if (needsHydration) tokens.push("hydrating", "balm", "moisture");
+    if (transfer) tokens.push("longwear", "transfer", "proof");
+  }
+
+  return tokens;
+}
+
 export type RankedSlot = {
   best: NormalizedSkuForRanking | null;
   dupe: NormalizedSkuForRanking | null;
@@ -36,11 +72,13 @@ export function rankCandidates(input: {
   category: z.infer<typeof ProductCategorySchema>;
   lookSpec: LookSpecV0;
   candidates: NormalizedSkuForRanking[];
+  userSignals?: Record<string, unknown> | null;
 }): RankedSlot {
   const { category, lookSpec } = input;
   const area = lookSpec.breakdown[category];
 
   const desiredTokens = tokenize([area.finish, area.coverage, ...(area.keyNotes || [])].join(" "));
+  const desiredPlus = uniqueTokens([...desiredTokens, ...profileTokens(category, input.userSignals ?? null)]);
 
   const scored = input.candidates.map((candidate) => {
     const textTokens = tokenize(candidate.rawText);
@@ -49,7 +87,7 @@ export function rankCandidates(input: {
 
     const finishScore = overlapScore(finishTokens, tokenize(area.finish));
     const coverageScore = overlapScore(coverageTokens, tokenize(area.coverage));
-    const notesScore = overlapScore(textTokens, desiredTokens);
+    const notesScore = overlapScore(textTokens, desiredPlus);
     const availabilityScore =
       candidate.availability === "in_stock" ? 1 : candidate.availability === "unknown" ? 0.4 : 0;
 

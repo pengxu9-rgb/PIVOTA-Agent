@@ -17,6 +17,8 @@ async function generateAdjustments(input) {
   const refFace = input.refFaceProfile == null ? null : FaceProfileV0Schema.parse(input.refFaceProfile);
   const similarityReport =
     input.similarityReport == null ? null : SimilarityReportV0Schema.parse(input.similarityReport);
+  const userProfile = input.userProfile ?? null;
+  const userSignals = input.userSignals ?? null;
   const warnings = [];
   if (refFace == null) warnings.push('Missing refFaceProfile: rules will use safer defaults.');
   if (userFace == null) warnings.push('Missing userFaceProfile: rules will use safer defaults.');
@@ -29,6 +31,8 @@ async function generateAdjustments(input) {
     similarityReport,
     lookSpec,
     preferenceMode,
+    userProfile,
+    userSignals,
     ...(input.enableExtendedAreas === true ? { enableExtendedAreas: true } : {}),
     ...(input.enableSelfieLookSpec === true ? { enableSelfieLookSpec: true } : {}),
     ...(input.enableTriggerMatching === true ? { enableTriggerMatching: true } : {}),
@@ -43,6 +47,8 @@ async function generateAdjustments(input) {
     similarityReport,
     lookSpec,
     preferenceMode,
+    userProfile,
+    userSignals,
     ...(input.enableTriggerMatching === true ? { enableTriggerMatching: true } : {}),
   });
   warnings.push(...(rendered.warnings || []));

@@ -96,6 +96,8 @@ async function buildKitPlan(input) {
   if (market !== 'US' && market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
   const versions = engineVersionFor(market);
   const debugTriggerMatch = String(process.env.LAYER3_TRIGGER_MATCH_DEBUG || '').trim() === '1';
+  const userProfile = input.userProfile ?? null;
+  const userSignals = input.userSignals ?? null;
 
   // JP internal experiment: commerce is disabled; return role-based placeholders without blocking Layer2.
   if (market === 'JP' && input.commerceEnabled === false) {
@@ -149,7 +151,7 @@ async function buildKitPlan(input) {
       .map((sku) => normalizeSkuToAttributes({ market, locale, category, sku }))
       .filter(Boolean);
 
-    const ranked = rankCandidates({ category, lookSpec, candidates: normalized });
+    const ranked = rankCandidates({ category, lookSpec, candidates: normalized, userProfile, userSignals });
     for (const w of ranked.warnings) {
       if (w === 'NO_CANDIDATES') {
         if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=${normalized.length}`);

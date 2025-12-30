@@ -310,6 +310,8 @@ function runAdjustmentRulesUS(input) {
     userFaceProfile: input.userFaceProfile ?? null,
     refFaceProfile: input.refFaceProfile ?? null,
     similarityReport: input.similarityReport ?? null,
+    userProfile: input.userProfile ?? null,
+    userSignals: input.userSignals ?? null,
     lookSpec,
     preferenceMode,
     enableTriggerMatching: triggerMatchingEnabledFor(input),
@@ -377,10 +379,23 @@ function runAdjustmentRulesUS(input) {
   const browIntent = normalizeToken(lookSpec?.breakdown?.brow?.intent);
   const faceShape = inferRefFaceShape(input.refFaceProfile ?? null);
 
-  const prepPreferred = baseFinish === 'matte' ? 'US_prep_primer_01-en' : 'US_prep_moisturize_01-en';
+  const s = input.userSignals || {};
+  const prepPreferred =
+    s.needsOilControl === true
+      ? 'US_prep_primer_01-en'
+      : s.needsHydration === true || s.isSensitive === true
+        ? 'US_prep_moisturize_01-en'
+        : baseFinish === 'matte'
+          ? 'US_prep_primer_01-en'
+          : 'US_prep_moisturize_01-en';
   const contourPreferred = contourIntent.includes('highlight') ? 'US_contour_nose_highlight_points_01-en' : 'US_contour_nose_root_contour_01-en';
   const browPreferred = browIntent.includes('arch') ? 'US_brow_fix_high_arch_01-en' : 'US_brow_fill_natural_strokes_01-en';
-  const blushPreferred = faceShape === 'round' ? 'US_blush_round_face_placement_01-en' : 'US_blush_oval_face_gradient_01-en';
+  const blushPreferred =
+    s.hasAcne === true
+      ? 'US_blush_oval_face_gradient_01-en'
+      : faceShape === 'round'
+        ? 'US_blush_round_face_placement_01-en'
+        : 'US_blush_oval_face_gradient_01-en';
 
   const prepCard = buildExtendedActivityCardSkeleton({
     impactArea: 'prep',
@@ -388,7 +403,12 @@ function runAdjustmentRulesUS(input) {
     intentId: 'PREP_ACTIVITY_PICK',
     fallbackIntentId: 'PREP_FALLBACK_SAFE_MICRO',
     preferredFirstId: prepPreferred,
-    evidenceKeys: ['flag:enableExtendedAreas', 'intent:PREP_ACTIVITY_PICK', 'lookSpec.breakdown.base.finish'],
+    evidenceKeys: [
+      'flag:enableExtendedAreas',
+      'intent:PREP_ACTIVITY_PICK',
+      'lookSpec.breakdown.base.finish',
+      ...(input.userSignals ? ['userSignals.needsOilControl', 'userSignals.needsHydration', 'userSignals.isSensitive'] : []),
+    ],
   });
 
   const contourCard = buildExtendedActivityCardSkeleton({
@@ -415,7 +435,12 @@ function runAdjustmentRulesUS(input) {
     intentId: 'BLUSH_ACTIVITY_PICK',
     fallbackIntentId: 'BLUSH_FALLBACK_SAFE_MICRO',
     preferredFirstId: blushPreferred,
-    evidenceKeys: ['flag:enableExtendedAreas', 'intent:BLUSH_ACTIVITY_PICK', 'refFaceProfile.categorical.faceShape'],
+    evidenceKeys: [
+      'flag:enableExtendedAreas',
+      'intent:BLUSH_ACTIVITY_PICK',
+      'refFaceProfile.categorical.faceShape',
+      ...(input.userSignals ? ['userSignals.hasAcne'] : []),
+    ],
   });
 
   return [
