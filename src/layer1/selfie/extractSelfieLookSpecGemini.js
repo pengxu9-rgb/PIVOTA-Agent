@@ -33,6 +33,10 @@ const LookSpecExtractCoreSchema = z
   .strict();
 
 const LookDirectionEnum = ["up", "down", "straight", "unknown"];
+const ShadeDepthEnum = ["very_light", "light", "medium", "tan", "deep", "unknown"];
+const ShadeSaturationEnum = ["muted", "medium", "vivid", "unknown"];
+const ShadeTemperatureEnum = ["warm", "cool", "neutral", "mixed", "unknown"];
+const ShadeUndertoneEnum = ["cool", "neutral", "warm", "olive", "unknown"];
 
 const LookSpecExtractCoreJsonSchema = {
   type: "object",
@@ -51,6 +55,20 @@ const LookSpecExtractCoreJsonSchema = {
             intent: { type: "string" },
             finish: { type: "string" },
             coverage: { type: "string" },
+            shade: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                hueFamily: { type: "string" },
+                temperature: { type: "string", enum: ShadeTemperatureEnum },
+                undertone: { type: "string", enum: ShadeUndertoneEnum },
+                depth: { type: "string", enum: ShadeDepthEnum },
+                saturation: { type: "string", enum: ShadeSaturationEnum },
+                keyColors: { type: "array", items: { type: "string" } },
+                notes: { type: "array", items: { type: "string" } },
+                confidence: { type: "string", enum: ["low", "medium", "high"] },
+              },
+            },
             keyNotes: { type: "array", items: { type: "string" } },
             evidence: { type: "array", items: { type: "string" } },
           },
@@ -63,6 +81,20 @@ const LookSpecExtractCoreJsonSchema = {
             intent: { type: "string" },
             finish: { type: "string" },
             coverage: { type: "string" },
+            shade: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                hueFamily: { type: "string" },
+                temperature: { type: "string", enum: ShadeTemperatureEnum },
+                undertone: { type: "string", enum: ShadeUndertoneEnum },
+                depth: { type: "string", enum: ShadeDepthEnum },
+                saturation: { type: "string", enum: ShadeSaturationEnum },
+                keyColors: { type: "array", items: { type: "string" } },
+                notes: { type: "array", items: { type: "string" } },
+                confidence: { type: "string", enum: ["low", "medium", "high"] },
+              },
+            },
             keyNotes: { type: "array", items: { type: "string" } },
             evidence: { type: "array", items: { type: "string" } },
             linerDirection: {
@@ -84,6 +116,20 @@ const LookSpecExtractCoreJsonSchema = {
             intent: { type: "string" },
             finish: { type: "string" },
             coverage: { type: "string" },
+            shade: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                hueFamily: { type: "string" },
+                temperature: { type: "string", enum: ShadeTemperatureEnum },
+                undertone: { type: "string", enum: ShadeUndertoneEnum },
+                depth: { type: "string", enum: ShadeDepthEnum },
+                saturation: { type: "string", enum: ShadeSaturationEnum },
+                keyColors: { type: "array", items: { type: "string" } },
+                notes: { type: "array", items: { type: "string" } },
+                confidence: { type: "string", enum: ["low", "medium", "high"] },
+              },
+            },
             keyNotes: { type: "array", items: { type: "string" } },
             evidence: { type: "array", items: { type: "string" } },
           },

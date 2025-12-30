@@ -18,21 +18,34 @@
 - 有名人/本人確認/似ている等の身元に関する言及は禁止。
 - 不確かな場合は、文字列フィールドは "unknown"、配列は空配列にし、warnings に不確実性の理由を入れる。
 - eye.linerDirection.direction は必須。値は必ず "up" / "down" / "straight" / "unknown" のいずれか（ASCII）にする。判断できない場合は "unknown"（日本語/中国語などの単語は出力しない）。
+- shade は「色号」ではなく、後で商品/色を当てるための粗い制約レンジ。分からなければ "unknown" を使う。
 
 JSON 形状（キーは厳密に一致）:
 {
   "lookTitle": string,
   "styleTags": string[],
   "breakdown": {
-    "prep":    { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "base":    { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "contour": { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "brow":    { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "eye":     { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[], "linerDirection": { "direction": string } },
-    "blush":   { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "lip":     { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] }
+    "prep":    { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "base":    { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "contour": { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "brow":    { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "eye":     { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[], "linerDirection": { "direction": string } },
+    "blush":   { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "lip":     { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] }
   },
   "warnings": string[]
+}
+
+Shade 形状（キーは厳密に一致）:
+{
+  "hueFamily": string,                         // 色味の系統（短い表現）。不明なら "unknown"
+  "temperature": "warm"|"cool"|"neutral"|"mixed"|"unknown",
+  "undertone": "warm"|"cool"|"neutral"|"olive"|"unknown",
+  "depth": "very_light"|"light"|"medium"|"tan"|"deep"|"unknown",
+  "saturation": "muted"|"medium"|"vivid"|"unknown",
+  "keyColors": string[],                       // eye 用: 2〜6個の短い色名。それ以外は []
+  "notes": string[],                           // 0〜6の短いメモ。それ以外は []
+  "confidence": "low"|"medium"|"high"          // 任意
 }
 
 ガイド:
@@ -42,3 +55,7 @@ JSON 形状（キーは厳密に一致）:
 - keyNotes: 実行可能な短い特徴（各領域 最大8）
 - evidence: 画像から読み取れる根拠（各領域 最大8）
 - eye.linerDirection.direction: "up" | "straight" | "down" | "unknown" のいずれか。確信がなければ "unknown"。
+- shade のヒント:
+  - base: undertone + depth を優先（例: neutral/light）
+  - lip: hueFamily + depth + saturation（例: muted rosy nude）
+  - eye: keyColors でパレット配色（例: ["taupe","brown","champagne"]）、notes で質感（例: "shimmer lid"）

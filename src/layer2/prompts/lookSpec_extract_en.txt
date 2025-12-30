@@ -18,21 +18,34 @@ Output rules (CRITICAL):
 - Do NOT mention or guess any celebrity/KOL or identity.
 - If unsure, use the string "unknown" for string fields and keep arrays empty. Add a warning explaining uncertainty.
 - For eye.linerDirection.direction: ONLY output one of: "up", "down", "straight", "unknown" (ASCII). If unsure, output "unknown". Do NOT output non-English words.
+- For `shade`: This is NOT a product SKU. It is a constraint/range to help later matching. Keep it coarse and safe. If unsure, output "unknown".
 
 JSON shape (exact keys):
 {
   "lookTitle": string,                        // short name; use "unknown" if unsure
   "styleTags": string[],                      // 0..10 short tags; can be []
   "breakdown": {
-    "prep":    { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "base":    { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "contour": { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "brow":    { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "eye":     { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[], "linerDirection": { "direction": string } },
-    "blush":   { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] },
-    "lip":     { "intent": string, "finish": string, "coverage": string, "keyNotes": string[], "evidence": string[] }
+    "prep":    { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "base":    { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "contour": { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "brow":    { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "eye":     { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[], "linerDirection": { "direction": string } },
+    "blush":   { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] },
+    "lip":     { "intent": string, "finish": string, "coverage": string, "shade": Shade, "keyNotes": string[], "evidence": string[] }
   },
   "warnings": string[]                        // optional quality/uncertainty notes; can be []
+}
+
+Shade shape (exact keys):
+{
+  "hueFamily": string,                         // short color family phrase; "unknown" ok (e.g., "rosy nude", "brick red", "taupe brown")
+  "temperature": "warm"|"cool"|"neutral"|"mixed"|"unknown",
+  "undertone": "warm"|"cool"|"neutral"|"olive"|"unknown",
+  "depth": "very_light"|"light"|"medium"|"tan"|"deep"|"unknown",
+  "saturation": "muted"|"medium"|"vivid"|"unknown",
+  "keyColors": string[],                       // for eye palette: 2-6 short color words; otherwise []
+  "notes": string[],                           // 0..6 short notes (e.g., "brown liner", "champagne shimmer on lid"); otherwise []
+  "confidence": "low"|"medium"|"high"          // optional
 }
 
 Guidelines:
@@ -42,3 +55,7 @@ Guidelines:
 - "keyNotes": short actionable descriptors (max 8 each area).
 - "evidence": short observations from the image that justify the fields (max 8 each area).
 - eye.linerDirection.direction: one of "up" | "straight" | "down" | "unknown". If you cannot confidently infer it, output "unknown".
+- shade guidance by area:
+  - base.shade: focus on undertone + depth (e.g., neutral/light) and keep hueFamily generic (e.g., "neutral beige").
+  - lip.shade: focus on hueFamily + depth + saturation (e.g., "muted rosy nude", "deep brick red").
+  - eye.shade: use keyColors to describe the palette (e.g., ["taupe","brown","champagne"]) and notes for finish (e.g., "matte crease", "shimmer lid").

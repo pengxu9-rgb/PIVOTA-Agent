@@ -1,12 +1,13 @@
 import { z } from "zod";
 
-import { LookSpecLinerDirectionSchema, LookSpecV0Schema, UnknownLookSpecBreakdownAreaV0 } from "./lookSpecV0";
+import { LookSpecLinerDirectionSchema, LookSpecV0Schema, ShadeProfileV0Schema, UnknownLookSpecBreakdownAreaV0 } from "./lookSpecV0";
 
 export const LookSpecBreakdownAreaV1Schema = z
   .object({
     intent: z.string().min(1),
     finish: z.string().min(1),
     coverage: z.string().min(1),
+    shade: ShadeProfileV0Schema.default({ hueFamily: "unknown", temperature: "unknown", undertone: "unknown", depth: "unknown", saturation: "unknown", keyColors: [], notes: [] }),
     keyNotes: z.array(z.string().min(1)).default([]),
     evidence: z.array(z.string().min(1)).default([]),
   })
