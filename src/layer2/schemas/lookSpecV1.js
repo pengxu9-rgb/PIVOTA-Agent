@@ -1,12 +1,21 @@
 const { z } = require('zod');
 
-const { LookSpecLinerDirectionSchema, LookSpecV0Schema, UnknownLookSpecBreakdownAreaV0 } = require('./lookSpecV0');
+const { LookSpecLinerDirectionSchema, LookSpecV0Schema, ShadeProfileV0Schema, UnknownLookSpecBreakdownAreaV0 } = require('./lookSpecV0');
 
 const LookSpecBreakdownAreaV1Schema = z
   .object({
     intent: z.string().min(1),
     finish: z.string().min(1),
     coverage: z.string().min(1),
+    shade: ShadeProfileV0Schema.default({
+      hueFamily: 'unknown',
+      temperature: 'unknown',
+      undertone: 'unknown',
+      depth: 'unknown',
+      saturation: 'unknown',
+      keyColors: [],
+      notes: [],
+    }),
     keyNotes: z.array(z.string().min(1)).default([]),
     evidence: z.array(z.string().min(1)).default([]),
   })

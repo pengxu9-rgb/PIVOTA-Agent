@@ -551,20 +551,24 @@ describe("look-replicator activity cards reachability (production path)", () => 
     expect(macroInResult).toHaveLength(0);
   });
 
-  test("EN: extended areas render at least one activity technique when flag enabled", async () => {
-    const expected = [
-      "US_prep_primer_01-en",
-      "US_prep_skincare_prep_steps_01-en",
-      "US_contour_nose_soft_shadow_01-en",
-      "US_brow_five_point_mapping_01-en",
-      "US_blush_soft_diffuse_01-en",
-    ];
+	  test("EN: extended areas render at least one activity technique when flag enabled", async () => {
+	    const expected = [
+	      "US_prep_moisturize_01-en",
+	      "US_prep_primer_01-en",
+	      "US_contour_nose_root_contour_01-en",
+	      "US_contour_nose_highlight_points_01-en",
+	      "US_brow_fill_natural_strokes_01-en",
+	      "US_brow_fix_high_arch_01-en",
+	      "US_blush_round_face_placement_01-en",
+	      "US_blush_oval_face_gradient_01-en",
+	    ];
 
-    const out = await runPipelineWithFixture({
-      locale: "en-US",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
-      enableExtendedAreas: true,
-    });
+	    const out = await runPipelineWithFixture({
+	      locale: "en-US",
+	      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+	      enableExtendedAreas: true,
+	      enableSelfieLookSpec: true,
+	    });
 
     const telemetrySample = out?.telemetrySample;
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);
@@ -579,20 +583,24 @@ describe("look-replicator activity cards reachability (production path)", () => 
     expect(foundInResult.length).toBeGreaterThan(0);
   });
 
-  test("ZH: extended areas resolve to -zh via locale when flag enabled", async () => {
-    const expected = [
-      "US_prep_primer_01-zh",
-      "US_prep_skincare_prep_steps_01-zh",
-      "US_contour_nose_soft_shadow_01-zh",
-      "US_brow_five_point_mapping_01-zh",
-      "US_blush_soft_diffuse_01-zh",
-    ];
+	  test("ZH: extended areas resolve to -zh via locale when flag enabled", async () => {
+	    const expected = [
+	      "US_prep_moisturize_01-zh",
+	      "US_prep_primer_01-zh",
+	      "US_contour_nose_root_contour_01-zh",
+	      "US_contour_nose_highlight_points_01-zh",
+	      "US_brow_fill_natural_strokes_01-zh",
+	      "US_brow_fix_high_arch_01-zh",
+	      "US_blush_round_face_placement_01-zh",
+	      "US_blush_oval_face_gradient_01-zh",
+	    ];
 
-    const out = await runPipelineWithFixture({
-      locale: "zh-CN",
-      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
-      enableExtendedAreas: true,
-    });
+	    const out = await runPipelineWithFixture({
+	      locale: "zh-CN",
+	      lookSpecFixturePath: "fixtures/look_replicator/lookspec_base_coverage_full.json",
+	      enableExtendedAreas: true,
+	      enableSelfieLookSpec: true,
+	    });
 
     const telemetrySample = out?.telemetrySample;
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);
@@ -730,7 +738,7 @@ describe("look-replicator activity cards reachability (production path)", () => 
     expect(changeIds.some((id) => id.startsWith("US_lip_") && id.endsWith("-zh"))).toBe(true);
   });
 
-  test("EN: extended areas (prep/contour/brow/blush) emit micro + one macro slot each when needsChange=true", async () => {
+  test("EN: extended areas (prep/contour/brow/blush) emit one activity card each when extended + selfie enabled", async () => {
     const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
 
     const makeArea = (intent) => ({
@@ -781,57 +789,40 @@ describe("look-replicator activity cards reachability (production path)", () => 
       : [];
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);
 
-    const microExpectations = [
-      { ruleId: "PREP_FALLBACK_SAFE", expectedId: "US_prep_skincare_prep_steps_01-en" },
-      { ruleId: "CONTOUR_FALLBACK_SAFE", expectedId: "US_contour_nose_soft_shadow_01-en" },
-      { ruleId: "BROW_FALLBACK_SAFE", expectedId: "US_brow_five_point_mapping_01-en" },
-      { ruleId: "BLUSH_FALLBACK_SAFE", expectedId: "US_blush_soft_diffuse_01-en" },
-    ];
-
-    for (const { ruleId, expectedId } of microExpectations) {
-      const s = skeletons.find((x) => String(x?.ruleId || "") === ruleId);
-      if (!s) {
-        throw new Error(buildFailureDiagnostic({ name: `EN/extended-micro/${ruleId}`, expectedActivityIds: [expectedId], telemetrySample }));
-      }
-      const refs = Array.isArray(s?.techniqueRefs) ? s.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean) : [];
-      expect(refs).toContain(expectedId);
-      expect(resultTechniqueIds).toContain(expectedId);
-    }
-
-    const slotExpectations = [
+    const cardExpectations = [
       {
-        ruleId: "PREP_ACTIVITY_SLOT",
+        ruleId: "PREP_ACTIVITY_CARD",
         pool: ["US_prep_moisturize_01-en", "US_prep_primer_01-en"],
       },
       {
-        ruleId: "CONTOUR_ACTIVITY_SLOT",
+        ruleId: "CONTOUR_ACTIVITY_CARD",
         pool: ["US_contour_nose_root_contour_01-en", "US_contour_nose_highlight_points_01-en"],
       },
       {
-        ruleId: "BROW_ACTIVITY_SLOT",
+        ruleId: "BROW_ACTIVITY_CARD",
         pool: ["US_brow_fill_natural_strokes_01-en", "US_brow_fix_high_arch_01-en"],
       },
       {
-        ruleId: "BLUSH_ACTIVITY_SLOT",
+        ruleId: "BLUSH_ACTIVITY_CARD",
         pool: ["US_blush_round_face_placement_01-en", "US_blush_oval_face_gradient_01-en"],
       },
     ];
 
-    for (const { ruleId, pool } of slotExpectations) {
-      const slot = skeletons.find((s) => String(s?.ruleId || "") === ruleId);
-      if (!slot) {
-        throw new Error(buildFailureDiagnostic({ name: `EN/extended-slot/${ruleId}`, expectedActivityIds: pool, telemetrySample }));
+    for (const { ruleId, pool } of cardExpectations) {
+      const card = skeletons.find((s) => String(s?.ruleId || "") === ruleId);
+      if (!card) {
+        throw new Error(buildFailureDiagnostic({ name: `EN/extended-card/${ruleId}`, expectedActivityIds: pool, telemetrySample }));
       }
-      const slotRefs = Array.isArray(slot?.techniqueRefs)
-        ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean)
+      const refs = Array.isArray(card?.techniqueRefs)
+        ? card.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean)
         : [];
-      expect(slotRefs).toHaveLength(1);
-      expect(pool).toContain(slotRefs[0]);
-      expect(resultTechniqueIds).toContain(slotRefs[0]);
+      expect(refs).toHaveLength(1);
+      expect(pool).toContain(refs[0]);
+      expect(resultTechniqueIds).toContain(refs[0]);
     }
   });
 
-  test("EN: extended areas do NOT emit micro/slots when needsChange=false (extended + selfie enabled)", async () => {
+  test("EN: extended areas still emit cards when needsChange=false (extended + selfie enabled)", async () => {
     const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
 
     const makeArea = (intent) => ({
@@ -870,29 +861,18 @@ describe("look-replicator activity cards reachability (production path)", () => 
       ? telemetrySample.replayContext.adjustmentSkeletons
       : [];
 
-    const forbiddenRuleIds = [
-      "PREP_FALLBACK_SAFE",
-      "CONTOUR_FALLBACK_SAFE",
-      "BROW_FALLBACK_SAFE",
-      "BLUSH_FALLBACK_SAFE",
-      "PREP_ACTIVITY_SLOT",
-      "CONTOUR_ACTIVITY_SLOT",
-      "BROW_ACTIVITY_SLOT",
-      "BLUSH_ACTIVITY_SLOT",
-    ];
-
-    for (const id of forbiddenRuleIds) {
-      expect(skeletons.some((s) => String(s?.ruleId || "") === id)).toBe(false);
-    }
-
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);
-    expect(resultTechniqueIds.some((id) => id.startsWith("US_prep_"))).toBe(false);
-    expect(resultTechniqueIds.some((id) => id.startsWith("US_contour_"))).toBe(false);
-    expect(resultTechniqueIds.some((id) => id.startsWith("US_brow_"))).toBe(false);
-    expect(resultTechniqueIds.some((id) => id.startsWith("US_blush_"))).toBe(false);
+    expect(skeletons.some((s) => String(s?.ruleId || "") === "PREP_ACTIVITY_CARD")).toBe(true);
+    expect(skeletons.some((s) => String(s?.ruleId || "") === "CONTOUR_ACTIVITY_CARD")).toBe(true);
+    expect(skeletons.some((s) => String(s?.ruleId || "") === "BROW_ACTIVITY_CARD")).toBe(true);
+    expect(skeletons.some((s) => String(s?.ruleId || "") === "BLUSH_ACTIVITY_CARD")).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_prep_"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_contour_"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_brow_"))).toBe(true);
+    expect(resultTechniqueIds.some((id) => id.startsWith("US_blush_"))).toBe(true);
   });
 
-  test("ZH: extended areas slots resolve to -zh and do NOT emit fallback warnings (needsChange=true)", async () => {
+  test("ZH: extended areas resolve to -zh and do NOT emit fallback warnings (extended + selfie enabled)", async () => {
     const baseTarget = readJson("fixtures/look_replicator/lookspec_base_coverage_full.json");
 
     const makeArea = (intent) => ({
@@ -945,36 +925,36 @@ describe("look-replicator activity cards reachability (production path)", () => 
       ? telemetrySample.replayContext.adjustmentSkeletons
       : [];
 
-    const slotExpectations = [
+    const cardExpectations = [
       {
-        ruleId: "PREP_ACTIVITY_SLOT",
+        ruleId: "PREP_ACTIVITY_CARD",
         poolEn: ["US_prep_moisturize_01-en", "US_prep_primer_01-en"],
       },
       {
-        ruleId: "CONTOUR_ACTIVITY_SLOT",
+        ruleId: "CONTOUR_ACTIVITY_CARD",
         poolEn: ["US_contour_nose_root_contour_01-en", "US_contour_nose_highlight_points_01-en"],
       },
       {
-        ruleId: "BROW_ACTIVITY_SLOT",
+        ruleId: "BROW_ACTIVITY_CARD",
         poolEn: ["US_brow_fill_natural_strokes_01-en", "US_brow_fix_high_arch_01-en"],
       },
       {
-        ruleId: "BLUSH_ACTIVITY_SLOT",
+        ruleId: "BLUSH_ACTIVITY_CARD",
         poolEn: ["US_blush_round_face_placement_01-en", "US_blush_oval_face_gradient_01-en"],
       },
     ];
 
-    for (const { ruleId, poolEn } of slotExpectations) {
+    for (const { ruleId, poolEn } of cardExpectations) {
       const poolZh = poolEn.map((id) => id.replace(/-en$/, "-zh"));
-      const slot = skeletons.find((s) => String(s?.ruleId || "") === ruleId);
-      if (!slot) {
-        throw new Error(buildFailureDiagnostic({ name: `ZH/extended-slot/${ruleId}`, expectedActivityIds: poolZh, telemetrySample }));
+      const card = skeletons.find((s) => String(s?.ruleId || "") === ruleId);
+      if (!card) {
+        throw new Error(buildFailureDiagnostic({ name: `ZH/extended-card/${ruleId}`, expectedActivityIds: poolZh, telemetrySample }));
       }
-      const slotRefs = Array.isArray(slot?.techniqueRefs)
-        ? slot.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean)
+      const refs = Array.isArray(card?.techniqueRefs)
+        ? card.techniqueRefs.map((r) => String(r?.id || "")).filter(Boolean)
         : [];
-      expect(slotRefs).toHaveLength(1);
-      expect(poolZh).toContain(slotRefs[0]);
+      expect(refs).toHaveLength(1);
+      expect(poolZh).toContain(refs[0]);
     }
 
     const resultTechniqueIds = collectResultTechniqueIds(out?.result);

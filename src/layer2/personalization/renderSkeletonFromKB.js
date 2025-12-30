@@ -63,7 +63,8 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
   const market = normalizeMarket(ctx?.market);
   const zh = isZhLocale(ctx?.locale);
   const roleNormalizer = buildRoleNormalizer();
-  const triggerMatchingEnabled = parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
+  const triggerMatchingEnabled =
+    parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true || ctx?.enableTriggerMatching === true;
   const triggerMatchDebug = parseEnvBool(process.env.LAYER2_TRIGGER_MATCH_DEBUG) === true;
 
   const out = (inputSkeletons || []).map((s) => {

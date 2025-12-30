@@ -48,10 +48,15 @@ function triggerMatchingEnabled() {
   return parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
 }
 
+function triggerMatchingEnabledFor(input) {
+  if (triggerMatchingEnabled()) return true;
+  return input?.enableTriggerMatching === true;
+}
+
 function doActionSpecForIntent(intentId, input) {
   const doActionIds = techniqueIdsForIntent(intentId, input);
   const selection = getIntentSelection(intentId, input.market);
-  if (selection === 'choose_one' && triggerMatchingEnabled()) {
+  if (selection === 'choose_one' && triggerMatchingEnabledFor(input)) {
     return { doActionIds, doActionSelection: 'choose_one' };
   }
   return { doActionIds };
@@ -103,7 +108,11 @@ const US_ADJUSTMENT_RULES = [
           'The reference eye look relies on liner direction/wing control.',
           'Eye tilt differs between user and reference, so wing angle needs adjustment.',
         ],
-        ...doActionSpecForIntent('EYE_LINER_DIRECTION_ADAPT', { market: 'US', preferenceMode: ctx.preferenceMode }),
+        ...doActionSpecForIntent('EYE_LINER_DIRECTION_ADAPT', {
+          market: 'US',
+          preferenceMode: ctx.preferenceMode,
+          enableTriggerMatching: ctx.enableTriggerMatching,
+        }),
         doActions: [],
         whyMechanism: ['A slightly more horizontal, shorter wing reduces emphasis on tilt differences while preserving the reference mood.'],
         evidenceKeys: [
@@ -166,7 +175,11 @@ const US_ADJUSTMENT_RULES = [
         severity: 0.6,
         confidence: baseConfidence(ctx),
         becauseFacts: ['The reference base finish is dewy/radiant.', 'A thin base keeps texture controlled while still allowing glow.'],
-        ...doActionSpecForIntent('BASE_THIN_LAYERS_TARGET_GLOW', { market: 'US', preferenceMode: ctx.preferenceMode }),
+        ...doActionSpecForIntent('BASE_THIN_LAYERS_TARGET_GLOW', {
+          market: 'US',
+          preferenceMode: ctx.preferenceMode,
+          enableTriggerMatching: ctx.enableTriggerMatching,
+        }),
         doActions: [],
         whyMechanism: ['Targeting glow keeps the finish aligned with the reference without amplifying texture everywhere.'],
         evidenceKeys: ['lookSpec.breakdown.base.finish', 'lookSpec.breakdown.base.intent'],
@@ -188,7 +201,11 @@ const US_ADJUSTMENT_RULES = [
       severity: 0.7,
       confidence: baseConfidence(ctx),
       becauseFacts: ['The reference base coverage is higher.', 'Building coverage in thin passes reduces caking while still matching the reference.'],
-      ...doActionSpecForIntent('BASE_BUILD_COVERAGE_SPOT_MICRO', { market: 'US', preferenceMode: ctx.preferenceMode }),
+      ...doActionSpecForIntent('BASE_BUILD_COVERAGE_SPOT_MICRO', {
+        market: 'US',
+        preferenceMode: ctx.preferenceMode,
+        enableTriggerMatching: ctx.enableTriggerMatching,
+      }),
       doActions: [],
       whyMechanism: ['Thin passes reduce buildup while letting you reach the desired coverage level.'],
       evidenceKeys: ['lookSpec.breakdown.base.coverage', 'lookSpec.breakdown.base.finish'],
@@ -220,7 +237,11 @@ const US_ADJUSTMENT_RULES = [
         severity,
         confidence: baseConfidence(ctx),
         becauseFacts: ['The reference lip finish is glossy.', 'A center-focused gloss effect is a safe way to match finish and enhance shape without over-lining.'],
-        ...doActionSpecForIntent('LIP_GLOSS_CENTER_GRADIENT', { market: 'US', preferenceMode: ctx.preferenceMode }),
+        ...doActionSpecForIntent('LIP_GLOSS_CENTER_GRADIENT', {
+          market: 'US',
+          preferenceMode: ctx.preferenceMode,
+          enableTriggerMatching: ctx.enableTriggerMatching,
+        }),
         doActions: [],
         whyMechanism: ['Center gloss increases dimension and keeps the glossy finish aligned with the reference.'],
         evidenceKeys: ['lookSpec.breakdown.lip.finish', ...(ctx.userFaceProfile ? ['userFaceProfile.geometry.lipFullnessRatio'] : [])],
@@ -242,7 +263,11 @@ const US_ADJUSTMENT_RULES = [
       severity: 0.45,
       confidence: baseConfidence(ctx),
       becauseFacts: ['The reference lip reads softer/diffused.', 'A blurred edge stays within the reference vibe without requiring exact lip shape.'],
-      ...doActionSpecForIntent('LIP_SOFT_EDGE_BLUR', { market: 'US', preferenceMode: ctx.preferenceMode }),
+      ...doActionSpecForIntent('LIP_SOFT_EDGE_BLUR', {
+        market: 'US',
+        preferenceMode: ctx.preferenceMode,
+        enableTriggerMatching: ctx.enableTriggerMatching,
+      }),
       doActions: [],
       whyMechanism: ['Soft edges reduce shape sensitivity and keep the lip mood consistent with the reference.'],
       evidenceKeys: ['lookSpec.breakdown.lip.intent', 'lookSpec.breakdown.lip.finish'],

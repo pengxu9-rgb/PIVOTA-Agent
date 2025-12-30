@@ -178,7 +178,17 @@
       "id": "PREP_ACTIVITY_PICK",
       "area": "prep",
       "markets": {
-        "US": { "techniqueIds": ["US_prep_moisturize_01-en", "US_prep_primer_01-en"] },
+        "US": {
+          "techniqueIds": [
+            "US_prep_moisturize_01-en",
+            "US_prep_primer_01-en",
+            "US_prep_skincare_cleanse_01-en",
+            "US_prep_skincare_prep_steps_01-en",
+            "US_prep_skincare_serum_cream_layer_01-en",
+            "US_prep_skincare_sunscreen_wait_01-en",
+            "US_prep_skincare_toner_hydrate_01-en"
+          ]
+        },
         "JP": { "techniqueIds": ["PLACEHOLDER_JP_PREP_ACTIVITY_PICK"] }
       }
     },
@@ -202,7 +212,21 @@
       "id": "CONTOUR_ACTIVITY_PICK",
       "area": "contour",
       "markets": {
-        "US": { "techniqueIds": ["US_contour_nose_root_contour_01-en", "US_contour_nose_highlight_points_01-en"] },
+        "US": {
+          "techniqueIds": [
+            "US_contour_nose_build_flat_root_01-en",
+            "US_contour_nose_connect_blend_01-en",
+            "US_contour_nose_highlight_points_01-en",
+            "US_contour_nose_lengthen_short_bridge_01-en",
+            "US_contour_nose_narrow_wide_nostrils_01-en",
+            "US_contour_nose_refine_big_tip_01-en",
+            "US_contour_nose_root_contour_01-en",
+            "US_contour_nose_shorten_long_bridge_01-en",
+            "US_contour_nose_soft_shadow_01-en",
+            "US_contour_nose_straighten_crooked_01-en",
+            "US_contour_nose_tip_diamond_01-en"
+          ]
+        },
         "JP": { "techniqueIds": ["PLACEHOLDER_JP_CONTOUR_ACTIVITY_PICK"] }
       }
     },
@@ -226,7 +250,27 @@
       "id": "BROW_ACTIVITY_PICK",
       "area": "brow",
       "markets": {
-        "US": { "techniqueIds": ["US_brow_fill_natural_strokes_01-en", "US_brow_fix_high_arch_01-en"] },
+        "US": {
+          "techniqueIds": [
+            "US_brow_brow_crescent_01-en",
+            "US_brow_brow_distant_mountain_01-en",
+            "US_brow_brow_drooping_tail_01-en",
+            "US_brow_brow_flat_straight_01-en",
+            "US_brow_brow_mens_01-en",
+            "US_brow_brow_meteor_01-en",
+            "US_brow_brow_soft_euro_01-en",
+            "US_brow_brow_standard_01-en",
+            "US_brow_brow_straight_01-en",
+            "US_brow_brow_sword_01-en",
+            "US_brow_brow_upturned_01-en",
+            "US_brow_brow_willow_leaf_01-en",
+            "US_brow_fill_natural_strokes_01-en",
+            "US_brow_five_point_mapping_01-en",
+            "US_brow_fix_drooping_tail_01-en",
+            "US_brow_fix_high_arch_01-en",
+            "US_brow_fix_wide_set_heads_01-en"
+          ]
+        },
         "JP": { "techniqueIds": ["PLACEHOLDER_JP_BROW_ACTIVITY_PICK"] }
       }
     },
@@ -250,7 +294,17 @@
       "id": "BLUSH_ACTIVITY_PICK",
       "area": "blush",
       "markets": {
-        "US": { "techniqueIds": ["US_blush_round_face_placement_01-en", "US_blush_oval_face_gradient_01-en"] },
+        "US": {
+          "techniqueIds": [
+            "US_blush_blush_babyface_01-en",
+            "US_blush_blush_diamond_face_01-en",
+            "US_blush_blush_inverted_triangle_01-en",
+            "US_blush_oval_face_gradient_01-en",
+            "US_blush_round_face_placement_01-en",
+            "US_blush_soft_diffuse_01-en",
+            "US_blush_square_round_placement_01-en"
+          ]
+        },
         "JP": { "techniqueIds": ["PLACEHOLDER_JP_BLUSH_ACTIVITY_PICK"] }
       }
     }

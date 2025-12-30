@@ -63,6 +63,7 @@ describe('look replicator orchestration (US-only)', () => {
         .field('market', 'US')
         .field('locale', 'en')
         .field('preferenceMode', 'structure')
+        .field('enableExtendedAreas', '1')
         .attach('referenceImage', img, { filename: 'ref.jpg', contentType: 'image/jpeg' });
 
       expect(create.status).toBe(200);
@@ -83,6 +84,11 @@ describe('look replicator orchestration (US-only)', () => {
       expect(parsed.steps.length).toBeGreaterThanOrEqual(8);
       expect(parsed.steps.length).toBeLessThanOrEqual(12);
       expect(parsed.kit).toBeTruthy();
+
+      const skeletons = done.body.replayContext?.adjustmentSkeletons;
+      expect(Array.isArray(skeletons)).toBe(true);
+      const areas = Array.from(new Set((skeletons || []).map((s) => s?.impactArea).filter(Boolean))).sort();
+      expect(areas).toEqual(['base', 'blush', 'brow', 'contour', 'eye', 'lip', 'prep']);
 
       const shareCreate = await request(app).post('/api/look-replicate/shares').send({ jobId });
       expect(shareCreate.status).toBe(200);

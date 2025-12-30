@@ -392,6 +392,7 @@ async function runLookReplicatePipeline(input) {
     promptPack,
     ...(input.enableExtendedAreas === true ? { enableExtendedAreas: true } : {}),
     ...(input.enableSelfieLookSpec === true ? { enableSelfieLookSpec: true } : {}),
+    ...(input.enableExtendedAreas === true ? { enableTriggerMatching: true } : {}),
   });
 
   await reportProgress(55, 'steps');
