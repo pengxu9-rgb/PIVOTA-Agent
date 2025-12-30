@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_THIN_LAYER-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Keep the base thin",
+    "steps": [
+      "Apply a thin layer and build only if needed.",
+      "Use small amounts and blend well before adding more."
+    ]
+  },
+  "rationaleTemplate": [
+    "A thin base is more forgiving and keeps texture closer to the reference finish."
+  ],
+  "productRoleHints": [
+    "foundation",
+    "sponge"
+  ]
+}

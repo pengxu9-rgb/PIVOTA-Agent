@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_MATCH_FINISH-en",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Match the finish",
+    "steps": [
+      "Match the finish first (glossy, satin, or matte).",
+      "Adjust intensity with a light blot if needed."
+    ]
+  },
+  "rationaleTemplate": [
+    "Finish carries the lip mood more reliably than perfect shape matching."
+  ],
+  "productRoleHints": [
+    "lip color",
+    "gloss"
+  ]
+}

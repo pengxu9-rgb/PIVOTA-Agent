@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_CENTER_STRONGER-en",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Keep center stronger",
+    "steps": [
+      "Keep the center slightly stronger than the edges.",
+      "Blend outward so the transition is soft."
+    ]
+  },
+  "rationaleTemplate": [
+    "A center-weighted application adds dimension with minimal shape changes."
+  ],
+  "productRoleHints": [
+    "lip color"
+  ]
+}

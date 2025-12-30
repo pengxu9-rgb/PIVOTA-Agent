@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_BUILD_COVERAGE_THIN_PASSES-zh",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.coverage",
+        "op": "in",
+        "value": [
+          "full",
+          "high",
+          "medium-full"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "薄涂叠加遮瑕",
+    "steps": [
+      "先薄薄上一层，等成膜后再叠加。",
+      "只在仍不均匀的位置再轻叠一层。",
+      "一旦开始显厚，就停止继续叠加。"
+    ]
+  },
+  "rationaleTemplate": [
+    "薄涂分层能减少厚重结块，同时逐步提升遮瑕。"
+  ],
+  "productRoleHints": [
+    "medium-coverage base",
+    "small concealer brush"
+  ],
+  "safetyNotes": [
+    "If texture shows up, stop building and switch to spot-correction."
+  ]
+}

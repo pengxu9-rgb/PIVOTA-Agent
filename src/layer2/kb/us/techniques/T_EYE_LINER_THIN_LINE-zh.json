@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LINER_THIN_LINE-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "眼线保持细",
+    "steps": [
+      "贴着睫毛根部画细线，不要画得太宽。",
+      "需要加强时只在外眼角极小范围加厚。"
+    ]
+  },
+  "rationaleTemplate": [
+    "细线更保留眼皮空间，也更容易微调。"
+  ],
+  "productRoleHints": [
+    "liner"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_MIST_MELT-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Melt layers together",
+    "steps": [
+      "Mist lightly after base and powder.",
+      "Press gently with a sponge to smooth the surface."
+    ]
+  },
+  "rationaleTemplate": [
+    "A light meld step helps layers sit flatter and look more skin-like."
+  ],
+  "productRoleHints": [
+    "setting spray",
+    "sponge"
+  ]
+}

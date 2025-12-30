@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_LINER_SHORT_STROKES-zh",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "短笔触勾勒唇线",
+    "steps": [
+      "用短笔触轻轻描边，不要一笔画出硬轮廓。",
+      "嘴角保持克制，避免改变整体唇形。"
+    ]
+  },
+  "rationaleTemplate": [
+    "短笔触更好控制，也更容易做柔化。"
+  ],
+  "productRoleHints": [
+    "lip liner"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_TARGET_GLOW_HIGHLIGHTS-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "dewy",
+          "glow",
+          "radiant"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "把水光放在高点",
+    "steps": [
+      "只在面部高点（颧骨上方、鼻梁、眉骨）加水光。",
+      "向外晕开，让光泽自然过渡到其他区域。"
+    ]
+  },
+  "rationaleTemplate": [
+    "“高点发光”更贴近水光参考，同时避免全脸泛油光。"
+  ],
+  "productRoleHints": [
+    "liquid highlighter",
+    "cream highlighter"
+  ]
+}

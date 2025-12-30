@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_PRIMER_TEXTURE_BLUR-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "userFaceProfile.quality.valid",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Use a smoothing base in targeted areas",
+    "steps": [
+      "Apply a thin smoothing layer only where texture is most visible.",
+      "Avoid adding it everywhere if you want a more natural finish."
+    ]
+  },
+  "rationaleTemplate": [
+    "Targeted smoothing reduces texture focus without changing the overall finish."
+  ],
+  "productRoleHints": [
+    "smoothing primer"
+  ]
+}

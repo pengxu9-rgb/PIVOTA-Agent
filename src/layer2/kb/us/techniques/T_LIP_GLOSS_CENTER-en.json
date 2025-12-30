@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_GLOSS_CENTER-en",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "gloss",
+          "glossy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Concentrate gloss at the center",
+    "steps": [
+      "Apply gloss mostly at the center of the lips.",
+      "Feather it outward so the edges stay softer."
+    ]
+  },
+  "rationaleTemplate": [
+    "Center gloss increases dimension while keeping the lip line natural."
+  ],
+  "productRoleHints": [
+    "clear gloss"
+  ]
+}

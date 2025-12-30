@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_BLOT_ADJUST-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "抿掉调整浓淡",
+    "steps": [
+      "上色后轻抿一次，降低浓度。",
+      "只在想更强调的区域少量补色。"
+    ]
+  },
+  "rationaleTemplate": [
+    "抿掉能调整浓淡而不改变色系。"
+  ],
+  "productRoleHints": [
+    "lip color",
+    "tissue"
+  ]
+}

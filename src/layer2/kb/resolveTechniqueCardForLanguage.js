@@ -15,8 +15,10 @@ function candidateIdsFor(baseId, lang) {
     if (lang === "zh") return [`${b}-zh`, baseId, b];
     return [baseId, b];
   }
-  if (lang === "zh") return [`${b}-zh`, `${b}-en`, b];
-  return [`${b}-en`, `${b}-zh`, b];
+  // Legacy ids without language suffix are treated as canonical English.
+  // Prefer the unsuffixed id for English to avoid accidentally selecting `-zh` when only it exists.
+  if (lang === "zh") return [`${b}-zh`, b, `${b}-en`];
+  return [b, `${b}-en`, `${b}-zh`];
 }
 
 function isLanguageToken(v) {

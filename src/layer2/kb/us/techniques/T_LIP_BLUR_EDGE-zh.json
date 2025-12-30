@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_BLUR_EDGE-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.intent",
+        "op": "in",
+        "value": [
+          "soft",
+          "blur",
+          "diffused"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "模糊唇缘",
+    "steps": [
+      "上色后用手指/小刷子把边缘轻轻晕开。",
+      "边界保持柔雾，不要画得太硬。"
+    ]
+  },
+  "rationaleTemplate": [
+    "模糊边缘更贴近参考氛围，也不要求精准对齐唇形。"
+  ],
+  "productRoleHints": [
+    "lip brush"
+  ]
+}

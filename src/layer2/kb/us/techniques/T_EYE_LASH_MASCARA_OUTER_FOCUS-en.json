@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LASH_MASCARA_OUTER_FOCUS-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Focus mascara on outer lashes",
+    "steps": [
+      "Apply mascara with extra attention to the outer lashes.",
+      "Comb through so lashes stay separated."
+    ]
+  },
+  "rationaleTemplate": [
+    "Outer-focus lashes support lift without relying only on liner shape."
+  ],
+  "productRoleHints": [
+    "mascara",
+    "lash comb"
+  ]
+}

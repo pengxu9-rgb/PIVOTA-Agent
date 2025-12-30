@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_MIST_MELT-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "喷雾融合底妆层次",
+    "steps": [
+      "底妆和定妆后轻喷一层定妆喷雾。",
+      "用海绵轻压，让表面更平整服帖。"
+    ]
+  },
+  "rationaleTemplate": [
+    "轻度“融合”能让层次更贴合，呈现更自然的皮肤质感。"
+  ],
+  "productRoleHints": [
+    "setting spray",
+    "sponge"
+  ]
+}

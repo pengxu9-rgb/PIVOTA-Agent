@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_BRIGHTEN_INNER_CORNER-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Brighten the inner corner",
+    "steps": [
+      "Tap a small amount of light shade at the inner corner.",
+      "Blend softly so it transitions into the lid."
+    ]
+  },
+  "rationaleTemplate": [
+    "A subtle inner-corner highlight adds clarity without changing eye shape."
+  ],
+  "productRoleHints": [
+    "light shimmer shadow",
+    "small brush"
+  ]
+}

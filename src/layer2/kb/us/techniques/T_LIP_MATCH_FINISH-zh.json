@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_MATCH_FINISH-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "先对齐唇部质感",
+    "steps": [
+      "先对齐质感（镜面/缎光/哑光）。",
+      "需要时轻抿一下再调整浓淡。"
+    ]
+  },
+  "rationaleTemplate": [
+    "质感对“唇部氛围”的影响往往比唇形更稳定。"
+  ],
+  "productRoleHints": [
+    "lip color",
+    "gloss"
+  ]
+}

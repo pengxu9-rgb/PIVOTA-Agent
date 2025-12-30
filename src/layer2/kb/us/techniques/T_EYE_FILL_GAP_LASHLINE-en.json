@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_FILL_GAP_LASHLINE-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Fill lashline gaps",
+    "steps": [
+      "Press product into the lashline to fill gaps between lashes.",
+      "Keep the line thin so it looks like fuller lashes."
+    ]
+  },
+  "rationaleTemplate": [
+    "Filling gaps increases definition without needing a thicker liner."
+  ],
+  "productRoleHints": [
+    "gel liner",
+    "angled brush"
+  ]
+}

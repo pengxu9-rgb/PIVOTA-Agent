@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_SOFT_EDGE-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "唇缘保持柔和",
+    "steps": [
+      "唇线保持柔和，不要锐利描边。",
+      "只在需要时轻微修整，避免嘴角过于生硬。"
+    ]
+  },
+  "rationaleTemplate": [
+    "柔和边缘更接近参考氛围，也减少对唇形假设。"
+  ]
+}

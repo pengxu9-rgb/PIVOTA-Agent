@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_SMUDGE_OUTER_CORNER-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "外眼角轻微晕开",
+    "steps": [
+      "外眼角稍微晕开，软化生硬线条。",
+      "范围要小，并保持向上提拉。"
+    ]
+  },
+  "rationaleTemplate": [
+    "小范围晕开能更显提拉，也能掩盖细微形状差。"
+  ],
+  "productRoleHints": [
+    "smudge brush",
+    "dark shadow"
+  ]
+}

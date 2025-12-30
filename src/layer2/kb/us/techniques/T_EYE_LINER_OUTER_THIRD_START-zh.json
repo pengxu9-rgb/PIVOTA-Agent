@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LINER_OUTER_THIRD_START-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "in",
+        "value": [
+          "liner",
+          "wing",
+          "cat"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "眼线从外三分之一开始",
+    "steps": [
+      "从睫毛根部外 1/3 位置开始画眼线。",
+      "内半段保持更淡或留白，更好控制形状。"
+    ]
+  },
+  "rationaleTemplate": [
+    "从后段开始更易控形，也不容易“占满”眼皮空间。"
+  ],
+  "productRoleHints": [
+    "liner"
+  ]
+}

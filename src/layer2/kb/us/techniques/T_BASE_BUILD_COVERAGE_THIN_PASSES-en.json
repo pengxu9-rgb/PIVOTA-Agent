@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_BUILD_COVERAGE_THIN_PASSES-en",
+  "area": "base",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.coverage",
+        "op": "in",
+        "value": [
+          "full",
+          "high",
+          "medium-full"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Build coverage in thin passes",
+    "steps": [
+      "Apply a thin layer and let it settle before adding more.",
+      "Add a second light pass only where you still see unevenness.",
+      "Stop layering once it starts to look heavy."
+    ]
+  },
+  "rationaleTemplate": [
+    "Thin passes reduce caking while still letting you reach higher coverage."
+  ],
+  "productRoleHints": [
+    "medium-coverage base",
+    "small concealer brush"
+  ],
+  "safetyNotes": [
+    "If texture shows up, stop building and switch to spot-correction."
+  ]
+}

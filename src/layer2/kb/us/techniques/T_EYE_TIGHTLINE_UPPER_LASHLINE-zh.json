@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_TIGHTLINE_UPPER_LASHLINE-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "userFaceProfile.geometry.eyeOpennessRatio",
+        "op": "lte",
+        "value": 0.32
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "上睫毛根部内填",
+    "steps": [
+      "把眼线/眼影按压进上睫毛根部加深。",
+      "贴着睫毛走，不占用眼皮空间。"
+    ]
+  },
+  "rationaleTemplate": [
+    "内填能提升清晰度，不必画更粗的眼线。"
+  ],
+  "productRoleHints": [
+    "waterproof pencil",
+    "gel liner"
+  ],
+  "safetyNotes": [
+    "If eyes are sensitive, tightline just at the lashes and avoid the waterline."
+  ]
+}

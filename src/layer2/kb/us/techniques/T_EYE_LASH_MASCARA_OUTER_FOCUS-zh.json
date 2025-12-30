@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LASH_MASCARA_OUTER_FOCUS-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "睫毛重点放在外侧",
+    "steps": [
+      "刷睫毛时更强调外侧睫毛的存在感。",
+      "用睫毛梳梳开，保持根根分明。"
+    ]
+  },
+  "rationaleTemplate": [
+    "外侧重点能增强拉长与提拉感，不完全依赖眼线形状。"
+  ],
+  "productRoleHints": [
+    "mascara",
+    "lash comb"
+  ]
+}

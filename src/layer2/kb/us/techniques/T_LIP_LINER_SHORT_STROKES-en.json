@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_LINER_SHORT_STROKES-en",
+  "area": "lip",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Use short liner strokes",
+    "steps": [
+      "Use short strokes to define the lip edge instead of a single hard outline.",
+      "Keep corners subtle to avoid changing the overall shape."
+    ]
+  },
+  "rationaleTemplate": [
+    "Short strokes keep definition controlled and easier to soften."
+  ],
+  "productRoleHints": [
+    "lip liner"
+  ]
+}
