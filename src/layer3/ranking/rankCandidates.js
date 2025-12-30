@@ -21,10 +21,38 @@ function clamp01(x) {
   return x;
 }
 
+function profileTokens({ category, userSignals }) {
+  const s = userSignals || {};
+  const tokens = [];
+
+  // These are intentionally coarse: we bias ranking toward matching words in SKU metadata.
+  if (category === 'base') {
+    if (s.needsOilControl) tokens.push('matte', 'oil', 'control', 'blur', 'longwear');
+    if (s.needsHydration) tokens.push('hydrating', 'moisturizing', 'dewy', 'glow');
+    if (s.poreVisible) tokens.push('pore', 'blur', 'smooth');
+    if (s.hasAcne) tokens.push('non-comedogenic', 'acne', 'blemish');
+    if (s.isSensitive) tokens.push('sensitive', 'fragrance-free', 'gentle');
+  }
+
+  if (category === 'eye') {
+    if (s.needsOilControl) tokens.push('waterproof', 'smudge', 'proof', 'longwear');
+    if (s.isSensitive) tokens.push('sensitive', 'gentle');
+  }
+
+  if (category === 'lip') {
+    if (s.needsHydration) tokens.push('hydrating', 'balm', 'moisture');
+    if (s.transfer) tokens.push('longwear', 'transfer', 'proof');
+  }
+
+  return tokens;
+}
+
 function rankCandidates(input) {
   const { category, lookSpec } = input;
   const area = lookSpec.breakdown[category];
   const desiredTokens = tokenize([area.finish, area.coverage, ...(area.keyNotes || [])].join(' '));
+  const extraTokens = profileTokens({ category, userSignals: input.userSignals });
+  const desiredPlus = extraTokens.length ? uniqueTokens([...desiredTokens, ...extraTokens]) : desiredTokens;
 
   const scored = (input.candidates || []).map((candidate) => {
     const textTokens = tokenize(candidate.rawText);
@@ -33,7 +61,7 @@ function rankCandidates(input) {
 
     const finishScore = overlapScore(finishTokens, tokenize(area.finish));
     const coverageScore = overlapScore(coverageTokens, tokenize(area.coverage));
-    const notesScore = overlapScore(textTokens, desiredTokens);
+    const notesScore = overlapScore(textTokens, desiredPlus);
     const availabilityScore = candidate.availability === 'in_stock' ? 1 : candidate.availability === 'unknown' ? 0.4 : 0;
 
     const score = clamp01(finishScore * 0.35 + coverageScore * 0.25 + notesScore * 0.25 + availabilityScore * 0.15);
@@ -78,7 +106,10 @@ function rankCandidates(input) {
   return { best, dupe, warnings };
 }
 
+function uniqueTokens(tokens) {
+  return Array.from(new Set(tokens.filter(Boolean)));
+}
+
 module.exports = {
   rankCandidates,
 };
-

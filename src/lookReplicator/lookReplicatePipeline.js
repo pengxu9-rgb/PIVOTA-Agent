@@ -14,6 +14,7 @@ const { buildContextFingerprintUS } = require('../telemetry/contextFingerprintUS
 const { buildContextFingerprintJP } = require('../telemetry/contextFingerprintJP');
 const { normalizeMarket } = require('../markets/market');
 const { getMarketPack } = require('../markets/getMarketPack');
+const { deriveOnboardingSignalsV0, normalizeOnboardingProfileV0 } = require('./onboardingProfileV0');
 
 function engineVersionFor(market) {
   const m = String(market || 'US').toLowerCase();
@@ -232,6 +233,8 @@ async function runLookReplicatePipeline(input) {
   const promptPack = pack.getPromptPack(locale);
   const referenceBytes = fs.readFileSync(input.referenceImage.path);
   const versions = engineVersionFor(pack.market);
+  const onboardingProfileV0 = input.onboardingProfileV0 ? normalizeOnboardingProfileV0(input.onboardingProfileV0) : null;
+  const onboardingSignals = onboardingProfileV0 ? deriveOnboardingSignalsV0(onboardingProfileV0) : null;
 
   await reportProgress(20, 'lookspec');
 
@@ -390,6 +393,7 @@ async function runLookReplicatePipeline(input) {
     lookSpec,
     preferenceMode,
     promptPack,
+    ...(onboardingProfileV0 ? { userProfile: onboardingProfileV0, userSignals: onboardingSignals } : {}),
     ...(input.enableExtendedAreas === true ? { enableExtendedAreas: true } : {}),
     ...(input.enableSelfieLookSpec === true ? { enableSelfieLookSpec: true } : {}),
     ...(input.enableExtendedAreas === true ? { enableTriggerMatching: true } : {}),
@@ -408,7 +412,13 @@ async function runLookReplicatePipeline(input) {
 
   await reportProgress(75, 'kit');
 
-  const kitPlan = await buildKitPlan({ market: pack.market, locale, lookSpec, commerceEnabled: pack.commerceEnabled });
+  const kitPlan = await buildKitPlan({
+    market: pack.market,
+    locale,
+    lookSpec,
+    commerceEnabled: pack.commerceEnabled,
+    ...(onboardingProfileV0 ? { userProfile: onboardingProfileV0, userSignals: onboardingSignals } : {}),
+  });
 
   await reportProgress(90, 'finalizing');
 
@@ -466,7 +476,9 @@ async function runLookReplicatePipeline(input) {
           layer2: result.layer2EngineVersion,
           layer3: result.layer3EngineVersion,
         },
-        signals: {},
+        signals: {
+          ...(onboardingSignals ? { onboarding: onboardingSignals } : {}),
+        },
         qualityFlags: computeQualityFlags({
           lookSpec,
           layer2Adjustments: adjOut.adjustments,

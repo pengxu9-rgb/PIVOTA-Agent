@@ -113,6 +113,7 @@ export async function buildKitPlan(input: {
   commerceEnabled?: boolean;
   candidatesByCategory?: CandidatesByCategory;
   limitPerCategory?: number;
+  userSignals?: Record<string, unknown> | null;
 }): Promise<KitPlanV0> {
   const { market, locale, lookSpec } = input;
   if (market !== "US" && market !== "JP") throw new Error("MARKET_NOT_SUPPORTED");
@@ -180,7 +181,7 @@ export async function buildKitPlan(input: {
       )
       .filter(Boolean);
 
-    const ranked = rankCandidates({ category, lookSpec, candidates: normalized });
+    const ranked = rankCandidates({ category, lookSpec, candidates: normalized, userSignals: input.userSignals ?? null });
     for (const w of ranked.warnings) {
       if (w === "NO_CANDIDATES") {
         if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=${normalized.length}`);
