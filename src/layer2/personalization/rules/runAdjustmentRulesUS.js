@@ -17,7 +17,8 @@ function parseEnvBool(v) {
   return null;
 }
 
-function extendedAreasEnabled() {
+function extendedAreasEnabled(input) {
+  if (typeof input?.enableExtendedAreas === 'boolean') return input.enableExtendedAreas;
   return parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS) === true;
 }
 
@@ -37,7 +38,8 @@ function triggerMatchingEnabled() {
   return parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
 }
 
-function selfieLookSpecEnabled() {
+function selfieLookSpecEnabled(input) {
+  if (typeof input?.enableSelfieLookSpec === 'boolean') return input.enableSelfieLookSpec;
   return parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC) === true;
 }
 
@@ -287,7 +289,7 @@ function runAdjustmentRulesUS(input) {
       ? buildLipActivitySlotSkeleton({ similarityReport: ctx.similarityReport })
       : null;
 
-  if (!extendedAreasEnabled()) {
+  if (!extendedAreasEnabled(input)) {
     return [
       outByArea.base,
       ...(baseActivitySlot ? [baseActivitySlot] : []),
@@ -298,7 +300,7 @@ function runAdjustmentRulesUS(input) {
     ];
   }
 
-  const selfieEnabled = selfieLookSpecEnabled();
+  const selfieEnabled = selfieLookSpecEnabled(input);
 
   const includePrep = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, 'prep');
   const includeContour = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, 'contour');

@@ -243,6 +243,7 @@ async function listOutcomeSamples({ market, limit = 1000 } = {}) {
 module.exports = {
   ingestOutcomeEventV0,
   upsertOutcomeSampleFromJobCompletion,
+  getOutcomeSample,
   listOutcomeSamples,
   // Backward compatible exports
   listOutcomeSamplesUS: (opts) => listOutcomeSamples({ market: 'US', ...(opts || {}) }),

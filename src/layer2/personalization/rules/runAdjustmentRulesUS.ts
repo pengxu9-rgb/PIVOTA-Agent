@@ -27,7 +27,10 @@ function parseEnvBool(v: unknown): boolean | null {
   return null;
 }
 
-function extendedAreasEnabled(): boolean {
+function extendedAreasEnabled(input: unknown): boolean {
+  const rec = input as Record<string, unknown> | null;
+  const override = rec && typeof rec === "object" ? rec["enableExtendedAreas"] : undefined;
+  if (typeof override === "boolean") return override;
   return parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS) === true;
 }
 
@@ -47,7 +50,10 @@ function triggerMatchingEnabled(): boolean {
   return parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
 }
 
-function selfieLookSpecEnabled(): boolean {
+function selfieLookSpecEnabled(input: unknown): boolean {
+  const rec = input as Record<string, unknown> | null;
+  const override = rec && typeof rec === "object" ? rec["enableSelfieLookSpec"] : undefined;
+  if (typeof override === "boolean") return override;
   return parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC) === true;
 }
 
@@ -298,7 +304,7 @@ export function runAdjustmentRulesUS(input: RunAdjustmentRulesUSInput): Adjustme
       ? buildLipActivitySlotSkeleton({ similarityReport: ctx.similarityReport })
       : null;
 
-  if (!extendedAreasEnabled()) {
+  if (!extendedAreasEnabled(input)) {
     return [
       outByArea.base!,
       ...(baseActivitySlot ? [baseActivitySlot] : []),
@@ -309,7 +315,7 @@ export function runAdjustmentRulesUS(input: RunAdjustmentRulesUSInput): Adjustme
     ];
   }
 
-  const selfieEnabled = selfieLookSpecEnabled();
+  const selfieEnabled = selfieLookSpecEnabled(input);
 
   const includePrep = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, "prep");
   const includeContour = !selfieEnabled || needsLookDiffIntentChange(ctx.similarityReport, "contour");

@@ -107,6 +107,7 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
     const variables = defaultVariablesForArea(s.impactArea);
     const doActions = [];
     const techniqueRefs = [];
+    const techniqueCards = [];
     const tags = Array.isArray(s.tags) ? [...s.tags] : [];
     const rationaleFacts = [];
 
@@ -141,11 +142,19 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
         continue;
       }
 
+      // Preserve resolved technique id for downstream contracts/telemetry.
       techniqueRefs.push({ id: card.id, area: card.area });
       const renderedSteps = (card.actionTemplate?.steps || [])
         .map((step) => renderTemplateStep(step, variables))
         .filter(Boolean);
       doActions.push(...renderedSteps);
+      techniqueCards.push({
+        id: String(id || '').trim() || card.id,
+        resolvedId: card.id,
+        title: String(card.actionTemplate?.title || '').trim() || undefined,
+        steps: renderedSteps,
+        rationale: Array.isArray(card.rationaleTemplate) ? card.rationaleTemplate.map((x) => String(x || '').trim()).filter(Boolean) : [],
+      });
 
       if (zh && resolved.inferredLanguage === 'zh' && !resolved.usedFallbackLanguage) {
         const rationale = Array.isArray(card.rationaleTemplate) ? card.rationaleTemplate : [];
@@ -172,6 +181,7 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
 
     return {
       ...s,
+      selectedDoActionIds: selectedActionIds,
       ...(zh && rationaleFacts.length
         ? {
             // For zh UI, prefer Chinese rationales from the resolved technique cards so downstream
@@ -182,6 +192,7 @@ function renderSkeletonFromKB(inputSkeletons, kb, ctx) {
         : {}),
       doActions: finalDoActions,
       techniqueRefs: techniqueRefs.length ? techniqueRefs : undefined,
+      techniqueCards: techniqueCards.length ? techniqueCards : undefined,
       tags: uniqueStrings(tags).length ? uniqueStrings(tags) : undefined,
     };
   });

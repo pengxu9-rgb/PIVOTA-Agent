@@ -17,6 +17,7 @@ const AdjustmentSkeletonV0Schema = z
     becauseFacts: z.array(z.string().min(1)).min(1),
     doActionSelection: AdjustmentSkeletonDoActionSelectionSchema.optional(),
     doActionIds: z.array(z.string().min(1)).min(1).optional(),
+    selectedDoActionIds: z.array(z.string().min(1)).min(1).optional(),
     doActions: z.array(z.string().min(1)).default([]),
     whyMechanism: z.array(z.string().min(1)).min(1),
     evidenceKeys: z.array(z.string().min(1)).min(1),
@@ -27,6 +28,20 @@ const AdjustmentSkeletonV0Schema = z
           .object({
             id: z.string().min(1),
             area: AdjustmentSkeletonImpactAreaSchema,
+          })
+          .strict(),
+      )
+      .optional(),
+
+    techniqueCards: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            resolvedId: z.string().min(1).optional(),
+            title: z.string().min(1).optional(),
+            steps: z.array(z.string().min(1)).optional(),
+            rationale: z.array(z.string().min(1)).optional(),
           })
           .strict(),
       )

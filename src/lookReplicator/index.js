@@ -6,8 +6,13 @@ const { JobQueue } = require('./jobQueue');
 const { parseMultipart, rmrf } = require('./multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
 const { randomUUID } = require('crypto');
-const { upsertOutcomeSampleFromJobCompletion } = require('../telemetry/outcomeStore');
+const { upsertOutcomeSampleFromJobCompletion, getOutcomeSample } = require('../telemetry/outcomeStore');
 const { normalizeMarket, parseMarketFromRequest, requireMarketEnabled } = require('../markets/market');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const { loadTechniqueKB } = require('../layer2/kb/loadTechniqueKB');
+const { renderSkeletonFromKB } = require('../layer2/personalization/renderSkeletonFromKB');
 
 const DEFAULT_JOB_CONCURRENCY = Number(process.env.LOOK_REPLICATOR_JOB_CONCURRENCY || 2);
 const queue = new JobQueue({ concurrency: DEFAULT_JOB_CONCURRENCY });
@@ -92,6 +97,83 @@ function clampInt(v, { min, max, fallback }) {
   if (i < min) return min;
   if (i > max) return max;
   return i;
+}
+
+function assetRootDir() {
+  return path.join(os.tmpdir(), 'pivota-lookreplicator-assets');
+}
+
+function ensureDir(p) {
+  fs.mkdirSync(p, { recursive: true });
+}
+
+function extFromContentType(contentType) {
+  const ct = String(contentType || '').toLowerCase();
+  if (ct.includes('image/jpeg') || ct.includes('image/jpg')) return 'jpg';
+  if (ct.includes('image/png')) return 'png';
+  if (ct.includes('image/webp')) return 'webp';
+  return 'bin';
+}
+
+function contentTypeFromExt(ext) {
+  const e = String(ext || '').toLowerCase();
+  if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
+  if (e === 'png') return 'image/png';
+  if (e === 'webp') return 'image/webp';
+  return 'application/octet-stream';
+}
+
+function copyUploadToAssets({ jobId, kind, file }) {
+  if (!file?.path) return null;
+  const safeKind = kind === 'selfie' ? 'selfie' : 'reference';
+  const ext = extFromContentType(file.contentType);
+  const dir = path.join(assetRootDir(), jobId);
+  ensureDir(dir);
+  const outPath = path.join(dir, `${safeKind}.${ext}`);
+  fs.copyFileSync(file.path, outPath);
+  return `/api/look-replicate/assets/${encodeURIComponent(jobId)}/${safeKind}`;
+}
+
+function findAssetFilePath({ jobId, kind }) {
+  const dir = path.join(assetRootDir(), String(jobId || ''));
+  const safeKind = kind === 'selfie' ? 'selfie' : 'reference';
+  const candidates = ['jpg', 'png', 'webp', 'bin'].map((ext) => path.join(dir, `${safeKind}.${ext}`));
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function parseLocaleFromQuery(v) {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  return normalizeLocale(s);
+}
+
+function localizeSkeletonsForLocale({ rawSkeletons, market, locale }) {
+  if (!Array.isArray(rawSkeletons) || rawSkeletons.length === 0) return null;
+  const kb = loadTechniqueKB(market);
+
+  const safe = rawSkeletons.map((s) => {
+    const doActionIds = Array.isArray(s?.doActionIds) ? s.doActionIds : [];
+    const selectedDoActionIds = Array.isArray(s?.selectedDoActionIds)
+      ? s.selectedDoActionIds
+      : Array.isArray(s?.techniqueRefs)
+        ? s.techniqueRefs.map((r) => r?.id).filter(Boolean)
+        : [];
+    const effectiveIds = selectedDoActionIds.length ? selectedDoActionIds : doActionIds;
+
+    return {
+      ...s,
+      ...(effectiveIds.length ? { doActionIds: effectiveIds } : {}),
+      doActions: [],
+      techniqueRefs: undefined,
+      techniqueCards: undefined,
+    };
+  });
+
+  const rendered = renderSkeletonFromKB(safe, kb, { market, locale });
+  return Array.isArray(rendered?.allSkeletons) ? rendered.allSkeletons : rendered.skeletons;
 }
 
 function mountLookReplicatorRoutes(app, { logger }) {
@@ -197,6 +279,23 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
   // --- Look Replicator Orchestration (US-only) ---
 
+  app.get('/api/look-replicate/assets/:jobId/:kind', async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const jobId = String(req.params.jobId || '').trim();
+    const kind = String(req.params.kind || '').trim().toLowerCase();
+    if (!jobId) return res.status(400).json({ error: 'INVALID_REQUEST' });
+    if (kind !== 'reference' && kind !== 'selfie') return res.status(404).json({ error: 'NOT_FOUND' });
+
+    const p = findAssetFilePath({ jobId, kind });
+    if (!p) return res.status(404).json({ error: 'NOT_FOUND' });
+
+    const ext = String(path.extname(p).slice(1) || '').toLowerCase();
+    res.set('Content-Type', contentTypeFromExt(ext));
+    return fs.createReadStream(p).pipe(res);
+  });
+
   app.post('/api/look-replicate/jobs', async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
 
@@ -236,6 +335,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
     const locale = normalizeLocale(fields.locale);
     const preferenceMode = normalizePreferenceMode(fields.preferenceMode);
     const optInTraining = parseBool(fields.optInTraining);
+    const enableExtendedAreas = parseBool(fields.enableExtendedAreas);
+    const enableSelfieLookSpec = parseBool(fields.enableSelfieLookSpec);
 
     let layer1Bundle = null;
     try {
@@ -254,6 +355,19 @@ function mountLookReplicatorRoutes(app, { logger }) {
         undertone: undefined,
       });
 
+      const referenceUrl = copyUploadToAssets({ jobId: job.jobId, kind: 'reference', file: referenceImage });
+      const selfieUrl = selfieImage?.path ? copyUploadToAssets({ jobId: job.jobId, kind: 'selfie', file: selfieImage }) : null;
+      if (referenceUrl || selfieUrl) {
+        try {
+          await updateJob(job.jobId, {
+            ...(referenceUrl ? { referenceImageUrl: referenceUrl } : {}),
+            ...(selfieUrl ? { selfieImageUrl: selfieUrl } : {}),
+          });
+        } catch (err) {
+          logger?.warn?.({ jobId: job.jobId, err: err?.message || String(err) }, 'lookReplicate asset url persist failed');
+        }
+      }
+
       res.json({ jobId: job.jobId });
 
       queue.enqueue(async () => {
@@ -270,6 +384,11 @@ function mountLookReplicatorRoutes(app, { logger }) {
             referenceImage,
             selfieImage,
             layer1Bundle,
+            enableExtendedAreas,
+            enableSelfieLookSpec,
+            onProgress: async ({ progress }) => {
+              await updateJob(jobId, { progress: Number(progress) || 0 });
+            },
           });
 
           if (telemetrySample) {
@@ -305,6 +424,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
       const status = mapStatus(job.status);
       const progressStep = progressStepFrom(job.progress, job.status);
+      const requestLocale = parseLocaleFromQuery(req.query.locale) || job.locale || 'en';
       const payload = {
         jobId: job.jobId,
         status,
@@ -312,10 +432,27 @@ function mountLookReplicatorRoutes(app, { logger }) {
         progress: job.progress,
         createdAt: job.createdAt,
         updatedAt: job.updatedAt,
+        referenceImageUrl: job.referenceImageUrl || null,
+        selfieImageUrl: job.selfieImageUrl || null,
       };
 
       if (status === 'done' && job.result) payload.result = job.result;
       if (status === 'error' && job.error) payload.error = job.error;
+
+      if (status === 'done') {
+        try {
+          const outcome = await getOutcomeSample({ market: job.market, jobId: job.jobId });
+          const rawSkeletons = outcome?.replayContext?.adjustmentSkeletons;
+          const localized = localizeSkeletonsForLocale({ rawSkeletons, market: job.market, locale: requestLocale });
+          if (localized) payload.replayContext = { adjustmentSkeletons: localized };
+
+          const lookDiff = outcome?.gemini && typeof outcome.gemini === 'object' ? outcome.gemini.lookDiff : null;
+          const lookDiffSource = outcome?.gemini && typeof outcome.gemini === 'object' ? outcome.gemini.lookDiffSource : null;
+          if (lookDiff) payload.diagnostics = { lookDiff, lookDiffSource: lookDiffSource || null };
+        } catch (err) {
+          logger?.warn?.({ jobId: job.jobId, err: err?.message || String(err) }, 'lookReplicate outcome attach failed');
+        }
+      }
 
       return res.json(payload);
     } catch (err) {

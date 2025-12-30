@@ -161,6 +161,9 @@ async function updateJob(jobId, patch) {
   if (patch.result !== undefined) setField('result_json', patch.result);
   if (patch.error !== undefined) setField('error_message', patch.error);
   if (patch.shareId !== undefined) setField('share_id', patch.shareId);
+  if (patch.referenceImageUrl !== undefined) setField('reference_image_url', patch.referenceImageUrl);
+  if (patch.selfieImageUrl !== undefined) setField('selfie_image_url', patch.selfieImageUrl);
+  if (patch.undertone !== undefined) setField('undertone', patch.undertone);
 
   setField('updated_at', now);
   values.push(jobId);

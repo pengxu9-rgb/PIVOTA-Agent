@@ -188,6 +188,16 @@ function extractUsedRules(adjustments) {
   return out;
 }
 
+function extractUsedTechniquesForTelemetry(adjustments) {
+  const allowedAreas = new Set(['base', 'eye', 'lip']);
+  return extractUsedTechniques(adjustments).filter((t) => allowedAreas.has(String(t.area || '')));
+}
+
+function extractUsedRulesForTelemetry(adjustments) {
+  const allowedAreas = new Set(['base', 'eye', 'lip']);
+  return extractUsedRules(adjustments).filter((r) => allowedAreas.has(String(r.area || '')));
+}
+
 function computeQualityFlags({ lookSpec, layer2Adjustments, usedFallback }) {
   const lookSpecLowConfidence = Boolean(Array.isArray(lookSpec?.warnings) && lookSpec.warnings.length > 0);
   const anyAdjustmentLowConfidence = Boolean(
@@ -198,6 +208,15 @@ function computeQualityFlags({ lookSpec, layer2Adjustments, usedFallback }) {
 }
 
 async function runLookReplicatePipeline(input) {
+  const reportProgress = async (progress, step) => {
+    if (typeof input?.onProgress !== 'function') return;
+    try {
+      await input.onProgress({ progress, step });
+    } catch {
+      // ignore
+    }
+  };
+
   const locale = normalizeLocale(input.locale);
   const preferenceMode = normalizePreferenceMode(input.preferenceMode);
   const market = normalizeMarket(input.market, normalizeMarket(process.env.DEFAULT_MARKET, 'US'));
@@ -213,6 +232,8 @@ async function runLookReplicatePipeline(input) {
   const promptPack = pack.getPromptPack(locale);
   const referenceBytes = fs.readFileSync(input.referenceImage.path);
   const versions = engineVersionFor(pack.market);
+
+  await reportProgress(20, 'lookspec');
 
   const geminiReferenceLookSpecEnabled = parseEnvBool(process.env.LAYER1_ENABLE_GEMINI_REFERENCE_LOOKSPEC);
   const geminiDebugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
@@ -269,7 +290,9 @@ async function runLookReplicatePipeline(input) {
     });
   }
 
-  const selfieLookSpecEnabled = parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC);
+  await reportProgress(35, 'adjustments');
+
+  const selfieLookSpecEnabled = input.enableSelfieLookSpec === true || parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC);
   const geminiSelfieLookSpecEnabled = parseEnvBool(process.env.LAYER1_ENABLE_GEMINI_SELFIE_LOOKSPEC);
   const selfieImage = input.selfieImage ?? null;
   const selfieBytes = selfieLookSpecEnabled && selfieImage?.path ? fs.readFileSync(selfieImage.path) : null;
@@ -367,7 +390,11 @@ async function runLookReplicatePipeline(input) {
     lookSpec,
     preferenceMode,
     promptPack,
+    ...(input.enableExtendedAreas === true ? { enableExtendedAreas: true } : {}),
+    ...(input.enableSelfieLookSpec === true ? { enableSelfieLookSpec: true } : {}),
   });
+
+  await reportProgress(55, 'steps');
 
   const stepsOut = await generateSteps({
     market: pack.market,
@@ -378,7 +405,11 @@ async function runLookReplicatePipeline(input) {
     promptPack,
   });
 
+  await reportProgress(75, 'kit');
+
   const kitPlan = await buildKitPlan({ market: pack.market, locale, lookSpec, commerceEnabled: pack.commerceEnabled });
+
+  await reportProgress(90, 'finalizing');
 
   const warnings = [
     ...(Array.isArray(lookSpec.warnings) ? lookSpec.warnings : []),
@@ -392,7 +423,8 @@ async function runLookReplicatePipeline(input) {
     parseEnvBool(process.env.LAYER2_ENABLE_EYE_ACTIVITY_SLOT) ||
     parseEnvBool(process.env.LAYER2_ENABLE_BASE_ACTIVITY_SLOT) ||
     parseEnvBool(process.env.LAYER2_ENABLE_LIP_ACTIVITY_SLOT) ||
-    parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS);
+    parseEnvBool(process.env.LAYER2_ENABLE_EXTENDED_AREAS) ||
+    input.enableExtendedAreas === true;
 
   const result = LookReplicateResultV0Schema.parse({
     schemaVersion: 'v0',
@@ -414,7 +446,13 @@ async function runLookReplicatePipeline(input) {
     ...(warnings.length ? { warnings } : {}),
   });
 
-  const includeGeminiTelemetry = geminiReferenceLookSpecEnabled || geminiSelfieLookSpecEnabled || geminiDebugEnabled || selfieDebugEnabled;
+  const includeGeminiTelemetry =
+    geminiReferenceLookSpecEnabled ||
+    geminiSelfieLookSpecEnabled ||
+    geminiDebugEnabled ||
+    selfieDebugEnabled ||
+    Boolean(lookDiffSource) ||
+    Boolean(geminiTelemetry.lookDiff);
 
   const telemetrySample = input.jobId
     ? {
@@ -433,16 +471,16 @@ async function runLookReplicatePipeline(input) {
           layer2Adjustments: adjOut.adjustments,
           usedFallback: Boolean(adjOut.usedFallback),
         }),
-        usedTechniques: extractUsedTechniques(adjOut.skeletons),
-        usedRules: extractUsedRules(adjOut.skeletons),
+        usedTechniques: extractUsedTechniquesForTelemetry(adjOut.skeletons),
+        usedRules: extractUsedRulesForTelemetry(adjOut.skeletons),
         contextFingerprint:
           pack.market === 'US'
             ? buildContextFingerprintUS({ userFaceProfile, refFaceProfile, lookSpec })
             : buildContextFingerprintJP({ userFaceProfile, refFaceProfile, lookSpec }),
 	        replayContext: adjOut.skeletons ? { adjustmentSkeletons: adjOut.skeletons } : undefined,
           ...(includeGeminiTelemetry ? { gemini: geminiTelemetry } : {}),
-	      }
-	    : null;
+      }
+    : null;
 
   if (telemetrySample && geminiDebugEnabled) {
     // eslint-disable-next-line no-console

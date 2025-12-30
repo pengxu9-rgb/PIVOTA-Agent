@@ -32,6 +32,8 @@ export const AdjustmentSkeletonV0Schema = z
     // Default semantics for doActionIds: ordered sequence.
     doActionSelection: AdjustmentSkeletonDoActionSelectionSchema.optional(),
     doActionIds: z.array(z.string().min(1)).min(1).optional(),
+    // Resolved selection ids (after choose_one), used to re-localize without re-running trigger selection.
+    selectedDoActionIds: z.array(z.string().min(1)).min(1).optional(),
     doActions: z.array(z.string().min(1)).default([]),
     whyMechanism: z.array(z.string().min(1)).min(1),
     evidenceKeys: z.array(z.string().min(1)).min(1),
@@ -43,6 +45,21 @@ export const AdjustmentSkeletonV0Schema = z
           .object({
             id: z.string().min(1),
             area: AdjustmentSkeletonImpactAreaSchema,
+          })
+          .strict()
+      )
+      .optional(),
+
+    // Optional lightweight technique card snapshots for UI rendering.
+    techniqueCards: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            resolvedId: z.string().min(1).optional(),
+            title: z.string().min(1).optional(),
+            steps: z.array(z.string().min(1)).optional(),
+            rationale: z.array(z.string().min(1)).optional(),
           })
           .strict()
       )
