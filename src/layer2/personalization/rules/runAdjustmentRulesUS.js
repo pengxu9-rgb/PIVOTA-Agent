@@ -39,6 +39,11 @@ function triggerMatchingEnabled() {
   return parseEnvBool(process.env.LAYER2_ENABLE_TRIGGER_MATCHING) === true;
 }
 
+function triggerMatchingEnabledFor(input) {
+  if (triggerMatchingEnabled()) return true;
+  return input?.enableTriggerMatching === true;
+}
+
 function selfieLookSpecEnabled(input) {
   if (typeof input?.enableSelfieLookSpec === 'boolean') return input.enableSelfieLookSpec;
   return parseEnvBool(process.env.LAYER2_ENABLE_SELFIE_LOOKSPEC) === true;
@@ -307,6 +312,7 @@ function runAdjustmentRulesUS(input) {
     similarityReport: input.similarityReport ?? null,
     lookSpec,
     preferenceMode,
+    enableTriggerMatching: triggerMatchingEnabledFor(input),
   };
 
   const outByArea = {};
@@ -335,17 +341,23 @@ function runAdjustmentRulesUS(input) {
   }
 
   const eyeActivitySlot =
-    eyeActivitySlotEnabled() && triggerMatchingEnabled() && outByArea.eye?.ruleId === 'EYE_LINER_DIRECTION_ADAPT'
+    eyeActivitySlotEnabled() &&
+    triggerMatchingEnabledFor(input) &&
+    outByArea.eye?.ruleId === 'EYE_LINER_DIRECTION_ADAPT'
       ? buildEyeLinerActivitySlotSkeleton({ lookSpec })
       : null;
 
   const baseActivitySlot =
-    baseActivitySlotEnabled() && triggerMatchingEnabled() && outByArea.base?.ruleId === 'BASE_BUILD_COVERAGE_SPOT'
+    baseActivitySlotEnabled() &&
+    triggerMatchingEnabledFor(input) &&
+    outByArea.base?.ruleId === 'BASE_BUILD_COVERAGE_SPOT'
       ? buildBaseActivitySlotSkeleton({ similarityReport: ctx.similarityReport })
       : null;
 
   const lipActivitySlot =
-    lipActivitySlotEnabled() && triggerMatchingEnabled() && outByArea.lip?.ruleId === 'LIP_FALLBACK_FINISH_FOCUS'
+    lipActivitySlotEnabled() &&
+    triggerMatchingEnabledFor(input) &&
+    outByArea.lip?.ruleId === 'LIP_FALLBACK_FINISH_FOCUS'
       ? buildLipActivitySlotSkeleton({ similarityReport: ctx.similarityReport })
       : null;
 

@@ -31,6 +31,7 @@ async function generateAdjustments(input) {
     preferenceMode,
     ...(input.enableExtendedAreas === true ? { enableExtendedAreas: true } : {}),
     ...(input.enableSelfieLookSpec === true ? { enableSelfieLookSpec: true } : {}),
+    ...(input.enableTriggerMatching === true ? { enableTriggerMatching: true } : {}),
   });
 
   const kb = loadTechniqueKB(input.market);
@@ -42,6 +43,7 @@ async function generateAdjustments(input) {
     similarityReport,
     lookSpec,
     preferenceMode,
+    ...(input.enableTriggerMatching === true ? { enableTriggerMatching: true } : {}),
   });
   warnings.push(...(rendered.warnings || []));
 
