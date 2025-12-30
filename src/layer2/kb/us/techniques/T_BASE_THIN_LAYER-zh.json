@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_THIN_LAYER-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "底妆保持轻薄",
+    "steps": [
+      "先薄涂一层，只有需要时再叠加。",
+      "每次用量少一点，充分晕开再加。"
+    ]
+  },
+  "rationaleTemplate": [
+    "轻薄底妆更不挑皮肤状态，也更接近参考妆感的纹理。"
+  ],
+  "productRoleHints": [
+    "foundation",
+    "sponge"
+  ]
+}

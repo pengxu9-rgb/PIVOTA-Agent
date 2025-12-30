@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_HYDRATE_PREP-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "dewy",
+          "glow",
+          "radiant"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "轻薄保湿打底",
+    "steps": [
+      "取少量面霜/乳液保湿，让其充分吸收。",
+      "易出油区域轻按带走多余油分与厚度。"
+    ]
+  },
+  "rationaleTemplate": [
+    "平衡的妆前能让水光感更“像皮肤”，不显斑驳。"
+  ],
+  "productRoleHints": [
+    "light moisturizer"
+  ]
+}

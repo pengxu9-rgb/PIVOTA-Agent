@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_WING_SHORTEN-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "缩短眼尾",
+    "steps": [
+      "先把眼尾画短一点。",
+      "如果还不够强调，再一点点延长。"
+    ]
+  },
+  "rationaleTemplate": [
+    "短眼尾更易控形，也更不受几何差异影响。"
+  ],
+  "productRoleHints": [
+    "liner"
+  ]
+}

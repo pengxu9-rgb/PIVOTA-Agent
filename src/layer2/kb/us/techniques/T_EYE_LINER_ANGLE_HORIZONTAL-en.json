@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LINER_ANGLE_HORIZONTAL-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "userFaceProfile.geometry.eyeTiltDeg",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Adjust wing angle",
+    "steps": [
+      "Aim the wing a little more horizontal than your natural tilt.",
+      "Connect back with a thin stroke to keep the wing controlled."
+    ],
+    "variables": [
+      "linerAngleHint"
+    ]
+  },
+  "rationaleTemplate": [
+    "A more horizontal wing can reduce emphasis on tilt differences while keeping a similar vibe."
+  ],
+  "productRoleHints": [
+    "thin felt-tip liner"
+  ]
+}

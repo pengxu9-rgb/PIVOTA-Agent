@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_SHADE_CLOSE_FAMILY-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "保持相近色系",
+    "steps": [
+      "尽量选择与参考最接近的色系。",
+      "不确定时选更安全的相近色，不要跳到另一色相。"
+    ]
+  },
+  "rationaleTemplate": [
+    "颜色细节不确定时，保持相近色系更稳妥。"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_GLOSS_CENTER-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.finish",
+        "op": "in",
+        "value": [
+          "gloss",
+          "glossy"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "唇蜜集中在中心",
+    "steps": [
+      "唇蜜主要点在唇部中心。",
+      "向外轻扫，让边缘更柔和。"
+    ]
+  },
+  "rationaleTemplate": [
+    "中心光泽更显立体，也能保持唇线自然。"
+  ],
+  "productRoleHints": [
+    "clear gloss"
+  ]
+}

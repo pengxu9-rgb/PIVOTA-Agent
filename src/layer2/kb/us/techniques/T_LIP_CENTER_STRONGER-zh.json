@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_LIP_CENTER_STRONGER-zh",
+  "area": "lip",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.lip.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "唇部中心更强调",
+    "steps": [
+      "中心位置颜色略重于边缘。",
+      "向外晕开，让过渡柔和。"
+    ]
+  },
+  "rationaleTemplate": [
+    "中心加重能增加立体感，同时减少对唇形的依赖。"
+  ],
+  "productRoleHints": [
+    "lip color"
+  ]
+}

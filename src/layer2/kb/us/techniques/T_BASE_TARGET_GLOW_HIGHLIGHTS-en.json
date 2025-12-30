@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_TARGET_GLOW_HIGHLIGHTS-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "all": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "in",
+        "value": [
+          "dewy",
+          "glow",
+          "radiant"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Place glow on high points",
+    "steps": [
+      "Add glow only to high points (tops of cheekbones, bridge of nose, brow bone).",
+      "Blend outward so the shine fades into the rest of the base."
+    ]
+  },
+  "rationaleTemplate": [
+    "Targeted glow matches a radiant reference while reducing overall shine."
+  ],
+  "productRoleHints": [
+    "liquid highlighter",
+    "cream highlighter"
+  ]
+}

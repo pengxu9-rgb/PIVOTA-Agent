@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LINER_OUTER_THIRD_START-en",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "in",
+        "value": [
+          "liner",
+          "wing",
+          "cat"
+        ]
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Start liner on the outer third",
+    "steps": [
+      "Start liner from the outer third of the lash line.",
+      "Keep the inner half lighter or bare for control."
+    ]
+  },
+  "rationaleTemplate": [
+    "Starting later keeps the shape easier to control and prevents the line from taking over the lid."
+  ],
+  "productRoleHints": [
+    "liner"
+  ]
+}

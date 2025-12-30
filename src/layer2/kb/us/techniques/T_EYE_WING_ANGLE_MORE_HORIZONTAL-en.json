@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_WING_ANGLE_MORE_HORIZONTAL-en",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "refFaceProfile.geometry.eyeTiltDeg",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Angle wing more horizontal",
+    "steps": [
+      "Keep the wing closer to horizontal than steeply angled.",
+      "Check symmetry by looking straight ahead before finalizing."
+    ],
+    "variables": [
+      "linerAngleHint"
+    ]
+  },
+  "rationaleTemplate": [
+    "A more horizontal wing can feel closer to the reference when tilt differs."
+  ],
+  "productRoleHints": [
+    "felt-tip liner"
+  ]
+}

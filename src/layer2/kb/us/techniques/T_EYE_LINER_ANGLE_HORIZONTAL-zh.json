@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_LINER_ANGLE_HORIZONTAL-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "userFaceProfile.geometry.eyeTiltDeg",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "调整眼尾角度",
+    "steps": [
+      "眼尾线条比自然走向更偏水平一点。",
+      "用细线回连，控制线条干净利落。"
+    ],
+    "variables": [
+      "linerAngleHint"
+    ]
+  },
+  "rationaleTemplate": [
+    "更偏水平的眼线能弱化眼型倾斜差异，同时保持相似氛围。"
+  ],
+  "productRoleHints": [
+    "thin felt-tip liner"
+  ]
+}

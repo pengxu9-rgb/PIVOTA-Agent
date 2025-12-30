@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_SET_TZONE_LIGHT-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Set selectively",
+    "steps": [
+      "Lightly set the T-zone and areas that crease.",
+      "Leave glow zones unpowdered to keep the intended finish."
+    ]
+  },
+  "rationaleTemplate": [
+    "Selective setting preserves the finish while improving wear."
+  ],
+  "productRoleHints": [
+    "loose powder",
+    "small powder brush"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_PRIMER_TEXTURE_BLUR-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "userFaceProfile.quality.valid",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "局部使用柔焦打底",
+    "steps": [
+      "只在纹理明显的区域薄薄上一层柔焦妆前。",
+      "想要更自然的质感时，不要全脸厚铺。"
+    ]
+  },
+  "rationaleTemplate": [
+    "局部柔焦能降低纹理存在感，又不破坏整体妆感。"
+  ],
+  "productRoleHints": [
+    "smoothing primer"
+  ]
+}

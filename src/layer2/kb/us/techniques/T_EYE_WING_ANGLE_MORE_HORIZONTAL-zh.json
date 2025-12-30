@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_WING_ANGLE_MORE_HORIZONTAL-zh",
+  "area": "eye",
+  "difficulty": "medium",
+  "triggers": {
+    "any": [
+      {
+        "key": "refFaceProfile.geometry.eyeTiltDeg",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "眼尾更偏水平",
+    "steps": [
+      "眼尾尽量偏水平而不是很陡的上扬。",
+      "正视镜子检查对称后再定型。"
+    ],
+    "variables": [
+      "linerAngleHint"
+    ]
+  },
+  "rationaleTemplate": [
+    "当眼型倾斜不同，更水平的眼尾更接近参考感觉。"
+  ],
+  "productRoleHints": [
+    "felt-tip liner"
+  ]
+}

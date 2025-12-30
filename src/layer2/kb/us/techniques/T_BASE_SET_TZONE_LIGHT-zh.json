@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_SET_TZONE_LIGHT-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "选择性定妆",
+    "steps": [
+      "T 区与易卡粉/易起褶处轻扫定妆。",
+      "保留高光/水光区域不压粉，维持目标妆感。"
+    ]
+  },
+  "rationaleTemplate": [
+    "选择性定妆兼顾持妆与妆感，不会把质感全部“压平”。"
+  ],
+  "productRoleHints": [
+    "loose powder",
+    "small powder brush"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_BRIGHTEN_INNER_CORNER-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.intent",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "提亮内眼角",
+    "steps": [
+      "在内眼角点按少量浅色/珠光。",
+      "轻轻晕开，让它自然过渡到眼皮。"
+    ]
+  },
+  "rationaleTemplate": [
+    "轻度内眼角提亮能让眼神更清晰，但不改变眼形。"
+  ],
+  "productRoleHints": [
+    "light shimmer shadow",
+    "small brush"
+  ]
+}

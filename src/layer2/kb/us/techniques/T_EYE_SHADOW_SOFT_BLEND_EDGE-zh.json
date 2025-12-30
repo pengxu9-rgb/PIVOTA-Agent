@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_EYE_SHADOW_SOFT_BLEND_EDGE-zh",
+  "area": "eye",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.eye.finish",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "眼影边缘柔和晕开",
+    "steps": [
+      "外缘用小幅画圈晕染。",
+      "边缘保持雾化过渡，不要切得太硬。"
+    ]
+  },
+  "rationaleTemplate": [
+    "柔和边缘更不挑眼型，整体也更日常耐看。"
+  ],
+  "productRoleHints": [
+    "blending brush"
+  ]
+}

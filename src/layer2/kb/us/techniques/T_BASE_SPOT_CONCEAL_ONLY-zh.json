@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_SPOT_CONCEAL_ONLY-zh",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.coverage",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "局部遮瑕修饰",
+    "steps": [
+      "只在需要的位置点涂遮瑕。",
+      "把边缘晕开到看不出底妆与遮瑕的分界。"
+    ]
+  },
+  "rationaleTemplate": [
+    "局部修饰能让底妆更轻薄，同时改善关键瑕疵。"
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small brush"
+  ]
+}

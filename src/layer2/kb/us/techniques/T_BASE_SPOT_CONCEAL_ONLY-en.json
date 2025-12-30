@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v0",
+  "market": "US",
+  "id": "T_BASE_SPOT_CONCEAL_ONLY-en",
+  "area": "base",
+  "difficulty": "easy",
+  "triggers": {
+    "any": [
+      {
+        "key": "lookSpec.breakdown.base.coverage",
+        "op": "exists"
+      }
+    ]
+  },
+  "actionTemplate": {
+    "title": "Spot-correct",
+    "steps": [
+      "Conceal only where you need extra coverage.",
+      "Blend edges until you cannot see a line between base and concealer."
+    ]
+  },
+  "rationaleTemplate": [
+    "Spot correction keeps the base lighter while still evening out key areas."
+  ],
+  "productRoleHints": [
+    "concealer",
+    "small brush"
+  ]
+}
