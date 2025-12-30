@@ -119,7 +119,7 @@ async function getJob(jobId) {
   if (!okDb) return mem.get(jobId) || null;
 
   const res = await query('SELECT * FROM look_replicator_jobs WHERE job_id = $1', [jobId]);
-  if (!res.rows || res.rows.length === 0) return null;
+  if (!res.rows || res.rows.length === 0) return mem.get(jobId) || null;
   return normalizeRow(res.rows[0]);
 }
 
@@ -128,7 +128,7 @@ async function getShare(shareId) {
   if (!okDb) return mem.get(shareId) || null;
 
   const res = await query('SELECT * FROM look_replicator_jobs WHERE share_id = $1', [shareId]);
-  if (!res.rows || res.rows.length === 0) return null;
+  if (!res.rows || res.rows.length === 0) return mem.get(shareId) || null;
   return normalizeRow(res.rows[0]);
 }
 
@@ -145,6 +145,19 @@ async function updateJob(jobId, patch) {
     }
     return merged;
   }
+
+  // If this job was created while DB was unavailable, it may only exist in memory.
+  // Avoid "flapping" from mem -> db causing 404s mid-run by ensuring DB is populated when possible.
+  const existingMem = mem.get(jobId);
+  if (existingMem) {
+    const merged = { ...existingMem, ...patch, updatedAt: now };
+    mem.set(jobId, merged);
+    if (patch.shareId && patch.shareId !== jobId) {
+      mem.set(patch.shareId, merged);
+    }
+  }
+
+  const existing = existingMem || (await getJob(jobId));
 
   const fields = [];
   const values = [];
@@ -168,7 +181,48 @@ async function updateJob(jobId, patch) {
   setField('updated_at', now);
   values.push(jobId);
 
-  await query(`UPDATE look_replicator_jobs SET ${fields.join(', ')} WHERE job_id = $${i}`, values);
+  const updateRes = await query(`UPDATE look_replicator_jobs SET ${fields.join(', ')} WHERE job_id = $${i}`, values);
+
+  if (updateRes?.rowCount === 0 && existing) {
+    // Insert the job first, then retry the update to persist progress/result.
+    try {
+      await query(
+        `
+        INSERT INTO look_replicator_jobs (
+          job_id, share_id, status, progress, market, locale,
+          reference_image_url, selfie_image_url, undertone,
+          result_json, error_code, error_message,
+          created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9,
+          $10, $11, $12,
+          $13, $14
+        )
+        ON CONFLICT (job_id) DO NOTHING
+        `,
+        [
+          jobId,
+          existing.shareId || jobId,
+          existing.status || 'pending',
+          typeof existing.progress === 'number' ? existing.progress : null,
+          existing.market,
+          existing.locale,
+          existing.referenceImageUrl || null,
+          existing.selfieImageUrl || null,
+          existing.undertone || null,
+          existing.result || null,
+          null,
+          existing.error || null,
+          existing.createdAt || now,
+          now,
+        ],
+      );
+      await query(`UPDATE look_replicator_jobs SET ${fields.join(', ')} WHERE job_id = $${i}`, values);
+    } catch {
+      // ignore (fail-closed to existing behavior)
+    }
+  }
   return getJob(jobId);
 }
 
