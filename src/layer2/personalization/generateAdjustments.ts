@@ -59,6 +59,8 @@ export async function generateAdjustments(input: GenerateAdjustmentsInput): Prom
     similarityReport,
     lookSpec,
     preferenceMode: preferenceMode as any,
+    ...(input.enableExtendedAreas === true ? { enableExtendedAreas: true } : {}),
+    ...(input.enableSelfieLookSpec === true ? { enableSelfieLookSpec: true } : {}),
   });
 
   const kb = loadTechniqueKBUS();

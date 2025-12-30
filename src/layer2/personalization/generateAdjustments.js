@@ -29,6 +29,8 @@ async function generateAdjustments(input) {
     similarityReport,
     lookSpec,
     preferenceMode,
+    ...(input.enableExtendedAreas === true ? { enableExtendedAreas: true } : {}),
+    ...(input.enableSelfieLookSpec === true ? { enableSelfieLookSpec: true } : {}),
   });
 
   const kb = loadTechniqueKB(input.market);
