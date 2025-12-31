@@ -11,6 +11,16 @@ Task:
 - Preserve the identity and facial structure of SELFIE_IMAGE.
 - Keep the output realistic and wearable.
 - Keep background/lighting similar to SELFIE_IMAGE when possible.
+- Do NOT return the input SELFIE_IMAGE unchanged; ensure makeup changes are visibly noticeable when compared side-by-side.
+
+Priority (must match TARGET_IMAGE):
+1) Base makeup (底妆): undertone + brightness, foundation finish (matte/satin/dewy), coverage, and skin texture impression.
+2) Eye makeup (眼妆): eyeshadow palette (2–3 tones), saturation, warmth/coolness, eyeliner angle/thickness/tail length, and overall eye depth.
+3) Lip color (口红): shade replication: hue family (nude/rose/coral/red/berry), depth (lighter/deeper), saturation, brightness, and finish (matte/velvet/glossy).
+
+Quality bar:
+- The output must not be identical to SELFIE_IMAGE. If unsure, bias slightly stronger on lips/eyes/base while staying wearable.
+- Avoid artifacts (face warping, extra facial features, smeared textures).
 
 You will receive images in this order, each preceded by a label:
 - TARGET_IMAGE (style reference)
@@ -59,4 +69,3 @@ async function runTryOnGenerateImageOpenAICompat({
 module.exports = {
   runTryOnGenerateImageOpenAICompat,
 };
-
