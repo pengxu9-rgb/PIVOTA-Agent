@@ -13,6 +13,8 @@ Task:
 - Preserve the identity and facial structure of SELFIE_IMAGE.
 - Keep the output realistic and wearable.
 - Keep background/lighting similar to SELFIE_IMAGE when possible.
+- Do NOT return the input SELFIE_IMAGE unchanged; ensure makeup changes are visibly noticeable when compared side-by-side.
+- If the makeup style is subtle, still adjust at least lips/eyes/base so the difference is perceptible.
 
 You will receive images in this order, each preceded by a label:
 - TARGET_IMAGE (style reference)
@@ -67,4 +69,3 @@ async function runTryOnGenerateImageGemini({
 module.exports = {
   runTryOnGenerateImageGemini,
 };
-

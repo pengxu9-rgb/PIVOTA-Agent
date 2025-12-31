@@ -140,7 +140,7 @@ async function imagePathToDataUrl(imagePath, { maxEdge, quality }) {
   }
 }
 
-async function postChatCompletions({ model, messages, timeoutMs }) {
+async function postChatCompletions({ model, messages, timeoutMs, temperature, maxTokens }) {
   const { baseUrl, apiKey } = openaiCompatConfig();
   if (!baseUrl) return { ok: false, error: { code: "CONFIG_MISSING", message: "Missing OPENAI_BASE_URL (or LLM_BASE_URL)" } };
   if (!apiKey) return { ok: false, error: { code: "CONFIG_MISSING", message: "Missing OPENAI_API_KEY (or LLM_API_KEY)" } };
@@ -160,7 +160,12 @@ async function postChatCompletions({ model, messages, timeoutMs }) {
   let last = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const resp = await client.post("/v1/chat/completions", { model, messages, temperature: 0.2, max_tokens: 1800 });
+      const resp = await client.post("/v1/chat/completions", {
+        model,
+        messages,
+        temperature: typeof temperature === "number" ? temperature : 0.2,
+        max_tokens: typeof maxTokens === "number" ? maxTokens : 1800,
+      });
       if (resp.status >= 200 && resp.status < 300) return { ok: true, resp };
 
       const apiMessage =
@@ -221,6 +226,8 @@ async function generateMultiImageJsonFromOpenAICompat({ promptText, images, sche
       { role: "system", content: "You are a strict JSON generator. Output JSON only. No markdown, no extra text." },
       { role: "user", content: parts },
     ],
+    temperature: 0,
+    maxTokens: 1800,
   });
   if (!out.ok) return { ok: false, error: out.error, meta };
 
@@ -273,6 +280,8 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
       { role: "user", content: parts },
     ],
     timeoutMs: parseEnvInt(process.env.LLM_TIMEOUT_MS, 45_000),
+    temperature: 0.2,
+    maxTokens: 1800,
   });
   if (!out.ok) return { ok: false, error: out.error, meta };
 

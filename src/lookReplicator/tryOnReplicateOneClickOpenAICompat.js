@@ -1,5 +1,6 @@
-const { TryOnReplicateOneClickV0Schema } = require("./tryOnReplicateOneClickGemini");
+const { normalizeOneClickResult } = require("./tryOnReplicateOneClickGemini");
 const { generateMultiImageJsonFromOpenAICompat } = require("./openaiCompatMultiModal");
+const { z } = require("zod");
 
 function buildPrompt({ userRequest, contextJson }) {
   const reqText = userRequest ? String(userRequest).trim() : "";
@@ -54,15 +55,27 @@ async function runTryOnReplicateOneClickOpenAICompat({
     ...(currentRenderImagePath ? [{ label: "CURRENT_RENDER", imagePath: currentRenderImagePath }] : []),
   ];
 
-  return generateMultiImageJsonFromOpenAICompat({
+  const out = await generateMultiImageJsonFromOpenAICompat({
     promptText: prompt,
     images,
-    schema: TryOnReplicateOneClickV0Schema,
+    schema: z.any(),
     model,
   });
+  if (!out?.ok) return out;
+  try {
+    return { ok: true, value: normalizeOneClickResult(out.value), meta: out.meta };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err || "");
+    return {
+      ok: false,
+      error: { code: "SCHEMA_INVALID", message: "Model JSON did not match expected schema" },
+      meta: out.meta,
+      raw: JSON.stringify(out.value).slice(0, 2000),
+      details: { message: msg.slice(0, 220) },
+    };
+  }
 }
 
 module.exports = {
   runTryOnReplicateOneClickOpenAICompat,
 };
-

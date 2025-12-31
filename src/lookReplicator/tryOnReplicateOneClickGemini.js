@@ -68,7 +68,8 @@ const EditsSchema = z
     blush: BlushEditsSchema,
     lips: LipsEditsSchema,
   })
-  .strict();
+  .partial()
+  .default({});
 
 const QuickChipSchema = z
   .object({
@@ -112,7 +113,112 @@ const TryOnReplicateOneClickV0Schema = z
     shopping_intent: ShoppingIntentSchema,
     assistant_message: z.string().min(1),
   })
-  .strict();
+  .passthrough();
+
+const AltOneClickSchema = z
+  .object({
+    overall_feedback: z.string().optional(),
+    top_mismatches: z.array(z.unknown()).optional(),
+    visual_suggestions: z.record(z.unknown()).optional(),
+    shopping_recommendations: z.unknown().optional(),
+    overall_similarity_score: z.number().min(0).max(100).optional(),
+    similarity_score: z.number().min(0).max(100).optional(),
+  })
+  .passthrough();
+
+function normalizeArea(v) {
+  const s = String(v || "").trim().toLowerCase();
+  if (s === "brows") return "brow";
+  if (s === "eyes") return "eye";
+  if (s === "lips") return "lip";
+  if (s === "foundation") return "base";
+  if (s === "prep") return "prep";
+  if (s === "base") return "base";
+  if (s === "contour") return "contour";
+  if (s === "brow") return "brow";
+  if (s === "eye") return "eye";
+  if (s === "blush") return "blush";
+  if (s === "lip") return "lip";
+  return null;
+}
+
+function normalizeImpact(v) {
+  const s = String(v || "").trim().toLowerCase();
+  if (s === "low" || s === "mid" || s === "high") return s;
+  return "mid";
+}
+
+function coerceTopMismatches(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const it of list) {
+    const area = normalizeArea(it?.area || it?.impactArea || it?.category || it?.slot);
+    const issue = String(it?.issue || it?.reason || it?.message || it?.text || "").trim();
+    if (!area || !issue) continue;
+    out.push({ area, issue, impact: normalizeImpact(it?.impact || it?.severity) });
+  }
+  return out;
+}
+
+function buildCanonicalFromAlt(alt) {
+  const score =
+    (typeof alt?.overall_similarity_score === "number" && Number.isFinite(alt.overall_similarity_score) ? alt.overall_similarity_score : null) ??
+    (typeof alt?.similarity_score === "number" && Number.isFinite(alt.similarity_score) ? alt.similarity_score : null) ??
+    60;
+
+  const top_mismatches = coerceTopMismatches(alt?.top_mismatches);
+  const assistant_message = String(alt?.overall_feedback || "").trim() || "已生成微调建议";
+
+  const vs = alt?.visual_suggestions;
+  const edits =
+    (vs && typeof vs === "object" && ("edits" in vs) ? vs.edits : null) ??
+    (vs && typeof vs === "object" ? vs : null) ??
+    {};
+
+  return {
+    summary: { overall_similarity_score: Math.max(0, Math.min(100, Number(score) || 0)), top_mismatches },
+    edits,
+    quick_adjust_chips: [],
+    shopping_intent: alt?.shopping_recommendations ?? undefined,
+    assistant_message,
+  };
+}
+
+function normalizeOneClickResult(raw) {
+  // 1) Canonical shape
+  const direct = TryOnReplicateOneClickV0Schema.safeParse(raw);
+  if (direct.success) {
+    const v = direct.data;
+    const summary = v.summary || { overall_similarity_score: 60, top_mismatches: [] };
+    const edits = v.edits || {};
+    return TryOnReplicateOneClickV0Schema.parse({
+      summary: {
+        overall_similarity_score: Math.max(0, Math.min(100, Number(summary.overall_similarity_score) || 0)),
+        top_mismatches: Array.isArray(summary.top_mismatches) ? summary.top_mismatches : [],
+      },
+      edits,
+      quick_adjust_chips: Array.isArray(v.quick_adjust_chips) ? v.quick_adjust_chips : [],
+      shopping_intent: v.shopping_intent,
+      assistant_message: String(v.assistant_message || "").trim() || "已生成微调建议",
+    });
+  }
+
+  // 2) Alt schema -> canonical transform
+  const altParsed = AltOneClickSchema.safeParse(raw);
+  if (altParsed.success) {
+    const candidate = buildCanonicalFromAlt(altParsed.data);
+    return TryOnReplicateOneClickV0Schema.parse(candidate);
+  }
+
+  // 3) Give a safe empty canonical response
+  return TryOnReplicateOneClickV0Schema.parse({
+    summary: { overall_similarity_score: 0, top_mismatches: [{ area: "base", issue: "模型输出格式不符合预期，建议稍后重试", impact: "high" }] },
+    edits: {},
+    quick_adjust_chips: [],
+    shopping_intent: undefined,
+    assistant_message: "系统提示：微调结果解析失败，请稍后重试。",
+  });
+}
 
 function buildPrompt({ userRequest, contextJson }) {
   const reqText = userRequest ? String(userRequest).trim() : "";
@@ -201,12 +307,21 @@ async function runTryOnReplicateOneClickGemini({
   const out = await generateMultiImageJsonFromGemini({
     promptText: prompt,
     images,
-    schema: TryOnReplicateOneClickV0Schema,
+    schema: z.any(),
   });
-  return out;
+  if (!out?.ok) return out;
+
+  try {
+    const normalized = normalizeOneClickResult(out.value);
+    return { ok: true, value: normalized, meta: out.meta };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err || "");
+    return { ok: false, error: { code: "SCHEMA_INVALID", message: "Model JSON did not match expected schema" }, meta: out.meta, raw: JSON.stringify(out.value).slice(0, 2000), details: { message: msg.slice(0, 220) } };
+  }
 }
 
 module.exports = {
   TryOnReplicateOneClickV0Schema,
   runTryOnReplicateOneClickGemini,
+  normalizeOneClickResult,
 };

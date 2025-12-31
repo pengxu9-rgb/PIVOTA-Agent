@@ -438,6 +438,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
           message: outResolved?.error?.message || "One-click replicate failed",
           meta: outResolved?.meta || null,
           ...(outResolved?.details ? { details: outResolved.details } : {}),
+          ...(outResolved?.raw ? { raw: outResolved.raw } : {}),
         });
       }
 

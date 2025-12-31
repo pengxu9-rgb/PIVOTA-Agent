@@ -62,7 +62,11 @@ async function withTimeout(promise, timeoutMs) {
  */
 async function generateMultiImageJsonFromGemini({ promptText, images, schema }) {
   const apiKey = parseEnvString(process.env.GEMINI_API_KEY);
-  const model = parseEnvString(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
+  // One-click JSON should use a text-capable model even if GEMINI_MODEL is set to an image model for try-on.
+  const model =
+    parseEnvString(process.env.GEMINI_ONE_CLICK_MODEL) ||
+    parseEnvString(process.env.GEMINI_MODEL) ||
+    "gemini-2.5-flash";
   const timeoutMs = Math.max(1, parseEnvInt(process.env.GEMINI_TIMEOUT_MS, 25_000));
   const debugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
   const imgMaxEdge = Math.max(64, parseEnvInt(process.env.GEMINI_IMAGE_MAX_EDGE, 1536));
