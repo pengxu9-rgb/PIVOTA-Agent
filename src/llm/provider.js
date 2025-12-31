@@ -76,19 +76,39 @@ function extractJsonObject(text) {
   const raw = String(text || '').trim();
   if (!raw) throw new LlmError('LLM_PARSE_FAILED', 'Empty model output');
 
+  const cleaned = raw
+    // common wrappers
+    .replace(/^\uFEFF/, '')
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+
   try {
-    return JSON.parse(raw);
+    return JSON.parse(cleaned);
   } catch {
     // continue
   }
 
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) {
     throw new LlmError('LLM_PARSE_FAILED', 'Model output is not JSON');
   }
 
-  const sliced = raw.slice(start, end + 1);
+  let sliced = cleaned.slice(start, end + 1);
+
+  // Best-effort repair for common "almost JSON" issues.
+  // - trailing commas
+  // - smart quotes
+  sliced = sliced
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*}/g, '}')
+    .replace(/,\s*]/g, ']');
+
+  // Some models accidentally wrap JSON in markdown fences inside the slice.
+  sliced = sliced.replace(/```(?:json)?/gi, '').trim();
+
   try {
     return JSON.parse(sliced);
   } catch (err) {
@@ -268,6 +288,7 @@ function createProviderFromEnv(purpose = 'generic') {
               model,
               temperature: 0.2,
               max_tokens: 900,
+              response_format: { type: 'json_object' },
               messages: [
                 {
                   role: 'system',
@@ -292,6 +313,7 @@ function createProviderFromEnv(purpose = 'generic') {
               model,
               temperature: 0.2,
               max_tokens: 900,
+              response_format: { type: 'json_object' },
               messages: [
                 {
                   role: 'system',
