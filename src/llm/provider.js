@@ -33,6 +33,21 @@ function geminiApiKey() {
   return getEnv('GEMINI_API_KEY') || getEnv('PIVOTA_GEMINI_API_KEY') || getEnv('GOOGLE_API_KEY');
 }
 
+function openaiApiKey() {
+  return getEnv('OPENAI_API_KEY') || getEnv('LLM_API_KEY');
+}
+
+function openaiBaseUrl() {
+  return getEnv('OPENAI_BASE_URL') || getEnv('LLM_BASE_URL') || 'https://api.openai.com';
+}
+
+function normalizeOpenAiBaseUrl(raw) {
+  const base = String(raw || '').trim() || 'https://api.openai.com';
+  const noTrailingSlash = base.replace(/\/+$/, '');
+  // Some proxies ask users to set ".../v1" as the base URL. Our client always calls "/v1/chat/completions".
+  return noTrailingSlash.replace(/\/v1$/i, '');
+}
+
 function geminiBaseUrl() {
   const raw = String(
     getEnv('GEMINI_BASE_URL') ||
@@ -196,12 +211,12 @@ function createProviderFromEnv(purpose = 'generic') {
 
   const inferredPrimary =
     purpose === 'layer2_lookspec'
-      ? hasEnv('OPENAI_API_KEY')
+      ? Boolean(openaiApiKey())
         ? 'openai'
         : geminiApiKey()
           ? 'gemini'
           : 'gemini'
-      : hasEnv('OPENAI_API_KEY')
+      : Boolean(openaiApiKey())
         ? 'openai'
         : geminiApiKey()
           ? 'gemini'
@@ -215,7 +230,15 @@ function createProviderFromEnv(purpose = 'generic') {
 
   const inferredFallback =
     explicitFallback ||
-    (primary === 'gemini' && hasEnv('OPENAI_API_KEY') ? 'openai' : primary === 'openai' && geminiApiKey() ? 'gemini' : '');
+    (purpose === 'layer2_lookspec'
+      ? ''
+      : primary === 'gemini'
+        ? hasEnv('OPENAI_API_KEY')
+          ? 'openai'
+          : ''
+        : primary === 'openai' && geminiApiKey()
+          ? 'gemini'
+          : '');
 
   const fallback = String(inferredFallback || '').toLowerCase();
 
@@ -224,8 +247,8 @@ function createProviderFromEnv(purpose = 'generic') {
 
   const run = (provider) => {
     if (provider === 'openai') {
-      const apiKey = getEnv('OPENAI_API_KEY');
-      const baseUrl = getEnv('OPENAI_BASE_URL') || 'https://api.openai.com';
+      const apiKey = openaiApiKey();
+      const baseUrl = normalizeOpenAiBaseUrl(openaiBaseUrl());
       const model = getEnv('PIVOTA_LAYER2_MODEL_OPENAI') || getEnv('PIVOTA_LAYER2_MODEL') || 'gpt-4o-mini';
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: OPENAI_API_KEY');
 
@@ -234,6 +257,14 @@ function createProviderFromEnv(purpose = 'generic') {
         timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       });
+
+      const disableResponseFormat =
+        String(getEnv('OPENAI_DISABLE_RESPONSE_FORMAT') || getEnv('PIVOTA_OPENAI_DISABLE_RESPONSE_FORMAT') || '')
+          .trim()
+          .toLowerCase() === 'true' ||
+        String(getEnv('OPENAI_DISABLE_RESPONSE_FORMAT') || getEnv('PIVOTA_OPENAI_DISABLE_RESPONSE_FORMAT') || '')
+          .trim()
+          .toLowerCase() === '1';
 
       async function postWithRetry(body, schema) {
         const maxAttempts = llmMaxAttempts();
@@ -260,7 +291,14 @@ function createProviderFromEnv(purpose = 'generic') {
               if (err.code === 'ECONNABORTED') {
                 lastErr = new LlmError('LLM_TIMEOUT', 'LLM request timed out', err);
               } else {
-                const msg = status ? `LLM request failed (HTTP ${status})` : 'LLM request failed';
+                const apiMessage =
+                  typeof err.response?.data?.error?.message === 'string'
+                    ? String(err.response?.data?.error?.message).trim()
+                    : typeof err.response?.data?.message === 'string'
+                      ? String(err.response?.data?.message).trim()
+                      : '';
+                const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : '';
+                const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
                 lastErr = new LlmError('LLM_REQUEST_FAILED', msg, err);
               }
             } else if (err instanceof LlmError) {
@@ -281,6 +319,8 @@ function createProviderFromEnv(purpose = 'generic') {
       }
 
       return {
+        __meta: { provider: 'openai', model, baseUrl },
+
         async analyzeImageToJson({ prompt, image, schema }) {
           const imageUrl = image.kind === 'url' ? image.url : toDataUrl(image.bytes, image.contentType);
           return postWithRetry(
@@ -288,7 +328,7 @@ function createProviderFromEnv(purpose = 'generic') {
               model,
               temperature: 0.2,
               max_tokens: 900,
-              response_format: { type: 'json_object' },
+              ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
               messages: [
                 {
                   role: 'system',
@@ -313,7 +353,7 @@ function createProviderFromEnv(purpose = 'generic') {
               model,
               temperature: 0.2,
               max_tokens: 900,
-              response_format: { type: 'json_object' },
+              ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
               messages: [
                 {
                   role: 'system',
@@ -421,6 +461,8 @@ function createProviderFromEnv(purpose = 'generic') {
       }
 
       return {
+        __meta: { provider: 'gemini', model: candidateModels[0] || requestedModel || 'unknown', baseUrl: baseURL },
+
         async analyzeImageToJson({ prompt, image, schema }) {
           const { mimeType, dataB64 } = await resolveImageForGemini(image);
           return postGeminiWithRetry(
@@ -477,6 +519,8 @@ function createProviderFromEnv(purpose = 'generic') {
   }
 
   return {
+    __meta: primaryProvider?.__meta,
+
     async analyzeImageToJson(input) {
       try {
         return await primaryProvider.analyzeImageToJson(input);

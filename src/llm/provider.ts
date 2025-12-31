@@ -52,6 +52,26 @@ function geminiApiKey(): string | undefined {
   return getEnv("GEMINI_API_KEY") || getEnv("PIVOTA_GEMINI_API_KEY") || getEnv("GOOGLE_API_KEY");
 }
 
+function openaiApiKey(): string | undefined {
+  return getEnv("OPENAI_API_KEY") || getEnv("LLM_API_KEY");
+}
+
+function openaiBaseUrl(): string {
+  return getEnv("OPENAI_BASE_URL") || getEnv("LLM_BASE_URL") || "https://api.openai.com";
+}
+
+function normalizeOpenAiBaseUrl(raw: string): string {
+  const base = String(raw || "").trim() || "https://api.openai.com";
+  const noTrailingSlash = base.replace(/\/+$/, "");
+  // Some proxies ask users to set ".../v1" as the base URL. Our client always calls "/v1/chat/completions".
+  return noTrailingSlash.replace(/\/v1$/i, "");
+}
+
+function parseEnvBool(v: unknown): boolean {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
 function geminiBaseUrl(): string {
   const raw = String(
     getEnv("GEMINI_BASE_URL") ||
@@ -100,20 +120,32 @@ function extractJsonObject(text: string): unknown {
   const raw = String(text || "").trim();
   if (!raw) throw new LlmError("LLM_PARSE_FAILED", "Empty model output");
 
-  // Fast path: valid JSON already
+  const cleaned = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
   try {
-    return JSON.parse(raw);
+    return JSON.parse(cleaned);
   } catch {
     // continue
   }
 
-  // Common failure mode: code fences or extra prose. Extract the first {...} block.
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
     throw new LlmError("LLM_PARSE_FAILED", "Model output is not JSON");
   }
-  const sliced = raw.slice(start, end + 1);
+
+  let sliced = cleaned.slice(start, end + 1);
+  sliced = sliced
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*]/g, "]");
+
+  sliced = sliced.replace(/```(?:json)?/gi, "").trim();
   try {
     return JSON.parse(sliced);
   } catch (err) {
@@ -206,7 +238,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
   }
 
   const client = axios.create({
-    baseURL: baseUrl.replace(/\/$/, ""),
+    baseURL: normalizeOpenAiBaseUrl(baseUrl).replace(/\/$/, ""),
     timeout: Number(getEnv("LLM_TIMEOUT_MS") || "20000"),
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -214,7 +246,13 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
     },
   });
 
+  const disableResponseFormat = parseEnvBool(
+    getEnv("OPENAI_DISABLE_RESPONSE_FORMAT") || getEnv("PIVOTA_OPENAI_DISABLE_RESPONSE_FORMAT")
+  );
+
   return {
+    __meta: { provider: "openai", model, baseUrl: normalizeOpenAiBaseUrl(baseUrl) },
+
     async analyzeImageToJson({ prompt, image, schema }) {
       const imageUrl =
         image.kind === "url" ? image.url : toDataUrl(image.bytes, image.contentType);
@@ -228,6 +266,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
             model,
             temperature: 0.2,
             max_tokens: 900,
+            ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
             messages: [
               {
                 role: "system",
@@ -270,9 +309,14 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
             if (err.code === "ECONNABORTED") {
               lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
             } else {
-              const msg = status
-                ? `LLM request failed (HTTP ${status})`
-                : "LLM request failed";
+              const apiMessage =
+                typeof (err.response?.data as any)?.error?.message === "string"
+                  ? String((err.response?.data as any)?.error?.message).trim()
+                  : typeof (err.response?.data as any)?.message === "string"
+                    ? String((err.response?.data as any)?.message).trim()
+                    : "";
+              const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
+              const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
               lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
             }
           } else {
@@ -300,6 +344,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
             model,
             temperature: 0.2,
             max_tokens: 900,
+            ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
             messages: [
               {
                 role: "system",
@@ -330,7 +375,14 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
             if (err.code === "ECONNABORTED") {
               lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
             } else {
-              const msg = status ? `LLM request failed (HTTP ${status})` : "LLM request failed";
+              const apiMessage =
+                typeof (err.response?.data as any)?.error?.message === "string"
+                  ? String((err.response?.data as any)?.error?.message).trim()
+                  : typeof (err.response?.data as any)?.message === "string"
+                    ? String((err.response?.data as any)?.message).trim()
+                    : "";
+              const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
+              const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
               lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
             }
           } else {
@@ -357,12 +409,12 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
 
   const inferredPrimary =
     purpose === "layer2_lookspec"
-      ? hasEnv("OPENAI_API_KEY")
+      ? Boolean(openaiApiKey())
         ? "openai"
         : geminiApiKey()
           ? "gemini"
           : "gemini"
-      : hasEnv("OPENAI_API_KEY")
+      : Boolean(openaiApiKey())
         ? "openai"
         : geminiApiKey()
           ? "gemini"
@@ -376,11 +428,15 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
 
   const inferredFallback =
     explicitFallback ||
-    (primary === "gemini" && hasEnv("OPENAI_API_KEY")
-      ? "openai"
-      : primary === "openai" && geminiApiKey()
-        ? "gemini"
-        : "");
+    (purpose === "layer2_lookspec"
+      ? ""
+      : primary === "gemini"
+        ? Boolean(openaiApiKey())
+          ? "openai"
+          : ""
+        : primary === "openai" && geminiApiKey()
+          ? "gemini"
+          : "");
 
   const fallback = String(inferredFallback || "").toLowerCase();
 
@@ -389,8 +445,8 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
 
   const run = (provider: string): LlmProvider => {
     if (provider === "openai") {
-      const apiKey = getEnv("OPENAI_API_KEY");
-      const baseUrl = getEnv("OPENAI_BASE_URL") || "https://api.openai.com";
+      const apiKey = openaiApiKey();
+      const baseUrl = normalizeOpenAiBaseUrl(openaiBaseUrl());
       const model =
         getEnv("PIVOTA_LAYER2_MODEL_OPENAI") ||
         getEnv("PIVOTA_LAYER2_MODEL") ||
@@ -407,7 +463,13 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
         },
       });
 
+      const disableResponseFormat = parseEnvBool(
+        getEnv("OPENAI_DISABLE_RESPONSE_FORMAT") || getEnv("PIVOTA_OPENAI_DISABLE_RESPONSE_FORMAT")
+      );
+
       return {
+        __meta: { provider: "openai", model, baseUrl },
+
         async analyzeImageToJson({ prompt, image, schema }) {
           const imageUrl = image.kind === "url" ? image.url : toDataUrl(image.bytes, image.contentType);
           const maxAttempts = llmMaxAttempts();
@@ -419,6 +481,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
                 model,
                 temperature: 0.2,
                 max_tokens: 900,
+                ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
                 messages: [
                   {
                     role: "system",
@@ -454,7 +517,14 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
                 if (err.code === "ECONNABORTED") {
                   lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
                 } else {
-                  const msg = status ? `LLM request failed (HTTP ${status})` : "LLM request failed";
+                  const apiMessage =
+                    typeof (err.response?.data as any)?.error?.message === "string"
+                      ? String((err.response?.data as any)?.error?.message).trim()
+                      : typeof (err.response?.data as any)?.message === "string"
+                        ? String((err.response?.data as any)?.message).trim()
+                        : "";
+                  const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
+                  const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
                   lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
                 }
               } else {
@@ -482,6 +552,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
                 model,
                 temperature: 0.2,
                 max_tokens: 900,
+                ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
                 messages: [
                   {
                     role: "system",
@@ -510,7 +581,14 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
                 if (err.code === "ECONNABORTED") {
                   lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
                 } else {
-                  const msg = status ? `LLM request failed (HTTP ${status})` : "LLM request failed";
+                  const apiMessage =
+                    typeof (err.response?.data as any)?.error?.message === "string"
+                      ? String((err.response?.data as any)?.error?.message).trim()
+                      : typeof (err.response?.data as any)?.message === "string"
+                        ? String((err.response?.data as any)?.message).trim()
+                        : "";
+                  const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
+                  const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
                   lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
                 }
               } else {
@@ -637,6 +715,8 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
       }
 
       return {
+        __meta: { provider: "gemini", model: candidateModels[0] || requestedModel || "unknown", baseUrl: baseURL },
+
         async analyzeImageToJson({ prompt, image, schema }) {
           const { mimeType, dataB64 } = await resolveImageForGemini(image);
           return postGeminiWithRetry(
@@ -699,6 +779,8 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
   }
 
   return {
+    __meta: (primaryProvider as any)?.__meta,
+
     async analyzeImageToJson(input) {
       try {
         return await primaryProvider.analyzeImageToJson(input);

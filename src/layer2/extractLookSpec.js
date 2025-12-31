@@ -71,13 +71,23 @@ function unknownLookSpec(market, locale, warnings) {
   });
 }
 
-function toWarning(err) {
+function providerMetaSuffix(provider) {
+  if (!provider || typeof provider !== 'object') return '';
+  const meta = provider.__meta;
+  if (!meta || typeof meta !== 'object') return '';
+  const p = String(meta.provider || '').trim();
+  const m = String(meta.model || '').trim();
+  if (!p && !m) return '';
+  return ` [provider=${p || 'unknown'}${m ? ` model=${m}` : ''}]`;
+}
+
+function toWarning(err, provider) {
   if (err instanceof LlmError) {
     const msg = String(err.message || '').trim();
     const suffix = msg ? `: ${msg.slice(0, 220)}` : '';
-    return [`LookSpec extraction failed (${err.code})${suffix}`];
+    return [`LookSpec extraction failed (${err.code})${suffix}${providerMetaSuffix(provider)}`];
   }
-  return ['LookSpec extraction failed (UNEXPECTED_ERROR).'];
+  return [`LookSpec extraction failed (UNEXPECTED_ERROR).${providerMetaSuffix(provider)}`];
 }
 
 async function extractLookSpec(input) {
@@ -86,9 +96,9 @@ async function extractLookSpec(input) {
 
   const prompt = input?.promptPack?.lookSpecExtract || loadPrompt();
   const versions = engineVersionFor(market);
+  const provider = input.provider ?? createProviderFromEnv('layer2_lookspec');
 
   try {
-    const provider = input.provider ?? createProviderFromEnv('layer2_lookspec');
     const core = await provider.analyzeImageToJson({
       prompt,
       image: referenceImage,
@@ -108,7 +118,7 @@ async function extractLookSpec(input) {
       warnings: core.warnings,
     });
   } catch (err) {
-    return unknownLookSpec(market, String(locale || 'en').trim() || 'en', toWarning(err));
+    return unknownLookSpec(market, String(locale || 'en').trim() || 'en', toWarning(err, provider));
   }
 }
 

@@ -97,6 +97,15 @@ export async function extractLookSpec(input: ExtractLookSpecInput): Promise<Look
   const provider = input.provider ?? createProviderFromEnv("layer2_lookspec");
   const prompt = loadPrompt();
 
+  const providerMetaSuffix = (): string => {
+    const meta = (provider as any)?.__meta;
+    if (!meta || typeof meta !== "object") return "";
+    const p = String(meta.provider || "").trim();
+    const m = String(meta.model || "").trim();
+    if (!p && !m) return "";
+    return ` [provider=${p || "unknown"}${m ? ` model=${m}` : ""}]`;
+  };
+
   try {
     const core: LookSpecExtractCore = await provider.analyzeImageToJson({
       prompt,
@@ -117,6 +126,7 @@ export async function extractLookSpec(input: ExtractLookSpecInput): Promise<Look
       warnings: core.warnings,
     });
   } catch (err) {
-    return unknownLookSpec(locale, toWarning(err));
+    const warnings = toWarning(err).map((w) => `${w}${providerMetaSuffix()}`);
+    return unknownLookSpec(locale, warnings);
   }
 }
