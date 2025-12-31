@@ -648,7 +648,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
       return res.json({
         jobId,
-        tryOnImageUrl: `/api/look-replicate/assets/${encodeURIComponent(jobId)}/tryon`,
+        tryOnImageUrl: tryOnPublicUrl || `/api/look-replicate/assets/${encodeURIComponent(jobId)}/tryon`,
         meta: out.meta,
       });
     } finally {
