@@ -7,8 +7,10 @@ const { parseMultipart, rmrf } = require('./multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
 const { runTryOnReplicateOneClickGemini } = require("./tryOnReplicateOneClickGemini");
 const { randomUUID } = require('crypto');
+const axios = require('axios');
 const { upsertOutcomeSampleFromJobCompletion, getOutcomeSample } = require('../telemetry/outcomeStore');
 const { normalizeMarket, parseMarketFromRequest, requireMarketEnabled } = require('../markets/market');
+const { InvokeRequestSchema } = require('../schema');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -175,6 +177,18 @@ function localizeSkeletonsForLocale({ rawSkeletons, market, locale }) {
 
   const rendered = renderSkeletonFromKB(safe, kb, { market, locale });
   return Array.isArray(rendered?.allSkeletons) ? rendered.allSkeletons : rendered.skeletons;
+}
+
+function inferMarketFromInvokeRequest(req) {
+  // Prefer explicit market inside InvokeRequest payload (allowed via `.passthrough()` in InvokeRequestSchema).
+  return (
+    req?.body?.payload?.market ||
+    req?.body?.market ||
+    req?.query?.market ||
+    req?.header?.('X-Market') ||
+    req?.header?.('x-market') ||
+    'US'
+  );
 }
 
 function mountLookReplicatorRoutes(app, { logger }) {
@@ -623,6 +637,51 @@ function mountLookReplicatorRoutes(app, { logger }) {
       });
     } catch (err) {
       return res.status(500).json({ error: 'SHARE_GET_FAILED' });
+    }
+  });
+
+  // Look Replicator checkout wrapper (US-only).
+  // We reuse the existing /agent/shop/v1/invoke handler instead of re-implementing commerce infra.
+  app.post('/api/look-replicate/commerce/invoke', async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+	    let market = 'US';
+	    try {
+	      market = parseMarketFromRequest(inferMarketFromInvokeRequest(req), 'US');
+	    } catch (err) {
+	      const status = err?.httpStatus || 400;
+	      return res.status(status).json({ error: err?.code || 'INVALID_MARKET', message: err?.message });
+	    }
+
+    // US-first gating: JP can exist as an experiment, but purchasing is disabled for now.
+    if (market !== 'US') {
+      return res.status(403).json({ error: 'PURCHASE_DISABLED', message: 'Purchases are disabled for this market' });
+    }
+
+    const parsed = InvokeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'INVALID_REQUEST', details: parsed.error.format() });
+    }
+
+    const { operation } = parsed.data;
+    const allowedOperations = new Set(['preview_quote', 'create_order', 'submit_payment']);
+    if (!allowedOperations.has(operation)) {
+      return res.status(400).json({ error: 'UNSUPPORTED_OPERATION', operation });
+    }
+
+    const localPort = Number(req?.socket?.localPort) || Number(process.env.PORT) || 3000;
+    const upstreamUrl = `http://127.0.0.1:${localPort}/agent/shop/v1/invoke`;
+    try {
+      const upstream = await axios.post(upstreamUrl, parsed.data, {
+        timeout: 20_000,
+        headers: { 'Content-Type': 'application/json' },
+        validateStatus: () => true,
+      });
+      return res.status(upstream.status).json(upstream.data);
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), operation }, 'lookReplicator commerce invoke failed');
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to invoke commerce service' });
     }
   });
 }
