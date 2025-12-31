@@ -13,6 +13,12 @@ Task:
 - Keep background/lighting similar to SELFIE_IMAGE when possible.
 - Do NOT return the input SELFIE_IMAGE unchanged; ensure makeup changes are visibly noticeable when compared side-by-side.
 
+Hard constraints (MUST):
+- NEVER copy/paste, collage, or transplant any pixels/parts from TARGET_IMAGE into the output (no face swap, no cut-and-paste).
+- NEVER replace the person in SELFIE_IMAGE with the person in TARGET_IMAGE. Do not change identity.
+- Keep SELFIE_IMAGE pose, hairstyle, clothing, background, and camera perspective consistent. Only change makeup.
+- Do not add extra faces/features, watermarks, text overlays, or obvious artifacts.
+
 Priority (must match TARGET_IMAGE):
 1) Base makeup (底妆): undertone + brightness, foundation finish (matte/satin/dewy), coverage, and skin texture impression.
 2) Eye makeup (眼妆): eyeshadow palette (2–3 tones), saturation, warmth/coolness, eyeliner angle/thickness/tail length, and overall eye depth.
