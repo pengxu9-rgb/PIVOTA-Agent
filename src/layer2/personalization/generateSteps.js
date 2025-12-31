@@ -154,6 +154,15 @@ async function generateSteps(input) {
       2
     );
 
+  const providerMetaSuffix = () => {
+    const meta = provider?.__meta;
+    if (!meta || typeof meta !== 'object') return '';
+    const p = String(meta.provider || '').trim();
+    const m = String(meta.model || '').trim();
+    if (!p && !m) return '';
+    return ` [provider=${p || 'unknown'}${m ? ` model=${m}` : ''}]`;
+  };
+
   try {
     const parsed = await provider.analyzeTextToJson({ prompt, schema: StepsCoreSchema });
     const versions = engineVersionFor(input.market);
@@ -179,9 +188,9 @@ async function generateSteps(input) {
     return { steps, warnings: [...(parsed.warnings || []), ...warnings] };
   } catch (err) {
     if (err instanceof LlmError) {
-      warnings.push(`LLM failed (${err.code}): ${String(err.message || '').slice(0, 220)}`);
+      warnings.push(`LLM failed (steps_generate/${err.code}): ${String(err.message || '').slice(0, 220)}${providerMetaSuffix()}`);
     } else {
-      warnings.push('LLM failed: using fallback steps.');
+      warnings.push(`LLM failed (steps_generate): using fallback steps.${providerMetaSuffix()}`);
     }
     return { steps: fallbackSteps(input.market, locale, adjustments, lowConfidence), warnings };
   }

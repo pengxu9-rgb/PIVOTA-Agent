@@ -267,6 +267,15 @@ async function rephraseAdjustments(input) {
     }
   }
 
+  const providerMetaSuffix = () => {
+    const meta = provider?.__meta;
+    if (!meta || typeof meta !== 'object') return '';
+    const p = String(meta.provider || '').trim();
+    const m = String(meta.model || '').trim();
+    if (!p && !m) return '';
+    return ` [provider=${p || 'unknown'}${m ? ` model=${m}` : ''}]`;
+  };
+
   const promptTemplate = input?.promptPack?.adjustmentsRephrase || loadPromptForMarket(input.market, locale);
   const promptJson = JSON.stringify({ market: input.market, locale, skeletons }, null, 2);
   const prompt2 = `${promptTemplate}\n\n` + `INPUT_JSON:\n` + promptJson;
@@ -282,9 +291,9 @@ async function rephraseAdjustments(input) {
     return { adjustments: fixed, warnings, usedFallback: false };
   } catch (err) {
     if (err instanceof LlmError) {
-      warnings.push(`LLM failed (${err.code}): ${String(err.message || '').slice(0, 220)}`);
+      warnings.push(`LLM failed (adjustments_rephrase/${err.code}): ${String(err.message || '').slice(0, 220)}${providerMetaSuffix()}`);
     } else {
-      warnings.push('LLM failed: using deterministic adjustment renderer.');
+      warnings.push(`LLM failed (adjustments_rephrase): using deterministic adjustment renderer.${providerMetaSuffix()}`);
     }
     return fallback();
   }

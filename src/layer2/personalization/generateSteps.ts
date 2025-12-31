@@ -131,6 +131,15 @@ export async function generateSteps(input: GenerateStepsInput): Promise<Generate
       2
     );
 
+  const providerMetaSuffix = (): string => {
+    const meta = (provider as any)?.__meta;
+    if (!meta || typeof meta !== "object") return "";
+    const p = String(meta.provider || "").trim();
+    const m = String(meta.model || "").trim();
+    if (!p && !m) return "";
+    return ` [provider=${p || "unknown"}${m ? ` model=${m}` : ""}]`;
+  };
+
   try {
     const parsed = await provider.analyzeTextToJson({ prompt, schema: StepsCoreSchema });
     const steps = parsed.steps.map((s, idx) =>
@@ -156,9 +165,9 @@ export async function generateSteps(input: GenerateStepsInput): Promise<Generate
     return { steps, warnings: [...(parsed.warnings || []), ...warnings] };
   } catch (err) {
     if (err instanceof LlmError) {
-      warnings.push(`LLM failed (${err.code}): ${String(err.message || "").slice(0, 220)}`);
+      warnings.push(`LLM failed (steps_generate/${err.code}): ${String(err.message || "").slice(0, 220)}${providerMetaSuffix()}`);
     } else {
-      warnings.push("LLM failed: using fallback steps.");
+      warnings.push(`LLM failed (steps_generate): using fallback steps.${providerMetaSuffix()}`);
     }
     const steps = fallbackSteps(locale, adjustments, lowConfidence);
     return { steps, warnings };

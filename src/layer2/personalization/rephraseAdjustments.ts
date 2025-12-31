@@ -274,6 +274,15 @@ export async function rephraseAdjustments(input: RephraseAdjustmentsInput): Prom
     }
   }
 
+  const providerMetaSuffix = (): string => {
+    const meta = (provider as any)?.__meta;
+    if (!meta || typeof meta !== "object") return "";
+    const p = String(meta.provider || "").trim();
+    const m = String(meta.model || "").trim();
+    if (!p && !m) return "";
+    return ` [provider=${p || "unknown"}${m ? ` model=${m}` : ""}]`;
+  };
+
   const promptTemplate = input.promptPack?.adjustmentsRephrase || loadPromptForMarket(input.market, locale);
   const prompt =
     `${promptTemplate}\n\n` +
@@ -304,9 +313,9 @@ export async function rephraseAdjustments(input: RephraseAdjustmentsInput): Prom
     return { adjustments: fixed, warnings, usedFallback: false };
   } catch (err) {
     if (err instanceof LlmError) {
-      warnings.push(`LLM failed (${err.code}): ${String(err.message || "").slice(0, 220)}`);
+      warnings.push(`LLM failed (adjustments_rephrase/${err.code}): ${String(err.message || "").slice(0, 220)}${providerMetaSuffix()}`);
     } else {
-      warnings.push("LLM failed: using deterministic adjustment renderer.");
+      warnings.push(`LLM failed (adjustments_rephrase): using deterministic adjustment renderer.${providerMetaSuffix()}`);
     }
     return fallback();
   }
