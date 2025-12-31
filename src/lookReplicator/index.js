@@ -368,6 +368,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
   app.post("/api/look-replicate/one-click", async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
     res.set("Cache-Control", "no-store");
+    if (parseBool(process.env.LOOK_REPLICATOR_DISABLE_ONE_CLICK)) {
+      return res.status(501).json({ error: "ONE_CLICK_DISABLED", message: "One-click replicate is disabled" });
+    }
 
     let parsed;
     try {
@@ -560,6 +563,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
   app.post("/api/look-replicate/tryon", async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
     res.set("Cache-Control", "no-store");
+    if (parseBool(process.env.LOOK_REPLICATOR_DISABLE_TRYON_IMAGE)) {
+      return res.status(501).json({ error: "TRYON_DISABLED", message: "Try-on image generation is disabled" });
+    }
 
     let parsed;
     try {
