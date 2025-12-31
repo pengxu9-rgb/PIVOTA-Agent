@@ -13,6 +13,7 @@ Task:
 - Preserve the identity and facial structure of SELFIE_IMAGE.
 - Keep the output realistic and wearable.
 - Keep background/lighting similar to SELFIE_IMAGE when possible.
+- Do NOT generate a "no-makeup" look. The makeup must be clearly visible and distinct.
 - Do NOT return the input SELFIE_IMAGE unchanged; ensure makeup changes are visibly noticeable when compared side-by-side.
 - If the makeup style is subtle, still adjust at least lips/eyes/base so the difference is clearly perceptible.
 
@@ -27,6 +28,12 @@ Priority (must match TARGET_IMAGE):
    - Make the eyeshadow color difference noticeable (but not costume-like).
 3) Lip color (口红): match the shade as close as possible: hue family (nude/rose/coral/red/berry), depth (lighter/deeper), saturation, and finish (matte/velvet/glossy).
    - Ensure lip color change is clearly visible vs. SELFIE_IMAGE.
+
+High-fidelity instructions (CRITICAL):
+1) Base Makeup (Foundation): Recreate the exact skin finish (matte/dewy/satin) of TARGET_IMAGE. Apply a high-coverage foundation effect that evens out the skin tone clearly while retaining the same person identity and facial structure.
+2) Eye Makeup (Critical): Heavily emphasize the eye makeup. Replicate the eyeshadow color, gradient, and placement. Ensure the eyeliner shape is sharp, dark, and clearly defined. Make the eyeshadow noticeably pigmented (not washed out).
+3) Lip Makeup: Accurately clone the lipstick shade, saturation, and texture/finish (velvet/glossy/satin/matte) from TARGET_IMAGE. The lip contours should be precise and the color must be vibrant.
+4) Overall Vibe: The final result should look like a professional makeup trial. Increase makeup opacity and color saturation to closely match TARGET_IMAGE.
 
 Quality bar:
 - The edited result should look like the same person as SELFIE_IMAGE wearing the makeup from TARGET_IMAGE.

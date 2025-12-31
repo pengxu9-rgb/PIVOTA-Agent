@@ -116,7 +116,9 @@ function extractJsonObject(text) {
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) {
-    throw new LlmError('LLM_PARSE_FAILED', 'Model output is not JSON');
+    const preview = cleaned.replace(/\s+/g, ' ').slice(0, 200);
+    const suffix = preview ? `: ${preview}` : '';
+    throw new LlmError('LLM_PARSE_FAILED', `Model output is not JSON${suffix}`);
   }
 
   let sliced = cleaned.slice(start, end + 1);
