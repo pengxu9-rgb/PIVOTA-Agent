@@ -6,6 +6,7 @@ const { JobQueue } = require('./jobQueue');
 const { parseMultipart, rmrf } = require('./multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
 const { runTryOnReplicateOneClickGemini } = require("./tryOnReplicateOneClickGemini");
+const { runTryOnGenerateImageGemini } = require("./tryOnGenerateImageGemini");
 const { randomUUID } = require('crypto');
 const axios = require('axios');
 const { upsertOutcomeSampleFromJobCompletion, getOutcomeSample } = require('../telemetry/outcomeStore');
@@ -128,7 +129,7 @@ function contentTypeFromExt(ext) {
 
 function copyUploadToAssets({ jobId, kind, file }) {
   if (!file?.path) return null;
-  const safeKind = kind === 'selfie' ? 'selfie' : 'reference';
+  const safeKind = kind === 'selfie' ? 'selfie' : kind === 'tryon' ? 'tryon' : 'reference';
   const ext = extFromContentType(file.contentType);
   const dir = path.join(assetRootDir(), jobId);
   ensureDir(dir);
@@ -139,7 +140,7 @@ function copyUploadToAssets({ jobId, kind, file }) {
 
 function findAssetFilePath({ jobId, kind }) {
   const dir = path.join(assetRootDir(), String(jobId || ''));
-  const safeKind = kind === 'selfie' ? 'selfie' : 'reference';
+  const safeKind = kind === 'selfie' ? 'selfie' : kind === 'tryon' ? 'tryon' : 'reference';
   const candidates = ['jpg', 'png', 'webp', 'bin'].map((ext) => path.join(dir, `${safeKind}.${ext}`));
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
@@ -366,7 +367,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
     const jobId = String(req.params.jobId || '').trim();
     const kind = String(req.params.kind || '').trim().toLowerCase();
     if (!jobId) return res.status(400).json({ error: 'INVALID_REQUEST' });
-    if (kind !== 'reference' && kind !== 'selfie') return res.status(404).json({ error: 'NOT_FOUND' });
+    if (kind !== 'reference' && kind !== 'selfie' && kind !== 'tryon') return res.status(404).json({ error: 'NOT_FOUND' });
 
     const p = findAssetFilePath({ jobId, kind });
     if (!p) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -374,6 +375,89 @@ function mountLookReplicatorRoutes(app, { logger }) {
     const ext = String(path.extname(p).slice(1) || '').toLowerCase();
     res.set('Content-Type', contentTypeFromExt(ext));
     return fs.createReadStream(p).pipe(res);
+  });
+
+  // --- Try-on image generation (Gemini image editing; produces a try-on image asset) ---
+  app.post("/api/look-replicate/tryon", async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set("Cache-Control", "no-store");
+
+    let parsed;
+    try {
+      parsed = await parseMultipart(req, { maxBytes: MAX_UPLOAD_BYTES, allowedContentTypes });
+    } catch (err) {
+      return res.status(err?.statusCode || 400).json({ error: err?.code || "INVALID_MULTIPART", message: err?.message });
+    }
+
+    const { fields, files, tmpDir } = parsed;
+    try {
+      const jobId = String(fields.jobId || "").trim();
+      const userRequest = fields.userRequest ? String(fields.userRequest).trim() : "";
+
+      let contextJson = null;
+      try {
+        contextJson = fields.contextJson ? parseOptionalJsonField(fields.contextJson) : null;
+      } catch {
+        contextJson = null;
+      }
+
+      if (!jobId) {
+        return res.status(400).json({ error: "INVALID_REQUEST", message: "jobId is required" });
+      }
+
+      const targetPath = findAssetFilePath({ jobId, kind: "reference" });
+      const selfiePath = findAssetFilePath({ jobId, kind: "selfie" });
+      if (!targetPath || !selfiePath) {
+        return res.status(400).json({ error: "MISSING_ASSETS", message: "Missing reference/selfie assets for jobId" });
+      }
+
+      const currentRenderFile = files.currentRender || files.afterImage || files.tryonAfter || null;
+      const uploadedRenderPath = currentRenderFile?.path ? String(currentRenderFile.path) : null;
+      const existingTryOnPath = findAssetFilePath({ jobId, kind: "tryon" });
+      const currentRenderPath = uploadedRenderPath || existingTryOnPath || null;
+
+      const out = await runTryOnGenerateImageGemini({
+        targetImagePath: targetPath,
+        selfieImagePath: selfiePath,
+        currentRenderImagePath: currentRenderPath,
+        userRequest,
+        contextJson,
+      });
+
+      if (!out?.ok) {
+        const status = out?.error?.code === "MISSING_API_KEY" ? 501 : 502;
+        return res.status(status).json({
+          error: out?.error?.code || "TRYON_FAILED",
+          message: out?.error?.message || "Try-on image generation failed",
+          meta: out?.meta || null,
+        });
+      }
+
+      const dir = path.join(assetRootDir(), jobId);
+      ensureDir(dir);
+      // Clear older try-on variants (different extensions) to avoid serving stale images.
+      for (const ext of ["jpg", "png", "webp"]) {
+        const p = path.join(dir, `tryon.${ext}`);
+        if (p !== path.join(dir, out.value.filename) && fs.existsSync(p)) {
+          try {
+            fs.unlinkSync(p);
+          } catch {
+            // ignore
+          }
+        }
+      }
+      const outPath = path.join(dir, out.value.filename);
+      const buf = Buffer.from(out.value.data, "base64");
+      fs.writeFileSync(outPath, buf);
+
+      return res.json({
+        jobId,
+        tryOnImageUrl: `/api/look-replicate/assets/${encodeURIComponent(jobId)}/tryon`,
+        meta: out.meta,
+      });
+    } finally {
+      rmrf(tmpDir);
+    }
   });
 
   app.post('/api/look-replicate/jobs', async (req, res) => {

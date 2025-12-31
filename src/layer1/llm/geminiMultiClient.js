@@ -191,6 +191,147 @@ async function generateMultiImageJsonFromGemini({ promptText, images, schema }) 
   }
 }
 
+function extractFirstInlineImage(resp) {
+  const candidates = resp?.candidates || resp?.response?.candidates || [];
+  for (const c of candidates) {
+    const parts = c?.content?.parts || [];
+    for (const p of parts) {
+      const data = p?.inlineData?.data;
+      const mimeType = p?.inlineData?.mimeType;
+      if (typeof data === "string" && data && typeof mimeType === "string" && mimeType.startsWith("image/")) {
+        return { mimeType, data };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Gemini multi-image image generation/edit helper.
+ * - Accepts multiple local image paths; each image is attached with a label.
+ * - Requests IMAGE modality output and returns the first image bytes.
+ */
+async function generateMultiImageImageFromGemini({ promptText, images }) {
+  const apiKey = parseEnvString(process.env.GEMINI_API_KEY);
+  const model =
+    parseEnvString(process.env.GEMINI_TRYON_IMAGE_MODEL) ||
+    parseEnvString(process.env.GEMINI_MODEL) ||
+    "gemini-2.0-flash-preview-image-generation";
+  const timeoutMs = Math.max(1, parseEnvInt(process.env.GEMINI_TIMEOUT_MS, 45_000));
+  const debugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
+  const imgMaxEdge = Math.max(64, parseEnvInt(process.env.GEMINI_IMAGE_MAX_EDGE, 1536));
+  const jpegQuality = Math.min(100, Math.max(1, parseEnvInt(process.env.GEMINI_IMAGE_JPEG_QUALITY, 85)));
+
+  const meta = {
+    model,
+    attempted: false,
+    latencyMs: null,
+    limiter: getGeminiGuards().snapshot().limiter,
+    preprocess: [],
+  };
+
+  if (!apiKey) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY" }, meta };
+
+  let GoogleGenAI = null;
+  try {
+    ({ GoogleGenAI } = require("@google/genai"));
+  } catch {
+    return { ok: false, error: { code: "MISSING_DEP", message: "Missing @google/genai dependency" }, meta };
+  }
+
+  const list = Array.isArray(images) ? images : [];
+  if (list.length < 1) return { ok: false, error: { code: "MISSING_IMAGE", message: "Missing images" }, meta };
+
+  const cleanupFns = [];
+  const parts = [{ text: String(promptText || "") }];
+
+  try {
+    for (const it of list) {
+      const label = String(it?.label || "").trim() || "IMAGE";
+      const imagePath = String(it?.imagePath || "").trim();
+      if (!imagePath) {
+        return { ok: false, error: { code: "MISSING_IMAGE", message: `Missing imagePath for ${label}` }, meta };
+      }
+
+      let effectivePath = imagePath;
+      let usedOriginal = true;
+      let preprocessOk = null;
+      let preprocessErrorCode = null;
+
+      try {
+        const pre = await preprocessImageForGemini({
+          imagePath,
+          maxEdge: imgMaxEdge,
+          quality: jpegQuality,
+          tmpDir: os.tmpdir(),
+        });
+        if (pre?.ok && pre.path) {
+          effectivePath = pre.path;
+          usedOriginal = false;
+          preprocessOk = true;
+          if (typeof pre.cleanup === "function") cleanupFns.push(pre.cleanup);
+        } else if (pre && pre.ok === false) {
+          preprocessOk = false;
+          preprocessErrorCode = String(pre?.error?.code || "PREPROCESS_FAILED");
+        }
+      } catch {
+        preprocessOk = false;
+        preprocessErrorCode = "PREPROCESS_FAILED";
+      }
+
+      meta.preprocess.push({ label, ok: preprocessOk, usedOriginal, errorCode: preprocessErrorCode });
+
+      const bytes = fs.readFileSync(effectivePath);
+      const data = bytes.toString("base64");
+      const mimeType = usedOriginal ? String(it?.mimeType || "").trim() || guessMimeTypeFromPath(imagePath) : "image/jpeg";
+
+      parts.push({ text: `${label}:` });
+      parts.push({ inlineData: { mimeType, data } });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const request = {
+      model,
+      contents: [{ role: "user", parts }],
+      config: { temperature: 0.2, responseModalities: ["IMAGE"] },
+    };
+
+    const t0 = Date.now();
+    const guards = getGeminiGuards();
+    meta.limiter = guards.snapshot().limiter;
+    meta.attempted = true;
+
+    const response = await guards.withGuards("gemini", () => withTimeout(ai.models.generateContent(request), timeoutMs));
+    meta.latencyMs = Date.now() - t0;
+
+    const img = extractFirstInlineImage(response);
+    if (!img) {
+      return { ok: false, error: { code: "EMPTY_IMAGE", message: "Gemini did not return an image" }, meta };
+    }
+
+    return { ok: true, value: img, meta };
+  } catch (err) {
+    if (err instanceof GeminiGuardError) {
+      return { ok: false, error: { code: err.code, message: String(err.message || "").slice(0, 220) }, meta };
+    }
+    if (debugEnabled) {
+      // eslint-disable-next-line no-console
+      console.log(`[gemini_multi_client:image] failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const msg = err instanceof Error ? err.message : String(err || "");
+    return { ok: false, error: { code: "REQUEST_FAILED", message: msg.slice(0, 220) }, meta };
+  } finally {
+    for (const fn of cleanupFns) {
+      try {
+        fn();
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
 module.exports = {
   generateMultiImageJsonFromGemini,
+  generateMultiImageImageFromGemini,
 };
