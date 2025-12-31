@@ -346,8 +346,8 @@ function createProviderFromEnv(purpose = 'generic') {
               return await postWithRetry(
                 {
                   model: m,
-                  temperature: 0.2,
-                  max_tokens: 900,
+                  temperature: 0,
+                  max_tokens: 1500,
                   ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
                   messages: [
                     {
@@ -384,8 +384,8 @@ function createProviderFromEnv(purpose = 'generic') {
               return await postWithRetry(
                 {
                   model: m,
-                  temperature: 0.2,
-                  max_tokens: 900,
+                  temperature: 0,
+                  max_tokens: 2000,
                   ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
                   messages: [
                     {

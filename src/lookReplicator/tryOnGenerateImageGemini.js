@@ -17,9 +17,6 @@ Task:
 - Do NOT return the input SELFIE_IMAGE unchanged; ensure makeup changes are visibly noticeable when compared side-by-side.
 - If the makeup style is subtle, still adjust at least lips/eyes/base so the difference is clearly perceptible.
 
-Safety rule (MUST):
-- NEVER copy/paste/collage any pixels or facial parts from TARGET_IMAGE into the output (no face swap, no cut-and-paste). Use TARGET_IMAGE only as a style reference.
-
 Priority (must match TARGET_IMAGE):
 1) Base makeup (底妆): match undertone + brightness, foundation finish (matte/satin/dewy), coverage, and skin texture impression.
    - If TARGET_IMAGE looks warmer/cooler than SELFIE_IMAGE, shift undertone accordingly.

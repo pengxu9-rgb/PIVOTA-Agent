@@ -497,8 +497,8 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
               try {
                 const response = await client.post("/v1/chat/completions", {
                   model: m,
-                  temperature: 0.2,
-                  max_tokens: 900,
+                  temperature: 0,
+                  max_tokens: 1500,
                   ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
                   messages: [
                     {
@@ -584,8 +584,8 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
               try {
                 const response = await client.post("/v1/chat/completions", {
                   model: m,
-                  temperature: 0.2,
-                  max_tokens: 900,
+                  temperature: 0,
+                  max_tokens: 2000,
                   ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
                   messages: [
                     {
