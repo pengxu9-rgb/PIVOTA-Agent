@@ -134,6 +134,8 @@ You may also receive:
 - USER_REQUEST (optional): user's adjustment request in natural language
 - CONTEXT_JSON (optional): detected attributes and user profile signals
   - CONTEXT_JSON.oneClickIterationV0 (optional): previous turns for iterative improvement. Build on the latest turns; avoid repeating prior advice.
+  - CONTEXT_JSON.targetBreakdownV0 (optional): structured summary of the TARGET look (e.g. finish/coverage/intent). Use this as an anchor for edits.
+  - CONTEXT_JSON.uiDiffByAreaV0 (optional): UI-level mismatch summary (may be coarse). Use it as a hint when uncertain.
 
 Return ONLY valid JSON. Do not include any extra text.
 
