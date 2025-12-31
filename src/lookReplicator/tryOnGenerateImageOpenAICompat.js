@@ -83,8 +83,9 @@ async function runTryOnGenerateImageOpenAICompat({
     lastErr = out;
 
     const status = out?.error?.status;
+    const code = out?.error?.code;
     // Try the next model when the relay rejects the requested model (common for 403/404).
-    if (status === 403 || status === 404) continue;
+    if (status === 403 || status === 404 || code === "OUTPUT_TOO_SIMILAR") continue;
     break;
   }
 

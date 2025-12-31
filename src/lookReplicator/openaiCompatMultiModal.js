@@ -3,6 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const axios = require("axios");
+const sharp = require("sharp");
 
 const { preprocessImageForGemini } = require("../layer1/llm/geminiImagePreprocess");
 
@@ -111,6 +112,38 @@ function extFromMimeType(mimeType) {
   if (mt.includes("png")) return "png";
   if (mt.includes("webp")) return "webp";
   return "jpg";
+}
+
+async function tinyRgbFromImageBytes(bytes) {
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || "");
+  if (!buf.length) throw new Error("EMPTY_IMAGE_BYTES");
+  const { data } = await sharp(buf)
+    .rotate()
+    .resize(64, 64, { fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return data;
+}
+
+function meanAbsDiff(a, b) {
+  const aa = Buffer.isBuffer(a) ? a : Buffer.from(a || "");
+  const bb = Buffer.isBuffer(b) ? b : Buffer.from(b || "");
+  const n = Math.min(aa.length, bb.length);
+  if (!n) return null;
+  let sum = 0;
+  for (let i = 0; i < n; i += 1) sum += Math.abs(aa[i] - bb[i]);
+  return sum / n;
+}
+
+async function tryComputeDiffScore({ selfieBytes, outputBytes }) {
+  try {
+    const a = await tinyRgbFromImageBytes(selfieBytes);
+    const b = await tinyRgbFromImageBytes(outputBytes);
+    return meanAbsDiff(a, b);
+  } catch {
+    return null;
+  }
 }
 
 async function imagePathToDataUrl(imagePath, { maxEdge, quality }) {
@@ -292,6 +325,22 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
     const mimeType = String(img.mimeType || "image/png");
     const data = String(img.data || "");
     const ext = extFromMimeType(mimeType);
+    const selfiePath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "SELFIE_IMAGE")?.imagePath;
+    if (selfiePath) {
+      const diffScore = await tryComputeDiffScore({
+        selfieBytes: fs.readFileSync(String(selfiePath)),
+        outputBytes: Buffer.from(data, "base64"),
+      });
+      const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "2.5");
+      if (diffScore != null && Number.isFinite(diffScore) && diffScore < minDiff) {
+        return {
+          ok: false,
+          error: { code: "OUTPUT_TOO_SIMILAR", message: `Try-on output too similar to selfie (diff=${diffScore.toFixed(2)})` },
+          meta: { ...meta, diffScore },
+        };
+      }
+      meta.diffScore = diffScore;
+    }
     return { ok: true, value: { mimeType, data, ext }, meta };
   }
 
@@ -299,6 +348,22 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
     const parsed = parseDataUrl(img.url);
     if (!parsed) return { ok: false, error: { code: "IMAGE_PARSE_FAILED", message: "Invalid data URL" }, meta };
     const ext = extFromMimeType(parsed.mimeType);
+    const selfiePath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "SELFIE_IMAGE")?.imagePath;
+    if (selfiePath) {
+      const diffScore = await tryComputeDiffScore({
+        selfieBytes: fs.readFileSync(String(selfiePath)),
+        outputBytes: Buffer.from(parsed.dataB64, "base64"),
+      });
+      const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "2.5");
+      if (diffScore != null && Number.isFinite(diffScore) && diffScore < minDiff) {
+        return {
+          ok: false,
+          error: { code: "OUTPUT_TOO_SIMILAR", message: `Try-on output too similar to selfie (diff=${diffScore.toFixed(2)})` },
+          meta: { ...meta, diffScore },
+        };
+      }
+      meta.diffScore = diffScore;
+    }
     return { ok: true, value: { mimeType: parsed.mimeType, data: parsed.dataB64, ext }, meta };
   }
 

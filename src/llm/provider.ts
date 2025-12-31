@@ -160,7 +160,9 @@ function extractJsonObject(text: string): unknown {
   try {
     return JSON.parse(sliced);
   } catch (err) {
-    throw new LlmError("LLM_PARSE_FAILED", "Failed to parse JSON from model output", err);
+    const preview = sliced.replace(/\s+/g, " ").slice(0, 200);
+    const msg = preview ? `Failed to parse JSON from model output: ${preview}` : "Failed to parse JSON from model output";
+    throw new LlmError("LLM_PARSE_FAILED", msg, err);
   }
 }
 
