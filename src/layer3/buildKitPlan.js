@@ -20,8 +20,12 @@ function isZhLocale(locale) {
 }
 
 function zhCategoryLabel(category) {
+  if (category === 'prep') return '妆前';
   if (category === 'base') return '底妆';
+  if (category === 'contour') return '修容';
+  if (category === 'brow') return '眉';
   if (category === 'eye') return '眼妆';
+  if (category === 'blush') return '腮红';
   if (category === 'lip') return '唇妆';
   return String(category || '');
 }
@@ -138,12 +142,13 @@ async function buildKitPlan(input) {
       limitPerCategory: input.limitPerCategory,
     }));
 
-  function buildArea(category, rawCandidates) {
+  function buildArea(category, rawCandidates, opts) {
     if (!rawCandidates.length) {
       if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=0`);
+      if (!opts?.allowPlaceholder) return null;
       return {
-        best: makePlaceholder({ market, category, locale, kind: 'best', lookSpec, reason: 'NO_CANDIDATES' }),
-        dupe: makePlaceholder({ market, category, locale, kind: 'dupe', lookSpec, reason: 'NO_CANDIDATES' }),
+        best: makePlaceholder({ market, category, locale, kind: 'best', lookSpec, reason: 'NO_CANDIDATES', purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, category, locale, kind: 'dupe', lookSpec, reason: 'NO_CANDIDATES', purchaseEnabled: false }),
       };
     }
 
@@ -172,10 +177,15 @@ async function buildKitPlan(input) {
   }
 
   const kit = {
-    base: buildArea('base', candidatesByCategory.base || []),
-    eye: buildArea('eye', candidatesByCategory.eye || []),
-    lip: buildArea('lip', candidatesByCategory.lip || []),
+    base: buildArea('base', candidatesByCategory.base || [], { allowPlaceholder: true }),
+    eye: buildArea('eye', candidatesByCategory.eye || [], { allowPlaceholder: true }),
+    lip: buildArea('lip', candidatesByCategory.lip || [], { allowPlaceholder: true }),
   };
+
+  for (const category of ['prep', 'contour', 'brow', 'blush']) {
+    const slot = buildArea(category, candidatesByCategory[category] || [], { allowPlaceholder: false });
+    if (slot) kit[category] = slot;
+  }
 
   return KitPlanV0Schema.parse({
     schemaVersion: 'v0',

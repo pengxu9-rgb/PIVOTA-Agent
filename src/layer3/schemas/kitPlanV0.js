@@ -1,7 +1,7 @@
 const { z } = require('zod');
 const { ProductAttributesV0Schema } = require('./productAttributesV0');
 
-const KitAreaSchema = z.enum(['base', 'eye', 'lip']);
+const KitAreaSchema = z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
 
 const KitSlotV0Schema = z
   .object({
@@ -25,6 +25,10 @@ const KitPlanV0Schema = z
         base: KitSlotV0Schema,
         eye: KitSlotV0Schema,
         lip: KitSlotV0Schema,
+        prep: KitSlotV0Schema.optional(),
+        contour: KitSlotV0Schema.optional(),
+        brow: KitSlotV0Schema.optional(),
+        blush: KitSlotV0Schema.optional(),
       })
       .strict(),
 

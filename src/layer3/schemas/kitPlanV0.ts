@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ProductAttributesV0Schema } from "./productAttributesV0";
 
-export const KitAreaSchema = z.enum(["base", "eye", "lip"]);
+export const KitAreaSchema = z.enum(["prep", "base", "contour", "brow", "eye", "blush", "lip"]);
 
 export const KitSlotV0Schema = z
   .object({
@@ -22,9 +22,15 @@ export const KitPlanV0Schema = z
 
     kit: z
       .object({
+        // Legacy 3 are always present (placeholders if needed).
         base: KitSlotV0Schema,
         eye: KitSlotV0Schema,
         lip: KitSlotV0Schema,
+        // Extended areas may be omitted when no good matches exist.
+        prep: KitSlotV0Schema.optional(),
+        contour: KitSlotV0Schema.optional(),
+        brow: KitSlotV0Schema.optional(),
+        blush: KitSlotV0Schema.optional(),
       })
       .strict(),
 

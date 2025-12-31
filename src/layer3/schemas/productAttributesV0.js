@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
 const AvailabilitySchema = z.enum(['in_stock', 'out_of_stock', 'unknown']);
-const ProductCategorySchema = z.enum(['base', 'eye', 'lip']);
+const ProductCategorySchema = z.enum(['prep', 'base', 'contour', 'brow', 'eye', 'blush', 'lip']);
 const PriceTierSchema = z.enum(['budget', 'mid', 'premium', 'unknown']);
 const UndertoneFitSchema = z.enum(['cool', 'warm', 'neutral', 'unknown']);
 

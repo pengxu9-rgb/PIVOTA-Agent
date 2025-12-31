@@ -161,12 +161,17 @@ export async function buildKitPlan(input: {
       limitPerCategory: input.limitPerCategory,
     }));
 
-  function buildArea(category: z.infer<typeof ProductCategorySchema>, rawCandidates: RawSkuCandidate[]) {
+  function buildArea(
+    category: z.infer<typeof ProductCategorySchema>,
+    rawCandidates: RawSkuCandidate[],
+    opts: { allowPlaceholder: boolean }
+  ) {
     if (!rawCandidates.length) {
       if (debugTriggerMatch) warnings.push(`NO_CANDIDATES market=${market} category=${category} candidates=0`);
+      if (!opts.allowPlaceholder) return null;
       return {
-        best: makePlaceholder({ market, category, locale, kind: "best", lookSpec, reason: "NO_CANDIDATES" }),
-        dupe: makePlaceholder({ market, category, locale, kind: "dupe", lookSpec, reason: "NO_CANDIDATES" }),
+        best: makePlaceholder({ market, category, locale, kind: "best", lookSpec, reason: "NO_CANDIDATES", purchaseEnabled: false }),
+        dupe: makePlaceholder({ market, category, locale, kind: "dupe", lookSpec, reason: "NO_CANDIDATES", purchaseEnabled: false }),
       };
     }
 
@@ -213,11 +218,16 @@ export async function buildKitPlan(input: {
     };
   }
 
-  const kit = {
-    base: buildArea("base", candidatesByCategory.base || []),
-    eye: buildArea("eye", candidatesByCategory.eye || []),
-    lip: buildArea("lip", candidatesByCategory.lip || []),
+  const kit: KitPlanV0["kit"] = {
+    base: buildArea("base", candidatesByCategory.base || [], { allowPlaceholder: true })!,
+    eye: buildArea("eye", candidatesByCategory.eye || [], { allowPlaceholder: true })!,
+    lip: buildArea("lip", candidatesByCategory.lip || [], { allowPlaceholder: true })!,
   };
+
+  for (const category of ["prep", "contour", "brow", "blush"] as const) {
+    const slot = buildArea(category, candidatesByCategory[category] || [], { allowPlaceholder: false });
+    if (slot) (kit as any)[category] = slot;
+  }
 
   return KitPlanV0Schema.parse({
     schemaVersion: "v0",

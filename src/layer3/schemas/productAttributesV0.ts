@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const AvailabilitySchema = z.enum(["in_stock", "out_of_stock", "unknown"]);
-export const ProductCategorySchema = z.enum(["base", "eye", "lip"]);
+export const ProductCategorySchema = z.enum(["prep", "base", "contour", "brow", "eye", "blush", "lip"]);
 export const PriceTierSchema = z.enum(["budget", "mid", "premium", "unknown"]);
 export const UndertoneFitSchema = z.enum(["cool", "warm", "neutral", "unknown"]);
 

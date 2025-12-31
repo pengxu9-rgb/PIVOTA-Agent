@@ -9,7 +9,7 @@ const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? "REAL" : "MOCK");
 
 export type RawSkuCandidate = Record<string, unknown>;
 
-export type CandidatesByCategory = Record<z.infer<typeof ProductCategorySchema>, RawSkuCandidate[]>;
+export type CandidatesByCategory = Partial<Record<z.infer<typeof ProductCategorySchema>, RawSkuCandidate[]>>;
 
 function normalizeString(v: unknown): string {
   return String(v ?? "").trim();
@@ -20,8 +20,12 @@ function buildQueryForCategory(category: z.infer<typeof ProductCategorySchema>, 
   const base = [normalizeString(area.finish), normalizeString(area.coverage), ...(area.keyNotes || [])].filter(Boolean);
 
   const anchors: Record<z.infer<typeof ProductCategorySchema>, string[]> = {
-    base: ["foundation", "concealer", "setting powder", "primer", "blush"],
-    eye: ["eyeliner", "mascara", "eyeshadow", "brow pencil", "brow gel"],
+    prep: ["primer", "setting spray", "prep"],
+    base: ["foundation", "concealer", "setting powder", "skin tint", "bb cream"],
+    contour: ["contour", "bronzer", "sculpt"],
+    brow: ["brow pencil", "brow gel", "eyebrow"],
+    eye: ["eyeliner", "mascara", "eyeshadow", "eye palette"],
+    blush: ["blush", "cheek tint", "cheek"],
     lip: ["lipstick", "lip gloss", "lip liner", "lip tint", "lip balm"],
   };
 
@@ -52,8 +56,12 @@ function productText(p: Record<string, unknown>): string {
 function matchesCategory(category: z.infer<typeof ProductCategorySchema>, p: Record<string, unknown>): boolean {
   const text = productText(p);
   const keywords: Record<z.infer<typeof ProductCategorySchema>, string[]> = {
-    base: ["foundation", "concealer", "primer", "powder", "setting spray", "blush", "bronzer", "contour", "tint", "bb", "cc"],
-    eye: ["eyeliner", "liner", "mascara", "eyeshadow", "palette", "brow", "brows", "kohl", "kajal"],
+    prep: ["primer", "priming", "setting spray", "setting mist", "grip", "pore"],
+    base: ["foundation", "concealer", "powder", "skin tint", "tint", "bb", "cc"],
+    contour: ["contour", "bronzer", "sculpt"],
+    brow: ["brow", "brows", "eyebrow", "pomade", "brow pencil", "brow gel"],
+    eye: ["eyeliner", "liner", "mascara", "eyeshadow", "palette", "kohl", "kajal"],
+    blush: ["blush", "cheek", "cheeks"],
     lip: ["lipstick", "lip gloss", "gloss", "lip liner", "lip tint", "lip balm", "lip oil", "lip stain"],
   };
 
@@ -63,15 +71,30 @@ function matchesCategory(category: z.infer<typeof ProductCategorySchema>, p: Rec
 function explodeVariantsToSkus(product: Record<string, unknown>): RawSkuCandidate[] {
   const variants = product.variants;
   if (Array.isArray(variants) && variants.length) {
+    const productTitle = normalizeString((product as any).productTitle ?? (product as any).product_title ?? (product as any).title ?? (product as any).name);
     return variants
       .filter((v) => v && typeof v === "object")
-      .map((v) => ({
-        ...product,
-        ...(v as Record<string, unknown>),
-        // Keep explicit product link / image on variant if missing.
-        productUrl: (v as any).productUrl ?? (product as any).productUrl ?? (product as any).url,
-        imageUrl: (v as any).imageUrl ?? (product as any).imageUrl ?? (product as any).image_url,
-      }));
+      .map((v) => {
+        const variantTitle = normalizeString((v as any).variantTitle ?? (v as any).variant_title ?? (v as any).title ?? (v as any).name);
+        const isDefaultVariantTitle = variantTitle.toLowerCase() === "default title";
+        const displayTitle =
+          productTitle && variantTitle && !isDefaultVariantTitle && variantTitle !== productTitle
+            ? `${productTitle} - ${variantTitle}`
+            : productTitle || variantTitle;
+
+        return {
+          ...product,
+          ...(v as Record<string, unknown>),
+          productTitle,
+          product_title: productTitle,
+          variantTitle,
+          variant_title: variantTitle,
+          ...(displayTitle ? { title: displayTitle } : {}),
+          // Keep explicit product link / image on variant if missing.
+          productUrl: (v as any).productUrl ?? (product as any).productUrl ?? (product as any).url,
+          imageUrl: (v as any).imageUrl ?? (product as any).imageUrl ?? (product as any).image_url,
+        };
+      });
   }
   return [product];
 }

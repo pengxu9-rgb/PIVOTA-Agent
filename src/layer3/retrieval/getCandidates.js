@@ -16,8 +16,12 @@ function buildQueryForCategory(category, lookSpec) {
   const base = [normalizeString(area.finish), normalizeString(area.coverage), ...(area.keyNotes || [])].filter(Boolean);
 
   const anchors = {
-    base: ['foundation', 'concealer', 'setting powder', 'primer', 'blush'],
-    eye: ['eyeliner', 'mascara', 'eyeshadow', 'brow pencil', 'brow gel'],
+    prep: ['primer', 'setting spray', 'prep'],
+    base: ['foundation', 'concealer', 'setting powder', 'skin tint', 'bb cream'],
+    contour: ['contour', 'bronzer', 'sculpt'],
+    brow: ['brow pencil', 'brow gel', 'eyebrow'],
+    eye: ['eyeliner', 'mascara', 'eyeshadow', 'eye palette'],
+    blush: ['blush', 'cheek tint', 'cheek'],
     lip: ['lipstick', 'lip gloss', 'lip liner', 'lip tint', 'lip balm'],
   };
 
@@ -44,20 +48,12 @@ function productText(p) {
 function matchesCategory(category, p) {
   const text = productText(p);
   const keywords = {
-    base: [
-      'foundation',
-      'concealer',
-      'primer',
-      'powder',
-      'setting spray',
-      'blush',
-      'bronzer',
-      'contour',
-      'tint',
-      'bb',
-      'cc',
-    ],
-    eye: ['eyeliner', 'liner', 'mascara', 'eyeshadow', 'palette', 'brow', 'brows', 'kohl', 'kajal'],
+    prep: ['primer', 'priming', 'setting spray', 'setting mist', 'grip', 'pore'],
+    base: ['foundation', 'concealer', 'powder', 'skin tint', 'tint', 'bb', 'cc'],
+    contour: ['contour', 'bronzer', 'sculpt'],
+    brow: ['brow', 'brows', 'eyebrow', 'pomade', 'brow pencil', 'brow gel'],
+    eye: ['eyeliner', 'liner', 'mascara', 'eyeshadow', 'palette', 'kohl', 'kajal'],
+    blush: ['blush', 'cheek', 'cheeks'],
     lip: ['lipstick', 'lip gloss', 'gloss', 'lip liner', 'lip tint', 'lip balm', 'lip oil', 'lip stain'],
   };
   return keywords[category].some((k) => text.includes(k));
@@ -66,14 +62,29 @@ function matchesCategory(category, p) {
 function explodeVariantsToSkus(product) {
   const variants = product.variants;
   if (Array.isArray(variants) && variants.length) {
+    const productTitle = normalizeString(product.productTitle ?? product.product_title ?? product.title ?? product.name);
     return variants
       .filter((v) => v && typeof v === 'object')
-      .map((v) => ({
-        ...product,
-        ...v,
-        productUrl: v.productUrl ?? product.productUrl ?? product.url,
-        imageUrl: v.imageUrl ?? product.imageUrl ?? product.image_url,
-      }));
+      .map((v) => {
+        const variantTitle = normalizeString(v.variantTitle ?? v.variant_title ?? v.title ?? v.name);
+        const isDefaultVariantTitle = variantTitle.toLowerCase() === 'default title';
+        const displayTitle =
+          productTitle && variantTitle && !isDefaultVariantTitle && variantTitle !== productTitle
+            ? `${productTitle} - ${variantTitle}`
+            : productTitle || variantTitle;
+
+        return {
+          ...product,
+          ...v,
+          productTitle,
+          product_title: productTitle,
+          variantTitle,
+          variant_title: variantTitle,
+          ...(displayTitle ? { title: displayTitle } : {}),
+          productUrl: v.productUrl ?? product.productUrl ?? product.url,
+          imageUrl: v.imageUrl ?? product.imageUrl ?? product.image_url,
+        };
+      });
   }
   return [product];
 }
