@@ -133,6 +133,7 @@ You will receive images in this order, each preceded by a label:
 You may also receive:
 - USER_REQUEST (optional): user's adjustment request in natural language
 - CONTEXT_JSON (optional): detected attributes and user profile signals
+  - CONTEXT_JSON.oneClickIterationV0 (optional): previous turns for iterative improvement. Build on the latest turns; avoid repeating prior advice.
 
 Return ONLY valid JSON. Do not include any extra text.
 
@@ -169,6 +170,8 @@ JSON_SCHEMA:
 Rules:
 - If USER_REQUEST conflicts with TARGET_IMAGE replication, balance: keep similarity while applying the request subtly.
 - If confidence is low for any area, include it in top_mismatches with impact=mid/high and suggest a safe adjustment.
+- If CONTEXT_JSON.oneClickIterationV0.turns exists, treat this as an iteration: focus on incremental improvements over the previous best attempt.
+- Keep edits conservative: small changes that are likely to improve similarity without making the look unrealistic.
 
 USER_REQUEST:
 ${reqText || "(none)"}
@@ -205,4 +208,3 @@ module.exports = {
   TryOnReplicateOneClickV0Schema,
   runTryOnReplicateOneClickGemini,
 };
-
