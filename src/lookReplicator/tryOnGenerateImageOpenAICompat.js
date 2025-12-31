@@ -13,20 +13,8 @@ Task:
 - Keep background/lighting similar to SELFIE_IMAGE when possible.
 - Do NOT return the input SELFIE_IMAGE unchanged; ensure makeup changes are visibly noticeable when compared side-by-side.
 
-Hard constraints (MUST):
-- NEVER copy/paste, collage, or transplant any pixels/parts from TARGET_IMAGE into the output (no face swap, no cut-and-paste).
-- NEVER replace the person in SELFIE_IMAGE with the person in TARGET_IMAGE. Do not change identity.
-- Keep SELFIE_IMAGE pose, hairstyle, clothing, background, and camera perspective consistent. Only change makeup.
-- Do not add extra faces/features, watermarks, text overlays, or obvious artifacts.
-
-Intensity & matching requirements (MUST):
-- Do NOT default to a "natural/light makeup" look unless TARGET_IMAGE is clearly light.
-- Match the strength/style of TARGET_IMAGE. If unsure, bias slightly STRONGER (still wearable) to close the similarity gap.
-- Ensure the output is clearly different from SELFIE_IMAGE in base + eyes + lips (all three must change).
-- Focus on visible, high-signal changes:
-  1) Base (底妆): adjust undertone + brightness, coverage, finish, highlight vs. shadow distribution; reduce unevenness only as part of base makeup.
-  2) Eyes (眼妆): recreate eyeshadow palette (2–3 tones) and placement, deepen lash line, match eyeliner direction/thickness/wing.
-  3) Lips (口红): replicate hue family + depth + saturation + finish; ensure lip color shift is obvious.
+Safety rule (MUST):
+- NEVER copy/paste/collage any pixels or facial parts from TARGET_IMAGE into the output (no face swap, no cut-and-paste). Use TARGET_IMAGE only as a style reference.
 
 Priority (must match TARGET_IMAGE):
 1) Base makeup (底妆): undertone + brightness, foundation finish (matte/satin/dewy), coverage, and skin texture impression.
@@ -35,6 +23,7 @@ Priority (must match TARGET_IMAGE):
 
 Quality bar:
 - The output must not be identical to SELFIE_IMAGE. If unsure, bias slightly stronger on lips/eyes/base while staying wearable.
+- Make base/eyes/lips changes clearly noticeable and as close as possible to TARGET_IMAGE (do not under-apply).
 - Avoid artifacts (face warping, extra facial features, smeared textures).
 
 You will receive images in this order, each preceded by a label:
