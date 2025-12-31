@@ -5,6 +5,7 @@ const { makeMockLookResult } = require('./mockResult');
 const { JobQueue } = require('./jobQueue');
 const { parseMultipart, rmrf } = require('./multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
+const { runTryOnReplicateOneClickGemini } = require("./tryOnReplicateOneClickGemini");
 const { randomUUID } = require('crypto');
 const { upsertOutcomeSampleFromJobCompletion, getOutcomeSample } = require('../telemetry/outcomeStore');
 const { normalizeMarket, parseMarketFromRequest, requireMarketEnabled } = require('../markets/market');
@@ -179,6 +180,71 @@ function localizeSkeletonsForLocale({ rawSkeletons, market, locale }) {
 function mountLookReplicatorRoutes(app, { logger }) {
   const MAX_UPLOAD_BYTES = Number(process.env.LOOK_REPLICATOR_MAX_UPLOAD_BYTES || 25 * 1024 * 1024);
   const allowedContentTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+  // --- Try-on: One-click replicate (Gemini, multi-image) ---
+  app.post("/api/look-replicate/one-click", async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set("Cache-Control", "no-store");
+
+    let parsed;
+    try {
+      parsed = await parseMultipart(req, { maxBytes: MAX_UPLOAD_BYTES, allowedContentTypes });
+    } catch (err) {
+      return res.status(err?.statusCode || 400).json({ error: err?.code || "INVALID_MULTIPART", message: err?.message });
+    }
+
+    const { fields, files, tmpDir } = parsed;
+    try {
+      const jobId = String(fields.jobId || "").trim();
+      const userRequest = fields.userRequest ? String(fields.userRequest).trim() : "";
+
+      let contextJson = null;
+      try {
+        contextJson = fields.contextJson ? parseOptionalJsonField(fields.contextJson) : null;
+      } catch {
+        contextJson = null;
+      }
+
+      if (!jobId) {
+        return res.status(400).json({ error: "INVALID_REQUEST", message: "jobId is required" });
+      }
+
+      const targetPath = findAssetFilePath({ jobId, kind: "reference" });
+      const selfiePath = findAssetFilePath({ jobId, kind: "selfie" });
+      if (!targetPath || !selfiePath) {
+        return res.status(400).json({ error: "MISSING_ASSETS", message: "Missing reference/selfie assets for jobId" });
+      }
+
+      const currentRenderFile = files.currentRender || files.afterImage || files.tryonAfter || null;
+      const currentRenderPath = currentRenderFile?.path ? String(currentRenderFile.path) : null;
+
+      const out = await runTryOnReplicateOneClickGemini({
+        targetImagePath: targetPath,
+        selfieImagePath: selfiePath,
+        currentRenderImagePath: currentRenderPath,
+        userRequest,
+        contextJson,
+      });
+
+      if (!out?.ok) {
+        const status = out?.error?.code === "MISSING_API_KEY" ? 501 : 502;
+        return res.status(status).json({
+          error: out?.error?.code || "ONE_CLICK_FAILED",
+          message: out?.error?.message || "One-click replicate failed",
+          meta: out?.meta || null,
+          ...(out?.details ? { details: out.details } : {}),
+        });
+      }
+
+      return res.json({
+        jobId,
+        result: out.value,
+        meta: out.meta,
+      });
+    } finally {
+      rmrf(tmpDir);
+    }
+  });
 
   app.post('/uploads/signed-url', async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
