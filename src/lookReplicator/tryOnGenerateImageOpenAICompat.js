@@ -47,11 +47,14 @@ async function runTryOnGenerateImageOpenAICompat({
   contextJson,
 }) {
   const promptText = buildTryOnImagePrompt({ userRequest, contextJson });
-  const model =
-    process.env.LOOK_REPLICATOR_TRYON_MODEL_OPENAI ||
-    process.env.LLM_MODEL_NAME ||
-    process.env.OPENAI_MODEL ||
-    "gpt-4o";
+  const rawModel = process.env.LOOK_REPLICATOR_TRYON_MODEL_OPENAI || "";
+  const models = String(rawModel)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!models.length) {
+    return { ok: false, error: { code: "CONFIG_MISSING", message: "Missing LOOK_REPLICATOR_TRYON_MODEL_OPENAI" }, meta: { attempted: false } };
+  }
 
   const images = [
     { label: "TARGET_IMAGE", imagePath: targetImagePath },
@@ -59,11 +62,28 @@ async function runTryOnGenerateImageOpenAICompat({
     ...(currentRenderImagePath ? [{ label: "CURRENT_RENDER", imagePath: currentRenderImagePath }] : []),
   ];
 
-  const out = await generateMultiImageImageFromOpenAICompat({ promptText, images, model });
-  if (!out?.ok) return out;
+  const attempted = [];
+  let lastErr = null;
 
-  const filename = `tryon.${out.value.ext}`;
-  return { ok: true, value: { ...out.value, filename }, meta: out.meta };
+  for (const model of models) {
+    attempted.push(model);
+    const out = await generateMultiImageImageFromOpenAICompat({ promptText, images, model });
+    if (out?.ok) {
+      const filename = `tryon.${out.value.ext}`;
+      return { ok: true, value: { ...out.value, filename }, meta: { ...(out.meta || {}), attemptedModels: attempted } };
+    }
+    lastErr = out;
+
+    const status = out?.error?.status;
+    // Try the next model when the relay rejects the requested model (common for 403/404).
+    if (status === 403 || status === 404) continue;
+    break;
+  }
+
+  if (lastErr && lastErr.meta && typeof lastErr.meta === "object") {
+    return { ...lastErr, meta: { ...(lastErr.meta || {}), attemptedModels: attempted } };
+  }
+  return lastErr || { ok: false, error: { code: "REQUEST_FAILED", message: "Try-on image generation failed" }, meta: { attemptedModels: attempted } };
 }
 
 module.exports = {

@@ -42,12 +42,14 @@ async function runTryOnReplicateOneClickOpenAICompat({
   contextJson,
 }) {
   const prompt = buildPrompt({ userRequest, contextJson });
-  const model =
-    process.env.LOOK_REPLICATOR_ONE_CLICK_MODEL_OPENAI ||
-    process.env.PIVOTA_LAYER2_MODEL_OPENAI ||
-    process.env.LLM_MODEL_NAME ||
-    process.env.OPENAI_MODEL ||
-    "gpt-4o-mini";
+  const rawModel = process.env.LOOK_REPLICATOR_ONE_CLICK_MODEL_OPENAI || "";
+  const models = String(rawModel)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!models.length) {
+    return { ok: false, error: { code: "CONFIG_MISSING", message: "Missing LOOK_REPLICATOR_ONE_CLICK_MODEL_OPENAI" }, meta: { attempted: false } };
+  }
 
   const images = [
     { label: "TARGET_IMAGE", imagePath: targetImagePath },
@@ -55,25 +57,41 @@ async function runTryOnReplicateOneClickOpenAICompat({
     ...(currentRenderImagePath ? [{ label: "CURRENT_RENDER", imagePath: currentRenderImagePath }] : []),
   ];
 
-  const out = await generateMultiImageJsonFromOpenAICompat({
-    promptText: prompt,
-    images,
-    schema: z.any(),
-    model,
-  });
-  if (!out?.ok) return out;
-  try {
-    return { ok: true, value: normalizeOneClickResult(out.value), meta: out.meta };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err || "");
-    return {
-      ok: false,
-      error: { code: "SCHEMA_INVALID", message: "Model JSON did not match expected schema" },
-      meta: out.meta,
-      raw: JSON.stringify(out.value).slice(0, 2000),
-      details: { message: msg.slice(0, 220) },
-    };
+  const attempted = [];
+  let lastErr = null;
+
+  for (const model of models) {
+    attempted.push(model);
+    const out = await generateMultiImageJsonFromOpenAICompat({
+      promptText: prompt,
+      images,
+      schema: z.any(),
+      model,
+    });
+    if (!out?.ok) {
+      lastErr = out;
+      const status = out?.error?.status;
+      if (status === 403 || status === 404) continue;
+      break;
+    }
+    try {
+      return { ok: true, value: normalizeOneClickResult(out.value), meta: { ...(out.meta || {}), attemptedModels: attempted } };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err || "");
+      return {
+        ok: false,
+        error: { code: "SCHEMA_INVALID", message: "Model JSON did not match expected schema" },
+        meta: { ...(out.meta || {}), attemptedModels: attempted },
+        raw: JSON.stringify(out.value).slice(0, 2000),
+        details: { message: msg.slice(0, 220) },
+      };
+    }
   }
+
+  if (lastErr && lastErr.meta && typeof lastErr.meta === "object") {
+    return { ...lastErr, meta: { ...(lastErr.meta || {}), attemptedModels: attempted } };
+  }
+  return lastErr || { ok: false, error: { code: "REQUEST_FAILED", message: "One-click replicate failed" }, meta: { attemptedModels: attempted } };
 }
 
 module.exports = {

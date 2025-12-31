@@ -199,7 +199,7 @@ async function postChatCompletions({ model, messages, timeoutMs, temperature, ma
   const message = status
     ? `got status: ${status}. ${apiMessage || ""}`.trim()
     : String(last?.message || "REQUEST_FAILED");
-  return { ok: false, error: { code: "REQUEST_FAILED", message: message.slice(0, 220) } };
+  return { ok: false, error: { code: "REQUEST_FAILED", message: message.slice(0, 220), ...(status ? { status } : {}) } };
 }
 
 async function generateMultiImageJsonFromOpenAICompat({ promptText, images, schema, model }) {
