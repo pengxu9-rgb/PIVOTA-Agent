@@ -59,7 +59,7 @@ function makeObjectKey({ kind, contentType }) {
   const date = new Date().toISOString().slice(0, 10);
   const ext = extFromContentType(contentType);
   const id = require('crypto').randomUUID();
-  const safeKind = kind === 'selfie' ? 'selfie' : 'reference';
+  const safeKind = kind === 'selfie' ? 'selfie' : kind === 'tryon' ? 'tryon' : 'reference';
   return `look-replicator/${safeKind}/${date}/${id}.${ext}`;
 }
 
@@ -87,6 +87,30 @@ async function createSignedUpload({ kind, contentType }) {
   };
 }
 
+async function putPublicObject({ key, body, contentType, cacheControl }) {
+  const { PutObjectCommand } = loadAwsSdk();
+  const bucket = requiredEnv('LOOK_REPLICATOR_S3_BUCKET');
+  const publicBase = requiredEnv('LOOK_REPLICATOR_PUBLIC_ASSET_BASE_URL');
+
+  const cmd = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+    ...(cacheControl ? { CacheControl: cacheControl } : {}),
+  });
+  await getClient().send(cmd);
+
+  const publicUrl = `${trimSlashes(publicBase)}/${key}`;
+  return { key, publicUrl };
+}
+
+async function uploadPublicAsset({ kind, contentType, body, cacheControl }) {
+  const key = makeObjectKey({ kind, contentType });
+  return putPublicObject({ key, body, contentType, cacheControl });
+}
+
 module.exports = {
   createSignedUpload,
+  uploadPublicAsset,
 };

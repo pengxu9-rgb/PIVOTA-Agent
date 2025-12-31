@@ -1,5 +1,5 @@
 const { CreateSignedUploadSchema, CreateLookJobSchema } = require('./schemas');
-const { createSignedUpload } = require('./storage');
+const { createSignedUpload, uploadPublicAsset } = require('./storage');
 const { createJob, getJob, getShare, updateJob, listJobs } = require('./store');
 const { makeMockLookResult } = require('./mockResult');
 const { JobQueue } = require('./jobQueue');
@@ -127,6 +127,174 @@ function contentTypeFromExt(ext) {
   return 'application/octet-stream';
 }
 
+function isHttpUrl(url) {
+  try {
+    const u = new URL(String(url));
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isPrivateNetworkHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (!host) return true;
+  if (host === 'localhost' || host === '0.0.0.0' || host === '::1') return true;
+  if (/^127\.\d+\.\d+\.\d+$/.test(host)) return true;
+  if (/^10\.\d+\.\d+\.\d+$/.test(host)) return true;
+  if (/^192\.168\.\d+\.\d+$/.test(host)) return true;
+  const m172 = host.match(/^172\.(\d+)\.\d+\.\d+$/);
+  if (m172) {
+    const n = Number(m172[1]);
+    if (n >= 16 && n <= 31) return true;
+  }
+  if (/^169\.254\.\d+\.\d+$/.test(host)) return true;
+  return false;
+}
+
+function allowlistedAssetUrl(url) {
+  if (!isHttpUrl(url)) return null;
+  const raw = String(url);
+  const base = process.env.LOOK_REPLICATOR_PUBLIC_ASSET_BASE_URL;
+  if (base) {
+    const trimmed = String(base).replace(/\/+$/, '');
+    if (raw.startsWith(`${trimmed}/`) || raw === trimmed) return raw;
+    return null;
+  }
+  // Fail-closed-ish: without an explicit allowlist, block private network targets.
+  try {
+    const u = new URL(raw);
+    if (isPrivateNetworkHost(u.hostname)) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+async function proxyImageFromUrlToRes(url, res, { maxBytes }) {
+  const safeUrl = allowlistedAssetUrl(url);
+  if (!safeUrl) {
+    res.status(404).json({ error: 'NOT_FOUND' });
+    return;
+  }
+
+  const upstream = await axios.get(safeUrl, {
+    responseType: 'stream',
+    timeout: 15000,
+    maxRedirects: 3,
+    validateStatus: () => true,
+  });
+
+  if (upstream.status < 200 || upstream.status >= 300) {
+    res.status(404).json({ error: 'NOT_FOUND' });
+    upstream.data?.destroy?.();
+    return;
+  }
+
+  const contentType = upstream.headers?.['content-type'];
+  if (contentType) res.set('Content-Type', String(contentType));
+  const contentLength = upstream.headers?.['content-length'];
+  if (contentLength && Number(contentLength) > maxBytes) {
+    res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
+    upstream.data?.destroy?.();
+    return;
+  }
+
+  let total = 0;
+  upstream.data.on('data', (chunk) => {
+    total += chunk?.length || 0;
+    if (total > maxBytes) {
+      upstream.data.destroy(new Error('PAYLOAD_TOO_LARGE'));
+    }
+  });
+  upstream.data.on('error', () => {
+    if (!res.headersSent) res.status(502).json({ error: 'UPSTREAM_ERROR' });
+    else res.end();
+  });
+  upstream.data.pipe(res);
+}
+
+async function downloadImageFromUrlToTmpFile(url, { tmpDir, prefix, maxBytes }) {
+  const safeUrl = allowlistedAssetUrl(url);
+  if (!safeUrl) return null;
+
+  const upstream = await axios.get(safeUrl, {
+    responseType: 'stream',
+    timeout: 15000,
+    maxRedirects: 3,
+    validateStatus: () => true,
+  });
+  if (upstream.status < 200 || upstream.status >= 300) {
+    upstream.data?.destroy?.();
+    return null;
+  }
+
+  const contentType = String(upstream.headers?.['content-type'] || '');
+  let ext = extFromContentType(contentType);
+  if (ext === 'bin') {
+    try {
+      const u = new URL(safeUrl);
+      const fromPath = String(path.extname(u.pathname).slice(1) || '').toLowerCase();
+      if (fromPath === 'jpg' || fromPath === 'jpeg') ext = 'jpg';
+      else if (fromPath === 'png') ext = 'png';
+      else if (fromPath === 'webp') ext = 'webp';
+    } catch {
+      // ignore
+    }
+  }
+  if (ext === 'bin') ext = 'jpg';
+
+  const dir = path.join(String(tmpDir || os.tmpdir()), 'lookreplicate-remote');
+  ensureDir(dir);
+  const outPath = path.join(dir, `${prefix}.${ext}`);
+
+  const contentLength = upstream.headers?.['content-length'];
+  if (contentLength && Number(contentLength) > maxBytes) {
+    upstream.data?.destroy?.();
+    return null;
+  }
+
+  await new Promise((resolve, reject) => {
+    let total = 0;
+    const out = fs.createWriteStream(outPath);
+    upstream.data.on('data', (chunk) => {
+      total += chunk?.length || 0;
+      if (total > maxBytes) {
+        upstream.data.destroy(new Error('PAYLOAD_TOO_LARGE'));
+      }
+    });
+    upstream.data.on('error', reject);
+    out.on('error', reject);
+    out.on('finish', resolve);
+    upstream.data.pipe(out);
+  }).catch(() => {
+    try {
+      fs.unlinkSync(outPath);
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  return outPath;
+}
+
+async function resolveAssetPathForJob({ jobId, kind, tmpDir, maxBytes }) {
+  const local = findAssetFilePath({ jobId, kind });
+  if (local) return local;
+
+  const job = await getJob(jobId);
+  const url =
+    kind === 'reference'
+      ? job?.referenceImageUrl
+      : kind === 'selfie'
+        ? job?.selfieImageUrl
+        : job?.tryOnImageUrl;
+  if (!url) return null;
+
+  return downloadImageFromUrlToTmpFile(String(url), { tmpDir, prefix: `${kind}-${jobId}`, maxBytes });
+}
+
 function copyUploadToAssets({ jobId, kind, file }) {
   if (!file?.path) return null;
   const safeKind = kind === 'selfie' ? 'selfie' : kind === 'tryon' ? 'tryon' : 'reference';
@@ -224,8 +392,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
         return res.status(400).json({ error: "INVALID_REQUEST", message: "jobId is required" });
       }
 
-      const targetPath = findAssetFilePath({ jobId, kind: "reference" });
-      const selfiePath = findAssetFilePath({ jobId, kind: "selfie" });
+      const targetPath = await resolveAssetPathForJob({ jobId, kind: "reference", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
+      const selfiePath = await resolveAssetPathForJob({ jobId, kind: "selfie", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
       if (!targetPath || !selfiePath) {
         return res.status(400).json({ error: "MISSING_ASSETS", message: "Missing reference/selfie assets for jobId" });
       }
@@ -370,11 +538,22 @@ function mountLookReplicatorRoutes(app, { logger }) {
     if (kind !== 'reference' && kind !== 'selfie' && kind !== 'tryon') return res.status(404).json({ error: 'NOT_FOUND' });
 
     const p = findAssetFilePath({ jobId, kind });
-    if (!p) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (p) {
+      const ext = String(path.extname(p).slice(1) || '').toLowerCase();
+      res.set('Content-Type', contentTypeFromExt(ext));
+      return fs.createReadStream(p).pipe(res);
+    }
 
-    const ext = String(path.extname(p).slice(1) || '').toLowerCase();
-    res.set('Content-Type', contentTypeFromExt(ext));
-    return fs.createReadStream(p).pipe(res);
+    // Production is multi-instance / serverless: assets may live in object storage (stored as URLs in the job record).
+    const job = await getJob(jobId);
+    const url =
+      kind === 'reference'
+        ? job?.referenceImageUrl
+        : kind === 'selfie'
+          ? job?.selfieImageUrl
+          : job?.tryOnImageUrl;
+    if (!url) return res.status(404).json({ error: 'NOT_FOUND' });
+    return proxyImageFromUrlToRes(String(url), res, { maxBytes: MAX_UPLOAD_BYTES });
   });
 
   // --- Try-on image generation (Gemini image editing; produces a try-on image asset) ---
@@ -405,15 +584,15 @@ function mountLookReplicatorRoutes(app, { logger }) {
         return res.status(400).json({ error: "INVALID_REQUEST", message: "jobId is required" });
       }
 
-      const targetPath = findAssetFilePath({ jobId, kind: "reference" });
-      const selfiePath = findAssetFilePath({ jobId, kind: "selfie" });
+      const targetPath = await resolveAssetPathForJob({ jobId, kind: "reference", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
+      const selfiePath = await resolveAssetPathForJob({ jobId, kind: "selfie", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
       if (!targetPath || !selfiePath) {
         return res.status(400).json({ error: "MISSING_ASSETS", message: "Missing reference/selfie assets for jobId" });
       }
 
       const currentRenderFile = files.currentRender || files.afterImage || files.tryonAfter || null;
       const uploadedRenderPath = currentRenderFile?.path ? String(currentRenderFile.path) : null;
-      const existingTryOnPath = findAssetFilePath({ jobId, kind: "tryon" });
+      const existingTryOnPath = await resolveAssetPathForJob({ jobId, kind: "tryon", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
       const currentRenderPath = uploadedRenderPath || existingTryOnPath || null;
 
       const out = await runTryOnGenerateImageGemini({
@@ -433,22 +612,39 @@ function mountLookReplicatorRoutes(app, { logger }) {
         });
       }
 
-      const dir = path.join(assetRootDir(), jobId);
-      ensureDir(dir);
-      // Clear older try-on variants (different extensions) to avoid serving stale images.
-      for (const ext of ["jpg", "png", "webp"]) {
-        const p = path.join(dir, `tryon.${ext}`);
-        if (p !== path.join(dir, out.value.filename) && fs.existsSync(p)) {
-          try {
-            fs.unlinkSync(p);
-          } catch {
-            // ignore
+      const buf = Buffer.from(out.value.data, "base64");
+      let tryOnPublicUrl = null;
+      try {
+        const uploaded = await uploadPublicAsset({
+          kind: "tryon",
+          contentType: out.value.mimeType || "image/png",
+          body: buf,
+          cacheControl: "public, max-age=31536000, immutable",
+        });
+        tryOnPublicUrl = uploaded.publicUrl;
+        try {
+          await updateJob(jobId, { tryOnImageUrl: tryOnPublicUrl });
+        } catch {
+          // ignore DB write failures
+        }
+      } catch {
+        // If object storage isn't configured, fall back to ephemeral local storage (best-effort for dev).
+        const dir = path.join(assetRootDir(), jobId);
+        ensureDir(dir);
+        // Clear older try-on variants (different extensions) to avoid serving stale images.
+        for (const ext of ["jpg", "png", "webp"]) {
+          const p = path.join(dir, `tryon.${ext}`);
+          if (p !== path.join(dir, out.value.filename) && fs.existsSync(p)) {
+            try {
+              fs.unlinkSync(p);
+            } catch {
+              // ignore
+            }
           }
         }
+        const outPath = path.join(dir, out.value.filename);
+        fs.writeFileSync(outPath, buf);
       }
-      const outPath = path.join(dir, out.value.filename);
-      const buf = Buffer.from(out.value.data, "base64");
-      fs.writeFileSync(outPath, buf);
 
       return res.json({
         jobId,
@@ -520,8 +716,32 @@ function mountLookReplicatorRoutes(app, { logger }) {
         undertone: undefined,
       });
 
-      const referenceUrl = copyUploadToAssets({ jobId: job.jobId, kind: 'reference', file: referenceImage });
-      const selfieUrl = selfieImage?.path ? copyUploadToAssets({ jobId: job.jobId, kind: 'selfie', file: selfieImage }) : null;
+      let referenceUrl = null;
+      let selfieUrl = null;
+      try {
+        const uploadedRef = await uploadPublicAsset({
+          kind: 'reference',
+          contentType: referenceImage.contentType,
+          body: fs.readFileSync(referenceImage.path),
+          cacheControl: 'public, max-age=31536000, immutable',
+        });
+        referenceUrl = uploadedRef.publicUrl;
+      } catch {
+        referenceUrl = copyUploadToAssets({ jobId: job.jobId, kind: 'reference', file: referenceImage });
+      }
+      if (selfieImage?.path) {
+        try {
+          const uploadedSelfie = await uploadPublicAsset({
+            kind: 'selfie',
+            contentType: selfieImage.contentType,
+            body: fs.readFileSync(selfieImage.path),
+            cacheControl: 'public, max-age=31536000, immutable',
+          });
+          selfieUrl = uploadedSelfie.publicUrl;
+        } catch {
+          selfieUrl = copyUploadToAssets({ jobId: job.jobId, kind: 'selfie', file: selfieImage });
+        }
+      }
       if (referenceUrl || selfieUrl) {
         try {
           await updateJob(job.jobId, {

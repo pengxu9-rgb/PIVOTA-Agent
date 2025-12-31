@@ -45,6 +45,7 @@ function normalizeRow(row) {
     updatedAt: row.updated_at,
     referenceImageUrl: row.reference_image_url || undefined,
     selfieImageUrl: row.selfie_image_url || undefined,
+    tryOnImageUrl: row.tryon_image_url || undefined,
     undertone: row.undertone || undefined,
     result: row.result_json || undefined,
     error: row.error_message || undefined,
@@ -65,6 +66,7 @@ async function createJob({ market, locale, referenceImageUrl, selfieImageUrl, un
     updatedAt: now,
     referenceImageUrl,
     selfieImageUrl,
+    tryOnImageUrl: undefined,
     undertone,
     result: undefined,
     error: undefined,
@@ -84,13 +86,15 @@ async function createJob({ market, locale, referenceImageUrl, selfieImageUrl, un
     INSERT INTO look_replicator_jobs (
       job_id, share_id, status, progress, market, locale,
       reference_image_url, selfie_image_url, undertone,
+      tryon_image_url,
       result_json, error_code, error_message,
       created_at, updated_at
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
       $7, $8, $9,
-      $10, $11, $12,
-      $13, $14
+      $10,
+      $11, $12, $13,
+      $14, $15
     )
   `,
     [
@@ -103,6 +107,7 @@ async function createJob({ market, locale, referenceImageUrl, selfieImageUrl, un
       referenceImageUrl || null,
       selfieImageUrl || null,
       undertone || null,
+      null,
       null,
       null,
       null,
@@ -176,6 +181,7 @@ async function updateJob(jobId, patch) {
   if (patch.shareId !== undefined) setField('share_id', patch.shareId);
   if (patch.referenceImageUrl !== undefined) setField('reference_image_url', patch.referenceImageUrl);
   if (patch.selfieImageUrl !== undefined) setField('selfie_image_url', patch.selfieImageUrl);
+  if (patch.tryOnImageUrl !== undefined) setField('tryon_image_url', patch.tryOnImageUrl);
   if (patch.undertone !== undefined) setField('undertone', patch.undertone);
 
   setField('updated_at', now);
@@ -191,13 +197,15 @@ async function updateJob(jobId, patch) {
         INSERT INTO look_replicator_jobs (
           job_id, share_id, status, progress, market, locale,
           reference_image_url, selfie_image_url, undertone,
+          tryon_image_url,
           result_json, error_code, error_message,
           created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7, $8, $9,
-          $10, $11, $12,
-          $13, $14
+          $10,
+          $11, $12, $13,
+          $14, $15
         )
         ON CONFLICT (job_id) DO NOTHING
         `,
@@ -211,6 +219,7 @@ async function updateJob(jobId, patch) {
           existing.referenceImageUrl || null,
           existing.selfieImageUrl || null,
           existing.undertone || null,
+          existing.tryOnImageUrl || null,
           existing.result || null,
           null,
           existing.error || null,
