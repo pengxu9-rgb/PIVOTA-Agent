@@ -57,6 +57,19 @@ function isRetryableError(err) {
   return msg.includes("timeout") || msg.includes("timed out") || msg.includes("econnreset") || msg.includes("etimedout");
 }
 
+function parseRetryAfterMs(headers) {
+  if (!headers || typeof headers !== "object") return null;
+  const v = headers["retry-after"] ?? headers["Retry-After"];
+  if (!v) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const seconds = Number(s);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const dateMs = Date.parse(s);
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
+}
+
 function extractFirstTextContent(resp) {
   const msg = resp?.data?.choices?.[0]?.message;
   const content = msg?.content;
@@ -195,12 +208,21 @@ async function postChatCompletions({ model, messages, timeoutMs, temperature, ma
   }
 
   const status = last?.response?.status;
+  const retryAfterMs = parseRetryAfterMs(last?.response?.headers);
   const apiMessage =
     typeof last?.response?.data?.error?.message === "string" ? String(last.response.data.error.message).trim() : "";
   const message = status
     ? `got status: ${status}. ${apiMessage || ""}`.trim()
     : String(last?.message || "REQUEST_FAILED");
-  return { ok: false, error: { code: "REQUEST_FAILED", message: message.slice(0, 220), ...(status ? { status } : {}) } };
+  return {
+    ok: false,
+    error: {
+      code: "REQUEST_FAILED",
+      message: message.slice(0, 220),
+      ...(status ? { status } : {}),
+      ...(retryAfterMs != null ? { retryAfterMs } : {}),
+    },
+  };
 }
 
 async function generateMultiImageJsonFromOpenAICompat({ promptText, images, schema, model }) {

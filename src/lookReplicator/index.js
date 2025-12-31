@@ -433,7 +433,13 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
       if (!outResolved?.ok) {
         const code = outResolved?.error?.code;
-        const status = code === "MISSING_API_KEY" || code === "CONFIG_MISSING" ? 501 : 502;
+        const upstreamStatus = outResolved?.error?.status;
+        const status =
+          code === "MISSING_API_KEY" || code === "CONFIG_MISSING"
+            ? 501
+            : upstreamStatus === 429
+              ? 429
+              : 502;
         return res.status(status).json({
           error: outResolved?.error?.code || "ONE_CLICK_FAILED",
           message: outResolved?.error?.message || "One-click replicate failed",
@@ -642,7 +648,13 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
       if (!out?.ok) {
         const code = out?.error?.code;
-        const status = code === "MISSING_API_KEY" || code === "CONFIG_MISSING" ? 501 : 502;
+        const upstreamStatus = out?.error?.status;
+        const status =
+          code === "MISSING_API_KEY" || code === "CONFIG_MISSING"
+            ? 501
+            : upstreamStatus === 429
+              ? 429
+              : 502;
         return res.status(status).json({
           error: out?.error?.code || "TRYON_FAILED",
           message: out?.error?.message || "Try-on image generation failed",
