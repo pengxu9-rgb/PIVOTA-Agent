@@ -106,6 +106,15 @@ function uniqueStrings(list: Array<string | undefined | null>): string[] {
   return out;
 }
 
+function splitModelList(raw: unknown): string[] {
+  const s = String(raw ?? "").trim();
+  if (!s) return [];
+  return s
+    .split(",")
+    .map((m) => String(m ?? "").trim())
+    .filter(Boolean);
+}
+
 function isGeminiModelNotFoundMessage(message: unknown): boolean {
   const m = String(message || "").toLowerCase();
   return m.includes("is not found") || m.includes("not supported for generatecontent") || m.includes("call listmodels");
@@ -447,10 +456,9 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
     if (provider === "openai") {
       const apiKey = openaiApiKey();
       const baseUrl = normalizeOpenAiBaseUrl(openaiBaseUrl());
-      const model =
-        getEnv("PIVOTA_LAYER2_MODEL_OPENAI") ||
-        getEnv("PIVOTA_LAYER2_MODEL") ||
-        "gpt-4o-mini";
+      const rawModel = getEnv("PIVOTA_LAYER2_MODEL_OPENAI") || getEnv("PIVOTA_LAYER2_MODEL") || "gpt-4o-mini";
+      const models = splitModelList(rawModel);
+      const defaultModel = models[0] || String(rawModel || "").trim() || "gpt-4o-mini";
       if (!apiKey) {
         throw new LlmError("LLM_CONFIG_MISSING", "Missing required env var: OPENAI_API_KEY");
       }
@@ -467,140 +475,175 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
         getEnv("OPENAI_DISABLE_RESPONSE_FORMAT") || getEnv("PIVOTA_OPENAI_DISABLE_RESPONSE_FORMAT")
       );
 
+      const meta = { provider: "openai", model: defaultModel, baseUrl };
+
       return {
-        __meta: { provider: "openai", model, baseUrl },
+        __meta: meta,
 
         async analyzeImageToJson({ prompt, image, schema }) {
           const imageUrl = image.kind === "url" ? image.url : toDataUrl(image.bytes, image.contentType);
-          const maxAttempts = llmMaxAttempts();
+          const attemptedModels = models.length ? models : [defaultModel];
           let lastErr: unknown = null;
 
-          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-            try {
-              const response = await client.post("/v1/chat/completions", {
-                model,
-                temperature: 0.2,
-                max_tokens: 900,
-                ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
-                  },
-                  {
-                    role: "user",
-                    content: [
-                      { type: "text", text: prompt },
-                      { type: "image_url", image_url: { url: imageUrl } },
-                    ],
-                  },
-                ],
-              });
+          for (const m of attemptedModels) {
+            meta.model = m;
 
-              const content =
-                response.data?.choices?.[0]?.message?.content ??
-                response.data?.choices?.[0]?.message?.content?.[0]?.text ??
-                "";
+            const maxAttempts = llmMaxAttempts();
+            let lastAttemptErr: unknown = null;
 
-              const json = extractJsonObject(String(content));
-              const parsed = schema.safeParse(json);
-              if (!parsed.success) {
-                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
-              }
-              return parsed.data;
-            } catch (err) {
-              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              try {
+                const response = await client.post("/v1/chat/completions", {
+                  model: m,
+                  temperature: 0.2,
+                  max_tokens: 900,
+                  ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
+                  messages: [
+                    {
+                      role: "system",
+                      content:
+                        "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+                    },
+                    {
+                      role: "user",
+                      content: [
+                        { type: "text", text: prompt },
+                        { type: "image_url", image_url: { url: imageUrl } },
+                      ],
+                    },
+                  ],
+                });
 
-              if (err instanceof AxiosError) {
-                const status = err.response?.status;
-                if (err.code === "ECONNABORTED") {
-                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
-                } else {
-                  const apiMessage =
-                    typeof (err.response?.data as any)?.error?.message === "string"
-                      ? String((err.response?.data as any)?.error?.message).trim()
-                      : typeof (err.response?.data as any)?.message === "string"
-                        ? String((err.response?.data as any)?.message).trim()
-                        : "";
-                  const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
-                  const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
-                  lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+                const content =
+                  (response.data as any)?.choices?.[0]?.message?.content ??
+                  (response.data as any)?.choices?.[0]?.message?.content?.[0]?.text ??
+                  "";
+
+                const json = extractJsonObject(String(content));
+                const parsed = schema.safeParse(json);
+                if (!parsed.success) {
+                  throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
                 }
-              } else {
-                lastErr = err;
-              }
+                return parsed.data;
+              } catch (err) {
+                if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
 
-              if (attempt < maxAttempts && isRetryableError(lastErr)) {
-                await sleep(retryDelayMs(attempt, err));
-                continue;
+                if (err instanceof AxiosError) {
+                  const status = err.response?.status;
+                  if (status === 403 || status === 404) {
+                    lastAttemptErr = new LlmError("LLM_REQUEST_FAILED", `LLM request failed (HTTP ${status})`, err);
+                    break;
+                  }
+                  if (err.code === "ECONNABORTED") {
+                    lastAttemptErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+                  } else {
+                    const apiMessage =
+                      typeof (err.response?.data as any)?.error?.message === "string"
+                        ? String((err.response?.data as any)?.error?.message).trim()
+                        : typeof (err.response?.data as any)?.message === "string"
+                          ? String((err.response?.data as any)?.message).trim()
+                          : "";
+                    const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
+                    const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
+                    lastAttemptErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+                  }
+                } else {
+                  lastAttemptErr = err;
+                }
+
+                if (attempt < maxAttempts && isRetryableError(lastAttemptErr)) {
+                  await sleep(retryDelayMs(attempt, err));
+                  continue;
+                }
+                break;
               }
-              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
             }
+
+            lastErr = lastAttemptErr;
+            const status = (lastAttemptErr as any)?.cause?.response?.status;
+            if ((status === 403 || status === 404 || status === 429) && attemptedModels.length > 1) continue;
+            throw lastAttemptErr instanceof Error ? lastAttemptErr : new Error(String(lastAttemptErr));
           }
 
           throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");
         },
 
         async analyzeTextToJson({ prompt, schema }) {
-          const maxAttempts = llmMaxAttempts();
+          const attemptedModels = models.length ? models : [defaultModel];
           let lastErr: unknown = null;
 
-          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-            try {
-              const response = await client.post("/v1/chat/completions", {
-                model,
-                temperature: 0.2,
-                max_tokens: 900,
-                ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
-                messages: [
-                  {
-                    role: "system",
-                    content: "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
-                  },
-                  { role: "user", content: prompt },
-                ],
-              });
+          for (const m of attemptedModels) {
+            meta.model = m;
 
-              const content =
-                response.data?.choices?.[0]?.message?.content ??
-                response.data?.choices?.[0]?.message?.content?.[0]?.text ??
-                "";
+            const maxAttempts = llmMaxAttempts();
+            let lastAttemptErr: unknown = null;
 
-              const json = extractJsonObject(String(content));
-              const parsed = schema.safeParse(json);
-              if (!parsed.success) {
-                throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
-              }
-              return parsed.data;
-            } catch (err) {
-              if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              try {
+                const response = await client.post("/v1/chat/completions", {
+                  model: m,
+                  temperature: 0.2,
+                  max_tokens: 900,
+                  ...(!disableResponseFormat ? { response_format: { type: "json_object" } } : {}),
+                  messages: [
+                    {
+                      role: "system",
+                      content:
+                        "You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.",
+                    },
+                    { role: "user", content: prompt },
+                  ],
+                });
 
-              if (err instanceof AxiosError) {
-                const status = err.response?.status;
-                if (err.code === "ECONNABORTED") {
-                  lastErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
-                } else {
-                  const apiMessage =
-                    typeof (err.response?.data as any)?.error?.message === "string"
-                      ? String((err.response?.data as any)?.error?.message).trim()
-                      : typeof (err.response?.data as any)?.message === "string"
-                        ? String((err.response?.data as any)?.message).trim()
-                        : "";
-                  const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
-                  const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
-                  lastErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+                const content =
+                  (response.data as any)?.choices?.[0]?.message?.content ??
+                  (response.data as any)?.choices?.[0]?.message?.content?.[0]?.text ??
+                  "";
+
+                const json = extractJsonObject(String(content));
+                const parsed = schema.safeParse(json);
+                if (!parsed.success) {
+                  throw new LlmError("LLM_SCHEMA_INVALID", "Model JSON did not match expected schema", parsed.error);
                 }
-              } else {
-                lastErr = err;
-              }
+                return parsed.data;
+              } catch (err) {
+                if (err instanceof LlmError && err.code === "LLM_SCHEMA_INVALID") throw err;
 
-              if (attempt < maxAttempts && isRetryableError(lastErr)) {
-                await sleep(retryDelayMs(attempt, err));
-                continue;
+                if (err instanceof AxiosError) {
+                  const status = err.response?.status;
+                  if (status === 403 || status === 404) {
+                    lastAttemptErr = new LlmError("LLM_REQUEST_FAILED", `LLM request failed (HTTP ${status})`, err);
+                    break;
+                  }
+                  if (err.code === "ECONNABORTED") {
+                    lastAttemptErr = new LlmError("LLM_TIMEOUT", "LLM request timed out", err);
+                  } else {
+                    const apiMessage =
+                      typeof (err.response?.data as any)?.error?.message === "string"
+                        ? String((err.response?.data as any)?.error?.message).trim()
+                        : typeof (err.response?.data as any)?.message === "string"
+                          ? String((err.response?.data as any)?.message).trim()
+                          : "";
+                    const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : "";
+                    const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
+                    lastAttemptErr = new LlmError("LLM_REQUEST_FAILED", msg, err);
+                  }
+                } else {
+                  lastAttemptErr = err;
+                }
+
+                if (attempt < maxAttempts && isRetryableError(lastAttemptErr)) {
+                  await sleep(retryDelayMs(attempt, err));
+                  continue;
+                }
+                break;
               }
-              throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
             }
+
+            lastErr = lastAttemptErr;
+            const status = (lastAttemptErr as any)?.cause?.response?.status;
+            if ((status === 403 || status === 404 || status === 429) && attemptedModels.length > 1) continue;
+            throw lastAttemptErr instanceof Error ? lastAttemptErr : new Error(String(lastAttemptErr));
           }
 
           throw lastErr instanceof Error ? lastErr : new Error("LLM request failed");

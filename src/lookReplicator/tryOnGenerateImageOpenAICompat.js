@@ -19,6 +19,15 @@ Hard constraints (MUST):
 - Keep SELFIE_IMAGE pose, hairstyle, clothing, background, and camera perspective consistent. Only change makeup.
 - Do not add extra faces/features, watermarks, text overlays, or obvious artifacts.
 
+Intensity & matching requirements (MUST):
+- Do NOT default to a "natural/light makeup" look unless TARGET_IMAGE is clearly light.
+- Match the strength/style of TARGET_IMAGE. If unsure, bias slightly STRONGER (still wearable) to close the similarity gap.
+- Ensure the output is clearly different from SELFIE_IMAGE in base + eyes + lips (all three must change).
+- Focus on visible, high-signal changes:
+  1) Base (底妆): adjust undertone + brightness, coverage, finish, highlight vs. shadow distribution; reduce unevenness only as part of base makeup.
+  2) Eyes (眼妆): recreate eyeshadow palette (2–3 tones) and placement, deepen lash line, match eyeliner direction/thickness/wing.
+  3) Lips (口红): replicate hue family + depth + saturation + finish; ensure lip color shift is obvious.
+
 Priority (must match TARGET_IMAGE):
 1) Base makeup (底妆): undertone + brightness, foundation finish (matte/satin/dewy), coverage, and skin texture impression.
 2) Eye makeup (眼妆): eyeshadow palette (2–3 tones), saturation, warmth/coolness, eyeliner angle/thickness/tail length, and overall eye depth.

@@ -82,6 +82,15 @@ function uniqueStrings(list) {
   return out;
 }
 
+function splitModelList(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  return s
+    .split(',')
+    .map((m) => String(m || '').trim())
+    .filter(Boolean);
+}
+
 function isGeminiModelNotFoundMessage(message) {
   const m = String(message || '').toLowerCase();
   return m.includes('is not found') || m.includes('not supported for generatecontent') || m.includes('call listmodels');
@@ -249,7 +258,9 @@ function createProviderFromEnv(purpose = 'generic') {
     if (provider === 'openai') {
       const apiKey = openaiApiKey();
       const baseUrl = normalizeOpenAiBaseUrl(openaiBaseUrl());
-      const model = getEnv('PIVOTA_LAYER2_MODEL_OPENAI') || getEnv('PIVOTA_LAYER2_MODEL') || 'gpt-4o-mini';
+      const rawModel = getEnv('PIVOTA_LAYER2_MODEL_OPENAI') || getEnv('PIVOTA_LAYER2_MODEL') || 'gpt-4o-mini';
+      const models = splitModelList(rawModel);
+      const defaultModel = models[0] || String(rawModel || '').trim() || 'gpt-4o-mini';
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: OPENAI_API_KEY');
 
       const client = axios.create({
@@ -265,6 +276,8 @@ function createProviderFromEnv(purpose = 'generic') {
         String(getEnv('OPENAI_DISABLE_RESPONSE_FORMAT') || getEnv('PIVOTA_OPENAI_DISABLE_RESPONSE_FORMAT') || '')
           .trim()
           .toLowerCase() === '1';
+
+      const meta = { provider: 'openai', model: defaultModel, baseUrl };
 
       async function postWithRetry(body, schema) {
         const maxAttempts = llmMaxAttempts();
@@ -319,51 +332,77 @@ function createProviderFromEnv(purpose = 'generic') {
       }
 
       return {
-        __meta: { provider: 'openai', model, baseUrl },
+        __meta: meta,
 
         async analyzeImageToJson({ prompt, image, schema }) {
           const imageUrl = image.kind === 'url' ? image.url : toDataUrl(image.bytes, image.contentType);
-          return postWithRetry(
-            {
-              model,
-              temperature: 0.2,
-              max_tokens: 900,
-              ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
-              messages: [
+          const attemptedModels = models.length ? models : [defaultModel];
+          let lastErr = null;
+          for (const m of attemptedModels) {
+            meta.model = m;
+            try {
+              return await postWithRetry(
                 {
-                  role: 'system',
-                  content: 'You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.',
-                },
-                {
-                  role: 'user',
-                  content: [
-                    { type: 'text', text: prompt },
-                    { type: 'image_url', image_url: { url: imageUrl } },
+                  model: m,
+                  temperature: 0.2,
+                  max_tokens: 900,
+                  ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
+                  messages: [
+                    {
+                      role: 'system',
+                      content: 'You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.',
+                    },
+                    {
+                      role: 'user',
+                      content: [
+                        { type: 'text', text: prompt },
+                        { type: 'image_url', image_url: { url: imageUrl } },
+                      ],
+                    },
                   ],
                 },
-              ],
-            },
-            schema
-          );
+                schema
+              );
+            } catch (err) {
+              lastErr = err;
+              const status = err?.cause?.response?.status;
+              if ((status === 403 || status === 404 || status === 429) && attemptedModels.length > 1) continue;
+              throw err;
+            }
+          }
+          throw lastErr instanceof Error ? lastErr : new Error('LLM request failed');
         },
 
         async analyzeTextToJson({ prompt, schema }) {
-          return postWithRetry(
-            {
-              model,
-              temperature: 0.2,
-              max_tokens: 900,
-              ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
-              messages: [
+          const attemptedModels = models.length ? models : [defaultModel];
+          let lastErr = null;
+          for (const m of attemptedModels) {
+            meta.model = m;
+            try {
+              return await postWithRetry(
                 {
-                  role: 'system',
-                  content: 'You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.',
+                  model: m,
+                  temperature: 0.2,
+                  max_tokens: 900,
+                  ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
+                  messages: [
+                    {
+                      role: 'system',
+                      content: 'You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.',
+                    },
+                    { role: 'user', content: prompt },
+                  ],
                 },
-                { role: 'user', content: prompt },
-              ],
-            },
-            schema
-          );
+                schema
+              );
+            } catch (err) {
+              lastErr = err;
+              const status = err?.cause?.response?.status;
+              if ((status === 403 || status === 404 || status === 429) && attemptedModels.length > 1) continue;
+              throw err;
+            }
+          }
+          throw lastErr instanceof Error ? lastErr : new Error('LLM request failed');
         },
       };
     }
