@@ -7,6 +7,8 @@ const { parseMultipart, rmrf } = require('./multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
 const { runTryOnReplicateOneClickGemini } = require("./tryOnReplicateOneClickGemini");
 const { runTryOnGenerateImageGemini } = require("./tryOnGenerateImageGemini");
+const { runTryOnReplicateOneClickOpenAICompat } = require("./tryOnReplicateOneClickOpenAICompat");
+const { runTryOnGenerateImageOpenAICompat } = require("./tryOnGenerateImageOpenAICompat");
 const { randomUUID } = require('crypto');
 const axios = require('axios');
 const { upsertOutcomeSampleFromJobCompletion, getOutcomeSample } = require('../telemetry/outcomeStore');
@@ -348,6 +350,13 @@ function localizeSkeletonsForLocale({ rawSkeletons, market, locale }) {
   return Array.isArray(rendered?.allSkeletons) ? rendered.allSkeletons : rendered.skeletons;
 }
 
+function normalizeProvider(v, fallback) {
+  const s = String(v || "").trim().toLowerCase();
+  if (!s) return fallback;
+  if (s === "gemini" || s === "openai" || s === "openai_compat") return s === "openai_compat" ? "openai" : s;
+  return fallback;
+}
+
 function inferMarketFromInvokeRequest(req) {
   // Prefer explicit market inside InvokeRequest payload (allowed via `.passthrough()` in InvokeRequestSchema).
   return (
@@ -371,6 +380,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
     if (parseBool(process.env.LOOK_REPLICATOR_DISABLE_ONE_CLICK)) {
       return res.status(501).json({ error: "ONE_CLICK_DISABLED", message: "One-click replicate is disabled" });
     }
+    const oneClickProvider = normalizeProvider(process.env.LOOK_REPLICATOR_ONE_CLICK_PROVIDER, "gemini");
 
     let parsed;
     try {
@@ -404,28 +414,37 @@ function mountLookReplicatorRoutes(app, { logger }) {
       const currentRenderFile = files.currentRender || files.afterImage || files.tryonAfter || null;
       const currentRenderPath = currentRenderFile?.path ? String(currentRenderFile.path) : null;
 
-      const out = await runTryOnReplicateOneClickGemini({
-        targetImagePath: targetPath,
-        selfieImagePath: selfiePath,
-        currentRenderImagePath: currentRenderPath,
-        userRequest,
-        contextJson,
-      });
+      const outResolved =
+        oneClickProvider === "openai"
+          ? await runTryOnReplicateOneClickOpenAICompat({
+              targetImagePath: targetPath,
+              selfieImagePath: selfiePath,
+              currentRenderImagePath: currentRenderPath,
+              userRequest,
+              contextJson,
+            })
+          : await runTryOnReplicateOneClickGemini({
+              targetImagePath: targetPath,
+              selfieImagePath: selfiePath,
+              currentRenderImagePath: currentRenderPath,
+              userRequest,
+              contextJson,
+            });
 
-      if (!out?.ok) {
-        const status = out?.error?.code === "MISSING_API_KEY" ? 501 : 502;
+      if (!outResolved?.ok) {
+        const status = outResolved?.error?.code === "MISSING_API_KEY" ? 501 : 502;
         return res.status(status).json({
-          error: out?.error?.code || "ONE_CLICK_FAILED",
-          message: out?.error?.message || "One-click replicate failed",
-          meta: out?.meta || null,
-          ...(out?.details ? { details: out.details } : {}),
+          error: outResolved?.error?.code || "ONE_CLICK_FAILED",
+          message: outResolved?.error?.message || "One-click replicate failed",
+          meta: outResolved?.meta || null,
+          ...(outResolved?.details ? { details: outResolved.details } : {}),
         });
       }
 
       return res.json({
         jobId,
-        result: out.value,
-        meta: out.meta,
+        result: outResolved.value,
+        meta: outResolved.meta,
       });
     } finally {
       rmrf(tmpDir);
@@ -566,6 +585,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
     if (parseBool(process.env.LOOK_REPLICATOR_DISABLE_TRYON_IMAGE)) {
       return res.status(501).json({ error: "TRYON_DISABLED", message: "Try-on image generation is disabled" });
     }
+    const tryOnProvider = normalizeProvider(process.env.LOOK_REPLICATOR_TRYON_PROVIDER, "gemini");
 
     let parsed;
     try {
@@ -601,13 +621,22 @@ function mountLookReplicatorRoutes(app, { logger }) {
       const existingTryOnPath = await resolveAssetPathForJob({ jobId, kind: "tryon", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
       const currentRenderPath = uploadedRenderPath || existingTryOnPath || null;
 
-      const out = await runTryOnGenerateImageGemini({
-        targetImagePath: targetPath,
-        selfieImagePath: selfiePath,
-        currentRenderImagePath: currentRenderPath,
-        userRequest,
-        contextJson,
-      });
+      const out =
+        tryOnProvider === "openai"
+          ? await runTryOnGenerateImageOpenAICompat({
+              targetImagePath: targetPath,
+              selfieImagePath: selfiePath,
+              currentRenderImagePath: currentRenderPath,
+              userRequest,
+              contextJson,
+            })
+          : await runTryOnGenerateImageGemini({
+              targetImagePath: targetPath,
+              selfieImagePath: selfiePath,
+              currentRenderImagePath: currentRenderPath,
+              userRequest,
+              contextJson,
+            });
 
       if (!out?.ok) {
         const status = out?.error?.code === "MISSING_API_KEY" ? 501 : 502;
