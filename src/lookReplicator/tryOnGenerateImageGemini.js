@@ -1,6 +1,8 @@
 const path = require("node:path");
+const fs = require("node:fs");
 
 const { generateMultiImageImageFromGemini } = require("../layer1/llm/geminiMultiClient");
+const { computeSimilarity, isTooSimilar } = require("./imageSimilarity");
 
 function buildTryOnImagePrompt({ userRequest, contextJson }) {
   const reqText = userRequest ? String(userRequest).trim() : "";
@@ -84,6 +86,26 @@ async function runTryOnGenerateImageGemini({
   const data = String(out.value?.data || "");
   const ext = extFromMimeType(mimeType);
   const filename = `tryon.${ext}`;
+
+  try {
+    const selfieBytes = fs.readFileSync(String(selfieImagePath));
+    const outputBytes = Buffer.from(data, "base64");
+    const similarity = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
+    const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "2.5");
+    const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
+    if (similarity && isTooSimilar(similarity, { minDiff, maxDhashDist })) {
+      return {
+        ok: false,
+        error: {
+          code: "OUTPUT_TOO_SIMILAR",
+          message: `Try-on output too similar to selfie (diff=${Number(similarity.diffScore || 0).toFixed(2)} dhash=${similarity.dhashDist})`,
+        },
+        meta: { ...(out.meta || {}), ...similarity },
+      };
+    }
+  } catch {
+    // ignore similarity failures
+  }
 
   return { ok: true, value: { mimeType, data, ext, filename }, meta: out.meta };
 }
