@@ -5,7 +5,7 @@ const path = require("node:path");
 const axios = require("axios");
 
 const { preprocessImageForGemini } = require("../layer1/llm/geminiImagePreprocess");
-const { computeSimilarity, isTooSimilar } = require("./imageSimilarity");
+const { computeSimilarity, isTooSimilar, isSuspectFaceSwap } = require("./imageSimilarity");
 
 function parseEnvString(v) {
   const s = String(v ?? "").trim();
@@ -316,23 +316,60 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
     const data = String(img.data || "");
     const ext = extFromMimeType(mimeType);
     const selfiePath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "SELFIE_IMAGE")?.imagePath;
+    const targetPath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "TARGET_IMAGE")?.imagePath;
     if (selfiePath) {
       const selfieBytes = fs.readFileSync(String(selfiePath));
+      const targetBytes = targetPath ? fs.readFileSync(String(targetPath)) : null;
       const outputBytes = Buffer.from(data, "base64");
-      const similarity = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
-      const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "2.5");
+
+      const outSelfie = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
+      const outTarget = targetBytes ? await computeSimilarity(targetBytes, outputBytes).catch(() => null) : null;
+      const selfieTarget = targetBytes ? await computeSimilarity(selfieBytes, targetBytes).catch(() => null) : null;
+
+      const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
       const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
-      if (similarity && isTooSimilar(similarity, { minDiff, maxDhashDist })) {
+      if (outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
         return {
           ok: false,
           error: {
             code: "OUTPUT_TOO_SIMILAR",
-            message: `Try-on output too similar to selfie (diff=${Number(similarity.diffScore || 0).toFixed(2)} dhash=${similarity.dhashDist})`,
+            message: `Try-on output too similar to selfie (diff=${Number(outSelfie.diffScore || 0).toFixed(2)} dhash=${outSelfie.dhashDist})`,
           },
-          meta: { ...meta, ...similarity },
+          meta: { ...meta, ...(outSelfie || {}) },
         };
       }
-      if (similarity) Object.assign(meta, similarity);
+
+      const faceSwapOpts = {
+        maxTargetDiff: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DIFF || "20"),
+        maxTargetDhashDist: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DHASH_DIST || "10"),
+        diffMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DIFF_MARGIN || "6"),
+        dhashMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DHASH_MARGIN || "8"),
+      };
+      if (outSelfie && outTarget && isSuspectFaceSwap(outSelfie, outTarget, selfieTarget, faceSwapOpts)) {
+        return {
+          ok: false,
+          error: {
+            code: "OUTPUT_SUSPECT_FACE_SWAP",
+            message: `Try-on output resembles TARGET more than SELFIE (outSelfie diff=${Number(outSelfie.diffScore || 0).toFixed(
+              2
+            )} dhash=${outSelfie.dhashDist}; outTarget diff=${Number(outTarget.diffScore || 0).toFixed(2)} dhash=${outTarget.dhashDist})`,
+          },
+          meta: {
+            ...meta,
+            ...(outSelfie || {}),
+            ...(outTarget ? { targetDiffScore: outTarget.diffScore, targetDhashDist: outTarget.dhashDist } : {}),
+            ...(selfieTarget
+              ? { selfieTargetDiffScore: selfieTarget.diffScore, selfieTargetDhashDist: selfieTarget.dhashDist }
+              : {}),
+          },
+        };
+      }
+
+      if (outSelfie) Object.assign(meta, outSelfie);
+      if (outTarget) Object.assign(meta, { targetDiffScore: outTarget.diffScore, targetDhashDist: outTarget.dhashDist });
+      if (selfieTarget) {
+        Object.assign(meta, { selfieTargetDiffScore: selfieTarget.diffScore, selfieTargetDhashDist: selfieTarget.dhashDist });
+      }
     }
     return { ok: true, value: { mimeType, data, ext }, meta };
   }
@@ -342,23 +379,60 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
     if (!parsed) return { ok: false, error: { code: "IMAGE_PARSE_FAILED", message: "Invalid data URL" }, meta };
     const ext = extFromMimeType(parsed.mimeType);
     const selfiePath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "SELFIE_IMAGE")?.imagePath;
+    const targetPath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "TARGET_IMAGE")?.imagePath;
     if (selfiePath) {
       const selfieBytes = fs.readFileSync(String(selfiePath));
+      const targetBytes = targetPath ? fs.readFileSync(String(targetPath)) : null;
       const outputBytes = Buffer.from(parsed.dataB64, "base64");
-      const similarity = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
-      const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "2.5");
+
+      const outSelfie = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
+      const outTarget = targetBytes ? await computeSimilarity(targetBytes, outputBytes).catch(() => null) : null;
+      const selfieTarget = targetBytes ? await computeSimilarity(selfieBytes, targetBytes).catch(() => null) : null;
+
+      const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
       const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
-      if (similarity && isTooSimilar(similarity, { minDiff, maxDhashDist })) {
+      if (outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
         return {
           ok: false,
           error: {
             code: "OUTPUT_TOO_SIMILAR",
-            message: `Try-on output too similar to selfie (diff=${Number(similarity.diffScore || 0).toFixed(2)} dhash=${similarity.dhashDist})`,
+            message: `Try-on output too similar to selfie (diff=${Number(outSelfie.diffScore || 0).toFixed(2)} dhash=${outSelfie.dhashDist})`,
           },
-          meta: { ...meta, ...similarity },
+          meta: { ...meta, ...(outSelfie || {}) },
         };
       }
-      if (similarity) Object.assign(meta, similarity);
+
+      const faceSwapOpts = {
+        maxTargetDiff: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DIFF || "20"),
+        maxTargetDhashDist: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DHASH_DIST || "10"),
+        diffMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DIFF_MARGIN || "6"),
+        dhashMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DHASH_MARGIN || "8"),
+      };
+      if (outSelfie && outTarget && isSuspectFaceSwap(outSelfie, outTarget, selfieTarget, faceSwapOpts)) {
+        return {
+          ok: false,
+          error: {
+            code: "OUTPUT_SUSPECT_FACE_SWAP",
+            message: `Try-on output resembles TARGET more than SELFIE (outSelfie diff=${Number(outSelfie.diffScore || 0).toFixed(
+              2
+            )} dhash=${outSelfie.dhashDist}; outTarget diff=${Number(outTarget.diffScore || 0).toFixed(2)} dhash=${outTarget.dhashDist})`,
+          },
+          meta: {
+            ...meta,
+            ...(outSelfie || {}),
+            ...(outTarget ? { targetDiffScore: outTarget.diffScore, targetDhashDist: outTarget.dhashDist } : {}),
+            ...(selfieTarget
+              ? { selfieTargetDiffScore: selfieTarget.diffScore, selfieTargetDhashDist: selfieTarget.dhashDist }
+              : {}),
+          },
+        };
+      }
+
+      if (outSelfie) Object.assign(meta, outSelfie);
+      if (outTarget) Object.assign(meta, { targetDiffScore: outTarget.diffScore, targetDhashDist: outTarget.dhashDist });
+      if (selfieTarget) {
+        Object.assign(meta, { selfieTargetDiffScore: selfieTarget.diffScore, selfieTargetDhashDist: selfieTarget.dhashDist });
+      }
     }
     return { ok: true, value: { mimeType: parsed.mimeType, data: parsed.dataB64, ext }, meta };
   }

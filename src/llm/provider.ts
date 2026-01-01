@@ -120,6 +120,21 @@ function isGeminiModelNotFoundMessage(message: unknown): boolean {
   return m.includes("is not found") || m.includes("not supported for generatecontent") || m.includes("call listmodels");
 }
 
+function extractOpenAiTextContent(message: unknown): string {
+  const msg = message && typeof message === "object" ? (message as any) : null;
+  const content = msg?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((p) => (p && typeof p === "object" ? (p as any).text : null))
+      .filter(Boolean)
+      .map(String)
+      .join("\n");
+  }
+  if (content && typeof content === "object" && typeof (content as any).text === "string") return String((content as any).text);
+  return "";
+}
+
 function toDataUrl(bytes: Buffer, contentType: string): string {
   const b64 = bytes.toString("base64");
   return `data:${contentType};base64,${b64}`;
@@ -296,10 +311,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
             ],
           });
 
-          const content =
-            response.data?.choices?.[0]?.message?.content ??
-            response.data?.choices?.[0]?.message?.content?.[0]?.text ??
-            "";
+          const content = extractOpenAiTextContent(response.data?.choices?.[0]?.message);
 
           const json = extractJsonObject(String(content));
           const parsed = schema.safeParse(json);
@@ -367,10 +379,7 @@ export function createOpenAiCompatibleProvider(): LlmProvider {
             ],
           });
 
-          const content =
-            response.data?.choices?.[0]?.message?.content ??
-            response.data?.choices?.[0]?.message?.content?.[0]?.text ??
-            "";
+          const content = extractOpenAiTextContent(response.data?.choices?.[0]?.message);
 
           const json = extractJsonObject(String(content));
           const parsed = schema.safeParse(json);
@@ -518,10 +527,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
                   ],
                 });
 
-                const content =
-                  (response.data as any)?.choices?.[0]?.message?.content ??
-                  (response.data as any)?.choices?.[0]?.message?.content?.[0]?.text ??
-                  "";
+                const content = extractOpenAiTextContent((response.data as any)?.choices?.[0]?.message);
 
                 const json = extractJsonObject(String(content));
                 const parsed = schema.safeParse(json);
@@ -599,10 +605,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
                   ],
                 });
 
-                const content =
-                  (response.data as any)?.choices?.[0]?.message?.content ??
-                  (response.data as any)?.choices?.[0]?.message?.content?.[0]?.text ??
-                  "";
+                const content = extractOpenAiTextContent((response.data as any)?.choices?.[0]?.message);
 
                 const json = extractJsonObject(String(content));
                 const parsed = schema.safeParse(json);

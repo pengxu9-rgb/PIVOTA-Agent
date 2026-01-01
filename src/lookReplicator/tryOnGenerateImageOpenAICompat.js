@@ -9,6 +9,8 @@ You are a makeup try-on image editing assistant.
 Task:
 - Take the makeup style from TARGET_IMAGE and apply it to the person in SELFIE_IMAGE.
 - Preserve the identity and facial structure of SELFIE_IMAGE.
+- Do not replace the face/skin/identity with TARGET_IMAGE. Do not do face swap, face transplant, cut-and-paste collage, or change facial geometry.
+- Do not add extra facial parts (duplicate eyes/mouth) or halos/patches around the face.
 - Keep the output realistic and wearable.
 - Keep background/lighting similar to SELFIE_IMAGE when possible.
 - Do NOT generate a "no-makeup" look. The makeup must be clearly visible and distinct.
@@ -85,7 +87,7 @@ async function runTryOnGenerateImageOpenAICompat({
     const status = out?.error?.status;
     const code = out?.error?.code;
     // Try the next model when the relay rejects the requested model (common for 403/404).
-    if (status === 403 || status === 404 || code === "OUTPUT_TOO_SIMILAR") continue;
+    if (status === 403 || status === 404 || code === "OUTPUT_TOO_SIMILAR" || code === "OUTPUT_SUSPECT_FACE_SWAP") continue;
     break;
   }
 

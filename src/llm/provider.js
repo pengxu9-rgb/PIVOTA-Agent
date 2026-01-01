@@ -96,6 +96,21 @@ function isGeminiModelNotFoundMessage(message) {
   return m.includes('is not found') || m.includes('not supported for generatecontent') || m.includes('call listmodels');
 }
 
+function extractOpenAiTextContent(message) {
+  const msg = message && typeof message === 'object' ? message : null;
+  const content = msg?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((p) => (p && typeof p === 'object' ? p.text : null))
+      .filter(Boolean)
+      .map(String)
+      .join('\n');
+  }
+  if (content && typeof content === 'object' && typeof content.text === 'string') return String(content.text);
+  return '';
+}
+
 function extractJsonObject(text) {
   const raw = String(text || '').trim();
   if (!raw) throw new LlmError('LLM_PARSE_FAILED', 'Empty model output');
@@ -290,10 +305,7 @@ function createProviderFromEnv(purpose = 'generic') {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
             const response = await client.post('/v1/chat/completions', body);
-            const content =
-              response.data?.choices?.[0]?.message?.content ??
-              response.data?.choices?.[0]?.message?.content?.[0]?.text ??
-              '';
+            const content = extractOpenAiTextContent(response.data?.choices?.[0]?.message);
             const json = extractJsonObject(String(content));
             const parsed = schema.safeParse(json);
             if (!parsed.success) {
@@ -609,10 +621,7 @@ function createOpenAiCompatibleProvider() {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         const response = await client.post('/v1/chat/completions', body);
-        const content =
-          response.data?.choices?.[0]?.message?.content ??
-          response.data?.choices?.[0]?.message?.content?.[0]?.text ??
-          '';
+        const content = extractOpenAiTextContent(response.data?.choices?.[0]?.message);
         const json = extractJsonObject(String(content));
         const parsed = schema.safeParse(json);
         if (!parsed.success) {

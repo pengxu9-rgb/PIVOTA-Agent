@@ -78,8 +78,41 @@ function isTooSimilar(similarity, opts) {
   return Boolean(diffOk || dhashOk);
 }
 
+function isSuspectFaceSwap(outSelfie, outTarget, selfieTarget, opts) {
+  if (!outSelfie || !outTarget) return false;
+
+  const maxTargetDiff = Number.isFinite(Number(opts?.maxTargetDiff)) ? Number(opts.maxTargetDiff) : 20;
+  const maxTargetDhashDist = Number.isFinite(Number(opts?.maxTargetDhashDist)) ? Number(opts.maxTargetDhashDist) : 10;
+  const diffMargin = Number.isFinite(Number(opts?.diffMargin)) ? Number(opts.diffMargin) : 6;
+  const dhashMargin = Number.isFinite(Number(opts?.dhashMargin)) ? Number(opts.dhashMargin) : 8;
+
+  // If the selfie is already very similar to the target, we cannot reliably detect face swap.
+  const selfieTargetVeryClose =
+    selfieTarget &&
+    ((selfieTarget.diffScore != null && selfieTarget.diffScore <= maxTargetDiff) ||
+      (selfieTarget.dhashDist != null && selfieTarget.dhashDist <= maxTargetDhashDist));
+  if (selfieTargetVeryClose) return false;
+
+  const outTargetClose =
+    (outTarget.diffScore != null && outTarget.diffScore <= maxTargetDiff) ||
+    (outTarget.dhashDist != null && outTarget.dhashDist <= maxTargetDhashDist);
+  if (!outTargetClose) return false;
+
+  const targetCloserByDiff =
+    outTarget.diffScore != null &&
+    outSelfie.diffScore != null &&
+    outTarget.diffScore + diffMargin < outSelfie.diffScore;
+
+  const targetCloserByHash =
+    outTarget.dhashDist != null &&
+    outSelfie.dhashDist != null &&
+    outTarget.dhashDist + dhashMargin < outSelfie.dhashDist;
+
+  return Boolean(targetCloserByDiff || targetCloserByHash);
+}
+
 module.exports = {
   computeSimilarity,
   isTooSimilar,
+  isSuspectFaceSwap,
 };
-

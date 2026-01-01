@@ -2,7 +2,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 
 const { generateMultiImageImageFromGemini } = require("../layer1/llm/geminiMultiClient");
-const { computeSimilarity, isTooSimilar } = require("./imageSimilarity");
+const { computeSimilarity, isTooSimilar, isSuspectFaceSwap } = require("./imageSimilarity");
 
 function buildTryOnImagePrompt({ userRequest, contextJson }) {
   const reqText = userRequest ? String(userRequest).trim() : "";
@@ -13,6 +13,8 @@ You are a makeup try-on image editing assistant.
 Task:
 - Take the makeup style from TARGET_IMAGE and apply it to the person in SELFIE_IMAGE.
 - Preserve the identity and facial structure of SELFIE_IMAGE.
+- Do not replace the face/skin/identity with TARGET_IMAGE. Do not do face swap, face transplant, cut-and-paste collage, or change facial geometry.
+- Do not add extra facial parts (duplicate eyes/mouth) or halos/patches around the face.
 - Keep the output realistic and wearable.
 - Keep background/lighting similar to SELFIE_IMAGE when possible.
 - Do NOT generate a "no-makeup" look. The makeup must be clearly visible and distinct.
@@ -89,18 +91,46 @@ async function runTryOnGenerateImageGemini({
 
   try {
     const selfieBytes = fs.readFileSync(String(selfieImagePath));
+    const targetBytes = fs.readFileSync(String(targetImagePath));
     const outputBytes = Buffer.from(data, "base64");
-    const similarity = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
-    const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "2.5");
+    const outSelfie = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
+    const outTarget = await computeSimilarity(targetBytes, outputBytes).catch(() => null);
+    const selfieTarget = await computeSimilarity(selfieBytes, targetBytes).catch(() => null);
+
+    const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
     const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
-    if (similarity && isTooSimilar(similarity, { minDiff, maxDhashDist })) {
+    if (outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
       return {
         ok: false,
         error: {
           code: "OUTPUT_TOO_SIMILAR",
-          message: `Try-on output too similar to selfie (diff=${Number(similarity.diffScore || 0).toFixed(2)} dhash=${similarity.dhashDist})`,
+          message: `Try-on output too similar to selfie (diff=${Number(outSelfie.diffScore || 0).toFixed(2)} dhash=${outSelfie.dhashDist})`,
         },
-        meta: { ...(out.meta || {}), ...similarity },
+        meta: { ...(out.meta || {}), ...(outSelfie || {}) },
+      };
+    }
+
+    const faceSwapOpts = {
+      maxTargetDiff: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DIFF || "20"),
+      maxTargetDhashDist: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DHASH_DIST || "10"),
+      diffMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DIFF_MARGIN || "6"),
+      dhashMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DHASH_MARGIN || "8"),
+    };
+    if (outSelfie && outTarget && isSuspectFaceSwap(outSelfie, outTarget, selfieTarget, faceSwapOpts)) {
+      return {
+        ok: false,
+        error: {
+          code: "OUTPUT_SUSPECT_FACE_SWAP",
+          message: `Try-on output resembles TARGET more than SELFIE (outSelfie diff=${Number(outSelfie.diffScore || 0).toFixed(
+            2
+          )} dhash=${outSelfie.dhashDist}; outTarget diff=${Number(outTarget.diffScore || 0).toFixed(2)} dhash=${outTarget.dhashDist})`,
+        },
+        meta: {
+          ...(out.meta || {}),
+          ...(outSelfie || {}),
+          ...(outTarget ? { targetDiffScore: outTarget.diffScore, targetDhashDist: outTarget.dhashDist } : {}),
+          ...(selfieTarget ? { selfieTargetDiffScore: selfieTarget.diffScore, selfieTargetDhashDist: selfieTarget.dhashDist } : {}),
+        },
       };
     }
   } catch {
