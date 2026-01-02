@@ -3,6 +3,12 @@ const fs = require("node:fs");
 
 const { generateMultiImageImageFromGemini } = require("../layer1/llm/geminiMultiClient");
 const { computeSimilarity, isTooSimilar, isSuspectFaceSwap } = require("./imageSimilarity");
+const { applyTryOnFaceComposite } = require("./tryOnFaceComposite");
+
+function parseEnvBool(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
 
 function buildTryOnImagePrompt({ userRequest, contextJson }) {
   const reqText = userRequest ? String(userRequest).trim() : "";
@@ -72,6 +78,8 @@ async function runTryOnGenerateImageGemini({
   currentRenderImagePath,
   userRequest,
   contextJson,
+  faceBox,
+  faceMaskPath,
 }) {
   const promptText = buildTryOnImagePrompt({ userRequest, contextJson });
 
@@ -88,6 +96,29 @@ async function runTryOnGenerateImageGemini({
   const data = String(out.value?.data || "");
   const ext = extFromMimeType(mimeType);
   const filename = `tryon.${ext}`;
+
+  const blendEnabled =
+    !parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_DISABLE_FACE_BLEND) &&
+    (parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND) ||
+      process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND == null ||
+      faceMaskPath ||
+      faceBox);
+
+  if (blendEnabled) {
+    const rawBytes = Buffer.from(data, "base64");
+    const blended = await applyTryOnFaceComposite({
+      selfieImagePath,
+      tryOnImageBytes: rawBytes,
+      faceMaskPath,
+      faceBox,
+    });
+    if (!blended.ok) return blended;
+    return {
+      ok: true,
+      value: { mimeType: blended.value.mimeType, data: blended.value.dataB64, ext: "png", filename: "tryon.png" },
+      meta: { ...(out.meta || {}), ...(blended.meta || {}), blended: true },
+    };
+  }
 
   try {
     const selfieBytes = fs.readFileSync(String(selfieImagePath));

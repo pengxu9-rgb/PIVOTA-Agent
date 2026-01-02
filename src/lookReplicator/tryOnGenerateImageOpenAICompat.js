@@ -1,4 +1,10 @@
 const { generateMultiImageImageFromOpenAICompat } = require("./openaiCompatMultiModal");
+const { applyTryOnFaceComposite } = require("./tryOnFaceComposite");
+
+function parseEnvBool(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
 
 function buildTryOnImagePrompt({ userRequest, contextJson }) {
   const reqText = userRequest ? String(userRequest).trim() : "";
@@ -55,6 +61,8 @@ async function runTryOnGenerateImageOpenAICompat({
   currentRenderImagePath,
   userRequest,
   contextJson,
+  faceBox,
+  faceMaskPath,
 }) {
   const promptText = buildTryOnImagePrompt({ userRequest, contextJson });
   const rawModel = process.env.LOOK_REPLICATOR_TRYON_MODEL_OPENAI || "";
@@ -79,6 +87,39 @@ async function runTryOnGenerateImageOpenAICompat({
     attempted.push(model);
     const out = await generateMultiImageImageFromOpenAICompat({ promptText, images, model });
     if (out?.ok) {
+      const blendEnabled =
+        !parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_DISABLE_FACE_BLEND) &&
+        (parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND) ||
+          process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND == null ||
+          faceMaskPath ||
+          faceBox);
+
+      if (blendEnabled) {
+        const rawBytes = Buffer.from(String(out.value.data || ""), "base64");
+        const blended = await applyTryOnFaceComposite({
+          selfieImagePath,
+          tryOnImageBytes: rawBytes,
+          faceMaskPath,
+          faceBox,
+        });
+        if (!blended.ok && blended.error?.code === "OUTPUT_TOO_SIMILAR") {
+          lastErr = { ...blended, meta: { ...(blended.meta || {}), upstream: out.meta } };
+          continue;
+        }
+        if (blended.ok) {
+          return {
+            ok: true,
+            value: {
+              mimeType: blended.value.mimeType,
+              data: blended.value.dataB64,
+              ext: "png",
+              filename: "tryon.png",
+            },
+            meta: { ...(out.meta || {}), ...(blended.meta || {}), attemptedModels: attempted, blended: true },
+          };
+        }
+      }
+
       const filename = `tryon.${out.value.ext}`;
       return { ok: true, value: { ...out.value, filename }, meta: { ...(out.meta || {}), attemptedModels: attempted } };
     }

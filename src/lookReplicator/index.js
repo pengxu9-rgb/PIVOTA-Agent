@@ -401,6 +401,16 @@ function mountLookReplicatorRoutes(app, { logger }) {
         contextJson = null;
       }
 
+      let faceBox = null;
+      try {
+        const raw = fields.faceBox || fields.faceBbox || fields.face_bbox || fields.faceRect || null;
+        faceBox = raw ? parseOptionalJsonField(raw) : null;
+      } catch {
+        faceBox = null;
+      }
+      const faceMaskFile = files.faceMask || files.mask || files.face_mask || null;
+      const faceMaskPath = faceMaskFile?.path ? String(faceMaskFile.path) : null;
+
       if (!jobId) {
         return res.status(400).json({ error: "INVALID_REQUEST", message: "jobId is required" });
       }
@@ -637,6 +647,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
               currentRenderImagePath: currentRenderPath,
               userRequest,
               contextJson,
+              faceBox,
+              faceMaskPath,
             })
           : await runTryOnGenerateImageGemini({
               targetImagePath: targetPath,
@@ -644,6 +656,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
               currentRenderImagePath: currentRenderPath,
               userRequest,
               contextJson,
+              faceBox,
+              faceMaskPath,
             });
 
       if (!out?.ok) {
