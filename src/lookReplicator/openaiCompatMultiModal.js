@@ -114,6 +114,21 @@ function extractFirstImageData(resp) {
   return null;
 }
 
+function extractFirstGeminiInlineImageData(resp) {
+  const parts = resp?.data?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return null;
+  for (const p of parts) {
+    if (!p || typeof p !== "object") continue;
+    const inline = p.inlineData || p.inline_data;
+    if (inline && typeof inline === "object") {
+      const mimeType = String(inline.mimeType || inline.mime_type || "image/png");
+      const data = String(inline.data || "");
+      if (data) return { kind: "base64", data, mimeType };
+    }
+  }
+  return null;
+}
+
 function parseDataUrl(dataUrl) {
   const m = String(dataUrl || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
   if (!m) return null;
@@ -225,6 +240,57 @@ async function postChatCompletions({ model, messages, timeoutMs, temperature, ma
   };
 }
 
+async function postGeminiGenerateContent({ model, contents, systemInstruction, timeoutMs, temperature, maxOutputTokens }) {
+  const { baseUrl, apiKey } = openaiCompatConfig();
+  if (!baseUrl) return { ok: false, error: { code: "CONFIG_MISSING", message: "Missing OPENAI_BASE_URL (or LLM_BASE_URL)" } };
+  if (!apiKey) return { ok: false, error: { code: "CONFIG_MISSING", message: "Missing OPENAI_API_KEY (or LLM_API_KEY)" } };
+  if (!model) return { ok: false, error: { code: "CONFIG_MISSING", message: "Missing model" } };
+
+  const timeout = Math.max(1, Number(timeoutMs) || parseEnvInt(process.env.LLM_TIMEOUT_MS, 45_000));
+  const client = axios.create({
+    baseURL: normalizeBaseUrl(baseUrl),
+    timeout,
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    validateStatus: () => true,
+  });
+
+  const paths = [
+    `/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    `/v1/models/${encodeURIComponent(model)}:generateContent`,
+    `/v1beta/${encodeURIComponent(model)}:generateContent`,
+    `/v1/${encodeURIComponent(model)}:generateContent`,
+  ];
+
+  let lastResp = null;
+  for (const p of paths) {
+    const resp = await client.post(p, {
+      systemInstruction: systemInstruction ? { parts: [{ text: String(systemInstruction) }] } : undefined,
+      contents,
+      generationConfig: {
+        temperature: typeof temperature === "number" ? temperature : 0.2,
+        maxOutputTokens: typeof maxOutputTokens === "number" ? maxOutputTokens : 1800,
+      },
+    });
+    lastResp = resp;
+    if (resp.status >= 200 && resp.status < 300) return { ok: true, resp, meta: { protocol: "gemini_generateContent", path: p } };
+
+    // If endpoint doesn't exist, try next.
+    if (resp.status === 404 || resp.status === 405) continue;
+    // If it exists but errors, stop to surface meaningful error.
+    break;
+  }
+
+  const status = lastResp?.status;
+  const apiMessage =
+    typeof lastResp?.data?.error?.message === "string"
+      ? String(lastResp.data.error.message).trim()
+      : typeof lastResp?.data?.message === "string"
+        ? String(lastResp.data.message).trim()
+        : "";
+  const msg = status ? `got status: ${status}. ${apiMessage || ""}`.trim() : "REQUEST_FAILED";
+  return { ok: false, error: { code: "REQUEST_FAILED", message: msg.slice(0, 220), ...(status ? { status } : {}) } };
+}
+
 async function generateMultiImageJsonFromOpenAICompat({ promptText, images, schema, model }) {
   const meta = { model, attempted: false };
   const list = Array.isArray(images) ? images : [];
@@ -284,6 +350,7 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
   if (!list.length) return { ok: false, error: { code: "MISSING_IMAGE", message: "Missing images" }, meta };
 
   const parts = [{ type: "text", text: String(promptText || "") }];
+  const geminiParts = [{ text: String(promptText || "") }];
   for (const it of list) {
     const label = String(it?.label || "").trim() || "IMAGE";
     const p = String(it?.imagePath || "").trim();
@@ -293,6 +360,12 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
     if (!dataUrl) return { ok: false, error: { code: "MISSING_IMAGE", message: `Missing image data for ${label}` }, meta };
     parts.push({ type: "text", text: `${label}:` });
     parts.push({ type: "image_url", image_url: { url: dataUrl } });
+
+    const parsed = parseDataUrl(dataUrl);
+    if (parsed) {
+      geminiParts.push({ text: `${label}:` });
+      geminiParts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.dataB64 } });
+    }
   }
 
   meta.attempted = true;
@@ -306,7 +379,83 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
     temperature: 0.2,
     maxTokens: 1800,
   });
-  if (!out.ok) return { ok: false, error: out.error, meta };
+  if (!out.ok) {
+    const msg = String(out?.error?.message || "");
+    if (msg.toLowerCase().includes("contents is required")) {
+      const gem = await postGeminiGenerateContent({
+        model,
+        systemInstruction:
+          "You are an image editing assistant. Return a single edited image. If possible, return it as inlineData (mimeType + base64 data).",
+        contents: [{ role: "user", parts: geminiParts }],
+        timeoutMs: parseEnvInt(process.env.LLM_TIMEOUT_MS, 45_000),
+        temperature: 0.2,
+        maxOutputTokens: 1800,
+      });
+      if (!gem.ok) return { ok: false, error: gem.error, meta: { ...meta, protocol: "gemini_generateContent" } };
+
+      const img = extractFirstGeminiInlineImageData(gem.resp);
+      if (!img) return { ok: false, error: { code: "EMPTY_IMAGE", message: "Model did not return an image" }, meta: { ...meta, protocol: "gemini_generateContent" } };
+
+      // Continue through the same similarity checks as the "base64" branch.
+      const mimeType = String(img.mimeType || "image/png");
+      const data = String(img.data || "");
+      const ext = extFromMimeType(mimeType);
+      const selfiePath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "SELFIE_IMAGE")?.imagePath;
+      const targetPath = list.find((x) => String(x?.label || "").trim().toUpperCase() === "TARGET_IMAGE")?.imagePath;
+      if (selfiePath) {
+        const selfieBytes = fs.readFileSync(String(selfiePath));
+        const targetBytes = targetPath ? fs.readFileSync(String(targetPath)) : null;
+        const outputBytes = Buffer.from(data, "base64");
+
+        const outSelfie = await computeSimilarity(selfieBytes, outputBytes).catch(() => null);
+        const outTarget = targetBytes ? await computeSimilarity(targetBytes, outputBytes).catch(() => null) : null;
+        const selfieTarget = targetBytes ? await computeSimilarity(selfieBytes, targetBytes).catch(() => null) : null;
+
+        const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
+        const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
+        if (outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
+          return {
+            ok: false,
+            error: {
+              code: "OUTPUT_TOO_SIMILAR",
+              message: `Try-on output too similar to selfie (diff=${Number(outSelfie.diffScore || 0).toFixed(2)} dhash=${outSelfie.dhashDist})`,
+            },
+            meta: { ...meta, protocol: "gemini_generateContent", ...(outSelfie || {}) },
+          };
+        }
+
+        const faceSwapOpts = {
+          maxTargetDiff: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DIFF || "20"),
+          maxTargetDhashDist: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_MAX_TARGET_DHASH_DIST || "10"),
+          diffMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DIFF_MARGIN || "6"),
+          dhashMargin: Number(process.env.LOOK_REPLICATOR_TRYON_FACE_SWAP_DHASH_MARGIN || "8"),
+        };
+        if (outSelfie && outTarget && isSuspectFaceSwap(outSelfie, outTarget, selfieTarget, faceSwapOpts)) {
+          return {
+            ok: false,
+            error: {
+              code: "OUTPUT_SUSPECT_FACE_SWAP",
+              message: `Try-on output resembles TARGET more than SELFIE (outSelfie diff=${Number(outSelfie.diffScore || 0).toFixed(
+                2
+              )} dhash=${outSelfie.dhashDist}; outTarget diff=${Number(outTarget.diffScore || 0).toFixed(2)} dhash=${outTarget.dhashDist})`,
+            },
+            meta: {
+              ...meta,
+              protocol: "gemini_generateContent",
+              ...(outSelfie || {}),
+              ...(outTarget ? { targetDiffScore: outTarget.diffScore, targetDhashDist: outTarget.dhashDist } : {}),
+              ...(selfieTarget
+                ? { selfieTargetDiffScore: selfieTarget.diffScore, selfieTargetDhashDist: selfieTarget.dhashDist }
+                : {}),
+            },
+          };
+        }
+      }
+
+      return { ok: true, value: { mimeType, data, ext }, meta: { ...meta, protocol: "gemini_generateContent", ...(gem.meta || {}) } };
+    }
+    return { ok: false, error: out.error, meta };
+  }
 
   const img = extractFirstImageData(out.resp);
   if (!img) return { ok: false, error: { code: "EMPTY_IMAGE", message: "Model did not return an image" }, meta };
