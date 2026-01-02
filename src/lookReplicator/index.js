@@ -617,16 +617,26 @@ function mountLookReplicatorRoutes(app, { logger }) {
       const jobId = String(fields.jobId || "").trim();
       const userRequest = fields.userRequest ? String(fields.userRequest).trim() : "";
 
-      let contextJson = null;
-      try {
-        contextJson = fields.contextJson ? parseOptionalJsonField(fields.contextJson) : null;
-      } catch {
-        contextJson = null;
-      }
+	      let contextJson = null;
+	      try {
+	        contextJson = fields.contextJson ? parseOptionalJsonField(fields.contextJson) : null;
+	      } catch {
+	        contextJson = null;
+	      }
 
-      if (!jobId) {
-        return res.status(400).json({ error: "INVALID_REQUEST", message: "jobId is required" });
-      }
+	      let faceBox = null;
+	      try {
+	        const raw = fields.faceBox || fields.faceBbox || fields.face_bbox || fields.faceRect || null;
+	        faceBox = raw ? parseOptionalJsonField(raw) : null;
+	      } catch {
+	        faceBox = null;
+	      }
+	      const faceMaskFile = files.faceMask || files.mask || files.face_mask || null;
+	      const faceMaskPath = faceMaskFile?.path ? String(faceMaskFile.path) : null;
+
+	      if (!jobId) {
+	        return res.status(400).json({ error: "INVALID_REQUEST", message: "jobId is required" });
+	      }
 
       const targetPath = await resolveAssetPathForJob({ jobId, kind: "reference", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
       const selfiePath = await resolveAssetPathForJob({ jobId, kind: "selfie", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
