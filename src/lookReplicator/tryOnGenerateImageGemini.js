@@ -106,18 +106,27 @@ async function runTryOnGenerateImageGemini({
 
   if (blendEnabled) {
     const rawBytes = Buffer.from(data, "base64");
-    const blended = await applyTryOnFaceComposite({
-      selfieImagePath,
-      tryOnImageBytes: rawBytes,
-      faceMaskPath,
-      faceBox,
-    });
-    if (!blended.ok) return blended;
-    return {
-      ok: true,
-      value: { mimeType: blended.value.mimeType, data: blended.value.dataB64, ext: "png", filename: "tryon.png" },
-      meta: { ...(out.meta || {}), ...(blended.meta || {}), blended: true },
-    };
+    try {
+      const blended = await applyTryOnFaceComposite({
+        selfieImagePath,
+        tryOnImageBytes: rawBytes,
+        faceMaskPath,
+        faceBox,
+      });
+      if (!blended.ok) return blended;
+      return {
+        ok: true,
+        value: { mimeType: blended.value.mimeType, data: blended.value.dataB64, ext: "png", filename: "tryon.png" },
+        meta: { ...(out.meta || {}), ...(blended.meta || {}), blended: true },
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: true,
+        value: { mimeType, data, ext, filename },
+        meta: { ...(out.meta || {}), blended: false, blendError: msg.slice(0, 160) },
+      };
+    }
   }
 
   try {

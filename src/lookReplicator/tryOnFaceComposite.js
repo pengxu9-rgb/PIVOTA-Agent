@@ -82,8 +82,10 @@ function svgEllipseMask({ width, height, box, pad = 0.18 }) {
 
 async function loadOrientedBufferFromPath(imagePath) {
   const buf = fs.readFileSync(String(imagePath));
-  const { data, info } = await sharp(buf).rotate().toBuffer({ resolveWithObject: true });
-  return { buffer: data, width: info.width, height: info.height };
+  const meta = await sharp(buf).rotate().metadata();
+  const width = Number(meta?.width) || 0;
+  const height = Number(meta?.height) || 0;
+  return { buffer: buf, width, height };
 }
 
 async function buildMaskBuffer({ selfie, faceMaskPath, faceBox, featherPx, pad }) {
@@ -124,16 +126,34 @@ async function applyTryOnFaceComposite({
   featherPx,
 }) {
   const selfie = await loadOrientedBufferFromPath(selfieImagePath);
-  const w = selfie.width;
-  const h = selfie.height;
+  const origW = selfie.width;
+  const origH = selfie.height;
+  if (!origW || !origH) throw new Error("SELFIE_DIMENSIONS_MISSING");
 
-  const parsedFaceBox = parseFaceBox(faceBox, { width: w, height: h }) || null;
-  const region = parsedFaceBox || defaultFaceBox({ width: w, height: h });
+  const maxEdge = Math.max(256, Number(process.env.LOOK_REPLICATOR_TRYON_BLEND_MAX_EDGE || "1280"));
+  const scale = Math.min(1, maxEdge / Math.max(origW, origH));
+  const w = Math.max(1, Math.round(origW * scale));
+  const h = Math.max(1, Math.round(origH * scale));
+
+  const parsedFaceBoxOrig = parseFaceBox(faceBox, { width: origW, height: origH }) || null;
+  const regionOrig = parsedFaceBoxOrig || defaultFaceBox({ width: origW, height: origH });
+  const left = clamp(Math.round(regionOrig.left * scale), 0, Math.max(0, w - 1));
+  const top = clamp(Math.round(regionOrig.top * scale), 0, Math.max(0, h - 1));
+  const right = clamp(left + Math.max(1, Math.round(regionOrig.width * scale)), left + 1, w);
+  const bottom = clamp(top + Math.max(1, Math.round(regionOrig.height * scale)), top + 1, h);
+  const region = { left, top, width: right - left, height: bottom - top };
 
   const { maskRaw } = await buildMaskBuffer({
-    selfie,
+    selfie: { width: w, height: h },
     faceMaskPath,
-    faceBox: parsedFaceBox,
+    faceBox: parsedFaceBoxOrig
+      ? {
+          left: region.left,
+          top: region.top,
+          width: region.width,
+          height: region.height,
+        }
+      : null,
     pad: Number.isFinite(Number(pad)) ? Number(pad) : 0.18,
     featherPx,
   });
@@ -152,6 +172,8 @@ async function applyTryOnFaceComposite({
     .toBuffer();
 
   const compositedPng = await sharp(selfie.buffer)
+    .rotate()
+    .resize(w, h, { fit: "fill" })
     .ensureAlpha()
     .composite([{ input: overlayWithAlpha, left: 0, top: 0 }])
     .png()
@@ -159,7 +181,7 @@ async function applyTryOnFaceComposite({
 
   // Similarity check should focus on the face region (outside is mostly unchanged by design).
   const [selfieRegion, outRegion] = await Promise.all([
-    sharp(selfie.buffer).extract(region).png().toBuffer(),
+    sharp(selfie.buffer).rotate().resize(w, h, { fit: "fill" }).extract(region).png().toBuffer(),
     sharp(compositedPng).extract(region).png().toBuffer(),
   ]);
 

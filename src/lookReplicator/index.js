@@ -639,26 +639,32 @@ function mountLookReplicatorRoutes(app, { logger }) {
       const existingTryOnPath = await resolveAssetPathForJob({ jobId, kind: "tryon", tmpDir, maxBytes: MAX_UPLOAD_BYTES });
       const currentRenderPath = uploadedRenderPath || existingTryOnPath || null;
 
-      const out =
-        tryOnProvider === "openai"
-          ? await runTryOnGenerateImageOpenAICompat({
-              targetImagePath: targetPath,
-              selfieImagePath: selfiePath,
-              currentRenderImagePath: currentRenderPath,
-              userRequest,
-              contextJson,
-              faceBox,
-              faceMaskPath,
-            })
-          : await runTryOnGenerateImageGemini({
-              targetImagePath: targetPath,
-              selfieImagePath: selfiePath,
-              currentRenderImagePath: currentRenderPath,
-              userRequest,
-              contextJson,
-              faceBox,
-              faceMaskPath,
-            });
+      let out;
+      try {
+        out =
+          tryOnProvider === "openai"
+            ? await runTryOnGenerateImageOpenAICompat({
+                targetImagePath: targetPath,
+                selfieImagePath: selfiePath,
+                currentRenderImagePath: currentRenderPath,
+                userRequest,
+                contextJson,
+                faceBox,
+                faceMaskPath,
+              })
+            : await runTryOnGenerateImageGemini({
+                targetImagePath: targetPath,
+                selfieImagePath: selfiePath,
+                currentRenderImagePath: currentRenderPath,
+                userRequest,
+                contextJson,
+                faceBox,
+                faceMaskPath,
+              });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return res.status(502).json({ error: "TRYON_HANDLER_FAILED", message: msg.slice(0, 240) });
+      }
 
       if (!out?.ok) {
         const code = out?.error?.code;

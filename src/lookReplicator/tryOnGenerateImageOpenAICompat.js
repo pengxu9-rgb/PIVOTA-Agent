@@ -96,12 +96,23 @@ async function runTryOnGenerateImageOpenAICompat({
 
       if (blendEnabled) {
         const rawBytes = Buffer.from(String(out.value.data || ""), "base64");
-        const blended = await applyTryOnFaceComposite({
-          selfieImagePath,
-          tryOnImageBytes: rawBytes,
-          faceMaskPath,
-          faceBox,
-        });
+        let blended;
+        try {
+          blended = await applyTryOnFaceComposite({
+            selfieImagePath,
+            tryOnImageBytes: rawBytes,
+            faceMaskPath,
+            faceBox,
+          });
+        } catch (err) {
+          blended = null;
+          const msg = err instanceof Error ? err.message : String(err);
+          return {
+            ok: true,
+            value: { ...out.value, filename: `tryon.${out.value.ext}` },
+            meta: { ...(out.meta || {}), attemptedModels: attempted, blended: false, blendError: msg.slice(0, 160) },
+          };
+        }
         if (!blended.ok && blended.error?.code === "OUTPUT_TOO_SIMILAR") {
           lastErr = { ...blended, meta: { ...(blended.meta || {}), upstream: out.meta } };
           continue;
