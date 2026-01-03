@@ -1,4 +1,5 @@
 import { z } from "zod";
+import axios from "axios";
 
 import { LookSpecV0 } from "../layer2/schemas/lookSpecV0";
 
@@ -11,6 +12,11 @@ import { rankCandidates } from "./ranking/rankCandidates";
 import { buildWhyThis } from "./copy/whyThis";
 
 type Market = "US" | "JP";
+
+const INFRA_API_BASE = (process.env.PIVOTA_API_BASE || "http://localhost:8080").replace(/\/$/, "");
+const OUTBOUND_LINKS_TOOL = String(process.env.OUTBOUND_LINKS_TOOL || "look_replicator");
+const OUTBOUND_LINKS_ENABLED = process.env.NODE_ENV === "production" || String(process.env.LAYER3_OUTBOUND_LINKS || "") === "1";
+const EXTERNAL_OFFERS_ENABLED = process.env.NODE_ENV === "production" || String(process.env.LAYER3_EXTERNAL_OFFERS || "") === "1";
 
 function engineVersionFor(market: Market) {
   const m = String(market || "US").toLowerCase();
@@ -104,6 +110,123 @@ function toProductAttributes(input: {
     return product;
   }
   return product;
+}
+
+function isLikelyBadName(name: string): boolean {
+  const n = String(name || "").trim().toLowerCase();
+  return !n || n === "default title" || n.startsWith("placeholder ");
+}
+
+function deriveUsdTier(amount: number): "budget" | "mid" | "premium" | "unknown" {
+  if (!Number.isFinite(amount) || amount <= 0) return "unknown";
+  if (amount <= 15) return "budget";
+  if (amount <= 35) return "mid";
+  return "premium";
+}
+
+type LinkResolveResponse = {
+  matched: boolean;
+  resolved?: {
+    destinationUrl: string;
+    redirectUrl: string;
+    purchaseEnabled: boolean;
+    purchaseEnabledOverride?: boolean | null;
+    ruleId?: string | null;
+  } | null;
+};
+
+type ExternalOfferResolveResponse = {
+  ok: boolean;
+  offer?: {
+    title?: string;
+    imageUrl?: string;
+    price?: { amount: number; currency: string };
+    availability?: "in_stock" | "out_of_stock" | "unknown";
+  } | null;
+};
+
+async function applyOutboundLinkAndExternalOffer(input: {
+  market: Market;
+  area: z.infer<typeof ProductCategorySchema>;
+  kind: "best" | "dupe";
+  product: ProductAttributesV0;
+}): Promise<void> {
+  if (!OUTBOUND_LINKS_ENABLED || !INFRA_API_BASE) return;
+  if (!input.product.skuId) return;
+
+  let resolved: LinkResolveResponse["resolved"] | null | undefined;
+  try {
+    const res = await axios.post<LinkResolveResponse>(
+      `${INFRA_API_BASE}/api/links/resolve`,
+      {
+        market: input.market,
+        tool: OUTBOUND_LINKS_TOOL,
+        candidates: {
+          skuId: input.product.skuId,
+          brand: input.product.brand,
+          category: input.area,
+        },
+        context: {
+          area: input.area,
+          kind: input.kind,
+        },
+      },
+      { timeout: 5000 },
+    );
+    if (res.data?.matched) {
+      resolved = res.data.resolved ?? null;
+    }
+  } catch {
+    resolved = null;
+  }
+
+  if (!resolved?.redirectUrl) return;
+
+  input.product.productUrl = resolved.redirectUrl;
+  input.product.purchaseEnabled = Boolean(resolved.purchaseEnabled);
+
+  const shouldEnrich =
+    EXTERNAL_OFFERS_ENABLED &&
+    resolved.destinationUrl &&
+    (input.product.purchaseEnabled === false ||
+      !input.product.imageUrl ||
+      isLikelyBadName(input.product.name) ||
+      !input.product.price?.amount);
+
+  if (!shouldEnrich) return;
+
+  try {
+    const offerRes = await axios.post<ExternalOfferResolveResponse>(
+      `${INFRA_API_BASE}/api/offers/external/resolve`,
+      { market: input.market, url: resolved.destinationUrl },
+      { timeout: 8000 },
+    );
+    const offer = offerRes.data?.ok ? offerRes.data.offer : null;
+    if (!offer) return;
+
+    if (offer.title && isLikelyBadName(input.product.name)) {
+      input.product.name = offer.title;
+    }
+    if (offer.imageUrl && !input.product.imageUrl) {
+      input.product.imageUrl = offer.imageUrl;
+    }
+    if (offer.price?.currency && typeof offer.price.amount === "number" && offer.price.amount > 0) {
+      if (!input.product.price?.amount || input.product.price.amount <= 0) {
+        input.product.price = { currency: offer.price.currency, amount: offer.price.amount };
+      }
+      if (input.market === "US" && offer.price.currency === "USD") {
+        input.product.priceTier = deriveUsdTier(offer.price.amount);
+      } else {
+        input.product.priceTier = "unknown";
+      }
+    }
+    if (offer.availability) {
+      input.product.availability = offer.availability;
+      input.product.availabilityByMarket = input.market === "US" ? { US: offer.availability } : { JP: offer.availability };
+    }
+  } catch {
+    // best-effort: keep original product data
+  }
 }
 
 export async function buildKitPlan(input: {
@@ -227,6 +350,22 @@ export async function buildKitPlan(input: {
   for (const category of ["prep", "contour", "brow", "blush"] as const) {
     const slot = buildArea(category, candidatesByCategory[category] || [], { allowPlaceholder: false });
     if (slot) (kit as any)[category] = slot;
+  }
+
+  // Best-effort enrichment:
+  // - Apply outbound link rules (external-only + redirect tracking) via infra.
+  // - If external-only, optionally fetch external metadata (title/image/price) from cached OG/JSON-LD snapshots.
+  try {
+    const tasks: Array<Promise<void>> = [];
+    for (const area of Object.keys(kit) as Array<z.infer<typeof ProductCategorySchema>>) {
+      const slot = (kit as any)[area];
+      if (!slot?.best || !slot?.dupe) continue;
+      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: "best", product: slot.best }));
+      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: "dupe", product: slot.dupe }));
+    }
+    await Promise.all(tasks);
+  } catch {
+    // ignore
   }
 
   return KitPlanV0Schema.parse({
