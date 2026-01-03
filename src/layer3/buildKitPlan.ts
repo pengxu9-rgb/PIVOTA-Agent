@@ -207,6 +207,9 @@ async function applyOutboundLinkAndExternalOffer(input: {
     if (offer.title && isLikelyBadName(input.product.name)) {
       input.product.name = offer.title;
     }
+    if (offer.brand && (!input.product.brand || String(input.product.brand).toLowerCase() === "unknown")) {
+      input.product.brand = String(offer.brand);
+    }
     if (offer.imageUrl && !input.product.imageUrl) {
       input.product.imageUrl = offer.imageUrl;
     }
