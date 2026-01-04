@@ -908,6 +908,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
         updatedAt: job.updatedAt,
         referenceImageUrl: job.referenceImageUrl || null,
         selfieImageUrl: job.selfieImageUrl || null,
+        tryOnImageUrl: job.tryOnImageUrl || null,
       };
 
       if (status === 'done' && job.result) payload.result = job.result;
