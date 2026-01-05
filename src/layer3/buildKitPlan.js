@@ -115,35 +115,65 @@ function deriveUsdTier(amount) {
   return 'premium';
 }
 
+function brandCandidatesForOutboundLinks(rawBrand) {
+  const raw = typeof rawBrand === 'string' ? rawBrand.trim() : '';
+  if (!raw) return [];
+
+  const lower = raw.toLowerCase();
+  const simplified = lower
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+  const compact = simplified.replace(/\s+/g, '');
+
+  const canonical = [];
+  if (simplified === 'm a c' || simplified.startsWith('m a c ')) canonical.push('mac');
+  if (simplified.startsWith('tom ford')) canonical.push('tom ford');
+
+  const out = [canonical[0], canonical[1], simplified, compact, lower]
+    .filter(Boolean)
+    .map((v) => String(v).trim())
+    .filter(Boolean);
+  return Array.from(new Set(out));
+}
+
 async function applyOutboundLinkAndExternalOffer({ market, area, kind, product, jobId }) {
   if (!OUTBOUND_LINKS_ENABLED || !INFRA_API_BASE) return;
   if (!product?.skuId) return;
 
   let resolved = null;
-  try {
-    const res = await axios.post(
-      `${INFRA_API_BASE}/api/links/resolve`,
-      {
-        market,
-        tool: OUTBOUND_LINKS_TOOL,
-        candidates: {
-          skuId: product.skuId,
-          brand: product.brand,
-          category: area,
+  const brandCandidates = brandCandidatesForOutboundLinks(product.brand);
+  const brandsToTry = brandCandidates.length ? brandCandidates : [String(product.brand || '').trim()].filter(Boolean);
+
+  for (const brand of brandsToTry) {
+    try {
+      const res = await axios.post(
+        `${INFRA_API_BASE}/api/links/resolve`,
+        {
+          market,
+          tool: OUTBOUND_LINKS_TOOL,
+          candidates: {
+            skuId: product.skuId,
+            brand,
+            category: area,
+          },
+          context: {
+            area,
+            kind,
+            ...(jobId ? { jobId } : {}),
+          },
         },
-        context: {
-          area,
-          kind,
-          ...(jobId ? { jobId } : {}),
-        },
-      },
-      { timeout: 5000 },
-    );
-    if (res?.data?.matched) {
-      resolved = res.data.resolved ?? null;
+        { timeout: 5000 },
+      );
+      if (res?.data?.matched) {
+        resolved = res.data.resolved ?? null;
+        break;
+      }
+    } catch {
+      // try next
     }
-  } catch {
-    resolved = null;
   }
 
   if (!resolved?.redirectUrl) return;

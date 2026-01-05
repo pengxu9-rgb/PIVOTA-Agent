@@ -125,6 +125,29 @@ function deriveUsdTier(amount: number): "budget" | "mid" | "premium" | "unknown"
   return "premium";
 }
 
+function brandCandidatesForOutboundLinks(rawBrand: unknown): string[] {
+  const raw = typeof rawBrand === "string" ? rawBrand.trim() : "";
+  if (!raw) return [];
+
+  const lower = raw.toLowerCase();
+  const simplified = lower
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  const compact = simplified.replace(/\s+/g, "");
+
+  const canonical: string[] = [];
+  if (simplified === "m a c" || simplified.startsWith("m a c ")) canonical.push("mac");
+  if (simplified.startsWith("tom ford")) canonical.push("tom ford");
+
+  const out = [canonical[0], canonical[1], simplified, compact, lower]
+    .filter((v): v is string => Boolean(v && v.trim()))
+    .map((v) => v.trim());
+  return Array.from(new Set(out));
+}
+
 type LinkResolveResponse = {
   matched: boolean;
   resolved?: {
@@ -139,6 +162,7 @@ type LinkResolveResponse = {
 type ExternalOfferResolveResponse = {
   ok: boolean;
   offer?: {
+    brand?: string;
     title?: string;
     imageUrl?: string;
     price?: { amount: number; currency: string };
@@ -157,30 +181,36 @@ async function applyOutboundLinkAndExternalOffer(input: {
   if (!input.product.skuId) return;
 
   let resolved: LinkResolveResponse["resolved"] | null | undefined;
-  try {
-    const res = await axios.post<LinkResolveResponse>(
-      `${INFRA_API_BASE}/api/links/resolve`,
-      {
-        market: input.market,
-        tool: OUTBOUND_LINKS_TOOL,
-        candidates: {
-          skuId: input.product.skuId,
-          brand: input.product.brand,
-          category: input.area,
+  const brandCandidates = brandCandidatesForOutboundLinks(input.product.brand);
+  const brandsToTry = brandCandidates.length ? brandCandidates : [String(input.product.brand || "").trim()].filter(Boolean);
+
+  for (const brand of brandsToTry) {
+    try {
+      const res = await axios.post<LinkResolveResponse>(
+        `${INFRA_API_BASE}/api/links/resolve`,
+        {
+          market: input.market,
+          tool: OUTBOUND_LINKS_TOOL,
+          candidates: {
+            skuId: input.product.skuId,
+            brand,
+            category: input.area,
+          },
+          context: {
+            area: input.area,
+            kind: input.kind,
+            ...(input.jobId ? { jobId: input.jobId } : {}),
+          },
         },
-        context: {
-          area: input.area,
-          kind: input.kind,
-          ...(input.jobId ? { jobId: input.jobId } : {}),
-        },
-      },
-      { timeout: 5000 },
-    );
-    if (res.data?.matched) {
-      resolved = res.data.resolved ?? null;
+        { timeout: 5000 },
+      );
+      if (res.data?.matched) {
+        resolved = res.data.resolved ?? null;
+        break;
+      }
+    } catch {
+      // try next
     }
-  } catch {
-    resolved = null;
   }
 
   if (!resolved?.redirectUrl) return;
