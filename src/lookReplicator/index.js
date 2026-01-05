@@ -1412,6 +1412,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
       if (checkouts.length === 1) {
         return res.status(200).json({
           checkoutUrl: checkouts[0].checkoutUrl,
+          provider: checkoutProvider,
           ...(failures.length ? { failures: failures.slice(0, 10) } : {}),
         });
       }
@@ -1421,6 +1422,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
       return res.status(502).json({
         error: 'UPSTREAM_UNREACHABLE',
         message: 'Failed to create checkout session',
+        provider: checkoutProvider,
         details: truncateText(err?.message || String(err), 400),
       });
     }
