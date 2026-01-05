@@ -48,6 +48,60 @@ function urlWithReturn(checkoutUrl, returnUrl) {
   }
 }
 
+function truncateText(value, maxLen) {
+  const s = String(value || '');
+  if (!maxLen || maxLen <= 0) return s;
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function compactUpstreamBody(body) {
+  if (body == null) return null;
+  if (typeof body === 'string') return truncateText(body, 2000);
+  try {
+    return truncateText(JSON.stringify(body), 2000);
+  } catch {
+    return truncateText(String(body), 2000);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isProbablyTransientHttpStatus(status) {
+  return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function axiosPostWithRetry(url, body, config, opts = {}) {
+  const retries = Number(opts.retries ?? 1) || 0;
+  const minBackoffMs = Number(opts.minBackoffMs ?? 250) || 250;
+
+  let attempt = 0;
+  while (true) {
+    try {
+      const res = await axios.post(url, body, config);
+      const status = Number(res?.status) || 0;
+      if (attempt < retries && isProbablyTransientHttpStatus(status)) {
+        attempt += 1;
+        await sleep(minBackoffMs * 2 ** (attempt - 1));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      const status = Number(err?.response?.status) || 0;
+      const isTimeout = err?.code === 'ECONNABORTED' || err?.message?.toLowerCase?.().includes?.('timeout');
+      const shouldRetry = isTimeout || isProbablyTransientHttpStatus(status);
+      if (attempt < retries && shouldRetry) {
+        attempt += 1;
+        await sleep(minBackoffMs * 2 ** (attempt - 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 function parseBearer(authHeader) {
   const raw = String(authHeader || '');
   const m = raw.match(/^Bearer\s+(.+)$/i);
@@ -1185,93 +1239,141 @@ function mountLookReplicatorRoutes(app, { logger }) {
       }
 
       const merchantIds = Array.from(groups.keys());
-      const checkouts = await Promise.all(
+      const checkouts = [];
+      const failures = [];
+
+      await Promise.all(
         merchantIds.map(async (mid) => {
-          // 1) Validate cart + resolve variant IDs using the Agent API.
-          const cart = await axios.post(
-            `${backendBaseUrl}/agent/v1/cart/validate`,
-            {
-              merchant_id: mid,
-              items: groups.get(mid) || [],
-              shipping_country: market,
-            },
-            {
-              timeout: 20_000,
-              headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': agentApiKey,
+          try {
+            // 1) Validate cart + resolve variant IDs using the Agent API.
+            const cart = await axiosPostWithRetry(
+              `${backendBaseUrl}/agent/v1/cart/validate`,
+              {
+                merchant_id: mid,
+                items: groups.get(mid) || [],
+                shipping_country: market,
               },
-              validateStatus: () => true,
-            },
-          );
-
-          if (!cart || !cart.status) {
-            throw new Error(`Cart validation upstream did not respond (merchantId=${mid})`);
-          }
-          if (cart.status < 200 || cart.status >= 300) {
-            const msg = typeof cart.data === 'object' ? JSON.stringify(cart.data) : String(cart.data || '');
-            throw new Error(`Cart validation failed (merchantId=${mid}, status=${cart.status}): ${msg}`);
-          }
-
-          const validated = Array.isArray(cart.data?.items) ? cart.data.items : [];
-          if (!validated.length) {
-            throw new Error(`No valid purchasable items (merchantId=${mid})`);
-          }
-
-          const quoteItems = validated
-            .map((v) => ({
-              product_id: String(v.product_id || '').trim(),
-              variant_id: String(v.variant_id || '').trim(),
-              quantity: Number(v.quantity || 1) || 1,
-            }))
-            .filter((v) => v.product_id && v.variant_id);
-
-          if (!quoteItems.length) {
-            throw new Error(`Unable to resolve variant_id for items (merchantId=${mid})`);
-          }
-
-          // 2) Create a Shopify checkout URL via quote preview (storefront cart preferred).
-          const quote = await axios.post(
-            `${backendBaseUrl}/agent/v1/quotes/preview`,
-            {
-              merchant_id: mid,
-              items: quoteItems,
-            },
-            {
-              timeout: 20_000,
-              headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': agentApiKey,
+              {
+                timeout: 30_000,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-API-Key': agentApiKey,
+                },
+                validateStatus: () => true,
               },
-              validateStatus: () => true,
-            },
-          );
+              { retries: 2, minBackoffMs: 300 },
+            );
 
-          if (!quote || !quote.status) {
-            throw new Error(`Quote upstream did not respond (merchantId=${mid})`);
-          }
-          if (quote.status < 200 || quote.status >= 300) {
-            const msg = typeof quote.data === 'object' ? JSON.stringify(quote.data) : String(quote.data || '');
-            throw new Error(`Quote failed (merchantId=${mid}, status=${quote.status}): ${msg}`);
-          }
+            if (!cart || !cart.status) {
+              failures.push({ merchantId: mid, stage: 'cart_validate', status: 502, body: null, message: 'Cart validation upstream did not respond' });
+              return;
+            }
+            if (cart.status < 200 || cart.status >= 300) {
+              failures.push({
+                merchantId: mid,
+                stage: 'cart_validate',
+                status: cart.status,
+                body: compactUpstreamBody(cart.data),
+                message: 'Cart validation failed',
+              });
+              return;
+            }
 
-          const checkoutUrlRaw = String(quote.data?.checkout_url || quote.data?.checkoutUrl || '').trim() || null;
-          const checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
-          if (!checkoutUrl) {
-            throw new Error(`Quote did not return checkout_url (merchantId=${mid})`);
-          }
+            const validated = Array.isArray(cart.data?.items) ? cart.data.items : [];
+            if (!validated.length) {
+              failures.push({ merchantId: mid, stage: 'cart_validate', status: 422, body: compactUpstreamBody(cart.data), message: 'No valid purchasable items' });
+              return;
+            }
 
-          return { merchantId: mid, checkoutUrl };
+            const quoteItems = validated
+              .map((v) => ({
+                product_id: String(v.product_id || '').trim(),
+                variant_id: String(v.variant_id || '').trim(),
+                quantity: Number(v.quantity || 1) || 1,
+              }))
+              .filter((v) => v.product_id && v.variant_id);
+
+            if (!quoteItems.length) {
+              failures.push({ merchantId: mid, stage: 'cart_validate', status: 422, body: compactUpstreamBody(cart.data), message: 'Unable to resolve variant_id for items' });
+              return;
+            }
+
+            // 2) Create a Shopify checkout URL via quote preview (storefront cart preferred).
+            const quote = await axiosPostWithRetry(
+              `${backendBaseUrl}/agent/v1/quotes/preview`,
+              {
+                merchant_id: mid,
+                items: quoteItems,
+              },
+              {
+                timeout: 30_000,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-API-Key': agentApiKey,
+                },
+                validateStatus: () => true,
+              },
+              { retries: 2, minBackoffMs: 300 },
+            );
+
+            if (!quote || !quote.status) {
+              failures.push({ merchantId: mid, stage: 'quote_preview', status: 502, body: null, message: 'Quote upstream did not respond' });
+              return;
+            }
+            if (quote.status < 200 || quote.status >= 300) {
+              failures.push({
+                merchantId: mid,
+                stage: 'quote_preview',
+                status: quote.status,
+                body: compactUpstreamBody(quote.data),
+                message: 'Quote failed',
+              });
+              return;
+            }
+
+            const checkoutUrlRaw = String(quote.data?.checkout_url || quote.data?.checkoutUrl || '').trim() || null;
+            const checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
+            if (!checkoutUrl) {
+              failures.push({ merchantId: mid, stage: 'quote_preview', status: 502, body: compactUpstreamBody(quote.data), message: 'Quote did not return checkout_url' });
+              return;
+            }
+
+            checkouts.push({ merchantId: mid, checkoutUrl });
+          } catch (err) {
+            failures.push({
+              merchantId: mid,
+              stage: 'exception',
+              status: 502,
+              body: null,
+              message: truncateText(err?.message || String(err), 400),
+            });
+          }
         }),
       );
 
-      if (checkouts.length === 1) {
-        return res.status(200).json({ checkoutUrl: checkouts[0].checkoutUrl });
+      if (!checkouts.length) {
+        const status = failures.find((f) => Number(f.status) >= 400 && Number(f.status) < 600)?.status || 502;
+        return res.status(status).json({
+          error: 'UPSTREAM_ERROR',
+          message: 'Failed to create checkout session',
+          failures: failures.slice(0, 10),
+        });
       }
-      return res.status(200).json({ checkoutUrls: checkouts });
+
+      if (checkouts.length === 1) {
+        return res.status(200).json({
+          checkoutUrl: checkouts[0].checkoutUrl,
+          ...(failures.length ? { failures: failures.slice(0, 10) } : {}),
+        });
+      }
+      return res.status(200).json({ checkoutUrls: checkouts, ...(failures.length ? { failures: failures.slice(0, 10) } : {}) });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err) }, 'checkout_sessions proxy failed');
-      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to create checkout session' });
+      return res.status(502).json({
+        error: 'UPSTREAM_UNREACHABLE',
+        message: 'Failed to create checkout session',
+        details: truncateText(err?.message || String(err), 400),
+      });
     }
   });
 }
