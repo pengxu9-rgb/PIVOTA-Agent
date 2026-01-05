@@ -29,6 +29,17 @@ function urlWithReturn(checkoutUrl, returnUrl) {
   if (!url || !ret) return url;
   try {
     const u = new URL(url);
+    // Only append return URLs for Pivota-owned pages; third-party checkout URLs
+    // (e.g. Shopify) may reject unknown query params.
+    const host = String(u.hostname || '').toLowerCase();
+    const allowReturn =
+      host === 'pivota.cc' ||
+      host.endsWith('.pivota.cc') ||
+      host === 'pivota.com' ||
+      host.endsWith('.pivota.com') ||
+      host.endsWith('.up.railway.app') ||
+      host.endsWith('.railway.app');
+    if (!allowReturn) return u.toString();
     if (!u.searchParams.get('return')) u.searchParams.set('return', ret);
     return u.toString();
   } catch {
@@ -1097,7 +1108,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
   // - "legacy" body: { market, locale, items:[{skuId, qty}], returnUrl }
   // - ACP body: { items:[{id, quantity}], buyer?, fulfillment_address? }
   //
-  // We forward to ACP and return { checkoutUrl, id } so frontends don't need to know ACP base URL.
+  // We return { checkoutUrl } suitable for redirecting the user to checkout.
   app.post(['/checkout-sessions', '/api/checkout-sessions', '/checkout_sessions', '/api/checkout_sessions'], async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
     res.set('Cache-Control', 'no-store');
@@ -1113,73 +1124,151 @@ function mountLookReplicatorRoutes(app, { logger }) {
       return res.status(400).json({ error: 'INVALID_REQUEST', message: 'items[] is required' });
     }
 
-    const acpItems =
+    const defaultMerchantId = String(
+      process.env.LOOK_REPLICATOR_DEFAULT_MERCHANT_ID ||
+        process.env.ACP_MERCHANT_ID ||
+        process.env.LOOK_REPLICATOR_ACP_MERCHANT_ID ||
+        process.env.PIVOTA_MERCHANT_ID ||
+        '',
+    ).trim() || null;
+
+    const cartItems =
       rawItems[0] && typeof rawItems[0] === 'object' && rawItems[0] && ('skuId' in rawItems[0] || 'sku_id' in rawItems[0])
         ? rawItems
             .map((it) => ({
-              id: String(it.skuId || it.sku_id || '').trim(),
+              product_id: String(it.skuId || it.sku_id || '').trim(),
               quantity: Number(it.qty || it.quantity || 1) || 1,
+              merchantId: String(it.merchantId || it.merchant_id || '').trim() || null,
             }))
-            .filter((it) => it.id)
+            .filter((it) => it.product_id)
         : rawItems
             .map((it) => ({
-              id: String(it.id || '').trim(),
+              product_id: String(it.id || '').trim(),
               quantity: Number(it.quantity || 1) || 1,
+              merchantId: String(it.merchantId || it.merchant_id || '').trim() || null,
             }))
-            .filter((it) => it.id);
+            .filter((it) => it.product_id);
 
-    if (!acpItems.length) {
+    if (!cartItems.length) {
       return res.status(400).json({ error: 'INVALID_REQUEST', message: 'items[] must include skuId or id' });
     }
 
-    const acpBaseUrl = String(process.env.ACP_BASE_URL || process.env.PIVOTA_ACP_BASE_URL || 'https://pivota-acp-production.up.railway.app')
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
       .trim()
       .replace(/\/+$/, '');
-    const apiVersion = String(req.header('API-Version') || process.env.ACP_API_VERSION || '2025-09-29').trim();
-    const acpToken = process.env.ACP_API_KEY || process.env.ACP_BEARER_TOKEN || 'test';
-    const merchantId = process.env.ACP_MERCHANT_ID || process.env.LOOK_REPLICATOR_ACP_MERCHANT_ID || null;
-    const platform = process.env.ACP_PLATFORM || process.env.LOOK_REPLICATOR_ACP_PLATFORM || null;
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
 
     try {
-      const upstream = await axios.post(
-        `${acpBaseUrl}/checkout_sessions`,
-        {
-          items: acpItems,
-          buyer: req.body?.buyer ?? null,
-          fulfillment_address: req.body?.fulfillment_address ?? null,
-          ...(req.body?.metadata ? { metadata: req.body.metadata } : {}),
-        },
-        {
-          timeout: 20_000,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(apiVersion ? { 'API-Version': apiVersion } : {}),
-            ...(acpToken ? { Authorization: `Bearer ${acpToken}` } : {}),
-            ...(merchantId ? { 'X-Merchant-Id': merchantId } : {}),
-            ...(platform ? { 'X-Platform': platform } : {}),
-          },
-          validateStatus: () => true,
-        },
+      const groups = new Map();
+      for (const it of cartItems) {
+        const mid = it.merchantId || defaultMerchantId;
+        if (!mid) {
+          return res.status(400).json({ error: 'INVALID_REQUEST', message: 'items[] must include merchantId (or set LOOK_REPLICATOR_DEFAULT_MERCHANT_ID)' });
+        }
+        const arr = groups.get(mid) || [];
+        arr.push({ product_id: it.product_id, quantity: it.quantity });
+        groups.set(mid, arr);
+      }
+
+      const merchantIds = Array.from(groups.keys());
+      const checkouts = await Promise.all(
+        merchantIds.map(async (mid) => {
+          // 1) Validate cart + resolve variant IDs using the Agent API.
+          const cart = await axios.post(
+            `${backendBaseUrl}/agent/v1/cart/validate`,
+            {
+              merchant_id: mid,
+              items: groups.get(mid) || [],
+              shipping_country: market,
+            },
+            {
+              timeout: 20_000,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': agentApiKey,
+              },
+              validateStatus: () => true,
+            },
+          );
+
+          if (!cart || !cart.status) {
+            throw new Error(`Cart validation upstream did not respond (merchantId=${mid})`);
+          }
+          if (cart.status < 200 || cart.status >= 300) {
+            const msg = typeof cart.data === 'object' ? JSON.stringify(cart.data) : String(cart.data || '');
+            throw new Error(`Cart validation failed (merchantId=${mid}, status=${cart.status}): ${msg}`);
+          }
+
+          const validated = Array.isArray(cart.data?.items) ? cart.data.items : [];
+          if (!validated.length) {
+            throw new Error(`No valid purchasable items (merchantId=${mid})`);
+          }
+
+          const quoteItems = validated
+            .map((v) => ({
+              product_id: String(v.product_id || '').trim(),
+              variant_id: String(v.variant_id || '').trim(),
+              quantity: Number(v.quantity || 1) || 1,
+            }))
+            .filter((v) => v.product_id && v.variant_id);
+
+          if (!quoteItems.length) {
+            throw new Error(`Unable to resolve variant_id for items (merchantId=${mid})`);
+          }
+
+          // 2) Create a Shopify checkout URL via quote preview (storefront cart preferred).
+          const quote = await axios.post(
+            `${backendBaseUrl}/agent/v1/quotes/preview`,
+            {
+              merchant_id: mid,
+              items: quoteItems,
+            },
+            {
+              timeout: 20_000,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': agentApiKey,
+              },
+              validateStatus: () => true,
+            },
+          );
+
+          if (!quote || !quote.status) {
+            throw new Error(`Quote upstream did not respond (merchantId=${mid})`);
+          }
+          if (quote.status < 200 || quote.status >= 300) {
+            const msg = typeof quote.data === 'object' ? JSON.stringify(quote.data) : String(quote.data || '');
+            throw new Error(`Quote failed (merchantId=${mid}, status=${quote.status}): ${msg}`);
+          }
+
+          const checkoutUrlRaw = String(quote.data?.checkout_url || quote.data?.checkoutUrl || '').trim() || null;
+          const checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
+          if (!checkoutUrl) {
+            throw new Error(`Quote did not return checkout_url (merchantId=${mid})`);
+          }
+
+          return { merchantId: mid, checkoutUrl };
+        }),
       );
 
-      if (!upstream || !upstream.status) {
-        return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Checkout upstream did not respond' });
+      if (checkouts.length === 1) {
+        return res.status(200).json({ checkoutUrl: checkouts[0].checkoutUrl });
       }
-
-      const data = upstream.data || {};
-      if (upstream.status < 200 || upstream.status >= 300) {
-        return res.status(upstream.status).json(data);
-      }
-
-      const id = String(data.id || data.session_id || data.checkout_session_id || '').trim() || null;
-      const checkoutUrlRaw = String(data.checkout_url || data.checkoutUrl || '').trim() || (id ? `${acpBaseUrl}/checkout/${encodeURIComponent(id)}` : null);
-      const checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
-
-      if (!checkoutUrl) {
-        return res.status(502).json({ error: 'UPSTREAM_ERROR', message: 'Invalid checkout response (missing checkoutUrl)' });
-      }
-
-      return res.status(200).json({ checkoutUrl, ...(id ? { id } : {}) });
+      return res.status(200).json({ checkoutUrls: checkouts });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err) }, 'checkout_sessions proxy failed');
       return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to create checkout session' });

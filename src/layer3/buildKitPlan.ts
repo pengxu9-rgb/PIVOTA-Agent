@@ -91,6 +91,7 @@ function toProductAttributes(input: {
     orchestratorVersion: "orchestrator-us-0.1.0",
     category,
     skuId: normalized.skuId,
+    ...(normalized.merchantId ? { merchantId: normalized.merchantId } : {}),
     name: normalized.name,
     brand: normalized.brand,
     price: normalized.price,

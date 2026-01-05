@@ -12,6 +12,7 @@ import {
 export type NormalizedSkuForRanking = {
   category: z.infer<typeof ProductCategorySchema>;
   skuId: string;
+  merchantId?: string;
   name: string;
   brand: string;
   price: z.infer<typeof MoneyV0Schema>;
@@ -59,6 +60,10 @@ function extractSkuId(raw: Record<string, unknown>): string {
     raw.product_id,
     raw.productId
   );
+}
+
+function extractMerchantId(raw: Record<string, unknown>): string {
+  return firstNonEmpty(raw.merchantId, raw.merchant_id, raw.store_id, raw.storeId);
 }
 
 function extractName(raw: Record<string, unknown>): string {
@@ -246,6 +251,7 @@ export function normalizeSkuToAttributes(input: {
 
   const raw = sku as Record<string, unknown>;
   const skuId = extractSkuId(raw);
+  const merchantId = extractMerchantId(raw);
   const name = extractName(raw);
   const brand = extractBrand(raw) || "Unknown";
   const currency = extractCurrency(raw);
@@ -279,6 +285,7 @@ export function normalizeSkuToAttributes(input: {
   return {
     category,
     skuId: skuId || `${category}_unknown_sku`,
+    ...(merchantId ? { merchantId } : {}),
     name: name || "Unknown product",
     brand,
     price,

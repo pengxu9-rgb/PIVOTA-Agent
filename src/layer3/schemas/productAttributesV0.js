@@ -41,6 +41,7 @@ const ProductAttributesV0Schema = z
 
     category: ProductCategorySchema,
     skuId: z.string().min(1),
+    merchantId: z.string().min(1).optional(),
     name: z.string().min(1),
     brand: z.string().min(1),
     price: MoneyV0Schema,

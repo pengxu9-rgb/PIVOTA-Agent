@@ -42,6 +42,10 @@ function extractSkuId(raw) {
   );
 }
 
+function extractMerchantId(raw) {
+  return firstNonEmpty(raw.merchantId, raw.merchant_id, raw.store_id, raw.storeId);
+}
+
 function extractName(raw) {
   return firstNonEmpty(raw.name, raw.title, raw.product_title, raw.productTitle, raw.handle);
 }
@@ -218,6 +222,7 @@ function normalizeSkuToAttributes(input) {
   const raw = sku && typeof sku === 'object' ? sku : {};
 
   const skuId = extractSkuId(raw) || `unknown_${Math.random().toString(16).slice(2)}`;
+  const merchantId = extractMerchantId(raw);
   const name = extractName(raw) || 'Unknown';
   const brand = extractBrand(raw) || 'Unknown';
   const currency = extractCurrency(raw);
@@ -245,6 +250,7 @@ function normalizeSkuToAttributes(input) {
   return {
     category: ProductCategorySchema.parse(category),
     skuId,
+    ...(merchantId ? { merchantId } : {}),
     name,
     brand,
     price,
