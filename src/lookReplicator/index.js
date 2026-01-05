@@ -1221,6 +1221,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
         process.env.PIVOTA_AGENT_API_KEY ||
         '',
     ).trim();
+    const checkoutProvider = String(process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER || 'quote')
+      .trim()
+      .toLowerCase();
 
     if (!agentApiKey) {
       return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
@@ -1300,44 +1303,88 @@ function mountLookReplicatorRoutes(app, { logger }) {
               return;
             }
 
-            // 2) Create a Shopify checkout URL via quote preview (storefront cart preferred).
-            const quote = await axiosPostWithRetry(
-              `${backendBaseUrl}/agent/v1/quotes/preview`,
-              {
-                merchant_id: mid,
-                items: quoteItems,
-              },
-              {
-                timeout: 30_000,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-API-Key': agentApiKey,
+            let checkoutUrl = null;
+
+            if (checkoutProvider === 'acp') {
+              const acp = await axiosPostWithRetry(
+                `${backendBaseUrl}/agent/v1/checkout/acp-session`,
+                {
+                  merchant_id: mid,
+                  items: quoteItems.map((q) => ({ id: q.variant_id, quantity: q.quantity })),
+                  return_url: returnUrl || null,
                 },
-                validateStatus: () => true,
-              },
-              { retries: 2, minBackoffMs: 300 },
-            );
+                {
+                  timeout: 30_000,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': agentApiKey,
+                  },
+                  validateStatus: () => true,
+                },
+                { retries: 2, minBackoffMs: 300 },
+              );
 
-            if (!quote || !quote.status) {
-              failures.push({ merchantId: mid, stage: 'quote_preview', status: 502, body: null, message: 'Quote upstream did not respond' });
-              return;
-            }
-            if (quote.status < 200 || quote.status >= 300) {
-              failures.push({
-                merchantId: mid,
-                stage: 'quote_preview',
-                status: quote.status,
-                body: compactUpstreamBody(quote.data),
-                message: 'Quote failed',
-              });
-              return;
-            }
+              if (!acp || !acp.status) {
+                failures.push({ merchantId: mid, stage: 'acp_checkout', status: 502, body: null, message: 'ACP checkout upstream did not respond' });
+                return;
+              }
+              if (acp.status < 200 || acp.status >= 300) {
+                failures.push({
+                  merchantId: mid,
+                  stage: 'acp_checkout',
+                  status: acp.status,
+                  body: compactUpstreamBody(acp.data),
+                  message: 'ACP checkout failed',
+                });
+                return;
+              }
 
-            const checkoutUrlRaw = String(quote.data?.checkout_url || quote.data?.checkoutUrl || '').trim() || null;
-            const checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
-            if (!checkoutUrl) {
-              failures.push({ merchantId: mid, stage: 'quote_preview', status: 502, body: compactUpstreamBody(quote.data), message: 'Quote did not return checkout_url' });
-              return;
+              const checkoutUrlRaw = String(acp.data?.checkout_url || acp.data?.checkoutUrl || acp.data?.checkout_url_raw || '').trim() || null;
+              checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
+              if (!checkoutUrl) {
+                failures.push({ merchantId: mid, stage: 'acp_checkout', status: 502, body: compactUpstreamBody(acp.data), message: 'ACP did not return checkout_url' });
+                return;
+              }
+            } else {
+              // Default: create a Shopify checkout URL via quote preview.
+              const quote = await axiosPostWithRetry(
+                `${backendBaseUrl}/agent/v1/quotes/preview`,
+                {
+                  merchant_id: mid,
+                  items: quoteItems,
+                },
+                {
+                  timeout: 30_000,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': agentApiKey,
+                  },
+                  validateStatus: () => true,
+                },
+                { retries: 2, minBackoffMs: 300 },
+              );
+
+              if (!quote || !quote.status) {
+                failures.push({ merchantId: mid, stage: 'quote_preview', status: 502, body: null, message: 'Quote upstream did not respond' });
+                return;
+              }
+              if (quote.status < 200 || quote.status >= 300) {
+                failures.push({
+                  merchantId: mid,
+                  stage: 'quote_preview',
+                  status: quote.status,
+                  body: compactUpstreamBody(quote.data),
+                  message: 'Quote failed',
+                });
+                return;
+              }
+
+              const checkoutUrlRaw = String(quote.data?.checkout_url || quote.data?.checkoutUrl || '').trim() || null;
+              checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
+              if (!checkoutUrl) {
+                failures.push({ merchantId: mid, stage: 'quote_preview', status: 502, body: compactUpstreamBody(quote.data), message: 'Quote did not return checkout_url' });
+                return;
+              }
             }
 
             checkouts.push({ merchantId: mid, checkoutUrl });
