@@ -87,6 +87,164 @@ function getUpstreamTimeoutMs(operation) {
   return SLOW_UPSTREAM_OPS.has(operation) ? UPSTREAM_TIMEOUT_SLOW_MS : UPSTREAM_TIMEOUT_SEARCH_MS;
 }
 
+// --- Currency helpers (Creator cache surfaces) ---
+// Creator feeds/search can be served directly from products_cache for speed.
+// For Shopify stores, product_data prices are in the shop currency, but some
+// legacy cache rows can have currency mislabeled as USD. Fix labels in-flight
+// using shop.json, cached per merchant to avoid repeated Shopify calls.
+const SHOPIFY_MERCHANT_CURRENCY_CACHE = new Map(); // merchant_id -> { currency, expiresAtMs }
+const SHOPIFY_MERCHANT_CURRENCY_TTL_MS = 6 * 60 * 60 * 1000;
+const SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS = 10 * 60 * 1000;
+
+function getCachedShopifyMerchantCurrency(merchantId) {
+  const mid = String(merchantId || '').trim();
+  if (!mid) return null;
+  const hit = SHOPIFY_MERCHANT_CURRENCY_CACHE.get(mid);
+  if (!hit) return null;
+  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
+    SHOPIFY_MERCHANT_CURRENCY_CACHE.delete(mid);
+    return null;
+  }
+  return hit.currency || null;
+}
+
+function setCachedShopifyMerchantCurrency(merchantId, currency, ttlMs = SHOPIFY_MERCHANT_CURRENCY_TTL_MS) {
+  const mid = String(merchantId || '').trim();
+  const cur = String(currency || '').trim().toUpperCase();
+  if (!mid) return;
+  SHOPIFY_MERCHANT_CURRENCY_CACHE.set(mid, {
+    currency: cur || null,
+    expiresAtMs: Date.now() + (Number(ttlMs) > 0 ? Number(ttlMs) : SHOPIFY_MERCHANT_CURRENCY_TTL_MS),
+  });
+}
+
+function parseShopifyAccessToken(apiKeyRaw) {
+  if (!apiKeyRaw) return '';
+  const raw = String(apiKeyRaw).trim();
+  if (!raw) return '';
+  if (!raw.startsWith('{')) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      const token = parsed.access_token || parsed.token || '';
+      return String(token || '').trim();
+    }
+  } catch (_) {
+    // ignore
+  }
+  return raw;
+}
+
+async function fetchShopifyMerchantCurrency(merchantId) {
+  const cached = getCachedShopifyMerchantCurrency(merchantId);
+  if (cached) return cached;
+
+  if (!process.env.DATABASE_URL) return null;
+
+  const mid = String(merchantId || '').trim();
+  if (!mid) return null;
+
+  let storeRow;
+  try {
+    const res = await query(
+      `
+        SELECT domain, api_key
+        FROM merchant_stores
+        WHERE merchant_id = $1
+          AND platform = 'shopify'
+          AND status IN ('active', 'connected')
+        ORDER BY connected_at DESC NULLS LAST
+        LIMIT 1
+      `,
+      [mid],
+    );
+    storeRow = res.rows && res.rows[0] ? res.rows[0] : null;
+  } catch (err) {
+    logger.warn({ err: err.message, merchantId: mid }, 'Failed to query merchant_stores for Shopify currency');
+    return null;
+  }
+
+  const domain = storeRow && storeRow.domain ? String(storeRow.domain).trim() : '';
+  const accessToken = parseShopifyAccessToken(storeRow && storeRow.api_key ? storeRow.api_key : '');
+
+  if (!domain || !accessToken) {
+    setCachedShopifyMerchantCurrency(mid, null, SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS);
+    return null;
+  }
+
+  try {
+    const url = `https://${domain}/admin/api/2024-07/shop.json`;
+    const resp = await axios.get(url, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+      timeout: 8000,
+      validateStatus: () => true,
+    });
+
+    if (resp.status !== 200) {
+      setCachedShopifyMerchantCurrency(mid, null, SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS);
+      return null;
+    }
+
+    const cur = String(resp.data && resp.data.shop && resp.data.shop.currency ? resp.data.shop.currency : '')
+      .trim()
+      .toUpperCase();
+    if (!cur) {
+      setCachedShopifyMerchantCurrency(mid, null, SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS);
+      return null;
+    }
+
+    setCachedShopifyMerchantCurrency(mid, cur, SHOPIFY_MERCHANT_CURRENCY_TTL_MS);
+    return cur;
+  } catch (err) {
+    logger.warn({ err: err.message, merchantId: mid }, 'Failed to fetch Shopify shop currency');
+    setCachedShopifyMerchantCurrency(mid, null, SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS);
+    return null;
+  }
+}
+
+async function applyShopifyCurrencyOverride(products) {
+  if (!Array.isArray(products) || products.length === 0) return products;
+
+  const merchantIds = new Set();
+  for (const p of products) {
+    if (!p) continue;
+    const platform = String(p.platform || '').toLowerCase();
+    if (platform !== 'shopify') continue;
+    const cur = String(p.currency || '').trim().toUpperCase();
+    // Only bother when the label is missing or looks like a legacy USD default.
+    if (cur && cur !== 'USD') continue;
+    const mid = String(p.merchant_id || p.merchantId || '').trim();
+    if (mid) merchantIds.add(mid);
+  }
+
+  if (merchantIds.size === 0) return products;
+
+  const mids = Array.from(merchantIds);
+  const currencies = await Promise.all(mids.map((mid) => fetchShopifyMerchantCurrency(mid)));
+  const currencyByMerchant = new Map();
+  mids.forEach((mid, idx) => {
+    const cur = currencies[idx];
+    if (cur) currencyByMerchant.set(mid, cur);
+  });
+
+  if (currencyByMerchant.size === 0) return products;
+
+  for (const p of products) {
+    if (!p) continue;
+    const platform = String(p.platform || '').toLowerCase();
+    if (platform !== 'shopify') continue;
+    const mid = String(p.merchant_id || p.merchantId || '').trim();
+    const cur = currencyByMerchant.get(mid);
+    if (!cur) continue;
+    p.currency = cur;
+  }
+
+  return products;
+}
+
 async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown', options = {}) {
   const force = options && options.force === true;
   if (!force && !ROUTE_DEBUG_ENABLED) return null;
@@ -1172,6 +1330,8 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   const pageItems = sorted.slice(startIdx, startIdx + safeLimit);
   const effectiveTotal = sorted.length;
 
+  await applyShopifyCurrencyOverride(pageItems);
+
   return {
     products: pageItems,
     total: effectiveTotal,
@@ -1455,6 +1615,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
       });
 
       if (browseProducts.length > 0) {
+        await applyShopifyCurrencyOverride(browseProducts);
         return {
           products: browseProducts,
           total: Math.max(total, browseProducts.length),
@@ -1569,6 +1730,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
           return bScore - aScore;
         });
 
+        await applyShopifyCurrencyOverride(merged);
         return {
           products: merged,
           total: Math.max(total, merged.length),
@@ -1588,6 +1750,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     }
   }
 
+  await applyShopifyCurrencyOverride(lexicalProducts);
   return {
     products: lexicalProducts,
     total,
