@@ -150,6 +150,7 @@ async function applyOutboundLinkAndExternalOffer(input: {
   area: z.infer<typeof ProductCategorySchema>;
   kind: "best" | "dupe";
   product: ProductAttributesV0;
+  jobId?: string;
 }): Promise<void> {
   if (!OUTBOUND_LINKS_ENABLED || !INFRA_API_BASE) return;
   if (!input.product.skuId) return;
@@ -169,6 +170,7 @@ async function applyOutboundLinkAndExternalOffer(input: {
         context: {
           area: input.area,
           kind: input.kind,
+          ...(input.jobId ? { jobId: input.jobId } : {}),
         },
       },
       { timeout: 5000 },
@@ -240,6 +242,7 @@ export async function buildKitPlan(input: {
   candidatesByCategory?: CandidatesByCategory;
   limitPerCategory?: number;
   userSignals?: Record<string, unknown> | null;
+  jobId?: string;
 }): Promise<KitPlanV0> {
   const { market, locale, lookSpec } = input;
   if (market !== "US" && market !== "JP") throw new Error("MARKET_NOT_SUPPORTED");
@@ -363,8 +366,8 @@ export async function buildKitPlan(input: {
     for (const area of Object.keys(kit) as Array<z.infer<typeof ProductCategorySchema>>) {
       const slot = (kit as any)[area];
       if (!slot?.best || !slot?.dupe) continue;
-      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: "best", product: slot.best }));
-      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: "dupe", product: slot.dupe }));
+      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: "best", product: slot.best, jobId: input.jobId }));
+      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: "dupe", product: slot.dupe, jobId: input.jobId }));
     }
     await Promise.all(tasks);
   } catch {

@@ -1,9 +1,15 @@
+const axios = require('axios');
 const { ProductAttributesV0Schema, ProductCategorySchema } = require('./schemas/productAttributesV0');
 const { KitPlanV0Schema } = require('./schemas/kitPlanV0');
 const { getCandidates } = require('./retrieval/getCandidates');
 const { normalizeSkuToAttributes } = require('./normalize/normalizeSkuToAttributes');
 const { rankCandidates } = require('./ranking/rankCandidates');
 const { buildWhyThis } = require('./copy/whyThis');
+
+const INFRA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+const OUTBOUND_LINKS_TOOL = String(process.env.OUTBOUND_LINKS_TOOL || 'look_replicator');
+const OUTBOUND_LINKS_ENABLED = process.env.NODE_ENV === 'production' || String(process.env.LAYER3_OUTBOUND_LINKS || '') === '1';
+const EXTERNAL_OFFERS_ENABLED = process.env.NODE_ENV === 'production' || String(process.env.LAYER3_EXTERNAL_OFFERS || '') === '1';
 
 function engineVersionFor(market) {
   const m = String(market || 'US').toLowerCase();
@@ -95,6 +101,99 @@ function toProductAttributes({ locale, lookSpec, normalized, category }) {
   });
 }
 
+function isLikelyBadName(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return !n || n === 'default title' || n.startsWith('placeholder ') || n.startsWith('占位符');
+}
+
+function deriveUsdTier(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return 'unknown';
+  if (n <= 15) return 'budget';
+  if (n <= 35) return 'mid';
+  return 'premium';
+}
+
+async function applyOutboundLinkAndExternalOffer({ market, area, kind, product, jobId }) {
+  if (!OUTBOUND_LINKS_ENABLED || !INFRA_API_BASE) return;
+  if (!product?.skuId) return;
+
+  let resolved = null;
+  try {
+    const res = await axios.post(
+      `${INFRA_API_BASE}/api/links/resolve`,
+      {
+        market,
+        tool: OUTBOUND_LINKS_TOOL,
+        candidates: {
+          skuId: product.skuId,
+          brand: product.brand,
+          category: area,
+        },
+        context: {
+          area,
+          kind,
+          ...(jobId ? { jobId } : {}),
+        },
+      },
+      { timeout: 5000 },
+    );
+    if (res?.data?.matched) {
+      resolved = res.data.resolved ?? null;
+    }
+  } catch {
+    resolved = null;
+  }
+
+  if (!resolved?.redirectUrl) return;
+
+  product.productUrl = resolved.redirectUrl;
+  product.purchaseEnabled = Boolean(resolved.purchaseEnabled);
+
+  const shouldEnrich =
+    EXTERNAL_OFFERS_ENABLED &&
+    resolved.destinationUrl &&
+    (product.purchaseEnabled === false || !product.imageUrl || isLikelyBadName(product.name) || !product.price?.amount);
+
+  if (!shouldEnrich) return;
+
+  try {
+    const offerRes = await axios.post(
+      `${INFRA_API_BASE}/api/offers/external/resolve`,
+      { market, url: resolved.destinationUrl },
+      { timeout: 8000 },
+    );
+    const offer = offerRes?.data?.ok ? offerRes.data.offer : null;
+    if (!offer) return;
+
+    if (offer.title && isLikelyBadName(product.name)) {
+      product.name = offer.title;
+    }
+    if (offer.brand && (!product.brand || String(product.brand).toLowerCase() === 'unknown' || String(product.brand).trim() === '未知')) {
+      product.brand = String(offer.brand);
+    }
+    if (offer.imageUrl && !product.imageUrl) {
+      product.imageUrl = offer.imageUrl;
+    }
+    if (offer.price?.currency && typeof offer.price.amount === 'number' && offer.price.amount > 0) {
+      if (!product.price?.amount || product.price.amount <= 0) {
+        product.price = { currency: offer.price.currency, amount: offer.price.amount };
+      }
+      if (market === 'US' && offer.price.currency === 'USD') {
+        product.priceTier = deriveUsdTier(offer.price.amount);
+      } else {
+        product.priceTier = 'unknown';
+      }
+    }
+    if (offer.availability) {
+      product.availability = offer.availability;
+      product.availabilityByMarket = market === 'US' ? { US: offer.availability } : { JP: offer.availability };
+    }
+  } catch {
+    // best-effort: keep original product data
+  }
+}
+
 async function buildKitPlan(input) {
   const { market, locale, lookSpec } = input;
   if (market !== 'US' && market !== 'JP') throw new Error('MARKET_NOT_SUPPORTED');
@@ -102,6 +201,7 @@ async function buildKitPlan(input) {
   const debugTriggerMatch = String(process.env.LAYER3_TRIGGER_MATCH_DEBUG || '').trim() === '1';
   const userProfile = input.userProfile ?? null;
   const userSignals = input.userSignals ?? null;
+  const jobId = input.jobId ? String(input.jobId) : null;
 
   // JP internal experiment: commerce is disabled; return role-based placeholders without blocking Layer2.
   if (market === 'JP' && input.commerceEnabled === false) {
@@ -185,6 +285,22 @@ async function buildKitPlan(input) {
   for (const category of ['prep', 'contour', 'brow', 'blush']) {
     const slot = buildArea(category, candidatesByCategory[category] || [], { allowPlaceholder: false });
     if (slot) kit[category] = slot;
+  }
+
+  // Best-effort enrichment:
+  // - Apply outbound link rules (external-only + redirect tracking) via infra.
+  // - If external-only, optionally fetch external metadata (title/image/price) from cached OG/JSON-LD snapshots.
+  try {
+    const tasks = [];
+    for (const area of Object.keys(kit)) {
+      const slot = kit[area];
+      if (!slot?.best || !slot?.dupe) continue;
+      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: 'best', product: slot.best, jobId }));
+      tasks.push(applyOutboundLinkAndExternalOffer({ market, area, kind: 'dupe', product: slot.dupe, jobId }));
+    }
+    await Promise.all(tasks);
+  } catch {
+    // ignore
   }
 
   return KitPlanV0Schema.parse({

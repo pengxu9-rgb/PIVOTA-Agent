@@ -417,6 +417,7 @@ async function runLookReplicatePipeline(input) {
     locale,
     lookSpec,
     commerceEnabled: pack.commerceEnabled,
+    ...(input.jobId ? { jobId: input.jobId } : {}),
     ...(onboardingProfileV0 ? { userProfile: onboardingProfileV0, userSignals: onboardingSignals } : {}),
   });
 
