@@ -23,6 +23,20 @@ const { renderSkeletonFromKB } = require('../layer2/personalization/renderSkelet
 const DEFAULT_JOB_CONCURRENCY = Number(process.env.LOOK_REPLICATOR_JOB_CONCURRENCY || 2);
 const queue = new JobQueue({ concurrency: DEFAULT_JOB_CONCURRENCY });
 
+function urlWithReturn(checkoutUrl, returnUrl) {
+  const url = String(checkoutUrl || '').trim();
+  const ret = String(returnUrl || '').trim();
+  if (!url || !ret) return url;
+  try {
+    const u = new URL(url);
+    if (!u.searchParams.get('return')) u.searchParams.set('return', ret);
+    return u.toString();
+  } catch {
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}return=${encodeURIComponent(ret)}`;
+  }
+}
+
 function parseBearer(authHeader) {
   const raw = String(authHeader || '');
   const m = raw.match(/^Bearer\s+(.+)$/i);
@@ -1067,6 +1081,100 @@ function mountLookReplicatorRoutes(app, { logger }) {
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err), operation }, 'lookReplicator commerce invoke failed');
       return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to invoke commerce service' });
+    }
+  });
+
+  // Checkout sessions (US-only): compatibility endpoint for look-replicate-share.
+  // Supports both:
+  // - "legacy" body: { market, locale, items:[{skuId, qty}], returnUrl }
+  // - ACP body: { items:[{id, quantity}], buyer?, fulfillment_address? }
+  //
+  // We forward to ACP and return { checkoutUrl, id } so frontends don't need to know ACP base URL.
+  app.post(['/checkout-sessions', '/api/checkout-sessions', '/checkout_sessions', '/api/checkout_sessions'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const returnUrl = req.body?.returnUrl || req.body?.return_url || null;
+    const market = String(req.body?.market || req.body?.payload?.market || 'US').trim().toUpperCase();
+
+    if (market && market !== 'US') {
+      return res.status(403).json({ error: 'PURCHASE_DISABLED', message: 'Purchases are disabled for this market' });
+    }
+    if (!rawItems.length) {
+      return res.status(400).json({ error: 'INVALID_REQUEST', message: 'items[] is required' });
+    }
+
+    const acpItems =
+      rawItems[0] && typeof rawItems[0] === 'object' && rawItems[0] && ('skuId' in rawItems[0] || 'sku_id' in rawItems[0])
+        ? rawItems
+            .map((it) => ({
+              id: String(it.skuId || it.sku_id || '').trim(),
+              quantity: Number(it.qty || it.quantity || 1) || 1,
+            }))
+            .filter((it) => it.id)
+        : rawItems
+            .map((it) => ({
+              id: String(it.id || '').trim(),
+              quantity: Number(it.quantity || 1) || 1,
+            }))
+            .filter((it) => it.id);
+
+    if (!acpItems.length) {
+      return res.status(400).json({ error: 'INVALID_REQUEST', message: 'items[] must include skuId or id' });
+    }
+
+    const acpBaseUrl = String(process.env.ACP_BASE_URL || process.env.PIVOTA_ACP_BASE_URL || 'https://pivota-acp-production.up.railway.app')
+      .trim()
+      .replace(/\/+$/, '');
+    const apiVersion = String(req.header('API-Version') || process.env.ACP_API_VERSION || '2025-09-29').trim();
+    const acpToken = process.env.ACP_API_KEY || process.env.ACP_BEARER_TOKEN || 'test';
+    const merchantId = process.env.ACP_MERCHANT_ID || process.env.LOOK_REPLICATOR_ACP_MERCHANT_ID || null;
+    const platform = process.env.ACP_PLATFORM || process.env.LOOK_REPLICATOR_ACP_PLATFORM || null;
+
+    try {
+      const upstream = await axios.post(
+        `${acpBaseUrl}/checkout_sessions`,
+        {
+          items: acpItems,
+          buyer: req.body?.buyer ?? null,
+          fulfillment_address: req.body?.fulfillment_address ?? null,
+          ...(req.body?.metadata ? { metadata: req.body.metadata } : {}),
+        },
+        {
+          timeout: 20_000,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiVersion ? { 'API-Version': apiVersion } : {}),
+            ...(acpToken ? { Authorization: `Bearer ${acpToken}` } : {}),
+            ...(merchantId ? { 'X-Merchant-Id': merchantId } : {}),
+            ...(platform ? { 'X-Platform': platform } : {}),
+          },
+          validateStatus: () => true,
+        },
+      );
+
+      if (!upstream || !upstream.status) {
+        return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Checkout upstream did not respond' });
+      }
+
+      const data = upstream.data || {};
+      if (upstream.status < 200 || upstream.status >= 300) {
+        return res.status(upstream.status).json(data);
+      }
+
+      const id = String(data.id || data.session_id || data.checkout_session_id || '').trim() || null;
+      const checkoutUrlRaw = String(data.checkout_url || data.checkoutUrl || '').trim() || (id ? `${acpBaseUrl}/checkout/${encodeURIComponent(id)}` : null);
+      const checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
+
+      if (!checkoutUrl) {
+        return res.status(502).json({ error: 'UPSTREAM_ERROR', message: 'Invalid checkout response (missing checkoutUrl)' });
+      }
+
+      return res.status(200).json({ checkoutUrl, ...(id ? { id } : {}) });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err) }, 'checkout_sessions proxy failed');
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to create checkout session' });
     }
   });
 }
