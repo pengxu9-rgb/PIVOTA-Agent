@@ -7,6 +7,12 @@ function parseEnvBool(v) {
   return s === "1" || s === "true" || s === "yes";
 }
 
+function parseEnvInt(v, fallback) {
+  const n = Number.parseInt(String(v ?? ""), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return n;
+}
+
 function buildTryOnImagePrompt({ userRequest, contextJson }) {
   const reqText = userRequest ? String(userRequest).trim() : "";
   const ctxText = contextJson ? JSON.stringify(contextJson) : "";
@@ -56,6 +62,12 @@ ${ctxText || "(none)"}
 `;
 }
 
+function withNoopRetryHint(promptText, attempt) {
+  const n = Number(attempt) || 1;
+  if (n <= 1) return promptText;
+  return `${promptText}\n\nNO_OP_RETRY_HINT (attempt=${n}):\nThe previous output was too similar to SELFIE_IMAGE (no-op).\nYou MUST make the makeup changes visibly stronger (especially eyes + lips + base) while keeping identity.\nReturn a single edited IMAGE only.\n`;
+}
+
 async function runTryOnGenerateImageOpenAICompat({
   targetImagePath,
   selfieImagePath,
@@ -93,86 +105,120 @@ async function runTryOnGenerateImageOpenAICompat({
         faceMaskPath ||
         faceBox);
 
-    const out = await generateMultiImageImageFromOpenAICompat({
-      promptText,
-      images,
-      model,
-      // When we are going to face-blend anyway, the full-frame similarity check is too strict
-      // (it averages over background). We rely on the face-region similarity check in the blend step.
-      skipSimilarityCheck: blendEnabled,
-    });
-    if (out?.ok) {
-      if (blendEnabled) {
-        const rawBytes = Buffer.from(String(out.value.data || ""), "base64");
-        let blended;
-        try {
-          blended = await applyTryOnFaceComposite({
-            selfieImagePath,
-            tryOnImageBytes: rawBytes,
-            faceMaskPath,
-            faceBox,
-          });
-        } catch (err) {
-          blended = null;
-          const msg = err instanceof Error ? err.message : String(err);
+    const variationAttempts = Math.max(1, Math.min(4, parseEnvInt(process.env.LOOK_REPLICATOR_TRYON_VARIATION_ATTEMPTS, 2)));
 
-          // If blending fails, fall back to a strict full-frame similarity check before returning.
-          // This keeps the original behavior of rejecting "no-op" outputs.
+    for (let variationAttempt = 1; variationAttempt <= variationAttempts; variationAttempt += 1) {
+      const out = await generateMultiImageImageFromOpenAICompat({
+        promptText: withNoopRetryHint(promptText, variationAttempt),
+        images,
+        model,
+        // When we are going to face-blend anyway, the full-frame similarity check is too strict
+        // (it averages over background). We rely on the face-region similarity check in the blend step.
+        skipSimilarityCheck: blendEnabled,
+      });
+
+      if (out?.ok) {
+        if (blendEnabled) {
+          const rawBytes = Buffer.from(String(out.value.data || ""), "base64");
+          let blended;
           try {
-            const selfieBytes = require("node:fs").readFileSync(String(selfieImagePath));
-            const similarity = await computeSimilarity(selfieBytes, rawBytes).catch(() => null);
-            const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
-            const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
-            if (similarity && isTooSimilar(similarity, { minDiff, maxDhashDist })) {
-              lastErr = {
-                ok: false,
-                error: {
-                  code: "OUTPUT_TOO_SIMILAR",
-                  message: `Try-on output too similar to selfie (diff=${Number(similarity.diffScore || 0).toFixed(2)} dhash=${similarity.dhashDist})`,
-                },
-                meta: { ...(out.meta || {}), ...(similarity || {}), attemptedModels: attempted, blended: false, blendError: msg.slice(0, 160) },
-              };
-              continue;
+            blended = await applyTryOnFaceComposite({
+              selfieImagePath,
+              tryOnImageBytes: rawBytes,
+              faceMaskPath,
+              faceBox,
+            });
+          } catch (err) {
+            blended = null;
+            const msg = err instanceof Error ? err.message : String(err);
+
+            // If blending fails, fall back to a strict full-frame similarity check before returning.
+            // This keeps the original behavior of rejecting "no-op" outputs.
+            try {
+              const selfieBytes = require("node:fs").readFileSync(String(selfieImagePath));
+              const similarity = await computeSimilarity(selfieBytes, rawBytes).catch(() => null);
+              const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
+              const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
+              if (similarity && isTooSimilar(similarity, { minDiff, maxDhashDist })) {
+                lastErr = {
+                  ok: false,
+                  error: {
+                    code: "OUTPUT_TOO_SIMILAR",
+                    message: `Try-on output too similar to selfie (diff=${Number(similarity.diffScore || 0).toFixed(2)} dhash=${similarity.dhashDist})`,
+                  },
+                  meta: {
+                    ...(out.meta || {}),
+                    ...(similarity || {}),
+                    attemptedModels: attempted,
+                    blended: false,
+                    blendError: msg.slice(0, 160),
+                    blendEnabled,
+                    variationAttempt,
+                    variationAttempts,
+                  },
+                };
+                if (variationAttempt < variationAttempts) continue;
+                break;
+              }
+            } catch {
+              // ignore similarity failures
             }
-          } catch {
-            // ignore similarity failures
+
+            return {
+              ok: true,
+              value: { ...out.value, filename: `tryon.${out.value.ext}` },
+              meta: { ...(out.meta || {}), attemptedModels: attempted, blended: false, blendError: msg.slice(0, 160), variationAttempt, variationAttempts },
+            };
           }
 
-          return {
-            ok: true,
-            value: { ...out.value, filename: `tryon.${out.value.ext}` },
-            meta: { ...(out.meta || {}), attemptedModels: attempted, blended: false, blendError: msg.slice(0, 160) },
-          };
+          if (!blended.ok && blended.error?.code === "OUTPUT_TOO_SIMILAR") {
+            lastErr = {
+              ...blended,
+              meta: {
+                ...(blended.meta || {}),
+                upstream: out.meta,
+                blendEnabled,
+                variationAttempt,
+                variationAttempts,
+              },
+            };
+            if (variationAttempt < variationAttempts) continue;
+            break;
+          }
+          if (blended.ok) {
+            return {
+              ok: true,
+              value: {
+                mimeType: blended.value.mimeType,
+                data: blended.value.dataB64,
+                ext: "png",
+                filename: "tryon.png",
+              },
+              meta: { ...(out.meta || {}), ...(blended.meta || {}), attemptedModels: attempted, blended: true, variationAttempt, variationAttempts },
+            };
+          }
         }
-        if (!blended.ok && blended.error?.code === "OUTPUT_TOO_SIMILAR") {
-          lastErr = { ...blended, meta: { ...(blended.meta || {}), upstream: out.meta, blendEnabled } };
-          continue;
-        }
-        if (blended.ok) {
-          return {
-            ok: true,
-            value: {
-              mimeType: blended.value.mimeType,
-              data: blended.value.dataB64,
-              ext: "png",
-              filename: "tryon.png",
-            },
-            meta: { ...(out.meta || {}), ...(blended.meta || {}), attemptedModels: attempted, blended: true },
-          };
-        }
+
+        const filename = `tryon.${out.value.ext}`;
+        return { ok: true, value: { ...out.value, filename }, meta: { ...(out.meta || {}), attemptedModels: attempted, variationAttempt, variationAttempts } };
       }
 
-      const filename = `tryon.${out.value.ext}`;
-      return { ok: true, value: { ...out.value, filename }, meta: { ...(out.meta || {}), attemptedModels: attempted } };
-    }
-    lastErr = out;
-    if (lastErr && lastErr.meta && typeof lastErr.meta === "object") {
-      lastErr = { ...lastErr, meta: { ...(lastErr.meta || {}), blendEnabled } };
+      lastErr = out;
+      if (lastErr && lastErr.meta && typeof lastErr.meta === "object") {
+        lastErr = { ...lastErr, meta: { ...(lastErr.meta || {}), blendEnabled, variationAttempt, variationAttempts } };
+      }
+
+      const status = out?.error?.status;
+      const code = out?.error?.code;
+      if (code === "OUTPUT_TOO_SIMILAR" && variationAttempt < variationAttempts) continue;
+
+      // Try the next model when the relay rejects the requested model (common for 403/404).
+      if (status === 403 || status === 404 || code === "OUTPUT_TOO_SIMILAR" || code === "OUTPUT_SUSPECT_FACE_SWAP") break;
+      variationAttempt = variationAttempts; // eslint-disable-line no-param-reassign
     }
 
-    const status = out?.error?.status;
-    const code = out?.error?.code;
-    // Try the next model when the relay rejects the requested model (common for 403/404).
+    const status = lastErr?.error?.status;
+    const code = lastErr?.error?.code;
     if (status === 403 || status === 404 || code === "OUTPUT_TOO_SIMILAR" || code === "OUTPUT_SUSPECT_FACE_SWAP") continue;
     break;
   }
