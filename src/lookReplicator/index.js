@@ -44,10 +44,18 @@ function parseBearer(authHeader) {
 }
 
 function requireLookReplicatorAuth(req, res) {
-  const required = process.env.LOOK_REPLICATOR_API_KEY || process.env.LOOK_REPLICATOR_BACKEND_API_KEY;
-  if (!required) return true;
+  const requiredTokens = [
+    process.env.LOOK_REPLICATOR_API_KEY,
+    process.env.LOOK_REPLICATOR_BACKEND_API_KEY,
+    // Convenience: allow reusing the same key already used for /agent/shop/v1/invoke deployments.
+    process.env.PIVOTA_API_KEY,
+    process.env.PIVOTA_AGENT_API_KEY,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  if (!requiredTokens.length) return true;
   const token = parseBearer(req.header('Authorization')) || req.header('X-API-Key') || req.header('x-api-key');
-  if (!token || token !== required) {
+  if (!token || !requiredTokens.includes(String(token).trim())) {
     res.status(401).json({ error: 'UNAUTHORIZED' });
     return false;
   }
