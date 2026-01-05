@@ -47,6 +47,97 @@ describe("LLM provider (env selection)", () => {
     nock.cleanAll();
   });
 
+  test("openai provider ignores Gemini-only model list", async () => {
+    process.env.PIVOTA_LAYER2_LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_BASE_URL = "http://openai.local";
+    process.env.PIVOTA_LAYER2_MODEL = "gemini-2.5-flash-image-preview,gemini-3-pro-image-preview";
+    delete process.env.PIVOTA_LAYER2_MODEL_OPENAI;
+
+    const scope = nock("http://openai.local")
+      .post("/v1/chat/completions", (body) => (body as any)?.model === "gpt-4o-mini")
+      .reply(200, {
+        choices: [{ message: { content: JSON.stringify({ foo: "bar" }) } }],
+      });
+
+    const provider = createProviderFromEnv("layer2_lookspec");
+    const out = await provider.analyzeTextToJson({
+      prompt: "Return JSON only",
+      schema: z.object({ foo: z.string().min(1) }).strict(),
+    });
+
+    expect(out.foo).toBe("bar");
+    expect(scope.isDone()).toBe(true);
+  });
+
+  test("openai provider can use Gemini models via OpenAI-compatible relay when enabled", async () => {
+    process.env.PIVOTA_LAYER2_LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_BASE_URL = "http://openai.local";
+    process.env.PIVOTA_OPENAI_COMPAT_ALLOW_GEMINI_MODELS = "1";
+    process.env.PIVOTA_LAYER2_MODEL = "gemini-3-pro-image-preview";
+    delete process.env.PIVOTA_LAYER2_MODEL_OPENAI;
+
+    const scope = nock("http://openai.local")
+      .post(
+        "/v1/chat/completions",
+        (body) =>
+          (body as any)?.model === "gemini-3-pro-image-preview" &&
+          (body as any)?.response_format == null
+      )
+      .reply(200, {
+        choices: [{ message: { content: JSON.stringify({ foo: "bar" }) } }],
+      });
+
+    const provider = createProviderFromEnv("layer2_lookspec");
+    const out = await provider.analyzeTextToJson({
+      prompt: "Return JSON only",
+      schema: z.object({ foo: z.string().min(1) }).strict(),
+    });
+
+    expect(out.foo).toBe("bar");
+    expect(scope.isDone()).toBe(true);
+  });
+
+  test("openai provider preprocesses image bytes for Gemini models", async () => {
+    process.env.PIVOTA_LAYER2_LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_BASE_URL = "http://openai.local";
+    process.env.PIVOTA_OPENAI_COMPAT_ALLOW_GEMINI_MODELS = "1";
+    process.env.PIVOTA_LAYER2_MODEL = "gemini-2.5-flash-image-preview";
+    delete process.env.PIVOTA_LAYER2_MODEL_OPENAI;
+
+    const pngBytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5Kj9sAAAAASUVORK5CYII=",
+      "base64"
+    );
+
+    const scope = nock("http://openai.local")
+      .post("/v1/chat/completions", (body) => {
+        const b = body as any;
+        const url = b?.messages?.[1]?.content?.[1]?.image_url?.url;
+        return (
+          b?.model === "gemini-2.5-flash-image-preview" &&
+          b?.response_format == null &&
+          typeof url === "string" &&
+          url.startsWith("data:image/jpeg;base64,")
+        );
+      })
+      .reply(200, {
+        choices: [{ message: { content: JSON.stringify({ foo: "bar" }) } }],
+      });
+
+    const provider = createProviderFromEnv("layer2_lookspec");
+    const out = await provider.analyzeImageToJson({
+      prompt: "Return JSON only",
+      image: { kind: "bytes", bytes: pngBytes, contentType: "image/png" },
+      schema: z.object({ foo: z.string().min(1) }).strict(),
+    });
+
+    expect(out.foo).toBe("bar");
+    expect(scope.isDone()).toBe(true);
+  });
+
   test("uses Gemini when configured", async () => {
     process.env.PIVOTA_LAYER2_LLM_PROVIDER = "gemini";
     process.env.GEMINI_API_KEY = "test-gemini-key";

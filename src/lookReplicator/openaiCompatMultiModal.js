@@ -344,7 +344,7 @@ async function generateMultiImageJsonFromOpenAICompat({ promptText, images, sche
   return { ok: true, value: parsed.data, meta };
 }
 
-async function generateMultiImageImageFromOpenAICompat({ promptText, images, model }) {
+async function generateMultiImageImageFromOpenAICompat({ promptText, images, model, skipSimilarityCheck }) {
   const meta = { model, attempted: false };
   const list = Array.isArray(images) ? images : [];
   if (!list.length) return { ok: false, error: { code: "MISSING_IMAGE", message: "Missing images" }, meta };
@@ -411,16 +411,16 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
         const outTarget = targetBytes ? await computeSimilarity(targetBytes, outputBytes).catch(() => null) : null;
         const selfieTarget = targetBytes ? await computeSimilarity(selfieBytes, targetBytes).catch(() => null) : null;
 
-        const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
-        const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
-        if (outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
+      const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
+      const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
+        if (!skipSimilarityCheck && outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
           return {
             ok: false,
             error: {
               code: "OUTPUT_TOO_SIMILAR",
               message: `Try-on output too similar to selfie (diff=${Number(outSelfie.diffScore || 0).toFixed(2)} dhash=${outSelfie.dhashDist})`,
             },
-            meta: { ...meta, protocol: "gemini_generateContent", ...(outSelfie || {}) },
+            meta: { ...meta, protocol: "gemini_generateContent", ...(outSelfie || {}), skipSimilarityCheck: Boolean(skipSimilarityCheck) },
           };
         }
 
@@ -540,14 +540,14 @@ async function generateMultiImageImageFromOpenAICompat({ promptText, images, mod
 
       const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
       const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
-      if (outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
+      if (!skipSimilarityCheck && outSelfie && isTooSimilar(outSelfie, { minDiff, maxDhashDist })) {
         return {
           ok: false,
           error: {
             code: "OUTPUT_TOO_SIMILAR",
             message: `Try-on output too similar to selfie (diff=${Number(outSelfie.diffScore || 0).toFixed(2)} dhash=${outSelfie.dhashDist})`,
           },
-          meta: { ...meta, ...(outSelfie || {}) },
+          meta: { ...meta, ...(outSelfie || {}), skipSimilarityCheck: Boolean(skipSimilarityCheck) },
         };
       }
 

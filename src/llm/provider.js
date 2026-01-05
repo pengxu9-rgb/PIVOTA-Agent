@@ -2,6 +2,15 @@ const axios = require('axios');
 const { AxiosError } = require('axios');
 const { z } = require('zod');
 
+let sharp = null;
+try {
+  // Optional in some runtimes; required for image payload shrinking.
+  // eslint-disable-next-line global-require
+  sharp = require('sharp');
+} catch {
+  sharp = null;
+}
+
 class LlmError extends Error {
   /**
    * @param {'LLM_CONFIG_MISSING'|'LLM_REQUEST_FAILED'|'LLM_TIMEOUT'|'LLM_PARSE_FAILED'|'LLM_SCHEMA_INVALID'} code
@@ -27,6 +36,47 @@ function hasEnv(name) {
 function toDataUrl(bytes, contentType) {
   const b64 = Buffer.from(bytes).toString('base64');
   return `data:${contentType};base64,${b64}`;
+}
+
+function extractUpstreamErrorMessage(data) {
+  if (typeof data === 'string') return String(data).trim();
+  if (!data || typeof data !== 'object') return '';
+  if (typeof data?.error?.message === 'string') return String(data.error.message).trim();
+  if (typeof data?.error === 'string') return String(data.error).trim();
+  if (typeof data?.message === 'string') return String(data.message).trim();
+  if (typeof data?.detail === 'string') return String(data.detail).trim();
+  try {
+    return JSON.stringify(data).trim();
+  } catch {
+    return '';
+  }
+}
+
+async function preprocessImageBytesForLlm(bytes, contentType) {
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || '');
+  if (!buf.length) return { bytes: buf, contentType: contentType || 'image/jpeg' };
+  if (!sharp) return { bytes: buf, contentType: contentType || 'image/jpeg' };
+
+  const maxEdge = Math.max(64, Number(getEnv('LLM_IMAGE_MAX_EDGE') || getEnv('GEMINI_IMAGE_MAX_EDGE') || '1536') || 1536);
+  const quality = Math.min(
+    100,
+    Math.max(1, Number(getEnv('LLM_IMAGE_JPEG_QUALITY') || getEnv('GEMINI_IMAGE_JPEG_QUALITY') || '85') || 85)
+  );
+
+  try {
+    const img = sharp(buf).rotate();
+    const meta = await img.metadata().catch(() => null);
+    const w = Number(meta?.width || 0);
+    const h = Number(meta?.height || 0);
+    const shouldResize = w > maxEdge || h > maxEdge;
+    const pipeline = shouldResize
+      ? img.resize({ width: maxEdge, height: maxEdge, fit: 'inside', withoutEnlargement: true })
+      : img;
+    const out = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
+    return { bytes: out, contentType: 'image/jpeg' };
+  } catch {
+    return { bytes: buf, contentType: contentType || 'image/jpeg' };
+  }
 }
 
 function geminiApiKey() {
@@ -67,6 +117,31 @@ function geminiModelName(model) {
   const m = String(model || '').trim();
   if (!m) return 'gemini-1.5-flash';
   return m.startsWith('models/') ? m.slice('models/'.length) : m;
+}
+
+function isGeminiLikeModelName(model) {
+  const m = String(model || '').trim().toLowerCase();
+  if (!m) return false;
+  if (m.startsWith('models/')) return true;
+  return m.startsWith('gemini-') || m.startsWith('gemini.');
+}
+
+function filterNonGeminiModels(models) {
+  return (Array.isArray(models) ? models : []).filter((m) => !isGeminiLikeModelName(m));
+}
+
+function parseEnvBool(v) {
+  const s = String(v || '').trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes';
+}
+
+function allowGeminiModelsViaOpenAiCompat() {
+  return parseEnvBool(
+    getEnv('PIVOTA_OPENAI_COMPAT_ALLOW_GEMINI_MODELS') ||
+      getEnv('OPENAI_COMPAT_ALLOW_GEMINI_MODELS') ||
+      getEnv('PIVOTA_OPENAI_COMPAT_ALLOW_NON_OPENAI_MODELS') ||
+      getEnv('OPENAI_COMPAT_ALLOW_NON_OPENAI_MODELS')
+  );
 }
 
 function uniqueStrings(list) {
@@ -277,9 +352,12 @@ function createProviderFromEnv(purpose = 'generic') {
     if (provider === 'openai') {
       const apiKey = openaiApiKey();
       const baseUrl = normalizeOpenAiBaseUrl(openaiBaseUrl());
-      const rawModel = getEnv('PIVOTA_LAYER2_MODEL_OPENAI') || getEnv('PIVOTA_LAYER2_MODEL') || 'gpt-4o-mini';
-      const models = splitModelList(rawModel);
-      const defaultModel = models[0] || String(rawModel || '').trim() || 'gpt-4o-mini';
+      const explicitRawModel = getEnv('PIVOTA_LAYER2_MODEL_OPENAI');
+      const explicitModels = splitModelList(explicitRawModel);
+      const sharedModelsRaw = splitModelList(getEnv('PIVOTA_LAYER2_MODEL'));
+      const sharedModels = allowGeminiModelsViaOpenAiCompat() ? sharedModelsRaw : filterNonGeminiModels(sharedModelsRaw);
+      const models = explicitModels.length ? explicitModels : sharedModels.length ? sharedModels : ['gpt-4o-mini'];
+      const defaultModel = models[0] || 'gpt-4o-mini';
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: OPENAI_API_KEY');
 
       const client = axios.create({
@@ -321,11 +399,7 @@ function createProviderFromEnv(purpose = 'generic') {
                 lastErr = new LlmError('LLM_TIMEOUT', 'LLM request timed out', err);
               } else {
                 const apiMessage =
-                  typeof err.response?.data?.error?.message === 'string'
-                    ? String(err.response?.data?.error?.message).trim()
-                    : typeof err.response?.data?.message === 'string'
-                      ? String(err.response?.data?.message).trim()
-                      : '';
+                  extractUpstreamErrorMessage(err.response?.data);
                 const suffix = apiMessage ? `: ${apiMessage.slice(0, 200)}` : '';
                 const msg = status ? `LLM request failed (HTTP ${status})${suffix}` : `LLM request failed${suffix}`;
                 lastErr = new LlmError('LLM_REQUEST_FAILED', msg, err);
@@ -351,18 +425,28 @@ function createProviderFromEnv(purpose = 'generic') {
         __meta: meta,
 
         async analyzeImageToJson({ prompt, image, schema }) {
-          const imageUrl = image.kind === 'url' ? image.url : toDataUrl(image.bytes, image.contentType);
           const attemptedModels = models.length ? models : [defaultModel];
           let lastErr = null;
+          let preprocessed = null;
           for (const m of attemptedModels) {
             meta.model = m;
+            const shouldSendResponseFormatForModel = !disableResponseFormat && !isGeminiLikeModelName(m);
+            const imageUrl =
+              image.kind === 'url'
+                ? image.url
+                : isGeminiLikeModelName(m)
+                  ? toDataUrl(
+                      (preprocessed || (preprocessed = await preprocessImageBytesForLlm(image.bytes, image.contentType))).bytes,
+                      preprocessed.contentType
+                    )
+                  : toDataUrl(image.bytes, image.contentType);
             try {
               return await postWithRetry(
                 {
                   model: m,
                   temperature: 0,
                   max_tokens: 1500,
-                  ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
+                  ...(shouldSendResponseFormatForModel ? { response_format: { type: 'json_object' } } : {}),
                   messages: [
                     {
                       role: 'system',
@@ -394,13 +478,14 @@ function createProviderFromEnv(purpose = 'generic') {
           let lastErr = null;
           for (const m of attemptedModels) {
             meta.model = m;
+            const shouldSendResponseFormatForModel = !disableResponseFormat && !isGeminiLikeModelName(m);
             try {
               return await postWithRetry(
                 {
                   model: m,
                   temperature: 0,
                   max_tokens: 2000,
-                  ...(!disableResponseFormat ? { response_format: { type: 'json_object' } } : {}),
+                  ...(shouldSendResponseFormatForModel ? { response_format: { type: 'json_object' } } : {}),
                   messages: [
                     {
                       role: 'system',

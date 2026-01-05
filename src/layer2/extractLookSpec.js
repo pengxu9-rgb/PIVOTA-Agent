@@ -77,8 +77,18 @@ function providerMetaSuffix(provider) {
   if (!meta || typeof meta !== 'object') return '';
   const p = String(meta.provider || '').trim();
   const m = String(meta.model || '').trim();
-  if (!p && !m) return '';
-  return ` [provider=${p || 'unknown'}${m ? ` model=${m}` : ''}]`;
+  const rawBaseUrl = String(meta.baseUrl || '').trim();
+  let baseUrl = '';
+  if (rawBaseUrl) {
+    try {
+      const u = new URL(rawBaseUrl);
+      baseUrl = `${u.protocol}//${u.host}`;
+    } catch {
+      baseUrl = rawBaseUrl;
+    }
+  }
+  if (!p && !m && !baseUrl) return '';
+  return ` [provider=${p || 'unknown'}${m ? ` model=${m}` : ''}${baseUrl ? ` baseUrl=${baseUrl}` : ''}]`;
 }
 
 function toWarning(err, provider) {

@@ -1,5 +1,6 @@
 const { generateMultiImageImageFromOpenAICompat } = require("./openaiCompatMultiModal");
 const { applyTryOnFaceComposite } = require("./tryOnFaceComposite");
+const { computeSimilarity, isTooSimilar } = require("./imageSimilarity");
 
 function parseEnvBool(v) {
   const s = String(v ?? "").trim().toLowerCase();
@@ -85,15 +86,22 @@ async function runTryOnGenerateImageOpenAICompat({
 
   for (const model of models) {
     attempted.push(model);
-    const out = await generateMultiImageImageFromOpenAICompat({ promptText, images, model });
-    if (out?.ok) {
-      const blendEnabled =
-        !parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_DISABLE_FACE_BLEND) &&
-        (parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND) ||
-          process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND == null ||
-          faceMaskPath ||
-          faceBox);
+    const blendEnabled =
+      !parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_DISABLE_FACE_BLEND) &&
+      (parseEnvBool(process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND) ||
+        process.env.LOOK_REPLICATOR_TRYON_FACE_BLEND == null ||
+        faceMaskPath ||
+        faceBox);
 
+    const out = await generateMultiImageImageFromOpenAICompat({
+      promptText,
+      images,
+      model,
+      // When we are going to face-blend anyway, the full-frame similarity check is too strict
+      // (it averages over background). We rely on the face-region similarity check in the blend step.
+      skipSimilarityCheck: blendEnabled,
+    });
+    if (out?.ok) {
       if (blendEnabled) {
         const rawBytes = Buffer.from(String(out.value.data || ""), "base64");
         let blended;
@@ -107,6 +115,29 @@ async function runTryOnGenerateImageOpenAICompat({
         } catch (err) {
           blended = null;
           const msg = err instanceof Error ? err.message : String(err);
+
+          // If blending fails, fall back to a strict full-frame similarity check before returning.
+          // This keeps the original behavior of rejecting "no-op" outputs.
+          try {
+            const selfieBytes = require("node:fs").readFileSync(String(selfieImagePath));
+            const similarity = await computeSimilarity(selfieBytes, rawBytes).catch(() => null);
+            const minDiff = Number(process.env.LOOK_REPLICATOR_TRYON_MIN_DIFF || "6");
+            const maxDhashDist = Number(process.env.LOOK_REPLICATOR_TRYON_MAX_DHASH_DIST || "4");
+            if (similarity && isTooSimilar(similarity, { minDiff, maxDhashDist })) {
+              lastErr = {
+                ok: false,
+                error: {
+                  code: "OUTPUT_TOO_SIMILAR",
+                  message: `Try-on output too similar to selfie (diff=${Number(similarity.diffScore || 0).toFixed(2)} dhash=${similarity.dhashDist})`,
+                },
+                meta: { ...(out.meta || {}), ...(similarity || {}), attemptedModels: attempted, blended: false, blendError: msg.slice(0, 160) },
+              };
+              continue;
+            }
+          } catch {
+            // ignore similarity failures
+          }
+
           return {
             ok: true,
             value: { ...out.value, filename: `tryon.${out.value.ext}` },
@@ -114,7 +145,7 @@ async function runTryOnGenerateImageOpenAICompat({
           };
         }
         if (!blended.ok && blended.error?.code === "OUTPUT_TOO_SIMILAR") {
-          lastErr = { ...blended, meta: { ...(blended.meta || {}), upstream: out.meta } };
+          lastErr = { ...blended, meta: { ...(blended.meta || {}), upstream: out.meta, blendEnabled } };
           continue;
         }
         if (blended.ok) {
@@ -135,6 +166,9 @@ async function runTryOnGenerateImageOpenAICompat({
       return { ok: true, value: { ...out.value, filename }, meta: { ...(out.meta || {}), attemptedModels: attempted } };
     }
     lastErr = out;
+    if (lastErr && lastErr.meta && typeof lastErr.meta === "object") {
+      lastErr = { ...lastErr, meta: { ...(lastErr.meta || {}), blendEnabled } };
+    }
 
     const status = out?.error?.status;
     const code = out?.error?.code;
