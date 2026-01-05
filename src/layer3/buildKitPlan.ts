@@ -139,6 +139,7 @@ function brandCandidatesForOutboundLinks(rawBrand: unknown): string[] {
   const compact = simplified.replace(/\s+/g, "");
 
   const canonical: string[] = [];
+  if (simplified === "mac" || simplified.startsWith("mac ")) canonical.push("mac");
   if (simplified === "m a c" || simplified.startsWith("m a c ")) canonical.push("mac");
   if (simplified.startsWith("tom ford")) canonical.push("tom ford");
 
