@@ -63,6 +63,30 @@ const ROUTE_DEBUG_ENABLED =
   process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1' ||
   process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG === '1';
 
+function parseTimeoutMs(envValue, fallbackMs) {
+  const n = Number(envValue);
+  return Number.isFinite(n) && n > 0 ? n : fallbackMs;
+}
+
+// Upstream request timeouts.
+// NOTE: Shopify pricing flows can involve multiple sequential upstream calls; the gateway
+// timeout must not be lower than the backend's own HTTP client timeouts.
+const UPSTREAM_TIMEOUT_SEARCH_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_SEARCH_MS, 15000);
+const UPSTREAM_TIMEOUT_SLOW_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_SLOW_MS, 60000);
+const UPSTREAM_TIMEOUT_ADMIN_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_ADMIN_MS, 15000);
+
+const SLOW_UPSTREAM_OPS = new Set([
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'get_order_status',
+  'request_after_sales',
+]);
+
+function getUpstreamTimeoutMs(operation) {
+  return SLOW_UPSTREAM_OPS.has(operation) ? UPSTREAM_TIMEOUT_SLOW_MS : UPSTREAM_TIMEOUT_SEARCH_MS;
+}
+
 async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown', options = {}) {
   const force = options && options.force === true;
   if (!force && !ROUTE_DEBUG_ENABLED) return null;
@@ -367,7 +391,7 @@ async function fetchBackendAdmin({ method, path, params, data }) {
       ...(method !== 'GET' && { 'Content-Type': 'application/json' }),
       'X-ADMIN-KEY': ADMIN_API_KEY,
     },
-    timeout: 15000,
+    timeout: UPSTREAM_TIMEOUT_ADMIN_MS,
     ...(params ? { params } : {}),
     ...(data ? { data } : {}),
   });
@@ -2950,8 +2974,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
         ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
       },
-      // Slightly relaxed timeout to reduce flakiness on heavy searches.
-      timeout: 15000,
+      // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
+      timeout: getUpstreamTimeoutMs(operation),
       ...(Object.keys(queryParams).length > 0 && { params: queryParams }),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
@@ -2995,7 +3019,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
                 ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
               },
-              timeout: 15000,
+              timeout: getUpstreamTimeoutMs('preview_quote'),
               data: quoteBody,
             });
 
@@ -3174,8 +3198,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     }
 
     if (err.code === 'ECONNABORTED') {
-      logger.error({ url: err.config?.url }, 'Upstream timeout');
-      return res.status(504).json({ error: 'UPSTREAM_TIMEOUT' });
+      logger.error(
+        {
+          operation,
+          url: err.config?.url || url,
+          timeout_ms: err.config?.timeout,
+        },
+        'Upstream timeout',
+      );
+      return res.status(504).json({
+        error: 'UPSTREAM_TIMEOUT',
+        operation,
+        upstream_url: err.config?.url || url,
+        timeout_ms: err.config?.timeout || null,
+      });
     }
 
     logger.error({ err: err.message }, 'Unexpected upstream error');
