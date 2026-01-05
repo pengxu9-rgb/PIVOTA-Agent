@@ -78,9 +78,10 @@ describe('look replicator checkout_sessions compatibility', () => {
 
     expect(axios.post).toHaveBeenCalledTimes(2);
     const [cartUrl, cartBody, cartConfig] = axios.post.mock.calls[0];
-    expect(cartUrl).toBe('https://backend.example.com/agent/v1/cart/validate');
-    expect(cartBody.items).toEqual([{ product_id: 'sku1', quantity: 2 }]);
-    expect(cartBody.merchant_id).toBe('merch_test');
+    expect(cartUrl).toContain('https://backend.example.com/agent/v1/cart/validate');
+    expect(cartUrl).toContain('merchant_id=merch_test');
+    expect(cartUrl).toContain('shipping_country=US');
+    expect(cartBody).toEqual([{ product_id: 'sku1', quantity: 2 }]);
     expect(cartConfig.headers['X-API-Key']).toBe('test-api-key');
 
     const [quoteUrl, quoteBody, quoteConfig] = axios.post.mock.calls[1];
@@ -115,8 +116,9 @@ describe('look replicator checkout_sessions compatibility', () => {
 
   test('splits multi-merchant items into checkoutUrls[]', async () => {
     axios.post.mockImplementation(async (url, body) => {
-      if (String(url).endsWith('/agent/v1/cart/validate')) {
-        const mid = body?.merchant_id;
+      if (String(url).includes('/agent/v1/cart/validate')) {
+        const parsed = new URL(String(url));
+        const mid = parsed.searchParams.get('merchant_id');
         if (mid === 'm1') {
           return { status: 200, data: { status: 'success', valid: true, items: [{ product_id: 'sku1', variant_id: 'v1', quantity: 1 }] } };
         }

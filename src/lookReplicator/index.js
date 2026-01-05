@@ -1246,13 +1246,15 @@ function mountLookReplicatorRoutes(app, { logger }) {
         merchantIds.map(async (mid) => {
           try {
             // 1) Validate cart + resolve variant IDs using the Agent API.
+            // Note: /agent/v1/cart/validate expects:
+            // - merchant_id and shipping_country as query params
+            // - request body as a raw JSON list of {product_id, quantity}
+            const cartUrl = new URL(`${backendBaseUrl}/agent/v1/cart/validate`);
+            cartUrl.searchParams.set('merchant_id', mid);
+            cartUrl.searchParams.set('shipping_country', market);
             const cart = await axiosPostWithRetry(
-              `${backendBaseUrl}/agent/v1/cart/validate`,
-              {
-                merchant_id: mid,
-                items: groups.get(mid) || [],
-                shipping_country: market,
-              },
+              cartUrl.toString(),
+              groups.get(mid) || [],
               {
                 timeout: 30_000,
                 headers: {
