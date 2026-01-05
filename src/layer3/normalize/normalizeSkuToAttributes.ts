@@ -18,6 +18,7 @@ export type NormalizedSkuForRanking = {
   priceTier: z.infer<typeof PriceTierSchema>;
   imageUrl?: string;
   productUrl?: string;
+  purchaseEnabled?: boolean;
   availability: z.infer<typeof AvailabilitySchema>;
   availabilityByMarket: z.infer<typeof AvailabilityByMarketV0Schema>;
   tags: z.infer<typeof ProductTagsV0Schema>;
@@ -119,6 +120,26 @@ function extractImageUrl(raw: Record<string, unknown>): string | undefined {
 function extractProductUrl(raw: Record<string, unknown>): string | undefined {
   const url = firstNonEmpty(raw.productUrl, raw.product_url, raw.url, raw.link);
   return url || undefined;
+}
+
+function extractPurchaseEnabled(raw: Record<string, unknown>): boolean | undefined {
+  const v =
+    raw.purchaseEnabled ??
+    raw.purchase_enabled ??
+    raw.purchase_enabled_override ??
+    raw.isPurchaseEnabled ??
+    raw.is_purchase_enabled ??
+    raw.checkoutEnabled ??
+    raw.checkout_enabled;
+
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string" && v.trim()) {
+    const s = v.trim().toLowerCase();
+    if (["true", "1", "yes", "y"].includes(s)) return true;
+    if (["false", "0", "no", "n"].includes(s)) return false;
+  }
+  return undefined;
 }
 
 function extractAvailability(raw: Record<string, unknown>): z.infer<typeof AvailabilitySchema> {
@@ -235,6 +256,7 @@ export function normalizeSkuToAttributes(input: {
 
   const imageUrl = extractImageUrl(raw);
   const productUrl = extractProductUrl(raw);
+  const purchaseEnabled = extractPurchaseEnabled(raw);
 
   const rawText = [
     name,
@@ -263,6 +285,7 @@ export function normalizeSkuToAttributes(input: {
     priceTier,
     imageUrl,
     productUrl,
+    ...(purchaseEnabled != null ? { purchaseEnabled } : {}),
     availability,
     availabilityByMarket,
     tags,
@@ -272,4 +295,3 @@ export function normalizeSkuToAttributes(input: {
     raw: sku,
   };
 }
-

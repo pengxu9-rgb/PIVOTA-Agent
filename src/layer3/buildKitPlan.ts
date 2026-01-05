@@ -104,6 +104,7 @@ function toProductAttributes(input: {
     shadeDescriptor: normalized.shadeDescriptor,
     whyThis,
     evidence,
+    ...(normalized.purchaseEnabled != null ? { purchaseEnabled: normalized.purchaseEnabled } : {}),
   });
 
   if (additionalWarnings.length) {

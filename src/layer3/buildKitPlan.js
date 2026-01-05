@@ -91,6 +91,7 @@ function toProductAttributes({ locale, lookSpec, normalized, category }) {
     priceTier: normalized.priceTier,
     imageUrl: normalized.imageUrl,
     productUrl: normalized.productUrl,
+    ...(normalized.purchaseEnabled != null ? { purchaseEnabled: normalized.purchaseEnabled } : {}),
     availability: normalized.availability,
     availabilityByMarket: normalized.availabilityByMarket,
     tags: normalized.tags,

@@ -103,6 +103,26 @@ function extractProductUrl(raw) {
   return url || undefined;
 }
 
+function extractPurchaseEnabled(raw) {
+  const v =
+    raw.purchaseEnabled ??
+    raw.purchase_enabled ??
+    raw.purchase_enabled_override ??
+    raw.isPurchaseEnabled ??
+    raw.is_purchase_enabled ??
+    raw.checkoutEnabled ??
+    raw.checkout_enabled;
+
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  if (typeof v === 'string' && v.trim()) {
+    const s = v.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(s)) return true;
+    if (['false', '0', 'no', 'n'].includes(s)) return false;
+  }
+  return undefined;
+}
+
 function extractAvailability(raw) {
   const inStock = raw.inStock ?? raw.in_stock ?? raw.available ?? raw.is_available ?? raw.isAvailable;
   if (typeof inStock === 'boolean') return inStock ? 'in_stock' : 'out_of_stock';
@@ -231,6 +251,7 @@ function normalizeSkuToAttributes(input) {
     priceTier,
     imageUrl: extractImageUrl(raw),
     productUrl: extractProductUrl(raw),
+    ...(extractPurchaseEnabled(raw) != null ? { purchaseEnabled: extractPurchaseEnabled(raw) } : {}),
     availability,
     availabilityByMarket,
     tags,
@@ -244,4 +265,3 @@ function normalizeSkuToAttributes(input) {
 module.exports = {
   normalizeSkuToAttributes,
 };
-
