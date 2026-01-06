@@ -55,7 +55,19 @@ function extractBrand(raw) {
 }
 
 function extractCurrency(raw) {
-  const currency = firstNonEmpty(raw.currency, raw.price_currency, raw.priceCurrency);
+  const priceObj = typeof raw.price === 'object' && raw.price ? raw.price : null;
+  const currency = firstNonEmpty(
+    // Common top-level fields
+    raw.currency,
+    raw.currency_code,
+    raw.currencyCode,
+    raw.price_currency,
+    raw.priceCurrency,
+    raw.priceCurrencyCode,
+    // Nested money objects
+    priceObj && (priceObj.currency || priceObj.currency_code || priceObj.currencyCode),
+    raw.money && (raw.money.currency || raw.money.currency_code || raw.money.currencyCode),
+  );
   return currency || 'USD';
 }
 

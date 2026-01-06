@@ -190,7 +190,7 @@ describe('look replicator checkout_sessions compatibility', () => {
       sku: 'S1',
       merchant_id: 'm1',
       title: 'My Product',
-      unit_price: 12.5,
+      unit_price: 0,
       quantity: 1,
       currency: 'USD',
     });

@@ -65,11 +65,16 @@ function buildRoleNormalizer(dict) {
   const d = dict ?? loadRolesLatest();
   const rules = d.normalization_rules || {};
   const byNormalized = new Map();
+  const byNormalizedDetail = new Map();
 
   for (const role of d.roles || []) {
-    byNormalized.set(applyNormalization(role.id, rules), role.id);
+    const roleKey = applyNormalization(role.id, rules);
+    byNormalized.set(roleKey, role.id);
+    byNormalizedDetail.set(roleKey, { roleId: role.id, matched: 'id', matchedValue: role.id });
     for (const syn of role.synonyms || []) {
-      byNormalized.set(applyNormalization(syn, rules), role.id);
+      const synKey = applyNormalization(syn, rules);
+      byNormalized.set(synKey, role.id);
+      byNormalizedDetail.set(synKey, { roleId: role.id, matched: 'synonym', matchedValue: syn });
     }
   }
 
@@ -78,6 +83,14 @@ function buildRoleNormalizer(dict) {
       const raw = String(hint || '');
       if (!raw.trim()) return null;
       return byNormalized.get(applyNormalization(raw, rules)) ?? null;
+    },
+    normalizeRoleHintDetailed: (hint) => {
+      const raw = String(hint || '');
+      if (!raw.trim()) return null;
+      const normalizedHint = applyNormalization(raw, rules);
+      const detail = byNormalizedDetail.get(normalizedHint);
+      if (!detail) return null;
+      return { normalizedHint, ...detail };
     },
   };
 }

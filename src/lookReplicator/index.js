@@ -1354,6 +1354,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
                   const pid = String(q.product_id || '').trim();
                   if (!vid || !pid) return null;
                   const v = validatedByVariantId.get(vid) || validatedByProductId.get(pid) || {};
+                  const marketCurrency = market === 'JP' ? 'JPY' : 'USD';
                   return {
                     product_id: pid,
                     variant_id: vid,
@@ -1361,8 +1362,12 @@ function mountLookReplicatorRoutes(app, { logger }) {
                     merchant_id: mid,
                     title: String(v.product_title || v.title || 'Product'),
                     quantity: Number(q.quantity || 1) || 1,
-                    unit_price: Number(v.unit_price || 0) || 0,
-                    currency: String(cart.data?.pricing?.currency || 'USD'),
+                    // NOTE: cart/validate pricing is best-effort and may not reflect Storefront/Checkout pricing
+                    // (presentment currency, promotions, etc). Avoid sending potentially misleading prices/currency
+                    // into checkout; the checkout UI will always recompute via /agent/v1/quotes/preview after
+                    // the user enters shipping details.
+                    unit_price: 0,
+                    currency: marketCurrency,
                   };
                 })
                 .filter(Boolean);

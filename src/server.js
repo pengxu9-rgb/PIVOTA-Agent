@@ -42,6 +42,7 @@ const { mountOutcomeTelemetryRoutes, mountLookReplicatorEventRoutes } = require(
 const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compatibility');
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
+const { mountRecommendationRoutes } = require('./recommendations/routes');
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -2097,6 +2098,10 @@ mountLookReplicatorEventRoutes(app, { logger });
 // ---------------- Layer 3: External offers (external-first) ----------------
 
 mountExternalOfferRoutes(app);
+
+// ---------------- Recommendations: role → feed ----------------
+
+mountRecommendationRoutes(app);
 
 // ---------------- Layer 1 (US): Compatibility ----------------
 

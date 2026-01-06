@@ -75,7 +75,20 @@ function extractBrand(raw: Record<string, unknown>): string {
 }
 
 function extractCurrency(raw: Record<string, unknown>): string {
-  const currency = firstNonEmpty(raw.currency, raw.price_currency, raw.priceCurrency);
+  const priceObj = typeof raw.price === "object" && raw.price ? (raw.price as Record<string, unknown>) : null;
+  const moneyObj = typeof (raw as any).money === "object" && (raw as any).money ? ((raw as any).money as Record<string, unknown>) : null;
+  const currency = firstNonEmpty(
+    // Common top-level fields
+    (raw as any).currency,
+    (raw as any).currency_code,
+    (raw as any).currencyCode,
+    (raw as any).price_currency,
+    (raw as any).priceCurrency,
+    (raw as any).priceCurrencyCode,
+    // Nested money objects
+    priceObj && ((priceObj as any).currency || (priceObj as any).currency_code || (priceObj as any).currencyCode),
+    moneyObj && ((moneyObj as any).currency || (moneyObj as any).currency_code || (moneyObj as any).currencyCode),
+  );
   return currency || "USD";
 }
 
