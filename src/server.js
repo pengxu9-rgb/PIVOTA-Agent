@@ -3001,6 +3001,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         requestBody = {
           merchant_id,
           customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
+          ...(order.currency ? { currency: order.currency } : {}),
           ...(order.quote_id ? { quote_id: order.quote_id } : {}),
           ...(order.selected_delivery_option
             ? { selected_delivery_option: order.selected_delivery_option }
