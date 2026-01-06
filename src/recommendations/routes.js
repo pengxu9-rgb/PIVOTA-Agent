@@ -293,7 +293,9 @@ function assembleFeed(params) {
   return { feedItems: items, ...(includeFilterReasons ? { filtered } : {}) };
 }
 
-const MarketSchema = z.union([z.literal('US'), z.literal('JP')]);
+// NOTE: Use z.enum for string unions to avoid z.union([..., undefined]) footguns
+// that can throw "Cannot read properties of undefined (reading '_zod')" at runtime.
+const MarketSchema = z.enum(['US', 'JP']);
 
 const FeedRequestSchema = z
   .object({
@@ -308,7 +310,7 @@ const FeedRequestSchema = z
       .object({
         domainCapPerRole: z.number().int().min(1).max(50).optional(),
         domainCapGlobal: z.number().int().min(1).max(200).optional(),
-        dedupe: z.union([z.literal('global'), z.literal('perRole')]).optional(),
+        dedupe: z.enum(['global', 'perRole']).optional(),
       })
       .optional(),
     context: z.record(z.unknown()).optional(),
@@ -318,7 +320,7 @@ const FeedRequestSchema = z
         includeFilterReasons: z.boolean().optional(),
       })
       .optional(),
-    resolve: z.union([z.literal('none'), z.literal('inline'), z.literal('deferred')]).optional(),
+    resolve: z.enum(['none', 'inline', 'deferred']).optional(),
   })
   .strict()
   .refine((v) => (Array.isArray(v.roleIds) && v.roleIds.length) || (Array.isArray(v.roleHints) && v.roleHints.length), {
