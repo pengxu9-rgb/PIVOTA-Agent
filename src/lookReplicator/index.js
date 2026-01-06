@@ -1504,6 +1504,65 @@ function mountLookReplicatorRoutes(app, { logger }) {
       });
     }
   });
+
+  // Buyer ref merge: allow an agent app to merge a guest buyer_ref into a canonical user buyer_ref.
+  // This enables "use guest history until login, then merge" without requiring a shared Accounts login.
+  app.post(['/buyers/merge', '/api/buyers/merge', '/buyers_merge', '/api/buyers_merge'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const sourceBuyerRef = String(req.body?.sourceBuyerRef || req.body?.source_buyer_ref || '').trim() || null;
+    const targetBuyerRef = String(req.body?.targetBuyerRef || req.body?.target_buyer_ref || '').trim() || null;
+    if (!sourceBuyerRef || !targetBuyerRef) {
+      return res.status(400).json({ error: 'INVALID_REQUEST', message: 'sourceBuyerRef and targetBuyerRef are required' });
+    }
+
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
+
+    try {
+      const upstream = await axiosPostWithRetry(
+        `${backendBaseUrl}/agent/v1/buyers/merge`,
+        { source_buyer_ref: sourceBuyerRef, target_buyer_ref: targetBuyerRef },
+        {
+          timeout: 15_000,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': agentApiKey,
+          },
+          validateStatus: () => true,
+        },
+        { retries: 1, minBackoffMs: 250 },
+      );
+
+      const status = Number(upstream?.status) || 502;
+      if (status < 200 || status >= 300) {
+        return res.status(status).json({
+          error: 'UPSTREAM_ERROR',
+          message: `Upstream error (${status})`,
+          details: compactUpstreamBody(upstream?.data),
+        });
+      }
+      return res.status(200).json(upstream.data);
+    } catch (err) {
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to merge buyer refs', details: truncateText(err?.message || String(err), 400) });
+    }
+  });
 }
 
 module.exports = {
