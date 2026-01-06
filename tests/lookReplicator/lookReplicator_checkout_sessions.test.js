@@ -22,6 +22,7 @@ describe('look replicator checkout_sessions compatibility', () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'https://backend.example.com';
     process.env.PIVOTA_API_KEY = 'test-api-key';
     process.env.ACP_MERCHANT_ID = 'merch_test';
+    process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'quote';
     axios.post.mockReset();
   });
 
@@ -153,5 +154,45 @@ describe('look replicator checkout_sessions compatibility', () => {
         { merchantId: 'm2', checkoutUrl: 'https://checkout.shopify.com/cart/m2' },
       ]),
     );
+  });
+
+  test('supports creator checkout provider and returns Pivota checkout UI URL', async () => {
+    process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'creator';
+    process.env.LOOK_REPLICATOR_CHECKOUT_UI_BASE_URL = 'https://agent.pivota.cc';
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        status: 'success',
+        valid: true,
+        items: [{ product_id: 'sku1', variant_id: 'v1', sku: 'S1', product_title: 'My Product', unit_price: '12.50', quantity: 1 }],
+        pricing: { currency: 'USD' },
+      },
+    });
+
+    const res = await request(server)
+      .post('/checkout-sessions')
+      .set(authHeaders())
+      .send({ market: 'US', items: [{ skuId: 'sku1', qty: 1, merchantId: 'm1' }], returnUrl: 'https://look-replicator.pivota.cc/result/abc?market=US' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.provider).toBe('creator');
+    expect(typeof res.body.checkoutUrl).toBe('string');
+    expect(res.body.checkoutUrl).toContain('https://agent.pivota.cc/order?');
+
+    const u = new URL(res.body.checkoutUrl);
+    expect(u.searchParams.get('return')).toBe('https://look-replicator.pivota.cc/result/abc?market=US');
+    const items = u.searchParams.get('items');
+    expect(items).toBeTruthy();
+    const parsed = JSON.parse(decodeURIComponent(items));
+    expect(parsed[0]).toMatchObject({
+      product_id: 'sku1',
+      variant_id: 'v1',
+      sku: 'S1',
+      merchant_id: 'm1',
+      title: 'My Product',
+      unit_price: 12.5,
+      quantity: 1,
+      currency: 'USD',
+    });
   });
 });

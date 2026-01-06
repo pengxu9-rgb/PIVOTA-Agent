@@ -48,6 +48,27 @@ function urlWithReturn(checkoutUrl, returnUrl) {
   }
 }
 
+function buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, extraParams = {}) {
+  const base = String(checkoutUiBaseUrl || '').trim().replace(/\/+$/, '');
+  if (!base) return null;
+  try {
+    const u = new URL(`${base}/order`);
+    // Encode the JSON payload because the checkout UI decodes it with decodeURIComponent().
+    // This also avoids decodeURIComponent() throwing when product titles contain raw '%'.
+    u.searchParams.set('items', encodeURIComponent(JSON.stringify(orderItems || [])));
+    for (const [k, v] of Object.entries(extraParams || {})) {
+      if (v == null) continue;
+      const s = String(v).trim();
+      if (!s) continue;
+      u.searchParams.set(k, s);
+    }
+    if (returnUrl) u.searchParams.set('return', String(returnUrl));
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 function truncateText(value, maxLen) {
   const s = String(value || '');
   if (!maxLen || maxLen <= 0) return s;
@@ -1221,9 +1242,17 @@ function mountLookReplicatorRoutes(app, { logger }) {
         process.env.PIVOTA_AGENT_API_KEY ||
         '',
     ).trim();
-    const checkoutProvider = String(process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER || 'quote')
+    const checkoutProvider = String(process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER || 'creator')
       .trim()
       .toLowerCase();
+    const checkoutUiBaseUrl = String(
+      process.env.LOOK_REPLICATOR_CHECKOUT_UI_BASE_URL ||
+        process.env.PIVOTA_CHECKOUT_UI_BASE_URL ||
+        process.env.CHECKOUT_UI_BASE_URL ||
+        'https://agent.pivota.cc',
+    )
+      .trim()
+      .replace(/\/+$/, '');
 
     if (!agentApiKey) {
       return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
@@ -1305,7 +1334,27 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
             let checkoutUrl = null;
 
-            if (checkoutProvider === 'acp') {
+            if (checkoutProvider === 'creator' || checkoutProvider === 'pivota') {
+              const orderItems = validated.map((v) => ({
+                product_id: String(v.product_id || '').trim(),
+                variant_id: String(v.variant_id || '').trim() || undefined,
+                sku: String(v.sku || '').trim() || undefined,
+                merchant_id: mid,
+                title: String(v.product_title || v.title || 'Product'),
+                quantity: Number(v.quantity || 1) || 1,
+                unit_price: Number(v.unit_price || 0) || 0,
+                currency: String(cart.data?.pricing?.currency || 'USD'),
+              }));
+
+              checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
+                market,
+                provider: checkoutProvider,
+              });
+              if (!checkoutUrl) {
+                failures.push({ merchantId: mid, stage: 'creator_checkout', status: 500, body: null, message: 'Checkout UI URL is not configured' });
+                return;
+              }
+            } else if (checkoutProvider === 'acp') {
               const acp = await axiosPostWithRetry(
                 `${backendBaseUrl}/agent/v1/checkout/acp-session`,
                 {
@@ -1416,7 +1465,11 @@ function mountLookReplicatorRoutes(app, { logger }) {
           ...(failures.length ? { failures: failures.slice(0, 10) } : {}),
         });
       }
-      return res.status(200).json({ checkoutUrls: checkouts, ...(failures.length ? { failures: failures.slice(0, 10) } : {}) });
+      return res.status(200).json({
+        checkoutUrls: checkouts,
+        provider: checkoutProvider,
+        ...(failures.length ? { failures: failures.slice(0, 10) } : {}),
+      });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err) }, 'checkout_sessions proxy failed');
       return res.status(502).json({
