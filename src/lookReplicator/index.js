@@ -1368,6 +1368,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
               checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
                 market,
                 provider: checkoutProvider,
+                source: 'look_replicator',
               });
               if (!checkoutUrl) {
                 failures.push({ merchantId: mid, stage: 'creator_checkout', status: 500, body: null, message: 'Checkout UI URL is not configured' });
