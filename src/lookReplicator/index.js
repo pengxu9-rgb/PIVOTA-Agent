@@ -1190,6 +1190,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
     const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
     const returnUrl = req.body?.returnUrl || req.body?.return_url || null;
+    const buyerRef = String(req.body?.buyerRef || req.body?.buyer_ref || '').trim() || null;
+    const jobId = String(req.body?.jobId || req.body?.job_id || '').trim() || null;
     const market = String(req.body?.market || req.body?.payload?.market || 'US').trim().toUpperCase();
 
     if (market && market !== 'US') {
@@ -1369,6 +1371,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 market,
                 provider: checkoutProvider,
                 source: 'look_replicator',
+                ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+                ...(jobId ? { job_id: jobId } : {}),
               });
               if (!checkoutUrl) {
                 failures.push({ merchantId: mid, stage: 'creator_checkout', status: 500, body: null, message: 'Checkout UI URL is not configured' });
