@@ -9,7 +9,7 @@ const { runTryOnReplicateOneClickGemini } = require("./tryOnReplicateOneClickGem
 const { runTryOnGenerateImageGemini } = require("./tryOnGenerateImageGemini");
 const { runTryOnReplicateOneClickOpenAICompat } = require("./tryOnReplicateOneClickOpenAICompat");
 const { runTryOnGenerateImageOpenAICompat } = require("./tryOnGenerateImageOpenAICompat");
-const { randomUUID } = require('crypto');
+const { randomUUID, createHmac } = require('crypto');
 const axios = require('axios');
 const { upsertOutcomeSampleFromJobCompletion, getOutcomeSample } = require('../telemetry/outcomeStore');
 const { normalizeMarket, parseMarketFromRequest, requireMarketEnabled } = require('../markets/market');
@@ -46,6 +46,33 @@ function urlWithReturn(checkoutUrl, returnUrl) {
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}return=${encodeURIComponent(ret)}`;
   }
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(String(value || ''), 'utf8').toString('base64url');
+}
+
+function computeHmacBase64Url(secret, data) {
+  return createHmac('sha256', String(secret)).update(String(data)).digest('base64url');
+}
+
+function mintCheckoutToken(payload) {
+  const secret = String(process.env.CHECKOUT_TOKEN_SECRET || process.env.LOOK_REPLICATOR_CHECKOUT_TOKEN_SECRET || '').trim();
+  if (!secret) return null;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expSec = nowSec + 60 * 60 * 24; // 24h
+  const body = {
+    v: 1,
+    src: 'look_replicator',
+    iat: nowSec,
+    exp: expSec,
+    ...payload,
+  };
+
+  const encoded = base64UrlEncode(JSON.stringify(body));
+  const sig = computeHmacBase64Url(secret, encoded);
+  return `${encoded}.${sig}`;
 }
 
 function buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, extraParams = {}) {
@@ -1367,10 +1394,18 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 })
                 .filter(Boolean);
 
+              const checkoutToken = mintCheckoutToken({
+                buyer_ref: buyerRef || undefined,
+                job_id: jobId || undefined,
+                market: market || undefined,
+                merchant_id: mid,
+              });
+
               checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
                 market,
                 provider: checkoutProvider,
                 source: 'look_replicator',
+                ...(checkoutToken ? { checkout_token: checkoutToken } : {}),
                 ...(buyerRef ? { buyer_ref: buyerRef } : {}),
                 ...(jobId ? { job_id: jobId } : {}),
               });
