@@ -1335,16 +1335,35 @@ function mountLookReplicatorRoutes(app, { logger }) {
             let checkoutUrl = null;
 
             if (checkoutProvider === 'creator' || checkoutProvider === 'pivota') {
-              const orderItems = validated.map((v) => ({
-                product_id: String(v.product_id || '').trim(),
-                variant_id: String(v.variant_id || '').trim() || undefined,
-                sku: String(v.sku || '').trim() || undefined,
-                merchant_id: mid,
-                title: String(v.product_title || v.title || 'Product'),
-                quantity: Number(v.quantity || 1) || 1,
-                unit_price: Number(v.unit_price || 0) || 0,
-                currency: String(cart.data?.pricing?.currency || 'USD'),
-              }));
+              const validatedByVariantId = new Map();
+              for (const v of validated) {
+                const vid = String(v?.variant_id || '').trim();
+                if (vid) validatedByVariantId.set(vid, v);
+              }
+              const validatedByProductId = new Map();
+              for (const v of validated) {
+                const pid = String(v?.product_id || '').trim();
+                if (pid && !validatedByProductId.has(pid)) validatedByProductId.set(pid, v);
+              }
+
+              const orderItems = quoteItems
+                .map((q) => {
+                  const vid = String(q.variant_id || '').trim();
+                  const pid = String(q.product_id || '').trim();
+                  if (!vid || !pid) return null;
+                  const v = validatedByVariantId.get(vid) || validatedByProductId.get(pid) || {};
+                  return {
+                    product_id: pid,
+                    variant_id: vid,
+                    sku: String(v.sku || '').trim() || undefined,
+                    merchant_id: mid,
+                    title: String(v.product_title || v.title || 'Product'),
+                    quantity: Number(q.quantity || 1) || 1,
+                    unit_price: Number(v.unit_price || 0) || 0,
+                    currency: String(cart.data?.pricing?.currency || 'USD'),
+                  };
+                })
+                .filter(Boolean);
 
               checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
                 market,
