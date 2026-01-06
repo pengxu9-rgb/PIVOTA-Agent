@@ -1954,7 +1954,7 @@ app.use((req, res, next) => {
 
   // Allow both legacy and newer header names used by clients (Creator UI / SDKs).
   // Also echo requested headers to avoid preflight failures when browsers add new ones.
-  const baseAllowedHeaders = ['content-type', 'authorization', 'x-api-key', 'x-agent-api-key'];
+  const baseAllowedHeaders = ['content-type', 'authorization', 'x-api-key', 'x-agent-api-key', 'x-checkout-token'];
   const requested = String(req.headers['access-control-request-headers'] || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
@@ -2438,6 +2438,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
   // Log which mode we're using
   logger.info({ API_MODE, operation }, `API Mode: ${API_MODE}, Operation: ${operation}`);
+
+  const checkoutToken =
+    String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
   
   // HYBRID mode: Use real API for product search, mock for payments
   if (USE_HYBRID) {
@@ -3132,10 +3135,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       url,
       headers: {
         ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
-        // Pivota backend Agent API expects `X-API-Key` (some deployments used
-        // `Authorization: Bearer ...` historically). Send both for compatibility.
-        ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-        ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+        ...(checkoutToken
+          ? { 'X-Checkout-Token': checkoutToken }
+          : {
+              // Pivota backend Agent API expects `X-API-Key` (some deployments used
+              // `Authorization: Bearer ...` historically). Send both for compatibility.
+              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+            }),
       },
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
       timeout: getUpstreamTimeoutMs(operation),
@@ -3179,8 +3186,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               url: quoteUrl,
               headers: {
                 'Content-Type': 'application/json',
-                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+                ...(checkoutToken
+                  ? { 'X-Checkout-Token': checkoutToken }
+                  : {
+                      ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+                      ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+                    }),
               },
               timeout: getUpstreamTimeoutMs('preview_quote'),
               data: quoteBody,

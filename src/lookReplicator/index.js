@@ -9,7 +9,7 @@ const { runTryOnReplicateOneClickGemini } = require("./tryOnReplicateOneClickGem
 const { runTryOnGenerateImageGemini } = require("./tryOnGenerateImageGemini");
 const { runTryOnReplicateOneClickOpenAICompat } = require("./tryOnReplicateOneClickOpenAICompat");
 const { runTryOnGenerateImageOpenAICompat } = require("./tryOnGenerateImageOpenAICompat");
-const { randomUUID, createHmac } = require('crypto');
+const { randomUUID } = require('crypto');
 const axios = require('axios');
 const { upsertOutcomeSampleFromJobCompletion, getOutcomeSample } = require('../telemetry/outcomeStore');
 const { normalizeMarket, parseMarketFromRequest, requireMarketEnabled } = require('../markets/market');
@@ -46,33 +46,6 @@ function urlWithReturn(checkoutUrl, returnUrl) {
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}return=${encodeURIComponent(ret)}`;
   }
-}
-
-function base64UrlEncode(value) {
-  return Buffer.from(String(value || ''), 'utf8').toString('base64url');
-}
-
-function computeHmacBase64Url(secret, data) {
-  return createHmac('sha256', String(secret)).update(String(data)).digest('base64url');
-}
-
-function mintCheckoutToken(payload) {
-  const secret = String(process.env.CHECKOUT_TOKEN_SECRET || process.env.LOOK_REPLICATOR_CHECKOUT_TOKEN_SECRET || '').trim();
-  if (!secret) return null;
-
-  const nowSec = Math.floor(Date.now() / 1000);
-  const expSec = nowSec + 60 * 60 * 24; // 24h
-  const body = {
-    v: 1,
-    src: 'look_replicator',
-    iat: nowSec,
-    exp: expSec,
-    ...payload,
-  };
-
-  const encoded = base64UrlEncode(JSON.stringify(body));
-  const sig = computeHmacBase64Url(secret, encoded);
-  return `${encoded}.${sig}`;
 }
 
 function buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, extraParams = {}) {
@@ -1394,21 +1367,64 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 })
                 .filter(Boolean);
 
-              const checkoutToken = mintCheckoutToken({
-                buyer_ref: buyerRef || undefined,
-                job_id: jobId || undefined,
-                market: market || undefined,
-                merchant_id: mid,
-              });
+              // Scheme v2 (recommended): let pivota-backend mint a short-lived checkout token.
+              // This avoids exposing agent API keys to clients and supports external agents
+              // that only have an agent API key (server-to-server).
+              try {
+                const intent = await axiosPostWithRetry(
+                  `${backendBaseUrl}/agent/v1/checkout/intents`,
+                  {
+                    items: orderItems,
+                    return_url: returnUrl || null,
+                    ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+                    ...(jobId ? { job_id: jobId } : {}),
+                    market,
+                    source: 'look_replicator',
+                  },
+                  {
+                    timeout: 30_000,
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-API-Key': agentApiKey,
+                    },
+                    validateStatus: () => true,
+                  },
+                  { retries: 1, minBackoffMs: 300 },
+                );
 
-              checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
-                market,
-                provider: checkoutProvider,
-                source: 'look_replicator',
-                ...(checkoutToken ? { checkout_token: checkoutToken } : {}),
-                ...(buyerRef ? { buyer_ref: buyerRef } : {}),
-                ...(jobId ? { job_id: jobId } : {}),
-              });
+                if (intent?.status >= 200 && intent?.status < 300) {
+                  const checkoutUrlRaw = String(intent.data?.checkout_url || intent.data?.checkoutUrl || '').trim() || null;
+                  checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
+                } else {
+                  failures.push({
+                    merchantId: mid,
+                    stage: 'checkout_intent',
+                    status: intent?.status || 502,
+                    body: compactUpstreamBody(intent?.data),
+                    message: 'Failed to mint checkout token',
+                  });
+                }
+              } catch (err) {
+                failures.push({
+                  merchantId: mid,
+                  stage: 'checkout_intent',
+                  status: 502,
+                  body: null,
+                  message: truncateText(err?.message || String(err), 400),
+                });
+              }
+
+              // Fallback: legacy direct checkout URL (may create orders under the default gateway key).
+              if (!checkoutUrl) {
+                checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
+                  market,
+                  provider: checkoutProvider,
+                  source: 'look_replicator',
+                  ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+                  ...(jobId ? { job_id: jobId } : {}),
+                });
+              }
+
               if (!checkoutUrl) {
                 failures.push({ merchantId: mid, stage: 'creator_checkout', status: 500, body: null, message: 'Checkout UI URL is not configured' });
                 return;
