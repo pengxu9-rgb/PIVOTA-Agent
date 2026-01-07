@@ -1,12 +1,14 @@
 {
-  "ROLE:thin_felt_tip_liner": [
-    "https://example.com/us/thin-felt-tip-liner"
-  ],
   "ROLE:blending_brush": [
     "https://example.com/us/blending-brush"
   ],
   "ROLE:clear_gloss": [
     "https://example.com/us/clear-gloss"
+  ],
+  "ROLE:liner": [
+    "https://example.com/us/liner"
+  ],
+  "ROLE:thin_felt_tip_liner": [
+    "https://example.com/us/thin-felt-tip-liner"
   ]
 }
-
