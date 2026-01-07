@@ -45,6 +45,10 @@ const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
 const { mountRecommendationRoutes } = require('./recommendations/routes');
 
 const PORT = process.env.PORT || 3000;
+const SERVICE_STARTED_AT = new Date().toISOString();
+const SERVICE_GIT_SHA = String(process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || '').trim();
+const SERVICE_GIT_BRANCH = String(process.env.RAILWAY_GIT_BRANCH || process.env.GIT_BRANCH || '').trim();
+const SERVICE_NAME = String(process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'pivota-agent-gateway').trim();
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
@@ -1923,6 +1927,14 @@ app.use(express.json({
   }
 }));
 
+// Add a lightweight build marker for debugging deployments (no secrets).
+app.use((req, res, next) => {
+  if (SERVICE_GIT_SHA) res.setHeader('X-Service-Commit', SERVICE_GIT_SHA.slice(0, 12));
+  if (SERVICE_GIT_BRANCH) res.setHeader('X-Service-Branch', SERVICE_GIT_BRANCH);
+  res.setHeader('X-Service-Name', SERVICE_NAME);
+  return next();
+});
+
 // CORS configuration - allow UI to call Gateway
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -2022,6 +2034,12 @@ app.get('/healthz', (req, res) => {
       hybrid: USE_HYBRID,
       real_api_enabled: REAL_API_ENABLED
     },
+    version: {
+      service: SERVICE_NAME,
+      commit: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
+      branch: SERVICE_GIT_BRANCH || null,
+      started_at: SERVICE_STARTED_AT,
+    },
     backend: {
       api_base: PIVOTA_API_BASE,
       api_key_configured: !!PIVOTA_API_KEY,
@@ -2064,11 +2082,28 @@ app.get('/healthz', (req, res) => {
       res.json({
         ok: true,
         api_mode: API_MODE,
+        version: {
+          service: SERVICE_NAME,
+          commit: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
+          branch: SERVICE_GIT_BRANCH || null,
+          started_at: SERVICE_STARTED_AT,
+        },
         backend: { api_base: PIVOTA_API_BASE, api_key_configured: !!PIVOTA_API_KEY, db_configured: dbConfigured },
         products_available: true,
         warning: 'healthz_cache_stats_failed',
       });
     });
+});
+
+app.get('/version', (req, res) => {
+  return res.json({
+    ok: true,
+    service: SERVICE_NAME,
+    commit: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
+    full_sha: SERVICE_GIT_SHA || null,
+    branch: SERVICE_GIT_BRANCH || null,
+    started_at: SERVICE_STARTED_AT,
+  });
 });
 
 app.get('/healthz/db', async (req, res) => {
