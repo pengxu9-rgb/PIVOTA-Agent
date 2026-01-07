@@ -313,7 +313,10 @@ const FeedRequestSchema = z
         dedupe: z.enum(['global', 'perRole']).optional(),
       })
       .optional(),
-    context: z.record(z.unknown()).optional(),
+    // NOTE: With zod@4.1.x, `z.record(valueSchema)` can throw
+    // "Cannot read properties of undefined (reading '_zod')" at runtime.
+    // Always provide both key+value schema args.
+    context: z.record(z.string(), z.unknown()).optional(),
     debug: z
       .object({
         includeMapping: z.boolean().optional(),
