@@ -1,6 +1,6 @@
 const { CreateSignedUploadSchema, CreateLookJobSchema } = require('./schemas');
 const { createSignedUpload, uploadPublicAsset } = require('./storage');
-const { createJob, getJob, getShare, updateJob, listJobs } = require('./store');
+const { createJob, getJob, getShare, updateJob, listJobs, createUser, verifyUserCredentials } = require('./store');
 const { makeMockLookResult } = require('./mockResult');
 const { JobQueue } = require('./jobQueue');
 const { parseMultipart, rmrf } = require('./multipart');
@@ -481,6 +481,40 @@ function mountLookReplicatorRoutes(app, { logger }) {
   const MAX_UPLOAD_BYTES = Number(process.env.LOOK_REPLICATOR_MAX_UPLOAD_BYTES || 25 * 1024 * 1024);
   const allowedContentTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+  // --- Auth (email/password; for Next.js server-side usage behind API key) ---
+  app.post('/api/look-replicate/auth/register', async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+    const email = String(req.body?.email || '').trim();
+    const password = String(req.body?.password || '');
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'BAD_REQUEST', message: 'Invalid email' });
+    if (password.length < 8) return res.status(400).json({ error: 'BAD_REQUEST', message: 'Password must be at least 8 characters' });
+    try {
+      const user = await createUser({ email, password });
+      return res.status(201).json(user);
+    } catch (err) {
+      if (err?.code === 'USER_EXISTS' || String(err?.message || '') === 'USER_EXISTS') {
+        return res.status(409).json({ error: 'USER_EXISTS', message: 'Email already registered' });
+      }
+      return res.status(500).json({ error: 'REGISTER_FAILED' });
+    }
+  });
+
+  app.post('/api/look-replicate/auth/login', async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+    const email = String(req.body?.email || '').trim();
+    const password = String(req.body?.password || '');
+    if (!email || !password) return res.status(400).json({ error: 'BAD_REQUEST', message: 'email and password are required' });
+    try {
+      const user = await verifyUserCredentials({ email, password });
+      if (!user) return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid credentials' });
+      return res.status(200).json(user);
+    } catch {
+      return res.status(500).json({ error: 'LOGIN_FAILED' });
+    }
+  });
+
   // --- Try-on: One-click replicate (Gemini, multi-image) ---
   app.post("/api/look-replicate/one-click", async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
@@ -880,12 +914,12 @@ function mountLookReplicatorRoutes(app, { logger }) {
         .json({ error: err?.code || 'MARKET_DISABLED', message: err?.message || 'Market disabled' });
     }
 
-    const locale = normalizeLocale(fields.locale);
-    const preferenceMode = normalizePreferenceMode(fields.preferenceMode);
-    const optInTraining = parseBool(fields.optInTraining);
-    const enableExtendedAreas = parseBool(fields.enableExtendedAreas);
-    const enableSelfieLookSpec = parseBool(fields.enableSelfieLookSpec);
-    const userId = fields.userId ? String(fields.userId).trim() : null;
+	    const locale = normalizeLocale(fields.locale);
+	    const preferenceMode = normalizePreferenceMode(fields.preferenceMode);
+	    const optInTraining = parseBool(fields.optInTraining);
+	    const enableExtendedAreas = parseBool(fields.enableExtendedAreas);
+	    const enableSelfieLookSpec = parseBool(fields.enableSelfieLookSpec);
+	    const userId = fields.userId ? String(fields.userId).trim() : null;
 
     let layer1Bundle = null;
     try {
@@ -896,13 +930,14 @@ function mountLookReplicatorRoutes(app, { logger }) {
     }
 
     try {
-      const job = await createJob({
-        market,
-        locale,
-        referenceImageUrl: null,
-        selfieImageUrl: null,
-        undertone: undefined,
-      });
+	      const job = await createJob({
+	        market,
+	        locale,
+	        referenceImageUrl: null,
+	        selfieImageUrl: null,
+	        undertone: undefined,
+	        userId: userId || undefined,
+	      });
 
       let referenceUrl = null;
       let selfieUrl = null;
@@ -1047,20 +1082,21 @@ function mountLookReplicatorRoutes(app, { logger }) {
     }
   });
 
-  async function handleHistory(req, res) {
-    if (!requireLookReplicatorAuth(req, res)) return;
-    res.set('Cache-Control', 'no-store');
+	  async function handleHistory(req, res) {
+	    if (!requireLookReplicatorAuth(req, res)) return;
+	    res.set('Cache-Control', 'no-store');
 
-    const limit = clampInt(req.query.limit, { min: 1, max: 50, fallback: 20 });
-    const before = req.query.before ? String(req.query.before) : null;
-    const market = req.query.market ? String(req.query.market) : null;
-    const locale = req.query.locale ? String(req.query.locale) : null;
+	    const limit = clampInt(req.query.limit, { min: 1, max: 50, fallback: 20 });
+	    const before = req.query.before ? String(req.query.before) : null;
+	    const market = req.query.market ? String(req.query.market) : null;
+	    const locale = req.query.locale ? String(req.query.locale) : null;
+	    const userId = req.query.userId ? String(req.query.userId).trim() : null;
 
-    try {
-      const jobs = await listJobs({ limit, before, market, locale });
-      const items = jobs.map((j) => {
-        const status = mapStatus(j.status);
-        const progressStep = progressStepFrom(j.progress, j.status);
+	    try {
+	      const jobs = await listJobs({ limit, before, market, locale, ...(userId ? { userId } : {}) });
+	      const items = jobs.map((j) => {
+	        const status = mapStatus(j.status);
+	        const progressStep = progressStepFrom(j.progress, j.status);
 
         const warningsCount = Array.isArray(j.result?.warnings) ? j.result.warnings.length : 0;
         const stepsCount = Array.isArray(j.result?.steps) ? j.result.steps.length : null;

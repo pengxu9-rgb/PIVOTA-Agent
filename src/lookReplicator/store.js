@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { query } = require('../db');
 const { runMigrations } = require('../db/migrate');
+const { hashPassword, verifyPassword } = require('./passwords');
 
 let dbReady = false;
 let dbAttempted = false;
@@ -39,6 +40,7 @@ function nowIso() {
 function normalizeRow(row) {
   return {
     jobId: row.job_id,
+    userId: row.user_id || undefined,
     status: row.status,
     progress: row.progress,
     createdAt: row.created_at,
@@ -55,11 +57,12 @@ function normalizeRow(row) {
   };
 }
 
-async function createJob({ market, locale, referenceImageUrl, selfieImageUrl, undertone }) {
+async function createJob({ market, locale, referenceImageUrl, selfieImageUrl, undertone, userId }) {
   const jobId = randomUUID();
   const now = nowIso();
   const baseJob = {
     jobId,
+    userId: userId || undefined,
     status: 'pending',
     progress: 0,
     createdAt: now,
@@ -84,22 +87,23 @@ async function createJob({ market, locale, referenceImageUrl, selfieImageUrl, un
   await query(
     `
     INSERT INTO look_replicator_jobs (
-      job_id, share_id, status, progress, market, locale,
+      job_id, share_id, user_id, status, progress, market, locale,
       reference_image_url, selfie_image_url, undertone,
       tryon_image_url,
       result_json, error_code, error_message,
       created_at, updated_at
     ) VALUES (
-      $1, $2, $3, $4, $5, $6,
-      $7, $8, $9,
-      $10,
-      $11, $12, $13,
-      $14, $15
+      $1, $2, $3, $4, $5, $6, $7,
+      $8, $9, $10,
+      $11,
+      $12, $13, $14,
+      $15, $16
     )
   `,
     [
       jobId,
       jobId,
+      userId || null,
       'pending',
       0,
       market,
@@ -179,6 +183,7 @@ async function updateJob(jobId, patch) {
   if (patch.result !== undefined) setField('result_json', patch.result);
   if (patch.error !== undefined) setField('error_message', patch.error);
   if (patch.shareId !== undefined) setField('share_id', patch.shareId);
+  if (patch.userId !== undefined) setField('user_id', patch.userId);
   if (patch.referenceImageUrl !== undefined) setField('reference_image_url', patch.referenceImageUrl);
   if (patch.selfieImageUrl !== undefined) setField('selfie_image_url', patch.selfieImageUrl);
   if (patch.tryOnImageUrl !== undefined) setField('tryon_image_url', patch.tryOnImageUrl);
@@ -244,12 +249,14 @@ function uniqueJobsFromMem() {
   return Array.from(unique.values());
 }
 
-async function listJobs({ limit = 20, before, market, locale } = {}) {
+async function listJobs({ limit = 20, before, market, locale, userId } = {}) {
   const okDb = await ensureDbReady();
   const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 50));
+  const userIdUuid = userId ? String(userId).trim() : null;
 
   if (!okDb) {
     let items = uniqueJobsFromMem();
+    if (userIdUuid) items = items.filter((j) => j.userId === userIdUuid);
     if (market) items = items.filter((j) => j.market === market);
     if (locale) items = items.filter((j) => j.locale === locale);
     if (before) items = items.filter((j) => j.createdAt < before);
@@ -263,10 +270,11 @@ async function listJobs({ limit = 20, before, market, locale } = {}) {
     WHERE ($1::timestamptz IS NULL OR created_at < $1)
       AND ($2::text IS NULL OR market = $2)
       AND ($3::text IS NULL OR locale = $3)
+      AND ($4::uuid IS NULL OR user_id = $4)
     ORDER BY created_at DESC
-    LIMIT $4
+    LIMIT $5
     `,
-    [before || null, market || null, locale || null, safeLimit],
+    [before || null, market || null, locale || null, userIdUuid || null, safeLimit],
   );
 
   return (res.rows || []).map(normalizeRow);
@@ -278,4 +286,54 @@ module.exports = {
   getShare,
   updateJob,
   listJobs,
+  createUser: async ({ email, password }) => {
+    const okDb = await ensureDbReady();
+    if (!okDb) throw new Error('DB_NOT_AVAILABLE');
+
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail) throw new Error('EMAIL_REQUIRED');
+    const pwd = String(password || '');
+    if (!pwd) throw new Error('PASSWORD_REQUIRED');
+
+    const passwordHash = await hashPassword(pwd);
+    const userId = randomUUID();
+    const now = nowIso();
+
+    try {
+      await query(
+        `
+        INSERT INTO look_replicator_users (user_id, email, password_hash, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
+        `,
+        [userId, normalizedEmail, passwordHash, now, now],
+      );
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('unique')) {
+        const e = new Error('USER_EXISTS');
+        e.code = 'USER_EXISTS';
+        throw e;
+      }
+      throw err;
+    }
+
+    return { userId, email: normalizedEmail };
+  },
+  verifyUserCredentials: async ({ email, password }) => {
+    const okDb = await ensureDbReady();
+    if (!okDb) throw new Error('DB_NOT_AVAILABLE');
+
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const pwd = String(password || '');
+    if (!normalizedEmail || !pwd) return null;
+
+    const res = await query('SELECT user_id, email, password_hash FROM look_replicator_users WHERE email = $1', [
+      normalizedEmail,
+    ]);
+    const row = res?.rows?.[0];
+    if (!row) return null;
+    const ok = await verifyPassword(pwd, row.password_hash);
+    if (!ok) return null;
+    return { userId: row.user_id, email: String(row.email || '').toLowerCase() };
+  },
 };
