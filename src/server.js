@@ -11,6 +11,7 @@ const OpenAI = require('openai');
 const { randomUUID } = require('crypto');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
+const { runMigrations } = require('./db/migrate');
 const { query } = require('./db');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
 const { searchProducts, getProductById } = require('./mockProducts');
@@ -3465,20 +3466,35 @@ module.exports._debug = {
 };
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    logger.info(`Pivota Agent gateway listening on port ${PORT}, proxying to ${PIVOTA_API_BASE}`);
+  (async () => {
+    const hasDb = Boolean(process.env.DATABASE_URL);
+    const autoMigrateDisabled = String(process.env.DB_AUTO_MIGRATE || '').toLowerCase() === 'false';
+    const shouldAutoMigrate = hasDb && !autoMigrateDisabled && process.env.NODE_ENV === 'production';
 
-    const intervalMin = Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || 60) || 60;
-    const initialDelayMs = Math.max(
-      Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INITIAL_DELAY_MS || 15000) || 15000,
-      0,
-    );
-    if (process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true') {
-      setTimeout(() => {
-        runCreatorCatalogAutoSync();
-        setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
-      }, initialDelayMs);
+    if (shouldAutoMigrate) {
+      logger.info('Running DB migrations (auto)');
+      await runMigrations();
+      logger.info('DB migrations complete');
     }
+
+    app.listen(PORT, () => {
+      logger.info(`Pivota Agent gateway listening on port ${PORT}, proxying to ${PIVOTA_API_BASE}`);
+
+      const intervalMin = Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || 60) || 60;
+      const initialDelayMs = Math.max(
+        Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INITIAL_DELAY_MS || 15000) || 15000,
+        0,
+      );
+      if (process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true') {
+        setTimeout(() => {
+          runCreatorCatalogAutoSync();
+          setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
+        }, initialDelayMs);
+      }
+    });
+  })().catch((err) => {
+    logger.error({ err: err?.message || String(err) }, 'Startup failed');
+    process.exit(1);
   });
 }
 
