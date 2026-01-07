@@ -47,6 +47,11 @@ If you are deploying this gateway to support the `pengxu9-rgb/look-replicate-sha
 # Require callers to send: Authorization: Bearer <token>
 LOOK_REPLICATOR_API_KEY=<strong-random-token>
 
+# Pivota backend (where orders/quotes/ACP live)
+# This service keeps the Agent API key server-side and proxies UI requests to pivota-backend.
+PIVOTA_BACKEND_BASE_URL=https://web-production-fedb.up.railway.app
+PIVOTA_API_KEY=ak_live_...                   # (or SHOP_GATEWAY_AGENT_API_KEY / PIVOTA_AGENT_API_KEY)
+
 # Upload policy (1–10MB selfies are expected; default max is 25MB)
 LOOK_REPLICATOR_MAX_UPLOAD_BYTES=26214400
 LOOK_REPLICATOR_SIGNED_URL_TTL_SECONDS=300
@@ -61,6 +66,14 @@ LOOK_REPLICATOR_S3_SECRET_ACCESS_KEY=<secret>
 # Public base used to form returned publicUrl (e.g. https://<bucket>.r2.dev or custom domain)
 LOOK_REPLICATOR_PUBLIC_ASSET_BASE_URL=https://<public-domain>
 ```
+
+#### Identity bridging (Agent tools login → Pivota order attribution)
+
+- Client can send an end-user token via `X-Agent-User-JWT` (JWT signed by the Agent tools provider).
+- The gateway forwards `X-Agent-User-JWT` and/or `buyer_ref` to `pivota-backend` for:
+  - `POST /agent/v1/checkout/acp-session` (checkout session metadata)
+  - `GET /agent/v1/orders*` (orders list/detail/events filtering)
+- Configure JWKS verification on `pivota-backend` (not in this gateway) using `AGENT_USER_JWKS_URL` + issuer/audience settings.
 
 For share persistence across restarts, configure `DATABASE_URL` (Postgres). Without it, look jobs and shares are stored in-memory.
 

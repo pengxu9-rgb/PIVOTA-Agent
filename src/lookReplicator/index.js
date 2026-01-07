@@ -1224,9 +1224,11 @@ function mountLookReplicatorRoutes(app, { logger }) {
     if (!requireLookReplicatorAuth(req, res)) return;
     res.set('Cache-Control', 'no-store');
 
+    const agentUserJwt = String(req.get('X-Agent-User-JWT') || '').trim() || null;
     const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
     const returnUrl = req.body?.returnUrl || req.body?.return_url || null;
-    const buyerRef = String(req.body?.buyerRef || req.body?.buyer_ref || '').trim() || null;
+    const buyerRef =
+      String(req.body?.buyerRef || req.body?.buyer_ref || req.get('X-Buyer-Ref') || '').trim() || null;
     const jobId = String(req.body?.jobId || req.body?.job_id || '').trim() || null;
     const market = String(req.body?.market || req.body?.payload?.market || 'US').trim().toUpperCase();
 
@@ -1427,6 +1429,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
                     headers: {
                       'Content-Type': 'application/json',
                       'X-API-Key': agentApiKey,
+                      ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+                      ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+                      ...(jobId ? { 'X-Look-Replicate-Job-Id': jobId } : {}),
                     },
                     validateStatus: () => true,
                   },
@@ -1477,12 +1482,16 @@ function mountLookReplicatorRoutes(app, { logger }) {
                   merchant_id: mid,
                   items: quoteItems.map((q) => ({ id: q.variant_id, quantity: q.quantity })),
                   return_url: returnUrl || null,
+                  ...(buyerRef ? { buyer_ref: buyerRef } : {}),
                 },
                 {
                   timeout: 30_000,
                   headers: {
                     'Content-Type': 'application/json',
                     'X-API-Key': agentApiKey,
+                    ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+                    ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+                    ...(jobId ? { 'X-Look-Replicate-Job-Id': jobId } : {}),
                   },
                   validateStatus: () => true,
                 },
@@ -1653,6 +1662,166 @@ function mountLookReplicatorRoutes(app, { logger }) {
       return res.status(200).json(upstream.data);
     } catch (err) {
       return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to merge buyer refs', details: truncateText(err?.message || String(err), 400) });
+    }
+  });
+
+  // Orders proxy: keep the Agent API key server-side while enabling the UI to
+  // query orders by either:
+  // - X-Agent-User-JWT (preferred, verified by pivota-backend via JWKS), or
+  // - buyer_ref (legacy anonymous compatibility).
+  app.get(['/orders', '/api/orders'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const agentUserJwt = String(req.get('X-Agent-User-JWT') || '').trim() || null;
+    const buyerRef = String(req.query?.buyer_ref || req.query?.buyerRef || req.get('X-Buyer-Ref') || '').trim() || null;
+    const limit = Number(req.query?.limit || 20);
+    const offset = Number(req.query?.offset || 0);
+
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
+
+    const params = {
+      ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+      limit: Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.trunc(limit))) : 20,
+      offset: Number.isFinite(offset) ? Math.max(0, Math.min(10_000, Math.trunc(offset))) : 0,
+    };
+
+    try {
+      const upstream = await axios.get(`${backendBaseUrl}/agent/v1/orders`, {
+        timeout: 20_000,
+        headers: {
+          'X-API-Key': agentApiKey,
+          ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+          ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+        },
+        params,
+        validateStatus: () => true,
+      });
+      return res.status(Number(upstream?.status) || 502).json(upstream?.data);
+    } catch (err) {
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to fetch orders', details: truncateText(err?.message || String(err), 400) });
+    }
+  });
+
+  app.get(['/orders/events', '/api/orders/events'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const agentUserJwt = String(req.get('X-Agent-User-JWT') || '').trim() || null;
+    const buyerRef = String(req.query?.buyer_ref || req.query?.buyerRef || req.get('X-Buyer-Ref') || '').trim() || null;
+
+    const afterId = Number(req.query?.after_id || req.query?.afterId || 0);
+    const limit = Number(req.query?.limit || 50);
+    const waitMs = Number(req.query?.wait_ms || req.query?.waitMs || 0);
+    const merchantId = String(req.query?.merchant_id || req.query?.merchantId || '').trim() || null;
+
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
+
+    const params = {
+      ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+      after_id: Number.isFinite(afterId) ? Math.max(0, Math.trunc(afterId)) : 0,
+      limit: Number.isFinite(limit) ? Math.max(1, Math.min(200, Math.trunc(limit))) : 50,
+      wait_ms: Number.isFinite(waitMs) ? Math.max(0, Math.min(25_000, Math.trunc(waitMs))) : 0,
+    };
+
+    // Allow long-poll: wait_ms may be up to 25s; add some transport overhead.
+    const timeoutMs = (params.wait_ms || 0) + 10_000;
+    try {
+      const upstream = await axios.get(`${backendBaseUrl}/agent/v1/orders/events`, {
+        timeout: timeoutMs,
+        headers: {
+          'X-API-Key': agentApiKey,
+          ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+          ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+        },
+        params,
+        validateStatus: () => true,
+      });
+      return res.status(Number(upstream?.status) || 502).json(upstream?.data);
+    } catch (err) {
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to fetch order events', details: truncateText(err?.message || String(err), 400) });
+    }
+  });
+
+  app.get(['/orders/:orderId', '/api/orders/:orderId'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const orderId = String(req.params?.orderId || '').trim();
+    if (!orderId) return res.status(400).json({ error: 'INVALID_REQUEST', message: 'orderId is required' });
+
+    const agentUserJwt = String(req.get('X-Agent-User-JWT') || '').trim() || null;
+    const buyerRef = String(req.query?.buyer_ref || req.query?.buyerRef || req.get('X-Buyer-Ref') || '').trim() || null;
+
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
+
+    const params = {
+      ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+    };
+
+    try {
+      const upstream = await axios.get(`${backendBaseUrl}/agent/v1/orders/${encodeURIComponent(orderId)}`, {
+        timeout: 20_000,
+        headers: {
+          'X-API-Key': agentApiKey,
+          ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+          ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+        },
+        params,
+        validateStatus: () => true,
+      });
+      return res.status(Number(upstream?.status) || 502).json(upstream?.data);
+    } catch (err) {
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to fetch order', details: truncateText(err?.message || String(err), 400) });
     }
   });
 }

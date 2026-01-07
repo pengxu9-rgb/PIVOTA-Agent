@@ -195,4 +195,41 @@ describe('look replicator checkout_sessions compatibility', () => {
       currency: 'USD',
     });
   });
+
+  test('forwards X-Agent-User-JWT to ACP checkout session creation', async () => {
+    process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'acp';
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        status: 'success',
+        valid: true,
+        items: [{ product_id: 'sku1', variant_id: 'v1', quantity: 1 }],
+      },
+    });
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      data: { checkout_url: 'https://pivota-acp.example.com/checkout/sess_1' },
+    });
+
+    const res = await request(server)
+      .post('/checkout-sessions')
+      .set({ ...authHeaders(), 'X-Agent-User-JWT': 'jwt_abc', 'X-Buyer-Ref': 'user:demo' })
+      .send({ market: 'US', items: [{ skuId: 'sku1', qty: 1, merchantId: 'm1' }], returnUrl: 'https://return.here' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.checkoutUrl).toContain('https://pivota-acp.example.com/checkout/sess_1');
+
+    expect(axios.post).toHaveBeenCalledTimes(2);
+    const [acpUrl, acpBody, acpConfig] = axios.post.mock.calls[1];
+    expect(acpUrl).toBe('https://backend.example.com/agent/v1/checkout/acp-session');
+    expect(acpBody).toMatchObject({
+      merchant_id: 'm1',
+      items: [{ id: 'v1', quantity: 1 }],
+      return_url: 'https://return.here',
+      buyer_ref: 'user:demo',
+    });
+    expect(acpConfig.headers['X-API-Key']).toBe('test-api-key');
+    expect(acpConfig.headers['X-Agent-User-JWT']).toBe('jwt_abc');
+    expect(acpConfig.headers['X-Buyer-Ref']).toBe('user:demo');
+  });
 });
