@@ -1824,6 +1824,142 @@ function mountLookReplicatorRoutes(app, { logger }) {
       return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to fetch order', details: truncateText(err?.message || String(err), 400) });
     }
   });
+
+  // Order management actions
+  // - Track (shipping/fulfillment)
+  // - Cancel (pre-payment)
+  // - Refund (post-payment)
+  app.get(['/orders/:orderId/track', '/api/orders/:orderId/track'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const orderId = String(req.params?.orderId || '').trim();
+    if (!orderId) return res.status(400).json({ error: 'INVALID_REQUEST', message: 'orderId is required' });
+
+    const agentUserJwt = String(req.get('X-Agent-User-JWT') || '').trim() || null;
+    const buyerRef = String(req.query?.buyer_ref || req.query?.buyerRef || req.get('X-Buyer-Ref') || '').trim() || null;
+
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
+
+    try {
+      const upstream = await axios.get(`${backendBaseUrl}/agent/v1/orders/${encodeURIComponent(orderId)}/track`, {
+        timeout: 20_000,
+        headers: {
+          'X-API-Key': agentApiKey,
+          ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+          ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+        },
+        validateStatus: () => true,
+      });
+      return res.status(Number(upstream?.status) || 502).json(upstream?.data);
+    } catch (err) {
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to fetch tracking info', details: truncateText(err?.message || String(err), 400) });
+    }
+  });
+
+  app.post(['/orders/:orderId/cancel', '/api/orders/:orderId/cancel'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const orderId = String(req.params?.orderId || '').trim();
+    if (!orderId) return res.status(400).json({ error: 'INVALID_REQUEST', message: 'orderId is required' });
+
+    const agentUserJwt = String(req.get('X-Agent-User-JWT') || '').trim() || null;
+    const buyerRef = String(req.query?.buyer_ref || req.query?.buyerRef || req.get('X-Buyer-Ref') || '').trim() || null;
+
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
+
+    try {
+      const upstream = await axios.post(`${backendBaseUrl}/agent/v1/orders/${encodeURIComponent(orderId)}/cancel`, null, {
+        timeout: 20_000,
+        headers: {
+          'X-API-Key': agentApiKey,
+          ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+          ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+        },
+        validateStatus: () => true,
+      });
+      return res.status(Number(upstream?.status) || 502).json(upstream?.data);
+    } catch (err) {
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to cancel order', details: truncateText(err?.message || String(err), 400) });
+    }
+  });
+
+  app.post(['/orders/:orderId/refund', '/api/orders/:orderId/refund'], async (req, res) => {
+    if (!requireLookReplicatorAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store');
+
+    const orderId = String(req.params?.orderId || '').trim();
+    if (!orderId) return res.status(400).json({ error: 'INVALID_REQUEST', message: 'orderId is required' });
+
+    const agentUserJwt = String(req.get('X-Agent-User-JWT') || '').trim() || null;
+    const buyerRef = String(req.query?.buyer_ref || req.query?.buyerRef || req.get('X-Buyer-Ref') || '').trim() || null;
+
+    const backendBaseUrl = String(
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+        process.env.AGENT_API_BASE ||
+        'https://web-production-fedb.up.railway.app',
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const agentApiKey = String(
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+        process.env.PIVOTA_API_KEY ||
+        process.env.AGENT_API_KEY ||
+        process.env.PIVOTA_AGENT_API_KEY ||
+        '',
+    ).trim();
+    if (!agentApiKey) {
+      return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
+    }
+
+    try {
+      const upstream = await axios.post(`${backendBaseUrl}/agent/v1/orders/${encodeURIComponent(orderId)}/refund`, null, {
+        timeout: 30_000,
+        headers: {
+          'X-API-Key': agentApiKey,
+          ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+          ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+        },
+        validateStatus: () => true,
+      });
+      return res.status(Number(upstream?.status) || 502).json(upstream?.data);
+    } catch (err) {
+      return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to refund order', details: truncateText(err?.message || String(err), 400) });
+    }
+  });
 }
 
 module.exports = {
