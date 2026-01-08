@@ -539,6 +539,18 @@ function isRetryableQuoteError(code) {
   return code === 'QUOTE_EXPIRED' || code === 'QUOTE_MISMATCH';
 }
 
+function isPydanticMissingBodyField(err, fieldName) {
+  const resp = err && err.response ? err.response : null;
+  if (!resp || resp.status !== 422) return false;
+  const data = resp.data;
+  const detail = data && typeof data === 'object' ? data.detail : null;
+  if (!Array.isArray(detail)) return false;
+  return detail.some((item) => {
+    const loc = item && typeof item === 'object' ? item.loc : null;
+    return Array.isArray(loc) && loc.includes(fieldName);
+  });
+}
+
 const app = express();
 
 async function fetchBackendAdmin({ method, path, params, data }) {
@@ -3196,29 +3208,55 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     try {
       response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
     } catch (err) {
-      // Quote-first hardening: auto re-quote once on QUOTE_EXPIRED / QUOTE_MISMATCH.
+      // Compatibility: some upstream deployments expect body to be embedded
+      // under `order_request` (FastAPI body param naming). Retry once with the
+      // embedded shape when we detect that specific 422 schema error.
       if (
         operation === 'create_order' &&
         requestBody &&
-        requestBody.quote_id
+        Object.keys(requestBody).length > 0 &&
+        isPydanticMissingBodyField(err, 'order_request')
       ) {
+        try {
+          axiosConfig.data = { order_request: requestBody };
+          response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+        } catch (wrappedErr) {
+          err = wrappedErr;
+        }
+      }
+
+      // Quote-first hardening: auto re-quote once on QUOTE_EXPIRED / QUOTE_MISMATCH.
+      if (!response && operation === 'create_order' && axiosConfig.data) {
+        const createOrderBody = axiosConfig.data;
+        const normalizedOrderRequest =
+          createOrderBody && createOrderBody.order_request
+            ? createOrderBody.order_request
+            : createOrderBody;
+        const quoteId =
+          normalizedOrderRequest && typeof normalizedOrderRequest === 'object'
+            ? normalizedOrderRequest.quote_id
+            : null;
+
         const { code } = extractUpstreamErrorCode(err);
-        if (isRetryableQuoteError(code)) {
+        if (quoteId && isRetryableQuoteError(code)) {
           try {
             const quoteBody = {
-              merchant_id: requestBody.merchant_id,
-              items: Array.isArray(requestBody.items)
-                ? requestBody.items.map((it) => ({
+              merchant_id: normalizedOrderRequest.merchant_id,
+              items: Array.isArray(normalizedOrderRequest.items)
+                ? normalizedOrderRequest.items.map((it) => ({
                     product_id: it.product_id,
                     variant_id: it.variant_id || undefined,
                     quantity: it.quantity,
                   }))
                 : [],
-              discount_codes: requestBody.discount_codes || [],
-              customer_email: requestBody.customer_email || undefined,
-              shipping_address: requestBody.shipping_address || undefined,
-              ...(requestBody.selected_delivery_option
-                ? { selected_delivery_option: requestBody.selected_delivery_option }
+              discount_codes: normalizedOrderRequest.discount_codes || [],
+              customer_email: normalizedOrderRequest.customer_email || undefined,
+              shipping_address: normalizedOrderRequest.shipping_address || undefined,
+              ...(normalizedOrderRequest.selected_delivery_option
+                ? {
+                    selected_delivery_option:
+                      normalizedOrderRequest.selected_delivery_option,
+                  }
                 : {}),
             };
 
@@ -3241,21 +3279,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
             const newQuoteId = quoteResp && quoteResp.data ? quoteResp.data.quote_id : null;
             if (newQuoteId) {
-              requestBody.quote_id = newQuoteId;
-              axiosConfig.data = requestBody;
+              normalizedOrderRequest.quote_id = newQuoteId;
+              axiosConfig.data =
+                createOrderBody && createOrderBody.order_request
+                  ? { order_request: normalizedOrderRequest }
+                  : normalizedOrderRequest;
               response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
-            } else {
-              throw err;
             }
           } catch (_) {
-            throw err;
+            // Fall through and surface the original upstream error.
           }
-        } else {
-          throw err;
         }
-      } else {
-        throw err;
       }
+
+      if (!response) throw err;
     }
     let upstreamData = response.data;
     if (operation === 'find_products_multi' && ROUTE_DEBUG_ENABLED && creatorCacheRouteDebug) {
