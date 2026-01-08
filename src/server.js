@@ -3144,10 +3144,30 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             message: 'order_id is required'
           });
         }
-        url = url.replace('{order_id}', payload.status.order_id);
-        if (payload.status.reason) {
-          requestBody = { reason: payload.status.reason };
+        const orderId = payload.status.order_id;
+        const requestedActionRaw =
+          payload.status.requested_action || payload.status.requestedAction || payload.status.action;
+        const requestedAction =
+          typeof requestedActionRaw === 'string' ? requestedActionRaw.trim().toLowerCase() : '';
+
+        url = url.replace('{order_id}', orderId);
+
+        // Support cancel via request_after_sales for external agentic tools.
+        // - requested_action=cancel -> POST /agent/v1/orders/{order_id}/cancel
+        // - default (or refund)     -> POST /agent/v1/orders/{order_id}/refund
+        if (requestedAction === 'cancel') {
+          url = `${PIVOTA_API_BASE}/agent/v1/orders/${encodeURIComponent(orderId)}/cancel`;
+          break;
         }
+
+        if (requestedAction && requestedAction !== 'refund') {
+          return res.status(400).json({
+            error: 'UNSUPPORTED_ACTION',
+            message: `Unsupported requested_action: ${requestedAction}`
+          });
+        }
+
+        if (payload.status.reason) requestBody = { reason: payload.status.reason };
         break;
       }
 
