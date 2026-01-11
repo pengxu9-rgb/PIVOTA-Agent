@@ -2329,11 +2329,13 @@ app.post('/api/merchant/promotions', requireAdmin, async (req, res) => {
       },
     });
   } catch (err) {
+    const { code, message } = extractUpstreamErrorCode(err);
+    const status = (err && err.response && err.response.status) || err?.status || 502;
     logger.error(
-      { err: err?.message || String(err) },
+      { status, code, err: message || err?.message || String(err) },
       'Failed to create merchant promotion'
     );
-    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+    return res.status(status).json({ error: code || 'UPSTREAM_UNAVAILABLE', message });
   }
 });
 
@@ -2360,11 +2362,13 @@ app.patch('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
       },
     });
   } catch (err) {
+    const { code, message } = extractUpstreamErrorCode(err);
+    const status = (err && err.response && err.response.status) || err?.status || 502;
     logger.error(
-      { err: err?.message || String(err), promoId: req.params.id },
+      { status, code, err: message || err?.message || String(err), promoId: req.params.id },
       'Failed to update merchant promotion'
     );
-    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+    return res.status(status).json({ error: code || 'UPSTREAM_UNAVAILABLE', message });
   }
 });
 
@@ -2376,11 +2380,13 @@ app.delete('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
     }
     return res.json({ ok: true });
   } catch (err) {
+    const { code, message } = extractUpstreamErrorCode(err);
+    const status = (err && err.response && err.response.status) || err?.status || 502;
     logger.error(
-      { err: err?.message || String(err), promoId: req.params.id },
+      { status, code, err: message || err?.message || String(err), promoId: req.params.id },
       'Failed to delete merchant promotion'
     );
-    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+    return res.status(status).json({ error: code || 'UPSTREAM_UNAVAILABLE', message });
   }
 });
 
