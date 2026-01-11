@@ -2249,98 +2249,139 @@ app.get('/debug/promotions', requireAdmin, async (req, res) => {
 // ---------------- Merchant promotions admin API (v0, admin-key protected) ----------------
 
 app.get('/api/merchant/promotions', requireAdmin, async (req, res) => {
-  const { status, type, channel, creatorId, search } = req.query;
-  const nowTs = Date.now();
-  const allPromos = await getAllPromotions();
-  const promotions = allPromos
-    .filter((p) => !p.deletedAt)
-    .filter((p) => {
-      if (type && p.type !== type) return false;
-      if (channel && (!Array.isArray(p.channels) || !p.channels.includes(channel))) return false;
-      if (creatorId) {
-        if (p.exposeToCreators === false) return false;
-        if (p.allowedCreatorIds?.length && !p.allowedCreatorIds.includes(creatorId)) return false;
-      }
-      if (search) {
-        const s = String(search).toLowerCase();
-        const name = (p.name || '').toLowerCase();
-        const desc = (p.description || '').toLowerCase();
-        if (!name.includes(s) && !desc.includes(s)) return false;
-      }
-      if (status) {
-        const currentStatus = computePromotionStatus(p, nowTs);
-        if (currentStatus !== status) return false;
-      }
-      return true;
-    })
-    .map((p) => ({
-      ...sanitizePromotionForResponse(p),
-      humanReadableRule: computeHumanReadableRule(p),
-      status: computePromotionStatus(p, nowTs),
-    }));
+  try {
+    const { status, type, channel, creatorId, search } = req.query;
+    const nowTs = Date.now();
+    const allPromos = await getAllPromotions();
+    const promotions = allPromos
+      .filter((p) => !p.deletedAt)
+      .filter((p) => {
+        if (type && p.type !== type) return false;
+        if (channel && (!Array.isArray(p.channels) || !p.channels.includes(channel))) return false;
+        if (creatorId) {
+          if (p.exposeToCreators === false) return false;
+          if (p.allowedCreatorIds?.length && !p.allowedCreatorIds.includes(creatorId))
+            return false;
+        }
+        if (search) {
+          const s = String(search).toLowerCase();
+          const name = (p.name || '').toLowerCase();
+          const desc = (p.description || '').toLowerCase();
+          if (!name.includes(s) && !desc.includes(s)) return false;
+        }
+        if (status) {
+          const currentStatus = computePromotionStatus(p, nowTs);
+          if (currentStatus !== status) return false;
+        }
+        return true;
+      })
+      .map((p) => ({
+        ...sanitizePromotionForResponse(p),
+        humanReadableRule: computeHumanReadableRule(p),
+        status: computePromotionStatus(p, nowTs),
+      }));
 
-  res.json({ promotions, total: promotions.length });
+    res.json({ promotions, total: promotions.length });
+  } catch (err) {
+    logger.error(
+      { err: err?.message || String(err) },
+      'Failed to list merchant promotions'
+    );
+    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+  }
 });
 
 app.get('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
-  const promo = await getPromotionById(req.params.id);
-  if (!promo || promo.deletedAt) {
-    return res.status(404).json({ error: 'NOT_FOUND' });
+  try {
+    const promo = await getPromotionById(req.params.id);
+    if (!promo || promo.deletedAt) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    const nowTs = Date.now();
+    return res.json({
+      promotion: {
+        ...sanitizePromotionForResponse(promo),
+        humanReadableRule: computeHumanReadableRule(promo),
+        status: computePromotionStatus(promo, nowTs),
+      },
+    });
+  } catch (err) {
+    logger.error(
+      { err: err?.message || String(err), promoId: req.params.id },
+      'Failed to fetch merchant promotion'
+    );
+    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
   }
-  const nowTs = Date.now();
-  return res.json({
-    promotion: {
-      ...sanitizePromotionForResponse(promo),
-      humanReadableRule: computeHumanReadableRule(promo),
-      status: computePromotionStatus(promo, nowTs),
-    },
-  });
 });
 
 app.post('/api/merchant/promotions', requireAdmin, async (req, res) => {
-  const { promotion, error } = validateAndNormalizePromotion(req.body, {}, { requireAll: true });
-  if (error) {
-    return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
+  try {
+    const { promotion, error } = validateAndNormalizePromotion(req.body, {}, { requireAll: true });
+    if (error) {
+      return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
+    }
+    const nowTs = Date.now();
+    await upsertPromotion(promotion);
+    return res.status(201).json({
+      promotion: {
+        ...sanitizePromotionForResponse(promotion),
+        status: computePromotionStatus(promotion, nowTs),
+      },
+    });
+  } catch (err) {
+    logger.error(
+      { err: err?.message || String(err) },
+      'Failed to create merchant promotion'
+    );
+    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
   }
-  const nowTs = Date.now();
-  await upsertPromotion(promotion);
-  return res.status(201).json({
-    promotion: {
-      ...sanitizePromotionForResponse(promotion),
-      status: computePromotionStatus(promotion, nowTs),
-    },
-  });
 });
 
 app.patch('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
-  const existing = await getPromotionById(req.params.id);
-  if (!existing || existing.deletedAt) {
-    return res.status(404).json({ error: 'NOT_FOUND' });
+  try {
+    const existing = await getPromotionById(req.params.id);
+    if (!existing || existing.deletedAt) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    const { promotion, error } = validateAndNormalizePromotion(
+      { ...req.body, id: existing.id },
+      existing,
+      { requireAll: true }
+    );
+    if (error) {
+      return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
+    }
+    const nowTs = Date.now();
+    await upsertPromotion(promotion);
+    return res.json({
+      promotion: {
+        ...sanitizePromotionForResponse(promotion),
+        status: computePromotionStatus(promotion, nowTs),
+      },
+    });
+  } catch (err) {
+    logger.error(
+      { err: err?.message || String(err), promoId: req.params.id },
+      'Failed to update merchant promotion'
+    );
+    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
   }
-  const { promotion, error } = validateAndNormalizePromotion(
-    { ...req.body, id: existing.id },
-    existing,
-    { requireAll: true }
-  );
-  if (error) {
-    return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
-  }
-  const nowTs = Date.now();
-  await upsertPromotion(promotion);
-  return res.json({
-    promotion: {
-      ...sanitizePromotionForResponse(promotion),
-      status: computePromotionStatus(promotion, nowTs),
-    },
-  });
 });
 
 app.delete('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
-  const ok = await softDeletePromotion(req.params.id);
-  if (!ok) {
-    return res.status(404).json({ error: 'NOT_FOUND' });
+  try {
+    const ok = await softDeletePromotion(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error(
+      { err: err?.message || String(err), promoId: req.params.id },
+      'Failed to delete merchant promotion'
+    );
+    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
   }
-  return res.json({ ok: true });
 });
 
 // ---------------- Merchant risk ops API (v0, admin-key protected) ----------------
