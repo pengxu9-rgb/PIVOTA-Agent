@@ -148,6 +148,10 @@ async function fetchRemote(path, method = 'GET', body) {
     throw new Error('Remote promotions not enabled');
   }
   const url = `${PROMO_BACKEND_BASE.replace(/\/$/, '')}${path}`;
+  const timeoutMs = Math.max(
+    1000,
+    Number(process.env.PROMO_UPSTREAM_TIMEOUT_MS ?? 8000) || 8000
+  );
   const config = {
     method,
     url,
@@ -155,13 +159,23 @@ async function fetchRemote(path, method = 'GET', body) {
       'X-ADMIN-KEY': PROMO_ADMIN_KEY,
       'Content-Type': 'application/json',
     },
-    timeout: 5000,
+    timeout: timeoutMs,
   };
   if (body && method !== 'GET') {
     config.data = body;
   }
-  const res = await axios(config);
-  return res.data;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await axios(config);
+      return res.data;
+    } catch (err) {
+      const isTimeout = err && err.code === 'ECONNABORTED';
+      if (isTimeout && attempt === 1) {
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 async function getAllPromotions() {
