@@ -1045,17 +1045,22 @@ function isStatusActive(status) {
   return normalized === 'active';
 }
 
-function isProductSellable(product) {
+function isProductSellable(product, options = {}) {
   if (!product || typeof product !== 'object') return false;
   if (!isStatusActive(product.status)) return false;
+  const inStockOnly = options?.inStockOnly !== false;
   // Prefer in-stock products when inventory information is available.
-  const rawInv =
-    product.inventory_quantity ??
-    product.inventoryQuantity ??
-    (product.inventory && product.inventory.quantity);
-  if (rawInv != null) {
-    const inv = Number(rawInv);
-    if (Number.isFinite(inv) && inv <= 0) return false;
+  // When callers explicitly set in_stock_only=false, do not treat inventory<=0 as a hard block,
+  // because some platforms/merchants can continue selling when inventory is not tracked.
+  if (inStockOnly) {
+    const rawInv =
+      product.inventory_quantity ??
+      product.inventoryQuantity ??
+      (product.inventory && product.inventory.quantity);
+    if (rawInv != null) {
+      const inv = Number(rawInv);
+      if (Number.isFinite(inv) && inv <= 0) return false;
+    }
   }
   return true;
 }
@@ -1204,7 +1209,7 @@ function buildUnderwearExclusionSql(startIndex) {
   };
 }
 
-async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
+async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, options = {}) {
   const config = getCreatorConfig(creatorId);
   if (!config || !Array.isArray(config.merchantIds) || config.merchantIds.length === 0) {
     const err = new Error('Unknown creator');
@@ -1215,6 +1220,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
   const fetchLimit = Math.max(safeLimit * Math.max(safePage, 1) * 2, 20);
+  const inStockOnly = options?.inStockOnly !== false;
 
   // Optional: load explicit creator_picks so we can surface curated
   // recommendations at the top of the Featured feed and tag them for
@@ -1247,14 +1253,13 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
     );
   }
 
-  // Apply sellable gating at the SQL layer to keep behavior consistent with
-  // Creator Featured semantics: ACTIVE status with inventory > 0. We do not
-  // treat orderable=false as a hard block for this surface.
+  // Apply lightweight gating at the SQL layer (avoid deleted/expired/inactive).
+  // In-stock preference is handled in JS so that in_stock_only=false can
+  // still surface products where inventory is not tracked.
   const baseWhere = `
     merchant_id = ANY($1)
     AND (expires_at IS NULL OR expires_at > now())
     AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
-    AND COALESCE((product_data->>'inventory_quantity')::int, 0) > 0
   `;
 
   const rowsRes = await query(
@@ -1271,7 +1276,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
   const baseProducts = (rowsRes.rows || [])
     .map((r) => r.product_data)
     .filter(Boolean)
-    .filter((p) => isProductSellable(p));
+    .filter((p) => isProductSellable(p, { inStockOnly }));
 
   // Ensure explicit creator picks are always present in the featured pool,
   // even when they are older than the default cached_at window.
@@ -1296,7 +1301,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20) {
       pickProducts = (pickRowsRes.rows || [])
         .map((r) => r.product_data)
         .filter(Boolean)
-        .filter((p) => isProductSellable(p));
+        .filter((p) => isProductSellable(p, { inStockOnly }));
     } catch (err) {
       logger.warn(
         { err: err.message, creatorId, pickIdsCount: pickIds.length },
@@ -1391,6 +1396,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
+  const inStockOnly = options?.inStockOnly !== false;
 
   function productKey(p) {
     const mid = String(p?.merchant_id || p?.merchantId || '').trim();
@@ -1398,12 +1404,13 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     return `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
   }
 
-  // Base sellable gating (match merchant portal semantics).
+  // Base gating (avoid deleted/expired/inactive). In-stock preference is handled
+  // in JS so that in_stock_only=false can still surface products where inventory
+  // is not tracked.
   const baseWhere = `
     merchant_id = ANY($1)
     AND (expires_at IS NULL OR expires_at > now())
     AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
-    AND COALESCE((product_data->>'inventory_quantity')::int, 0) > 0
   `;
 
   const terms = tokenizeQueryForCache(q);
@@ -1417,7 +1424,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
 
   // If we have no usable terms, behave like cold-start.
   if (terms.length === 0) {
-    return await loadCreatorSellableFromCache(creatorId, safePage, safeLimit);
+    return await loadCreatorSellableFromCache(creatorId, safePage, safeLimit, { inStockOnly });
   }
 
   const matchFields = [
@@ -1516,7 +1523,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
 
   // Rank candidates in-memory for better UX (title matches > description matches).
   const scored = rawProducts
-    .filter((p) => isProductSellable(p))
+    .filter((p) => isProductSellable(p, { inStockOnly }))
     .map((p) => {
       const title = String(p.title || '').toLowerCase();
       const desc = String(p.description || '').toLowerCase();
@@ -1623,7 +1630,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
       const browseProducts = (browseRes.rows || [])
         .map((r) => r.product_data)
         .filter(Boolean)
-        .filter((p) => isProductSellable(p))
+        .filter((p) => isProductSellable(p, { inStockOnly }))
         .slice(0, safeLimit);
 
       retrievalSources.push({
@@ -1688,7 +1695,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
           return p;
         })
         .filter(Boolean)
-        .filter((p) => isProductSellable(p));
+        .filter((p) => isProductSellable(p, { inStockOnly }));
 
       retrievalSources.push({
         source: 'vector_cache',
@@ -2808,13 +2815,26 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const search = effectivePayload.search || {};
       const queryText = String(search.query || '').trim();
       const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
+      const inStockOnly = search.in_stock_only !== false;
 
       const isCreatorUi = source === 'creator-agent-ui';
       if (isCreatorUiColdStart && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
           const limit = search.limit || 20;
-          const fromCache = await loadCreatorSellableFromCache(creatorId, page, limit);
+          const fromCache = await loadCreatorSellableFromCache(creatorId, page, limit, { inStockOnly });
+          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
+          creatorCacheRouteDebug = {
+            attempted: true,
+            mode: 'featured',
+            creator_id: creatorId,
+            page,
+            limit,
+            in_stock_only: inStockOnly,
+            products_count: Array.isArray(fromCache.products) ? fromCache.products.length : 0,
+            total: Number(fromCache.total || 0),
+            cache_hit: cacheHit,
+          };
 
           const upstreamData = {
             products: fromCache.products,
@@ -2835,6 +2855,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                         creator_id: creatorId,
                         page,
                         limit,
+                        in_stock_only: inStockOnly,
+                        cache_hit: cacheHit,
                       },
                     },
                   }
@@ -2851,7 +2873,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          return res.json(enriched);
+          if (cacheHit) {
+            return res.json(enriched);
+          }
+          logger.info(
+            { creatorId, source, page, limit, inStockOnly },
+            'Creator UI cache cold-start returned empty; falling back to upstream',
+          );
         } catch (err) {
           logger.warn(
             { err: err.message, creatorId, source },
@@ -2869,6 +2897,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const intentTarget = String(effectiveIntent?.target_object?.type || '').toLowerCase();
           const fromCache = await searchCreatorSellableFromCache(creatorId, queryText, page, limit, {
             intent: effectiveIntent,
+            inStockOnly,
           });
 
           creatorCacheRouteDebug = {
@@ -3462,8 +3491,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const search = effectivePayload.search || {};
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
+          const inStockOnly = search.in_stock_only !== false;
           const fromCache = await searchCreatorSellableFromCache(creatorId, fallbackQuery, page, limit, {
             intent: effectiveIntent,
+            inStockOnly,
           });
 
           if (fromCache.products && fromCache.products.length > 0) {
