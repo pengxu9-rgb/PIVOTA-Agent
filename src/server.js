@@ -3599,9 +3599,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       });
 	    }
 
-	    logger.error({ err: err.message }, 'Unexpected upstream error');
-	    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
-	  }
+		    const transportCode = err && err.code ? String(err.code) : null;
+		    const transportMessage = err && err.message ? String(err.message) : null;
+		    logger.error(
+		      { err: transportMessage, code: transportCode, upstream_url: err.config?.url || url },
+		      'Unexpected upstream error'
+		    );
+		    return res.status(502).json({
+		      error: 'UPSTREAM_UNAVAILABLE',
+		      upstream_url: err.config?.url || url,
+		      transport_code: transportCode,
+		      transport_message: transportMessage,
+		    });
+		  }
   } catch (err) {
     if (res.headersSent) {
       logger.error(
