@@ -2514,26 +2514,30 @@ app.post('/api/merchant/returns/sync', requireAdmin, async (req, res) => {
 // ---------------- Main invoke endpoint ----------------
 
 app.post('/agent/shop/v1/invoke', async (req, res) => {
-  const parsed = InvokeRequestSchema.safeParse(req.body);
-  if (!parsed.success) {
-    logger.warn({ error: parsed.error.format() }, 'Invalid request body');
-    return res.status(400).json({
-      error: 'INVALID_REQUEST',
-      details: parsed.error.format(),
-    });
-  }
+  const gatewayRequestId = randomUUID();
+  res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
 
-  const { operation, payload } = parsed.data;
-  const metadata = normalizeMetadata(req.body.metadata, payload);
-  const creatorId = extractCreatorId({ ...payload, metadata });
-  const now = new Date();
-  const findProductsMultiCtx =
-    operation === 'find_products_multi'
-      ? await buildFindProductsMultiContext({ payload, metadata })
-      : null;
-  const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
-  const effectiveIntent = findProductsMultiCtx?.intent || null;
-  const rawUserQuery = findProductsMultiCtx?.rawUserQuery || payload?.search?.query || '';
+  try {
+    const parsed = InvokeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      logger.warn({ gateway_request_id: gatewayRequestId, error: parsed.error.format() }, 'Invalid request body');
+      return res.status(400).json({
+        error: 'INVALID_REQUEST',
+        details: parsed.error.format(),
+      });
+    }
+
+    const { operation, payload } = parsed.data;
+    const metadata = normalizeMetadata(req.body.metadata, payload);
+    const creatorId = extractCreatorId({ ...payload, metadata });
+    const now = new Date();
+    const findProductsMultiCtx =
+      operation === 'find_products_multi'
+        ? await buildFindProductsMultiContext({ payload, metadata })
+        : null;
+    const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
+    const effectiveIntent = findProductsMultiCtx?.intent || null;
+    const rawUserQuery = findProductsMultiCtx?.rawUserQuery || payload?.search?.query || '';
 
   // Redundant allowlist check for semantics clarity.
   if (!OperationEnum.options.includes(operation)) {
@@ -3540,13 +3544,43 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
     return res.status(response.status).json(enriched);
 
-  } catch (err) {
-    if (err.response) {
-      logger.warn({ status: err.response.status, data: err.response.data }, 'Upstream error');
-      return res
-        .status(err.response.status || 502)
-        .json(err.response.data || { error: 'UPSTREAM_ERROR' });
-    }
+	  } catch (err) {
+	    if (err.response) {
+	      const upstreamStatus = err.response.status || 502;
+	      const upstreamRequestId =
+	        err.response.headers?.['x-request-id'] ||
+	        err.response.headers?.['x-requestid'] ||
+	        err.response.headers?.['x-railway-request-id'] ||
+	        null;
+
+	      if (upstreamRequestId) {
+	        res.setHeader('X-Upstream-Request-Id', upstreamRequestId);
+	      }
+
+	      // Do not log full upstream response bodies: they may contain PII.
+	      logger.warn(
+	        {
+	          gateway_request_id: gatewayRequestId,
+	          operation,
+	          upstream_status: upstreamStatus,
+	          upstream_url: err.config?.url || url,
+	          upstream_request_id: upstreamRequestId,
+	        },
+	        'Upstream error',
+	      );
+
+	      const data = err.response.data;
+	      if (typeof data === 'string') {
+	        return res.status(upstreamStatus).json({
+	          error: 'UPSTREAM_ERROR',
+	          upstream_status: upstreamStatus,
+	          upstream_request_id: upstreamRequestId,
+	          detail: data,
+	        });
+	      }
+
+	      return res.status(upstreamStatus).json(data || { error: 'UPSTREAM_ERROR' });
+	    }
 
     if (err.code === 'ECONNABORTED') {
       logger.error(
@@ -3563,10 +3597,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         upstream_url: err.config?.url || url,
         timeout_ms: err.config?.timeout || null,
       });
-    }
+	    }
 
-    logger.error({ err: err.message }, 'Unexpected upstream error');
-    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+	    logger.error({ err: err.message }, 'Unexpected upstream error');
+	    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
+	  }
+  } catch (err) {
+    if (res.headersSent) {
+      logger.error(
+        { gateway_request_id: gatewayRequestId, err: err.message, stack: err.stack },
+        'Unhandled invoke error after headers sent',
+      );
+      return;
+    }
+    logger.error({ gateway_request_id: gatewayRequestId, err: err.message, stack: err.stack }, 'Unhandled invoke error');
+    return res.status(500).json({
+      error: 'INTERNAL_ERROR',
+      message: 'Internal Server Error',
+      gateway_request_id: gatewayRequestId,
+    });
   }
 });
 
