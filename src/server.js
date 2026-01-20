@@ -561,6 +561,11 @@ const ROUTE_MAP = {
     path: '/agent/v1/orders/create',
     paramType: 'body'
   },
+  confirm_payment: {
+    method: 'POST',
+    path: '/agent/v1/orders/{order_id}/confirm-payment',
+    paramType: 'path'
+  },
   submit_payment: {
     method: 'POST',
     path: '/agent/v1/payments',
@@ -3343,6 +3348,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         };
         break;
       }
+
+      case 'confirm_payment': {
+        const order = payload.order || {};
+        const orderId =
+          order.order_id ||
+          order.orderId ||
+          payload.order_id ||
+          payload.orderId ||
+          payload.payment?.order_id ||
+          payload.payment?.orderId ||
+          payload.status?.order_id ||
+          payload.status?.orderId;
+        if (!orderId) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'order_id is required',
+          });
+        }
+        url = url.replace('{order_id}', encodeURIComponent(orderId));
+        requestBody = {};
+        break;
+      }
       
       case 'submit_payment': {
         // Map payment fields - Pivota uses 'total_amount' not 'amount'
@@ -3563,6 +3590,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           } catch (_) {
             // Fall through and surface the original upstream error.
           }
+        }
+      }
+
+      if (!response && operation === 'submit_payment' && axiosConfig.data) {
+        const { code } = extractUpstreamErrorCode(err);
+        if (code === 'TEMPORARY_UNAVAILABLE') {
+          logger.warn(
+            { operation, code },
+            'Upstream reported temporary unavailability; retrying submit_payment once'
+          );
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
         }
       }
 

@@ -14,6 +14,7 @@ const OperationEnum = z.enum([
   // Quote-first (locked pricing)
   'preview_quote',
   'create_order',
+  'confirm_payment',
   'submit_payment',
   'get_order_status',
   'request_after_sales',
