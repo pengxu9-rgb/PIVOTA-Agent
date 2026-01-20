@@ -545,7 +545,10 @@ const ROUTE_MAP = {
   },
   get_product_detail: {
     method: 'GET',
-    path: '/agent/v1/products/merchants/{merchant_id}/product/{product_id}',
+    // Use the agent-facing product detail endpoint (legacy but stable).
+    // The newer `/agent/v1/products/merchants/{merchant_id}/product/{product_id}` shape
+    // can differ by identifier type and has shown PRODUCT_NOT_FOUND for ids returned by search.
+    path: '/agent/v1/products/{merchant_id}/{product_id}',
     paramType: 'path',
   },
   preview_quote: {
