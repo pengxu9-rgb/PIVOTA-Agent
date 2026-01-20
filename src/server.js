@@ -2006,8 +2006,25 @@ function extractCreatorId(payload) {
   );
 }
 
+function getDefaultCreatorId() {
+  const env =
+    process.env.DEFAULT_CREATOR_ID ||
+    process.env.CREATOR_ID ||
+    '';
+  const trimmed = String(env || '').trim();
+  if (trimmed) return trimmed;
+
+  const first =
+    Array.isArray(CREATOR_CONFIGS) &&
+    CREATOR_CONFIGS[0] &&
+    CREATOR_CONFIGS[0].creatorId
+      ? String(CREATOR_CONFIGS[0].creatorId).trim()
+      : '';
+  return first || null;
+}
+
 function normalizeMetadata(rawMetadata = {}, payload = {}) {
-  const creatorId =
+  let creatorId =
     rawMetadata.creator_id ||
     rawMetadata.creatorId ||
     payload.creator_id ||
@@ -2030,6 +2047,13 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
     null;
 
   const source = rawMetadata.source || payload.source || 'creator-agent-ui';
+
+  // Creator cache routes require a known creator_id. When the caller doesn't
+  // provide one (common in the shopping agent UI), default to the first configured
+  // creator so cache-based search works out of the box.
+  if (!creatorId && source === 'creator-agent-ui') {
+    creatorId = getDefaultCreatorId();
+  }
 
   return {
     ...rawMetadata,
