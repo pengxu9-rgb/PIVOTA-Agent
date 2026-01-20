@@ -407,15 +407,117 @@ const REAL_API_ENABLED = API_MODE === 'REAL' && Boolean(PIVOTA_API_KEY);
 const toolSchemaPath = path.join(__dirname, '..', 'docs', 'tool-schema.json');
 const toolSchema = JSON.parse(fs.readFileSync(toolSchemaPath, 'utf-8'));
 
+function buildQueryString(params) {
+  const sp = new URLSearchParams();
+  const entries = params && typeof params === 'object' ? Object.entries(params) : [];
+  for (const [key, value] of entries) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null) continue;
+        sp.append(key, String(item));
+      }
+      continue;
+    }
+    sp.append(key, String(value));
+  }
+  const qs = sp.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function normalizeAgentProductsListResponse(raw, ctx = {}) {
+  if (!raw) return raw;
+
+  const nowIso = new Date().toISOString();
+
+  const getProducts = (obj) => {
+    if (!obj) return [];
+    if (Array.isArray(obj)) return obj;
+    if (Array.isArray(obj.products)) return obj.products;
+    if (Array.isArray(obj.items)) return obj.items;
+    if (Array.isArray(obj.results)) return obj.results;
+    const data = obj.data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.products)) return data.products;
+      if (Array.isArray(data.items)) return data.items;
+      if (Array.isArray(data.results)) return data.results;
+    }
+    return [];
+  };
+
+  const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const products = getProducts(raw);
+
+  const totalRaw =
+    base.total ??
+    base.count ??
+    base.total_count ??
+    base.totalCount ??
+    base.page_total ??
+    base.pageTotal;
+  const total = typeof totalRaw === 'number' ? totalRaw : products.length;
+
+  const limitRaw = ctx.limit ?? base.limit ?? base.page_size ?? base.pageSize;
+  const offsetRaw = ctx.offset ?? base.offset ?? 0;
+  const limit = Number(limitRaw);
+  const offset = Number(offsetRaw);
+  const page =
+    Number.isFinite(limit) && limit > 0 && Number.isFinite(offset) && offset >= 0
+      ? Math.floor(offset / limit) + 1
+      : base.page || 1;
+
+  const mergedMetadata =
+    base.metadata && typeof base.metadata === 'object' && !Array.isArray(base.metadata)
+      ? { ...base.metadata }
+      : {};
+
+  if (!mergedMetadata.query_source) mergedMetadata.query_source = 'agent_products_search';
+  if (!mergedMetadata.fetched_at) mergedMetadata.fetched_at = nowIso;
+
+  return {
+    ...base,
+    status: base.status || 'success',
+    success: typeof base.success === 'boolean' ? base.success : true,
+    products,
+    total,
+    page,
+    page_size: typeof base.page_size === 'number' ? base.page_size : products.length,
+    reply: base.reply ?? null,
+    metadata: mergedMetadata,
+  };
+}
+
+function normalizeAgentProductDetailResponse(raw) {
+  if (!raw) return raw;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    if (raw.product) return raw;
+    if (raw.data && typeof raw.data === 'object' && raw.data.product) {
+      return { ...raw, product: raw.data.product };
+    }
+    const looksLikeProduct =
+      (raw.id || raw.product_id || raw.productId || raw.title || raw.name) &&
+      typeof raw !== 'string';
+    if (looksLikeProduct) {
+      return { status: 'success', success: true, product: raw };
+    }
+    if (raw.data && typeof raw.data === 'object') {
+      const d = raw.data;
+      const dLooksLikeProduct = d && (d.id || d.product_id || d.productId || d.title || d.name);
+      if (dLooksLikeProduct) {
+        return { ...raw, product: d };
+      }
+    }
+  }
+  return raw;
+}
+
 // Routing map for real Pivota API endpoints
 const ROUTE_MAP = {
   find_products: {
-    // Route through backend shopping gateway to avoid slow legacy search endpoints.
-    // The response remains a products list, but the upstream call uses the same
-    // cache + live fallback pipeline as find_products_multi.
-    method: 'POST',
-    path: '/agent/shop/v1/invoke',
-    paramType: 'body'
+    // Use the stable Agent Search endpoint (GET) to avoid upstream /agent/shop/v1/invoke timeouts.
+    method: 'GET',
+    path: '/agent/v1/products/search',
+    paramType: 'query',
   },
   find_similar_products: {
     // Delegate to Python shopping gateway for multi-merchant similarity.
@@ -425,9 +527,11 @@ const ROUTE_MAP = {
   },
   // Cross-merchant product search via backend shopping gateway
   find_products_multi: {
-    method: 'POST',
-    path: '/agent/shop/v1/invoke',
-    paramType: 'body'
+    // Prefer the stable Agent Search endpoint (GET). We can opt into cross-merchant
+    // search via merchant_ids[] or search_all_merchants=true.
+    method: 'GET',
+    path: '/agent/v1/products/search',
+    paramType: 'query',
   },
   products_recommendations: {
     method: 'GET',
@@ -440,11 +544,9 @@ const ROUTE_MAP = {
     paramType: 'query'
   },
   get_product_detail: {
-    // Route via the shopping gateway so that product detail uses the same
-    // cache + live fallback logic as find_products_multi.
-    method: 'POST',
-    path: '/agent/shop/v1/invoke',
-    paramType: 'body'
+    method: 'GET',
+    path: '/agent/v1/products/merchants/{merchant_id}/product/{product_id}',
+    paramType: 'path',
   },
   preview_quote: {
     method: 'POST',
@@ -2984,29 +3086,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     // Handle different parameter types
     switch (operation) {
       case 'find_products': {
-        // Normalize legacy single-merchant search into the multi-merchant pipeline.
-        // We keep the public operation name (find_products) but invoke the upstream
-        // shopping gateway with find_products_multi under the hood.
+        // Single-merchant product search (Agent Search endpoint).
         const search = effectivePayload.search || effectivePayload || {};
+        const page = Math.max(1, Number(search.page || 1) || 1);
+        const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+        const offset = (page - 1) * limit;
 
-        const normalizedSearch = {
-          ...(search.merchant_id && { merchant_id: search.merchant_id }),
-          ...(search.query && { query: search.query }),
-          ...(search.price_min && { price_min: search.price_min }),
-          ...(search.price_max && { price_max: search.price_max }),
-          ...(search.category && { category: search.category }),
-          page: Number(search.page || 1) || 1,
-          limit: Math.min(Number(search.page_size || search.limit || 20) || 20, 100),
+        const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+        const priceMin = search.price_min ?? search.min_price;
+        const priceMax = search.price_max ?? search.max_price;
+
+        queryParams = {
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          ...(search.query != null ? { query: String(search.query || '') } : {}),
+          ...(search.category ? { category: search.category } : {}),
+          ...(priceMin != null ? { min_price: priceMin } : {}),
+          ...(priceMax != null ? { max_price: priceMax } : {}),
           in_stock_only: search.in_stock_only !== false,
-        };
-
-        requestBody = {
-          operation: 'find_products_multi',
-          payload: {
-            search: normalizedSearch,
-            ...(effectivePayload.user ? { user: effectivePayload.user } : {}),
-          },
-          metadata,
+          limit,
+          offset,
         };
         break;
       }
@@ -3023,11 +3121,52 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
 
       case 'find_products_multi': {
-        // Pass through to backend shopping gateway which understands this operation
-        requestBody = {
-          operation,
-          payload: effectivePayload,
-          metadata,
+        // Cross-merchant search via Agent Search endpoint.
+        const search = effectivePayload.search || {};
+        const page = Math.max(1, Number(search.page || 1) || 1);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const offset = (page - 1) * limit;
+
+        const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+        const merchantIdsRaw = search.merchant_ids || search.merchantIds;
+        const merchantIds =
+          Array.isArray(merchantIdsRaw)
+            ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+            : [];
+
+        const configuredMerchantIds = getCreatorCatalogMerchantIds();
+        const searchAllMerchantsExplicit =
+          search.search_all_merchants === true || search.searchAllMerchants === true;
+
+        const priceMin = search.price_min ?? search.min_price;
+        const priceMax = search.price_max ?? search.max_price;
+
+        // If the caller didn't provide a merchant scope, prefer our configured
+        // merchant ids to avoid expensive search_all_merchants scans.
+        const fallbackMerchantIds =
+          !merchantId && merchantIds.length === 0 && !searchAllMerchantsExplicit
+            ? configuredMerchantIds
+            : [];
+
+        queryParams = {
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
+          ...(!merchantId && merchantIds.length === 0 && fallbackMerchantIds.length > 0
+            ? { merchant_ids: fallbackMerchantIds }
+            : {}),
+          ...(!merchantId &&
+          merchantIds.length === 0 &&
+          fallbackMerchantIds.length === 0 &&
+          searchAllMerchantsExplicit
+            ? { search_all_merchants: true }
+            : {}),
+          ...(search.query != null ? { query: String(search.query || '') } : {}),
+          ...(search.category ? { category: search.category } : {}),
+          ...(priceMin != null ? { min_price: priceMin } : {}),
+          ...(priceMax != null ? { max_price: priceMax } : {}),
+          in_stock_only: search.in_stock_only !== false,
+          limit,
+          offset,
         };
         break;
       }
@@ -3082,18 +3221,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
       
       case 'get_product_detail': {
-        // Delegate to backend shopping gateway get_product_detail operation
-        if (!payload.product?.merchant_id || !payload.product?.product_id) {
+        const merchantId = String(payload.product?.merchant_id || payload.product?.merchantId || '').trim();
+        const productId = String(payload.product?.product_id || payload.product?.productId || '').trim();
+        if (!merchantId || !productId) {
           return res.status(400).json({
             error: 'MISSING_PARAMETERS',
             message: 'merchant_id and product_id are required'
           });
         }
-        requestBody = {
-          operation,
-          payload,
-          metadata,
-        };
+        url = url
+          .replace('{merchant_id}', encodeURIComponent(merchantId))
+          .replace('{product_id}', encodeURIComponent(productId));
         break;
       }
 
@@ -3284,9 +3422,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     logger.info({ operation, method: route.method, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
 
     // Make the upstream request
+    const queryString = buildQueryString(queryParams);
     const axiosConfig = {
       method: route.method,
-      url,
+      url: `${url}${queryString}`,
       headers: {
         ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
         ...(checkoutToken
@@ -3300,7 +3439,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       },
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
       timeout: getUpstreamTimeoutMs(operation),
-      ...(Object.keys(queryParams).length > 0 && { params: queryParams }),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
 
@@ -3407,6 +3545,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         },
       };
     }
+
+    if (operation === 'find_products' || operation === 'find_products_multi') {
+      upstreamData = normalizeAgentProductsListResponse(upstreamData, {
+        limit: queryParams?.limit,
+        offset: queryParams?.offset,
+      });
+    }
+
+    if (operation === 'get_product_detail') {
+      upstreamData = normalizeAgentProductDetailResponse(upstreamData);
+    }
+
     const promotions = await getActivePromotions(now, creatorId);
 
     // Normalize submit_payment responses so frontends always see a unified
