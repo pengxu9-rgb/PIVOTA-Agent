@@ -3296,11 +3296,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           order.preferred_psp || payload.preferred_psp || undefined;
         
         // Build request body with all required fields
-        requestBody = {
-          merchant_id,
-          customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
-          ...(order.currency ? { currency: order.currency } : {}),
-          ...(order.quote_id ? { quote_id: order.quote_id } : {}),
+	        requestBody = {
+	          merchant_id,
+	          customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
+	          ...(order.currency ? { currency: order.currency } : {}),
+	          ...(order.quote_id ? { quote_id: order.quote_id } : {}),
           ...(order.selected_delivery_option
             ? { selected_delivery_option: order.selected_delivery_option }
             : {}),
@@ -3316,16 +3316,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             unit_price: item.unit_price || item.price,
             subtotal: (item.unit_price || item.price) * item.quantity
           })),
-          ...(order.discount_codes ? { discount_codes: order.discount_codes } : {}),
-          shipping_address: {
-            name: order.shipping_address?.recipient_name || order.shipping_address?.name,
-            address_line1: order.shipping_address?.address_line1,
-            address_line2: order.shipping_address?.address_line2 || '',
-            city: order.shipping_address?.city,
-            country: order.shipping_address?.country,
-            postal_code: order.shipping_address?.postal_code,
-            phone: order.shipping_address?.phone || ''
-          },
+	          ...(order.discount_codes ? { discount_codes: order.discount_codes } : {}),
+	          shipping_address: {
+	            name: order.shipping_address?.recipient_name || order.shipping_address?.name,
+	            address_line1: order.shipping_address?.address_line1,
+	            address_line2: order.shipping_address?.address_line2 || '',
+	            city: order.shipping_address?.city,
+	            ...(order.shipping_address?.state
+	              ? { state: order.shipping_address.state }
+	              : order.shipping_address?.province
+	                ? { state: order.shipping_address.province }
+	                : order.shipping_address?.state_code
+	                  ? { state: order.shipping_address.state_code }
+	                  : order.shipping_address?.province_code
+	                    ? { state: order.shipping_address.province_code }
+	                    : {}),
+	            country: order.shipping_address?.country,
+	            postal_code: order.shipping_address?.postal_code,
+	            phone: order.shipping_address?.phone || ''
+	          },
           customer_notes: order.notes || '',
           // Pass through arbitrary order-level metadata (e.g. creator_id / creator_slug / creator_name)
           metadata: order.metadata || {},
