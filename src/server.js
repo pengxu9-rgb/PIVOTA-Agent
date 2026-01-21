@@ -8,13 +8,14 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
-const { randomUUID } = require('crypto');
+const { createHash, randomUUID } = require('crypto');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query } = require('./db');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
 const { searchProducts, getProductById } = require('./mockProducts');
+const { buildPdpPayload } = require('./pdpBuilder');
 const {
   getAllPromotions,
   getPromotionById,
@@ -606,21 +607,203 @@ function getOpenAIClient() {
 // This keeps the gateway responsive while being more tolerant of
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
-  try {
-    return await axios(axiosConfig);
-  } catch (err) {
-    const retryableOps = ['find_products', 'find_products_multi', 'find_similar_products'];
-    if (err.code === 'ECONNABORTED' && retryableOps.includes(operation)) {
-      logger.warn(
-        { url: axiosConfig.url, operation },
-        'Upstream timeout, retrying once'
-      );
-      // One quick retry with the same config; if this also times out,
-      // the error will be handled by the outer catch as usual.
-      return await axios(axiosConfig);
-    }
-    throw err;
+  const timeoutRetryableOps = ['find_products', 'find_products_multi', 'find_similar_products'];
+  const busyRetryableOps = [
+    'find_products',
+    'find_products_multi',
+    'find_similar_products',
+    'get_product_detail',
+    'preview_quote',
+    'create_order',
+    'submit_payment',
+    'get_order_status',
+    'request_after_sales',
+    'track_product_click',
+  ];
+  const maxBusyAttempts = Math.max(
+    1,
+    Math.min(5, Number(process.env.UPSTREAM_RETRY_MAX_ATTEMPTS || 3)),
+  );
+  const baseDelayMs = Math.max(50, Number(process.env.UPSTREAM_RETRY_BASE_MS || 250));
+  const capDelayMs = Math.max(baseDelayMs, Number(process.env.UPSTREAM_RETRY_MAX_MS || 2000));
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  function parseRetryAfterMs(headers) {
+    if (!headers || typeof headers !== 'object') return null;
+    const v = headers['retry-after'] ?? headers['Retry-After'];
+    if (!v) return null;
+    const s = String(v).trim();
+    if (!s) return null;
+
+    const seconds = Number(s);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+
+    const dateMs = Date.parse(s);
+    if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+
+    return null;
+  }
+
+  function isTemporaryUnavailable(err) {
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    const msg =
+      (data && typeof data === 'object' && data.error && data.error.message) ||
+      (data && typeof data === 'object' && data.message) ||
+      null;
+    const detailError =
+      (data &&
+        typeof data === 'object' &&
+        data.error &&
+        data.error.details &&
+        data.error.details.error) ||
+      null;
+
+    return (
+      status === 503 &&
+      (msg === 'TEMPORARY_UNAVAILABLE' || detailError === 'TEMPORARY_UNAVAILABLE')
+    );
+  }
+
+  function retryDelayMs(attempt, err) {
+    const exp = Math.min(capDelayMs, baseDelayMs * Math.pow(2, Math.max(0, attempt - 1)));
+    const jitter = Math.floor(Math.random() * Math.min(150, exp * 0.2));
+    const computed = Math.min(capDelayMs, exp + jitter);
+
+    const retryAfterMs = parseRetryAfterMs(err?.response?.headers);
+    if (retryAfterMs != null && Number.isFinite(retryAfterMs)) {
+      return Math.min(capDelayMs, Math.max(computed, retryAfterMs));
+    }
+    return computed;
+  }
+
+  let attempt = 0;
+  while (true) {
+    try {
+      return await axios(axiosConfig);
+    } catch (err) {
+      attempt += 1;
+
+      // Timeout retry (legacy behavior): one retry for read-heavy search operations.
+      if (
+        err.code === 'ECONNABORTED' &&
+        timeoutRetryableOps.includes(operation) &&
+        attempt === 1
+      ) {
+        logger.warn({ url: axiosConfig.url, operation }, 'Upstream timeout, retrying once');
+        continue;
+      }
+
+      // DB busy / temporary unavailable: retry with short exponential backoff.
+      if (
+        isTemporaryUnavailable(err) &&
+        busyRetryableOps.includes(operation) &&
+        attempt < maxBusyAttempts
+      ) {
+        const delayMs = retryDelayMs(attempt, err);
+        logger.warn(
+          {
+            url: axiosConfig.url,
+            operation,
+            attempt,
+            max_attempts: maxBusyAttempts,
+            delay_ms: delayMs,
+          },
+          'Upstream temporary unavailable, retrying',
+        );
+        await sleep(delayMs);
+        continue;
+      }
+
+      throw err;
+    }
+  }
+}
+
+function shouldIncludePdp(payload) {
+  if (!payload) return false;
+  const view = String(payload.view || '').toLowerCase();
+  if (view === 'pdp') return true;
+  const include = Array.isArray(payload.include) ? payload.include : [];
+  return include.includes('pdp') || include.includes('pdp_payload');
+}
+
+function getPdpOptions(payload) {
+  const include = Array.isArray(payload?.include) ? payload.include : [];
+  return {
+    includeRecommendations: include.includes('recommendations') || Boolean(payload?.recommendations?.limit),
+    includeEmptyReviews: include.includes('reviews_preview') || payload?.include_empty_reviews === true,
+    templateHint: payload?.template_hint || payload?.template || null,
+    entryPoint: payload?.context?.entry_point || payload?.entry_point || null,
+    experiment: payload?.context?.experiment || payload?.experiment || null,
+  };
+}
+
+async function fetchProductDetailFromUpstream(args) {
+  const { merchantId, productId, skuId, checkoutToken } = args;
+  const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const data = {
+    operation: 'get_product_detail',
+    payload: {
+      product: {
+        merchant_id: merchantId,
+        product_id: productId,
+        ...(skuId ? { sku_id: skuId } : {}),
+      },
+    },
+  };
+  const axiosConfig = {
+    method: 'POST',
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('get_product_detail'),
+    data,
+  };
+  const resp = await callUpstreamWithOptionalRetry('get_product_detail', axiosConfig);
+  return resp?.data?.product || null;
+}
+
+async function fetchSimilarProductsFromUpstream(args) {
+  const { merchantId, productId, limit, checkoutToken } = args;
+  const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const data = {
+    operation: 'find_similar_products',
+    payload: {
+      similar: {
+        merchant_id: merchantId,
+        product_id: productId,
+        limit: limit || 6,
+      },
+    },
+  };
+  const axiosConfig = {
+    method: 'POST',
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('find_similar_products'),
+    data,
+  };
+  const resp = await callUpstreamWithOptionalRetry('find_similar_products', axiosConfig);
+  return Array.isArray(resp?.data?.products) ? resp.data.products : [];
 }
 
 function extractUpstreamErrorCode(err) {
@@ -662,6 +845,10 @@ function isPydanticMissingBodyField(err, fieldName) {
 }
 
 const app = express();
+
+app.get('/healthz', (_req, res) => {
+  return res.json({ ok: true, use_mock: USE_MOCK, mode: API_MODE, port: PORT });
+});
 
 async function fetchBackendAdmin({ method, path, params, data }) {
   if (!ADMIN_API_KEY) {
@@ -2824,9 +3011,38 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           );
           
           if (product) {
+            const pdpOptions = getPdpOptions(payload);
+            const includePdp = shouldIncludePdp(payload);
+            const relatedProducts = pdpOptions.includeRecommendations
+              ? pickSimilarProducts(
+                  searchProducts(
+                    payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
+                    payload.search?.query,
+                    undefined,
+                    undefined,
+                    undefined,
+                  ),
+                  payload.product?.product_id,
+                  payload.recommendations?.limit || 6,
+                  [payload.product?.product_id].filter(Boolean),
+                )
+              : [];
+
             mockResponse = {
               status: 'success',
-              product: product
+              product: product,
+              ...(includePdp
+                ? {
+                    pdp_payload: buildPdpPayload({
+                      product,
+                      relatedProducts,
+                      entryPoint: pdpOptions.entryPoint,
+                      experiment: pdpOptions.experiment,
+                      templateHint: pdpOptions.templateHint,
+                      includeEmptyReviews: pdpOptions.includeEmptyReviews,
+                    }),
+                  }
+                : {}),
             };
           } else {
             return res.status(404).json({
@@ -2834,6 +3050,50 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               message: 'Product not found'
             });
           }
+          break;
+        }
+
+        case 'get_pdp': {
+          const product = getProductById(
+            payload.product?.merchant_id || 'merch_208139f7600dbf42',
+            payload.product?.product_id
+          );
+
+          if (!product) {
+            return res.status(404).json({
+              error: 'PRODUCT_NOT_FOUND',
+              message: 'Product not found',
+            });
+          }
+
+          const pdpOptions = getPdpOptions(payload);
+          const relatedProducts = pdpOptions.includeRecommendations
+            ? pickSimilarProducts(
+                searchProducts(
+                  payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
+                  payload.search?.query,
+                  undefined,
+                  undefined,
+                  undefined,
+                ),
+                payload.product?.product_id,
+                payload.recommendations?.limit || 6,
+                [payload.product?.product_id].filter(Boolean),
+              )
+            : [];
+
+          mockResponse = {
+            status: 'success',
+            product,
+            pdp_payload: buildPdpPayload({
+              product,
+              relatedProducts,
+              entryPoint: pdpOptions.entryPoint,
+              experiment: pdpOptions.experiment,
+              templateHint: pdpOptions.templateHint,
+              includeEmptyReviews: pdpOptions.includeEmptyReviews,
+            }),
+          };
           break;
         }
         
@@ -2931,6 +3191,72 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     } catch (err) {
       logger.error({ err: err.message }, 'Mock handler error');
       return res.status(503).json({ error: 'SERVICE_UNAVAILABLE' });
+    }
+  }
+
+  if (operation === 'get_pdp') {
+    try {
+      const productId = payload.product?.product_id || payload.product_id;
+      const merchantId =
+        payload.product?.merchant_id ||
+        payload.merchant_id ||
+        payload.search?.merchant_id ||
+        DEFAULT_MERCHANT_ID;
+
+      if (!productId || !merchantId) {
+        return res.status(400).json({
+          error: 'MISSING_PARAMETERS',
+          message: 'merchant_id and product_id are required for get_pdp',
+        });
+      }
+
+      const pdpOptions = getPdpOptions(payload);
+      const product = await fetchProductDetailFromUpstream({
+        merchantId,
+        productId,
+        skuId: payload.product?.sku_id,
+        checkoutToken,
+      });
+
+      if (!product) {
+        return res.status(404).json({
+          error: 'PRODUCT_NOT_FOUND',
+          message: 'Product not found',
+        });
+      }
+
+      const relatedProducts = pdpOptions.includeRecommendations
+        ? await fetchSimilarProductsFromUpstream({
+            merchantId,
+            productId,
+            limit: payload.recommendations?.limit || 6,
+            checkoutToken,
+          })
+        : [];
+
+      const pdpPayload = buildPdpPayload({
+        product,
+        relatedProducts,
+        entryPoint: pdpOptions.entryPoint,
+        experiment: pdpOptions.experiment,
+        templateHint: pdpOptions.templateHint,
+        includeEmptyReviews: pdpOptions.includeEmptyReviews,
+      });
+
+      return res.json({
+        status: 'success',
+        product,
+        pdp_payload: pdpPayload,
+      });
+    } catch (err) {
+      const { code, message, data } = extractUpstreamErrorCode(err);
+      const statusCode = err?.response?.status || err?.status || 502;
+      logger.error({ err: err?.message || String(err) }, 'get_pdp failed');
+      return res.status(statusCode).json({
+        error: code || 'GET_PDP_FAILED',
+        message: message || 'Failed to build pdp payload',
+        details: data || null,
+      });
     }
   }
 
@@ -3383,6 +3709,22 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ? payment.payment_method
             : undefined);
 
+        let idempotencyKey =
+          payment.idempotency_key ||
+          payment.idempotencyKey ||
+          payload.idempotency_key ||
+          payload.idempotencyKey ||
+          undefined;
+        if (!idempotencyKey && payment.order_id) {
+          const basis = JSON.stringify({
+            order_id: payment.order_id,
+            method: methodHint || '',
+            expected_amount: payment.expected_amount || null,
+            currency: payment.currency || null,
+          });
+          idempotencyKey = `pivota_gateway:${createHash('sha256').update(basis).digest('hex').slice(0, 24)}`;
+        }
+
         requestBody = {
           order_id: payment.order_id,
           total_amount: payment.expected_amount, // Changed from 'amount' to 'total_amount'
@@ -3400,6 +3742,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               }
             : undefined,
           redirect_url: payment.return_url,
+          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
           ...(payload.ap2_state && { ap2_state: payload.ap2_state })
         };
         break;
@@ -3690,6 +4033,35 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       return res.status(response.status).json(wrapped);
     }
 
+    if (operation === 'get_product_detail' && shouldIncludePdp(payload)) {
+      const product =
+        upstreamData?.product ||
+        upstreamData?.data?.product ||
+        null;
+      if (product) {
+        const pdpOptions = getPdpOptions(payload);
+        const relatedProducts = pdpOptions.includeRecommendations
+          ? await fetchSimilarProductsFromUpstream({
+              merchantId: product.merchant_id || payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
+              productId: product.product_id || payload.product?.product_id,
+              limit: payload.recommendations?.limit || 6,
+              checkoutToken,
+            })
+          : [];
+        upstreamData = {
+          ...upstreamData,
+          pdp_payload: buildPdpPayload({
+            product,
+            relatedProducts,
+            entryPoint: pdpOptions.entryPoint,
+            experiment: pdpOptions.experiment,
+            templateHint: pdpOptions.templateHint,
+            includeEmptyReviews: pdpOptions.includeEmptyReviews,
+          }),
+        };
+      }
+    }
+
     let maybePolicy = upstreamData;
     if (operation === 'find_products_multi' && effectiveIntent) {
       maybePolicy = applyFindProductsMultiPolicy({
@@ -3896,8 +4268,11 @@ if (require.main === module) {
       logger.info('DB migrations complete');
     }
 
-    app.listen(PORT, () => {
-      logger.info(`Pivota Agent gateway listening on port ${PORT}, proxying to ${PIVOTA_API_BASE}`);
+    const server = app.listen(PORT, () => {
+      logger.info(
+        { port: PORT, use_mock: USE_MOCK, mode: API_MODE },
+        `Pivota Agent gateway listening on http://localhost:${PORT}, proxying to ${PIVOTA_API_BASE}`,
+      );
 
       const intervalMin = Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || 60) || 60;
       const initialDelayMs = Math.max(
@@ -3910,6 +4285,10 @@ if (require.main === module) {
           setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
         }, initialDelayMs);
       }
+    });
+
+    server.on('error', (err) => {
+      logger.error({ err: err?.message || String(err), port: PORT }, 'Gateway failed to bind');
     });
   })().catch((err) => {
     logger.error({ err: err?.message || String(err) }, 'Startup failed');
