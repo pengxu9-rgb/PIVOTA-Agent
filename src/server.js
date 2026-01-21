@@ -14,7 +14,7 @@ const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query } = require('./db');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
-const { searchProducts, getProductById } = require('./mockProducts');
+const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
 const { buildPdpPayload } = require('./pdpBuilder');
 const {
   getAllPromotions,
@@ -883,10 +883,6 @@ function isPydanticMissingBodyField(err, fieldName) {
 }
 
 const app = express();
-
-app.get('/healthz', (_req, res) => {
-  return res.json({ ok: true, use_mock: USE_MOCK, mode: API_MODE, port: PORT });
-});
 
 async function fetchBackendAdmin({ method, path, params, data }) {
   if (!ADMIN_API_KEY) {
@@ -2407,6 +2403,8 @@ app.get('/healthz', (req, res) => {
 
       res.json({
     ok: true,
+    use_mock: USE_MOCK,
+    port: PORT,
     api_mode: API_MODE,
     modes: {
       mock: USE_MOCK,
@@ -3016,12 +3014,23 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
         case 'find_products_multi': {
           const search = effectivePayload.search || {};
-          const products = searchProducts(
-            search.merchant_id || 'merch_208139f7600dbf42',
-            search.query,
-            search.price_max,
-            search.price_min,
-            search.category
+          const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+          const merchantIdsRaw = search.merchant_ids || search.merchantIds;
+          const merchantIds = Array.isArray(merchantIdsRaw)
+            ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+            : [];
+          const searchAllMerchants =
+            search.search_all_merchants === true || search.searchAllMerchants === true;
+          const resolvedMerchantIds = merchantId
+            ? [merchantId]
+            : merchantIds.length
+              ? merchantIds
+              : searchAllMerchants
+                ? Object.keys(mockProducts)
+                : Object.keys(mockProducts);
+
+          const products = resolvedMerchantIds.flatMap((mid) =>
+            searchProducts(mid, search.query, search.price_max, search.price_min, search.category),
           );
 
           mockResponse = {
@@ -3036,7 +3045,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             page_size: products.length,
             metadata: {
               query_source: 'mock_multi',
-              merchants_searched: 1
+              merchants_searched: resolvedMerchantIds.length
             }
           };
           break;
@@ -3049,6 +3058,114 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           );
           
           if (product) {
+            const merchantId =
+              product.merchant_id || payload.product?.merchant_id || DEFAULT_MERCHANT_ID;
+            const productId = product.product_id || payload.product?.product_id;
+
+            const platform = String(product.platform || '').trim();
+            const platformProductId = String(product.platform_product_id || '').trim();
+            const productGroupId =
+              platform && platformProductId
+                ? `pg:${platform}:${platformProductId}`
+                : productId === 'BOTTLE_001'
+                  ? `pg:mock:${productId}`
+                  : `pg:${merchantId}:${productId}`;
+
+            function stableOfferId(parts) {
+              return `of:v1:${parts.merchant_id}:${parts.product_group_id}:${parts.fulfillment_type || 'merchant'}:${parts.tier || 'default'}`;
+            }
+
+            function toMoney(amount, currency) {
+              return { amount: Number(amount) || 0, currency: currency || 'USD' };
+            }
+
+            function buildBottleOffers() {
+              const currency = product.currency || 'USD';
+              const offers = [
+                {
+                  tier: 'cheap_slow',
+                  merchant_id: 'merch_demo_cheap_slow',
+                  merchant_name: 'Budget Seller',
+                  fulfillment_type: 'merchant',
+                  inventory: { in_stock: true },
+                  price: toMoney(19.99, currency),
+                  shipping: {
+                    method_label: 'Standard',
+                    eta_days_range: [7, 10],
+                    cost: toMoney(1.99, currency),
+                  },
+                  returns: { return_window_days: 30, free_returns: true },
+                },
+                {
+                  tier: 'fast_premium',
+                  merchant_id: 'merch_demo_fast_premium',
+                  merchant_name: 'FastShip Plus',
+                  fulfillment_type: 'merchant',
+                  inventory: { in_stock: true },
+                  price: toMoney(25.99, currency),
+                  shipping: {
+                    method_label: 'Express',
+                    eta_days_range: [1, 2],
+                    cost: toMoney(8.99, currency),
+                  },
+                  returns: { return_window_days: 30, free_returns: true },
+                },
+                {
+                  tier: 'bad_returns',
+                  merchant_id: 'merch_demo_bad_returns',
+                  merchant_name: 'Strict Returns Co.',
+                  fulfillment_type: 'merchant',
+                  inventory: { in_stock: true },
+                  price: toMoney(23.49, currency),
+                  shipping: {
+                    method_label: 'Standard',
+                    eta_days_range: [3, 5],
+                    cost: toMoney(4.49, currency),
+                  },
+                  returns: { return_window_days: 7, free_returns: false },
+                },
+              ].map((o) => ({
+                offer_id: stableOfferId({
+                  merchant_id: o.merchant_id,
+                  product_group_id: productGroupId,
+                  fulfillment_type: o.fulfillment_type,
+                  tier: o.tier,
+                }),
+                product_group_id: productGroupId,
+                ...o,
+              }));
+
+              const bestPriceOfferId = offers.find((o) => o.tier === 'cheap_slow')?.offer_id || offers[0].offer_id;
+              const defaultOfferId = offers.find((o) => o.tier === 'fast_premium')?.offer_id || bestPriceOfferId;
+
+              return { offers, defaultOfferId, bestPriceOfferId };
+            }
+
+            const offerBundle =
+              productId === 'BOTTLE_001'
+                ? buildBottleOffers()
+                : (() => {
+                    const currency = product.currency || 'USD';
+                    const single = {
+                      offer_id: stableOfferId({
+                        merchant_id: merchantId,
+                        product_group_id: productGroupId,
+                        fulfillment_type: 'merchant',
+                        tier: 'single',
+                      }),
+                      product_group_id: productGroupId,
+                      tier: 'single',
+                      merchant_id: merchantId,
+                      merchant_name: product.merchant_name || product.store_name || null,
+                      fulfillment_type: 'merchant',
+                      inventory: { in_stock: Boolean(product.in_stock) },
+                      price: toMoney(product.price, currency),
+                      shipping: product.shipping || undefined,
+                      returns: product.returns || undefined,
+                    };
+                    return { offers: [single], defaultOfferId: single.offer_id, bestPriceOfferId: single.offer_id };
+                  })();
+
             const pdpOptions = getPdpOptions(payload);
             const includePdp = shouldIncludePdp(payload);
             const relatedProducts = pdpOptions.includeRecommendations
@@ -3069,6 +3186,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             mockResponse = {
               status: 'success',
               product: product,
+              product_group_id: productGroupId,
+              offers: offerBundle.offers,
+              offers_count: offerBundle.offers.length,
+              default_offer_id: offerBundle.defaultOfferId,
+              best_price_offer_id: offerBundle.bestPriceOfferId,
               ...(includePdp
                 ? {
                     pdp_payload: buildPdpPayload({

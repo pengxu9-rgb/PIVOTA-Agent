@@ -119,6 +119,56 @@ const mockProducts = {
       merchant_id: 'merch_208139f7600dbf42'
     }
   ]
+  ,
+  // Multi-offer demo merchants for BOTTLE_001 (used under USE_MOCK=true)
+  'merch_demo_cheap_slow': [
+    {
+      product_id: 'BOTTLE_001',
+      title: 'Stainless Steel Water Bottle - 24oz',
+      description: 'Double wall insulated bottle keeps drinks cold for 24 hours or hot for 12 hours',
+      price: 19.99,
+      currency: 'USD',
+      image_url: 'https://m.media-amazon.com/images/I/61CGHv1V7AL._AC_SL1500_.jpg',
+      category: 'Sports & Outdoors',
+      in_stock: true,
+      merchant_id: 'merch_demo_cheap_slow',
+      merchant_name: 'Budget Seller',
+      platform: 'mock',
+      platform_product_id: 'BOTTLE_001'
+    }
+  ],
+  'merch_demo_fast_premium': [
+    {
+      product_id: 'BOTTLE_001',
+      title: 'Stainless Steel Water Bottle - 24oz',
+      description: 'Double wall insulated bottle keeps drinks cold for 24 hours or hot for 12 hours',
+      price: 25.99,
+      currency: 'USD',
+      image_url: 'https://m.media-amazon.com/images/I/61CGHv1V7AL._AC_SL1500_.jpg',
+      category: 'Sports & Outdoors',
+      in_stock: true,
+      merchant_id: 'merch_demo_fast_premium',
+      merchant_name: 'FastShip Plus',
+      platform: 'mock',
+      platform_product_id: 'BOTTLE_001'
+    }
+  ],
+  'merch_demo_bad_returns': [
+    {
+      product_id: 'BOTTLE_001',
+      title: 'Stainless Steel Water Bottle - 24oz',
+      description: 'Double wall insulated bottle keeps drinks cold for 24 hours or hot for 12 hours',
+      price: 23.49,
+      currency: 'USD',
+      image_url: 'https://m.media-amazon.com/images/I/61CGHv1V7AL._AC_SL1500_.jpg',
+      category: 'Sports & Outdoors',
+      in_stock: true,
+      merchant_id: 'merch_demo_bad_returns',
+      merchant_name: 'Strict Returns Co.',
+      platform: 'mock',
+      platform_product_id: 'BOTTLE_001'
+    }
+  ]
 };
 
 // Function to search products
