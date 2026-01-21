@@ -808,6 +808,44 @@ async function fetchSimilarProductsFromUpstream(args) {
 
 function extractUpstreamErrorCode(err) {
   const data = err && err.response ? err.response.data : null;
+
+  function looksLikeErrorCode(v) {
+    if (typeof v !== 'string') return false;
+    const s = v.trim();
+    if (!s || s.length > 80) return false;
+    return /^[A-Z][A-Z0-9_]+$/.test(s);
+  }
+
+  // Preferred shape: Pivota unified error envelope
+  // {
+  //   status: "error",
+  //   error: { code, message, details: { error, message, ... } }
+  // }
+  if (data && typeof data === 'object') {
+    const pivotaErr = data.error && typeof data.error === 'object' ? data.error : null;
+    if (pivotaErr) {
+      const details =
+        pivotaErr.details && typeof pivotaErr.details === 'object' ? pivotaErr.details : null;
+      const underlying =
+        details && typeof details.error === 'string' && looksLikeErrorCode(details.error)
+          ? details.error
+          : typeof pivotaErr.message === 'string' && looksLikeErrorCode(pivotaErr.message)
+            ? pivotaErr.message
+            : typeof pivotaErr.code === 'string' && looksLikeErrorCode(pivotaErr.code)
+              ? pivotaErr.code
+              : null;
+      const msg =
+        (details && typeof details.message === 'string' && details.message) ||
+        (typeof pivotaErr.message === 'string' && !looksLikeErrorCode(pivotaErr.message)
+          ? pivotaErr.message
+          : '') ||
+        (typeof pivotaErr.code === 'string' && !looksLikeErrorCode(pivotaErr.code) ? pivotaErr.code : '') ||
+        (err && err.message ? err.message : '');
+      return { code: underlying, message: msg, data, detail: details || pivotaErr };
+    }
+  }
+
+  // Fallbacks: FastAPI default shapes or legacy gateway errors
   const detail = data && typeof data === 'object' ? (data.detail ?? data) : data;
   const code =
     detail && typeof detail === 'object'
