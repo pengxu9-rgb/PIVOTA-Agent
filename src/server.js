@@ -15,6 +15,11 @@ const { runMigrations } = require('./db/migrate');
 const { query } = require('./db');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
 const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
+const {
+  buildOfferId,
+  buildProductGroupId,
+  extractMerchantIdFromOfferId,
+} = require('./offers/offerIds');
 const { buildPdpPayload } = require('./pdpBuilder');
 const {
   getAllPromotions,
@@ -92,6 +97,63 @@ const SLOW_UPSTREAM_OPS = new Set([
 
 function getUpstreamTimeoutMs(operation) {
   return SLOW_UPSTREAM_OPS.has(operation) ? UPSTREAM_TIMEOUT_SLOW_MS : UPSTREAM_TIMEOUT_SEARCH_MS;
+}
+
+// Resolve-product candidates cache (Phase 2 perf: avoid repeated slow scans).
+const RESOLVE_PRODUCT_CANDIDATES_CACHE_ENABLED =
+  process.env.RESOLVE_PRODUCT_CANDIDATES_CACHE_ENABLED !== 'false';
+const RESOLVE_PRODUCT_CANDIDATES_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
+const RESOLVE_PRODUCT_CANDIDATES_CACHE_METRICS = {
+  hits: 0,
+  misses: 0,
+  sets: 0,
+  bypasses: 0,
+};
+const RESOLVE_PRODUCT_CANDIDATES_TTL_MS = parseTimeoutMs(
+  process.env.RESOLVE_PRODUCT_CANDIDATES_TTL_MS,
+  60 * 1000,
+);
+
+function getResolveProductCandidatesCacheEntry(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return null;
+  const hit = RESOLVE_PRODUCT_CANDIDATES_CACHE.get(key);
+  if (!hit) {
+    RESOLVE_PRODUCT_CANDIDATES_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
+    RESOLVE_PRODUCT_CANDIDATES_CACHE.delete(key);
+    RESOLVE_PRODUCT_CANDIDATES_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  RESOLVE_PRODUCT_CANDIDATES_CACHE_METRICS.hits += 1;
+  return hit;
+}
+
+function setResolveProductCandidatesCache(
+  cacheKey,
+  value,
+  ttlMs = RESOLVE_PRODUCT_CANDIDATES_TTL_MS,
+) {
+  const key = String(cacheKey || '');
+  if (!key) return;
+  const ttl = Number(ttlMs) || RESOLVE_PRODUCT_CANDIDATES_TTL_MS;
+  RESOLVE_PRODUCT_CANDIDATES_CACHE_METRICS.sets += 1;
+  RESOLVE_PRODUCT_CANDIDATES_CACHE.set(key, {
+    value,
+    storedAtMs: Date.now(),
+    expiresAtMs: Date.now() + Math.max(5_000, ttl),
+  });
+}
+
+function snapshotResolveProductCandidatesCacheStats() {
+  return {
+    enabled: RESOLVE_PRODUCT_CANDIDATES_CACHE_ENABLED,
+    ttl_ms: RESOLVE_PRODUCT_CANDIDATES_TTL_MS,
+    size: RESOLVE_PRODUCT_CANDIDATES_CACHE.size,
+    ...RESOLVE_PRODUCT_CANDIDATES_CACHE_METRICS,
+  };
 }
 
 // --- Currency helpers (Creator cache surfaces) ---
@@ -2425,6 +2487,7 @@ app.get('/healthz', (req, res) => {
       taxonomy_view_id: process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION',
       taxonomy_version: process.env.TAXONOMY_VERSION || null,
     },
+    resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
     products_available: true,
     catalog_cache: includeCacheStats
       ? {
@@ -2466,6 +2529,7 @@ app.get('/healthz', (req, res) => {
           started_at: SERVICE_STARTED_AT,
         },
         backend: { api_base: PIVOTA_API_BASE, api_key_configured: !!PIVOTA_API_KEY, db_configured: dbConfigured },
+        resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
         products_available: true,
         warning: 'healthz_cache_stats_failed',
       });
@@ -3050,6 +3114,154 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           };
           break;
         }
+
+	        case 'resolve_product_candidates': {
+	          const productRef = payload.product_ref || payload.productRef || payload.product || {};
+	          const productId = String(
+	            productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
+	          ).trim();
+          const requestedMerchantId = String(
+            productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
+          ).trim();
+	          const options = payload.options || {};
+	          const limit = Math.min(Math.max(1, Number(options.limit || payload.limit || 10) || 10), 50);
+	          const includeOffers = options.include_offers !== false;
+	          const debug = options.debug === true || String(options.debug || '').trim().toLowerCase() === 'true';
+
+	          if (!productId) {
+	            return res.status(400).json({
+	              error: 'MISSING_PARAMETERS',
+	              message: 'product_ref.product_id is required',
+            });
+          }
+
+	          const currency = 'USD';
+	          const productGroupId =
+	            (productId === 'BOTTLE_001'
+	              ? buildProductGroupId({ platform: 'mock', platform_product_id: productId })
+	              : buildProductGroupId({
+	                  merchant_id: requestedMerchantId || DEFAULT_MERCHANT_ID,
+	                  product_id: productId,
+	                })) ||
+	            (productId === 'BOTTLE_001'
+	              ? `pg:mock:${productId}`
+	              : `pg:${requestedMerchantId || DEFAULT_MERCHANT_ID}:${productId}`);
+
+	          const toMoney = (amount, cur) => ({ amount: Number(amount) || 0, currency: cur || currency });
+
+	          const buildBottleOffers = () => {
+	            const offers = [
+              {
+                tier: 'cheap_slow',
+                risk_tier: 'standard',
+                merchant_id: 'merch_demo_cheap_slow',
+                merchant_name: 'Budget Seller',
+                fulfillment_type: 'merchant',
+                inventory: { in_stock: true },
+                price: toMoney(19.99, currency),
+                shipping: { method_label: 'Standard', eta_days_range: [7, 10], cost: toMoney(1.99, currency) },
+                returns: { return_window_days: 30, free_returns: true },
+              },
+              {
+                tier: 'fast_premium',
+                risk_tier: 'preferred',
+                merchant_id: 'merch_demo_fast_premium',
+                merchant_name: 'FastShip Plus',
+                fulfillment_type: 'merchant',
+                inventory: { in_stock: true },
+                price: toMoney(25.99, currency),
+                shipping: { method_label: 'Express', eta_days_range: [1, 2], cost: toMoney(8.99, currency) },
+                returns: { return_window_days: 30, free_returns: true },
+              },
+              {
+                tier: 'bad_returns',
+                risk_tier: 'high_risk',
+                merchant_id: 'merch_demo_bad_returns',
+                merchant_name: 'Strict Returns Co.',
+                fulfillment_type: 'merchant',
+                inventory: { in_stock: true },
+                price: toMoney(23.49, currency),
+                shipping: { method_label: 'Standard', eta_days_range: [3, 5], cost: toMoney(4.49, currency) },
+                returns: { return_window_days: 7, free_returns: false },
+              },
+	            ]
+	              .slice(0, limit)
+	              .map((o) => ({
+	                offer_id:
+	                  buildOfferId({
+	                    merchant_id: o.merchant_id,
+	                    product_group_id: productGroupId,
+	                    fulfillment_type: o.fulfillment_type,
+	                    tier: o.tier,
+	                  }) ||
+	                  `of:v1:${o.merchant_id}:${productGroupId}:${o.fulfillment_type || 'merchant'}:${o.tier || 'default'}`,
+	                product_group_id: productGroupId,
+	                ...o,
+	              }));
+
+            const bestPriceOfferId =
+              offers.find((o) => o.tier === 'cheap_slow')?.offer_id || offers[0]?.offer_id || null;
+            const defaultOfferId =
+              offers.find((o) => o.tier === 'fast_premium')?.offer_id || bestPriceOfferId;
+
+            return {
+              offers,
+              bestPriceOfferId,
+              defaultOfferId,
+            };
+          };
+
+          let offers = [];
+          let bestPriceOfferId = null;
+          let defaultOfferId = null;
+
+          if (productId === 'BOTTLE_001') {
+            const bundle = buildBottleOffers();
+            offers = bundle.offers;
+            bestPriceOfferId = bundle.bestPriceOfferId;
+            defaultOfferId = bundle.defaultOfferId;
+          } else {
+            const mid = requestedMerchantId || DEFAULT_MERCHANT_ID;
+            const product = getProductById(mid, productId);
+            if (!product) {
+              return res.status(404).json({ error: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
+	            }
+	            const single = {
+	              offer_id:
+	                buildOfferId({
+	                  merchant_id: mid,
+	                  product_group_id: productGroupId,
+	                  fulfillment_type: 'merchant',
+	                  tier: 'single',
+	                }) || `of:v1:${mid}:${productGroupId}:merchant:single`,
+	              product_group_id: productGroupId,
+	              tier: 'single',
+	              risk_tier: 'standard',
+	              merchant_id: mid,
+              merchant_name: product.merchant_name || product.store_name || null,
+              fulfillment_type: 'merchant',
+              inventory: { in_stock: Boolean(product.in_stock) },
+              price: toMoney(product.price, product.currency || currency),
+              shipping: product.shipping || undefined,
+              returns: product.returns || undefined,
+            };
+            offers = [single];
+            bestPriceOfferId = single.offer_id;
+            defaultOfferId = single.offer_id;
+          }
+
+	          mockResponse = {
+	            status: 'success',
+	            success: true,
+	            product_group_id: productGroupId,
+	            offers_count: offers.length,
+	            ...(includeOffers ? { offers } : {}),
+	            default_offer_id: defaultOfferId,
+	            best_price_offer_id: bestPriceOfferId,
+	            ...(debug ? { cache: { hit: false, age_ms: 0, ttl_ms: RESOLVE_PRODUCT_CANDIDATES_TTL_MS } } : {}),
+	          };
+	          break;
+	        }
         
         case 'get_product_detail': {
           const product = getProductById(
@@ -3062,18 +3274,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               product.merchant_id || payload.product?.merchant_id || DEFAULT_MERCHANT_ID;
             const productId = product.product_id || payload.product?.product_id;
 
-            const platform = String(product.platform || '').trim();
-            const platformProductId = String(product.platform_product_id || '').trim();
-            const productGroupId =
-              platform && platformProductId
-                ? `pg:${platform}:${platformProductId}`
-                : productId === 'BOTTLE_001'
-                  ? `pg:mock:${productId}`
-                  : `pg:${merchantId}:${productId}`;
-
-            function stableOfferId(parts) {
-              return `of:v1:${parts.merchant_id}:${parts.product_group_id}:${parts.fulfillment_type || 'merchant'}:${parts.tier || 'default'}`;
-            }
+	            const platform = String(product.platform || '').trim();
+	            const platformProductId = String(product.platform_product_id || '').trim();
+	            const productGroupId =
+	              (platform && platformProductId
+	                ? buildProductGroupId({ platform, platform_product_id: platformProductId })
+	                : productId === 'BOTTLE_001'
+	                  ? buildProductGroupId({ platform: 'mock', platform_product_id: productId })
+	                  : buildProductGroupId({ merchant_id: merchantId, product_id: productId })) ||
+	              (platform && platformProductId
+	                ? `pg:${platform}:${platformProductId}`
+	                : productId === 'BOTTLE_001'
+	                  ? `pg:mock:${productId}`
+	                  : `pg:${merchantId}:${productId}`);
 
             function toMoney(amount, currency) {
               return { amount: Number(amount) || 0, currency: currency || 'USD' };
@@ -3124,16 +3337,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   },
                   returns: { return_window_days: 7, free_returns: false },
                 },
-              ].map((o) => ({
-                offer_id: stableOfferId({
-                  merchant_id: o.merchant_id,
-                  product_group_id: productGroupId,
-                  fulfillment_type: o.fulfillment_type,
-                  tier: o.tier,
-                }),
-                product_group_id: productGroupId,
-                ...o,
-              }));
+	              ].map((o) => ({
+	                offer_id:
+	                  buildOfferId({
+	                    merchant_id: o.merchant_id,
+	                    product_group_id: productGroupId,
+	                    fulfillment_type: o.fulfillment_type,
+	                    tier: o.tier,
+	                  }) ||
+	                  `of:v1:${o.merchant_id}:${productGroupId}:${o.fulfillment_type || 'merchant'}:${o.tier || 'default'}`,
+	                product_group_id: productGroupId,
+	                ...o,
+	              }));
 
               const bestPriceOfferId = offers.find((o) => o.tier === 'cheap_slow')?.offer_id || offers[0].offer_id;
               const defaultOfferId = offers.find((o) => o.tier === 'fast_premium')?.offer_id || bestPriceOfferId;
@@ -3144,18 +3359,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const offerBundle =
               productId === 'BOTTLE_001'
                 ? buildBottleOffers()
-                : (() => {
-                    const currency = product.currency || 'USD';
-                    const single = {
-                      offer_id: stableOfferId({
-                        merchant_id: merchantId,
-                        product_group_id: productGroupId,
-                        fulfillment_type: 'merchant',
-                        tier: 'single',
-                      }),
-                      product_group_id: productGroupId,
-                      tier: 'single',
-                      merchant_id: merchantId,
+	                : (() => {
+	                    const currency = product.currency || 'USD';
+	                    const single = {
+	                      offer_id:
+	                        buildOfferId({
+	                          merchant_id: merchantId,
+	                          product_group_id: productGroupId,
+	                          fulfillment_type: 'merchant',
+	                          tier: 'single',
+	                        }) || `of:v1:${merchantId}:${productGroupId}:merchant:single`,
+	                      product_group_id: productGroupId,
+	                      tier: 'single',
+	                      merchant_id: merchantId,
                       merchant_name: product.merchant_name || product.store_name || null,
                       fulfillment_type: 'merchant',
                       inventory: { in_stock: Boolean(product.in_stock) },
@@ -3259,18 +3475,40 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         
         case 'create_order': {
           // Mock order creation
+          const order = payload.order || {};
+          const offerIdRaw =
+            order.offer_id || order.offerId || payload.offer_id || payload.offerId || null;
+          const offerId = String(offerIdRaw || '').trim() || null;
+          const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+          const items = Array.isArray(order.items) ? order.items : [];
+          const merchantId =
+            merchantFromOffer ||
+            items[0]?.merchant_id ||
+            order.merchant_id ||
+            payload.merchant_id ||
+            null;
+
           mockResponse = {
             status: 'success',
             order_id: `ORD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase(),
-            total: payload.order?.items?.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0) || 0,
+            total: items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0) || 0,
             currency: 'USD',
-            status: 'pending'
+            status: 'pending',
+            ...(offerId ? { resolved_offer_id: offerId } : {}),
+            ...(merchantId ? { resolved_merchant_id: merchantId } : {}),
           };
           break;
         }
 
         case 'preview_quote': {
           const quote = payload.quote || {};
+          const offerIdRaw =
+            quote.offer_id || quote.offerId || payload.offer_id || payload.offerId || null;
+          const offerId = String(offerIdRaw || '').trim() || null;
+          const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+          const resolvedMerchantId =
+            merchantFromOffer || quote.merchant_id || payload.merchant_id || null;
+
           const items = quote.items || [];
           const subtotal = items.reduce(
             (sum, item) => sum + (Number(item.unit_price || item.price || 0) * Number(item.quantity || 0)),
@@ -3297,6 +3535,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               line_discount_total: 0,
               compare_at_savings: 0,
             })),
+            ...(offerId ? { resolved_offer_id: offerId } : {}),
+            ...(resolvedMerchantId ? { resolved_merchant_id: resolvedMerchantId } : {}),
           };
           break;
         }
@@ -3420,6 +3660,216 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     }
   }
 
+	  if (operation === 'resolve_product_candidates') {
+	    try {
+	      const productRef = payload.product_ref || payload.productRef || payload.product || {};
+	      const context = payload.context || {};
+	      const options = payload.options || {};
+
+      const productId = String(
+        productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
+      ).trim();
+      const requestedMerchantId = String(
+        productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
+      ).trim();
+
+	      const country = String(context.country || context.country_code || '').trim().toUpperCase() || null;
+	      const postalCode = String(context.postal_code || context.postalCode || '').trim() || null;
+	      const limit = Math.min(Math.max(1, Number(options.limit || payload.limit || 10) || 10), 50);
+	      const includeOffers = options.include_offers !== false;
+	      const debug = options.debug === true || String(options.debug || '').trim().toLowerCase() === 'true';
+	      const bypassCache =
+	        options.no_cache === true ||
+	        options.cache_bypass === true ||
+	        options.bypass_cache === true ||
+	        String(options.no_cache || '').trim().toLowerCase() === 'true' ||
+	        String(options.cache_bypass || options.bypass_cache || '')
+	          .trim()
+	          .toLowerCase() === 'true';
+
+	      if (!productId) {
+	        return res.status(400).json({
+	          error: 'MISSING_PARAMETERS',
+	          message: 'product_ref.product_id is required',
+        });
+      }
+
+      const cacheKey = JSON.stringify({
+        productId,
+        merchantId: requestedMerchantId || null,
+        country,
+        postalCode,
+        limit,
+	        includeOffers,
+	        hasCheckoutToken: Boolean(checkoutToken),
+	      });
+	      const cacheEnabled = RESOLVE_PRODUCT_CANDIDATES_CACHE_ENABLED && !bypassCache;
+	      if (!cacheEnabled) RESOLVE_PRODUCT_CANDIDATES_CACHE_METRICS.bypasses += 1;
+	      const cachedEntry = cacheEnabled ? getResolveProductCandidatesCacheEntry(cacheKey) : null;
+	      if (cachedEntry?.value) {
+	        const ageMs =
+	          typeof cachedEntry.storedAtMs === 'number' ? Math.max(0, Date.now() - cachedEntry.storedAtMs) : 0;
+	        const response = debug
+	          ? { ...cachedEntry.value, cache: { hit: true, age_ms: ageMs, ttl_ms: RESOLVE_PRODUCT_CANDIDATES_TTL_MS } }
+	          : cachedEntry.value;
+	        if (debug && process.env.NODE_ENV !== 'production') {
+	          logger.info(
+	            { operation, product_id: productId, cache_hit: true, cache_age_ms: ageMs, offers_count: response.offers_count },
+	            'resolve_product_candidates debug',
+	          );
+	        }
+	        return res.json(response);
+	      }
+
+	      const toMoney = (amount, currency) => ({
+	        amount: Number(amount) || 0,
+	        currency: String(currency || 'USD').toUpperCase() || 'USD',
+	      });
+
+	      // Fetch candidates via Agent Search (GET). This is intentionally lightweight:
+	      // - no product detail fetches
+	      // - no long descriptions/media
+      // - small limit
+      const searchUrl = `${PIVOTA_API_BASE}/agent/v1/products/search`;
+      const configuredMerchantIds = getCreatorCatalogMerchantIds();
+
+      const queryParams = {
+        ...(requestedMerchantId ? { merchant_id: requestedMerchantId } : {}),
+        ...(!requestedMerchantId && configuredMerchantIds.length > 0
+          ? { merchant_ids: configuredMerchantIds }
+          : {}),
+        ...(!requestedMerchantId && configuredMerchantIds.length === 0 ? { search_all_merchants: true } : {}),
+        query: productId,
+        in_stock_only: false,
+        limit,
+        offset: 0,
+      };
+
+      const queryString = buildQueryString(queryParams);
+      const axiosConfig = {
+        method: 'GET',
+        url: `${searchUrl}${queryString}`,
+        headers: {
+          ...(checkoutToken
+            ? { 'X-Checkout-Token': checkoutToken }
+            : {
+                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+              }),
+        },
+        timeout: getUpstreamTimeoutMs('find_products_multi'),
+      };
+
+      const resp = await callUpstreamWithOptionalRetry('find_products_multi', axiosConfig);
+      const normalizedList = normalizeAgentProductsListResponse(resp.data, {
+        limit: queryParams.limit,
+        offset: queryParams.offset,
+      });
+
+      const products = Array.isArray(normalizedList?.products) ? normalizedList.products : [];
+      const matches = products.filter((p) => String(p?.product_id || '').trim() === productId);
+      const deduped = Array.from(
+        new Map(
+          matches
+            .map((p) => [String(p?.merchant_id || '').trim(), p])
+            .filter(([mid]) => Boolean(mid)),
+        ).values(),
+	      ).slice(0, limit);
+
+	      // Canonical-ish grouping id: prefer platform refs if present; fallback to product_id.
+	      const first = deduped[0] || null;
+	      const platform = first ? String(first.platform || '').trim() : '';
+	      const platformProductId = first ? String(first.platform_product_id || '').trim() : '';
+	      const productGroupId =
+	        (platform && platformProductId
+	          ? buildProductGroupId({ platform, platform_product_id: platformProductId })
+	          : buildProductGroupId({ merchant_id: 'pid', product_id: productId })) || `pg:pid:${productId}`;
+
+	      const offers = deduped.map((p) => {
+	        const mid = String(p.merchant_id || '').trim();
+	        const currency = p.currency || 'USD';
+        const shipCost = p.shipping?.cost || p.shipping_cost || null;
+        const shipCostAmount =
+          shipCost == null ? undefined : Number(typeof shipCost === 'object' ? shipCost.amount : shipCost);
+        const shipCostCurrency =
+          shipCost && typeof shipCost === 'object'
+            ? String(shipCost.currency || currency)
+            : currency;
+        const etaRaw = p.shipping?.eta_days_range || p.shipping?.etaDaysRange || null;
+	        const etaRange =
+	          Array.isArray(etaRaw) && etaRaw.length >= 2
+	            ? [Number(etaRaw[0]) || 0, Number(etaRaw[1]) || 0]
+	            : undefined;
+
+	        return {
+	          offer_id:
+	            buildOfferId({
+	              merchant_id: mid,
+	              product_group_id: productGroupId,
+	              fulfillment_type: p.fulfillment_type || 'merchant',
+	              tier: 'default',
+	            }) || `of:v1:${mid}:${productGroupId}:${p.fulfillment_type || 'merchant'}:default`,
+	          product_group_id: productGroupId,
+	          merchant_id: mid,
+	          merchant_name: p.merchant_name || p.store_name || undefined,
+	          price: toMoney(p.price, currency),
+          shipping:
+            p.shipping || etaRange || shipCostAmount != null
+              ? {
+                  method_label: p.shipping?.method_label || p.shipping?.methodLabel || undefined,
+                  eta_days_range: etaRange,
+                  ...(shipCostAmount != null && Number.isFinite(shipCostAmount)
+                    ? { cost: toMoney(shipCostAmount, shipCostCurrency) }
+                    : {}),
+                }
+              : undefined,
+          returns: p.returns || undefined,
+          inventory: {
+            in_stock: typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
+          },
+          fulfillment_type: p.fulfillment_type || undefined,
+          risk_tier: 'standard',
+        };
+      });
+
+      const totalCost = (offer) =>
+        Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
+      const sortedByTotal = [...offers].sort((a, b) => totalCost(a) - totalCost(b));
+      const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
+      const defaultOfferId = bestPriceOfferId;
+
+	      const result = {
+	        status: 'success',
+	        product_group_id: productGroupId,
+	        offers_count: offers.length,
+	        ...(includeOffers ? { offers } : {}),
+	        default_offer_id: defaultOfferId,
+	        best_price_offer_id: bestPriceOfferId,
+	      };
+
+	      if (cacheEnabled) setResolveProductCandidatesCache(cacheKey, result);
+	      const response = debug
+	        ? { ...result, cache: { hit: false, age_ms: 0, ttl_ms: RESOLVE_PRODUCT_CANDIDATES_TTL_MS } }
+	        : result;
+	      if (debug && process.env.NODE_ENV !== 'production') {
+	        logger.info(
+	          { operation, product_id: productId, cache_hit: false, offers_count: offers.length },
+	          'resolve_product_candidates debug',
+	        );
+	      }
+	      return res.json(response);
+	    } catch (err) {
+	      const { code, message, data } = extractUpstreamErrorCode(err);
+	      const statusCode = err?.response?.status || err?.status || 502;
+      logger.error({ err: err?.message || String(err) }, 'resolve_product_candidates failed');
+      return res.status(statusCode).json({
+        error: code || 'RESOLVE_PRODUCT_CANDIDATES_FAILED',
+        message: message || 'Failed to resolve product candidates',
+        details: data || null,
+      });
+    }
+  }
+
   // Use real API routing
   const route = ROUTE_MAP[operation];
   if (!route) {
@@ -3431,6 +3881,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
   try {
     let creatorCacheRouteDebug = null;
+    let resolvedOfferId = null;
+    let resolvedMerchantId = null;
     // Creator UI cold-start (empty query) should not be constrained by the
     // upstream live merchant recall limits. Prefer reading sellable products
     // from products_cache (same source as creator categories / merchant portal).
@@ -3755,31 +4207,56 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
       case 'preview_quote': {
         const quote = payload.quote || {};
-        if (!quote.merchant_id || !Array.isArray(quote.items) || quote.items.length === 0) {
+        const offerIdRaw =
+          quote.offer_id || quote.offerId || payload.offer_id || payload.offerId || null;
+        const offerId = String(offerIdRaw || '').trim() || null;
+        const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+        const effectiveMerchantId = merchantFromOffer || quote.merchant_id;
+
+        if (!effectiveMerchantId || !Array.isArray(quote.items) || quote.items.length === 0) {
           return res.status(400).json({
             error: 'MISSING_PARAMETERS',
-            message: 'quote.merchant_id and quote.items[] are required',
+            message: 'quote.merchant_id (or quote.offer_id) and quote.items[] are required',
           });
         }
-        requestBody = quote;
+
+        if (offerId) {
+          resolvedOfferId = offerId;
+          resolvedMerchantId = String(effectiveMerchantId || '').trim() || null;
+        }
+
+        const normalizedQuote = { ...quote, merchant_id: effectiveMerchantId };
+        delete normalizedQuote.offer_id;
+        delete normalizedQuote.offerId;
+        requestBody = normalizedQuote;
         break;
       }
       
       case 'create_order': {
         // Map to real API requirements
         const order = payload.order || {};
-        const items = order.items || [];
+        const offerIdRaw =
+          order.offer_id || order.offerId || payload.offer_id || payload.offerId || null;
+        const offerId = String(offerIdRaw || '').trim() || null;
+
+        const items = Array.isArray(order.items) ? order.items : [];
         
         // Calculate totals if not provided
         const subtotal = items.reduce((sum, item) => sum + (item.unit_price || item.price || 0) * item.quantity, 0);
         
         // Extract merchant_id from first item (assuming single merchant order)
-        const merchant_id = items[0]?.merchant_id;
+        const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+        const merchant_id = merchantFromOffer || items[0]?.merchant_id;
         if (!merchant_id) {
           return res.status(400).json({
             error: 'MISSING_PARAMETERS',
-            message: 'merchant_id is required in items'
+            message: 'merchant_id is required in items (or provide order.offer_id)'
           });
+        }
+
+        if (offerId) {
+          resolvedOfferId = offerId;
+          resolvedMerchantId = String(merchant_id || '').trim() || null;
         }
 
         // Optional hint for PSP selection / checkout mode
@@ -3796,7 +4273,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ? { selected_delivery_option: order.selected_delivery_option }
             : {}),
           items: items.map(item => ({
-            merchant_id: item.merchant_id,
+            merchant_id,
             product_id: item.product_id,
             // Optional variant / SKU information for multi-variant products.
             ...(item.variant_id ? { variant_id: item.variant_id } : {}),
@@ -4133,6 +4610,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     if (operation === 'get_product_detail') {
       upstreamData = normalizeAgentProductDetailResponse(upstreamData);
+    }
+
+    if (
+      (operation === 'preview_quote' || operation === 'create_order') &&
+      resolvedOfferId &&
+      upstreamData &&
+      typeof upstreamData === 'object' &&
+      !Array.isArray(upstreamData)
+    ) {
+      upstreamData = {
+        ...upstreamData,
+        resolved_offer_id: resolvedOfferId,
+        ...(resolvedMerchantId ? { resolved_merchant_id: resolvedMerchantId } : {}),
+      };
     }
 
     const promotions = await getActivePromotions(now, creatorId);
