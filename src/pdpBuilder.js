@@ -40,6 +40,19 @@ function normalizeCurrency(value, fallback = 'USD') {
   return value?.currency || value?.currency_code || fallback;
 }
 
+function normalizeInStock(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value > 0;
+  if (typeof value === 'string') {
+    const lower = value.trim().toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+    const asNumber = Number(value);
+    if (!Number.isNaN(asNumber)) return asNumber > 0;
+  }
+  return undefined;
+}
+
 function detectTemplateHint(product) {
   const category = String(product.category || product.product_type || '').toLowerCase();
   const title = String(product.title || product.name || '').toLowerCase();
@@ -47,6 +60,183 @@ function detectTemplateHint(product) {
   const brand = String(product.brand?.name || product.brand || '').toLowerCase();
   const combined = `${category} ${title} ${tags} ${brand}`;
   return BEAUTY_KEYWORDS.some((kw) => combined.includes(kw)) ? 'beauty' : 'generic';
+}
+
+const MODULE_REQUIREMENTS = {
+  media_gallery: {
+    requiredPaths: ['data.items'],
+    validate: (module) => {
+      const items = module?.data?.items;
+      return Array.isArray(items) && items.some((item) => item?.url && item?.type);
+    },
+  },
+  price_promo: {
+    requiredPaths: ['data.price.amount', 'data.price.currency'],
+  },
+  variant_selector: {
+    requiredPaths: ['data.selected_variant_id'],
+  },
+  product_details: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => {
+      const sections = module?.data?.sections;
+      return (
+        Array.isArray(sections) &&
+        sections.some((section) => section?.heading && section?.content && section?.content_type)
+      );
+    },
+  },
+  reviews_preview: {
+    requiredPaths: ['data.rating', 'data.review_count'],
+  },
+  recommendations: {
+    requiredPaths: ['data.items'],
+    validate: (module) => Array.isArray(module?.data?.items) && module.data.items.length > 0,
+  },
+  trust_badges: {
+    requiredPaths: ['data.items'],
+    validate: (module) => Array.isArray(module?.data?.items) && module.data.items.length > 0,
+  },
+};
+
+function getByPath(obj, path) {
+  return path.split('.').reduce((acc, key) => (acc ? acc[key] : undefined), obj);
+}
+
+function hasValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function isValidSizeGuide(sizeGuide) {
+  if (!sizeGuide || typeof sizeGuide !== 'object') return false;
+  const columns = Array.isArray(sizeGuide.columns) ? sizeGuide.columns : [];
+  const rows = Array.isArray(sizeGuide.rows) ? sizeGuide.rows : [];
+  if (!columns.length || !rows.length) return false;
+  return rows.every(
+    (row) => row?.label && Array.isArray(row.values) && row.values.length > 0,
+  );
+}
+
+function validateModule(module) {
+  if (!module || typeof module !== 'object') return false;
+  const rule = MODULE_REQUIREMENTS[module.type];
+  if (!rule) return true;
+  const paths = rule.requiredPaths || [];
+  for (const path of paths) {
+    if (!hasValue(getByPath(module, path))) {
+      return false;
+    }
+  }
+  if (rule.validate && !rule.validate(module)) {
+    return false;
+  }
+  return true;
+}
+
+function validateBasePayload(payload, qualitySignals) {
+  let ok = true;
+  if (!payload || typeof payload !== 'object') ok = false;
+  if (!payload?.schema_version || typeof payload.schema_version !== 'string') ok = false;
+  if (!payload?.page_type || typeof payload.page_type !== 'string') ok = false;
+  if (!payload?.tracking?.page_request_id || !payload?.tracking?.entry_point) ok = false;
+  if (!payload?.product || typeof payload.product !== 'object') ok = false;
+  if (!payload?.product?.product_id) ok = false;
+  if (!payload?.product?.title) ok = false;
+  if (!payload?.product?.default_variant_id) ok = false;
+  if (!Array.isArray(payload?.product?.variants)) ok = false;
+  if (!Array.isArray(payload?.modules)) ok = false;
+  if (!Array.isArray(payload?.actions)) ok = false;
+  if (!ok) {
+    qualitySignals.fallback_used.schema = true;
+  }
+  return ok;
+}
+
+function compileModules(modules, qualitySignals) {
+  const safeModules = [];
+  const droppedModules = [];
+  const list = Array.isArray(modules) ? modules : [];
+  list.forEach((module) => {
+    const valid = validateModule(module);
+    if (valid) {
+      safeModules.push(module);
+      if (module?.type) {
+        qualitySignals.coverage_by_module[module.type] = 1;
+      }
+    } else if (module?.type) {
+      qualitySignals.coverage_by_module[module.type] = 0;
+      qualitySignals.fallback_used[module.type] = true;
+      droppedModules.push({
+        module_id: module?.module_id,
+        type: module?.type,
+        reason: 'missing_required_fields',
+      });
+    }
+  });
+  return { modules: safeModules, droppedModules };
+}
+
+function computeBuyBoxSignals(payload, qualitySignals) {
+  const modules = Array.isArray(payload?.modules) ? payload.modules : [];
+  const priceModule = modules.find((m) => m?.type === 'price_promo');
+  const priceOk =
+    priceModule &&
+    hasValue(getByPath(priceModule, 'data.price.amount')) &&
+    hasValue(getByPath(priceModule, 'data.price.currency'));
+  const actions = Array.isArray(payload?.actions) ? payload.actions : [];
+  const hasCheckoutAction = actions.some(
+    (action) => action?.action_type === 'buy_now' || action?.action_type === 'add_to_cart',
+  );
+  const inStock = payload?.product?.availability?.in_stock;
+  const stockOk = typeof inStock === 'boolean' ? inStock : true;
+  const coverage = priceOk && hasCheckoutAction && stockOk ? 1 : 0;
+  qualitySignals.coverage_by_module.buy_box = coverage;
+  qualitySignals.gating.buy_box_ok = coverage >= 1;
+  if (coverage < 1) {
+    qualitySignals.fallback_used.buy_box = true;
+  }
+}
+
+function computeSizeGuideSignals(payload, qualitySignals) {
+  const sizeGuide = payload?.product?.size_guide;
+  const isValid = isValidSizeGuide(sizeGuide);
+  if (!isValid && payload?.product?.size_guide) {
+    delete payload.product.size_guide;
+  }
+  const confidence = isValid ? 1 : 0;
+  qualitySignals.parse_confidence.size_guide = confidence;
+  qualitySignals.fallback_used.size_guide = Boolean(sizeGuide) && !isValid;
+  qualitySignals.gating.size_guide_ok = confidence >= 0.6;
+}
+
+function compilePdpPayload(payload, options = {}) {
+  const qualitySignals = {
+    coverage_by_module: {},
+    parse_confidence: {},
+    fallback_used: {},
+    gating: {},
+  };
+
+  validateBasePayload(payload, qualitySignals);
+  const compiled = compileModules(payload.modules, qualitySignals);
+  payload.modules = compiled.modules;
+  computeBuyBoxSignals(payload, qualitySignals);
+  computeSizeGuideSignals(payload, qualitySignals);
+
+  payload.quality_signals = qualitySignals;
+  const debugEnabled =
+    Boolean(options.debug) &&
+    (process.env.NODE_ENV !== 'production' || process.env.PDP_DEBUG === 'true');
+  if (debugEnabled) {
+    payload.x_debug = {
+      dropped_modules: compiled.droppedModules,
+    };
+  }
+  return payload;
 }
 
 function inferCategoryPath(product) {
@@ -87,6 +277,7 @@ function buildVariants(product) {
   const currency = product.currency || 'USD';
   const rawVariants = Array.isArray(product.variants) ? product.variants : [];
   if (!rawVariants.length) {
+    const availabilityInStock = normalizeInStock(product.in_stock);
     return [
       {
         variant_id: product.product_id || product.id,
@@ -94,7 +285,8 @@ function buildVariants(product) {
         title: 'Default',
         options: [],
         price: { current: { amount: normalizeAmount(product.price), currency } },
-        availability: { in_stock: Boolean(product.in_stock) },
+        availability:
+          availabilityInStock === undefined ? {} : { in_stock: availabilityInStock },
         image_url: product.image_url,
       },
     ];
@@ -109,12 +301,16 @@ function buildVariants(product) {
         ? Object.entries(v.options).map(([name, value]) => ({ name, value: String(value) }))
         : [];
 
-    const inStock =
-      typeof v.in_stock === 'boolean'
-        ? v.in_stock
-        : typeof v.available === 'boolean'
-          ? v.available
-          : (v.inventory_quantity || v.quantity || 0) > 0;
+    let inStock;
+    if (typeof v.in_stock === 'boolean') {
+      inStock = v.in_stock;
+    } else if (typeof v.available === 'boolean') {
+      inStock = v.available;
+    } else if (v.inventory_quantity != null) {
+      inStock = Number(v.inventory_quantity) > 0;
+    } else if (v.quantity != null) {
+      inStock = Number(v.quantity) > 0;
+    }
 
     const swatchHex =
       v.color_hex ||
@@ -130,7 +326,7 @@ function buildVariants(product) {
       options,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
       price: toVariantPrice(v.price || v.pricing, currency),
-      availability: { in_stock: inStock },
+      availability: inStock === undefined ? {} : { in_stock: inStock },
       image_url: v.image_url || v.image || v.images?.[0],
     };
   });
@@ -381,10 +577,11 @@ function buildPdpPayload(args) {
     });
   }
 
-  return {
+  const availabilityInStock = normalizeInStock(product.in_stock);
+  const payload = {
     schema_version: '1.0.0',
     page_type: 'product_detail',
-    template_hint: args.templateHint || detectTemplateHint(product),
+    x_template_hint: args.templateHint || detectTemplateHint(product),
     tracking: {
       page_request_id: createPageRequestId(),
       entry_point: args.entryPoint || 'agent',
@@ -403,10 +600,17 @@ function buildPdpPayload(args) {
       default_variant_id: defaultVariant.variant_id,
       variants,
       price: defaultVariant.price,
-      availability: { in_stock: Boolean(product.in_stock) },
+      availability:
+        availabilityInStock === undefined ? {} : { in_stock: availabilityInStock },
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,
       description: product.description || '',
+      ...(product.size_guide || product.sizeGuide
+        ? { size_guide: product.size_guide || product.sizeGuide }
+        : {}),
+      ...(product.raw || product.raw_detail || product.raw_payload
+        ? { raw: product.raw || product.raw_detail || product.raw_payload }
+        : {}),
     },
     modules,
     actions: [
@@ -414,6 +618,8 @@ function buildPdpPayload(args) {
       { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
     ],
   };
+
+  return compilePdpPayload(payload, { debug: args.debug });
 }
 
 module.exports = {

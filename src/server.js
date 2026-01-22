@@ -114,6 +114,88 @@ const RESOLVE_PRODUCT_CANDIDATES_TTL_MS = parseTimeoutMs(
   60 * 1000,
 );
 
+function buildOrderLineSnapshots(orderRequest, options = {}) {
+  const req = orderRequest && typeof orderRequest === 'object' ? orderRequest : {};
+  const items = Array.isArray(req.items) ? req.items : [];
+  const orderId = options.orderId || req.order_id || req.orderId || null;
+  const resolvedOfferId = options.resolvedOfferId || null;
+  const resolvedMerchantId = options.resolvedMerchantId || null;
+  const currency = req.currency || null;
+  const selectedDelivery = req.selected_delivery_option || req.selectedDeliveryOption || null;
+  const shippingSnapshot = selectedDelivery
+    ? {
+        method_label: selectedDelivery.method_label || selectedDelivery.label || selectedDelivery.name || null,
+        eta_days_range: selectedDelivery.eta_days_range || selectedDelivery.etaDaysRange || null,
+        cost: selectedDelivery.cost || selectedDelivery.price || null,
+      }
+    : null;
+  const returnsSnapshotRaw = req.returns_snapshot || req.returns || req.returns_policy || null;
+  const returnsSnapshot = returnsSnapshotRaw
+    ? {
+        return_window_days:
+          returnsSnapshotRaw.return_window_days ||
+          returnsSnapshotRaw.returnWindowDays ||
+          returnsSnapshotRaw.window_days ||
+          returnsSnapshotRaw.windowDays ||
+          null,
+        free_returns:
+          typeof returnsSnapshotRaw.free_returns === 'boolean'
+            ? returnsSnapshotRaw.free_returns
+            : typeof returnsSnapshotRaw.freeReturns === 'boolean'
+              ? returnsSnapshotRaw.freeReturns
+              : null,
+      }
+    : null;
+  const policyHash = returnsSnapshot
+    ? createHash('sha256')
+        .update(JSON.stringify(returnsSnapshot))
+        .digest('hex')
+        .slice(0, 16)
+    : null;
+
+  return items.map((item, idx) => {
+    const merchantId =
+      item.merchant_id ||
+      item.merchantId ||
+      resolvedMerchantId ||
+      req.merchant_id ||
+      req.merchantId ||
+      null;
+    const productId = item.product_id || item.productId || null;
+    const productGroupId =
+      buildProductGroupId({ merchant_id: merchantId, product_id: productId }) || null;
+    const variantId = item.variant_id || item.variantId || null;
+    const unitPrice = Number(item.unit_price || item.price || 0);
+    const quantity = Number(item.quantity || 0) || 1;
+    const subtotal =
+      typeof item.subtotal === 'number' && Number.isFinite(item.subtotal)
+        ? item.subtotal
+        : unitPrice * quantity;
+    const lineId =
+      item.line_id || item.lineId || (orderId ? `line_${orderId}_${idx + 1}` : `line_${idx + 1}`);
+
+    return {
+      line_id: lineId,
+      offer_id: resolvedOfferId || item.offer_id || item.offerId || null,
+      merchant_id: merchantId,
+      product_id: productId,
+      product_group_id: productGroupId,
+      variant_id: variantId,
+      quantity,
+      price_snapshot: {
+        unit_price: unitPrice,
+        subtotal,
+        currency,
+      },
+      ...(shippingSnapshot ? { shipping_snapshot: shippingSnapshot } : {}),
+      ...(returnsSnapshot
+        ? { returns_snapshot: { ...returnsSnapshot, policy_hash: policyHash } }
+        : {}),
+      created_at: new Date().toISOString(),
+    };
+  });
+}
+
 function getResolveProductCandidatesCacheEntry(cacheKey) {
   const key = String(cacheKey || '');
   if (!key) return null;
@@ -801,6 +883,10 @@ function getPdpOptions(payload) {
     templateHint: payload?.template_hint || payload?.template || null,
     entryPoint: payload?.context?.entry_point || payload?.entry_point || null,
     experiment: payload?.context?.experiment || payload?.experiment || null,
+    debug:
+      payload?.debug === true ||
+      payload?.options?.debug === true ||
+      payload?.context?.debug === true,
   };
 }
 
@@ -3416,6 +3502,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                       experiment: pdpOptions.experiment,
                       templateHint: pdpOptions.templateHint,
                       includeEmptyReviews: pdpOptions.includeEmptyReviews,
+                      debug: pdpOptions.debug,
                     }),
                   }
                 : {}),
@@ -3468,6 +3555,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               experiment: pdpOptions.experiment,
               templateHint: pdpOptions.templateHint,
               includeEmptyReviews: pdpOptions.includeEmptyReviews,
+              debug: pdpOptions.debug,
             }),
           };
           break;
@@ -3497,6 +3585,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ...(offerId ? { resolved_offer_id: offerId } : {}),
             ...(merchantId ? { resolved_merchant_id: merchantId } : {}),
           };
+          const orderLines = buildOrderLineSnapshots(order, {
+            orderId: mockResponse.order_id,
+            resolvedOfferId: offerId,
+            resolvedMerchantId: merchantId,
+          });
+          if (orderLines.length) {
+            mockResponse.order_lines = orderLines;
+          }
           break;
         }
 
@@ -3641,6 +3737,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         experiment: pdpOptions.experiment,
         templateHint: pdpOptions.templateHint,
         includeEmptyReviews: pdpOptions.includeEmptyReviews,
+        debug: pdpOptions.debug,
       });
 
       return res.json({
@@ -4626,6 +4723,31 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       };
     }
 
+    if (
+      operation === 'create_order' &&
+      upstreamData &&
+      typeof upstreamData === 'object' &&
+      !Array.isArray(upstreamData)
+    ) {
+      const normalizedOrderRequest =
+        requestBody && requestBody.order_request
+          ? requestBody.order_request
+          : requestBody;
+      if (normalizedOrderRequest && !upstreamData.order_lines) {
+        const orderLines = buildOrderLineSnapshots(normalizedOrderRequest, {
+          orderId: upstreamData.order_id || upstreamData.orderId || null,
+          resolvedOfferId,
+          resolvedMerchantId,
+        });
+        if (orderLines.length) {
+          upstreamData = {
+            ...upstreamData,
+            order_lines: orderLines,
+          };
+        }
+      }
+    }
+
     const promotions = await getActivePromotions(now, creatorId);
 
     // Normalize submit_payment responses so frontends always see a unified
@@ -4708,6 +4830,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             experiment: pdpOptions.experiment,
             templateHint: pdpOptions.templateHint,
             includeEmptyReviews: pdpOptions.includeEmptyReviews,
+            debug: pdpOptions.debug,
           }),
         };
       }
