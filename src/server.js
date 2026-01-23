@@ -4201,32 +4201,21 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
             : [];
 
-        const configuredMerchantIds = getCreatorCatalogMerchantIds();
         const searchAllMerchantsExplicit =
           search.search_all_merchants === true || search.searchAllMerchants === true;
 
         const priceMin = search.price_min ?? search.min_price;
         const priceMax = search.price_max ?? search.max_price;
 
-        // If the caller didn't provide a merchant scope, prefer our configured
-        // merchant ids to avoid expensive search_all_merchants scans.
-        const fallbackMerchantIds =
-          !merchantId && merchantIds.length === 0 && !searchAllMerchantsExplicit
-            ? configuredMerchantIds
-            : [];
+        // find_products_multi is intended to be cross-merchant by default. If the
+        // caller doesn't provide an explicit merchant scope, opt into a broad
+        // search instead of silently restricting to creator-config merchants.
+        const searchAllMerchants = searchAllMerchantsExplicit || (!merchantId && merchantIds.length === 0);
 
         queryParams = {
           ...(merchantId ? { merchant_id: merchantId } : {}),
           ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
-          ...(!merchantId && merchantIds.length === 0 && fallbackMerchantIds.length > 0
-            ? { merchant_ids: fallbackMerchantIds }
-            : {}),
-          ...(!merchantId &&
-          merchantIds.length === 0 &&
-          fallbackMerchantIds.length === 0 &&
-          searchAllMerchantsExplicit
-            ? { search_all_merchants: true }
-            : {}),
+          ...(!merchantId && merchantIds.length === 0 && searchAllMerchants ? { search_all_merchants: true } : {}),
           ...(search.query != null ? { query: String(search.query || '') } : {}),
           ...(search.category ? { category: search.category } : {}),
           ...(priceMin != null ? { min_price: priceMin } : {}),
