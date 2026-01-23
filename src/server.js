@@ -4198,7 +4198,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
 	      const products = Array.isArray(normalizedList?.products) ? normalizedList.products : [];
 	      const matches = products.filter((p) => String(p?.product_id || '').trim() === productId);
-	      const deduped = Array.from(
+	      let deduped = Array.from(
 	        new Map(
 	          matches
 	            .map((p) => [String(p?.merchant_id || '').trim(), p])
@@ -4206,13 +4206,48 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        ).values(),
 	      ).slice(0, limit);
 
-	      const anchor =
+	      let anchor =
 	        (requestedMerchantId
 	          ? deduped.find((p) => String(p?.merchant_id || '').trim() === requestedMerchantId) ||
 	            (deduped.length === 0 ? { merchant_id: requestedMerchantId } : null)
 	          : null) ||
 	        deduped[0] ||
 	        null;
+
+	      // Ensure we have a real anchor product for:
+	      // - reliable offers (at least 1 offer should exist when merchant_id is provided)
+	      // - passing platform to group resolution (some backends require it)
+	      //
+	      // NOTE: Agent Search doesn't always return results for internal UUID product ids.
+	      if (
+	        requestedMerchantId &&
+	        (!anchor ||
+	          String(anchor?.merchant_id || '').trim() !== requestedMerchantId ||
+	          !anchor?.platform)
+	      ) {
+	        try {
+	          const anchorDetail = await fetchLegacyProductDetailFromUpstream({
+	            merchantId: requestedMerchantId,
+	            productId,
+	            checkoutToken,
+	          });
+	          if (anchorDetail) {
+	            anchor = {
+	              ...anchorDetail,
+	              merchant_id: requestedMerchantId,
+	              product_id: productId,
+	            };
+	            const hasRequestedMerchant = deduped.some(
+	              (p) => String(p?.merchant_id || '').trim() === requestedMerchantId,
+	            );
+	            if (!hasRequestedMerchant) {
+	              deduped = [anchor, ...deduped].slice(0, limit);
+	            }
+	          }
+	        } catch {
+	          // Best-effort: do not block PDP on anchor enrichment failures.
+	        }
+	      }
 
 	      // Prefer backend-curated product groups (multi-seller).
 	      let productGroupId = null;
