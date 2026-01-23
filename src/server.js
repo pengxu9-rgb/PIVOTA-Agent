@@ -1007,6 +1007,30 @@ async function resolveProductGroupFromUpstream(args) {
   return resp?.data || null;
 }
 
+async function resolveProductGroupByProductIdFromUpstream(args) {
+  const { productId, platform, checkoutToken } = args;
+  const queryString = buildQueryString({
+    product_id: productId,
+    ...(platform ? { platform } : {}),
+  });
+  const url = `${PIVOTA_API_BASE}/agent/v1/product-groups/resolve-by-product-id${queryString}`;
+  const axiosConfig = {
+    method: 'GET',
+    url,
+    headers: {
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('find_products_multi'),
+  };
+  const resp = await axios(axiosConfig);
+  return resp?.data || null;
+}
+
 function normalizeOptionsRecord(raw) {
   const out = {};
   if (!raw) return out;
@@ -4168,15 +4192,52 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        return res.json(response);
 	      }
 
-	      const toMoney = (amount, currency) => ({
-	        amount: Number(amount) || 0,
-	        currency: String(currency || 'USD').toUpperCase() || 'USD',
-	      });
+		      const toMoney = (amount, currency) => ({
+		        amount: Number(amount) || 0,
+		        currency: String(currency || 'USD').toUpperCase() || 'USD',
+		      });
 
-	      // Fetch candidates via Agent Search (GET). This is intentionally lightweight:
-	      // - no product detail fetches
-	      // - no long descriptions/media
-      // - small limit
+		      // When callers omit merchant_id (common for shareable PDP links), the upstream
+		      // Agent Search endpoint may return no results for internal UUID product ids.
+		      // Try resolving via backend product groups first to recover seller offers.
+		      let productGroupId = null;
+		      let groupMembers = [];
+		      if (!requestedMerchantId) {
+		        try {
+		          const resolvedByPid = await resolveProductGroupByProductIdFromUpstream({
+		            productId,
+		            checkoutToken,
+		          });
+		          const pgid =
+		            resolvedByPid?.product_group_id || resolvedByPid?.productGroupId || null;
+		          if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
+		          const members = Array.isArray(resolvedByPid?.members)
+		            ? resolvedByPid.members
+		            : [];
+		          groupMembers = members
+		            .map((m) => ({
+		              merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+		              merchant_name: m?.merchant_name || m?.merchantName || undefined,
+		              product_id: String(m?.product_id || m?.productId || '').trim(),
+		              platform: m?.platform ? String(m.platform).trim() : undefined,
+		              is_primary: Boolean(m?.is_primary || m?.isPrimary),
+		            }))
+		            .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
+		            .slice(0, limit);
+		        } catch {
+		          productGroupId = null;
+		          groupMembers = [];
+		        }
+		      }
+
+		      // Fetch candidates via Agent Search (GET). This is intentionally lightweight:
+		      // - no product detail fetches
+		      // - no long descriptions/media
+	      // - small limit
+		      let deduped = [];
+		      let anchor = null;
+		      const shouldSkipSearch = !requestedMerchantId && groupMembers.length > 0;
+		      if (!shouldSkipSearch) {
       const searchUrl = `${PIVOTA_API_BASE}/agent/v1/products/search`;
       const configuredMerchantIds = getCreatorCatalogMerchantIds();
 
@@ -4207,29 +4268,30 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         timeout: getUpstreamTimeoutMs('find_products_multi'),
       };
 
-	      const resp = await callUpstreamWithOptionalRetry('find_products_multi', axiosConfig);
-	      const normalizedList = normalizeAgentProductsListResponse(resp.data, {
-	        limit: queryParams.limit,
-	        offset: queryParams.offset,
-	      });
+		      const resp = await callUpstreamWithOptionalRetry('find_products_multi', axiosConfig);
+		      const normalizedList = normalizeAgentProductsListResponse(resp.data, {
+		        limit: queryParams.limit,
+		        offset: queryParams.offset,
+		      });
 
-	      const products = Array.isArray(normalizedList?.products) ? normalizedList.products : [];
-	      const matches = products.filter((p) => String(p?.product_id || '').trim() === productId);
-	      let deduped = Array.from(
-	        new Map(
-	          matches
-	            .map((p) => [String(p?.merchant_id || '').trim(), p])
-	            .filter(([mid]) => Boolean(mid)),
-	        ).values(),
-	      ).slice(0, limit);
+		      const products = Array.isArray(normalizedList?.products) ? normalizedList.products : [];
+		      const matches = products.filter((p) => String(p?.product_id || '').trim() === productId);
+		      deduped = Array.from(
+		        new Map(
+		          matches
+		            .map((p) => [String(p?.merchant_id || '').trim(), p])
+		            .filter(([mid]) => Boolean(mid)),
+		        ).values(),
+		      ).slice(0, limit);
 
-	      let anchor =
-	        (requestedMerchantId
-	          ? deduped.find((p) => String(p?.merchant_id || '').trim() === requestedMerchantId) ||
-	            (deduped.length === 0 ? { merchant_id: requestedMerchantId } : null)
-	          : null) ||
-	        deduped[0] ||
-	        null;
+		      anchor =
+		        (requestedMerchantId
+		          ? deduped.find((p) => String(p?.merchant_id || '').trim() === requestedMerchantId) ||
+		            (deduped.length === 0 ? { merchant_id: requestedMerchantId } : null)
+		          : null) ||
+		        deduped[0] ||
+		        null;
+		      }
 
 	      // Ensure we have a real anchor product for:
 	      // - reliable offers (at least 1 offer should exist when merchant_id is provided)
@@ -4264,39 +4326,40 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        } catch {
 	          // Best-effort: do not block PDP on anchor enrichment failures.
 	        }
-	      }
+		      }
 
-	      // Prefer backend-curated product groups (multi-seller).
-	      let productGroupId = null;
-	      let groupMembers = [];
-	      try {
-	        const anchorMerchantId = String(anchor?.merchant_id || '').trim();
-	        if (anchorMerchantId) {
-	          const resolvedGroup = await resolveProductGroupFromUpstream({
-	            merchantId: anchorMerchantId,
-	            productId,
-	            platform: anchor?.platform ? String(anchor.platform).trim() : null,
-	            checkoutToken,
-	          });
-	          const pgid = resolvedGroup?.product_group_id || resolvedGroup?.productGroupId || null;
-	          if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
-	          const members = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : [];
-	          groupMembers = members
-	            .map((m) => ({
-	              merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
-	              merchant_name: m?.merchant_name || m?.merchantName || undefined,
-	              product_id: String(m?.product_id || m?.productId || '').trim(),
-	              platform: m?.platform ? String(m.platform).trim() : undefined,
-	              is_primary: Boolean(m?.is_primary || m?.isPrimary),
-	            }))
-	            .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
-	            .slice(0, limit);
-	        }
-	      } catch (e) {
-	        // Best-effort: group resolution should not block PDP.
-	        groupMembers = [];
-	        productGroupId = null;
-	      }
+		      // Prefer backend-curated product groups (multi-seller).
+		      if (!productGroupId && groupMembers.length === 0) {
+		        try {
+		          const anchorMerchantId = String(anchor?.merchant_id || '').trim();
+		          if (anchorMerchantId) {
+		            const resolvedGroup = await resolveProductGroupFromUpstream({
+		              merchantId: anchorMerchantId,
+		              productId,
+		              platform: anchor?.platform ? String(anchor.platform).trim() : null,
+		              checkoutToken,
+		            });
+		            const pgid =
+		              resolvedGroup?.product_group_id || resolvedGroup?.productGroupId || null;
+		            if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
+		            const members = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : [];
+		            groupMembers = members
+		              .map((m) => ({
+		                merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+		                merchant_name: m?.merchant_name || m?.merchantName || undefined,
+		                product_id: String(m?.product_id || m?.productId || '').trim(),
+		                platform: m?.platform ? String(m.platform).trim() : undefined,
+		                is_primary: Boolean(m?.is_primary || m?.isPrimary),
+		              }))
+		              .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
+		              .slice(0, limit);
+		          }
+		        } catch (e) {
+		          // Best-effort: group resolution should not block PDP.
+		          groupMembers = [];
+		          productGroupId = null;
+		        }
+		      }
 
 	      // Fallback grouping id: prefer platform refs if present; fallback to product_id.
 	      if (!productGroupId) {
