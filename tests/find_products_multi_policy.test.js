@@ -34,6 +34,20 @@ describe('find_products_multi intent + filtering', () => {
     expect(String(resp.reply)).toContain('Nina');
   });
 
+  test('discovery intent: English greeting routes to discovery', () => {
+    const intent = extractIntentRuleBased('hi', [], []);
+    expect(intent.scenario.name).toBe('discovery');
+    expect(intent.primary_domain).toBe('other');
+    expect(intent.target_object.type).toBe('unknown');
+  });
+
+  test('intent: "clothing" should not be treated as greeting', () => {
+    const intent = extractIntentRuleBased('women clothing dress top skirt outfit', [], []);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('women_clothing');
+  });
+
   test('intent: cold mountain outerwear is human_apparel and ignores toy history', () => {
     const intent = extractIntentRuleBased(
       '周末要去山上，天气会很冷，推荐几件外套/大衣吧',

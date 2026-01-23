@@ -460,8 +460,29 @@ const EYE_SHADOW_BRUSH_SIGNALS_ES = [
 
 function includesAny(haystack, needles) {
   if (!haystack) return false;
-  const lowered = haystack.toLowerCase();
-  return needles.some((k) => lowered.includes(String(k).toLowerCase()));
+  const text = String(haystack);
+  const lowered = text.toLowerCase();
+
+  const matchesWord = (word) => {
+    const escaped = String(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Word-boundary matching prevents false positives like "hi" in "clothing",
+    // or "bra" in "breathable".
+    const re = new RegExp(`\\b${escaped}\\b`, 'i');
+    return re.test(text);
+  };
+
+  return needles.some((k) => {
+    const needle = String(k || '').trim();
+    if (!needle) return false;
+    const n = needle.toLowerCase();
+
+    // For very short ASCII tokens (common greetings like "hi"), use word boundaries.
+    if (/^[a-z0-9]{1,3}$/.test(n)) {
+      return matchesWord(n);
+    }
+
+    return lowered.includes(n);
+  });
 }
 
 function isToyBreedContext(text) {
