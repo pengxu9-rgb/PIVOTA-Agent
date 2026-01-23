@@ -2420,11 +2420,11 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
     payload.traceId ||
     null;
 
-  const source = rawMetadata.source || payload.source || 'creator-agent-ui';
+  const source = rawMetadata.source || payload.source || 'shopping-agent-ui';
 
-  // Creator cache routes require a known creator_id. When the caller doesn't
-  // provide one (common in the shopping agent UI), default to the first configured
-  // creator so cache-based search works out of the box.
+  // Creator cache routes require a known creator_id. When the caller is the
+  // creator UI and doesn't provide one, default to the first configured creator
+  // so cache-based search works out of the box.
   if (!creatorId && source === 'creator-agent-ui') {
     creatorId = getDefaultCreatorId();
   }
@@ -4203,19 +4203,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
         const searchAllMerchantsExplicit =
           search.search_all_merchants === true || search.searchAllMerchants === true;
+        const creatorMerchantIds = uniqueStrings(getCreatorConfig(creatorId)?.merchantIds || []);
 
         const priceMin = search.price_min ?? search.min_price;
         const priceMax = search.price_max ?? search.max_price;
 
-        // find_products_multi is intended to be cross-merchant by default. If the
-        // caller doesn't provide an explicit merchant scope, opt into a broad
-        // search instead of silently restricting to creator-config merchants.
-        const searchAllMerchants = searchAllMerchantsExplicit || (!merchantId && merchantIds.length === 0);
+        const shouldScopeToCreatorCatalog =
+          metadata?.source === 'creator-agent-ui' &&
+          !merchantId &&
+          merchantIds.length === 0 &&
+          !searchAllMerchantsExplicit &&
+          creatorMerchantIds.length > 0;
 
         queryParams = {
           ...(merchantId ? { merchant_id: merchantId } : {}),
           ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
-          ...(!merchantId && merchantIds.length === 0 && searchAllMerchants ? { search_all_merchants: true } : {}),
+          ...(!merchantId && merchantIds.length === 0 && shouldScopeToCreatorCatalog
+            ? { merchant_ids: creatorMerchantIds }
+            : {}),
+          ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
+            ? { search_all_merchants: true }
+            : {}),
           ...(search.query != null ? { query: String(search.query || '') } : {}),
           ...(search.category ? { category: search.category } : {}),
           ...(priceMin != null ? { min_price: priceMin } : {}),
