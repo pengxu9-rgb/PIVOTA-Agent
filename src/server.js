@@ -2265,6 +2265,75 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   };
 }
 
+async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = {}) {
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const inStockOnly = options?.inStockOnly !== false;
+
+  // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
+  const fetchLimit = Math.min(Math.max(safeLimit * Math.max(safePage, 1) * 5 + 20, 50), 500);
+
+  const rowsRes = await query(
+    `
+      SELECT pc.merchant_id,
+             mo.business_name AS merchant_name,
+             pc.product_data
+      FROM (
+        SELECT id, expires_at, merchant_id, product_data
+        FROM products_cache
+        WHERE expires_at > now()
+          AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+        ORDER BY expires_at DESC, id DESC
+        LIMIT $1
+      ) pc
+      JOIN merchant_onboarding mo
+        ON mo.merchant_id = pc.merchant_id
+      WHERE mo.status NOT IN ('deleted', 'rejected')
+        AND mo.psp_connected = true
+      ORDER BY pc.expires_at DESC, pc.id DESC
+    `,
+    [fetchLimit],
+  );
+
+  const baseProducts = (rowsRes.rows || [])
+    .map((r) => {
+      const p = r.product_data;
+      if (!p) return null;
+      const mid = String(r.merchant_id || '').trim();
+      const merchantName = r.merchant_name ? String(r.merchant_name).trim() : '';
+
+      const out = { ...p };
+      if (mid && !out.merchant_id && !out.merchantId) out.merchant_id = mid;
+      if (merchantName && !out.merchant_name && !out.merchantName) out.merchant_name = merchantName;
+      return out;
+    })
+    .filter(Boolean)
+    .filter((p) => isProductSellable(p, { inStockOnly }));
+
+  const seen = new Set();
+  const unique = [];
+  for (const p of baseProducts) {
+    const mid = String(p.merchant_id || p.merchantId || '').trim();
+    const pid = String(p.id || p.product_id || p.productId || '').trim();
+    const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(p);
+  }
+
+  const startIdx = (safePage - 1) * safeLimit;
+  const pageItems = unique.slice(startIdx, startIdx + safeLimit);
+
+  await applyShopifyCurrencyOverride(pageItems);
+
+  return {
+    products: pageItems,
+    total: unique.length,
+    page: safePage,
+    page_size: pageItems.length,
+  };
+}
+
 function buildPetFallbackQuery(intent, rawUserQuery) {
   const lang = intent?.language || 'en';
   switch (lang) {
@@ -4140,6 +4209,80 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           logger.warn(
             { err: err.message, creatorId, source, queryText },
             'Creator UI cache search failed; falling back to upstream'
+          );
+        }
+      }
+
+      const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+      const merchantIdsRaw = search.merchant_ids || search.merchantIds;
+      const merchantIds =
+        Array.isArray(merchantIdsRaw)
+          ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+          : typeof merchantIdsRaw === 'string'
+            ? merchantIdsRaw
+                .split(',')
+                .map((v) => String(v || '').trim())
+                .filter(Boolean)
+            : [];
+      const hasMerchantScope = Boolean(merchantId) || merchantIds.length > 0;
+
+      // Shopping Agent cold-start should not be blocked on upstream cross-merchant scans.
+      // When callers do not specify merchant scope and have no query text, serve a fast
+      // browse feed directly from products_cache.
+      const isCrossMerchantBrowseColdStart =
+        !isCreatorUi && queryText.length === 0 && !hasMerchantScope;
+      if (isCrossMerchantBrowseColdStart && process.env.DATABASE_URL) {
+        try {
+          const page = search.page || 1;
+          const limit = search.limit || search.page_size || 20;
+          const fromCache = await loadCrossMerchantBrowseFromCache(page, limit, { inStockOnly });
+          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
+          const merchantsReturned = uniqueStrings(
+            (fromCache.products || []).map((p) => p?.merchant_id || p?.merchantId),
+          );
+
+          const upstreamData = {
+            products: fromCache.products,
+            total: fromCache.total,
+            page: fromCache.page,
+            page_size: fromCache.page_size,
+            reply: null,
+            metadata: {
+              query_source: 'cache_cross_merchant_browse',
+              fetched_at: new Date().toISOString(),
+              merchants_searched: merchantsReturned.length,
+              ...(ROUTE_DEBUG_ENABLED
+                ? {
+                    route_debug: {
+                      cross_merchant_cache: {
+                        attempted: true,
+                        mode: 'browse',
+                        page,
+                        limit,
+                        in_stock_only: inStockOnly,
+                        cache_hit: cacheHit,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          };
+
+          const withPolicy = upstreamData;
+
+          const promotions = await getActivePromotions(now, creatorId);
+          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          if (cacheHit) {
+            return res.json(enriched);
+          }
+          logger.info(
+            { source, page, limit, inStockOnly },
+            'Cross-merchant cache browse returned empty; falling back to upstream',
+          );
+        } catch (err) {
+          logger.warn(
+            { err: err.message, source },
+            'Cross-merchant cache browse failed; falling back to upstream',
           );
         }
       }
