@@ -5404,7 +5404,7 @@ app.post('/ui/chat', async (req, res) => {
       });
     }
 
-    const defaultPromptPath = path.join(__dirname, '..', 'prompts', 'shopping_agent_system_prompt_v1_4.txt');
+    const defaultPromptPath = path.join(__dirname, '..', 'prompts', 'shopping_agent_system_prompt_v1_5.txt');
     const promptPath = process.env.PIVOTA_UI_CHAT_SYSTEM_PROMPT_PATH || defaultPromptPath;
 
     let systemPrompt;
