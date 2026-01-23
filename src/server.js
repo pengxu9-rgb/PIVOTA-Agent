@@ -19,6 +19,7 @@ const {
   buildOfferId,
   buildProductGroupId,
   extractMerchantIdFromOfferId,
+  parseOfferId,
 } = require('./offers/offerIds');
 const { buildPdpPayload } = require('./pdpBuilder');
 const {
@@ -920,6 +921,269 @@ async function fetchProductDetailFromUpstream(args) {
   };
   const resp = await callUpstreamWithOptionalRetry('get_product_detail', axiosConfig);
   return resp?.data?.product || null;
+}
+
+async function fetchLegacyProductDetailFromUpstream(args) {
+  const { merchantId, productId, checkoutToken } = args;
+  const url = `${PIVOTA_API_BASE}/agent/v1/products/${encodeURIComponent(
+    merchantId,
+  )}/${encodeURIComponent(productId)}`;
+  const axiosConfig = {
+    method: 'GET',
+    url,
+    headers: {
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('get_product_detail'),
+  };
+  const resp = await callUpstreamWithOptionalRetry('get_product_detail', axiosConfig);
+  return resp?.data?.product || null;
+}
+
+async function fetchProductGroupMembersFromUpstream(args) {
+  const { productGroupId, checkoutToken } = args;
+  const url = `${PIVOTA_API_BASE}/agent/v1/product-groups/${encodeURIComponent(productGroupId)}`;
+  const axiosConfig = {
+    method: 'GET',
+    url,
+    headers: {
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('find_products_multi'),
+  };
+  const resp = await axios(axiosConfig);
+  return resp?.data || null;
+}
+
+async function resolveProductGroupFromUpstream(args) {
+  const { merchantId, productId, platform, checkoutToken } = args;
+  const queryString = buildQueryString({
+    merchant_id: merchantId,
+    product_id: productId,
+    ...(platform ? { platform } : {}),
+  });
+  const url = `${PIVOTA_API_BASE}/agent/v1/product-groups/resolve${queryString}`;
+  const axiosConfig = {
+    method: 'GET',
+    url,
+    headers: {
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('find_products_multi'),
+  };
+  const resp = await axios(axiosConfig);
+  return resp?.data || null;
+}
+
+function normalizeOptionsRecord(raw) {
+  const out = {};
+  if (!raw) return out;
+
+  const normKey = (v) => String(v || '').trim().toLowerCase();
+  const normVal = (v) => String(v || '').trim().toLowerCase();
+
+  if (Array.isArray(raw)) {
+    for (const it of raw) {
+      if (!it || typeof it !== 'object') continue;
+      const key = normKey(it.name || it.option || it.key);
+      const val = normVal(it.value);
+      if (!key || !val) continue;
+      out[key] = val;
+    }
+    return out;
+  }
+
+  if (raw && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw)) {
+      const key = normKey(k);
+      const val = normVal(v);
+      if (!key || !val) continue;
+      out[key] = val;
+    }
+    return out;
+  }
+
+  return out;
+}
+
+function optionsRecordEquals(a, b) {
+  const aKeys = Object.keys(a || {});
+  const bKeys = Object.keys(b || {});
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+    if (String(a[k]) !== String(b[k])) return false;
+  }
+  return true;
+}
+
+function extractVariantId(v) {
+  const raw = v?.variant_id || v?.variantId || v?.id || null;
+  return raw == null ? '' : String(raw).trim();
+}
+
+function extractVariantSku(v) {
+  const raw = v?.sku || v?.sku_id || v?.skuId || v?.sku_code || null;
+  return raw == null ? '' : String(raw).trim().toUpperCase();
+}
+
+function extractVariantOptions(v) {
+  const raw = v?.options || v?.selected_options || v?.selectedOptions || null;
+  return normalizeOptionsRecord(raw);
+}
+
+function findVariantIdInProduct(product, selector) {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  if (!variants.length) return null;
+
+  const desiredSku = selector?.sku ? String(selector.sku).trim() : '';
+  const desiredOptions = selector?.options && typeof selector.options === 'object' ? selector.options : null;
+
+  if (desiredSku) {
+    const hit = variants.find((v) => extractVariantSku(v) === desiredSku);
+    const id = hit ? extractVariantId(hit) : '';
+    if (id) return id;
+  }
+
+  if (desiredOptions && Object.keys(desiredOptions).length > 0) {
+    for (const v of variants) {
+      const opts = extractVariantOptions(v);
+      if (optionsRecordEquals(opts, desiredOptions)) {
+        const id = extractVariantId(v);
+        if (id) return id;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function rewriteCheckoutItemsForOfferSelection(args) {
+  const { offerId, merchantId, items, checkoutToken } = args;
+  const parsed = offerId ? parseOfferId(offerId) : null;
+  const productGroupId = parsed?.product_group_id ? String(parsed.product_group_id).trim() : null;
+  if (!productGroupId) return { product_group_id: null, product_id: null, items };
+
+  const groupResp = await fetchProductGroupMembersFromUpstream({
+    productGroupId,
+    checkoutToken,
+  }).catch(() => null);
+  const members = Array.isArray(groupResp?.members) ? groupResp.members : [];
+  const targetMember = members.find(
+    (m) => String(m?.merchant_id || m?.merchantId || '').trim() === String(merchantId || '').trim(),
+  );
+  const targetProductId = String(targetMember?.product_id || targetMember?.productId || '').trim() || null;
+  if (!targetProductId) return { product_group_id: productGroupId, product_id: null, items };
+
+  const productCache = new Map();
+  const fetchProduct = async (mid, pid) => {
+    const key = `${mid}:${pid}`;
+    if (productCache.has(key)) return productCache.get(key);
+    const p = await fetchLegacyProductDetailFromUpstream({ merchantId: mid, productId: pid, checkoutToken }).catch(
+      () => null,
+    );
+    productCache.set(key, p || null);
+    return p || null;
+  };
+
+  const targetProduct = await fetchProduct(merchantId, targetProductId);
+  if (!targetProduct) return { product_group_id: productGroupId, product_id: targetProductId, items };
+
+  async function deriveVariantSelectorFromGroup(variantId, preferredProductId) {
+    const vid = String(variantId || '').trim();
+    if (!vid) return { sku: null, options: null };
+    const preferredPid = String(preferredProductId || '').trim();
+    const ordered = preferredPid
+      ? [
+          ...members.filter(
+            (m) => String(m?.product_id || m?.productId || '').trim() === preferredPid,
+          ),
+          ...members.filter(
+            (m) => String(m?.product_id || m?.productId || '').trim() !== preferredPid,
+          ),
+        ]
+      : members;
+
+    for (const m of ordered) {
+      const mid = String(m?.merchant_id || m?.merchantId || '').trim();
+      const pid = String(m?.product_id || m?.productId || '').trim();
+      if (!mid || !pid) continue;
+      const p = await fetchProduct(mid, pid);
+      if (!p) continue;
+      const variants = Array.isArray(p.variants) ? p.variants : [];
+      const hit = variants.find((v) => extractVariantId(v) === vid);
+      if (!hit) continue;
+      const sku = extractVariantSku(hit) || null;
+      const options = extractVariantOptions(hit);
+      return {
+        sku,
+        options: options && Object.keys(options).length ? options : null,
+      };
+    }
+    return { sku: null, options: null };
+  }
+
+  const rewritten = [];
+  for (const rawItem of Array.isArray(items) ? items : []) {
+    const item = rawItem && typeof rawItem === 'object' ? { ...rawItem } : null;
+    if (!item) continue;
+
+    const originalProductId = String(item.product_id || item.productId || '').trim();
+    const originalVariantId = String(item.variant_id || item.variantId || '').trim();
+    const originalSku = String(item.sku || item.sku_id || item.skuId || '')
+      .trim()
+      .toUpperCase();
+    const selectedOptionsRaw = item.selected_options || item.selectedOptions || item.options || null;
+    const selectedOptions = normalizeOptionsRecord(selectedOptionsRaw);
+
+    let desiredSku = originalSku || null;
+    let desiredOptions = Object.keys(selectedOptions).length ? selectedOptions : null;
+
+    if (!desiredSku && !desiredOptions && originalVariantId) {
+      const derived = await deriveVariantSelectorFromGroup(originalVariantId, originalProductId);
+      desiredSku = derived.sku;
+      desiredOptions = derived.options;
+    }
+
+    const mappedVariantId = findVariantIdInProduct(targetProduct, {
+      sku: desiredSku,
+      options: desiredOptions,
+    });
+
+    // If product_id changes across sellers, we must be able to map a variant_id safely.
+    if (!mappedVariantId && originalProductId && originalProductId !== targetProductId) {
+      const err = new Error('Selected variant is not available for this seller.');
+      err.code = 'VARIANT_MAPPING_FAILED';
+      throw err;
+    }
+
+    item.product_id = targetProductId;
+    if (mappedVariantId) {
+      item.variant_id = mappedVariantId;
+      item.variantId = mappedVariantId;
+    }
+    // Preserve helpful hints for downstream logs/debugging.
+    if (desiredSku && !item.sku) item.sku = desiredSku;
+    if (desiredOptions && !item.selected_options) item.selected_options = desiredOptions;
+    rewritten.push(item);
+  }
+
+  return { product_group_id: productGroupId, product_id: targetProductId, items: rewritten };
 }
 
 async function fetchSimilarProductsFromUpstream(args) {
@@ -3926,37 +4190,110 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         timeout: getUpstreamTimeoutMs('find_products_multi'),
       };
 
-      const resp = await callUpstreamWithOptionalRetry('find_products_multi', axiosConfig);
-      const normalizedList = normalizeAgentProductsListResponse(resp.data, {
-        limit: queryParams.limit,
-        offset: queryParams.offset,
-      });
+	      const resp = await callUpstreamWithOptionalRetry('find_products_multi', axiosConfig);
+	      const normalizedList = normalizeAgentProductsListResponse(resp.data, {
+	        limit: queryParams.limit,
+	        offset: queryParams.offset,
+	      });
 
-      const products = Array.isArray(normalizedList?.products) ? normalizedList.products : [];
-      const matches = products.filter((p) => String(p?.product_id || '').trim() === productId);
-      const deduped = Array.from(
-        new Map(
-          matches
-            .map((p) => [String(p?.merchant_id || '').trim(), p])
-            .filter(([mid]) => Boolean(mid)),
-        ).values(),
+	      const products = Array.isArray(normalizedList?.products) ? normalizedList.products : [];
+	      const matches = products.filter((p) => String(p?.product_id || '').trim() === productId);
+	      const deduped = Array.from(
+	        new Map(
+	          matches
+	            .map((p) => [String(p?.merchant_id || '').trim(), p])
+	            .filter(([mid]) => Boolean(mid)),
+	        ).values(),
 	      ).slice(0, limit);
 
-	      // Canonical-ish grouping id: prefer platform refs if present; fallback to product_id.
-	      const first = deduped[0] || null;
-	      const platform = first ? String(first.platform || '').trim() : '';
-	      const platformProductId = first ? String(first.platform_product_id || '').trim() : '';
-	      const productGroupId =
-	        (platform && platformProductId
-	          ? buildProductGroupId({ platform, platform_product_id: platformProductId })
-	          : buildProductGroupId({ merchant_id: 'pid', product_id: productId })) || `pg:pid:${productId}`;
+	      const anchor =
+	        (requestedMerchantId
+	          ? deduped.find((p) => String(p?.merchant_id || '').trim() === requestedMerchantId) ||
+	            (deduped.length === 0 ? { merchant_id: requestedMerchantId } : null)
+	          : null) ||
+	        deduped[0] ||
+	        null;
 
-	      const offers = deduped.map((p) => {
+	      // Prefer backend-curated product groups (multi-seller).
+	      let productGroupId = null;
+	      let groupMembers = [];
+	      try {
+	        const anchorMerchantId = String(anchor?.merchant_id || '').trim();
+	        if (anchorMerchantId) {
+	          const resolvedGroup = await resolveProductGroupFromUpstream({
+	            merchantId: anchorMerchantId,
+	            productId,
+	            platform: anchor?.platform ? String(anchor.platform).trim() : null,
+	            checkoutToken,
+	          });
+	          const pgid = resolvedGroup?.product_group_id || resolvedGroup?.productGroupId || null;
+	          if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
+	          const members = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : [];
+	          groupMembers = members
+	            .map((m) => ({
+	              merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+	              merchant_name: m?.merchant_name || m?.merchantName || undefined,
+	              product_id: String(m?.product_id || m?.productId || '').trim(),
+	              platform: m?.platform ? String(m.platform).trim() : undefined,
+	              is_primary: Boolean(m?.is_primary || m?.isPrimary),
+	            }))
+	            .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
+	            .slice(0, limit);
+	        }
+	      } catch (e) {
+	        // Best-effort: group resolution should not block PDP.
+	        groupMembers = [];
+	        productGroupId = null;
+	      }
+
+	      // Fallback grouping id: prefer platform refs if present; fallback to product_id.
+	      if (!productGroupId) {
+	        const platform = anchor ? String(anchor.platform || '').trim() : '';
+	        const platformProductId = anchor ? String(anchor.platform_product_id || '').trim() : '';
+	        productGroupId =
+	          (platform && platformProductId
+	            ? buildProductGroupId({ platform, platform_product_id: platformProductId })
+	            : buildProductGroupId({ merchant_id: 'pid', product_id: productId })) || `pg:pid:${productId}`;
+	      }
+
+	      let offerProducts = deduped;
+	      if (groupMembers.length > 0) {
+	        const fetched = await Promise.all(
+	          groupMembers.map(async (m) => {
+	            try {
+	              const p = await fetchLegacyProductDetailFromUpstream({
+	                merchantId: m.merchant_id,
+	                productId: m.product_id,
+	                checkoutToken,
+	              });
+	              return p
+	                ? {
+	                    ...p,
+	                    merchant_id: m.merchant_id,
+	                    product_id: m.product_id,
+	                  }
+	                : null;
+	            } catch {
+	              return null;
+	            }
+	          }),
+	        );
+	        const filtered = fetched.filter(Boolean);
+	        if (filtered.length > 0) offerProducts = filtered;
+	      }
+
+	      const merchantNameById = new Map(
+	        groupMembers
+	          .map((m) => [String(m.merchant_id || '').trim(), m.merchant_name])
+	          .filter(([mid]) => Boolean(mid)),
+	      );
+
+	      const offers = offerProducts.map((p) => {
 	        const mid = String(p.merchant_id || '').trim();
 	        const currency = p.currency || 'USD';
-        const shipCost = p.shipping?.cost || p.shipping_cost || null;
-        const shipCostAmount =
-          shipCost == null ? undefined : Number(typeof shipCost === 'object' ? shipCost.amount : shipCost);
+	        const shipCost = p.shipping?.cost || p.shipping_cost || null;
+	        const shipCostAmount =
+	          shipCost == null ? undefined : Number(typeof shipCost === 'object' ? shipCost.amount : shipCost);
         const shipCostCurrency =
           shipCost && typeof shipCost === 'object'
             ? String(shipCost.currency || currency)
@@ -3977,7 +4314,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            }) || `of:v1:${mid}:${productGroupId}:${p.fulfillment_type || 'merchant'}:default`,
 	          product_group_id: productGroupId,
 	          merchant_id: mid,
-	          merchant_name: p.merchant_name || p.store_name || undefined,
+	          merchant_name:
+	            p.merchant_name ||
+	            p.store_name ||
+	            merchantNameById.get(mid) ||
+	            undefined,
 	          price: toMoney(p.price, currency),
           shipping:
             p.shipping || etaRange || shipCostAmount != null
@@ -4002,7 +4343,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
       const sortedByTotal = [...offers].sort((a, b) => totalCost(a) - totalCost(b));
       const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
-      const defaultOfferId = bestPriceOfferId;
+	      const defaultOfferId = bestPriceOfferId;
 
 	      const result = {
 	        status: 'success',
@@ -4442,44 +4783,65 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         break;
       }
 
-      case 'preview_quote': {
-        const quote = payload.quote || {};
-        const offerIdRaw =
-          quote.offer_id || quote.offerId || payload.offer_id || payload.offerId || null;
-        const offerId = String(offerIdRaw || '').trim() || null;
-        const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
-        const effectiveMerchantId = merchantFromOffer || quote.merchant_id;
+	      case 'preview_quote': {
+	        const quote = payload.quote || {};
+	        const offerIdRaw =
+	          quote.offer_id || quote.offerId || payload.offer_id || payload.offerId || null;
+	        const offerId = String(offerIdRaw || '').trim() || null;
+	        const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+	        const effectiveMerchantId = merchantFromOffer || quote.merchant_id;
 
-        if (!effectiveMerchantId || !Array.isArray(quote.items) || quote.items.length === 0) {
-          return res.status(400).json({
-            error: 'MISSING_PARAMETERS',
-            message: 'quote.merchant_id (or quote.offer_id) and quote.items[] are required',
-          });
-        }
+	        if (!effectiveMerchantId || !Array.isArray(quote.items) || quote.items.length === 0) {
+	          return res.status(400).json({
+	            error: 'MISSING_PARAMETERS',
+	            message: 'quote.merchant_id (or quote.offer_id) and quote.items[] are required',
+	          });
+	        }
 
-        if (offerId) {
-          resolvedOfferId = offerId;
-          resolvedMerchantId = String(effectiveMerchantId || '').trim() || null;
-        }
+	        if (offerId) {
+	          resolvedOfferId = offerId;
+	          resolvedMerchantId = String(effectiveMerchantId || '').trim() || null;
+	        }
 
-        const normalizedQuote = { ...quote, merchant_id: effectiveMerchantId };
-        delete normalizedQuote.offer_id;
-        delete normalizedQuote.offerId;
-        requestBody = normalizedQuote;
-        break;
-      }
+	        const normalizedQuote = { ...quote, merchant_id: effectiveMerchantId };
+	        delete normalizedQuote.offer_id;
+	        delete normalizedQuote.offerId;
+
+	        if (offerId) {
+	          try {
+	            const rewritten = await rewriteCheckoutItemsForOfferSelection({
+	              offerId,
+	              merchantId: effectiveMerchantId,
+	              items: normalizedQuote.items,
+	              checkoutToken,
+	            });
+	            if (Array.isArray(rewritten?.items) && rewritten.items.length > 0) {
+	              normalizedQuote.items = rewritten.items;
+	            }
+	          } catch (err) {
+	            const code = err?.code || 'CHECKOUT_ITEM_REWRITE_FAILED';
+	            return res.status(400).json({
+	              error: code,
+	              message: err?.message || 'Failed to map selected offer to merchant catalog items',
+	            });
+	          }
+	        }
+
+	        requestBody = normalizedQuote;
+	        break;
+	      }
       
-      case 'create_order': {
-        // Map to real API requirements
-        const order = payload.order || {};
-        const offerIdRaw =
-          order.offer_id || order.offerId || payload.offer_id || payload.offerId || null;
-        const offerId = String(offerIdRaw || '').trim() || null;
+	      case 'create_order': {
+	        // Map to real API requirements
+	        const order = payload.order || {};
+	        const offerIdRaw =
+	          order.offer_id || order.offerId || payload.offer_id || payload.offerId || null;
+	        const offerId = String(offerIdRaw || '').trim() || null;
 
-        const items = Array.isArray(order.items) ? order.items : [];
-        
-        // Calculate totals if not provided
-        const subtotal = items.reduce((sum, item) => sum + (item.unit_price || item.price || 0) * item.quantity, 0);
+	        const items = Array.isArray(order.items) ? order.items : [];
+	        
+	        // Calculate totals if not provided
+	        const subtotal = items.reduce((sum, item) => sum + (item.unit_price || item.price || 0) * item.quantity, 0);
         
         // Extract merchant_id from first item (assuming single merchant order)
         const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
@@ -4491,30 +4853,51 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           });
         }
 
-        if (offerId) {
-          resolvedOfferId = offerId;
-          resolvedMerchantId = String(merchant_id || '').trim() || null;
-        }
+	        if (offerId) {
+	          resolvedOfferId = offerId;
+	          resolvedMerchantId = String(merchant_id || '').trim() || null;
+	        }
 
-        // Optional hint for PSP selection / checkout mode
-        const preferredPsp =
-          order.preferred_psp || payload.preferred_psp || undefined;
-        
+	        let rewrittenItems = items;
+	        if (offerId && Array.isArray(items) && items.length > 0) {
+	          try {
+	            const rewritten = await rewriteCheckoutItemsForOfferSelection({
+	              offerId,
+	              merchantId: merchant_id,
+	              items,
+	              checkoutToken,
+	            });
+	            if (Array.isArray(rewritten?.items) && rewritten.items.length > 0) {
+	              rewrittenItems = rewritten.items;
+	            }
+	          } catch (err) {
+	            const code = err?.code || 'CHECKOUT_ITEM_REWRITE_FAILED';
+	            return res.status(400).json({
+	              error: code,
+	              message: err?.message || 'Failed to map selected offer to merchant catalog items',
+	            });
+	          }
+	        }
+
+	        // Optional hint for PSP selection / checkout mode
+	        const preferredPsp =
+	          order.preferred_psp || payload.preferred_psp || undefined;
+	        
         // Build request body with all required fields
 	        requestBody = {
 	          merchant_id,
 	          customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
 	          ...(order.currency ? { currency: order.currency } : {}),
 	          ...(order.quote_id ? { quote_id: order.quote_id } : {}),
-          ...(order.selected_delivery_option
-            ? { selected_delivery_option: order.selected_delivery_option }
-            : {}),
-          items: items.map(item => ({
-            merchant_id,
-            product_id: item.product_id,
-            // Optional variant / SKU information for multi-variant products.
-            ...(item.variant_id ? { variant_id: item.variant_id } : {}),
-            ...(item.sku ? { sku: item.sku } : {}),
+	          ...(order.selected_delivery_option
+	            ? { selected_delivery_option: order.selected_delivery_option }
+	            : {}),
+	          items: rewrittenItems.map(item => ({
+	            merchant_id,
+	            product_id: item.product_id,
+	            // Optional variant / SKU information for multi-variant products.
+	            ...(item.variant_id ? { variant_id: item.variant_id } : {}),
+	            ...(item.sku ? { sku: item.sku } : {}),
             ...(item.selected_options ? { selected_options: item.selected_options } : {}),
             product_title: item.product_title || item.title || 'Product',
             quantity: item.quantity,

@@ -43,9 +43,32 @@ function extractMerchantIdFromOfferId(offerId) {
   return merchantId || null;
 }
 
+function parseOfferId(offerId) {
+  const raw = String(offerId || '').trim();
+  if (!raw) return null;
+  if (!raw.startsWith(OFFER_ID_PREFIX)) return null;
+  const rest = raw.slice(OFFER_ID_PREFIX.length);
+  const parts = rest.split(':');
+  // Format:
+  // of:v1:{merchant_id}:{product_group_id}:{fulfillment_type}:{tier}
+  // NOTE: product_group_id itself can contain ":".
+  if (parts.length < 4) return null;
+  const merchantId = String(parts[0] || '').trim();
+  const tier = String(parts[parts.length - 1] || '').trim();
+  const fulfillmentType = String(parts[parts.length - 2] || '').trim();
+  const productGroupId = parts.slice(1, parts.length - 2).join(':').trim();
+  if (!merchantId || !productGroupId || !fulfillmentType || !tier) return null;
+  return {
+    merchant_id: merchantId,
+    product_group_id: productGroupId,
+    fulfillment_type: fulfillmentType,
+    tier,
+  };
+}
+
 module.exports = {
   buildProductGroupId,
   buildOfferId,
   extractMerchantIdFromOfferId,
+  parseOfferId,
 };
-
