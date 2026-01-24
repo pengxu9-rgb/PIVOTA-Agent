@@ -432,6 +432,82 @@ async function fetchProductDetailFromProductsCache(args) {
   }
 }
 
+async function fetchProductDetailForOffers(args) {
+  const merchantId = String(args?.merchantId || '').trim();
+  const productId = String(args?.productId || '').trim();
+  const checkoutToken = args?.checkoutToken;
+  if (!merchantId || !productId) return null;
+
+  const cacheKey = JSON.stringify({
+    merchantId,
+    productId,
+    hasCheckoutToken: Boolean(checkoutToken),
+  });
+
+  if (PRODUCT_DETAIL_CACHE_ENABLED) {
+    const cachedEntry = getProductDetailCacheEntry(cacheKey);
+    const cachedValue = cachedEntry?.value;
+    const cachedProduct =
+      cachedValue && typeof cachedValue === 'object'
+        ? cachedValue.product || cachedValue?.data?.product
+        : null;
+    if (cachedProduct && typeof cachedProduct === 'object') {
+      return {
+        ...cachedProduct,
+        merchant_id: merchantId,
+        product_id:
+          String(cachedProduct.product_id || cachedProduct.id || productId).trim() ||
+          productId,
+      };
+    }
+  }
+
+  if (process.env.DATABASE_URL) {
+    const fromDb = await fetchProductDetailFromProductsCache({ merchantId, productId });
+    if (fromDb?.product) {
+      if (PRODUCT_DETAIL_CACHE_ENABLED) {
+        setProductDetailCache(cacheKey, {
+          status: 'success',
+          success: true,
+          product: fromDb.product,
+          metadata: {
+            query_source: 'products_cache',
+            cached_at: fromDb.cached_at || null,
+          },
+        });
+      }
+      return fromDb.product;
+    }
+  }
+
+  const upstreamProduct = await fetchLegacyProductDetailFromUpstream({
+    merchantId,
+    productId,
+    checkoutToken,
+  }).catch(() => null);
+
+  if (!upstreamProduct || typeof upstreamProduct !== 'object') return null;
+
+  const normalized = {
+    ...upstreamProduct,
+    merchant_id: merchantId,
+    product_id:
+      String(upstreamProduct.product_id || upstreamProduct.id || productId).trim() ||
+      productId,
+  };
+
+  if (PRODUCT_DETAIL_CACHE_ENABLED) {
+    setProductDetailCache(cacheKey, {
+      status: 'success',
+      success: true,
+      product: normalized,
+      metadata: { query_source: 'upstream' },
+    });
+  }
+
+  return normalized;
+}
+
 // --- Currency helpers (Creator cache surfaces) ---
 // Creator feeds/search can be served directly from products_cache for speed.
 // For Shopify stores, product_data prices are in the shop currency, but some
@@ -2829,6 +2905,74 @@ async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = 
   };
 }
 
+async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, options = {}) {
+  const mid = String(merchantId || '').trim();
+  if (!mid) return { products: [], total: 0, page: 1, page_size: 0 };
+
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const inStockOnly = options?.inStockOnly !== false;
+
+  // Oversample so JS-level filtering (in-stock-only, de-dupe) can still fill the page.
+  const fetchLimit = Math.min(Math.max(safeLimit * Math.max(safePage, 1) * 6 + 30, 60), 600);
+
+  const rowsRes = await query(
+    `
+      SELECT pc.id,
+             pc.merchant_id,
+             mo.business_name AS merchant_name,
+             pc.product_data
+      FROM products_cache pc
+      JOIN merchant_onboarding mo
+        ON mo.merchant_id = pc.merchant_id
+      WHERE pc.merchant_id = $1
+        AND (pc.expires_at IS NULL OR pc.expires_at > now())
+        AND COALESCE(lower(pc.product_data->>'status'), 'active') = 'active'
+        AND mo.status NOT IN ('deleted', 'rejected')
+        AND mo.psp_connected = true
+      ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+      LIMIT $2
+    `,
+    [mid, fetchLimit],
+  );
+
+  const baseProducts = (rowsRes.rows || [])
+    .map((r) => {
+      const p = r.product_data;
+      if (!p) return null;
+      const merchantName = r.merchant_name ? String(r.merchant_name).trim() : '';
+
+      const out = { ...p };
+      if (!out.merchant_id && !out.merchantId) out.merchant_id = mid;
+      if (merchantName && !out.merchant_name && !out.merchantName) out.merchant_name = merchantName;
+      return out;
+    })
+    .filter(Boolean)
+    .filter((p) => isProductSellable(p, { inStockOnly }));
+
+  const seen = new Set();
+  const unique = [];
+  for (const p of baseProducts) {
+    const pid = String(p.id || p.product_id || p.productId || '').trim();
+    const key = `${mid}::${pid || JSON.stringify(p).slice(0, 64)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(p);
+  }
+
+  const startIdx = (safePage - 1) * safeLimit;
+  const pageItems = unique.slice(startIdx, startIdx + safeLimit);
+
+  await applyShopifyCurrencyOverride(pageItems);
+
+  return {
+    products: pageItems,
+    total: unique.length,
+    page: safePage,
+    page_size: pageItems.length,
+  };
+}
+
 function buildPetFallbackQuery(intent, rawUserQuery) {
   const lang = intent?.language || 'en';
   switch (lang) {
@@ -4513,38 +4657,72 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		        currency: String(currency || 'USD').toUpperCase() || 'USD',
 		      });
 
-		      // When callers omit merchant_id (common for shareable PDP links), the upstream
-		      // Agent Search endpoint may return no results for internal UUID product ids.
-		      // Try resolving via backend product groups first to recover seller offers.
-		      let productGroupId = null;
-		      let groupMembers = [];
-		      if (!requestedMerchantId) {
-		        try {
-		          const resolvedByPid = await resolveProductGroupByProductIdFromUpstream({
-		            productId,
-		            checkoutToken,
-		          });
-		          const pgid =
-		            resolvedByPid?.product_group_id || resolvedByPid?.productGroupId || null;
-		          if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
-		          const members = Array.isArray(resolvedByPid?.members)
-		            ? resolvedByPid.members
-		            : [];
-		          groupMembers = members
-		            .map((m) => ({
-		              merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
-		              merchant_name: m?.merchant_name || m?.merchantName || undefined,
-		              product_id: String(m?.product_id || m?.productId || '').trim(),
-		              platform: m?.platform ? String(m.platform).trim() : undefined,
-		              is_primary: Boolean(m?.is_primary || m?.isPrimary),
-		            }))
-		            .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
-		            .slice(0, limit);
-		        } catch {
-		          productGroupId = null;
-		          groupMembers = [];
-		        }
-		      }
+			      // When callers omit merchant_id (common for shareable PDP links), the upstream
+			      // Agent Search endpoint may return no results for internal UUID product ids.
+			      // Try resolving via backend product groups first to recover seller offers.
+			      let productGroupId = null;
+			      let groupMembers = [];
+			      if (!requestedMerchantId) {
+			        try {
+			          const groupCacheKey = JSON.stringify({
+			            productId,
+			            merchantId: null,
+			            platform: null,
+			            hasCheckoutToken: Boolean(checkoutToken),
+			          });
+			          const groupCacheEnabled = RESOLVE_PRODUCT_GROUP_CACHE_ENABLED && !bypassCache;
+			          if (!groupCacheEnabled) RESOLVE_PRODUCT_GROUP_CACHE_METRICS.bypasses += 1;
+			          const cachedGroup = groupCacheEnabled
+			            ? getResolveProductGroupCacheEntry(groupCacheKey)
+			            : null;
+			          const resolvedByPid = cachedGroup?.value
+			            ? cachedGroup.value
+			            : await resolveProductGroupByProductIdFromUpstream({
+			                productId,
+			                checkoutToken,
+			              });
+
+			          const pgid =
+			            resolvedByPid?.product_group_id || resolvedByPid?.productGroupId || null;
+			          if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
+			          const members = Array.isArray(resolvedByPid?.members)
+			            ? resolvedByPid.members
+			            : [];
+			          const normalizedMembers = members
+			            .map((m) => ({
+			              merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+			              merchant_name: m?.merchant_name || m?.merchantName || undefined,
+			              product_id: String(m?.product_id || m?.productId || '').trim(),
+			              platform: m?.platform ? String(m.platform).trim() : undefined,
+			              is_primary: Boolean(m?.is_primary || m?.isPrimary),
+			            }))
+			            .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id));
+
+			          groupMembers = normalizedMembers.slice(0, limit);
+
+			          if (!cachedGroup?.value && groupCacheEnabled) {
+			            const canonicalMember =
+			              normalizedMembers.find((m) => m.is_primary) ||
+			              normalizedMembers[0] ||
+			              null;
+			            setResolveProductGroupCache(groupCacheKey, {
+			              status: 'success',
+			              ...(productGroupId ? { product_group_id: productGroupId } : {}),
+			              canonical_product_ref: canonicalMember
+			                ? {
+			                    merchant_id: canonicalMember.merchant_id,
+			                    product_id: canonicalMember.product_id,
+			                    ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+			                  }
+			                : null,
+			              members: normalizedMembers,
+			            });
+			          }
+			        } catch {
+			          productGroupId = null;
+			          groupMembers = [];
+			        }
+			      }
 
 		      // Fetch candidates via Agent Search (GET). This is intentionally lightweight:
 		      // - no product detail fetches
@@ -4614,24 +4792,24 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	      // - passing platform to group resolution (some backends require it)
 	      //
 	      // NOTE: Agent Search doesn't always return results for internal UUID product ids.
-	      if (
-	        requestedMerchantId &&
-	        (!anchor ||
-	          String(anchor?.merchant_id || '').trim() !== requestedMerchantId ||
-	          !anchor?.platform)
-	      ) {
-	        try {
-	          const anchorDetail = await fetchLegacyProductDetailFromUpstream({
-	            merchantId: requestedMerchantId,
-	            productId,
-	            checkoutToken,
-	          });
-	          if (anchorDetail) {
-	            anchor = {
-	              ...anchorDetail,
-	              merchant_id: requestedMerchantId,
-	              product_id: productId,
-	            };
+		      if (
+		        requestedMerchantId &&
+		        (!anchor ||
+		          String(anchor?.merchant_id || '').trim() !== requestedMerchantId ||
+		          !anchor?.platform)
+		      ) {
+		        try {
+		          const anchorDetail = await fetchProductDetailForOffers({
+		            merchantId: requestedMerchantId,
+		            productId,
+		            checkoutToken,
+		          });
+		          if (anchorDetail) {
+		            anchor = {
+		              ...anchorDetail,
+		              merchant_id: requestedMerchantId,
+		              product_id: productId,
+		            };
 	            const hasRequestedMerchant = deduped.some(
 	              (p) => String(p?.merchant_id || '').trim() === requestedMerchantId,
 	            );
@@ -4644,36 +4822,72 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        }
 		      }
 
-		      // Prefer backend-curated product groups (multi-seller).
-		      if (!productGroupId && groupMembers.length === 0) {
-		        try {
-		          const anchorMerchantId = String(anchor?.merchant_id || '').trim();
-		          if (anchorMerchantId) {
-		            const resolvedGroup = await resolveProductGroupFromUpstream({
-		              merchantId: anchorMerchantId,
-		              productId,
-		              platform: anchor?.platform ? String(anchor.platform).trim() : null,
-		              checkoutToken,
-		            });
-		            const pgid =
-		              resolvedGroup?.product_group_id || resolvedGroup?.productGroupId || null;
-		            if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
-		            const members = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : [];
-		            groupMembers = members
-		              .map((m) => ({
-		                merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
-		                merchant_name: m?.merchant_name || m?.merchantName || undefined,
-		                product_id: String(m?.product_id || m?.productId || '').trim(),
-		                platform: m?.platform ? String(m.platform).trim() : undefined,
-		                is_primary: Boolean(m?.is_primary || m?.isPrimary),
-		              }))
-		              .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
-		              .slice(0, limit);
-		          }
-		        } catch (e) {
-		          // Best-effort: group resolution should not block PDP.
-		          groupMembers = [];
-		          productGroupId = null;
+			      // Prefer backend-curated product groups (multi-seller).
+			      if (!productGroupId && groupMembers.length === 0) {
+			        try {
+			          const anchorMerchantId = String(anchor?.merchant_id || '').trim();
+			          if (anchorMerchantId) {
+			            const platform = anchor?.platform ? String(anchor.platform).trim() : null;
+			            const groupCacheKey = JSON.stringify({
+			              productId,
+			              merchantId: anchorMerchantId,
+			              platform,
+			              hasCheckoutToken: Boolean(checkoutToken),
+			            });
+			            const groupCacheEnabled = RESOLVE_PRODUCT_GROUP_CACHE_ENABLED && !bypassCache;
+			            if (!groupCacheEnabled) RESOLVE_PRODUCT_GROUP_CACHE_METRICS.bypasses += 1;
+			            const cachedGroup = groupCacheEnabled
+			              ? getResolveProductGroupCacheEntry(groupCacheKey)
+			              : null;
+			            const resolvedGroup = cachedGroup?.value
+			              ? cachedGroup.value
+			              : await resolveProductGroupFromUpstream({
+			                  merchantId: anchorMerchantId,
+			                  productId,
+			                  platform,
+			                  checkoutToken,
+			                });
+			            const pgid =
+			              resolvedGroup?.product_group_id || resolvedGroup?.productGroupId || null;
+			            if (typeof pgid === 'string' && pgid.trim()) productGroupId = pgid.trim();
+			            const members = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : [];
+			            const normalizedMembers = members
+			              .map((m) => ({
+			                merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+			                merchant_name: m?.merchant_name || m?.merchantName || undefined,
+			                product_id: String(m?.product_id || m?.productId || '').trim(),
+			                platform: m?.platform ? String(m.platform).trim() : undefined,
+			                is_primary: Boolean(m?.is_primary || m?.isPrimary),
+			              }))
+			              .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id));
+
+			            groupMembers = normalizedMembers.slice(0, limit);
+
+			            if (!cachedGroup?.value && groupCacheEnabled) {
+			              const canonicalMember =
+			                normalizedMembers.find((m) => m.is_primary) ||
+			                normalizedMembers[0] ||
+			                null;
+			              setResolveProductGroupCache(groupCacheKey, {
+			                status: 'success',
+			                ...(productGroupId ? { product_group_id: productGroupId } : {}),
+			                canonical_product_ref: canonicalMember
+			                  ? {
+			                      merchant_id: canonicalMember.merchant_id,
+			                      product_id: canonicalMember.product_id,
+			                      ...(canonicalMember.platform
+			                        ? { platform: canonicalMember.platform }
+			                        : {}),
+			                    }
+			                  : null,
+			                members: normalizedMembers,
+			              });
+			            }
+			          }
+			        } catch (e) {
+			          // Best-effort: group resolution should not block PDP.
+			          groupMembers = [];
+			          productGroupId = null;
 		        }
 		      }
 
@@ -4687,31 +4901,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            : buildProductGroupId({ merchant_id: 'pid', product_id: productId })) || `pg:pid:${productId}`;
 	      }
 
-	      let offerProducts = deduped;
-	      if (groupMembers.length > 0) {
-	        const fetched = await Promise.all(
-	          groupMembers.map(async (m) => {
-	            try {
-	              const p = await fetchLegacyProductDetailFromUpstream({
-	                merchantId: m.merchant_id,
-	                productId: m.product_id,
-	                checkoutToken,
-	              });
-	              return p
-	                ? {
-	                    ...p,
-	                    merchant_id: m.merchant_id,
-	                    product_id: m.product_id,
-	                  }
-	                : null;
-	            } catch {
-	              return null;
-	            }
-	          }),
-	        );
-	        const filtered = fetched.filter(Boolean);
-	        if (filtered.length > 0) offerProducts = filtered;
-	      }
+		      let offerProducts = deduped;
+		      if (groupMembers.length > 0) {
+		        const fetched = [];
+		        const chunkSize = 4;
+		        for (let i = 0; i < groupMembers.length; i += chunkSize) {
+		          const chunk = groupMembers.slice(i, i + chunkSize);
+		          // eslint-disable-next-line no-await-in-loop
+		          const results = await Promise.all(
+		            chunk.map(async (m) =>
+		              fetchProductDetailForOffers({
+		                merchantId: m.merchant_id,
+		                productId: m.product_id,
+		                checkoutToken,
+		              }).catch(() => null),
+		            ),
+		          );
+		          fetched.push(...results);
+		        }
+		        const filtered = fetched.filter(Boolean);
+		        if (filtered.length > 0) offerProducts = filtered;
+		      }
 
 	      const merchantNameById = new Map(
 	        groupMembers
@@ -4857,11 +5067,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     // Creator UI cold-start (empty query) should not be constrained by the
     // upstream live merchant recall limits. Prefer reading sellable products
     // from products_cache (same source as creator categories / merchant portal).
-    if (operation === 'find_products_multi') {
-      const source = metadata?.source;
-      const search = effectivePayload.search || {};
-      const queryText = String(search.query || '').trim();
-      const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
+	    if (operation === 'find_products_multi') {
+	      const source = metadata?.source;
+	      const search = effectivePayload.search || {};
+	      const queryText = String(search.query || '').trim();
+	      const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
       const inStockOnly = search.in_stock_only !== false;
 
       const isCreatorUi = source === 'creator-agent-ui';
@@ -5090,13 +5300,75 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             'Cross-merchant cache browse failed; falling back to upstream',
           );
         }
-      }
-    }
+	      }
+	    }
 
-    // Build URL with path parameters
-    let url = `${PIVOTA_API_BASE}${route.path}`;
-    let requestBody = {};
-    let queryParams = {};
+	    if (operation === 'find_products' && process.env.DATABASE_URL) {
+	      const source = metadata?.source;
+	      const search = effectivePayload.search || effectivePayload || {};
+	      const queryText = String(search.query || '').trim();
+	      const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+	      const inStockOnly = search.in_stock_only !== false;
+	      const isBrowse = queryText.length === 0;
+
+	      if (isBrowse && merchantId) {
+	        try {
+	          const page = Math.max(1, Number(search.page || 1) || 1);
+	          const limit = Math.min(Math.max(1, Number(search.page_size || search.limit || 20) || 20), 100);
+	          const fromCache = await loadMerchantBrowseFromCache(merchantId, page, limit, { inStockOnly });
+	          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
+
+	          const upstreamData = {
+	            products: fromCache.products,
+	            total: fromCache.total,
+	            page: fromCache.page,
+	            page_size: fromCache.page_size,
+	            reply: null,
+	            metadata: {
+	              query_source: 'cache_merchant_browse',
+	              fetched_at: new Date().toISOString(),
+	              ...(merchantId ? { merchant_id: merchantId } : {}),
+	              ...(source ? { source } : {}),
+	              ...(ROUTE_DEBUG_ENABLED
+	                ? {
+	                    route_debug: {
+	                      merchant_cache: {
+	                        attempted: true,
+	                        mode: 'browse',
+	                        merchant_id: merchantId,
+	                        page,
+	                        limit,
+	                        in_stock_only: inStockOnly,
+	                        cache_hit: cacheHit,
+	                      },
+	                    },
+	                  }
+	                : {}),
+	            },
+	          };
+
+	          const promotions = await getActivePromotions(now, creatorId);
+	          const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+	          if (cacheHit) {
+	            return res.json(enriched);
+	          }
+	          logger.info(
+	            { source, merchantId, page, limit, inStockOnly },
+	            'Merchant cache browse returned empty; falling back to upstream',
+	          );
+	        } catch (err) {
+	          logger.warn(
+	            { err: err.message, source, merchantId },
+	            'Merchant cache browse failed; falling back to upstream',
+	          );
+	        }
+	      }
+	    }
+	
+	    // Build URL with path parameters
+	    let url = `${PIVOTA_API_BASE}${route.path}`;
+	    let requestBody = {};
+	    let queryParams = {};
 
     // Handle different parameter types
     switch (operation) {
