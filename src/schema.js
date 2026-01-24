@@ -16,6 +16,7 @@ const OperationEnum = z.enum([
   'update_promotion',
   'get_product_detail',
   'get_pdp',
+  'get_pdp_v2',
   // Quote-first (locked pricing)
   'preview_quote',
   'create_order',
