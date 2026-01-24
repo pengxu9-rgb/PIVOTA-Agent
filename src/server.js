@@ -243,6 +243,195 @@ function snapshotResolveProductCandidatesCacheStats() {
   };
 }
 
+function safeCloneJson(value) {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+// Product-detail cache (avoid repeated slow upstream product fetches).
+const PRODUCT_DETAIL_CACHE_ENABLED =
+  process.env.PRODUCT_DETAIL_CACHE_ENABLED !== 'false';
+const PRODUCT_DETAIL_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
+const PRODUCT_DETAIL_CACHE_METRICS = {
+  hits: 0,
+  misses: 0,
+  sets: 0,
+  bypasses: 0,
+  evictions: 0,
+  db_hits: 0,
+};
+const PRODUCT_DETAIL_CACHE_TTL_MS = parseTimeoutMs(
+  process.env.PRODUCT_DETAIL_CACHE_TTL_MS,
+  10 * 60 * 1000,
+);
+const PRODUCT_DETAIL_CACHE_MAX_ENTRIES = Math.max(
+  50,
+  Number(process.env.PRODUCT_DETAIL_CACHE_MAX_ENTRIES || 2000) || 2000,
+);
+
+function getProductDetailCacheEntry(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return null;
+  const hit = PRODUCT_DETAIL_CACHE.get(key);
+  if (!hit) {
+    PRODUCT_DETAIL_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
+    PRODUCT_DETAIL_CACHE.delete(key);
+    PRODUCT_DETAIL_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  PRODUCT_DETAIL_CACHE_METRICS.hits += 1;
+  return hit;
+}
+
+function setProductDetailCache(
+  cacheKey,
+  value,
+  ttlMs = PRODUCT_DETAIL_CACHE_TTL_MS,
+) {
+  const key = String(cacheKey || '');
+  if (!key) return;
+
+  const ttl = Number(ttlMs) || PRODUCT_DETAIL_CACHE_TTL_MS;
+  const now = Date.now();
+
+  // Simple eviction (insertion order = oldest first).
+  if (PRODUCT_DETAIL_CACHE.size >= PRODUCT_DETAIL_CACHE_MAX_ENTRIES) {
+    const overflow = PRODUCT_DETAIL_CACHE.size - PRODUCT_DETAIL_CACHE_MAX_ENTRIES + 1;
+    let removed = 0;
+    for (const k of PRODUCT_DETAIL_CACHE.keys()) {
+      PRODUCT_DETAIL_CACHE.delete(k);
+      removed += 1;
+      if (removed >= overflow) break;
+    }
+    if (removed > 0) PRODUCT_DETAIL_CACHE_METRICS.evictions += removed;
+  }
+
+  PRODUCT_DETAIL_CACHE_METRICS.sets += 1;
+  PRODUCT_DETAIL_CACHE.set(key, {
+    value: safeCloneJson(value),
+    storedAtMs: now,
+    expiresAtMs: now + Math.max(5_000, ttl),
+  });
+}
+
+function snapshotProductDetailCacheStats() {
+  return {
+    enabled: PRODUCT_DETAIL_CACHE_ENABLED,
+    ttl_ms: PRODUCT_DETAIL_CACHE_TTL_MS,
+    max_entries: PRODUCT_DETAIL_CACHE_MAX_ENTRIES,
+    size: PRODUCT_DETAIL_CACHE.size,
+    ...PRODUCT_DETAIL_CACHE_METRICS,
+  };
+}
+
+// Resolve-product-group cache (avoid repeated slow upstream group lookups).
+const RESOLVE_PRODUCT_GROUP_CACHE_ENABLED =
+  process.env.RESOLVE_PRODUCT_GROUP_CACHE_ENABLED !== 'false';
+const RESOLVE_PRODUCT_GROUP_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
+const RESOLVE_PRODUCT_GROUP_CACHE_METRICS = {
+  hits: 0,
+  misses: 0,
+  sets: 0,
+  bypasses: 0,
+};
+const RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS = parseTimeoutMs(
+  process.env.RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS,
+  10 * 60 * 1000,
+);
+
+function getResolveProductGroupCacheEntry(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return null;
+  const hit = RESOLVE_PRODUCT_GROUP_CACHE.get(key);
+  if (!hit) {
+    RESOLVE_PRODUCT_GROUP_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
+    RESOLVE_PRODUCT_GROUP_CACHE.delete(key);
+    RESOLVE_PRODUCT_GROUP_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  RESOLVE_PRODUCT_GROUP_CACHE_METRICS.hits += 1;
+  return hit;
+}
+
+function setResolveProductGroupCache(
+  cacheKey,
+  value,
+  ttlMs = RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS,
+) {
+  const key = String(cacheKey || '');
+  if (!key) return;
+  const ttl = Number(ttlMs) || RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS;
+  RESOLVE_PRODUCT_GROUP_CACHE_METRICS.sets += 1;
+  RESOLVE_PRODUCT_GROUP_CACHE.set(key, {
+    value: safeCloneJson(value),
+    storedAtMs: Date.now(),
+    expiresAtMs: Date.now() + Math.max(5_000, ttl),
+  });
+}
+
+function snapshotResolveProductGroupCacheStats() {
+  return {
+    enabled: RESOLVE_PRODUCT_GROUP_CACHE_ENABLED,
+    ttl_ms: RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS,
+    size: RESOLVE_PRODUCT_GROUP_CACHE.size,
+    ...RESOLVE_PRODUCT_GROUP_CACHE_METRICS,
+  };
+}
+
+async function fetchProductDetailFromProductsCache(args) {
+  if (!process.env.DATABASE_URL) return null;
+  const merchantId = String(args?.merchantId || '').trim();
+  const productId = String(args?.productId || '').trim();
+  if (!merchantId || !productId) return null;
+
+  try {
+    const res = await query(
+      `
+        SELECT product_data, cached_at
+        FROM products_cache
+        WHERE merchant_id = $1
+          AND (expires_at IS NULL OR expires_at > now())
+          AND (
+            platform_product_id = $2
+            OR product_data->>'id' = $2
+            OR product_data->>'product_id' = $2
+            OR product_data->>'productId' = $2
+          )
+        ORDER BY cached_at DESC
+        LIMIT 1
+      `,
+      [merchantId, productId],
+    );
+
+    const row = res?.rows && res.rows[0] ? res.rows[0] : null;
+    const productData = row?.product_data;
+    if (!productData || typeof productData !== 'object') return null;
+
+    const normalized = {
+      ...productData,
+      merchant_id: merchantId,
+      product_id: String(productData.product_id || productData.id || productId).trim() || productId,
+    };
+    return { product: normalized, cached_at: row?.cached_at || null };
+  } catch (err) {
+    logger.warn(
+      { err: err.message, merchantId, productId },
+      'Failed to load product detail from products_cache',
+    );
+    return null;
+  }
+}
+
 // --- Currency helpers (Creator cache surfaces) ---
 // Creator feeds/search can be served directly from products_cache for speed.
 // For Shopify stores, product_data prices are in the shop currency, but some
@@ -2949,6 +3138,8 @@ app.get('/healthz', (req, res) => {
       taxonomy_version: process.env.TAXONOMY_VERSION || null,
     },
     resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
+    resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
+    product_detail_cache: snapshotProductDetailCacheStats(),
     products_available: true,
     catalog_cache: includeCacheStats
       ? {
@@ -2991,6 +3182,8 @@ app.get('/healthz', (req, res) => {
         },
         backend: { api_base: PIVOTA_API_BASE, api_key_configured: !!PIVOTA_API_KEY, db_configured: dbConfigured },
         resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
+        resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
+        product_detail_cache: snapshotProductDetailCacheStats(),
         products_available: true,
         warning: 'healthz_cache_stats_failed',
       });
@@ -4142,12 +4335,49 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
       ).trim();
       const platform = String(productRef.platform || payload.platform || '').trim() || null;
+      const options = payload.options || {};
+      const debug = options.debug === true || String(options.debug || '').trim().toLowerCase() === 'true';
+      const bypassCache =
+        options.no_cache === true ||
+        options.cache_bypass === true ||
+        options.bypass_cache === true ||
+        String(options.no_cache || '').trim().toLowerCase() === 'true' ||
+        String(options.cache_bypass || options.bypass_cache || '')
+          .trim()
+          .toLowerCase() === 'true';
 
       if (!productId) {
         return res.status(400).json({
           error: 'MISSING_PARAMETERS',
           message: 'product_ref.product_id is required',
         });
+      }
+
+      const cacheKey = JSON.stringify({
+        productId,
+        merchantId: merchantId || null,
+        platform,
+        hasCheckoutToken: Boolean(checkoutToken),
+      });
+      const cacheEnabled = RESOLVE_PRODUCT_GROUP_CACHE_ENABLED && !bypassCache;
+      if (!cacheEnabled) RESOLVE_PRODUCT_GROUP_CACHE_METRICS.bypasses += 1;
+      const cachedEntry = cacheEnabled ? getResolveProductGroupCacheEntry(cacheKey) : null;
+      if (cachedEntry?.value) {
+        const ageMs =
+          typeof cachedEntry.storedAtMs === 'number'
+            ? Math.max(0, Date.now() - cachedEntry.storedAtMs)
+            : 0;
+        const response = debug
+          ? {
+              ...cachedEntry.value,
+              cache: {
+                hit: true,
+                age_ms: ageMs,
+                ttl_ms: RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS,
+              },
+            }
+          : cachedEntry.value;
+        return res.json(response);
       }
 
       const resolvedGroup = merchantId
@@ -4183,7 +4413,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const canonicalMember =
         members.find((m) => m.is_primary) || members[0] || null;
 
-      return res.json({
+      const result = {
         status: 'success',
         ...(productGroupId ? { product_group_id: productGroupId } : {}),
         canonical_product_ref: canonicalMember
@@ -4194,7 +4424,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }
           : null,
         members,
-      });
+      };
+
+      if (cacheEnabled) setResolveProductGroupCache(cacheKey, result);
+      const response = debug
+        ? {
+            ...result,
+            cache: { hit: false, age_ms: 0, ttl_ms: RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS },
+          }
+        : result;
+
+      return res.json(response);
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
       const statusCode = err?.response?.status || err?.status || 502;
@@ -4608,6 +4848,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     let creatorCacheRouteDebug = null;
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
+    let productDetailMerchantId = null;
+    let productDetailProductId = null;
+    let productDetailCacheKey = null;
+    let productDetailDebug = false;
+    let productDetailBypassCache = false;
+    let productDetailCacheMeta = null;
     // Creator UI cold-start (empty query) should not be constrained by the
     // upstream live merchant recall limits. Prefer reading sellable products
     // from products_cache (same source as creator categories / merchant portal).
@@ -4989,12 +5235,32 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       case 'get_product_detail': {
         const merchantId = String(payload.product?.merchant_id || payload.product?.merchantId || '').trim();
         const productId = String(payload.product?.product_id || payload.product?.productId || '').trim();
+        const options = payload.options || payload.product?.options || {};
+        productDetailMerchantId = merchantId;
+        productDetailProductId = productId;
+        productDetailDebug =
+          options.debug === true ||
+          String(options.debug || '').trim().toLowerCase() === 'true' ||
+          payload.debug === true;
+        productDetailBypassCache =
+          options.no_cache === true ||
+          options.cache_bypass === true ||
+          options.bypass_cache === true ||
+          String(options.no_cache || '').trim().toLowerCase() === 'true' ||
+          String(options.cache_bypass || options.bypass_cache || '')
+            .trim()
+            .toLowerCase() === 'true';
         if (!merchantId || !productId) {
           return res.status(400).json({
             error: 'MISSING_PARAMETERS',
             message: 'merchant_id and product_id are required'
           });
         }
+        productDetailCacheKey = JSON.stringify({
+          merchantId,
+          productId,
+          hasCheckoutToken: Boolean(checkoutToken),
+        });
         url = url
           .replace('{merchant_id}', encodeURIComponent(merchantId))
           .replace('{product_id}', encodeURIComponent(productId));
@@ -5325,7 +5591,62 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     let response;
     try {
-      response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+      if (
+        operation === 'get_product_detail' &&
+        productDetailCacheKey &&
+        PRODUCT_DETAIL_CACHE_ENABLED &&
+        !productDetailBypassCache
+      ) {
+        const cachedEntry = getProductDetailCacheEntry(productDetailCacheKey);
+        if (cachedEntry?.value) {
+          const ageMs =
+            typeof cachedEntry.storedAtMs === 'number'
+              ? Math.max(0, Date.now() - cachedEntry.storedAtMs)
+              : 0;
+          response = { status: 200, data: safeCloneJson(cachedEntry.value) };
+          productDetailCacheMeta = {
+            hit: true,
+            source: 'memory',
+            age_ms: ageMs,
+            ttl_ms: PRODUCT_DETAIL_CACHE_TTL_MS,
+          };
+        } else if (process.env.DATABASE_URL) {
+          const fromDb = await fetchProductDetailFromProductsCache({
+            merchantId: productDetailMerchantId,
+            productId: productDetailProductId,
+          });
+          if (fromDb?.product) {
+            PRODUCT_DETAIL_CACHE_METRICS.db_hits += 1;
+            response = {
+              status: 200,
+              data: {
+                status: 'success',
+                success: true,
+                product: fromDb.product,
+                metadata: {
+                  query_source: 'products_cache',
+                  cached_at: fromDb.cached_at || null,
+                },
+              },
+            };
+            productDetailCacheMeta = {
+              hit: true,
+              source: 'products_cache',
+              age_ms: 0,
+              ttl_ms: PRODUCT_DETAIL_CACHE_TTL_MS,
+            };
+          }
+        }
+      } else if (operation === 'get_product_detail' && productDetailCacheKey && productDetailBypassCache) {
+        PRODUCT_DETAIL_CACHE_METRICS.bypasses += 1;
+      }
+
+      if (!response) {
+        response = await callUpstreamWithOptionalRetry(operation, axiosConfig);
+        if (operation === 'get_product_detail') {
+          productDetailCacheMeta = { hit: false, source: 'upstream' };
+        }
+      }
     } catch (err) {
       // Compatibility: some upstream deployments expect body to be embedded
       // under `order_request` (FastAPI body param naming). Retry once with the
@@ -5448,6 +5769,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     if (operation === 'get_product_detail') {
       upstreamData = normalizeAgentProductDetailResponse(upstreamData);
+      if (
+        productDetailCacheKey &&
+        PRODUCT_DETAIL_CACHE_ENABLED &&
+        !productDetailBypassCache &&
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        !Array.isArray(upstreamData)
+      ) {
+        const shouldCache =
+          response?.status === 200 &&
+          (upstreamData.product || upstreamData?.data?.product);
+        if (shouldCache && (!productDetailCacheMeta || productDetailCacheMeta.source !== 'memory')) {
+          setProductDetailCache(productDetailCacheKey, upstreamData);
+        }
+      }
+      if (productDetailDebug && productDetailCacheMeta) {
+        upstreamData = {
+          ...upstreamData,
+          cache: productDetailCacheMeta,
+        };
+      }
     }
 
     if (
