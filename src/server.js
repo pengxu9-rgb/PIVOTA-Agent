@@ -4403,12 +4403,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          .filter(([mid]) => Boolean(mid)),
 	      );
 
-	      const offers = offerProducts.map((p) => {
-	        const mid = String(p.merchant_id || '').trim();
-	        const currency = p.currency || 'USD';
-	        const shipCost = p.shipping?.cost || p.shipping_cost || null;
-	        const shipCostAmount =
-	          shipCost == null ? undefined : Number(typeof shipCost === 'object' ? shipCost.amount : shipCost);
+		      const offers = offerProducts.map((p) => {
+		        const mid = String(p.merchant_id || '').trim();
+		        const offerProductId = String(p.product_id || '').trim() || undefined;
+		        const currency = p.currency || 'USD';
+		        const shipCost = p.shipping?.cost || p.shipping_cost || null;
+		        const shipCostAmount =
+		          shipCost == null ? undefined : Number(typeof shipCost === 'object' ? shipCost.amount : shipCost);
         const shipCostCurrency =
           shipCost && typeof shipCost === 'object'
             ? String(shipCost.currency || currency)
@@ -4419,19 +4420,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            ? [Number(etaRaw[0]) || 0, Number(etaRaw[1]) || 0]
 	            : undefined;
 
-	        return {
-	          offer_id:
-	            buildOfferId({
-	              merchant_id: mid,
-	              product_group_id: productGroupId,
-	              fulfillment_type: p.fulfillment_type || 'merchant',
-	              tier: 'default',
-	            }) || `of:v1:${mid}:${productGroupId}:${p.fulfillment_type || 'merchant'}:default`,
-	          product_group_id: productGroupId,
-	          merchant_id: mid,
-	          merchant_name:
-	            p.merchant_name ||
-	            p.store_name ||
+		        return {
+		          offer_id:
+		            buildOfferId({
+		              merchant_id: mid,
+		              product_group_id: productGroupId,
+		              fulfillment_type: p.fulfillment_type || 'merchant',
+		              tier: 'default',
+		            }) || `of:v1:${mid}:${productGroupId}:${p.fulfillment_type || 'merchant'}:default`,
+		          product_group_id: productGroupId,
+		          product_id: offerProductId,
+		          merchant_id: mid,
+		          merchant_name:
+		            p.merchant_name ||
+		            p.store_name ||
 	            merchantNameById.get(mid) ||
 	            undefined,
 	          price: toMoney(p.price, currency),
@@ -4454,11 +4456,26 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         };
       });
 
-      const totalCost = (offer) =>
-        Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
-      const sortedByTotal = [...offers].sort((a, b) => totalCost(a) - totalCost(b));
-      const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
-	      const defaultOfferId = bestPriceOfferId;
+	      const totalCost = (offer) =>
+	        Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
+	      const sortedByTotal = [...offers].sort((a, b) => totalCost(a) - totalCost(b));
+	      const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
+		      const anchorByProductIdMerchantId =
+		        !requestedMerchantId && groupMembers.length > 0
+		          ? String(
+		              groupMembers.find((m) => String(m.product_id || '').trim() === productId)
+		                ?.merchant_id || '',
+		            ).trim() || null
+		          : null;
+		      const preferredMerchantId =
+		        (requestedMerchantId ? String(requestedMerchantId).trim() : null) ||
+		        anchorByProductIdMerchantId ||
+		        (anchor ? String(anchor.merchant_id || '').trim() : null) ||
+		        null;
+		      const preferredOfferId = preferredMerchantId
+		        ? offers.find((o) => o.merchant_id === preferredMerchantId)?.offer_id || null
+		        : null;
+		      const defaultOfferId = preferredOfferId || bestPriceOfferId;
 
 	      const result = {
 	        status: 'success',
