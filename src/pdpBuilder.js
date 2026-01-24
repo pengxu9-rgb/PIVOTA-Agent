@@ -451,10 +451,86 @@ function buildReviewsPreview(product, options = {}) {
       ? summary.snippets
       : [];
 
+  const distributionRaw =
+    summary?.rating_distribution ||
+    summary?.star_distribution ||
+    summary?.ratingDistribution ||
+    summary?.starDistribution ||
+    summary?.distribution ||
+    null;
+
+  const ratingDistribution = (() => {
+    if (!distributionRaw) return undefined;
+
+    const map = new Map();
+
+    if (Array.isArray(distributionRaw)) {
+      distributionRaw.forEach((item) => {
+        const stars = Number(item?.stars ?? item?.star ?? item?.rating ?? item?.score);
+        if (!Number.isFinite(stars) || stars < 1 || stars > 5) return;
+        const count = Number(item?.count ?? item?.n ?? item?.value);
+        const percent = Number(
+          item?.percent ?? item?.ratio ?? item?.pct ?? item?.percentage ?? item?.share,
+        );
+        map.set(stars, {
+          stars,
+          ...(Number.isFinite(count) ? { count } : {}),
+          ...(Number.isFinite(percent) ? { percent } : {}),
+        });
+      });
+    } else if (typeof distributionRaw === 'object') {
+      Object.entries(distributionRaw).forEach(([k, v]) => {
+        const stars = Number(k);
+        if (!Number.isFinite(stars) || stars < 1 || stars > 5) return;
+        const value = Number(v);
+        if (!Number.isFinite(value)) return;
+        map.set(stars, { stars, value });
+      });
+    }
+
+    const rows = [];
+    for (let stars = 5; stars >= 1; stars -= 1) {
+      const item = map.get(stars) || {};
+      let count = Number.isFinite(item.count) ? item.count : undefined;
+      let percent = Number.isFinite(item.percent) ? item.percent : undefined;
+
+      if (count == null && Number.isFinite(item.value)) {
+        const v = item.value;
+        if (reviewCount && v > 1 && v <= reviewCount) {
+          count = v;
+        } else if (v > 1) {
+          percent = v / 100;
+        } else {
+          percent = v;
+        }
+      }
+
+      if (count != null && reviewCount > 0) {
+        percent = count / reviewCount;
+      }
+
+      if (percent != null && Number.isFinite(percent)) {
+        percent = Math.max(0, Math.min(1, percent));
+      } else {
+        percent = undefined;
+      }
+
+      rows.push({
+        stars,
+        ...(count != null ? { count } : {}),
+        ...(percent != null ? { percent } : {}),
+      });
+    }
+
+    const hasAny = rows.some((r) => (r.count != null && r.count > 0) || (r.percent != null && r.percent > 0));
+    return hasAny ? rows : undefined;
+  })();
+
   return {
     scale,
     rating,
     review_count: reviewCount,
+    ...(ratingDistribution ? { rating_distribution: ratingDistribution } : {}),
     preview_items: previewItems.slice(0, 3).map((item, idx) => ({
       review_id: String(item.review_id || item.id || idx),
       rating: Number(item.rating || item.score || scale) || scale,

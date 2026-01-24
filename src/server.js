@@ -1233,11 +1233,12 @@ async function fetchSimilarProductsFromUpstream(args) {
   const data = {
     operation: 'find_similar_products',
     payload: {
-      similar: {
-        merchant_id: merchantId,
-        product_id: productId,
-        limit: limit || 6,
-      },
+      // Upstream shopping gateway expects the flat payload shape.
+      // The nested `payload.similar` shape is supported at this gateway boundary,
+      // but must be normalized before forwarding upstream.
+      merchant_id: merchantId,
+      product_id: productId,
+      limit: limit || 6,
     },
   };
   const axiosConfig = {
