@@ -6,6 +6,8 @@ const OperationEnum = z.enum([
   'find_products_multi',
   // Lightweight product->offer candidates resolver (multi-offer Phase 2)
   'resolve_product_candidates',
+  // Resolve product group membership (canonical PDP)
+  'resolve_product_group',
   'find_similar_products',
   'products.recommendations',
   'preview_quote',

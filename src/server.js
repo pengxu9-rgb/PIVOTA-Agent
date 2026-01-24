@@ -4131,8 +4131,83 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     }
   }
 
-	  if (operation === 'resolve_product_candidates') {
-	    try {
+  if (operation === 'resolve_product_group') {
+    try {
+      const productRef = payload.product_ref || payload.productRef || payload.product || {};
+      const productId = String(
+        productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
+      ).trim();
+      const merchantId = String(
+        productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
+      ).trim();
+      const platform = String(productRef.platform || payload.platform || '').trim() || null;
+
+      if (!productId) {
+        return res.status(400).json({
+          error: 'MISSING_PARAMETERS',
+          message: 'product_ref.product_id is required',
+        });
+      }
+
+      const resolvedGroup = merchantId
+        ? await resolveProductGroupFromUpstream({
+            merchantId,
+            productId,
+            platform,
+            checkoutToken,
+          })
+        : await resolveProductGroupByProductIdFromUpstream({
+            productId,
+            platform,
+            checkoutToken,
+          });
+
+      const productGroupIdRaw =
+        resolvedGroup?.product_group_id || resolvedGroup?.productGroupId || null;
+      const productGroupId =
+        typeof productGroupIdRaw === 'string' && productGroupIdRaw.trim()
+          ? productGroupIdRaw.trim()
+          : null;
+      const membersRaw = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : [];
+      const members = membersRaw
+        .map((m) => ({
+          merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+          merchant_name: m?.merchant_name || m?.merchantName || undefined,
+          product_id: String(m?.product_id || m?.productId || '').trim(),
+          platform: m?.platform ? String(m.platform).trim() : undefined,
+          is_primary: Boolean(m?.is_primary || m?.isPrimary),
+        }))
+        .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id));
+
+      const canonicalMember =
+        members.find((m) => m.is_primary) || members[0] || null;
+
+      return res.json({
+        status: 'success',
+        ...(productGroupId ? { product_group_id: productGroupId } : {}),
+        canonical_product_ref: canonicalMember
+          ? {
+              merchant_id: canonicalMember.merchant_id,
+              product_id: canonicalMember.product_id,
+              ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+            }
+          : null,
+        members,
+      });
+    } catch (err) {
+      const { code, message, data } = extractUpstreamErrorCode(err);
+      const statusCode = err?.response?.status || err?.status || 502;
+      logger.error({ err: err?.message || String(err) }, 'resolve_product_group failed');
+      return res.status(statusCode).json({
+        error: code || 'RESOLVE_PRODUCT_GROUP_FAILED',
+        message: message || 'Failed to resolve product group',
+        details: data || null,
+      });
+    }
+  }
+
+		  if (operation === 'resolve_product_candidates') {
+		    try {
 	      const productRef = payload.product_ref || payload.productRef || payload.product || {};
 	      const context = payload.context || {};
 	      const options = payload.options || {};
@@ -4476,15 +4551,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		        ? offers.find((o) => o.merchant_id === preferredMerchantId)?.offer_id || null
 		        : null;
 		      const defaultOfferId = preferredOfferId || bestPriceOfferId;
+		      const canonicalMember =
+		        groupMembers.find((m) => m.is_primary) || groupMembers[0] || null;
+		      const canonicalProductRef = canonicalMember
+		        ? {
+		            merchant_id: canonicalMember.merchant_id,
+		            product_id: canonicalMember.product_id,
+		            ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+		          }
+		        : null;
 
-	      const result = {
-	        status: 'success',
-	        product_group_id: productGroupId,
-	        offers_count: offers.length,
-	        ...(includeOffers ? { offers } : {}),
-	        default_offer_id: defaultOfferId,
-	        best_price_offer_id: bestPriceOfferId,
-	      };
+		      const result = {
+		        status: 'success',
+		        product_group_id: productGroupId,
+		        canonical_product_ref: canonicalProductRef,
+		        offers_count: offers.length,
+		        ...(includeOffers ? { offers } : {}),
+		        default_offer_id: defaultOfferId,
+		        best_price_offer_id: bestPriceOfferId,
+		      };
 
 	      if (cacheEnabled) setResolveProductCandidatesCache(cacheKey, result);
 	      const response = debug
