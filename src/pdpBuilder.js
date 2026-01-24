@@ -530,7 +530,9 @@ function buildReviewsPreview(product, options = {}) {
     scale,
     rating,
     review_count: reviewCount,
-    ...(ratingDistribution ? { rating_distribution: ratingDistribution } : {}),
+    ...(ratingDistribution
+      ? { star_distribution: ratingDistribution, rating_distribution: ratingDistribution }
+      : {}),
     preview_items: previewItems.slice(0, 3).map((item, idx) => ({
       review_id: String(item.review_id || item.id || idx),
       rating: Number(item.rating || item.score || scale) || scale,

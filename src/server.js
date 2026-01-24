@@ -60,6 +60,12 @@ const SERVICE_NAME = String(process.env.RAILWAY_SERVICE_NAME || process.env.SERV
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
+const REVIEWS_API_BASE = (
+  process.env.REVIEWS_API_BASE ||
+  process.env.REVIEWS_BACKEND_URL ||
+  process.env.REVIEWS_BACKEND ||
+  'https://web-production-fedb.up.railway.app'
+).replace(/\/$/, '');
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
 
@@ -1793,6 +1799,42 @@ async function fetchSimilarProductsFromUpstream(args) {
   };
   const resp = await callUpstreamWithOptionalRetry('find_similar_products', axiosConfig);
   return Array.isArray(resp?.data?.products) ? resp.data.products : [];
+}
+
+async function fetchReviewSummaryFromUpstream(args) {
+  const { merchantId, platform, platformProductId, checkoutToken } = args;
+  const mid = String(merchantId || '').trim();
+  const pf = String(platform || '').trim();
+  const pid = String(platformProductId || '').trim();
+  if (!mid || !pf || !pid) return null;
+
+  const url = `${REVIEWS_API_BASE}/agent/shop/v1/invoke`;
+  const data = {
+    operation: 'get_review_summary',
+    payload: {
+      sku: {
+        merchant_id: mid,
+        platform: pf,
+        platform_product_id: pid,
+        variant_id: null,
+      },
+    },
+  };
+
+  const axiosConfig = {
+    method: 'POST',
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
+    },
+    timeout: getUpstreamTimeoutMs('find_products_multi'),
+    data,
+  };
+
+  const resp = await callUpstreamWithOptionalRetry('find_products_multi', axiosConfig);
+  const summary = resp?.data?.review_summary;
+  return summary && typeof summary === 'object' ? summary : null;
 }
 
 function extractUpstreamErrorCode(err) {
@@ -4928,6 +4970,41 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
 
       const pdpOptions = getPdpOptions(payload);
+      let canonicalProductForPdp = canonicalProduct;
+
+      if (wantsReviewsPreview) {
+        try {
+          const reviewPlatform = String(canonicalProduct.platform || canonicalProductRef.platform || '').trim();
+          const reviewPlatformProductId = String(
+            canonicalProduct.platform_product_id ||
+              canonicalProduct.platformProductId ||
+              canonicalProduct.shopify_id ||
+              canonicalProduct.product_id ||
+              canonicalProduct.id ||
+              canonicalProductRef.product_id ||
+              '',
+          ).trim();
+
+          const reviewSummary =
+            reviewPlatform && reviewPlatformProductId
+              ? await fetchReviewSummaryFromUpstream({
+                  merchantId: canonicalProductRef.merchant_id,
+                  platform: reviewPlatform,
+                  platformProductId: reviewPlatformProductId,
+                  checkoutToken,
+                }).catch(() => null)
+              : null;
+
+          if (reviewSummary && typeof reviewSummary === 'object') {
+            canonicalProductForPdp = {
+              ...canonicalProductForPdp,
+              review_summary: reviewSummary,
+            };
+          }
+        } catch {
+          // Non-blocking.
+        }
+      }
 
       // Similar products (non-blocking; can be requested by include=similar).
       let relatedProducts = [];
@@ -4942,10 +5019,45 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         } catch {
           relatedProducts = [];
         }
+
+        if (
+          Array.isArray(relatedProducts) &&
+          relatedProducts.length === 0 &&
+          process.env.DATABASE_URL
+        ) {
+          try {
+            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+            const fromCache = await loadMerchantBrowseFromCache(
+              canonicalProductRef.merchant_id,
+              1,
+              Math.min(Math.max(12, Number(limit) * 4), 48),
+              { inStockOnly: false },
+            );
+            const excludeIds = new Set(
+              [
+                canonicalProductRef.product_id,
+                productId,
+                entryProductRef.product_id,
+                canonicalProductForPdp.product_id,
+                canonicalProductForPdp.id,
+              ]
+                .map((v) => String(v || '').trim())
+                .filter(Boolean),
+            );
+            relatedProducts = (fromCache.products || [])
+              .filter((p) => {
+                const pid = String(p?.product_id || p?.id || '').trim();
+                return pid && !excludeIds.has(pid);
+              })
+              .slice(0, Math.max(1, Number(limit || 6)));
+          } catch {
+            // Non-blocking.
+          }
+        }
       }
 
       const pdpPayload = buildPdpPayload({
-        product: canonicalProduct,
+        product: canonicalProductForPdp,
         relatedProducts,
         entryPoint: pdpOptions.entryPoint,
         experiment: pdpOptions.experiment,
