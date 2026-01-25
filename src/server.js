@@ -51,6 +51,7 @@ const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compat
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
 const { mountRecommendationRoutes } = require('./recommendations/routes');
+const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
@@ -1501,6 +1502,28 @@ async function fetchLegacyProductDetailFromUpstream(args) {
   };
   const resp = await callUpstreamWithOptionalRetry('get_product_detail', axiosConfig);
   return resp?.data?.product || null;
+}
+
+async function fetchVariantDetailFromUpstream(args) {
+  const { merchantId, variantId, checkoutToken } = args;
+  const url = `${PIVOTA_API_BASE}/agent/v1/products/merchants/${encodeURIComponent(
+    merchantId,
+  )}/variant/${encodeURIComponent(variantId)}`;
+  const axiosConfig = {
+    method: 'GET',
+    url,
+    headers: {
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('get_product_detail'),
+  };
+  const resp = await callUpstreamWithOptionalRetry('get_product_detail', axiosConfig);
+  return resp?.data || null;
 }
 
 async function fetchProductGroupMembersFromUpstream(args) {
@@ -4081,11 +4104,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   // Log which mode we're using
   logger.info({ API_MODE, operation }, `API Mode: ${API_MODE}, Operation: ${operation}`);
 
-  const checkoutToken =
-    String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
-  
-  // HYBRID mode: Use real API for product search, mock for payments
-  if (USE_HYBRID) {
+	  const checkoutToken =
+	    String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
+
+	  const guardrails = applyGatewayGuardrails({
+	    req,
+	    operation,
+	    payload,
+	    effectivePayload,
+	    metadata,
+	  });
+	  if (guardrails?.blocked) {
+	    if (typeof guardrails.blocked.retryAfterSec === 'number') {
+	      res.setHeader('Retry-After', String(Math.max(1, guardrails.blocked.retryAfterSec)));
+	    }
+	    return res.status(guardrails.blocked.status).json(guardrails.blocked.body);
+	  }
+	  
+	  // HYBRID mode: Use real API for product search, mock for payments
+	  if (USE_HYBRID) {
     const hybridMockOperations = ['submit_payment', 'request_after_sales'];
     if (hybridMockOperations.includes(operation)) {
       logger.info({ operation }, 'Hybrid mode: Using mock for this operation');
@@ -4831,18 +4868,40 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     }
   }
 
-  if (operation === 'get_pdp_v2') {
-    try {
-      const productRef = payload.product_ref || payload.productRef || payload.product || {};
-      const productId = String(
-        productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
-      ).trim();
-      const requestedMerchantId = String(
-        productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
-      ).trim();
-      const platform = String(productRef.platform || payload.platform || '').trim() || null;
-      const options = payload.options || payload.product?.options || {};
-      const debug =
+	  if (operation === 'get_pdp_v2') {
+	    try {
+	      const productRef = payload.product_ref || payload.productRef || payload.product || {};
+	      let productId = String(
+	        productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
+	      ).trim();
+	      let requestedMerchantId = String(
+	        productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
+	      ).trim();
+	      const offerId = String(
+	        productRef.offer_id || productRef.offerId || payload.offer_id || payload.offerId || '',
+	      ).trim();
+	      const variantId = String(
+	        productRef.variant_id ||
+	          productRef.variantId ||
+	          productRef.sku_id ||
+	          productRef.skuId ||
+	          payload.variant_id ||
+	          payload.variantId ||
+	          payload.sku_id ||
+	          payload.skuId ||
+	          '',
+	      ).trim();
+	      const parsedOffer = offerId ? parseOfferId(offerId) : null;
+	      if (!requestedMerchantId && parsedOffer?.merchant_id) {
+	        requestedMerchantId = String(parsedOffer.merchant_id || '').trim();
+	      }
+	      if (!requestedMerchantId && offerId) {
+	        const inferred = extractMerchantIdFromOfferId(offerId);
+	        if (inferred) requestedMerchantId = inferred;
+	      }
+	      const platform = String(productRef.platform || payload.platform || '').trim() || null;
+	      const options = payload.options || payload.product?.options || {};
+	      const debug =
         options.debug === true ||
         String(options.debug || '').trim().toLowerCase() === 'true' ||
         payload.debug === true;
@@ -4867,35 +4926,67 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const includeAll = includeList.includes('all');
       const wantsOffers = includeAll || includeList.includes('offers');
       const wantsReviewsPreview = includeAll || includeList.includes('reviews_preview');
-      const wantsSimilar =
-        includeAll ||
-        includeList.includes('similar') ||
-        includeList.includes('recommendations');
+	      const wantsSimilar =
+	        includeAll ||
+	        includeList.includes('similar') ||
+	        includeList.includes('recommendations');
 
-      const entryProductRef = {
-        product_id: productId,
-        ...(requestedMerchantId ? { merchant_id: requestedMerchantId } : {}),
-      };
+	      // Resolve the canonical product group first so every client sees the same details.
+	      let productGroupId = null;
+	      let groupMembers = [];
+	      let canonicalProductRef = null;
 
-      if (!productId) {
-        return res.status(400).json({
-          error: 'MISSING_PARAMETERS',
-          message: 'product_id is required for get_pdp_v2',
-        });
-      }
+	      const subject = payload.subject && typeof payload.subject === 'object' ? payload.subject : null;
+	      const subjectType = subject ? String(subject.type || '').trim().toLowerCase() : '';
+	      const subjectId = subject ? String(subject.id || '').trim() : '';
 
-      // Resolve the canonical product group first so every client sees the same details.
-      let productGroupId = null;
-      let groupMembers = [];
-      let canonicalProductRef = null;
+	      const offerProductGroupId = String(parsedOffer?.product_group_id || '').trim() || null;
+	      const hasExplicitProductGroup = subjectType === 'product_group' && subjectId;
 
-      const subject = payload.subject && typeof payload.subject === 'object' ? payload.subject : null;
-      const subjectType = subject ? String(subject.type || '').trim().toLowerCase() : '';
-      const subjectId = subject ? String(subject.id || '').trim() : '';
-      if (subjectType === 'product_group' && subjectId) {
-        try {
-          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
-            productGroupId: subjectId,
+	      if (!productId && !variantId && !offerProductGroupId && !hasExplicitProductGroup) {
+	        return res.status(400).json({
+	          error: 'MISSING_PARAMETERS',
+	          message:
+	            'product_ref.product_id (or product_ref.variant_id + merchant_id, or product_ref.offer_id, or subject=product_group) is required for get_pdp_v2',
+	        });
+	      }
+
+	      const entryProductId = productId;
+
+	      const shouldResolveVariantToProduct =
+	        Boolean(variantId) &&
+	        Boolean(requestedMerchantId) &&
+	        (!productId || productId === variantId);
+	      if (shouldResolveVariantToProduct) {
+	        try {
+	          const rawVariant = await fetchVariantDetailFromUpstream({
+	            merchantId: requestedMerchantId,
+	            variantId,
+	            checkoutToken,
+	          }).catch(() => null);
+	          const normalizedVariant = normalizeAgentProductDetailResponse(rawVariant);
+	          const variantProduct =
+	            normalizedVariant && typeof normalizedVariant === 'object' ? normalizedVariant.product : null;
+	          const resolvedProductId = variantProduct
+	            ? String(variantProduct.id || variantProduct.product_id || variantProduct.productId || '').trim()
+	            : '';
+	          if (resolvedProductId) productId = resolvedProductId;
+	        } catch {
+	          // Ignore and fall back to product_id/offer_id flow.
+	        }
+	      }
+
+	      if (!productId && !offerProductGroupId && !hasExplicitProductGroup) {
+	        return res.status(400).json({
+	          error: 'MISSING_PARAMETERS',
+	          message:
+	            'product_ref.product_id is required unless you provide product_ref.offer_id or subject=product_group',
+	        });
+	      }
+	      if (subjectType === 'product_group' && subjectId) {
+	        try {
+	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
+	            productGroupId: subjectId,
             checkoutToken,
           }).catch(() => null);
           const membersRaw = Array.isArray(fetchedGroup?.members)
@@ -4927,12 +5018,54 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         } catch {
           // Ignore and fall back to resolve-by-product-id.
-        }
-      }
+	        }
+	      }
 
-      if (!canonicalProductRef) {
-        const resolvedGroup = await resolveProductGroupCached({
-          productId,
+	      if (!canonicalProductRef && offerProductGroupId) {
+	        try {
+	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
+	            productGroupId: offerProductGroupId,
+	            checkoutToken,
+	          }).catch(() => null);
+	          const membersRaw = Array.isArray(fetchedGroup?.members)
+	            ? fetchedGroup.members
+	            : Array.isArray(fetchedGroup?.items)
+	              ? fetchedGroup.items
+	              : [];
+	          const members = membersRaw
+	            .map((m) => ({
+	              merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+	              merchant_name: m?.merchant_name || m?.merchantName || undefined,
+	              product_id: String(m?.product_id || m?.productId || '').trim(),
+	              platform: m?.platform ? String(m.platform).trim() : undefined,
+	              is_primary: Boolean(m?.is_primary || m?.isPrimary),
+	            }))
+	            .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id));
+	          if (members.length) {
+	            productGroupId = offerProductGroupId;
+	            groupMembers = members;
+	            const canonicalMember =
+	              members.find((m) => m.is_primary) || members[0] || null;
+	            canonicalProductRef = canonicalMember
+	              ? {
+	                  merchant_id: canonicalMember.merchant_id,
+	                  product_id: canonicalMember.product_id,
+	                  ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+	                }
+	              : null;
+	          }
+	        } catch {
+	          // Ignore and fall back to resolve-by-product-id.
+	        }
+	      }
+
+	      if (!productId && canonicalProductRef?.product_id) {
+	        productId = String(canonicalProductRef.product_id || '').trim();
+	      }
+
+	      if (!canonicalProductRef) {
+	        const resolvedGroup = await resolveProductGroupCached({
+	          productId,
           merchantId: requestedMerchantId || null,
           platform,
           checkoutToken,
@@ -4947,30 +5080,38 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
       }
 
-      if (!canonicalProductRef) {
-        canonicalProductRef = {
-          merchant_id: requestedMerchantId || DEFAULT_MERCHANT_ID,
-          product_id: productId,
+	      if (!canonicalProductRef) {
+	        canonicalProductRef = {
+	          merchant_id: requestedMerchantId || DEFAULT_MERCHANT_ID,
+	          product_id: productId,
           ...(platform ? { platform } : {}),
         };
       }
 
-      // Fetch canonical detail (cached via products_cache + memory cache).
-      const canonicalProduct = await fetchProductDetailForOffers({
-        merchantId: canonicalProductRef.merchant_id,
-        productId: canonicalProductRef.product_id,
-        checkoutToken,
-      });
+	      // Fetch canonical detail (cached via products_cache + memory cache).
+	      const canonicalProduct = await fetchProductDetailForOffers({
+	        merchantId: canonicalProductRef.merchant_id,
+	        productId: canonicalProductRef.product_id,
+	        checkoutToken,
+	      });
 
-      if (!canonicalProduct) {
-        return res.status(404).json({
-          error: 'PRODUCT_NOT_FOUND',
-          message: 'Product not found',
-        });
-      }
+	      if (!canonicalProduct) {
+	        return res.status(404).json({
+	          error: 'PRODUCT_NOT_FOUND',
+	          message: 'Product not found',
+	        });
+	      }
 
-      const pdpOptions = getPdpOptions(payload);
-      let canonicalProductForPdp = canonicalProduct;
+	      const entryProductRef = {
+	        product_id: entryProductId || productId || canonicalProductRef.product_id,
+	        ...(requestedMerchantId ? { merchant_id: requestedMerchantId } : {}),
+	        ...(variantId ? { variant_id: variantId } : {}),
+	        ...(offerId ? { offer_id: offerId } : {}),
+	        ...(platform ? { platform } : {}),
+	      };
+
+	      const pdpOptions = getPdpOptions(payload);
+	      let canonicalProductForPdp = canonicalProduct;
 
       if (wantsReviewsPreview) {
         try {
