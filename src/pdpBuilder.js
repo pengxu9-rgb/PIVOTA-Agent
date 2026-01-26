@@ -278,6 +278,18 @@ function buildVariants(product) {
   const rawVariants = Array.isArray(product.variants) ? product.variants : [];
   if (!rawVariants.length) {
     const availabilityInStock = normalizeInStock(product.in_stock);
+    const rawQty =
+      product.available_quantity ?? product.inventory_quantity ?? product.quantity ?? product.stock;
+    const availableQuantity =
+      rawQty == null || rawQty === ''
+        ? undefined
+        : Number.isFinite(Number(rawQty))
+          ? Math.max(0, Math.floor(Number(rawQty)))
+          : undefined;
+
+    const availability = {};
+    if (availabilityInStock !== undefined) availability.in_stock = availabilityInStock;
+    if (availableQuantity !== undefined) availability.available_quantity = availableQuantity;
     return [
       {
         variant_id: product.product_id || product.id,
@@ -285,8 +297,7 @@ function buildVariants(product) {
         title: 'Default',
         options: [],
         price: { current: { amount: normalizeAmount(product.price), currency } },
-        availability:
-          availabilityInStock === undefined ? {} : { in_stock: availabilityInStock },
+        availability,
         image_url: product.image_url,
       },
     ];
@@ -312,12 +323,29 @@ function buildVariants(product) {
       inStock = Number(v.quantity) > 0;
     }
 
+    const rawQty =
+      v.available_quantity ?? v.inventory_quantity ?? v.quantity ?? v.stock ?? v.inventory?.available_quantity;
+    const availableQuantity =
+      rawQty == null || rawQty === ''
+        ? undefined
+        : Number.isFinite(Number(rawQty))
+          ? Math.max(0, Math.floor(Number(rawQty)))
+          : undefined;
+
+    if (inStock === undefined && availableQuantity !== undefined) {
+      inStock = availableQuantity > 0;
+    }
+
     const swatchHex =
       v.color_hex ||
       v.swatch?.hex ||
       v.beauty_meta?.shade_hex ||
       v.shade_hex ||
       v.hex;
+
+    const availability = {};
+    if (inStock !== undefined) availability.in_stock = inStock;
+    if (availableQuantity !== undefined) availability.available_quantity = availableQuantity;
 
     return {
       variant_id: String(variantId),
@@ -326,7 +354,7 @@ function buildVariants(product) {
       options,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
       price: toVariantPrice(v.price || v.pricing, currency),
-      availability: inStock === undefined ? {} : { in_stock: inStock },
+      availability,
       image_url: v.image_url || v.image || v.images?.[0],
     };
   });
@@ -656,6 +684,20 @@ function buildPdpPayload(args) {
   }
 
   const availabilityInStock = normalizeInStock(product.in_stock);
+  const productRawQty =
+    product.available_quantity ?? product.inventory_quantity ?? product.quantity ?? product.stock;
+  const productAvailableQuantity =
+    productRawQty == null || productRawQty === ''
+      ? undefined
+      : Number.isFinite(Number(productRawQty))
+        ? Math.max(0, Math.floor(Number(productRawQty)))
+        : undefined;
+  const productAvailability = {};
+  if (availabilityInStock !== undefined) productAvailability.in_stock = availabilityInStock;
+  if (productAvailableQuantity !== undefined) productAvailability.available_quantity = productAvailableQuantity;
+  if (productAvailability.in_stock === undefined && productAvailableQuantity !== undefined) {
+    productAvailability.in_stock = productAvailableQuantity > 0;
+  }
   const payload = {
     schema_version: '1.0.0',
     page_type: 'product_detail',
@@ -678,8 +720,7 @@ function buildPdpPayload(args) {
       default_variant_id: defaultVariant.variant_id,
       variants,
       price: defaultVariant.price,
-      availability:
-        availabilityInStock === undefined ? {} : { in_stock: availabilityInStock },
+      availability: productAvailability,
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,
       description: product.description || '',
