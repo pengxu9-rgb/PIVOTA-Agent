@@ -37,6 +37,7 @@ const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
+const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
 const { embedText } = require('./services/embeddings');
 const {
   semanticSearchCreatorProductsFromCache,
@@ -7288,6 +7289,40 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             'Pet apparel fallback from creator cache failed',
           );
         }
+      }
+    }
+
+    if (operation === 'find_products_multi') {
+      try {
+        const search = effectivePayload.search || {};
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const reranked = await maybeRerankFindProductsMultiResponse({
+          response: maybePolicy,
+          userQuery: rawUserQuery,
+          limit,
+        });
+        if (reranked?.applied) {
+          maybePolicy = reranked.response;
+          if (ROUTE_DEBUG_ENABLED) {
+            maybePolicy = {
+              ...maybePolicy,
+              metadata: {
+                ...(maybePolicy.metadata && typeof maybePolicy.metadata === 'object' ? maybePolicy.metadata : {}),
+                route_debug: {
+                  ...((maybePolicy.metadata && maybePolicy.metadata.route_debug) || {}),
+                  llm_rerank: {
+                    applied: true,
+                    provider: reranked.provider || null,
+                    items_count: reranked.items_count || null,
+                    duration_ms: reranked.duration_ms || null,
+                  },
+                },
+              },
+            };
+          }
+        }
+      } catch (err) {
+        logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
       }
     }
 
