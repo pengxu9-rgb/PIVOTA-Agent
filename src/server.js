@@ -4980,13 +4980,23 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        }
 	      }
 
-	      if (!productId && !offerProductGroupId && !hasExplicitProductGroup) {
-	        return res.status(400).json({
-	          error: 'MISSING_PARAMETERS',
-	          message:
-	            'product_ref.product_id is required unless you provide product_ref.offer_id or subject=product_group',
-	        });
-	      }
+		      if (!productId && !offerProductGroupId && !hasExplicitProductGroup) {
+		        // If the caller only provided a merchant-scoped variant id (no product_id) and we
+		        // couldn't resolve it to a canonical product id, treat it as not-found instead of
+		        // a missing-parameter error. This prevents clients from hanging on slow fallback
+		        // scans when the variant truly doesn't exist for the merchant.
+		        if (variantId && requestedMerchantId && !entryProductId) {
+		          return res.status(404).json({
+		            error: 'PRODUCT_NOT_FOUND',
+		            message: 'Variant not found',
+		          });
+		        }
+		        return res.status(400).json({
+		          error: 'MISSING_PARAMETERS',
+		          message:
+		            'product_ref.product_id is required unless you provide product_ref.offer_id or subject=product_group',
+		        });
+		      }
 	      if (subjectType === 'product_group' && subjectId) {
 	        try {
 	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
@@ -5063,14 +5073,36 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        }
 	      }
 
-	      if (!productId && canonicalProductRef?.product_id) {
-	        productId = String(canonicalProductRef.product_id || '').trim();
-	      }
+		      if (!productId && canonicalProductRef?.product_id) {
+		        productId = String(canonicalProductRef.product_id || '').trim();
+		      }
 
-	      if (!canonicalProductRef) {
-	        const resolvedGroup = await resolveProductGroupCached({
-	          productId,
-          merchantId: requestedMerchantId || null,
+		      // Fast-fail for merchant-scoped PDP requests where the entry product doesn't exist.
+		      // This avoids spending time resolving product groups/offers only to return 404.
+		      let precheckedMerchantProduct = null;
+		      const shouldPrecheckMerchantScoped =
+		        Boolean(requestedMerchantId) &&
+		        Boolean(productId) &&
+		        !offerProductGroupId &&
+		        !hasExplicitProductGroup;
+		      if (shouldPrecheckMerchantScoped) {
+		        precheckedMerchantProduct = await fetchProductDetailForOffers({
+		          merchantId: requestedMerchantId,
+		          productId,
+		          checkoutToken,
+		        });
+		        if (!precheckedMerchantProduct) {
+		          return res.status(404).json({
+		            error: 'PRODUCT_NOT_FOUND',
+		            message: 'Product not found',
+		          });
+		        }
+		      }
+
+		      if (!canonicalProductRef) {
+		        const resolvedGroup = await resolveProductGroupCached({
+		          productId,
+	          merchantId: requestedMerchantId || null,
           platform,
           checkoutToken,
           bypassCache,
@@ -5090,14 +5122,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          product_id: productId,
           ...(platform ? { platform } : {}),
         };
-      }
+		      }
 
-	      // Fetch canonical detail (cached via products_cache + memory cache).
-	      const canonicalProduct = await fetchProductDetailForOffers({
-	        merchantId: canonicalProductRef.merchant_id,
-	        productId: canonicalProductRef.product_id,
-	        checkoutToken,
-	      });
+		      // Fetch canonical detail (cached via products_cache + memory cache).
+		      const canonicalProduct =
+		        precheckedMerchantProduct &&
+		        canonicalProductRef.merchant_id === requestedMerchantId &&
+		        canonicalProductRef.product_id === productId
+		          ? precheckedMerchantProduct
+		          : await fetchProductDetailForOffers({
+		              merchantId: canonicalProductRef.merchant_id,
+		              productId: canonicalProductRef.product_id,
+		              checkoutToken,
+		            });
 
 	      if (!canonicalProduct) {
 	        return res.status(404).json({
