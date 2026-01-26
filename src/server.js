@@ -97,6 +97,12 @@ const UPSTREAM_TIMEOUT_ADMIN_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_AD
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
 // even when the reviews service is degraded.
 const UPSTREAM_TIMEOUT_REVIEWS_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_REVIEWS_MS, 4000);
+// PDP "Similar" is a nice-to-have module; keep its upstream timeout low and fall back to cached browse
+// results instead of blocking the whole PDP response on slow recommenders.
+const PDP_SIMILAR_UPSTREAM_TIMEOUT_MS = parseTimeoutMs(
+  process.env.PDP_SIMILAR_UPSTREAM_TIMEOUT_MS,
+  2000,
+);
 const UPSTREAM_TIMEOUT_SEARCH_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_SEARCH_RETRY_MS,
   Math.min(UPSTREAM_TIMEOUT_SLOW_MS, Math.max(UPSTREAM_TIMEOUT_SEARCH_MS * 3, 45_000)),
@@ -1795,7 +1801,8 @@ async function rewriteCheckoutItemsForOfferSelection(args) {
 }
 
 async function fetchSimilarProductsFromUpstream(args) {
-  const { merchantId, productId, limit, checkoutToken } = args;
+  const { merchantId, productId, limit, checkoutToken } = args || {};
+  const timeoutMs = Number(args?.timeoutMs || args?.timeout_ms || 0) || null;
   const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   const data = {
     operation: 'find_similar_products',
@@ -1823,6 +1830,9 @@ async function fetchSimilarProductsFromUpstream(args) {
     timeout: getUpstreamTimeoutMs('find_similar_products'),
     data,
   };
+  if (timeoutMs && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    axiosConfig.timeout = timeoutMs;
+  }
   const resp = await callUpstreamWithOptionalRetry('find_similar_products', axiosConfig);
   return Array.isArray(resp?.data?.products) ? resp.data.products : [];
 }
@@ -4935,6 +4945,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        includeList.includes('similar') ||
 	        includeList.includes('recommendations');
 
+      const timingStartMs = Date.now();
+      const timing = {};
+      const markTiming = (name, startedAtMs) => {
+        const dur = Date.now() - Number(startedAtMs || timingStartMs);
+        timing[name] = Math.max(0, Number.isFinite(dur) ? dur : 0);
+      };
+
+      const tResolveGroupStart = Date.now();
+
 	      // Resolve the canonical product group first so every client sees the same details.
 	      let productGroupId = null;
 	      let groupMembers = [];
@@ -4962,6 +4981,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        Boolean(requestedMerchantId) &&
 	        (!productId || productId === variantId);
 	      if (shouldResolveVariantToProduct) {
+          const tVariantResolveStart = Date.now();
 	        try {
 	          const rawVariant = await fetchVariantDetailFromUpstream({
 	            merchantId: requestedMerchantId,
@@ -4977,6 +4997,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          if (resolvedProductId) productId = resolvedProductId;
 	        } catch {
 	          // Ignore and fall back to product_id/offer_id flow.
+          } finally {
+            if (debug) markTiming('resolve_variant_ms', tVariantResolveStart);
 	        }
 	      }
 
@@ -5124,6 +5146,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         };
 		      }
 
+        if (debug) markTiming('resolve_product_group_ms', tResolveGroupStart);
+        const tCanonicalFetchStart = Date.now();
+
 		      // Fetch canonical detail (cached via products_cache + memory cache).
 		      const canonicalProduct =
 		        precheckedMerchantProduct &&
@@ -5135,6 +5160,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		              productId: canonicalProductRef.product_id,
 		              checkoutToken,
 		            });
+
+        if (debug) markTiming('fetch_canonical_product_ms', tCanonicalFetchStart);
 
 	      if (!canonicalProduct) {
 	        return res.status(404).json({
@@ -5151,10 +5178,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        ...(platform ? { platform } : {}),
 	      };
 
-	      const pdpOptions = getPdpOptions(payload);
-	      let canonicalProductForPdp = canonicalProduct;
+      const pdpOptions = getPdpOptions(payload);
+      let canonicalProductForPdp = canonicalProduct;
 
       if (wantsReviewsPreview) {
+        const tReviewsPreviewStart = Date.now();
         try {
           const reviewPlatform = String(canonicalProduct.platform || canonicalProductRef.platform || '').trim();
           const reviewPlatformProductId = String(
@@ -5185,30 +5213,24 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         } catch {
           // Non-blocking.
+        } finally {
+          if (debug) markTiming('reviews_preview_ms', tReviewsPreviewStart);
         }
       }
 
-      // Similar products (non-blocking; can be requested by include=similar).
+      let similarSource = null;
+      // Similar products: avoid blocking PDP on slow recommenders.
+      // Strategy:
+      // 1) Prefer cached merchant browse (fast) when available.
+      // 2) Only call the upstream recommender when cache is empty, and cap its timeout.
       let relatedProducts = [];
       if (wantsSimilar) {
-        try {
-          relatedProducts = await fetchSimilarProductsFromUpstream({
-            merchantId: canonicalProductRef.merchant_id,
-            productId: canonicalProductRef.product_id,
-            limit: payload?.similar?.limit || payload?.recommendations?.limit || 6,
-            checkoutToken,
-          });
-        } catch {
-          relatedProducts = [];
-        }
+        const tSimilarStart = Date.now();
+        const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
 
-        if (
-          Array.isArray(relatedProducts) &&
-          relatedProducts.length === 0 &&
-          process.env.DATABASE_URL
-        ) {
+        let cacheFallback = [];
+        if (process.env.DATABASE_URL) {
           try {
-            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
             const fromCache = await loadMerchantBrowseFromCache(
               canonicalProductRef.merchant_id,
               1,
@@ -5226,18 +5248,39 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 .map((v) => String(v || '').trim())
                 .filter(Boolean),
             );
-            relatedProducts = (fromCache.products || [])
+            cacheFallback = (fromCache.products || [])
               .filter((p) => {
                 const pid = String(p?.product_id || p?.id || '').trim();
                 return pid && !excludeIds.has(pid);
               })
               .slice(0, Math.max(1, Number(limit || 6)));
           } catch {
-            // Non-blocking.
+            cacheFallback = [];
           }
         }
+
+        if (Array.isArray(cacheFallback) && cacheFallback.length > 0) {
+          similarSource = 'merchant_browse_cache';
+          relatedProducts = cacheFallback;
+        } else {
+          similarSource = 'upstream';
+          try {
+            relatedProducts = await fetchSimilarProductsFromUpstream({
+              merchantId: canonicalProductRef.merchant_id,
+              productId: canonicalProductRef.product_id,
+              limit,
+              checkoutToken,
+              timeoutMs: PDP_SIMILAR_UPSTREAM_TIMEOUT_MS,
+            });
+          } catch {
+            relatedProducts = [];
+          }
+        }
+
+        if (debug) markTiming('similar_ms', tSimilarStart);
       }
 
+      const tBuildPayloadStart = Date.now();
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
         relatedProducts,
@@ -5247,6 +5290,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         includeEmptyReviews: wantsReviewsPreview || pdpOptions.includeEmptyReviews,
         debug: pdpOptions.debug,
       });
+      if (debug) markTiming('build_pdp_payload_ms', tBuildPayloadStart);
 
       const reviewsModule = Array.isArray(pdpPayload.modules)
         ? pdpPayload.modules.find((m) => m?.type === 'reviews_preview')
@@ -5280,6 +5324,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const missing = [];
 
       if (wantsOffers) {
+        const tOffersStart = Date.now();
         let offersData = null;
         try {
           const fallbackProductGroupId =
@@ -5363,6 +5408,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           });
           missing.push({ type: 'offers', reason: 'unavailable' });
         }
+
+        if (debug) markTiming('offers_ms', tOffersStart);
       }
 
       if (wantsReviewsPreview) {
@@ -5400,6 +5447,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           null,
       };
 
+      if (debug) markTiming('total_ms', timingStartMs);
+      const xDebug = debug
+        ? {
+            timing,
+            similar_source: similarSource,
+            timeouts: {
+              similar_upstream_timeout_ms: PDP_SIMILAR_UPSTREAM_TIMEOUT_MS,
+            },
+            cache_bypass: Boolean(bypassCache),
+            include: includeList,
+          }
+        : undefined;
+
       return res.json({
         status: 'success',
         pdp_version: '2.0',
@@ -5413,6 +5473,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         modules,
         warnings: debug ? [] : [],
         missing,
+        ...(xDebug ? { x_debug: xDebug } : {}),
       });
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
