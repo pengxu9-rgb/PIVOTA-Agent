@@ -94,6 +94,9 @@ function parseTimeoutMs(envValue, fallbackMs) {
 const UPSTREAM_TIMEOUT_SEARCH_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_SEARCH_MS, 15000);
 const UPSTREAM_TIMEOUT_SLOW_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_SLOW_MS, 60000);
 const UPSTREAM_TIMEOUT_ADMIN_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_ADMIN_MS, 15000);
+// Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
+// even when the reviews service is degraded.
+const UPSTREAM_TIMEOUT_REVIEWS_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_REVIEWS_MS, 4000);
 const UPSTREAM_TIMEOUT_SEARCH_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_SEARCH_RETRY_MS,
   Math.min(UPSTREAM_TIMEOUT_SLOW_MS, Math.max(UPSTREAM_TIMEOUT_SEARCH_MS * 3, 45_000)),
@@ -1851,11 +1854,12 @@ async function fetchReviewSummaryFromUpstream(args) {
       'Content-Type': 'application/json',
       ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
     },
-    timeout: getUpstreamTimeoutMs('find_products_multi'),
+    timeout: UPSTREAM_TIMEOUT_REVIEWS_MS,
     data,
   };
 
-  const resp = await callUpstreamWithOptionalRetry('find_products_multi', axiosConfig);
+  // Avoid long retries (e.g. search retry timeout) for optional review summary.
+  const resp = await callUpstreamWithOptionalRetry('get_review_summary', axiosConfig);
   const summary = resp?.data?.review_summary;
   return summary && typeof summary === 'object' ? summary : null;
 }
