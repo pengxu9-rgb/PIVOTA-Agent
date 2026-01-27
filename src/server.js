@@ -6540,6 +6540,75 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         }
 
+        // P0: Avoid invoking upstream /agent/shop/v1/invoke for similarity.
+        // In REAL mode this can trigger TOOL_LOOP_DETECTED depending on upstream routing.
+        // Instead, use our lightweight RecommendationEngine (DB-backed + cached).
+        try {
+          const sim = payload.similar || {};
+          const productId = String(sim.product_id || payload.product_id || '').trim();
+          const merchantId = String(sim.merchant_id || payload.merchant_id || '').trim();
+          const limit = Math.max(1, Math.min(Number(sim.limit || payload.limit || 6) || 6, 30));
+          const bypassCache =
+            payload?.options?.no_cache === true ||
+            payload?.options?.cache_bypass === true ||
+            payload?.options?.bypass_cache === true ||
+            sim?.options?.no_cache === true ||
+            sim?.options?.cache_bypass === true ||
+            sim?.options?.bypass_cache === true;
+          const debugEnabled =
+            payload?.options?.debug === true ||
+            sim?.options?.debug === true;
+
+          if (productId) {
+            const baseProduct =
+              (merchantId
+                ? await fetchProductDetailForOffers({
+                    merchantId,
+                    productId,
+                    checkoutToken,
+                  }).catch(() => null)
+                : null) || { merchant_id: merchantId || null, product_id: productId };
+
+            const rec = await recommendPdpProducts({
+              pdp_product: baseProduct,
+              k: limit,
+              locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+              currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
+              options: {
+                debug: debugEnabled,
+                no_cache: bypassCache,
+                cache_bypass: bypassCache,
+                bypass_cache: bypassCache,
+              },
+            });
+
+            const products = Array.isArray(rec?.items) ? rec.items : [];
+
+            // Keep response structure stable for existing clients.
+            const baseResponse = {
+              status: 'success',
+              strategy: 'related_products',
+              products,
+              total: products.length,
+              page: 1,
+              page_size: products.length,
+            };
+
+            return debugEnabled
+              ? res.json({
+                  ...baseResponse,
+                  debug: rec?.debug || null,
+                  cache: rec?.cache || null,
+                })
+              : res.json(baseResponse);
+          }
+        } catch (err) {
+          logger.warn(
+            { err: err?.message || String(err), product_id: payload?.similar?.product_id || payload?.product_id },
+            'find_similar_products: local recommendations failed; falling back to upstream',
+          );
+        }
+
         // Delegate to backend shopping gateway which owns the similarity logic.
         // Accept both the legacy nested shape (payload.similar) and the
         // flat shape (payload.product_id, payload.merchant_id, etc.).
