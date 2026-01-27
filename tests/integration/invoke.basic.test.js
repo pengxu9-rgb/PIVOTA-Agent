@@ -12,13 +12,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('forwards allowed operation and returns upstream response', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/shop/v1/invoke', (body) => {
+      .get('/agent/v1/products/search')
+      .query((q) => {
         return (
-          body &&
-          body.operation === 'find_products_multi' &&
-          body.payload &&
-          body.payload.search &&
-          body.payload.search.query === 'shoes'
+          q &&
+          q.query === 'shoes' &&
+          // Defaults added by the gateway.
+          q.in_stock_only === 'true' &&
+          q.limit === '20' &&
+          q.offset === '0'
         );
       })
       .reply(200, {

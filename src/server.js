@@ -53,6 +53,7 @@ const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidat
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
 const { mountRecommendationRoutes } = require('./recommendations/routes');
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
+const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
@@ -1796,7 +1797,7 @@ async function rewriteCheckoutItemsForOfferSelection(args) {
 }
 
 async function fetchSimilarProductsFromUpstream(args) {
-  const { merchantId, productId, limit, checkoutToken } = args;
+  const { merchantId, productId, limit, checkoutToken, timeoutMs } = args;
   const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   const data = {
     operation: 'find_similar_products',
@@ -1821,7 +1822,9 @@ async function fetchSimilarProductsFromUpstream(args) {
             ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
           }),
     },
-    timeout: getUpstreamTimeoutMs('find_similar_products'),
+    timeout: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+      ? Number(timeoutMs)
+      : getUpstreamTimeoutMs('find_similar_products'),
     data,
   };
   const resp = await callUpstreamWithOptionalRetry('find_similar_products', axiosConfig);
@@ -3624,6 +3627,7 @@ app.get('/healthz', (req, res) => {
     resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
     resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
     product_detail_cache: snapshotProductDetailCacheStats(),
+    pdp_recommendations_cache: getPdpRecsCacheStats(),
     products_available: true,
     catalog_cache: includeCacheStats
       ? {
@@ -3668,6 +3672,7 @@ app.get('/healthz', (req, res) => {
         resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
         resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
         product_detail_cache: snapshotProductDetailCacheStats(),
+        pdp_recommendations_cache: getPdpRecsCacheStats(),
         products_available: true,
         warning: 'healthz_cache_stats_failed',
       });
@@ -4536,20 +4541,31 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
             const pdpOptions = getPdpOptions(payload);
             const includePdp = shouldIncludePdp(payload);
-            const relatedProducts = pdpOptions.includeRecommendations
-              ? pickSimilarProducts(
-                  searchProducts(
-                    payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
-                    payload.search?.query,
-                    undefined,
-                    undefined,
-                    undefined,
-                  ),
-                  payload.product?.product_id,
-                  payload.recommendations?.limit || 6,
-                  [payload.product?.product_id].filter(Boolean),
-                )
-              : [];
+            let relatedProducts = [];
+            if (pdpOptions.includeRecommendations) {
+              const bypassCache =
+                payload?.options?.no_cache === true ||
+                payload?.options?.cache_bypass === true ||
+                payload?.options?.bypass_cache === true;
+              try {
+                const rec = await recommendPdpProducts({
+                  pdp_product: product,
+                  k: payload.recommendations?.limit || 6,
+                  locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+                  currency: product.currency || 'USD',
+                  options: {
+                    debug: pdpOptions.debug,
+                    no_cache: bypassCache,
+                    cache_bypass: bypassCache,
+                    bypass_cache: bypassCache,
+                  },
+                });
+                relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+              } catch {
+                // non-blocking
+                relatedProducts = [];
+              }
+            }
 
             mockResponse = {
               status: 'success',
@@ -4596,20 +4612,31 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
 
           const pdpOptions = getPdpOptions(payload);
-          const relatedProducts = pdpOptions.includeRecommendations
-            ? pickSimilarProducts(
-                searchProducts(
-                  payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
-                  payload.search?.query,
-                  undefined,
-                  undefined,
-                  undefined,
-                ),
-                payload.product?.product_id,
-                payload.recommendations?.limit || 6,
-                [payload.product?.product_id].filter(Boolean),
-              )
-            : [];
+          let relatedProducts = [];
+          if (pdpOptions.includeRecommendations) {
+            const bypassCache =
+              payload?.options?.no_cache === true ||
+              payload?.options?.cache_bypass === true ||
+              payload?.options?.bypass_cache === true;
+            try {
+              const rec = await recommendPdpProducts({
+                pdp_product: product,
+                k: payload.recommendations?.limit || 6,
+                locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+                currency: product.currency || 'USD',
+                options: {
+                  debug: pdpOptions.debug,
+                  no_cache: bypassCache,
+                  cache_bypass: bypassCache,
+                  bypass_cache: bypassCache,
+                },
+              });
+              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+            } catch {
+              // non-blocking
+              relatedProducts = [];
+            }
+          }
 
 	          mockResponse = {
 	            status: 'success',
@@ -4649,20 +4676,31 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          const wantsReviews = includeAll || includeList.includes('reviews_preview');
 
 	          const pdpOptions = getPdpOptions(payload);
-	          const relatedProducts = wantsSimilar
-	            ? pickSimilarProducts(
-	                searchProducts(
-	                  payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
-	                  payload.search?.query,
-	                  undefined,
-	                  undefined,
-	                  undefined,
-	                ),
-	                payload.product?.product_id,
-	                payload.recommendations?.limit || 6,
-	                [payload.product?.product_id].filter(Boolean),
-	              )
-	            : [];
+	          let relatedProducts = [];
+	          if (wantsSimilar) {
+	            const bypassCache =
+	              payload?.options?.no_cache === true ||
+	              payload?.options?.cache_bypass === true ||
+	              payload?.options?.bypass_cache === true;
+	            try {
+	              const rec = await recommendPdpProducts({
+	                pdp_product: product,
+	                k: payload.recommendations?.limit || 6,
+	                locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+	                currency: product.currency || 'USD',
+	                options: {
+	                  debug: pdpOptions.debug,
+	                  no_cache: bypassCache,
+	                  cache_bypass: bypassCache,
+	                  bypass_cache: bypassCache,
+	                },
+	              });
+	              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+	            } catch {
+	              // non-blocking
+	              relatedProducts = [];
+	            }
+	          }
 
 	          const pdpPayload = buildPdpPayload({
 	            product,
@@ -5192,50 +5230,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       // Similar products (non-blocking; can be requested by include=similar).
       let relatedProducts = [];
       if (wantsSimilar) {
+        const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
         try {
-          relatedProducts = await fetchSimilarProductsFromUpstream({
-            merchantId: canonicalProductRef.merchant_id,
-            productId: canonicalProductRef.product_id,
-            limit: payload?.similar?.limit || payload?.recommendations?.limit || 6,
-            checkoutToken,
+          const rec = await recommendPdpProducts({
+            pdp_product: canonicalProductForPdp,
+            k: limit,
+            locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+            currency: canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
+            options: {
+              debug,
+              // Respect caller cache controls (same semantics as resolve op).
+              no_cache: bypassCache,
+              cache_bypass: bypassCache,
+              bypass_cache: bypassCache,
+            },
           });
-        } catch {
+          relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+        } catch (err) {
+          logger.warn(
+            { err: err?.message || String(err), product_id: canonicalProductRef.product_id },
+            'PDP recommendations failed; returning without similar module',
+          );
           relatedProducts = [];
-        }
-
-        if (
-          Array.isArray(relatedProducts) &&
-          relatedProducts.length === 0 &&
-          process.env.DATABASE_URL
-        ) {
-          try {
-            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
-            const fromCache = await loadMerchantBrowseFromCache(
-              canonicalProductRef.merchant_id,
-              1,
-              Math.min(Math.max(12, Number(limit) * 4), 48),
-              { inStockOnly: false },
-            );
-            const excludeIds = new Set(
-              [
-                canonicalProductRef.product_id,
-                productId,
-                entryProductRef.product_id,
-                canonicalProductForPdp.product_id,
-                canonicalProductForPdp.id,
-              ]
-                .map((v) => String(v || '').trim())
-                .filter(Boolean),
-            );
-            relatedProducts = (fromCache.products || [])
-              .filter((p) => {
-                const pid = String(p?.product_id || p?.id || '').trim();
-                return pid && !excludeIds.has(pid);
-              })
-              .slice(0, Math.max(1, Number(limit || 6)));
-          } catch {
-            // Non-blocking.
-          }
         }
       }
 
@@ -5458,14 +5474,34 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         });
       }
 
-      const relatedProducts = pdpOptions.includeRecommendations
-        ? await fetchSimilarProductsFromUpstream({
-            merchantId,
-            productId,
-            limit: payload.recommendations?.limit || 6,
-            checkoutToken,
-          })
-        : [];
+      let relatedProducts = [];
+      if (pdpOptions.includeRecommendations) {
+        const bypassCache =
+          payload?.options?.no_cache === true ||
+          payload?.options?.cache_bypass === true ||
+          payload?.options?.bypass_cache === true;
+        try {
+          const rec = await recommendPdpProducts({
+            pdp_product: product,
+            k: payload.recommendations?.limit || 6,
+            locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+            currency: product.currency || 'USD',
+            options: {
+              debug: pdpOptions.debug,
+              no_cache: bypassCache,
+              cache_bypass: bypassCache,
+              bypass_cache: bypassCache,
+            },
+          });
+          relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+        } catch (err) {
+          logger.warn(
+            { err: err?.message || String(err), merchantId, productId },
+            'PDP recommendations failed; returning without recommendations module',
+          );
+          relatedProducts = [];
+        }
+      }
 
       const pdpPayload = buildPdpPayload({
         product,
@@ -7193,14 +7229,34 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         null;
       if (product) {
         const pdpOptions = getPdpOptions(payload);
-        const relatedProducts = pdpOptions.includeRecommendations
-          ? await fetchSimilarProductsFromUpstream({
-              merchantId: product.merchant_id || payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
-              productId: product.product_id || payload.product?.product_id,
-              limit: payload.recommendations?.limit || 6,
-              checkoutToken,
-            })
-          : [];
+        let relatedProducts = [];
+        if (pdpOptions.includeRecommendations) {
+          const bypassCache =
+            payload?.options?.no_cache === true ||
+            payload?.options?.cache_bypass === true ||
+            payload?.options?.bypass_cache === true;
+          try {
+            const rec = await recommendPdpProducts({
+              pdp_product: product,
+              k: payload.recommendations?.limit || 6,
+              locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+              currency: product.currency || 'USD',
+              options: {
+                debug: pdpOptions.debug,
+                no_cache: bypassCache,
+                cache_bypass: bypassCache,
+                bypass_cache: bypassCache,
+              },
+            });
+            relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+          } catch (err) {
+            logger.warn(
+              { err: err?.message || String(err), merchant_id: product.merchant_id, product_id: product.product_id },
+              'PDP recommendations failed (get_product_detail include=pdp); continuing without recommendations module',
+            );
+            relatedProducts = [];
+          }
+        }
         upstreamData = {
           ...upstreamData,
           pdp_payload: buildPdpPayload({

@@ -613,6 +613,10 @@ function buildRecommendations(items, currencyFallback) {
         amount: normalizeAmount(p.price),
         currency: normalizeCurrency(p, currencyFallback),
       },
+      // Additive fields (safe for older clients to ignore).
+      source: p.source || p.recommendation_source || undefined,
+      reason: p.reason || p.recommendation_reason || undefined,
+      x_score: typeof p.x_score === 'number' ? p.x_score : undefined,
       rating: p.rating || p.review_rating || undefined,
       review_count: p.review_count || p.reviews_count || undefined,
     })),
