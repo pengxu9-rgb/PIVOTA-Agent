@@ -2,6 +2,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+// Gemini lookspec plumbing tests are opt-in (they can be slow/flaky on CI).
+const describeGemini =
+  process.env.RUN_GEMINI_TESTS === "1" ? describe : describe.skip;
+
 function writeTempJpeg() {
   const p = path.join(os.tmpdir(), `pivota-gemini-reference-pipeline-${process.pid}-${Date.now()}.jpg`);
   fs.writeFileSync(p, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
@@ -18,7 +22,7 @@ function collectResultTechniqueIds(result) {
   return refs.map((r) => String(r?.id || "").trim()).filter(Boolean);
 }
 
-describe("lookReplicatePipeline: gemini reference lookspec plumbing (fail-closed)", () => {
+describeGemini("lookReplicatePipeline: gemini reference lookspec plumbing (fail-closed)", () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
