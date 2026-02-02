@@ -128,9 +128,15 @@ function normalizeProductParse(raw) {
 function normalizeProductAnalysis(raw) {
   const o = asPlainObject(raw);
   if (!o) {
+    const evOut = normalizeEvidence(null);
     return {
-      payload: { assessment: null, evidence: null, confidence: null, missing_info: ['upstream_missing_or_unstructured'] },
-      field_missing: [{ field: 'assessment', reason: 'upstream_missing_or_unstructured' }],
+      payload: {
+        assessment: null,
+        evidence: evOut.evidence,
+        confidence: null,
+        missing_info: uniqueStrings(['upstream_missing_or_unstructured', ...(evOut.evidence?.missing_info || [])]),
+      },
+      field_missing: [{ field: 'assessment', reason: 'upstream_missing_or_unstructured' }, ...evOut.field_missing],
     };
   }
 
@@ -162,9 +168,15 @@ function normalizeProductAnalysis(raw) {
 function normalizeDupeCompare(raw) {
   const o = asPlainObject(raw);
   if (!o) {
+    const evOut = normalizeEvidence(null);
     return {
-      payload: { tradeoffs: [], evidence: null, confidence: null, missing_info: ['upstream_missing_or_unstructured'] },
-      field_missing: [{ field: 'tradeoffs', reason: 'upstream_missing_or_unstructured' }],
+      payload: {
+        tradeoffs: [],
+        evidence: evOut.evidence,
+        confidence: null,
+        missing_info: uniqueStrings(['upstream_missing_or_unstructured', ...(evOut.evidence?.missing_info || [])]),
+      },
+      field_missing: [{ field: 'tradeoffs', reason: 'upstream_missing_or_unstructured' }, ...evOut.field_missing],
     };
   }
 
@@ -191,9 +203,15 @@ function normalizeDupeCompare(raw) {
 function normalizeRecoGenerate(raw) {
   const o = asPlainObject(raw);
   if (!o) {
+    const evOut = normalizeEvidence(null);
     return {
-      payload: { recommendations: [], evidence: null, confidence: null, missing_info: ['upstream_missing_or_unstructured'] },
-      field_missing: [{ field: 'recommendations', reason: 'upstream_missing_or_unstructured' }],
+      payload: {
+        recommendations: [],
+        evidence: evOut.evidence,
+        confidence: null,
+        missing_info: uniqueStrings(['upstream_missing_or_unstructured', ...(evOut.evidence?.missing_info || [])]),
+      },
+      field_missing: [{ field: 'recommendations', reason: 'upstream_missing_or_unstructured' }, ...evOut.field_missing],
     };
   }
 
@@ -224,4 +242,3 @@ module.exports = {
   normalizeDupeCompare,
   normalizeRecoGenerate,
 };
-

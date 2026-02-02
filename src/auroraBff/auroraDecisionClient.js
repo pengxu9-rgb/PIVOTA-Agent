@@ -56,48 +56,144 @@ function mockAuroraChat(query) {
   const q = String(query || '');
 
   if (/Task:\s*Parse\b/i.test(q)) {
+    const inputMatch = q.match(/Input:\s*(.+)\s*$/im);
+    const input = inputMatch ? String(inputMatch[1]).trim() : 'Mock Parsed Product';
+    const lower = input.toLowerCase();
+    const skuId = lower.includes('dupe') || lower.includes('competitor') || lower.includes('mock_dupe')
+      ? 'mock_dupe_1'
+      : 'mock_sku_1';
+    const brand = skuId === 'mock_dupe_1' ? 'MockDupeBrand' : 'MockBrand';
+    const name = skuId === 'mock_dupe_1' ? 'Mock Dupe Product' : 'Mock Parsed Product';
+    const anchorProduct = {
+      product_id: skuId,
+      sku_id: skuId,
+      brand,
+      name,
+      category: skuId === 'mock_dupe_1' ? 'treatment' : 'treatment',
+      display_name: `${brand} ${name}`,
+      availability: ['Global'],
+      price: { usd: null, cny: null, unknown: true },
+    };
+
+    const altProduct = {
+      product_id: 'mock_dupe_1',
+      sku_id: 'mock_dupe_1',
+      brand: 'MockDupeBrand',
+      name: 'Mock Dupe Product',
+      category: 'treatment',
+      display_name: 'MockDupeBrand Mock Dupe Product',
+      availability: ['Global'],
+      price: { usd: null, cny: null, unknown: true },
+    };
+
     return {
       answer: JSON.stringify({
-        product: {
-          sku_id: 'mock_sku_1',
-          name: 'Mock Parsed Product',
-          brand: 'MockBrand',
-          category: 'treatment',
-        },
+        product: anchorProduct,
         confidence: 0.7,
         missing_info: [],
       }),
-      intent: 'parse',
+      intent: 'product',
       cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: {
+          normalized_query: input,
+          parse_confidence: 0.7,
+          normalized_query_language: 'en-US',
+          anchor_product: anchorProduct,
+        },
+        analyze: {
+          verdict: 'Suitable',
+          confidence: 0.6,
+          reasons: ['Mock: broadly compatible with most routines.'],
+          science_evidence: [
+            {
+              key: 'niacinamide',
+              in_product: true,
+              mechanism: 'Barrier support; oil control.',
+              targets: ['Oil control'],
+              risks: ['Some tingling possible.'],
+              evidence: [{ kind: 'kb', citations: ['kb:mock_parse_1'] }],
+            },
+          ],
+          social_signals: {
+            red_score: 65,
+            reddit_score: 80,
+            burn_rate: 0.12,
+            top_keywords: ['gentle', 'oil control'],
+          },
+          expert_notes: { chemist_notes: 'Mock notes', citations: ['kb:mock_parse_1', 'kb:mock_parse_2'] },
+          how_to_use: null,
+        },
+        alternatives: skuId === 'mock_dupe_1'
+          ? []
+          : [
+            {
+              product: altProduct,
+              similarity_score: 82,
+              tradeoffs: {
+                missing_actives: ['niacinamide'],
+                added_benefits: ['peptides'],
+                texture_finish_differences: ['Mock: dupe has a lighter texture.'],
+                price_delta_usd: null,
+                availability_note: null,
+              },
+              evidence: { kb_citations: ['kb:mock_alt_1'] },
+            },
+          ],
+        kb_requirements_check: { missing_fields: [], notes: [] },
+      },
     };
   }
 
   if (/Task:\s*Deep-scan\b/i.test(q)) {
     return {
-      answer: JSON.stringify({
-        assessment: { suitability: 'moderate', summary: 'Mock assessment.' },
-        evidence: {
-          science: {
-            key_ingredients: ['niacinamide'],
-            mechanisms: ['barrier support'],
-            fit_notes: ['May help with oil control.'],
-            risk_notes: ['Start slowly if sensitive.'],
-          },
-          social_signals: {
-            platform_scores: { reddit: 0.7 },
-            typical_positive: ['Helped with redness.'],
-            typical_negative: ['Some stinging reported.'],
-            risk_for_groups: ['Very sensitive skin'],
-          },
-          expert_notes: ['Patch test recommended.'],
-          confidence: 0.6,
-          missing_info: [],
-        },
-        confidence: 0.6,
-        missing_info: [],
-      }),
-      intent: 'analyze',
+      answer: 'Mock deep-scan completed.',
+      intent: 'product',
       cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: {
+          normalized_query: 'Mock Parsed Product',
+          parse_confidence: 0.8,
+          normalized_query_language: 'en-US',
+          anchor_product: {
+            product_id: 'mock_sku_1',
+            sku_id: 'mock_sku_1',
+            brand: 'MockBrand',
+            name: 'Mock Parsed Product',
+            category: 'treatment',
+            display_name: 'MockBrand Mock Parsed Product',
+            availability: ['Global'],
+            price: { usd: null, cny: null, unknown: true },
+          },
+        },
+        analyze: {
+          verdict: 'Suitable',
+          confidence: 0.6,
+          reasons: ['Mock: fits typical oily skin routines.'],
+          science_evidence: [
+            {
+              key: 'niacinamide',
+              in_product: true,
+              mechanism: 'Barrier support; oil control.',
+              targets: ['Oil control'],
+              risks: ['Start slowly if sensitive.'],
+              evidence: [{ kind: 'kb', citations: ['kb:mock_scan_1'] }],
+            },
+          ],
+          social_signals: {
+            red_score: 70,
+            reddit_score: 75,
+            burn_rate: 0.1,
+            top_keywords: ['soothing'],
+          },
+          expert_notes: { sensitivity_flags: 'Patch test recommended.', citations: ['kb:mock_scan_1'] },
+          how_to_use: null,
+        },
+        alternatives: [],
+        kb_requirements_check: { missing_fields: [], notes: [] },
+      },
     };
   }
 
@@ -170,6 +266,57 @@ function mockAuroraChat(query) {
     };
   }
 
+  if (/AM\s*\/\s*PM\s*skincare routine/i.test(q) || /recommend a simple AM\/PM skincare routine/i.test(q)) {
+    return {
+      answer: 'Mock routine generated.',
+      intent: 'routine',
+      cards: [],
+      context: {
+        budget: '¥500',
+        routine: {
+          am: [
+            {
+              step: 'Cleanser',
+              sku: {
+                sku_id: 'mock_cleanser_1',
+                name: 'Mock Gentle Cleanser',
+                brand: 'MockBrand',
+                category: 'cleanser',
+                price: 0,
+                currency: 'USD',
+                social_stats: { platform_scores: { Reddit: 0.8 } },
+              },
+              notes: ['Mock: gentle cleanse.'],
+              product_id: 'mock_cleanser_1',
+              evidence_pack: { keyActives: ['PHA'], pairingRules: ['Mock: avoid over-exfoliation.'], citations: ['kb:mock_routine_1'] },
+              ingredients: { hero_actives: [], highlights: [] },
+            },
+          ],
+          pm: [
+            {
+              step: 'Moisturizer',
+              sku: {
+                sku_id: 'mock_moisturizer_1',
+                name: 'Mock Barrier Cream',
+                brand: 'MockBrand',
+                category: 'moisturizer',
+                price: 0,
+                currency: 'USD',
+                social_stats: { platform_scores: { Reddit: 0.75 } },
+              },
+              notes: ['Mock: barrier support.'],
+              product_id: 'mock_moisturizer_1',
+              evidence_pack: { keyActives: ['ceramides'], pairingRules: [], citations: ['kb:mock_routine_2'] },
+              ingredients: { hero_actives: [], highlights: [] },
+            },
+          ],
+          total_usd: null,
+          total_cny: null,
+        },
+      },
+    };
+  }
+
   return {
     answer: 'Mock Aurora reply.',
     intent: 'chat',
@@ -178,7 +325,15 @@ function mockAuroraChat(query) {
   };
 }
 
-async function auroraChat({ baseUrl, query, timeoutMs } = {}) {
+async function auroraChat({
+  baseUrl,
+  query,
+  timeoutMs,
+  llm_provider,
+  llm_model,
+  anchor_product_id,
+  anchor_product_url,
+} = {}) {
   if (USE_AURORA_MOCK) return mockAuroraChat(query);
   const base = normalizeBaseUrl(baseUrl);
   if (!base) {
@@ -187,7 +342,12 @@ async function auroraChat({ baseUrl, query, timeoutMs } = {}) {
     throw err;
   }
   const url = `${base}/api/chat`;
-  const resp = await postWithRetry(url, { query }, { timeoutMs, retries: 1, retryDelayMs: 250 });
+  const payload = { query };
+  if (llm_provider) payload.llm_provider = llm_provider;
+  if (llm_model) payload.llm_model = llm_model;
+  if (anchor_product_id) payload.anchor_product_id = anchor_product_id;
+  if (anchor_product_url) payload.anchor_product_url = anchor_product_url;
+  const resp = await postWithRetry(url, payload, { timeoutMs, retries: 1, retryDelayMs: 250 });
   const data = resp && resp.data;
   return data && typeof data === 'object' ? data : { raw: data };
 }

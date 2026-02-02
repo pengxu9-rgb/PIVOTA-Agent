@@ -39,6 +39,15 @@ const {
 const { simulateConflicts } = require('./routineRules');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject } = require('./jsonExtract');
+const {
+  normalizeBudgetHint,
+  mapConcerns,
+  mapBarrierStatus,
+  mapAuroraProductParse,
+  mapAuroraProductAnalysis,
+  mapAuroraAlternativesToDupeCompare,
+  mapAuroraRoutineToRecoGenerate,
+} = require('./auroraStructuredMapper');
 
 const AURORA_DECISION_BASE_URL = String(process.env.AURORA_DECISION_BASE_URL || '').replace(/\/$/, '');
 const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '')
@@ -120,6 +129,60 @@ function structuredContainsCommerceLikeFields(structured) {
   return deepHasKey(structured, (k) => commerceKeys.has(String(k || '').trim().toLowerCase()));
 }
 
+function getUpstreamStructuredOrJson(upstream) {
+  if (upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)) {
+    return upstream.structured;
+  }
+  if (upstream && typeof upstream.answer === 'string') return extractJsonObject(upstream.answer);
+  return null;
+}
+
+function buildProductInputText(inputObj, url) {
+  if (typeof url === 'string' && url.trim()) return url.trim();
+  const o = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
+  if (!o) return null;
+  const brand = typeof o.brand === 'string' ? o.brand.trim() : '';
+  const name = typeof o.name === 'string' ? o.name.trim() : '';
+  const display = typeof o.display_name === 'string' ? o.display_name.trim() : typeof o.displayName === 'string' ? o.displayName.trim() : '';
+  const sku = typeof o.sku_id === 'string' ? o.sku_id.trim() : typeof o.skuId === 'string' ? o.skuId.trim() : '';
+  const pid = typeof o.product_id === 'string' ? o.product_id.trim() : typeof o.productId === 'string' ? o.productId.trim() : '';
+  const bestName = display || name;
+  if (brand && bestName) return `${brand} ${bestName}`.trim();
+  if (bestName) return bestName;
+  if (sku) return sku;
+  if (pid) return pid;
+  return null;
+}
+
+function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
+  const skinType = profile && typeof profile.skinType === 'string' ? profile.skinType : 'unknown';
+  const barrierStatus = mapBarrierStatus(profile && profile.barrierStatus);
+  const concerns = mapConcerns(profile && profile.goals);
+  const region = profile && typeof profile.region === 'string' && profile.region.trim() ? profile.region.trim() : 'US';
+  const budget = normalizeBudgetHint(profile && profile.budgetTier) || normalizeBudgetHint(constraints && constraints.budget) || '不确定';
+  const goal = typeof focus === 'string' && focus.trim()
+    ? focus.trim()
+    : constraints && typeof constraints.goal === 'string' && constraints.goal.trim()
+      ? constraints.goal.trim()
+      : 'balanced routine';
+  const preference = constraints && typeof constraints.preference === 'string' && constraints.preference.trim()
+    ? constraints.preference.trim()
+    : 'No special preference';
+
+  const concernsStr = concerns.length ? concerns.join(', ') : 'none';
+  const reply = lang === 'CN' ? 'Chinese' : 'English';
+
+  const productsNote = profile && profile.currentRoutine ? `Current routine: ${JSON.stringify(profile.currentRoutine).slice(0, 1000)}\n` : '';
+
+  return (
+    `User profile: skin type ${skinType}; barrier status: ${barrierStatus}; concerns: ${concernsStr}; region: ${region}; budget: ${budget}.\n` +
+    `Goal: ${goal}.\n` +
+    `${productsNote}` +
+    `Preference: ${preference}.\n` +
+    `Please recommend a simple AM/PM skincare routine within my budget. Reply in ${reply}.`
+  );
+}
+
 function mountAuroraBffRoutes(app, { logger }) {
   app.post('/v1/product/parse', async (req, res) => {
     const ctx = buildRequestContext(req, {});
@@ -149,8 +212,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         // ignore; fall back below
       }
 
-      const structured = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
-      const norm = normalizeProductParse(structured);
+      const structured = getUpstreamStructuredOrJson(upstream);
+      const mapped = structured && structured.parse && typeof structured.parse === 'object'
+        ? mapAuroraProductParse(structured)
+        : structured;
+      const norm = normalizeProductParse(mapped);
       const payload = norm.payload;
 
       const envelope = buildEnvelope(ctx, {
@@ -210,13 +276,23 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let upstream = null;
       try {
-        upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 16000 });
+        const anchorId = parsed.data.product && (parsed.data.product.sku_id || parsed.data.product.product_id);
+        upstream = await auroraChat({
+          baseUrl: AURORA_DECISION_BASE_URL,
+          query,
+          timeoutMs: 16000,
+          ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
+          ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
+        });
       } catch (err) {
         // ignore; fall back
       }
 
-      const structured = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
-      const norm = normalizeProductAnalysis(structured);
+      const structured = getUpstreamStructuredOrJson(upstream);
+      const mapped = structured && structured.analyze && typeof structured.analyze === 'object'
+        ? mapAuroraProductAnalysis(structured)
+        : structured;
+      const norm = normalizeProductAnalysis(mapped);
       const payload = norm.payload;
 
       const envelope = buildEnvelope(ctx, {
@@ -263,27 +339,104 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const input = {
-        original: parsed.data.original || null,
-        dupe: parsed.data.dupe || null,
-        original_url: parsed.data.original_url || null,
-        dupe_url: parsed.data.dupe_url || null,
-      };
+      const profile = await getUserProfile(ctx.aurora_uid).catch(() => null);
+      const recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7).catch(() => []);
+      const profileSummary = summarizeProfileForContext(profile);
+      const prefix = buildContextPrefix({ profile: profileSummary, recentLogs });
 
-      const query = `Task: Compare an original product vs a dupe/competitor.\n` +
-        `Return ONLY a JSON object with keys: tradeoffs (string[]), evidence, confidence (0..1), missing_info (string[]).\n` +
-        `Evidence must include science/social_signals/expert_notes.\n` +
-        `Input: ${JSON.stringify(input)}`;
+      const originalInput = buildProductInputText(parsed.data.original, parsed.data.original_url);
+      const dupeInput = buildProductInputText(parsed.data.dupe, parsed.data.dupe_url);
 
-      let upstream = null;
+      if (!originalInput || !dupeInput) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: 'original and dupe are required' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const productQuery = (input) => (
+        `${prefix}Task: Parse the user's product input into a normalized product entity.\n` +
+        `Input: ${input}`
+      );
+
+      let originalUpstream = null;
+      let dupeUpstream = null;
       try {
-        upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 16000 });
+        const originalAnchor = parsed.data.original && (parsed.data.original.sku_id || parsed.data.original.product_id);
+        originalUpstream = await auroraChat({
+          baseUrl: AURORA_DECISION_BASE_URL,
+          query: productQuery(originalInput),
+          timeoutMs: 16000,
+          ...(originalAnchor ? { anchor_product_id: String(originalAnchor) } : {}),
+          ...(parsed.data.original_url ? { anchor_product_url: parsed.data.original_url } : {}),
+        });
+      } catch (err) {
+        // ignore
+      }
+      try {
+        const dupeAnchor = parsed.data.dupe && (parsed.data.dupe.sku_id || parsed.data.dupe.product_id);
+        dupeUpstream = await auroraChat({
+          baseUrl: AURORA_DECISION_BASE_URL,
+          query: productQuery(dupeInput),
+          timeoutMs: 16000,
+          ...(dupeAnchor ? { anchor_product_id: String(dupeAnchor) } : {}),
+          ...(parsed.data.dupe_url ? { anchor_product_url: parsed.data.dupe_url } : {}),
+        });
       } catch (err) {
         // ignore
       }
 
-      const structured = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
-      const norm = normalizeDupeCompare(structured);
+      const originalStructured = getUpstreamStructuredOrJson(originalUpstream);
+      const dupeStructured = getUpstreamStructuredOrJson(dupeUpstream);
+      const dupeAnchor = dupeStructured && dupeStructured.parse && typeof dupeStructured.parse === 'object'
+        ? (dupeStructured.parse.anchor_product || dupeStructured.parse.anchorProduct)
+        : (parsed.data.dupe || null);
+
+      const fallbackAnalyze = () => {
+        if (!originalStructured || !dupeStructured) {
+          return { tradeoffs: [], evidence: null, confidence: null, missing_info: ['upstream_missing_or_unstructured'] };
+        }
+        const orig = mapAuroraProductAnalysis(originalStructured);
+        const dup = mapAuroraProductAnalysis(dupeStructured);
+
+        const origKeys = Array.isArray(orig.evidence?.science?.key_ingredients) ? orig.evidence.science.key_ingredients : [];
+        const dupKeys = Array.isArray(dup.evidence?.science?.key_ingredients) ? dup.evidence.science.key_ingredients : [];
+        const missing = origKeys.filter((k) => !dupKeys.includes(k));
+        const added = dupKeys.filter((k) => !origKeys.includes(k));
+
+        const tradeoffs = [];
+        if (missing.length) tradeoffs.push(`Missing actives vs original: ${missing.join(', ')}`);
+        if (added.length) tradeoffs.push(`Added actives: ${added.join(', ')}`);
+
+        const confidence = typeof orig.confidence === 'number' && typeof dup.confidence === 'number'
+          ? (orig.confidence + dup.confidence) / 2
+          : (orig.confidence || dup.confidence || null);
+
+        const evidence = {
+          science: {
+            key_ingredients: Array.from(new Set([...origKeys, ...dupKeys])),
+            mechanisms: Array.from(new Set([...(orig.evidence?.science?.mechanisms || []), ...(dup.evidence?.science?.mechanisms || [])])),
+            fit_notes: Array.from(new Set([...(orig.evidence?.science?.fit_notes || []), ...(dup.evidence?.science?.fit_notes || [])])),
+            risk_notes: Array.from(new Set([...(orig.evidence?.science?.risk_notes || []), ...(dup.evidence?.science?.risk_notes || [])])),
+          },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: Array.from(new Set([...(orig.evidence?.expert_notes || []), ...(dup.evidence?.expert_notes || [])])),
+          confidence,
+          missing_info: ['dupe_not_in_alternatives_used_analyze_diff'],
+        };
+
+        return { tradeoffs, evidence, confidence, missing_info: ['dupe_not_found_in_alternatives'] };
+      };
+
+      const mapped = originalStructured && originalStructured.alternatives
+        ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze })
+        : fallbackAnalyze();
+
+      const norm = normalizeDupeCompare(mapped);
       const payload = norm.payload;
 
       const envelope = buildEnvelope(ctx, {
@@ -354,26 +507,46 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
-      const prefix = buildContextPrefix({ profile: profileSummary, recentLogs });
-      const query = `${prefix}Task: Generate skincare recommendations as structured cards.\n` +
-        `Constraints: ${JSON.stringify(parsed.data)}\n` +
-        `Return ONLY a JSON object with keys: recommendations (array), evidence, confidence (0..1), missing_info (string[]).\n` +
-        `IMPORTANT: Do not include checkout links unless explicitly asked; prefer affiliate_outbound when links exist.`;
+      const query = buildAuroraRoutineQuery({
+        profile: { ...profileSummary, ...(profile && profile.currentRoutine ? { currentRoutine: profile.currentRoutine } : {}) },
+        focus: parsed.data.focus,
+        constraints: parsed.data.constraints || {},
+        lang: ctx.lang,
+      });
 
       let upstream = null;
       try {
-        upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 18000 });
+        upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 22000 });
       } catch (err) {
         // ignore
       }
 
-      const structured = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
-      const norm = normalizeRecoGenerate(structured);
+      const routine = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context.routine : null;
+      const mapped = mapAuroraRoutineToRecoGenerate(routine, upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null);
+      const norm = normalizeRecoGenerate(mapped);
       const payload = norm.payload;
+
+      const suggestedChips = [];
+      const nextActions = upstream && Array.isArray(upstream.next_actions) ? upstream.next_actions : [];
+      if ((!payload.recommendations || payload.recommendations.length === 0) && nextActions.length) {
+        for (const act of nextActions.slice(0, 8)) {
+          if (!act || typeof act !== 'object') continue;
+          const label = typeof act.label === 'string' ? act.label.trim() : typeof act.text === 'string' ? act.text.trim() : '';
+          const text = typeof act.text === 'string' ? act.text.trim() : label;
+          const id = typeof act.id === 'string' ? act.id.trim() : '';
+          if (!label) continue;
+          suggestedChips.push({
+            chip_id: `chip.aurora.next_action.${id || label.replace(/\\s+/g, '_')}`.slice(0, 80),
+            label,
+            kind: 'quick_reply',
+            data: { reply_text: text, aurora_action_id: id || null },
+          });
+        }
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
-        suggested_chips: [],
+        suggested_chips: suggestedChips,
         cards: [
           {
             card_id: `reco_${ctx.request_id}`,
@@ -382,7 +555,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
           },
         ],
-        session_patch: { next_state: 'S7_PRODUCT_RECO' },
+        session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
         events: [makeEvent({ ...ctx, trigger_source: 'action' }, 'recos_requested', { explicit: true })],
       });
       return res.json(envelope);
@@ -1007,7 +1180,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }]
         : [];
 
-      const structured = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+      const structured = getUpstreamStructuredOrJson(upstream);
       const structuredBlocked = Boolean(structured) && !allowRecs && structuredContainsCommerceLikeFields(structured);
       if (structuredBlocked) {
         fieldMissing.push({ field: 'aurora_structured', reason: 'recommendations_not_requested' });
