@@ -57,6 +57,45 @@ describe('Aurora BFF (/v1)', () => {
     ).toBe(true);
   });
 
+  test('Chat: action.reply_text is treated as message (no dead loop)', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_action_reply_1')
+      .send({
+        action: {
+          action_id: 'chip.clarify.test',
+          kind: 'chip',
+          data: { reply_text: 'ACTION_REPLY_TEXT_TEST' },
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    expect(res.body).toHaveProperty('assistant_message');
+    expect(res.body.assistant_message.content).toMatch(/action reply_text received/i);
+  });
+
+  test('Diagnosis: profile chip patch continues with next missing fields', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_profile_chip_1')
+      .send({
+        action: {
+          action_id: 'profile.skinType.oily',
+          kind: 'chip',
+          data: { profile_patch: { skinType: 'oily' } },
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
+    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.sensitivity.'))).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'aurora_structured')).toBe(false);
+  });
+
   test('Routine simulate: detects retinoid x acids conflict', async () => {
     const app = require('../src/server');
     const res = await request(app)

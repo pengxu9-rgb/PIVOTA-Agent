@@ -55,6 +55,14 @@ function buildContextPrefix({ profile, recentLogs }) {
 function mockAuroraChat(query) {
   const q = String(query || '');
 
+  if (/ACTION_REPLY_TEXT_TEST/.test(q)) {
+    return {
+      answer: 'Mock: action reply_text received.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
   if (/Task:\s*Parse\b/i.test(q)) {
     const inputMatch = q.match(/Input:\s*(.+)\s*$/im);
     const input = inputMatch ? String(inputMatch[1]).trim() : 'Mock Parsed Product';

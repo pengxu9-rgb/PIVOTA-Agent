@@ -23,6 +23,7 @@ const {
   isCheckinDue,
 } = require('./memoryStore');
 const {
+  profileCompleteness,
   recommendationsAllowed,
   stateChangeAllowed,
   shouldDiagnosisGate,
@@ -86,6 +87,19 @@ function parseProfilePatchFromAction(action) {
   if (key === 'sensitivity') return { sensitivity: value };
   if (key === 'barrierStatus') return { barrierStatus: value };
   return null;
+}
+
+function extractReplyTextFromAction(action) {
+  if (!action || typeof action !== 'object') return null;
+  const data = action.data && typeof action.data === 'object' ? action.data : null;
+  if (!data) return null;
+  const raw =
+    (typeof data.reply_text === 'string' && data.reply_text) ||
+    (typeof data.replyText === 'string' && data.replyText) ||
+    (typeof data.text === 'string' && data.text) ||
+    null;
+  const text = raw ? String(raw).trim() : '';
+  return text || null;
 }
 
 function summarizeProfileForContext(profile) {
@@ -1074,9 +1088,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // Allow chips/actions to patch profile inline (so chat can progress without an extra API call).
       const profilePatchFromAction = parseProfilePatchFromAction(parsed.data.action);
+      let appliedProfilePatch = null;
       if (profilePatchFromAction) {
         const patchParsed = UserProfilePatchSchema.safeParse(profilePatchFromAction);
         if (patchParsed.success) {
+          appliedProfilePatch = patchParsed.data;
+          // Always apply inline for gating even if DB is unavailable.
+          profile = { ...(profile || {}), ...patchParsed.data };
           try {
             profile = await upsertUserProfile(ctx.aurora_uid, patchParsed.data);
           } catch (err) {
@@ -1085,7 +1103,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      const message = String(parsed.data.message || '').trim();
+      const actionReplyText = extractReplyTextFromAction(parsed.data.action);
+      const message = String(parsed.data.message || '').trim() || actionReplyText || '';
 
       // Phase 0 gate: Diagnosis-first (no recos/offers before minimal profile).
       const gate = shouldDiagnosisGate({ message, triggerSource: ctx.trigger_source, profile });
@@ -1116,6 +1135,81 @@ function mountAuroraBffRoutes(app, { logger }) {
           ],
           session_patch: nextState ? { next_state: nextState } : {},
           events,
+        });
+        return res.json(envelope);
+      }
+
+      // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
+      if (appliedProfilePatch && !message) {
+        const { score, missing } = profileCompleteness(profile);
+        if (score < 3) {
+          const prompt = buildDiagnosisPrompt(ctx.lang, missing);
+          const chips = buildDiagnosisChips(ctx.lang, missing);
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeAssistantMessage(prompt),
+            suggested_chips: chips,
+            cards: [
+              {
+                card_id: `diag_${ctx.request_id}`,
+                type: 'diagnosis_gate',
+                payload: {
+                  reason: 'diagnosis_progress',
+                  missing_fields: missing,
+                  wants: 'recommendation',
+                  profile: summarizeProfileForContext(profile),
+                  recent_logs: recentLogs,
+                },
+              },
+            ],
+            session_patch: nextState ? { next_state: nextState } : {},
+            events: [
+              makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) }),
+              makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_progress' }),
+            ],
+          });
+          return res.json(envelope);
+        }
+
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const suggestedChips = [
+          {
+            chip_id: 'chip.action.reco_routine',
+            label: lang === 'CN' ? '生成早晚护肤 routine' : 'Build an AM/PM routine',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '生成一套早晚护肤 routine' : 'Build an AM/PM skincare routine' },
+          },
+          {
+            chip_id: 'chip.action.analyze_product',
+            label: lang === 'CN' ? '评估某个产品适合吗' : 'Evaluate a specific product',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '评估这款产品是否适合我' : 'Evaluate a specific product for me' },
+          },
+          {
+            chip_id: 'chip.action.dupe_compare',
+            label: lang === 'CN' ? '找平替/对比替代品' : 'Find dupes / alternatives',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '帮我找平替并比较 tradeoffs' : 'Find dupes and compare tradeoffs' },
+          },
+        ];
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(
+            lang === 'CN'
+              ? '已记录你的肤况。接下来你想做什么？'
+              : 'Got it. What would you like to do next?',
+          ),
+          suggested_chips: suggestedChips,
+          cards: [
+            {
+              card_id: `profile_${ctx.request_id}`,
+              type: 'profile',
+              payload: { profile: summarizeProfileForContext(profile) },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) })],
         });
         return res.json(envelope);
       }
