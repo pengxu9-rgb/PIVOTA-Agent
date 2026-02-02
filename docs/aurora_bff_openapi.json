@@ -1,0 +1,556 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pivota Agent Aurora BFF",
+    "version": "0.1.0",
+    "description": "BFF/Orchestrator for aurora.pivota.cc chat. All /v1 endpoints return a stable envelope: assistant_message + suggested_chips + cards + session_patch + events."
+  },
+  "servers": [
+    {
+      "url": "https://pivota-agent-production.up.railway.app"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "AssistantMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "content"],
+        "properties": {
+          "role": { "const": "assistant" },
+          "content": { "type": "string" },
+          "format": { "type": "string", "enum": ["text", "markdown"] }
+        }
+      },
+      "SuggestedChip": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["chip_id", "label"],
+        "properties": {
+          "chip_id": { "type": "string" },
+          "label": { "type": "string" },
+          "kind": { "type": "string", "enum": ["quick_reply", "action"] },
+          "data": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "FieldMissing": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "reason"],
+        "properties": {
+          "field": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      },
+      "Card": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["card_id", "type", "payload"],
+        "properties": {
+          "card_id": { "type": "string" },
+          "type": { "type": "string" },
+          "title": { "type": "string" },
+          "payload": { "type": "object", "additionalProperties": true },
+          "field_missing": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/FieldMissing" }
+          }
+        }
+      },
+      "SessionPatch": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "next_state": { "type": "string" }
+        }
+      },
+      "V1ResponseEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "trace_id",
+          "assistant_message",
+          "suggested_chips",
+          "cards",
+          "session_patch",
+          "events"
+        ],
+        "properties": {
+          "request_id": { "type": "string" },
+          "trace_id": { "type": "string" },
+          "assistant_message": { "anyOf": [{ "$ref": "#/components/schemas/AssistantMessage" }, { "type": "null" }] },
+          "suggested_chips": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SuggestedChip" }
+          },
+          "cards": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Card" }
+          },
+          "session_patch": { "$ref": "#/components/schemas/SessionPatch" },
+          "events": {
+            "type": "array",
+            "items": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "X-Aurora-UID": {
+        "name": "X-Aurora-UID",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "X-Brief-ID": {
+        "name": "X-Brief-ID",
+        "in": "header",
+        "required": false,
+        "schema": { "type": "string" }
+      },
+      "X-Trace-ID": {
+        "name": "X-Trace-ID",
+        "in": "header",
+        "required": false,
+        "schema": { "type": "string" }
+      },
+      "X-Lang": {
+        "name": "X-Lang",
+        "in": "header",
+        "required": false,
+        "schema": { "type": "string", "enum": ["EN", "CN"] }
+      }
+    }
+  },
+  "paths": {
+    "/v1/chat": {
+      "post": {
+        "summary": "Chat (main entry)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "message": { "type": "string" },
+                  "action": {
+                    "anyOf": [
+                      { "type": "string" },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["action_id"],
+                        "properties": {
+                          "action_id": { "type": "string" },
+                          "kind": { "type": "string", "enum": ["chip", "action"] },
+                          "data": { "type": "object", "additionalProperties": true }
+                        }
+                      }
+                    ]
+                  },
+                  "session": { "type": "object", "additionalProperties": true },
+                  "language": { "type": "string", "enum": ["EN", "CN"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/product/parse": {
+      "post": {
+        "summary": "Parse product input (name/link → product entity)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/product/analyze": {
+      "post": {
+        "summary": "Product deep scan (evidence chain required)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dupe/compare": {
+      "post": {
+        "summary": "Dupe/competitor compare (tradeoffs + evidence)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reco/generate": {
+      "post": {
+        "summary": "Generate recommendations (explicit trigger only; default affiliate outbound)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/photos/presign": {
+      "post": {
+        "summary": "Presign photo upload (can be stubbed)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/photos/confirm": {
+      "post": {
+        "summary": "Confirm photo upload + QC status (passed/too_dark/has_filter/blurry)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/session/bootstrap": {
+      "get": {
+        "summary": "Bootstrap session context (profile + recent logs)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/profile/update": {
+      "post": {
+        "summary": "Update user profile (partial)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tracker/log": {
+      "post": {
+        "summary": "Create/update a daily SkinLog entry",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tracker/recent": {
+      "get": {
+        "summary": "Get recent SkinLog entries",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 30, "default": 7 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/routine/simulate": {
+      "post": {
+        "summary": "Simulate routine compatibility/conflicts (rule-based fallback)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/offers/resolve": {
+      "post": {
+        "summary": "Resolve offers (affiliate outbound first)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/affiliate/outcome": {
+      "post": {
+        "summary": "Report affiliate/outbound outcome (success/failed/save)",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Aurora-UID" },
+          { "$ref": "#/components/parameters/X-Brief-ID" },
+          { "$ref": "#/components/parameters/X-Trace-ID" },
+          { "$ref": "#/components/parameters/X-Lang" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["outcome"],
+                "properties": {
+                  "outcome": { "type": "string", "enum": ["success", "failed", "save"] },
+                  "url": { "type": "string" },
+                  "offer_id": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/V1ResponseEnvelope" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

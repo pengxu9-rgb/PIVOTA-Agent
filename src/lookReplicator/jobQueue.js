@@ -17,13 +17,19 @@ class JobQueue {
       const item = this.queue.shift();
       this.running += 1;
 
-      Promise.resolve()
-        .then(item.fn)
-        .then(item.resolve, item.reject)
-        .finally(() => {
-          this.running -= 1;
-          this._drain();
-        });
+      const run = () => {
+        Promise.resolve()
+          .then(item.fn)
+          .then(item.resolve, item.reject)
+          .finally(() => {
+            this.running -= 1;
+            this._drain();
+          });
+      };
+
+      // Yield to the event loop so request handlers can flush responses before heavy work runs.
+      if (typeof setImmediate === 'function') setImmediate(run);
+      else setTimeout(run, 0);
     }
   }
 }
@@ -31,4 +37,3 @@ class JobQueue {
 module.exports = {
   JobQueue,
 };
-

@@ -94,7 +94,14 @@ export async function extractLookSpec(input: ExtractLookSpecInput): Promise<Look
     throw new Error("Only market=US is supported for LookSpec extraction.");
   }
 
-  const provider = input.provider ?? createProviderFromEnv("layer2_lookspec");
+  let provider = input.provider ?? null;
+  if (!provider) {
+    try {
+      provider = createProviderFromEnv("layer2_lookspec");
+    } catch (err) {
+      return unknownLookSpec(locale, toWarning(err));
+    }
+  }
   const prompt = loadPrompt();
 
   const providerMetaSuffix = (): string => {

@@ -106,7 +106,14 @@ async function extractLookSpec(input) {
 
   const prompt = input?.promptPack?.lookSpecExtract || loadPrompt();
   const versions = engineVersionFor(market);
-  const provider = input.provider ?? createProviderFromEnv('layer2_lookspec');
+  let provider = input.provider ?? null;
+  if (!provider) {
+    try {
+      provider = createProviderFromEnv('layer2_lookspec');
+    } catch (err) {
+      return unknownLookSpec(market, String(locale || 'en').trim() || 'en', toWarning(err, null));
+    }
+  }
 
   try {
     const core = await provider.analyzeImageToJson({

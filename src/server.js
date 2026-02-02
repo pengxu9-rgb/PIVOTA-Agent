@@ -52,6 +52,7 @@ const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compat
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
 const { mountRecommendationRoutes } = require('./recommendations/routes');
+const { mountAuroraBffRoutes } = require('./auroraBff/routes');
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
 
@@ -3521,6 +3522,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   const defaults = [
     'https://look-replicator.pivota.cc',
+    'https://aurora.pivota.cc',
     'http://localhost:3000',
     'http://localhost:5173',
     'http://127.0.0.1:3000',
@@ -3539,9 +3541,6 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Vary', 'Origin');
-  } else if (origin) {
-    // Backwards-compat for non-credentialed requests.
-    res.header('Access-Control-Allow-Origin', '*');
   }
 
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -3728,6 +3727,10 @@ mountExternalOfferRoutes(app);
 // ---------------- Recommendations: role → feed ----------------
 
 mountRecommendationRoutes(app);
+
+// ---------------- Aurora BFF (Lifecycle Skincare Partner) ----------------
+
+mountAuroraBffRoutes(app, { logger });
 
 // ---------------- Layer 1 (US): Compatibility ----------------
 

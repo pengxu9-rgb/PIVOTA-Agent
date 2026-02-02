@@ -5,6 +5,6 @@ module.exports = {
   modulePathIgnorePatterns: ['<rootDir>/.cursor/'],
   watchPathIgnorePatterns: ['<rootDir>/.cursor/'],
   transform: {
-    '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
+    '^.+\\.(ts|tsx)$': '<rootDir>/scripts/jest-ts-transformer.cjs',
   },
 };

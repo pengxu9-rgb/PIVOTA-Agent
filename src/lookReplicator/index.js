@@ -976,55 +976,58 @@ function mountLookReplicatorRoutes(app, { logger }) {
         }
       }
 
-      res.json({ jobId: job.jobId });
-
-      queue.enqueue(async () => {
-        const jobId = job.jobId;
-        const log = logger || console;
-        try {
-          await updateJob(jobId, { status: 'processing', progress: 10 });
-          let onboardingProfileV0 = null;
+      // Run the pipeline only after the response is flushed (important for tests and browser UX).
+      res.on('finish', () => {
+        queue.enqueue(async () => {
+          const jobId = job.jobId;
+          const log = logger || console;
           try {
-            onboardingProfileV0 = fields.onboardingProfileV0 ? parseOptionalJsonField(fields.onboardingProfileV0) : null;
-          } catch (err) {
-            // ignore invalid onboarding JSON to avoid blocking the core flow
-            onboardingProfileV0 = null;
-          }
-          const { result, telemetrySample } = await runLookReplicatePipeline({
-            jobId,
-            market,
-            locale,
-            preferenceMode,
-            optInTraining,
-            referenceImage,
-            selfieImage,
-            layer1Bundle,
-            enableExtendedAreas,
-            enableSelfieLookSpec,
-            userId: userId || undefined,
-            onboardingProfileV0: onboardingProfileV0 || undefined,
-            onProgress: async ({ progress }) => {
-              await updateJob(jobId, { progress: Number(progress) || 0 });
-            },
-          });
-
-          if (telemetrySample) {
+            await updateJob(jobId, { status: 'processing', progress: 10 });
+            let onboardingProfileV0 = null;
             try {
-              await upsertOutcomeSampleFromJobCompletion(telemetrySample);
+              onboardingProfileV0 = fields.onboardingProfileV0 ? parseOptionalJsonField(fields.onboardingProfileV0) : null;
             } catch (err) {
-              log?.warn?.({ jobId, err: err?.message || String(err) }, 'outcome sample upsert failed');
+              // ignore invalid onboarding JSON to avoid blocking the core flow
+              onboardingProfileV0 = null;
             }
-          }
+            const { result, telemetrySample } = await runLookReplicatePipeline({
+              jobId,
+              market,
+              locale,
+              preferenceMode,
+              optInTraining,
+              referenceImage,
+              selfieImage,
+              layer1Bundle,
+              enableExtendedAreas,
+              enableSelfieLookSpec,
+              userId: userId || undefined,
+              onboardingProfileV0: onboardingProfileV0 || undefined,
+              onProgress: async ({ progress }) => {
+                await updateJob(jobId, { progress: Number(progress) || 0 });
+              },
+            });
 
-          await updateJob(jobId, { status: 'completed', progress: 100, result });
-        } catch (err) {
-          const msg = err?.message ? String(err.message) : 'LOOK_REPLICATE_FAILED';
-          log?.warn?.({ jobId, err: msg }, 'lookReplicate pipeline failed');
-          await updateJob(jobId, { status: 'failed', progress: 100, error: msg });
-        } finally {
-          rmrf(tmpDir);
-        }
+            if (telemetrySample) {
+              try {
+                await upsertOutcomeSampleFromJobCompletion(telemetrySample);
+              } catch (err) {
+                log?.warn?.({ jobId, err: err?.message || String(err) }, 'outcome sample upsert failed');
+              }
+            }
+
+            await updateJob(jobId, { status: 'completed', progress: 100, result });
+          } catch (err) {
+            const msg = err?.message ? String(err.message) : 'LOOK_REPLICATE_FAILED';
+            log?.warn?.({ jobId, err: msg }, 'lookReplicate pipeline failed');
+            await updateJob(jobId, { status: 'failed', progress: 100, error: msg });
+          } finally {
+            rmrf(tmpDir);
+          }
+        });
       });
+
+      res.json({ jobId: job.jobId });
     } catch (err) {
       rmrf(tmpDir);
       logger?.error({ err: err?.message || String(err) }, 'lookReplicate create job failed');
