@@ -4082,6 +4082,52 @@ app.post('/api/merchant/returns/sync', requireAdmin, async (req, res) => {
   }
 });
 
+// ---------------- Photo uploads (selfie) + QC ----------------
+
+async function proxyPhotosToBackend(req, res) {
+  const checkoutToken =
+    String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
+
+  const url = `${PIVOTA_API_BASE}${req.path}`;
+  const method = String(req.method || 'GET').toUpperCase();
+
+  try {
+    const resp = await axios({
+      method,
+      url,
+      headers: {
+        ...(method !== 'GET' && method !== 'HEAD' && method !== 'DELETE'
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...(checkoutToken
+          ? { 'X-Checkout-Token': checkoutToken }
+          : {
+              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+            }),
+      },
+      timeout: UPSTREAM_TIMEOUT_ADMIN_MS,
+      ...(method === 'GET' || method === 'DELETE' ? { params: req.query } : { data: req.body }),
+      validateStatus: () => true,
+    });
+
+    return res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const { code, message, data } = extractUpstreamErrorCode(err);
+    const statusCode = err?.response?.status || err?.status || 500;
+    return res.status(statusCode).json({
+      error: code || 'FAILED_TO_PROXY_PHOTOS',
+      message: message || 'Failed to proxy photo upload request',
+      details: data || null,
+    });
+  }
+}
+
+app.post('/photos/presign', proxyPhotosToBackend);
+app.post('/photos/confirm', proxyPhotosToBackend);
+app.get('/photos/qc', proxyPhotosToBackend);
+app.delete('/photos', proxyPhotosToBackend);
+
 // ---------------- Main invoke endpoint ----------------
 
 app.post('/agent/shop/v1/invoke', async (req, res) => {
