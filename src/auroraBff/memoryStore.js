@@ -36,15 +36,19 @@ async function ensureUserProfileRow(auroraUid) {
 
 function mapProfileToDb(profilePatch) {
   const p = profilePatch || {};
+  const goals = Array.isArray(p.goals) ? p.goals : undefined;
+  const contraindications = Array.isArray(p.contraindications) ? p.contraindications : undefined;
+  const currentRoutine = p.currentRoutine;
+
   return {
     skin_type: p.skinType,
     sensitivity: p.sensitivity,
     barrier_status: p.barrierStatus,
-    goals: Array.isArray(p.goals) ? p.goals : undefined,
+    goals: goals ? JSON.stringify(goals) : undefined,
     region: p.region,
     budget_tier: p.budgetTier,
-    current_routine: p.currentRoutine,
-    contraindications: Array.isArray(p.contraindications) ? p.contraindications : undefined,
+    current_routine: currentRoutine !== undefined ? JSON.stringify(currentRoutine) : undefined,
+    contraindications: contraindications ? JSON.stringify(contraindications) : undefined,
     lang_pref: p.lang_pref,
   };
 }
@@ -243,4 +247,3 @@ module.exports = {
   getRecentSkinLogs,
   isCheckinDue,
 };
-
