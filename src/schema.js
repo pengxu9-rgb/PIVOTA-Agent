@@ -10,6 +10,8 @@ const OperationEnum = z.enum([
   'resolve_product_group',
   'find_similar_products',
   'products.recommendations',
+  // Resolve external/internal offers for a SKU (implemented in python shop gateway)
+  'offers.resolve',
   'preview_quote',
   'find_promotions', // admin list (optional routing guard)
   'create_promotion',
@@ -46,6 +48,9 @@ const InvokeRequestSchema = z.object({
 
     // find_similar_products: { product_id, creator_id?, limit?, exclude_ids?, query? }
     similar: z.any().optional(),
+
+    // offers.resolve: { product: { sku_id?, product_id? }, market?, tool?, limit? }
+    offers: z.any().optional(),
 
     // promotions admin payloads
     promotion: z.any().optional(),
