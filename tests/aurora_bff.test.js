@@ -96,6 +96,50 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => c.type === 'aurora_structured')).toBe(false);
   });
 
+  test('Routine: budget gate prompts and sets state S6_BUDGET', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_budget_gate_1')
+      .set('X-Lang', 'CN')
+      .send({
+        message: '生成一套早晚护肤 routine',
+        action: {
+          action_id: 'chip.start.routine',
+          kind: 'chip',
+          data: { profile_patch: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'healthy' } },
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    expect(res.body.assistant_message.content).toMatch(/预算/);
+    expect(res.body.session_patch.next_state).toBe('S6_BUDGET');
+    expect(res.body.cards.some((c) => c.type === 'budget_gate')).toBe(true);
+    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('chip.budget.'))).toBe(true);
+  });
+
+  test('Routine: selecting budget in S6_BUDGET generates routine recommendations', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_budget_gate_2')
+      .set('X-Lang', 'CN')
+      .send({
+        action: {
+          action_id: 'chip.budget._500',
+          kind: 'chip',
+          data: { profile_patch: { budgetTier: '¥500' } },
+        },
+        session: { state: 'S6_BUDGET' },
+      })
+      .expect(200);
+
+    expect(res.body.assistant_message.content).toMatch(/routine/);
+    expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(true);
+    expect(res.body.session_patch.next_state).toBe('S7_PRODUCT_RECO');
+  });
+
   test('Routine simulate: detects retinoid x acids conflict', async () => {
     const app = require('../src/server');
     const res = await request(app)

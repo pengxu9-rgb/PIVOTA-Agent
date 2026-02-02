@@ -197,6 +197,96 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
   );
 }
 
+function looksLikeRoutineRequest(message, action) {
+  const text = String(message || '').trim().toLowerCase();
+  const id =
+    typeof action === 'string'
+      ? action
+      : action && typeof action === 'object'
+        ? action.action_id
+        : '';
+  const idText = String(id || '').trim().toLowerCase();
+
+  if (idText.includes('routine') || idText.includes('reco_routine')) return true;
+  if (!text) return false;
+  if (text.includes('routine')) return true;
+  if (/am\s*\/\s*pm/.test(text)) return true;
+  if (/生成.*(早晚|am|pm).*(护肤|routine)/.test(text)) return true;
+  if (/(早晚护肤|护肤方案)/.test(text)) return true;
+  return false;
+}
+
+function buildBudgetGatePrompt(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (lang === 'CN') {
+    return (
+      '为了继续生成你的 AM/PM routine，我需要先确认 1 个信息：\n' +
+      '你的月预算大概是多少？（点选即可）'
+    );
+  }
+  return 'To continue building your AM/PM routine, what is your monthly budget? (tap one)';
+}
+
+function buildBudgetGateChips(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const opts = [
+    ['¥200', '¥200'],
+    ['¥500', '¥500'],
+    ['¥1000+', '¥1000+'],
+    ['不确定', lang === 'CN' ? '不确定' : 'Not sure'],
+  ];
+  return opts.map(([tier, label]) => ({
+    chip_id: `chip.budget.${tier.replace(/[^\w]+/g, '_')}`,
+    label,
+    kind: 'quick_reply',
+    data: { profile_patch: { budgetTier: tier } },
+  }));
+}
+
+async function generateRoutineReco({ ctx, profile, focus, constraints, logger }) {
+  const profileSummary = summarizeProfileForContext(profile);
+  const query = buildAuroraRoutineQuery({
+    profile: { ...profileSummary, ...(profile && profile.currentRoutine ? { currentRoutine: profile.currentRoutine } : {}) },
+    focus,
+    constraints: constraints || {},
+    lang: ctx.lang,
+  });
+
+  let upstream = null;
+  try {
+    upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 22000 });
+  } catch (err) {
+    if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
+      logger?.warn({ err: err.message }, 'aurora bff: routine upstream failed');
+    }
+  }
+
+  const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
+  const routine = contextObj ? contextObj.routine : null;
+  const mapped = mapAuroraRoutineToRecoGenerate(routine, contextObj);
+  const norm = normalizeRecoGenerate(mapped);
+
+  const suggestedChips = [];
+  const nextActions = upstream && Array.isArray(upstream.next_actions) ? upstream.next_actions : [];
+  if ((!norm.payload.recommendations || norm.payload.recommendations.length === 0) && nextActions.length) {
+    for (const act of nextActions.slice(0, 8)) {
+      if (!act || typeof act !== 'object') continue;
+      const label = typeof act.label === 'string' ? act.label.trim() : typeof act.text === 'string' ? act.text.trim() : '';
+      const text = typeof act.text === 'string' ? act.text.trim() : label;
+      const id = typeof act.id === 'string' ? act.id.trim() : '';
+      if (!label) continue;
+      suggestedChips.push({
+        chip_id: `chip.aurora.next_action.${id || label.replace(/\\s+/g, '_')}`.slice(0, 80),
+        label,
+        kind: 'quick_reply',
+        data: { reply_text: text, aurora_action_id: id || null },
+      });
+    }
+  }
+
+  return { norm, suggestedChips };
+}
+
 function mountAuroraBffRoutes(app, { logger }) {
   app.post('/v1/product/parse', async (req, res) => {
     const ctx = buildRequestContext(req, {});
@@ -1139,6 +1229,129 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
+      // Budget gate + routing: when waiting for budget selection, proceed to routine generation.
+      if (ctx.state === 'S6_BUDGET') {
+        const rawBudget =
+          normalizeBudgetHint(appliedProfilePatch && appliedProfilePatch.budgetTier) ||
+          normalizeBudgetHint(profile && profile.budgetTier) ||
+          normalizeBudgetHint(message);
+
+        if (!rawBudget) {
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
+            suggested_chips: buildBudgetGateChips(ctx.lang),
+            cards: [
+              {
+                card_id: `budget_${ctx.request_id}`,
+                type: 'budget_gate',
+                payload: { reason: 'budget_required_for_routine', profile: summarizeProfileForContext(profile) },
+              },
+            ],
+            session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
+            events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_required_for_routine' })],
+          });
+          return res.json(envelope);
+        }
+
+        if (!profile || profile.budgetTier !== rawBudget) {
+          profile = { ...(profile || {}), budgetTier: rawBudget };
+          try {
+            profile = await upsertUserProfile(ctx.aurora_uid, { budgetTier: rawBudget });
+          } catch (err) {
+            logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist budgetTier');
+          }
+        }
+
+        const { norm, suggestedChips } = await generateRoutineReco({
+          ctx,
+          profile,
+          focus: 'daily routine',
+          constraints: { simplicity: 'high' },
+          logger,
+        });
+
+        const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
+        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(
+            ctx.lang === 'CN'
+              ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
+              : 'Got it. I generated a simple AM/PM routine (see the card below).',
+          ),
+          suggested_chips: suggestedChips,
+          cards: [
+            {
+              card_id: `reco_${ctx.request_id}`,
+              type: 'recommendations',
+              payload: norm.payload,
+              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+            },
+          ],
+          session_patch: nextState ? { next_state: nextState } : {},
+          events: [
+            makeEvent(ctx, 'value_moment', { kind: 'routine_generated' }),
+            makeEvent(ctx, 'recos_requested', { explicit: true }),
+          ],
+        });
+        return res.json(envelope);
+      }
+
+      // If user explicitly asks to build an AM/PM routine, route to the routine generator (budget-gated).
+      if (looksLikeRoutineRequest(message, parsed.data.action) && recommendationsAllowed(ctx.trigger_source)) {
+        const budget = normalizeBudgetHint(profile && profile.budgetTier);
+        if (!budget) {
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
+            suggested_chips: buildBudgetGateChips(ctx.lang),
+            cards: [
+              {
+                card_id: `budget_${ctx.request_id}`,
+                type: 'budget_gate',
+                payload: { reason: 'budget_required_for_routine', profile: summarizeProfileForContext(profile) },
+              },
+            ],
+            session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
+            events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_required_for_routine' })],
+          });
+          return res.json(envelope);
+        }
+
+        const { norm, suggestedChips } = await generateRoutineReco({
+          ctx,
+          profile,
+          focus: 'daily routine',
+          constraints: { simplicity: 'high' },
+          logger,
+        });
+
+        const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
+        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(
+            ctx.lang === 'CN'
+              ? '我生成了一个简洁 AM/PM routine（见下方卡片）。'
+              : 'I generated a simple AM/PM routine (see the card below).',
+          ),
+          suggested_chips: suggestedChips,
+          cards: [
+            {
+              card_id: `reco_${ctx.request_id}`,
+              type: 'recommendations',
+              payload: norm.payload,
+              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+            },
+          ],
+          session_patch: nextState ? { next_state: nextState } : {},
+          events: [
+            makeEvent(ctx, 'value_moment', { kind: 'routine_generated' }),
+            makeEvent(ctx, 'recos_requested', { explicit: true }),
+          ],
+        });
+        return res.json(envelope);
+      }
+
       // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
       if (appliedProfilePatch && !message) {
         const { score, missing } = profileCompleteness(profile);
@@ -1217,7 +1430,21 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Upstream Aurora decision system (best-effort).
       let upstream = null;
       const profileSummary = summarizeProfileForContext(profile);
-      const prefix = buildContextPrefix({ profile: profileSummary, recentLogs });
+      const prefix = buildContextPrefix({
+        profile: profileSummary,
+        recentLogs,
+        lang: ctx.lang,
+        state: ctx.state,
+        trigger_source: ctx.trigger_source,
+        action_id: parsed.data.action && typeof parsed.data.action === 'object' ? parsed.data.action.action_id : null,
+        clarification_id:
+          parsed.data.action &&
+          typeof parsed.data.action === 'object' &&
+          parsed.data.action.data &&
+          typeof parsed.data.action.data === 'object'
+            ? parsed.data.action.data.clarification_id || parsed.data.action.data.clarificationId || null
+            : null,
+      });
       const query = `${prefix}${message || '(no message)'}`;
       try {
         upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 12000 });

@@ -22,12 +22,15 @@ function detectTextExplicit(message) {
     /\bsuggest\b/,
     /\bwhat should i (buy|use)\b/,
     /\bshow me\b.*\bproducts?\b/,
+    /\broutine\b/,
+    /\bam\s*\/\s*pm\b/,
     /\bbuy\b/,
     /\bcheckout\b/,
     /\bwhere to buy\b/,
     /\blink\b/,
     /推荐/,
     /给我.*(产品|清单)/,
+    /(护肤方案|早晚护肤|早晚.*(routine|护肤))/,
     /(怎么买|购买|下单|链接)/,
     /(种草|买哪个)/,
   ];
@@ -81,4 +84,3 @@ module.exports = {
   inferTriggerSource,
   buildRequestContext,
 };
-
