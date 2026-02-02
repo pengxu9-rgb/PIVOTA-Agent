@@ -1282,6 +1282,12 @@ const ROUTE_MAP = {
     method: 'POST',
     path: '/agent/v1/events/product-click',
     paramType: 'body'
+  },
+  'offers.resolve': {
+    // Offer resolution is implemented in the Python shopping gateway (POST /agent/shop/v1/invoke).
+    method: 'POST',
+    path: '/agent/shop/v1/invoke',
+    paramType: 'body',
   }
 };
 
@@ -1315,6 +1321,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
     'get_order_status',
     'request_after_sales',
     'track_product_click',
+    'offers.resolve',
   ];
   const maxBusyAttempts = Math.max(
     1,
@@ -6957,6 +6964,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           quality_content_score: p.cq,
           quality_model_readiness: p.mr,
           query: p.query,
+          ...(p.event_type || p.eventType || p.action
+            ? { event_type: String(p.event_type || p.eventType || p.action).trim() }
+            : {}),
         };
         if (!requestBody.merchant_id || !requestBody.platform_product_id) {
           return res.status(400).json({
@@ -6964,6 +6974,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             message: 'merchant_id and product_id are required for track_product_click'
           });
         }
+        break;
+      }
+
+      case 'offers.resolve': {
+        // Forward to Python shopping gateway via POST /agent/shop/v1/invoke
+        // Expected payload shape:
+        // { offers: { product: { sku_id?, product_id? }, limit?, market?, tool? } }
+        const offersPayload = payload.offers || payload || {};
+        requestBody = {
+          operation: 'offers.resolve',
+          payload: offersPayload,
+          metadata,
+        };
         break;
       }
     }

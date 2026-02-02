@@ -12,6 +12,7 @@
           "find_products",
           "find_products_multi",
           "get_product_detail",
+          "offers.resolve",
           "preview_quote",
           "create_order",
           "submit_payment",
@@ -56,6 +57,24 @@
             "properties": {
               "product_id": { "type": "string" },
               "sku_id": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "offers": {
+            "type": "object",
+            "description": "Used when operation = offers.resolve",
+            "properties": {
+              "product": {
+                "type": "object",
+                "properties": {
+                  "product_id": { "type": "string" },
+                  "sku_id": { "type": "string" }
+                },
+                "additionalProperties": true
+              },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 30 },
+              "market": { "type": "string", "description": "e.g. US" },
+              "tool": { "type": "string", "description": "e.g. *" }
             },
             "additionalProperties": true
           },
