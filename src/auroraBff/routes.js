@@ -902,8 +902,9 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
-async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, anchorId, debug, logger }) {
+async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, debug, logger }) {
   const inputText = String(productInput || '').trim();
+  const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   const anchor = anchorId ? String(anchorId).trim() : '';
   const bestInput = inputText || anchor;
   if (!bestInput) return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
@@ -921,7 +922,8 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     `${prefix}` +
     `Task: Deep-scan this product and return alternatives (dupe/similar/premium) if available.\n` +
     `Return ONLY a JSON object with keys: alternatives (array).\n` +
-    `Product: ${bestInput}`;
+    `Product: ${bestInput}\n` +
+    (productJson ? `Product JSON: ${productJson}\n` : '');
 
   let upstream = null;
   try {
@@ -942,6 +944,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
           debug: {
             input: bestInput.slice(0, 200),
             anchor_id: anchor || null,
+            product_json_preview: productJson ? productJson.slice(0, 300) : null,
             error: err && err.message ? err.message : String(err),
           },
         }
@@ -967,6 +970,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
         debug: {
           input: bestInput.slice(0, 200),
           anchor_id: anchor || null,
+          product_json_preview: productJson ? productJson.slice(0, 300) : null,
           upstream_intent: upstream && typeof upstream.intent === 'string' ? upstream.intent : null,
           has_structured: Boolean(upstream && upstream.structured),
           structured_keys:
@@ -1009,7 +1013,7 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
     const inputText = buildProductInputText(candidate, base && typeof base.url === 'string' ? base.url : null);
     const anchorId = extractAnchorIdFromProductLike(candidate) || extractAnchorIdFromProductLike(base);
     if (!inputText && !anchorId) continue;
-    targets.push({ idx: i, inputText, anchorId });
+    targets.push({ idx: i, inputText, anchorId, productObj: candidate });
   }
 
   if (!targets.length) {
@@ -1022,6 +1026,7 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
       profileSummary,
       recentLogs,
       productInput: t.inputText,
+      productObj: t.productObj,
       anchorId: t.anchorId,
       debug,
       logger,
