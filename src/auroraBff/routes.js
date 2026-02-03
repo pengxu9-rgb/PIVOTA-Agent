@@ -306,7 +306,11 @@ async function generateRoutineReco({ ctx, profile, focus, constraints, logger })
 
   const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
   const routine = contextObj ? contextObj.routine : null;
-  const mapped = mapAuroraRoutineToRecoGenerate(routine, contextObj);
+  const contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
+  if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
+    contextMeta.budget = profileSummary.budgetTier;
+  }
+  const mapped = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
   const norm = normalizeRecoGenerate(mapped);
 
   const suggestedChips = [];
