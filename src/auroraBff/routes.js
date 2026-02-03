@@ -39,6 +39,7 @@ const {
 const {
   normalizeProductParse,
   normalizeProductAnalysis,
+  enrichProductAnalysisPayload,
   normalizeDupeCompare,
   normalizeRecoGenerate,
 } = require('./normalize');
@@ -758,7 +759,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? mapAuroraProductAnalysis(structured)
         : structured;
       const norm = normalizeProductAnalysis(mapped);
-      const payload = norm.payload;
+      const payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,

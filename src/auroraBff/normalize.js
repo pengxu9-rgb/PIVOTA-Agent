@@ -165,6 +165,154 @@ function normalizeProductAnalysis(raw) {
   };
 }
 
+function isGenericReason(reason, lang) {
+  const s = typeof reason === 'string' ? reason.trim() : reason == null ? '' : String(reason).trim();
+  if (!s) return true;
+  const lower = s.toLowerCase();
+
+  const en = [
+    'overall fit',
+    'looks reasonable',
+    'seems suitable',
+    'seems risky',
+    'broadly compatible',
+    'generally compatible',
+    'compatible with most',
+    'works for most',
+    'good fit for most',
+  ];
+  if (en.some((p) => lower.includes(p))) return true;
+
+  if (String(lang || '').toUpperCase() === 'CN') {
+    const cn = ['整体', '总体', '大体', '总体来看', '一般来说', '比较适合', '相对适合', '看起来还行', '大多数'];
+    if (cn.some((p) => s.includes(p))) return true;
+  }
+
+  return false;
+}
+
+function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) {
+  const out = [];
+  const ev = asPlainObject(evidence);
+  if (!ev) return out;
+
+  const evMissing = asStringArray(ev.missing_info ?? ev.missingInfo);
+  if (evMissing.includes('evidence_missing')) {
+    out.push(
+      String(lang).toUpperCase() === 'CN'
+        ? '上游未返回证据详情，因此无法给出结论背后的具体理由。'
+        : 'Upstream did not return evidence details, so I cannot explain the verdict beyond its label.',
+    );
+    return out;
+  }
+
+  const science = asPlainObject(ev.science) || {};
+  const social = asPlainObject(ev.social_signals || ev.socialSignals) || {};
+
+  const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  const mechanisms = asStringArray(science.mechanisms);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+
+  const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
+  const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
+  const riskForGroups = asStringArray(social.risk_for_groups ?? social.riskForGroups);
+
+  const expertNotes = asStringArray(ev.expert_notes ?? ev.expertNotes);
+
+  const v = String(verdict || '').toLowerCase();
+  const isNegative = v.includes('mismatch') || v.includes('avoid') || v.includes('veto') || v.includes('not');
+  const isCaution = isNegative || v.includes('risky') || v.includes('caution') || v.includes('warn');
+
+  const take = (arr, n) => (Array.isArray(arr) ? arr.slice(0, n) : []);
+
+  if (isCaution) {
+    if (riskNotes.length) out.push(...take(riskNotes, 2));
+    if (negatives.length) {
+      out.push(
+        String(lang).toUpperCase() === 'CN'
+          ? `口碑（常见负向）：${take(negatives, 4).join('、')}`
+          : `Social signals: common negatives — ${take(negatives, 4).join(', ')}`,
+      );
+    }
+    if (riskForGroups.length) out.push(take(riskForGroups, 2).join('; '));
+  }
+
+  if (fitNotes.length) out.push(...take(fitNotes, 2));
+  if (mechanisms.length) out.push(...take(mechanisms, 1));
+
+  if (!riskNotes.length) {
+    out.push(
+      String(lang).toUpperCase() === 'CN'
+        ? '风险点：证据中未返回明确风险条目。'
+        : 'No explicit risk flags were returned in the evidence.',
+    );
+  }
+
+  if (positives.length) {
+    out.push(
+      String(lang).toUpperCase() === 'CN'
+        ? `口碑（常见正向）：${take(positives, 4).join('、')}`
+        : `Social signals: common positives — ${take(positives, 4).join(', ')}`,
+    );
+  }
+
+  const keyPicks = take(keyIngredients.filter((x) => !/^water$/i.test(String(x))), 4);
+  if (keyPicks.length) {
+    out.push(
+      String(lang).toUpperCase() === 'CN'
+        ? `关键成分（证据）：${keyPicks.join('、')}`
+        : `Key ingredients (from evidence): ${keyPicks.join(', ')}`,
+    );
+  }
+
+  if (expertNotes.length) {
+    out.push(
+      String(lang).toUpperCase() === 'CN' ? `专家建议：${expertNotes[0]}` : `Expert notes: ${expertNotes[0]}`,
+    );
+  }
+
+  return uniqueStrings(out);
+}
+
+function enrichProductAnalysisPayload(payload, { lang = 'EN' } = {}) {
+  const p = asPlainObject(payload);
+  if (!p) return payload;
+  const assessment = asPlainObject(p.assessment);
+  if (!assessment) return payload;
+
+  const verdict =
+    typeof assessment.verdict === 'string' ? assessment.verdict.trim() : String(assessment.verdict || '').trim();
+
+  const existingReasons = asStringArray(assessment.reasons);
+  const keptReasons = existingReasons.filter((r) => !isGenericReason(r, lang));
+
+  const minReasons = 2;
+  const maxReasons = 5;
+
+  let reasons = keptReasons.slice();
+  if (reasons.length < minReasons) {
+    const derived = buildReasonsFromEvidence(p.evidence, { lang, verdict });
+    for (const r of derived) {
+      if (!r) continue;
+      if (reasons.includes(r)) continue;
+      reasons.push(r);
+      if (reasons.length >= maxReasons) break;
+    }
+  }
+
+  if (!reasons.length) {
+    reasons = [
+      String(lang).toUpperCase() === 'CN'
+        ? '上游未返回可用的解释理由（仅有结论标签）。'
+        : 'Upstream did not return usable reasoning (verdict label only).',
+    ];
+  }
+
+  const outAssessment = { ...assessment, reasons: uniqueStrings(reasons).slice(0, maxReasons) };
+  return { ...p, assessment: outAssessment };
+}
+
 function normalizeDupeCompare(raw) {
   const o = asPlainObject(raw);
   if (!o) {
@@ -258,6 +406,7 @@ module.exports = {
   normalizeEvidence,
   normalizeProductParse,
   normalizeProductAnalysis,
+  enrichProductAnalysisPayload,
   normalizeDupeCompare,
   normalizeRecoGenerate,
 };
