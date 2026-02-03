@@ -1309,6 +1309,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(501).json(envelope);
       }
 
+      const reqContentType = String(req.headers['content-type'] || '').toLowerCase();
+      if (!reqContentType.includes('multipart/form-data') || !reqContentType.includes('boundary=')) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', detail: 'multipart_required' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
       const { fields, files, tmpDir: parsedTmpDir } = await parseMultipart(req, {
         maxBytes: PHOTO_UPLOAD_PROXY_MAX_BYTES,
         allowedContentTypes: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']),
