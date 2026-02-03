@@ -919,6 +919,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   const query =
     `${prefix}` +
     `Task: Parse the user's product input into a normalized product entity.\n` +
+    `Also return alternatives (dupe/similar/premium) for the anchor product if available.\n` +
     `Input: ${bestInput}`;
 
   let upstream = null;
@@ -934,7 +935,12 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'upstream_error' }] };
   }
 
-  const structured = getUpstreamStructuredOrJson(upstream);
+  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+  const structuredFallback = getUpstreamStructuredOrJson(upstream);
+  const structured =
+    answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) && Array.isArray(answerJson.alternatives)
+      ? answerJson
+      : structuredFallback || answerJson;
   const alternativesRaw = structured && Array.isArray(structured.alternatives) ? structured.alternatives : [];
   const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, { lang: ctx.lang, maxTotal: 3 });
 
