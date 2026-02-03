@@ -1095,8 +1095,23 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     }
   }
 
+  const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
+  const routine = contextObj ? contextObj.routine : null;
+
   const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
-  const structured = answerJson || getUpstreamStructuredOrJson(upstream);
+  const structuredFallback = getUpstreamStructuredOrJson(upstream);
+
+  // Prefer: explicit JSON (from answer) → routine object (from context) → any structured blob.
+  let structured = answerJson;
+  let structuredSource = answerJson ? 'answer_json' : null;
+  if (!structured && routine) {
+    structured = mapAuroraRoutineToRecoGenerate(routine, contextObj);
+    structuredSource = 'context_routine';
+  }
+  if (!structured) {
+    structured = structuredFallback;
+    structuredSource = structuredFallback ? 'structured_fallback' : null;
+  }
   const upstreamDebug = debug
     ? {
       intent: upstream && typeof upstream.intent === 'string' ? upstream.intent : null,
@@ -1119,6 +1134,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         upstream && upstream.context && typeof upstream.context === 'object' && !Array.isArray(upstream.context)
           ? Object.keys(upstream.context).slice(0, 24)
           : [],
+      structured_source: structuredSource,
       extracted_answer_json_keys:
         answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? Object.keys(answerJson).slice(0, 24) : [],
       extracted_structured_keys:
