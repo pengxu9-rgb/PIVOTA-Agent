@@ -902,7 +902,7 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
-async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, anchorId, logger }) {
+async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, anchorId, debug, logger }) {
   const inputText = String(productInput || '').trim();
   const anchor = anchorId ? String(anchorId).trim() : '';
   const bestInput = inputText || anchor;
@@ -932,7 +932,20 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     });
   } catch (err) {
     logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: alternatives upstream failed');
-    return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'upstream_error' }] };
+    return {
+      ok: false,
+      alternatives: [],
+      field_missing: [{ field: 'alternatives', reason: 'upstream_error' }],
+      ...(debug
+        ? {
+          debug: {
+            input: bestInput.slice(0, 200),
+            anchor_id: anchor || null,
+            error: err && err.message ? err.message : String(err),
+          },
+        }
+        : {}),
+    };
   }
 
   const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
@@ -948,10 +961,30 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     ok: true,
     alternatives: mapped,
     field_missing: mapped.length ? [] : [{ field: 'alternatives', reason: structured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured' }],
+    ...(debug
+      ? {
+        debug: {
+          input: bestInput.slice(0, 200),
+          anchor_id: anchor || null,
+          upstream_intent: upstream && typeof upstream.intent === 'string' ? upstream.intent : null,
+          has_structured: Boolean(upstream && upstream.structured),
+          structured_keys:
+            upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
+              ? Object.keys(upstream.structured).slice(0, 24)
+              : [],
+          extracted_answer_json_keys:
+            answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? Object.keys(answerJson).slice(0, 24) : [],
+          extracted_structured_keys:
+            structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
+          alternatives_raw_count: alternativesRaw.length,
+          alternatives_mapped_count: mapped.length,
+        },
+      }
+      : {}),
   };
 }
 
-async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, recentLogs, recommendations, logger }) {
+async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, recentLogs, recommendations, debug, logger }) {
   const recos = Array.isArray(recommendations) ? recommendations : [];
   const maxProducts = RECO_ALTERNATIVES_MAX_PRODUCTS;
   if (!recos.length || maxProducts <= 0) return { recommendations: recos, field_missing: [] };
@@ -989,6 +1022,7 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
       recentLogs,
       productInput: t.inputText,
       anchorId: t.anchorId,
+      debug,
       logger,
     });
     return { ...out, idx: t.idx };
@@ -1006,7 +1040,13 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
   }
 
   const field_missing = anyEmpty ? [{ field: 'recommendations[].alternatives', reason: 'alternatives_partial' }] : [];
-  return { recommendations: enriched, field_missing };
+  const debugInfo = debug
+    ? results
+      .map((r) => (r && typeof r === 'object' && r.debug ? { idx: r.idx, ...r.debug } : null))
+      .filter(Boolean)
+      .slice(0, 8)
+    : null;
+  return { recommendations: enriched, field_missing, ...(debugInfo ? { debug: debugInfo } : {}) };
 }
 
 async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraints, includeAlternatives, logger }) {
@@ -1042,10 +1082,14 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
       profileSummary,
       recentLogs,
       recommendations: norm.payload.recommendations,
+      debug,
       logger,
     });
     norm.payload = { ...norm.payload, recommendations: alt.recommendations };
     norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+    if (debug && upstreamDebug && alt && typeof alt === 'object' && alt.debug) {
+      upstreamDebug.alternatives_debug = alt.debug;
+    }
   }
 
   const suggestedChips = [];
