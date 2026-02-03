@@ -100,3 +100,24 @@ test('/v1/chat: Start diagnosis chip enters diagnosis flow (no upstream loop)', 
   assert.ok(resp.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.')));
   assert.ok(resp.body.suggested_chips.every((c) => !String(c.chip_id).startsWith('chip.clarify.next.')));
 });
+
+test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {
+  const express = require('express');
+  const request = require('supertest');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await request(app)
+    .post('/v1/analysis/skin')
+    .set('X-Aurora-UID', 'test_uid')
+    .set('X-Trace-ID', 'test_trace')
+    .set('X-Brief-ID', 'test_brief')
+    .send({ use_photo: false, photos: [] });
+
+  assert.equal(resp.status, 200);
+  assert.ok(Array.isArray(resp.body?.cards));
+  assert.equal(resp.body.cards.some((c) => c.type === 'analysis_summary'), true);
+});
