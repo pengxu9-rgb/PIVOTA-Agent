@@ -1063,7 +1063,7 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   return { norm, suggestedChips };
 }
 
-async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, logger }) {
+async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
   const profileSummary = summarizeProfileForContext(profile);
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
@@ -1097,6 +1097,34 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
 
   const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
   const structured = answerJson || getUpstreamStructuredOrJson(upstream);
+  const upstreamDebug = debug
+    ? {
+      intent: upstream && typeof upstream.intent === 'string' ? upstream.intent : null,
+      has_structured: Boolean(upstream && upstream.structured),
+      structured_keys:
+        upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
+          ? Object.keys(upstream.structured).slice(0, 24)
+          : [],
+      answer_preview:
+        upstream && typeof upstream.answer === 'string' ? upstream.answer.slice(0, 800) : null,
+      cards_types: Array.isArray(upstream && upstream.cards)
+        ? upstream.cards
+          .map((c) => (c && typeof c === 'object' && typeof c.type === 'string' ? c.type : null))
+          .filter(Boolean)
+          .slice(0, 12)
+        : [],
+      clarification:
+        upstream && upstream.clarification && typeof upstream.clarification === 'object' ? upstream.clarification : null,
+      context_keys:
+        upstream && upstream.context && typeof upstream.context === 'object' && !Array.isArray(upstream.context)
+          ? Object.keys(upstream.context).slice(0, 24)
+          : [],
+      extracted_answer_json_keys:
+        answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? Object.keys(answerJson).slice(0, 24) : [],
+      extracted_structured_keys:
+        structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
+    }
+    : null;
   const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
   if (mapped && Array.isArray(mapped.recommendations)) {
     mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
@@ -1116,7 +1144,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
   }
 
-  return norm;
+  return { norm, upstreamDebug };
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
@@ -2858,6 +2886,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? parsed.data.action
             : null;
       const includeAlternatives = extractIncludeAlternativesFromAction(parsed.data.action);
+      const debugUpstream = coerceBoolean(req.get('X-Debug') || req.get('X-Aurora-Debug'));
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
@@ -3056,12 +3085,13 @@ function mountAuroraBffRoutes(app, { logger }) {
       // If user explicitly asks for a few product recommendations, generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
       if (actionId === 'chip.start.reco_products' && recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message })) {
-        const norm = await generateProductRecommendations({
+        const { norm, upstreamDebug } = await generateProductRecommendations({
           ctx,
           profile,
           recentLogs,
           message,
           includeAlternatives,
+          debug: debugUpstream,
           logger,
         });
 
@@ -3070,9 +3100,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(
-            ctx.lang === 'CN'
-              ? '我给你整理了几款可以直接开始的产品（见下方卡片）。'
-              : 'I pulled a few products you can start with (see the card below).',
+            hasRecs
+              ? ctx.lang === 'CN'
+                ? '我给你整理了几款可以直接开始的产品（见下方卡片）。'
+                : 'I pulled a few products you can start with (see the card below).'
+              : ctx.lang === 'CN'
+                ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
+                : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue.",
           ),
           suggested_chips: [],
           cards: [
@@ -3082,6 +3116,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: norm.payload,
               ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
             },
+            ...(debugUpstream && upstreamDebug
+              ? [
+                {
+                  card_id: `aurora_debug_${ctx.request_id}`,
+                  type: 'aurora_debug',
+                  payload: upstreamDebug,
+                },
+              ]
+              : []),
           ],
           session_patch: nextState ? { next_state: nextState } : {},
           events: [
