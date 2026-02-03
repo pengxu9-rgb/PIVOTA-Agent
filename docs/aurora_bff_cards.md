@@ -95,6 +95,13 @@ Returned by `POST /v1/product/analyze`.
 - `confidence` (number | null)
 - `missing_info` (string[])
 
+`assessment` highlights:
+- `assessment.hero_ingredient` (optional object):
+  - `name` (string)
+  - `role` (string | null)
+  - `why` (string)
+  - If Aurora does not return it, the BFF may derive it from `evidence` (do not fabricate; add `missing_info` if needed).
+
 Evidence normalization:
 - `evidence.science.{key_ingredients,mechanisms,fit_notes,risk_notes}` are always arrays
 - `evidence.social_signals.{typical_positive,typical_negative,risk_for_groups}` are always arrays
@@ -115,13 +122,19 @@ Returned by `POST /v1/dupe/compare`.
 
 ### `recommendations`
 
-Returned by `POST /v1/reco/generate` **only** (explicit recommendations endpoint).
+Returned by:
+- `POST /v1/chat` (only when recommendation gate is explicitly unlocked), and/or
+- `POST /v1/reco/generate` (explicit recommendations endpoint).
 
 `payload`:
 - `recommendations` (array)
 - `evidence` (object; normalized; never omitted)
 - `confidence` (number | null)
 - `missing_info` (string[])
+
+Per-item enrichment (best-effort):
+- `recommendations[].alternatives` (optional array; max ~3): `dupe` / `similar` / `premium` options with tradeoffs.
+- If enrichment fails or is partial, the BFF uses `field_missing` (e.g. `{ field: "recommendations[].alternatives", reason: "alternatives_partial" }`).
 
 Notes:
 - Do not return checkout links unless explicitly requested in the trigger.
@@ -157,4 +170,3 @@ Safety:
 ### `aurora_context_raw`
 
 Optional card emitted by `POST /v1/chat` when `AURORA_BFF_INCLUDE_RAW_CONTEXT=true`.
-

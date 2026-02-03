@@ -1211,6 +1211,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       const routine = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context.routine : null;
       const mapped = mapAuroraRoutineToRecoGenerate(routine, upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null);
       const norm = normalizeRecoGenerate(mapped);
+      if (parsed.data.include_alternatives) {
+        const alt = await enrichRecommendationsWithAlternatives({
+          ctx,
+          profileSummary,
+          recentLogs,
+          recommendations: norm.payload.recommendations,
+          logger,
+        });
+        norm.payload = { ...norm.payload, recommendations: alt.recommendations };
+        norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+      }
       const payload = norm.payload;
 
       const suggestedChips = [];
@@ -2868,10 +2879,38 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const rawCards = upstream && Array.isArray(upstream.cards) ? upstream.cards : [];
       const allowRecs = recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message });
-      const cards = allowRecs ? rawCards : stripRecommendationCards(rawCards);
+      let cards = allowRecs ? rawCards : stripRecommendationCards(rawCards);
       const fieldMissing = [];
       if (!allowRecs && rawCards.length !== cards.length) {
         fieldMissing.push({ field: 'cards', reason: 'recommendations_not_requested' });
+      }
+
+      if (allowRecs && includeAlternatives && Array.isArray(cards) && cards.length) {
+        const recoIdx = cards.findIndex((c) => {
+          if (!c || typeof c !== 'object') return false;
+          const t = typeof c.type === 'string' ? c.type.trim().toLowerCase() : '';
+          if (t !== 'recommendations') return false;
+          const payload = c.payload && typeof c.payload === 'object' ? c.payload : null;
+          return payload && Array.isArray(payload.recommendations);
+        });
+
+        if (recoIdx !== -1) {
+          const card = cards[recoIdx];
+          const basePayload = card.payload && typeof card.payload === 'object' ? card.payload : {};
+          const alt = await enrichRecommendationsWithAlternatives({
+            ctx,
+            profileSummary,
+            recentLogs,
+            recommendations: basePayload.recommendations,
+            logger,
+          });
+          const nextCard = {
+            ...card,
+            payload: { ...basePayload, recommendations: alt.recommendations },
+            field_missing: mergeFieldMissing(card.field_missing, alt.field_missing),
+          };
+          cards = cards.map((c, i) => (i === recoIdx ? nextCard : c));
+        }
       }
 
       const clarification = upstream && upstream.clarification && typeof upstream.clarification === 'object'

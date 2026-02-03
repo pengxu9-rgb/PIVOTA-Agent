@@ -98,6 +98,39 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.assistant_message.content).toMatch(/action reply_text received/i);
   });
 
+  test('Chat: include_alternatives enriches recommendations card (reco_products)', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_alternatives_1')
+      .set('X-Lang', 'EN')
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend a few products',
+            include_alternatives: true,
+            profile_patch: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'healthy', goals: ['pores'], budgetTier: '¥500' },
+          },
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    const reco = res.body.cards.find((c) => c.type === 'recommendations');
+    expect(reco).toBeTruthy();
+    expect(Array.isArray(reco.payload.recommendations)).toBe(true);
+    expect(reco.payload.recommendations.length).toBeGreaterThan(0);
+
+    const first = reco.payload.recommendations[0];
+    expect(Array.isArray(first.alternatives)).toBe(true);
+    expect(first.alternatives.length).toBeGreaterThan(0);
+    expect(first.alternatives[0]).toHaveProperty('kind');
+    expect(first.alternatives[0]).toHaveProperty('product');
+    expect(Array.isArray(first.alternatives[0].tradeoffs)).toBe(true);
+  });
+
   test('Diagnosis: profile chip patch continues with next missing fields', async () => {
     const app = require('../src/server');
     const res = await request(app)
@@ -177,6 +210,44 @@ describe('Aurora BFF (/v1)', () => {
     expect(simCard).toBeTruthy();
     expect(simCard.payload.safe).toBe(false);
     expect(simCard.payload.conflicts.some((c) => c.rule_id === 'retinoid_x_acids')).toBe(true);
+  });
+
+  test('Routine simulate: detects retinoid x BPO conflict (block)', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/routine/simulate')
+      .set('X-Aurora-UID', 'uid_test_conflict_2')
+      .send({
+        routine: { pm: [{ key_actives: ['adapalene'] }] },
+        test_product: { key_actives: ['benzoyl peroxide'] },
+      })
+      .expect(200);
+
+    const simCard = res.body.cards.find((c) => c.type === 'routine_simulation');
+    expect(simCard).toBeTruthy();
+    expect(simCard.payload.safe).toBe(false);
+    expect(simCard.payload.conflicts.some((c) => c.rule_id === 'retinoid_x_bpo' && c.severity === 'block')).toBe(true);
+  });
+
+  test('Routine simulate: detects multiple exfoliants conflict (warn)', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/routine/simulate')
+      .set('X-Aurora-UID', 'uid_test_conflict_3')
+      .send({
+        routine: {
+          pm: [
+            { key_actives: ['glycolic acid'] },
+            { key_actives: ['salicylic acid'] },
+          ],
+        },
+      })
+      .expect(200);
+
+    const simCard = res.body.cards.find((c) => c.type === 'routine_simulation');
+    expect(simCard).toBeTruthy();
+    expect(simCard.payload.safe).toBe(false);
+    expect(simCard.payload.conflicts.some((c) => c.rule_id === 'multiple_exfoliants' && c.severity === 'warn')).toBe(true);
   });
 
   test('Offers resolve: patches price/image via pivota-backend external offers', async () => {
