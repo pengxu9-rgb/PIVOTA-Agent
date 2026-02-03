@@ -251,6 +251,24 @@ const PhotosConfirmRequestSchema = z
   })
   .strict();
 
+const SkinAnalysisRequestSchema = z
+  .object({
+    photos: z
+      .array(
+        z
+          .object({
+            photo_id: z.string().min(1).optional(),
+            slot_id: z.string().min(1),
+            qc_status: z.string().min(1).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
+  })
+  .strict();
+
 module.exports = {
   LanguageSchema,
   TriggerSourceSchema,
@@ -276,4 +294,5 @@ module.exports = {
   RecoGenerateRequestSchema,
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
+  SkinAnalysisRequestSchema,
 };

@@ -200,4 +200,19 @@ describe('Aurora BFF (/v1)', () => {
     expect(card.payload.items[0].product.image_url).toBeTruthy();
     expect(card.payload.items[0].offer.price).toBeGreaterThan(0);
   });
+
+  test('Skin analysis: returns analysis_summary card', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/analysis/skin')
+      .set('X-Aurora-UID', 'uid_test_analysis_1')
+      .send({ photos: [{ slot_id: 'daylight', qc_status: 'passed' }] })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'analysis_summary');
+    expect(card).toBeTruthy();
+    expect(card.payload).toHaveProperty('analysis');
+    expect(Array.isArray(card.payload.analysis.features)).toBe(true);
+    expect(typeof card.payload.analysis.strategy).toBe('string');
+  });
 });

@@ -14,6 +14,7 @@ const {
   RecoGenerateRequestSchema,
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
+  SkinAnalysisRequestSchema,
 } = require('./schemas');
 const {
   getUserProfile,
@@ -97,6 +98,113 @@ function pickUpstreamErrorDetail(data) {
   if (data.error) return data.error;
   if (data.message) return data.message;
   return null;
+}
+
+function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const o = obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : null;
+  if (!o) return null;
+
+  const featuresRaw = Array.isArray(o.features) ? o.features : [];
+  const features = [];
+  for (const raw of featuresRaw) {
+    const f = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+    if (!f) continue;
+    const observation = typeof f.observation === 'string' ? f.observation.trim() : '';
+    if (!observation) continue;
+    const c = typeof f.confidence === 'string' ? f.confidence.trim() : '';
+    const confidence = c === 'pretty_sure' || c === 'somewhat_sure' || c === 'not_sure' ? c : 'somewhat_sure';
+    features.push({ observation, confidence });
+  }
+
+  const strategyRaw = typeof o.strategy === 'string' ? o.strategy.trim() : '';
+  const needsRiskCheckRaw = o.needs_risk_check ?? o.needsRiskCheck;
+  const needs_risk_check = typeof needsRiskCheckRaw === 'boolean' ? needsRiskCheckRaw : false;
+
+  const strategy = strategyRaw || (lang === 'CN' ? '我需要再确认一点信息：你最近是否有刺痛/泛红？' : 'Quick check: have you had stinging or redness recently?');
+
+  if (!features.length && !strategyRaw) return null;
+
+  return {
+    features: features.slice(0, 6),
+    strategy: strategy.slice(0, 1200),
+    needs_risk_check,
+  };
+}
+
+function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const p = profile || {};
+  const goals = Array.isArray(p.goals) ? p.goals : [];
+
+  const features = [];
+  if (p.barrierStatus === 'impaired') {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? '你自述屏障不稳定（易刺痛/泛红）→ 先把“舒缓修护”放在优先级第一。'
+          : 'You reported an irritated barrier → prioritize calming + repair first.',
+      confidence: 'pretty_sure',
+    });
+  }
+  if (p.skinType === 'oily' || p.skinType === 'combination') {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? '偏油/混油更容易出现堵塞与闭口，但也可能“外油内干”，不要过度清洁。'
+          : 'Oily/combination skin is more clog-prone; avoid over-cleansing (oiliness can still be dehydration).',
+      confidence: 'somewhat_sure',
+    });
+  }
+  if (p.sensitivity === 'high') {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? '敏感度偏高时，活性成分需要更慢的引入节奏（频率/浓度/叠加要保守）。'
+          : 'If sensitivity is high, introduce actives slowly (frequency/strength/stacking should be conservative).',
+      confidence: 'pretty_sure',
+    });
+  }
+  if (goals.includes('pores') || goals.includes('acne')) {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? '你的目标包含毛孔/控痘 → 后续更适合“温和去角质 + 控油”路线，但要以不刺激为前提。'
+          : 'Your goals include pores/acne → gentle exfoliation + oil control may help later, if tolerated.',
+      confidence: 'somewhat_sure',
+    });
+  }
+
+  const latest = Array.isArray(recentLogs) && recentLogs[0] ? recentLogs[0] : null;
+  if (latest && (typeof latest.redness === 'number' || typeof latest.acne === 'number' || typeof latest.hydration === 'number')) {
+    const redness = typeof latest.redness === 'number' ? latest.redness : null;
+    const acne = typeof latest.acne === 'number' ? latest.acne : null;
+    const hydration = typeof latest.hydration === 'number' ? latest.hydration : null;
+    const parts = [];
+    if (redness != null) parts.push(lang === 'CN' ? `泛红 ${redness}/5` : `redness ${redness}/5`);
+    if (acne != null) parts.push(lang === 'CN' ? `痘痘 ${acne}/5` : `acne ${acne}/5`);
+    if (hydration != null) parts.push(lang === 'CN' ? `补水 ${hydration}/5` : `hydration ${hydration}/5`);
+    if (parts.length) {
+      features.push({
+        observation:
+          lang === 'CN'
+            ? `你最近一次打卡：${parts.join(' · ')}（我会按这个趋势给建议）。`
+            : `Latest check-in: ${parts.join(' · ')} (I’ll tailor advice to this trend).`,
+        confidence: 'pretty_sure',
+      });
+    }
+  }
+
+  const strategy =
+    lang === 'CN'
+      ? '接下来 7 天建议：\n1) 护肤先“少而稳”：温和洁面 + 保湿 + 白天 SPF。\n2) 如果刺痛/泛红：先停用强刺激活性（酸/高浓 VC/视黄醇），以修护为主。\n3) 若想开始控毛孔/闭口：先从低频（每周 2 次）开始，观察 72 小时反应。\n\n你最近有刺痛/泛红吗？'
+      : 'Next 7 days:\n1) Keep it minimal: gentle cleanser + moisturizer + daytime SPF.\n2) If stinging/redness: pause harsh actives (acids/high-strength vitamin C/retinoids) and focus on repair.\n3) If you want pores/texture work: start low frequency (2x/week) and watch the 72h response.\n\nDo you have stinging or redness recently?';
+
+  return {
+    features: features.slice(0, 6),
+    strategy: strategy.slice(0, 1200),
+    needs_risk_check: false,
+  };
 }
 
 function requireAuroraUid(ctx) {
@@ -1084,6 +1192,123 @@ function mountAuroraBffRoutes(app, { logger }) {
         cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'PHOTO_CONFIRM_FAILED' } }],
         session_patch: {},
         events: [makeEvent(ctx, 'error', { code: err.code || 'PHOTO_CONFIRM_FAILED' })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
+  app.post('/v1/analysis/skin', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = SkinAnalysisRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      let profile = null;
+      let recentLogs = [];
+      try {
+        profile = await getUserProfile(ctx.aurora_uid);
+        recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7);
+      } catch (err) {
+        logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
+      }
+
+      const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
+      const photoQcParts = [];
+      let passedCount = 0;
+      for (const p of photos) {
+        const slot = String(p.slot_id || '').trim();
+        const qc = String(p.qc_status || '').trim().toLowerCase();
+        if (slot && qc) photoQcParts.push(`${slot}:${qc}`);
+        if (qc === 'passed') passedCount += 1;
+      }
+      const photosProvided = passedCount > 0;
+
+      const profileSummary = summarizeProfileForContext(profile);
+      const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
+
+      let analysis = null;
+      if (AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+        const replyLanguage = ctx.lang === 'CN' ? 'Simplified Chinese' : 'English';
+        const replyInstruction = ctx.lang === 'CN'
+          ? '请只用简体中文回答，不要使用英文。'
+          : 'IMPORTANT: Reply ONLY in English. Do not use Chinese.';
+
+        const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
+        const logsLine = recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
+        const photoLine = `photos_provided=${photosProvided ? 'yes' : 'no'}; photo_qc=${photoQcParts.length ? photoQcParts.join(', ') : 'none'}.`;
+
+        const prompt =
+          `${profileLine}\n` +
+          `${logsLine ? `${logsLine}\n` : ''}` +
+          `${photoLine}\n` +
+          `Task: Provide a skin assessment that is honest about uncertainty and feels like a cautious dermatologist.\n\n` +
+          `Return ONLY a valid JSON object (no markdown) with this exact shape:\n` +
+          `{\n` +
+          `  "features": [\n` +
+          `    {"observation": "…", "confidence": "pretty_sure" | "somewhat_sure" | "not_sure"}\n` +
+          `  ],\n` +
+          `  "strategy": "…",\n` +
+          `  "needs_risk_check": true | false\n` +
+          `}\n\n` +
+          `Rules:\n` +
+          `- DO NOT output any numeric scores/percentages.\n` +
+          `- DO NOT claim you can see the user's skin in the photo. Photos are for quality checks only.\n` +
+          `- Observations must be about barrier, acne risk, pigmentation, irritation, hydration, and safety.\n` +
+          `- Strategy must be actionable and stepwise and END with ONE direct clarifying question (must include a '?' or '？').\n` +
+          `- DO NOT recommend specific products/brands.\n` +
+          `- Keep it concise: 4–6 features; strategy under 900 characters.\n` +
+          `Language: ${replyLanguage}.\n` +
+          `${replyInstruction}\n`;
+
+        let upstream = null;
+        try {
+          upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query: prompt, timeoutMs: 12000 });
+        } catch (err) {
+          logger?.warn({ err: err.message }, 'aurora bff: skin analysis upstream failed');
+        }
+        const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
+        const parsedObj = extractJsonObject(answer);
+        analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
+      }
+
+      if (!analysis) analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `analysis_${ctx.request_id}`,
+            type: 'analysis_summary',
+            payload: {
+              analysis,
+              photos_provided: photosProvided,
+              photo_qc: photoQcParts,
+            },
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'value_moment', { kind: 'skin_analysis' })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const status = err.status || 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage('Failed to generate skin analysis.'),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'ANALYSIS_FAILED' } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code: err.code || 'ANALYSIS_FAILED' })],
       });
       return res.status(status).json(envelope);
     }
