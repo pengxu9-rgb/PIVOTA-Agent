@@ -32,7 +32,16 @@ describe('Aurora BFF (/v1)', () => {
     const res = await request(app)
       .post('/v1/chat')
       .set('X-Aurora-UID', 'uid_test_diag_start_1')
-      .send({ message: '开始皮肤诊断' })
+      .send({
+        message: '开始皮肤诊断',
+        // Simulate an already-partial profile (3/4 dimensions) — diagnosis start should still gate
+        // to collect the remaining field(s) (e.g. goals).
+        action: {
+          action_id: 'chip.profile.prefill',
+          kind: 'chip',
+          data: { profile_patch: { skinType: 'oily', sensitivity: 'medium', barrierStatus: 'impaired' } },
+        },
+      })
       .expect(200);
 
     expect(res.body.session_patch.next_state).toBe('S2_DIAGNOSIS');

@@ -71,7 +71,9 @@ function shouldDiagnosisGate({ message, triggerSource, profile }) {
   const intentTriggersGate = wantsRecs || wantsFit || wantsDiag;
 
   const { score, missing } = profileCompleteness(profile);
-  const missingEnough = score < 3;
+  // For explicit "start diagnosis", require the full 4 core dimensions.
+  // For recos/fit-check, we only require at least 3 dimensions.
+  const missingEnough = wantsDiag ? score < 4 : score < 3;
 
   if (!intentTriggersGate || !missingEnough) {
     return { gated: false, missing };
