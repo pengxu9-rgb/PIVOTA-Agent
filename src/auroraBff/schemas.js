@@ -233,6 +233,7 @@ const RecoGenerateRequestSchema = z
   .object({
     focus: z.string().min(1).optional(),
     constraints: z.record(z.string(), z.any()).optional(),
+    include_alternatives: z.boolean().optional(),
   })
   .strict();
 

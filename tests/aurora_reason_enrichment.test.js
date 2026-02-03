@@ -32,6 +32,8 @@ describe('Aurora BFF: product analysis reason enrichment', () => {
     expect(Array.isArray(out.assessment.reasons)).toBe(true);
     expect(out.assessment.reasons.length).toBeGreaterThanOrEqual(2);
     expect(out.assessment.reasons.join(' ')).not.toMatch(/overall fit/i);
+    expect(out.assessment.hero_ingredient).toBeTruthy();
+    expect(String(out.assessment.hero_ingredient.name)).toMatch(/petrolatum/i);
     expect(out.assessment.reasons.some((r) => String(r).includes('Targets'))).toBe(true);
   });
 
@@ -58,4 +60,3 @@ describe('Aurora BFF: product analysis reason enrichment', () => {
     expect(out.assessment.reasons[0]).toMatch(/evidence details/i);
   });
 });
-

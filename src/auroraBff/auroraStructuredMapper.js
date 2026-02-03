@@ -335,6 +335,148 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
   };
 }
 
+function classifyAlternativeKind(priceDeltaUsd) {
+  const delta = asNumberOrNull(priceDeltaUsd);
+  if (delta == null) return 'similar';
+  if (delta < -0.01) return 'dupe';
+  if (delta > 0.01) return 'premium';
+  return 'similar';
+}
+
+function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', maxTotal = 3 } = {}) {
+  const items = Array.isArray(alternatives) ? alternatives : [];
+  const language = String(lang).toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const limit = Math.max(0, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  if (!items.length || limit <= 0) return [];
+
+  const mapped = [];
+  for (const alt of items) {
+    const a = asPlainObject(alt);
+    if (!a) continue;
+
+    const product = asPlainObject(a.product) || null;
+    if (!product) continue;
+
+    const similarityRaw = asNumberOrNull(a.similarity_score ?? a.similarityScore ?? a.similarity);
+    const similarityPct = similarityRaw == null ? null : similarityRaw > 1 ? similarityRaw : similarityRaw * 100;
+    const similarity = similarityPct == null ? null : Math.max(0, Math.min(100, Math.round(similarityPct)));
+
+    const t = asPlainObject(a.tradeoffs);
+    const missingActives = t ? uniqueStrings(asStringArray(t.missing_actives || t.missingActives)) : [];
+    const addedBenefits = t ? uniqueStrings(asStringArray(t.added_benefits || t.addedBenefits)) : [];
+    const textureDiff = t ? uniqueStrings(asStringArray(t.texture_finish_differences || t.textureFinishDifferences)) : [];
+    const availabilityNote = t ? asString(t.availability_note || t.availabilityNote) : null;
+    const priceDeltaUsd = t ? asNumberOrNull(t.price_delta_usd || t.priceDeltaUsd) : null;
+
+    const kind = classifyAlternativeKind(priceDeltaUsd);
+
+    const tradeoffs = [];
+    if (missingActives.length) {
+      tradeoffs.push(
+        language === 'CN'
+          ? `相比原产品缺少活性：${missingActives.join('、')}`
+          : `Missing actives vs original: ${missingActives.join(', ')}`,
+      );
+    }
+    if (addedBenefits.length) {
+      tradeoffs.push(
+        language === 'CN'
+          ? `新增亮点/活性：${addedBenefits.join('、')}`
+          : `Added benefits/actives: ${addedBenefits.join(', ')}`,
+      );
+    }
+    tradeoffs.push(...textureDiff);
+    if (priceDeltaUsd != null) {
+      const abs = Math.round(Math.abs(priceDeltaUsd) * 100) / 100;
+      const priceLine =
+        priceDeltaUsd < -0.01
+          ? language === 'CN'
+            ? `价格通常更低（USD 价差约：-$${abs}）`
+            : `Usually cheaper (USD delta: -$${abs})`
+          : priceDeltaUsd > 0.01
+            ? language === 'CN'
+              ? `价格通常更高（USD 价差约：+$${abs}）`
+              : `Usually more expensive (USD delta: +$${abs})`
+            : language === 'CN'
+              ? '价格大致相近（USD 价差约：$0）'
+              : 'Price is roughly similar (USD delta: ~$0)';
+      tradeoffs.push(priceLine);
+    }
+    if (availabilityNote) {
+      tradeoffs.push(language === 'CN' ? `可得性：${availabilityNote}` : `Availability: ${availabilityNote}`);
+    }
+
+    const confidence = similarity == null ? null : Math.max(0, Math.min(1, similarity / 100));
+
+    const evidence = {
+      science: {
+        key_ingredients: uniqueStrings([...missingActives, ...addedBenefits]),
+        mechanisms: [],
+        fit_notes: uniqueStrings(textureDiff),
+        risk_notes: [],
+      },
+      social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+      expert_notes: [],
+      confidence,
+      missing_info: [],
+    };
+
+    const ev = asPlainObject(a.evidence);
+    const citations = compactCitations(ev && (ev.kb_citations || ev.kbCitations));
+    if (citations) evidence.expert_notes.push(language === 'CN' ? `引用：${citations}` : `Citations: ${citations}`);
+
+    const tradeoffs_detail = {
+      ...(missingActives.length ? { missing_actives: missingActives } : {}),
+      ...(addedBenefits.length ? { added_benefits: addedBenefits } : {}),
+      ...(textureDiff.length ? { texture_finish_differences: textureDiff } : {}),
+      ...(priceDeltaUsd != null ? { price_delta_usd: priceDeltaUsd } : {}),
+      ...(availabilityNote ? { availability_note: availabilityNote } : {}),
+    };
+
+    const missing_info = [];
+    if (priceDeltaUsd == null) missing_info.push('price_delta_unknown');
+    if (!t) missing_info.push('tradeoffs_detail_missing');
+
+    mapped.push({
+      kind,
+      product,
+      ...(similarity != null ? { similarity } : {}),
+      tradeoffs: uniqueStrings(tradeoffs),
+      ...(Object.keys(tradeoffs_detail).length ? { tradeoffs_detail } : {}),
+      evidence,
+      confidence,
+      missing_info: uniqueStrings(missing_info),
+    });
+  }
+
+  if (!mapped.length) return [];
+
+  const sorted = [...mapped].sort((a, b) => (Number(b.similarity ?? -1) || -1) - (Number(a.similarity ?? -1) || -1));
+  const chosen = [];
+  const usedSkus = new Set();
+
+  const kindOrder = ['dupe', 'similar', 'premium'];
+  for (const k of kindOrder) {
+    const next = sorted.find((it) => String(it.kind || '').toLowerCase() === k && it.product);
+    if (!next) continue;
+    const sku = asString(next.product && (next.product.sku_id || next.product.skuId || next.product.product_id || next.product.productId));
+    if (sku && usedSkus.has(sku)) continue;
+    if (sku) usedSkus.add(sku);
+    chosen.push(next);
+    if (chosen.length >= limit) return chosen.slice(0, limit);
+  }
+
+  for (const it of sorted) {
+    if (chosen.length >= limit) break;
+    const sku = asString(it.product && (it.product.sku_id || it.product.skuId || it.product.product_id || it.product.productId));
+    if (sku && usedSkus.has(sku)) continue;
+    if (sku) usedSkus.add(sku);
+    chosen.push(it);
+  }
+
+  return chosen.slice(0, limit);
+}
+
 function mapAuroraRoutineToRecoGenerate(contextRoutine, contextMeta) {
   const routine = asPlainObject(contextRoutine);
   const am = routine && Array.isArray(routine.am) ? routine.am : [];
@@ -443,5 +585,6 @@ module.exports = {
   mapAuroraProductParse,
   mapAuroraProductAnalysis,
   mapAuroraAlternativesToDupeCompare,
+  mapAuroraAlternativesToRecoAlternatives,
   mapAuroraRoutineToRecoGenerate,
 };

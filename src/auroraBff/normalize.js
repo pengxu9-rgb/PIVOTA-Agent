@@ -191,6 +191,141 @@ function isGenericReason(reason, lang) {
   return false;
 }
 
+function pickHeroIngredientFromEvidence(evidence, { lang = 'EN' } = {}) {
+  const ev = asPlainObject(evidence);
+  if (!ev) return null;
+  const science = asPlainObject(ev.science) || {};
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  if (!keyIngredients.length) return null;
+
+  const candidates = keyIngredients
+    .map((s) => (typeof s === 'string' ? s.trim() : String(s || '').trim()))
+    .filter(Boolean)
+    .filter((s) => !/^water$/i.test(s));
+  if (!candidates.length) return null;
+
+  const rules = [
+    {
+      tokens: ['tretinoin', 'adapalene', 'retinal', 'retinol'],
+      role: { EN: 'retinoid', CN: '维A类' },
+      why: {
+        EN: 'Most effective for long-term texture/lines, but can be irritating—ramp slowly.',
+        CN: '对长期纹理/抗老最有效，但刺激性可能更高——需要循序渐进。',
+      },
+    },
+    {
+      tokens: ['benzoyl peroxide'],
+      role: { EN: 'anti-acne active', CN: '抗痘活性' },
+      why: {
+        EN: 'Can be very effective for inflammatory acne, but often drying/irritating—use carefully.',
+        CN: '对炎症痘通常很有效，但容易干燥/刺激——需要谨慎使用。',
+      },
+    },
+    {
+      tokens: ['salicylic acid', 'bha', 'beta hydroxy'],
+      role: { EN: 'exfoliant (BHA)', CN: '去角质（BHA）' },
+      why: {
+        EN: 'Helpful for pores/comedones by exfoliating inside the pore; irritation risk depends on strength/frequency.',
+        CN: '对毛孔/闭口有帮助（可深入毛孔去角质）；刺激风险取决于浓度与频率。',
+      },
+    },
+    {
+      tokens: ['glycolic acid', 'aha', 'lactic acid', 'mandelic acid'],
+      role: { EN: 'exfoliant (AHA)', CN: '去角质（AHA）' },
+      why: {
+        EN: 'Improves texture/dullness via exfoliation, but can increase sensitivity—start low and slow.',
+        CN: '通过去角质改善粗糙/暗沉，但可能增加敏感——建议低频起步。',
+      },
+    },
+    {
+      tokens: ['azelaic acid'],
+      role: { EN: 'multi-benefit active', CN: '多效活性' },
+      why: {
+        EN: 'Often useful for redness/bumps/pigmentation with a gentler profile than many acids (still patch test).',
+        CN: '常用于泛红/闭口/色沉，相对更温和（但仍建议先做测试）。',
+      },
+    },
+    {
+      tokens: ['niacinamide'],
+      role: { EN: 'multi-benefit active', CN: '多效活性' },
+      why: {
+        EN: 'Supports barrier function and can help oiliness/uneven tone in some users.',
+        CN: '支持屏障功能，并可能改善出油/肤色不均（因人而异）。',
+      },
+    },
+    {
+      tokens: ['tranexamic acid'],
+      role: { EN: 'brightening active', CN: '淡斑活性' },
+      why: {
+        EN: 'Targets discoloration/dark spots; usually well tolerated.',
+        CN: '针对色沉/斑点；通常耐受性较好。',
+      },
+    },
+    {
+      tokens: ['ascorbic acid', 'vitamin c'],
+      role: { EN: 'antioxidant (vitamin C)', CN: '抗氧化（维C）' },
+      why: {
+        EN: 'Can help brighten and protect from oxidative stress; irritation depends on form and strength.',
+        CN: '可提亮并抗氧化；刺激性取决于维C形式与浓度。',
+      },
+    },
+    {
+      tokens: ['ceramide', 'ceramides'],
+      role: { EN: 'barrier lipid', CN: '屏障脂质' },
+      why: {
+        EN: 'Supports barrier lipids and can improve tolerance/hydration over time.',
+        CN: '补充屏障脂质，长期可提升耐受与保湿。',
+      },
+    },
+    {
+      tokens: ['petrolatum', 'petroleum jelly'],
+      role: { EN: 'occlusive', CN: '封闭剂' },
+      why: {
+        EN: 'A strong occlusive that reduces water loss—often the main driver behind “barrier protection” feel.',
+        CN: '强封闭成分，可减少水分流失——通常是“屏障保护感”的主要来源。',
+      },
+    },
+    {
+      tokens: ['panthenol'],
+      role: { EN: 'soothing (pro‑vitamin B5)', CN: '舒缓（维B5前体）' },
+      why: {
+        EN: 'Helps soothe irritation and supports barrier comfort.',
+        CN: '帮助舒缓刺激，并提升屏障舒适度。',
+      },
+    },
+    {
+      tokens: ['glycerin'],
+      role: { EN: 'humectant', CN: '保湿剂' },
+      why: {
+        EN: 'A well-studied humectant that draws water into the skin to improve hydration.',
+        CN: '经典保湿剂，可吸附水分提升含水量。',
+      },
+    },
+    {
+      tokens: ['hyaluronic acid', 'sodium hyaluronate'],
+      role: { EN: 'humectant', CN: '保湿剂' },
+      why: {
+        EN: 'Hydrates by binding water; usually low irritation.',
+        CN: '通过结合水分保湿；通常刺激性较低。',
+      },
+    },
+  ];
+
+  const lowerCandidates = candidates.map((x) => x.toLowerCase());
+  const match = rules.find((r) => r.tokens.some((t) => lowerCandidates.some((c) => c.includes(t))));
+  if (!match) return null;
+
+  const langKey = String(lang).toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const name = candidates.find((x) => match.tokens.some((t) => x.toLowerCase().includes(t))) || candidates[0];
+
+  return {
+    name,
+    role: match.role[langKey],
+    why: match.why[langKey],
+    source: 'heuristic',
+  };
+}
+
 function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) {
   const out = [];
   const ev = asPlainObject(evidence);
@@ -219,6 +354,7 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   const riskForGroups = asStringArray(social.risk_for_groups ?? social.riskForGroups);
 
   const expertNotes = asStringArray(ev.expert_notes ?? ev.expertNotes);
+  const hero = pickHeroIngredientFromEvidence(ev, { lang });
 
   const v = String(verdict || '').toLowerCase();
   const isNegative = v.includes('mismatch') || v.includes('avoid') || v.includes('veto') || v.includes('not');
@@ -239,6 +375,13 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   }
 
   if (fitNotes.length) out.push(...take(fitNotes, 2));
+  if (hero) {
+    out.push(
+      String(lang).toUpperCase() === 'CN'
+        ? `最关键成分：${hero.name}（${hero.role}）— ${hero.why}`
+        : `Most impactful ingredient: ${hero.name} (${hero.role}) — ${hero.why}`,
+    );
+  }
   if (mechanisms.length) out.push(...take(mechanisms, 1));
 
   if (!riskNotes.length) {
@@ -257,13 +400,15 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
     );
   }
 
-  const keyPicks = take(keyIngredients.filter((x) => !/^water$/i.test(String(x))), 4);
-  if (keyPicks.length) {
-    out.push(
-      String(lang).toUpperCase() === 'CN'
-        ? `关键成分（证据）：${keyPicks.join('、')}`
-        : `Key ingredients (from evidence): ${keyPicks.join(', ')}`,
-    );
+  if (!hero) {
+    const keyPicks = take(keyIngredients.filter((x) => !/^water$/i.test(String(x))), 4);
+    if (keyPicks.length) {
+      out.push(
+        String(lang).toUpperCase() === 'CN'
+          ? `关键成分（证据）：${keyPicks.join('、')}`
+          : `Key ingredients (from evidence): ${keyPicks.join(', ')}`,
+      );
+    }
   }
 
   if (expertNotes.length) {
@@ -309,7 +454,26 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN' } = {}) {
     ];
   }
 
-  const outAssessment = { ...assessment, reasons: uniqueStrings(reasons).slice(0, maxReasons) };
+  const heroExisting = assessment.hero_ingredient ?? assessment.heroIngredient ?? null;
+  const hero = heroExisting && typeof heroExisting === 'object' ? heroExisting : pickHeroIngredientFromEvidence(p.evidence, { lang });
+
+  if (hero && typeof hero === 'object' && hero.name && hero.why && Array.isArray(reasons) && reasons.length < maxReasons) {
+    const heroName = String(hero.name).toLowerCase();
+    const alreadyMentioned = reasons.some((r) => String(r || '').toLowerCase().includes(heroName));
+    if (!alreadyMentioned) {
+      const heroLine =
+        String(lang).toUpperCase() === 'CN'
+          ? `最关键成分：${hero.name}（${hero.role || '未知'}）— ${hero.why}`
+          : `Most impactful ingredient: ${hero.name} (${hero.role || 'unknown'}) — ${hero.why}`;
+      reasons.unshift(heroLine);
+    }
+  }
+
+  const outAssessment = {
+    ...assessment,
+    ...(hero && typeof hero === 'object' ? { hero_ingredient: hero } : {}),
+    reasons: uniqueStrings(reasons).slice(0, maxReasons),
+  };
   return { ...p, assessment: outAssessment };
 }
 

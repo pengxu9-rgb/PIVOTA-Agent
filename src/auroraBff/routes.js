@@ -54,6 +54,7 @@ const {
   mapAuroraProductParse,
   mapAuroraProductAnalysis,
   mapAuroraAlternativesToDupeCompare,
+  mapAuroraAlternativesToRecoAlternatives,
   mapAuroraRoutineToRecoGenerate,
 } = require('./auroraStructuredMapper');
 
@@ -83,6 +84,24 @@ const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
   1024 * 1024,
   Math.min(25 * 1024 * 1024, Number(process.env.AURORA_PHOTO_UPLOAD_MAX_BYTES || 10 * 1024 * 1024)),
 );
+
+const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  return Math.max(2000, Math.min(20000, v));
+})();
+
+const RECO_ALTERNATIVES_MAX_PRODUCTS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_MAX_PRODUCTS || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(0, Math.min(6, v));
+})();
+
+const RECO_ALTERNATIVES_CONCURRENCY = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_CONCURRENCY || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(4, v));
+})();
 
 function getCheckoutToken(req) {
   const v = req.get('X-Checkout-Token') || req.get('x-checkout-token');
@@ -422,6 +441,21 @@ function extractReplyTextFromAction(action) {
   return text || null;
 }
 
+function coerceBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value !== 'string') return false;
+  const s = value.trim().toLowerCase();
+  return s === 'true' || s === '1' || s === 'yes' || s === 'y' || s === 'on';
+}
+
+function extractIncludeAlternativesFromAction(action) {
+  if (!action || typeof action !== 'object') return false;
+  const data = action.data && typeof action.data === 'object' ? action.data : null;
+  if (!data) return false;
+  return coerceBoolean(data.include_alternatives ?? data.includeAlternatives);
+}
+
 function summarizeProfileForContext(profile) {
   if (!profile) return null;
   return {
@@ -597,11 +631,166 @@ function buildBudgetGateChips(language) {
     chip_id: `chip.budget.${tier.replace(/[^\w]+/g, '_')}`,
     label,
     kind: 'quick_reply',
-    data: { profile_patch: { budgetTier: tier } },
+    data: { profile_patch: { budgetTier: tier }, include_alternatives: true },
   }));
 }
 
-async function generateRoutineReco({ ctx, profile, focus, constraints, logger }) {
+async function mapWithConcurrency(items, limit, worker) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return [];
+
+  const concurrency = Math.max(1, Math.min(8, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 1));
+  const out = new Array(list.length);
+  let cursor = 0;
+
+  async function runOne() {
+    while (cursor < list.length) {
+      const idx = cursor;
+      cursor += 1;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        out[idx] = await worker(list[idx], idx);
+      } catch (err) {
+        out[idx] = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, list.length) }, () => runOne());
+  await Promise.all(workers);
+  return out;
+}
+
+function extractAnchorIdFromProductLike(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const raw =
+    (typeof obj.sku_id === 'string' && obj.sku_id) ||
+    (typeof obj.skuId === 'string' && obj.skuId) ||
+    (typeof obj.product_id === 'string' && obj.product_id) ||
+    (typeof obj.productId === 'string' && obj.productId) ||
+    null;
+  const v = raw ? String(raw).trim() : '';
+  return v || null;
+}
+
+function mergeFieldMissing(a, b) {
+  const out = [];
+  const seen = new Set();
+  for (const item of [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]) {
+    if (!item || typeof item !== 'object') continue;
+    const field = typeof item.field === 'string' ? item.field.trim() : '';
+    const reason = typeof item.reason === 'string' ? item.reason.trim() : '';
+    if (!field || !reason) continue;
+    const key = `${field}::${reason}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ field, reason });
+  }
+  return out;
+}
+
+async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, anchorId, logger }) {
+  const inputText = String(productInput || '').trim();
+  const anchor = anchorId ? String(anchorId).trim() : '';
+  const bestInput = inputText || anchor;
+  if (!bestInput) return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
+
+  const prefix = buildContextPrefix({
+    profile: profileSummary || null,
+    recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
+    lang: ctx.lang,
+    trigger_source: ctx.trigger_source,
+    intent: 'alternatives',
+  });
+
+  const query =
+    `${prefix}` +
+    `Task: Parse the user's product input into a normalized product entity.\n` +
+    `Input: ${bestInput}`;
+
+  let upstream = null;
+  try {
+    upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query,
+      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+      ...(anchor ? { anchor_product_id: anchor } : {}),
+    });
+  } catch (err) {
+    logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: alternatives upstream failed');
+    return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'upstream_error' }] };
+  }
+
+  const structured = getUpstreamStructuredOrJson(upstream);
+  const alternativesRaw = structured && Array.isArray(structured.alternatives) ? structured.alternatives : [];
+  const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, { lang: ctx.lang, maxTotal: 3 });
+
+  return {
+    ok: true,
+    alternatives: mapped,
+    field_missing: mapped.length ? [] : [{ field: 'alternatives', reason: structured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured' }],
+  };
+}
+
+async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, recentLogs, recommendations, logger }) {
+  const recos = Array.isArray(recommendations) ? recommendations : [];
+  const maxProducts = RECO_ALTERNATIVES_MAX_PRODUCTS;
+  if (!recos.length || maxProducts <= 0) return { recommendations: recos, field_missing: [] };
+
+  if (!AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+    return { recommendations: recos, field_missing: [{ field: 'recommendations[].alternatives', reason: 'aurora_not_configured' }] };
+  }
+
+  const targets = [];
+  for (let i = 0; i < recos.length; i += 1) {
+    if (targets.length >= maxProducts) break;
+    const item = recos[i];
+    const base = item && typeof item === 'object' ? item : null;
+    const candidate =
+      base && base.sku && typeof base.sku === 'object'
+        ? base.sku
+        : base && base.product && typeof base.product === 'object'
+          ? base.product
+          : base;
+
+    const inputText = buildProductInputText(candidate, base && typeof base.url === 'string' ? base.url : null);
+    const anchorId = extractAnchorIdFromProductLike(candidate) || extractAnchorIdFromProductLike(base);
+    if (!inputText && !anchorId) continue;
+    targets.push({ idx: i, inputText, anchorId });
+  }
+
+  if (!targets.length) {
+    return { recommendations: recos, field_missing: [{ field: 'recommendations[].alternatives', reason: 'recommendations_missing_product_identity' }] };
+  }
+
+  const results = await mapWithConcurrency(targets, RECO_ALTERNATIVES_CONCURRENCY, async (t) => {
+    const out = await fetchRecoAlternativesForProduct({
+      ctx,
+      profileSummary,
+      recentLogs,
+      productInput: t.inputText,
+      anchorId: t.anchorId,
+      logger,
+    });
+    return { ...out, idx: t.idx };
+  });
+
+  const enriched = recos.slice();
+  let anyEmpty = false;
+  for (const r of results) {
+    if (!r || typeof r !== 'object' || typeof r.idx !== 'number') continue;
+    const base = enriched[r.idx];
+    const next = base && typeof base === 'object' ? { ...base } : {};
+    next.alternatives = Array.isArray(r.alternatives) ? r.alternatives : [];
+    enriched[r.idx] = next;
+    if (!next.alternatives.length) anyEmpty = true;
+  }
+
+  const field_missing = anyEmpty ? [{ field: 'recommendations[].alternatives', reason: 'alternatives_partial' }] : [];
+  return { recommendations: enriched, field_missing };
+}
+
+async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraints, includeAlternatives, logger }) {
   const profileSummary = summarizeProfileForContext(profile);
   const query = buildAuroraRoutineQuery({
     profile: { ...profileSummary, ...(profile && profile.currentRoutine ? { currentRoutine: profile.currentRoutine } : {}) },
@@ -627,6 +816,18 @@ async function generateRoutineReco({ ctx, profile, focus, constraints, logger })
   }
   const mapped = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
   const norm = normalizeRecoGenerate(mapped);
+
+  if (includeAlternatives) {
+    const alt = await enrichRecommendationsWithAlternatives({
+      ctx,
+      profileSummary,
+      recentLogs,
+      recommendations: norm.payload.recommendations,
+      logger,
+    });
+    norm.payload = { ...norm.payload, recommendations: alt.recommendations };
+    norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+  }
 
   const suggestedChips = [];
   const nextActions = upstream && Array.isArray(upstream.next_actions) ? upstream.next_actions : [];
@@ -2361,6 +2562,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           : typeof parsed.data.action === 'string'
             ? parsed.data.action
             : null;
+      const includeAlternatives = extractIncludeAlternativesFromAction(parsed.data.action);
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
@@ -2462,8 +2664,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         const { norm, suggestedChips } = await generateRoutineReco({
           ctx,
           profile,
+          recentLogs,
           focus: 'daily routine',
           constraints: { simplicity: 'high' },
+          includeAlternatives,
           logger,
         });
 
@@ -2520,8 +2724,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         const { norm, suggestedChips } = await generateRoutineReco({
           ctx,
           profile,
+          recentLogs,
           focus: 'daily routine',
           constraints: { simplicity: 'high' },
+          includeAlternatives,
           logger,
         });
 
