@@ -1082,14 +1082,10 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
       profileSummary,
       recentLogs,
       recommendations: norm.payload.recommendations,
-      debug,
       logger,
     });
     norm.payload = { ...norm.payload, recommendations: alt.recommendations };
     norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
-    if (debug && upstreamDebug && alt && typeof alt === 'object' && alt.debug) {
-      upstreamDebug.alternatives_debug = alt.debug;
-    }
   }
 
   const suggestedChips = [];
@@ -1197,6 +1193,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   }
 
   const norm = normalizeRecoGenerate(mapped);
+  let alternativesDebug = null;
 
   if (includeAlternatives) {
     const alt = await enrichRecommendationsWithAlternatives({
@@ -1204,13 +1201,17 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       profileSummary,
       recentLogs,
       recommendations: norm.payload.recommendations,
+      debug,
       logger,
     });
     norm.payload = { ...norm.payload, recommendations: alt.recommendations };
     norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+    if (debug && alt && typeof alt === 'object' && alt.debug) {
+      alternativesDebug = alt.debug;
+    }
   }
 
-  return { norm, upstreamDebug };
+  return { norm, upstreamDebug, alternativesDebug };
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
@@ -3151,7 +3152,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // If user explicitly asks for a few product recommendations, generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
       if (actionId === 'chip.start.reco_products' && recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message })) {
-        const { norm, upstreamDebug } = await generateProductRecommendations({
+        const { norm, upstreamDebug, alternativesDebug } = await generateProductRecommendations({
           ctx,
           profile,
           recentLogs,
@@ -3189,6 +3190,15 @@ function mountAuroraBffRoutes(app, { logger }) {
                   type: 'aurora_debug',
                   payload: upstreamDebug,
                 },
+                ...(alternativesDebug
+                  ? [
+                    {
+                      card_id: `aurora_alt_debug_${ctx.request_id}`,
+                      type: 'aurora_alt_debug',
+                      payload: { items: alternativesDebug },
+                    },
+                  ]
+                  : []),
               ]
               : []),
           ],
