@@ -560,6 +560,100 @@ function buildProductInputText(inputObj, url) {
   return null;
 }
 
+function coerceRecoItemForUi(item, { lang } = {}) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+  if (!base) return item;
+
+  const skuCandidate =
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+      ? base.sku
+      : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+        ? base.product
+        : null;
+
+  const skuId =
+    (skuCandidate && typeof skuCandidate.sku_id === 'string' ? skuCandidate.sku_id : null) ||
+    (skuCandidate && typeof skuCandidate.skuId === 'string' ? skuCandidate.skuId : null) ||
+    (typeof base.sku_id === 'string' ? base.sku_id : null) ||
+    (typeof base.skuId === 'string' ? base.skuId : null) ||
+    (skuCandidate && typeof skuCandidate.product_id === 'string' ? skuCandidate.product_id : null) ||
+    (skuCandidate && typeof skuCandidate.productId === 'string' ? skuCandidate.productId : null) ||
+    (typeof base.product_id === 'string' ? base.product_id : null) ||
+    (typeof base.productId === 'string' ? base.productId : null) ||
+    null;
+
+  const productId =
+    (skuCandidate && typeof skuCandidate.product_id === 'string' ? skuCandidate.product_id : null) ||
+    (skuCandidate && typeof skuCandidate.productId === 'string' ? skuCandidate.productId : null) ||
+    (typeof base.product_id === 'string' ? base.product_id : null) ||
+    (typeof base.productId === 'string' ? base.productId : null) ||
+    skuId ||
+    null;
+
+  const brand =
+    (skuCandidate && typeof skuCandidate.brand === 'string' ? skuCandidate.brand.trim() : '') ||
+    (typeof base.brand === 'string' ? base.brand.trim() : '') ||
+    '';
+  const name =
+    (skuCandidate && typeof skuCandidate.name === 'string' ? skuCandidate.name.trim() : '') ||
+    (typeof base.name === 'string' ? base.name.trim() : '') ||
+    '';
+  const displayName =
+    (skuCandidate && typeof skuCandidate.display_name === 'string' ? skuCandidate.display_name.trim() : '') ||
+    (skuCandidate && typeof skuCandidate.displayName === 'string' ? skuCandidate.displayName.trim() : '') ||
+    (typeof base.display_name === 'string' ? base.display_name.trim() : '') ||
+    (typeof base.displayName === 'string' ? base.displayName.trim() : '') ||
+    name ||
+    '';
+  const category =
+    (skuCandidate && typeof skuCandidate.category === 'string' ? skuCandidate.category.trim() : '') ||
+    (typeof base.category === 'string' ? base.category.trim() : '') ||
+    '';
+
+  const slotRaw = typeof base.slot === 'string' ? base.slot.trim().toLowerCase() : '';
+  const slot = slotRaw === 'am' || slotRaw === 'pm' ? slotRaw : 'other';
+  const step =
+    (typeof base.step === 'string' && base.step.trim()) ||
+    (typeof base.category === 'string' && base.category.trim()) ||
+    category ||
+    (String(lang || '').toUpperCase() === 'CN' ? '推荐' : 'Recommendation');
+
+  const notesRaw =
+    Array.isArray(base.notes) ? base.notes
+      : Array.isArray(base.reasons) ? base.reasons
+        : Array.isArray(base.why) ? base.why
+          : typeof base.reason === 'string' ? [base.reason]
+            : typeof base.why === 'string' ? [base.why]
+              : [];
+
+  const notes = Array.isArray(notesRaw)
+    ? notesRaw
+      .map((v) => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v).trim()))
+      .filter(Boolean)
+      .slice(0, 8)
+    : [];
+
+  const nextSku = skuCandidate || skuId || productId || brand || name || displayName || category
+    ? {
+      ...(skuCandidate && typeof skuCandidate === 'object' ? skuCandidate : {}),
+      ...(skuId ? { sku_id: skuId } : {}),
+      ...(productId ? { product_id: productId } : {}),
+      ...(brand ? { brand } : {}),
+      ...(name ? { name } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(category ? { category } : {}),
+    }
+    : null;
+
+  return {
+    ...base,
+    slot,
+    step,
+    ...(nextSku ? { sku: nextSku } : {}),
+    ...(notes.length ? { notes } : {}),
+  };
+}
+
 function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
   const skinType = profile && typeof profile.skinType === 'string' ? profile.skinType : 'unknown';
   const barrierStatus = mapBarrierStatus(profile && profile.barrierStatus);
@@ -848,6 +942,62 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   }
 
   return { norm, suggestedChips };
+}
+
+async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, logger }) {
+  const profileSummary = summarizeProfileForContext(profile);
+  const prefix = buildContextPrefix({
+    profile: profileSummary || null,
+    recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
+    lang: ctx.lang,
+    trigger_source: ctx.trigger_source,
+    intent: 'reco_products',
+  });
+
+  const userAsk =
+    String(message || '').trim() ||
+    (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
+
+  const query =
+    `${prefix}` +
+    `Task: Generate skincare recommendations.\n` +
+    `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]).\n` +
+    `Each recommendation item should include: slot ("am"|"pm"|"other"), step, sku {brand,name,display_name,sku_id,product_id,category}, notes (string[]), evidence_pack.\n` +
+    `Rules:\n` +
+    `- Do NOT include checkout links.\n` +
+    `- If unsure, use null/unknown and list missing_info (do not fabricate).\n` +
+    `User request: ${userAsk}`;
+
+  let upstream = null;
+  try {
+    upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 22000 });
+  } catch (err) {
+    if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
+      logger?.warn({ err: err.message }, 'aurora bff: product reco upstream failed');
+    }
+  }
+
+  const structured = getUpstreamStructuredOrJson(upstream);
+  const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
+  if (mapped && Array.isArray(mapped.recommendations)) {
+    mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
+  }
+
+  const norm = normalizeRecoGenerate(mapped);
+
+  if (includeAlternatives) {
+    const alt = await enrichRecommendationsWithAlternatives({
+      ctx,
+      profileSummary,
+      recentLogs,
+      recommendations: norm.payload.recommendations,
+      logger,
+    });
+    norm.payload = { ...norm.payload, recommendations: alt.recommendations };
+    norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+  }
+
+  return norm;
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
@@ -2763,6 +2913,45 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: nextState ? { next_state: nextState } : {},
           events: [
             makeEvent(ctx, 'value_moment', { kind: 'routine_generated' }),
+            makeEvent(ctx, 'recos_requested', { explicit: true }),
+          ],
+        });
+        return res.json(envelope);
+      }
+
+      // If user explicitly asks for a few product recommendations, generate them deterministically
+      // (some upstream chat flows only return clarifying chips without a recommendations card).
+      if (actionId === 'chip.start.reco_products' && recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message })) {
+        const norm = await generateProductRecommendations({
+          ctx,
+          profile,
+          recentLogs,
+          message,
+          includeAlternatives,
+          logger,
+        });
+
+        const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
+        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(
+            ctx.lang === 'CN'
+              ? '我给你整理了几款可以直接开始的产品（见下方卡片）。'
+              : 'I pulled a few products you can start with (see the card below).',
+          ),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `reco_${ctx.request_id}`,
+              type: 'recommendations',
+              payload: norm.payload,
+              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+            },
+          ],
+          session_patch: nextState ? { next_state: nextState } : {},
+          events: [
+            makeEvent(ctx, 'value_moment', { kind: 'product_reco' }),
             makeEvent(ctx, 'recos_requested', { explicit: true }),
           ],
         });
