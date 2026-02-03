@@ -226,4 +226,35 @@ describe('Aurora BFF (/v1)', () => {
 
     expect(res.body.cards.some((c) => c.type === 'photo_confirm')).toBe(true);
   });
+
+  test('Product analyze: returns product_analysis with anchor_product', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_product_analyze_1')
+      .send({ url: 'https://example.com/product/mock' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(card.payload).toHaveProperty('assessment');
+    expect(card.payload.assessment).toHaveProperty('anchor_product');
+  });
+
+  test('Dupe compare: returns dupe_compare with original/dupe products', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/dupe/compare')
+      .set('X-Aurora-UID', 'uid_test_dupe_compare_1')
+      .send({
+        original: { brand: 'MockBrand', name: 'Mock Parsed Product', sku_id: 'mock_sku_1' },
+        dupe: { brand: 'MockDupeBrand', name: 'Mock Dupe Product', sku_id: 'mock_dupe_1' },
+      })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'dupe_compare');
+    expect(card).toBeTruthy();
+    expect(card.payload).toHaveProperty('original');
+    expect(card.payload).toHaveProperty('dupe');
+  });
 });

@@ -171,6 +171,8 @@ function normalizeDupeCompare(raw) {
     const evOut = normalizeEvidence(null);
     return {
       payload: {
+        original: null,
+        dupe: null,
         tradeoffs: [],
         evidence: evOut.evidence,
         confidence: null,
@@ -182,8 +184,16 @@ function normalizeDupeCompare(raw) {
 
   const field_missing = [];
 
+  const original = asPlainObject(o.original || o.original_product || o.originalProduct) || null;
+  const dupe = asPlainObject(o.dupe || o.dupe_product || o.dupeProduct) || null;
+
+  const similarityRaw = asNumberOrNull(o.similarity ?? o.similarity_score ?? o.similarityScore);
+  const similarity = similarityRaw == null ? null : similarityRaw > 1 ? similarityRaw : similarityRaw * 100;
+
   const tradeoffs = asStringArray(o.tradeoffs);
   if (!tradeoffs.length) field_missing.push({ field: 'tradeoffs', reason: 'upstream_missing_or_empty' });
+
+  const tradeoffsDetail = asPlainObject(o.tradeoffs_detail || o.tradeoffsDetail) || null;
 
   const evOut = normalizeEvidence(o.evidence);
   field_missing.push(...evOut.field_missing);
@@ -195,7 +205,16 @@ function normalizeDupeCompare(raw) {
   if (evOut.evidence.missing_info?.length) missing_info.push(...evOut.evidence.missing_info);
 
   return {
-    payload: { tradeoffs, evidence: evOut.evidence, confidence, missing_info: uniqueStrings(missing_info) },
+    payload: {
+      original,
+      dupe,
+      ...(similarity != null ? { similarity: Math.max(0, Math.min(100, Math.round(similarity))) } : {}),
+      ...(tradeoffsDetail ? { tradeoffs_detail: tradeoffsDetail } : {}),
+      tradeoffs,
+      evidence: evOut.evidence,
+      confidence,
+      missing_info: uniqueStrings(missing_info),
+    },
     field_missing,
   };
 }

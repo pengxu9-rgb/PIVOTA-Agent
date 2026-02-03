@@ -856,13 +856,23 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const originalStructured = getUpstreamStructuredOrJson(originalUpstream);
       const dupeStructured = getUpstreamStructuredOrJson(dupeUpstream);
+      const originalAnchor = originalStructured && originalStructured.parse && typeof originalStructured.parse === 'object'
+        ? (originalStructured.parse.anchor_product || originalStructured.parse.anchorProduct)
+        : (parsed.data.original || null);
       const dupeAnchor = dupeStructured && dupeStructured.parse && typeof dupeStructured.parse === 'object'
         ? (dupeStructured.parse.anchor_product || dupeStructured.parse.anchorProduct)
         : (parsed.data.dupe || null);
 
       const fallbackAnalyze = () => {
         if (!originalStructured || !dupeStructured) {
-          return { tradeoffs: [], evidence: null, confidence: null, missing_info: ['upstream_missing_or_unstructured'] };
+          return {
+            original: originalAnchor || null,
+            dupe: dupeAnchor || null,
+            tradeoffs: [],
+            evidence: null,
+            confidence: null,
+            missing_info: ['upstream_missing_or_unstructured'],
+          };
         }
         const orig = mapAuroraProductAnalysis(originalStructured);
         const dup = mapAuroraProductAnalysis(dupeStructured);
@@ -893,7 +903,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           missing_info: ['dupe_not_in_alternatives_used_analyze_diff'],
         };
 
-        return { tradeoffs, evidence, confidence, missing_info: ['dupe_not_found_in_alternatives'] };
+        return {
+          original: originalAnchor || null,
+          dupe: dupeAnchor || null,
+          tradeoffs,
+          evidence,
+          confidence,
+          missing_info: ['dupe_not_found_in_alternatives'],
+        };
       };
 
       const mapped = originalStructured && originalStructured.alternatives
@@ -1895,7 +1912,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
           },
         ],
-        session_patch: {},
+        session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
         events: [makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: analysisSource })],
       });
       return res.json(envelope);
@@ -2559,7 +2576,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: { profile: summarizeProfileForContext(profile) },
             },
           ],
-          session_patch: {},
+          session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S3_PHOTO_OPTION' } : {},
           events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) })],
         });
         return res.json(envelope);

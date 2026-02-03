@@ -232,6 +232,8 @@ function mapAuroraProductAnalysis(upstreamStructured) {
 
 function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze } = {}) {
   const structured = asPlainObject(originalStructured);
+  const parse = structured && asPlainObject(structured.parse);
+  const originalAnchor = parse && asPlainObject(parse.anchor_product || parse.anchorProduct);
   const alternatives = structured && Array.isArray(structured.alternatives) ? structured.alternatives : [];
 
   const dupe = asPlainObject(dupeAnchor);
@@ -268,6 +270,8 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
 
   if (!match) {
     return {
+      original: originalAnchor || null,
+      dupe: dupe || null,
       tradeoffs: [],
       evidence: null,
       confidence: null,
@@ -309,8 +313,21 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
   const citations = compactCitations(ev && (ev.kb_citations || ev.kbCitations));
   if (citations) evidence.expert_notes.push(`Citations: ${citations}`);
 
+  const matchProduct = asPlainObject(match.product) || null;
+  const tradeoffs_detail = {
+    ...(missingActives.length ? { missing_actives: missingActives } : {}),
+    ...(addedBenefits.length ? { added_benefits: addedBenefits } : {}),
+    ...(textureDiff.length ? { texture_finish_differences: textureDiff } : {}),
+    ...(priceDeltaUsd != null ? { price_delta_usd: priceDeltaUsd } : {}),
+    ...(availabilityNote ? { availability_note: availabilityNote } : {}),
+  };
+
   return {
+    original: originalAnchor || null,
+    dupe: matchProduct || dupe || null,
+    ...(similarityScore != null ? { similarity: similarityScore } : {}),
     tradeoffs: uniqueStrings(tradeoffsOut),
+    ...(Object.keys(tradeoffs_detail).length ? { tradeoffs_detail } : {}),
     evidence,
     confidence,
     missing_info: [],
@@ -427,4 +444,3 @@ module.exports = {
   mapAuroraAlternativesToDupeCompare,
   mapAuroraRoutineToRecoGenerate,
 };
-
