@@ -1065,15 +1065,26 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 
 async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, logger }) {
   const profileSummary = summarizeProfileForContext(profile);
+  const prefix = buildContextPrefix({
+    profile: profileSummary || null,
+    recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
+    lang: ctx.lang,
+    state: ctx.state,
+    trigger_source: ctx.trigger_source,
+    action_id: 'chip.start.reco_products',
+    intent: 'reco_products',
+  });
   const userAsk =
     String(message || '').trim() ||
     (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
 
-  const query = buildAuroraProductRecommendationsQuery({
-    profile: profileSummary || {},
-    requestText: userAsk,
-    lang: ctx.lang,
-  });
+  const query =
+    `${prefix}` +
+    buildAuroraProductRecommendationsQuery({
+      profile: profileSummary || {},
+      requestText: userAsk,
+      lang: ctx.lang,
+    });
 
   let upstream = null;
   try {
@@ -1084,7 +1095,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     }
   }
 
-  const structured = getUpstreamStructuredOrJson(upstream);
+  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+  const structured = answerJson || getUpstreamStructuredOrJson(upstream);
   const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
   if (mapped && Array.isArray(mapped.recommendations)) {
     mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
