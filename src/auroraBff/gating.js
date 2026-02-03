@@ -56,12 +56,46 @@ function looksLikeDiagnosisStart(message) {
   );
 }
 
-function recommendationsAllowed(triggerSource) {
-  return triggerSource === 'chip' || triggerSource === 'action' || triggerSource === 'text_explicit';
+function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
+  const opts =
+    triggerSourceOrOpts && typeof triggerSourceOrOpts === 'object'
+      ? triggerSourceOrOpts
+      : { triggerSource: triggerSourceOrOpts, actionId, message };
+
+  const triggerSource = String(opts.triggerSource || '').trim();
+  const id = String(opts.actionId || '').trim().toLowerCase();
+  const text = String(opts.message || '').trim();
+
+  // Chips/actions are "explicit" interactions, but NOT all chips should unlock recommendations/commerce.
+  // Only unlock when the user explicitly asked for product outputs (recommendations/routine/dupes/analysis).
+  if (triggerSource === 'chip' || triggerSource === 'action') {
+    if (!id) return false;
+
+    // Whitelist known explicit "product output" entry points.
+    if (id === 'chip.start.reco_products') return true;
+    if (id === 'chip.start.routine') return true;
+    if (id === 'chip.action.reco_routine') return true;
+    if (id === 'chip.action.analyze_product') return true;
+    if (id === 'chip.action.dupe_compare') return true;
+
+    // Fallback heuristic for future chips, but keep it narrow.
+    if (id.startsWith('chip.action.') && /reco|recommend|offer|checkout|dupe|analy/.test(id)) return true;
+    if (id.startsWith('chip.start.') && /reco|recommend|routine/.test(id)) return true;
+
+    // Diagnosis/profile chips should never unlock recommendations.
+    return false;
+  }
+
+  // For free text, only unlock when the user explicitly asks for products/fit-check (not diagnosis start).
+  if (triggerSource === 'text_explicit') {
+    return looksLikeRecommendationRequest(text) || looksLikeSuitabilityRequest(text);
+  }
+
+  return false;
 }
 
 function stateChangeAllowed(triggerSource) {
-  return recommendationsAllowed(triggerSource);
+  return triggerSource === 'chip' || triggerSource === 'action' || triggerSource === 'text_explicit';
 }
 
 function shouldDiagnosisGate({ message, triggerSource, profile }) {

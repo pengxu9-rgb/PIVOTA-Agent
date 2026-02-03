@@ -28,6 +28,7 @@ const {
 } = require('./memoryStore');
 const {
   profileCompleteness,
+  looksLikeDiagnosisStart,
   recommendationsAllowed,
   stateChangeAllowed,
   shouldDiagnosisGate,
@@ -2353,6 +2354,43 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const actionReplyText = extractReplyTextFromAction(parsed.data.action);
       const message = String(parsed.data.message || '').trim() || actionReplyText || '';
+      const actionId =
+        parsed.data.action && typeof parsed.data.action === 'object'
+          ? parsed.data.action.action_id
+          : typeof parsed.data.action === 'string'
+            ? parsed.data.action
+            : null;
+
+      // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
+      // otherwise users can get stuck in an upstream "what next?" loop.
+      if (actionId === 'chip.start.diagnosis' || looksLikeDiagnosisStart(message)) {
+        const { score, missing } = profileCompleteness(profile);
+        const required = score >= 4 ? ['skinType', 'sensitivity', 'barrierStatus', 'goals'] : missing;
+        const prompt = buildDiagnosisPrompt(ctx.lang, required);
+        const chips = buildDiagnosisChips(ctx.lang, required);
+        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(prompt),
+          suggested_chips: chips,
+          cards: [
+            {
+              card_id: `diag_${ctx.request_id}`,
+              type: 'diagnosis_gate',
+              payload: {
+                reason: 'diagnosis_start',
+                missing_fields: required,
+                wants: 'diagnosis',
+                profile: summarizeProfileForContext(profile),
+                recent_logs: recentLogs,
+              },
+            },
+          ],
+          session_patch: nextState ? { next_state: nextState } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_start' })],
+        });
+        return res.json(envelope);
+      }
 
       // Phase 0 gate: Diagnosis-first (no recos/offers before minimal profile).
       const gate = shouldDiagnosisGate({ message, triggerSource: ctx.trigger_source, profile });
@@ -2456,7 +2494,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       // If user explicitly asks to build an AM/PM routine, route to the routine generator (budget-gated).
-      if (looksLikeRoutineRequest(message, parsed.data.action) && recommendationsAllowed(ctx.trigger_source)) {
+      if (
+        looksLikeRoutineRequest(message, parsed.data.action) &&
+        recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message })
+      ) {
         const budget = normalizeBudgetHint(profile && profile.budgetTier);
         if (!budget) {
           const envelope = buildEnvelope(ctx, {
@@ -2619,7 +2660,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           : '(Received. Aurora upstream is unavailable or not configured; returning a gated/memory-aware fallback response.)';
 
       const rawCards = upstream && Array.isArray(upstream.cards) ? upstream.cards : [];
-      const allowRecs = recommendationsAllowed(ctx.trigger_source);
+      const allowRecs = recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message });
       const cards = allowRecs ? rawCards : stripRecommendationCards(rawCards);
       const fieldMissing = [];
       if (!allowRecs && rawCards.length !== cards.length) {
