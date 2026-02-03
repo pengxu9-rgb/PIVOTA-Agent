@@ -324,6 +324,14 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const p = profile || {};
   const goals = Array.isArray(p.goals) ? p.goals : [];
+  const routineRaw = p.currentRoutine;
+  const routineText =
+    typeof routineRaw === 'string'
+      ? routineRaw
+      : routineRaw && typeof routineRaw === 'object'
+        ? JSON.stringify(routineRaw)
+        : '';
+  const routineTextLower = String(routineText || '').toLowerCase();
 
   const features = [];
   if (p.barrierStatus === 'impaired') {
@@ -363,6 +371,28 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
     });
   }
 
+  // Very light routine heuristic: only surface broad safety signals (no brand recommendations).
+  if (routineTextLower) {
+    const hasRetinoid = /\bretinol\b|\badapalene\b|\btretinoin\b|\bretinoid\b/.test(routineTextLower);
+    const hasExfoliatingAcid =
+      /\bglycolic\b|\blactic\b|\bmandelic\b|\bsalicylic\b|\bbha\b|\baha\b/.test(routineTextLower);
+    const hasBpo = /\bbenzoyl\b|\bbpo\b/.test(routineTextLower);
+    if (hasRetinoid || hasExfoliatingAcid || hasBpo) {
+      const actives = [
+        ...(hasRetinoid ? [lang === 'CN' ? '维A类' : 'retinoid'] : []),
+        ...(hasExfoliatingAcid ? [lang === 'CN' ? '酸类' : 'acids'] : []),
+        ...(hasBpo ? [lang === 'CN' ? '过氧化苯甲酰(BPO)' : 'benzoyl peroxide (BPO)'] : []),
+      ];
+      features.push({
+        observation:
+          lang === 'CN'
+            ? `你当前 routine 里包含 ${actives.join(' / ')} → 先避免叠加、从低频开始，降低刺激风险。`
+            : `Your current routine includes ${actives.join(' / ')} → avoid stacking and start low-frequency to reduce irritation risk.`,
+        confidence: 'somewhat_sure',
+      });
+    }
+  }
+
   const latest = Array.isArray(recentLogs) && recentLogs[0] ? recentLogs[0] : null;
   if (latest && (typeof latest.redness === 'number' || typeof latest.acne === 'number' || typeof latest.hydration === 'number')) {
     const redness = typeof latest.redness === 'number' ? latest.redness : null;
@@ -387,6 +417,52 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
     lang === 'CN'
       ? '接下来 7 天建议：\n1) 护肤先“少而稳”：温和洁面 + 保湿 + 白天 SPF。\n2) 如果刺痛/泛红：先停用强刺激活性（酸/高浓 VC/视黄醇），以修护为主。\n3) 若想开始控毛孔/闭口：先从低频（每周 2 次）开始，观察 72 小时反应。\n\n你最近有刺痛/泛红吗？'
       : 'Next 7 days:\n1) Keep it minimal: gentle cleanser + moisturizer + daytime SPF.\n2) If stinging/redness: pause harsh actives (acids/high-strength vitamin C/retinoids) and focus on repair.\n3) If you want pores/texture work: start low frequency (2x/week) and watch the 72h response.\n\nDo you have stinging or redness recently?';
+
+  return {
+    features: features.slice(0, 6),
+    strategy: strategy.slice(0, 1200),
+    needs_risk_check: false,
+  };
+}
+
+function buildLowConfidenceBaselineSkinAnalysis({ profile, language }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const p = profile || {};
+  const goals = Array.isArray(p.goals) ? p.goals : [];
+
+  const features = [];
+  if (p.barrierStatus === 'impaired') {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? '你自述屏障可能不稳定 → 建议先走“舒缓修护”优先路线。'
+          : 'You may have a stressed barrier → prioritize calming + repair first.',
+      confidence: 'somewhat_sure',
+    });
+  }
+  if (p.skinType) {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? `你自述肤质为 ${String(p.skinType)} → 我会先给“低风险通用策略”。`
+          : `You reported ${String(p.skinType)} skin → I’ll start with low-risk baseline guidance.`,
+      confidence: 'somewhat_sure',
+    });
+  }
+  if (goals.length) {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? `你的目标包含 ${goals.slice(0, 2).join(' / ')} → 但在缺少更多输入时只能给方向性建议。`
+          : `Your goals include ${goals.slice(0, 2).join(' / ')} → but without more inputs I can only give directional guidance.`,
+      confidence: 'not_sure',
+    });
+  }
+
+  const strategy =
+    lang === 'CN'
+      ? '当前信息不足（缺少照片/缺少你正在用的产品），我先给低风险的 7 天基线：\n1) 少而稳：温和洁面 + 保湿 + 白天 SPF。\n2) 若刺痛/泛红：先停用强刺激活性（酸/高浓 VC/视黄醇），以修护为主。\n3) 任何新活性都从低频开始（每周 1–2 次），观察 72 小时。\n\n为了把建议做得更准：你愿意【上传一张自然光自拍】或【把你现在 AM/PM 用的产品（洁面/活性/保湿/SPF）列出来】吗？'
+      : "I don't have enough inputs yet (no photo and no current products). Here’s a low-risk 7‑day baseline:\n1) Keep it minimal: gentle cleanser + moisturizer + daytime SPF.\n2) If stinging/redness: pause strong actives (acids/high-strength vitamin C/retinoids) and focus on repair.\n3) Any new active: start 1–2×/week and watch the 72h response.\n\nTo make this truly personalized: would you share either a daylight selfie OR your current AM/PM products (cleanser/actives/moisturizer/SPF)?";
 
   return {
     features: features.slice(0, 6),
@@ -458,6 +534,24 @@ function extractIncludeAlternativesFromAction(action) {
 
 function summarizeProfileForContext(profile) {
   if (!profile) return null;
+  const currentRoutineRaw = profile.currentRoutine;
+  let currentRoutine = null;
+  if (typeof currentRoutineRaw === 'string') {
+    const t = currentRoutineRaw.trim();
+    currentRoutine = t ? t.slice(0, 4000) : null;
+  } else if (currentRoutineRaw && typeof currentRoutineRaw === 'object') {
+    try {
+      const json = JSON.stringify(currentRoutineRaw);
+      currentRoutine = json.length > 5000 ? `${json.slice(0, 5000)}…` : json;
+    } catch {
+      currentRoutine = null;
+    }
+  }
+
+  const contraindications = Array.isArray(profile.contraindications)
+    ? profile.contraindications.filter((v) => typeof v === 'string' && v.trim()).slice(0, 12)
+    : [];
+
   return {
     skinType: profile.skinType || null,
     sensitivity: profile.sensitivity || null,
@@ -465,6 +559,8 @@ function summarizeProfileForContext(profile) {
     goals: Array.isArray(profile.goals) ? profile.goals : [],
     region: profile.region || null,
     budgetTier: profile.budgetTier || null,
+    currentRoutine,
+    contraindications,
   };
 }
 
@@ -680,6 +776,29 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
     `${productsNote}` +
     `Preference: ${preference}.\n` +
     `Please recommend a simple AM/PM skincare routine within my budget. Reply in ${reply}.`
+  );
+}
+
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) {
+  const skinType = profile && typeof profile.skinType === 'string' ? profile.skinType : 'unknown';
+  const barrierStatus = mapBarrierStatus(profile && profile.barrierStatus);
+  const concerns = mapConcerns(profile && profile.goals);
+  const region = profile && typeof profile.region === 'string' && profile.region.trim() ? profile.region.trim() : 'US';
+  const budget = normalizeBudgetHint(profile && profile.budgetTier) || 'unknown';
+  const concernsStr = concerns.length ? concerns.join(', ') : 'none';
+  const replyLang = lang === 'CN' ? 'Chinese' : 'English';
+  const req = typeof requestText === 'string' ? requestText.trim() : '';
+
+  return (
+    `User profile: skin type ${skinType}; barrier status: ${barrierStatus}; concerns: ${concernsStr}; region: ${region}; budget: ${budget}.\n` +
+    (req ? `User request: ${req}\n` : '') +
+    `Task: Generate skincare recommendations.\n` +
+    `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]).\n` +
+    `Each recommendation item should include: slot ("am"|"pm"|"other"), step, sku {brand,name,display_name,sku_id,product_id,category}, notes (string[]), evidence_pack.\n` +
+    `Rules:\n` +
+    `- Do NOT include checkout links.\n` +
+    `- If unsure, use null/unknown and list missing_info (do not fabricate).\n` +
+    `- All free-text strings should be in ${replyLang}.\n`
   );
 }
 
@@ -946,27 +1065,15 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 
 async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, logger }) {
   const profileSummary = summarizeProfileForContext(profile);
-  const prefix = buildContextPrefix({
-    profile: profileSummary || null,
-    recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
-    lang: ctx.lang,
-    trigger_source: ctx.trigger_source,
-    intent: 'reco_products',
-  });
-
   const userAsk =
     String(message || '').trim() ||
     (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
 
-  const query =
-    `${prefix}` +
-    `Task: Generate skincare recommendations.\n` +
-    `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]).\n` +
-    `Each recommendation item should include: slot ("am"|"pm"|"other"), step, sku {brand,name,display_name,sku_id,product_id,category}, notes (string[]), evidence_pack.\n` +
-    `Rules:\n` +
-    `- Do NOT include checkout links.\n` +
-    `- If unsure, use null/unknown and list missing_info (do not fabricate).\n` +
-    `User request: ${userAsk}`;
+  const query = buildAuroraProductRecommendationsQuery({
+    profile: profileSummary || {},
+    requestText: userAsk,
+    lang: ctx.lang,
+  });
 
   let upstream = null;
   try {
@@ -2163,9 +2270,14 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const profileSummary = summarizeProfileForContext(profile);
       const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
+      const hasRoutine = Boolean(profileSummary && profileSummary.currentRoutine);
+      const hasPrimaryInput = hasRoutine || photosProvided;
 
       const usePhoto = parsed.data.use_photo === true;
       const analysisFieldMissing = [];
+      if (!hasPrimaryInput) {
+        analysisFieldMissing.push({ field: 'analysis.inputs', reason: 'missing_photos_and_currentRoutine' });
+      }
       let usedPhotos = false;
       let analysisSource = 'rule_based';
 
@@ -2224,12 +2336,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
         const logsLine = recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
         const photoLine = `photos_provided=${photosProvided ? 'yes' : 'no'}; photo_qc=${photoQcParts.length ? photoQcParts.join(', ') : 'none'}; photos_accessible=no.`;
+        const routineLine = hasRoutine ? `current_routine=${JSON.stringify(profileSummary.currentRoutine)}` : '';
 
         const prompt =
           `${profileLine}\n` +
           `${logsLine ? `${logsLine}\n` : ''}` +
+          `${routineLine ? `${routineLine}\n` : ''}` +
           `${photoLine}\n` +
-          `Task: Provide a skin assessment that is honest about uncertainty and feels like a cautious dermatologist.\n\n` +
+          `Task: Provide a skin assessment that is honest about uncertainty and feels like a cautious dermatologist.\n` +
+          `If current_routine is provided, also flag likely irritation/conflict risks and suggest minimal, safe adjustments (do NOT recommend new brands).\n\n` +
           `Return ONLY a valid JSON object (no markdown) with this exact shape:\n` +
           `{\n` +
           `  "features": [\n` +
@@ -2243,7 +2358,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           `- DO NOT claim you can see the user's skin in the photo. Photos are for quality checks only.\n` +
           `- Observations must be about barrier, acne risk, pigmentation, irritation, hydration, and safety.\n` +
           `- Strategy must be actionable and stepwise and END with ONE direct clarifying question (must include a '?' or '？').\n` +
-          `- DO NOT recommend specific products/brands.\n` +
+          `- DO NOT recommend specific products/brands (you may reference the user's own products if provided).\n` +
           `- Keep it concise: 4–6 features; strategy under 900 characters.\n` +
           `Language: ${replyLanguage}.\n` +
           `${replyInstruction}\n`;
@@ -2260,7 +2375,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (analysis) analysisSource = 'aurora_text';
       }
 
-      if (!analysis) analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
+      if (!analysis) {
+        if (!hasPrimaryInput) {
+          analysis = buildLowConfidenceBaselineSkinAnalysis({ profile: profileSummary || profile, language: ctx.lang });
+          analysisSource = 'baseline_low_confidence';
+        } else {
+          analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
+        }
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
