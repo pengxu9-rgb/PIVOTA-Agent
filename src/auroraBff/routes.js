@@ -1421,10 +1421,28 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(502).json(envelope);
       }
 
+      const hasHeader = (headersObj, key) => {
+        const wanted = String(key || '').toLowerCase();
+        for (const k of Object.keys(headersObj || {})) {
+          if (String(k).toLowerCase() === wanted) return true;
+        }
+        return false;
+      };
+
+      const finalUploadHeaders = { ...uploadHeaders };
+      // Some S3-compatible providers require a Content-Length (otherwise 411 Length Required).
+      if (byteSize && !hasHeader(finalUploadHeaders, 'content-length')) {
+        finalUploadHeaders['Content-Length'] = String(byteSize);
+      }
+      // Ensure Content-Type is present if upstream didn't include it.
+      if (contentType && !hasHeader(finalUploadHeaders, 'content-type')) {
+        finalUploadHeaders['Content-Type'] = contentType;
+      }
+
       const uploadResp = await axios.request({
         method: uploadMethod,
         url: uploadUrl,
-        headers: uploadHeaders,
+        headers: finalUploadHeaders,
         data: fs.createReadStream(fileEntry.path),
         timeout: 120000,
         maxBodyLength: 30 * 1024 * 1024,
@@ -1433,6 +1451,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
 
       if (uploadResp.status < 200 || uploadResp.status >= 300) {
+        const detail =
+          typeof uploadResp.data === 'string'
+            ? uploadResp.data.slice(0, 4000)
+            : uploadResp.data && typeof uploadResp.data === 'object'
+              ? JSON.stringify(uploadResp.data).slice(0, 4000)
+              : null;
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage('Failed to upload photo bytes.'),
           suggested_chips: [],
@@ -1440,7 +1464,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `err_${ctx.request_id}`,
               type: 'error',
-              payload: { error: 'PHOTO_UPLOAD_BYTES_FAILED', status: uploadResp.status },
+              payload: { error: 'PHOTO_UPLOAD_BYTES_FAILED', status: uploadResp.status, detail },
             },
           ],
           session_patch: {},
