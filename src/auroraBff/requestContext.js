@@ -33,6 +33,11 @@ function detectTextExplicit(message) {
     /(护肤方案|早晚护肤|早晚.*(routine|护肤))/,
     /(怎么买|购买|下单|链接)/,
     /(种草|买哪个)/,
+    // Explicit "start diagnosis / skin profile" also counts as a user-triggered state change.
+    /\bstart\b.*\bdiagnos/i,
+    /\bskin\b.*\bdiagnos/i,
+    /\bskin profile\b/i,
+    /(皮肤诊断|开始.*诊断|做.*诊断|诊断一下|肤况确认|肤质确认)/,
   ];
   return patterns.some((re) => re.test(text));
 }

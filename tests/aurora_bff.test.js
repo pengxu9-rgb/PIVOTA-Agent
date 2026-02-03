@@ -27,6 +27,19 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => String(c.type).includes('offer'))).toBe(false);
   });
 
+  test('Diagnosis start: explicit diagnosis triggers gate + state update', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_diag_start_1')
+      .send({ message: '开始皮肤诊断' })
+      .expect(200);
+
+    expect(res.body.session_patch.next_state).toBe('S2_DIAGNOSIS');
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
+    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.'))).toBe(true);
+  });
+
   test('Recommendation gate: strips recommendation cards unless explicit', async () => {
     const app = require('../src/server');
     const res = await request(app)

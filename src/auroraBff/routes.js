@@ -55,6 +55,49 @@ const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || pr
   .replace(/\/$/, '');
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
+const PIVOTA_BACKEND_AGENT_API_KEY = String(
+  process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
+    process.env.PIVOTA_BACKEND_API_KEY ||
+    process.env.PIVOTA_API_KEY ||
+    process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+    process.env.PIVOTA_AGENT_API_KEY ||
+    process.env.AGENT_API_KEY ||
+    '',
+).trim();
+
+function getCheckoutToken(req) {
+  const v = req.get('X-Checkout-Token') || req.get('x-checkout-token');
+  return v ? String(v).trim() : '';
+}
+
+function buildPivotaBackendAuthHeaders(req) {
+  const checkoutToken = getCheckoutToken(req);
+  if (checkoutToken) return { 'X-Checkout-Token': checkoutToken };
+  if (PIVOTA_BACKEND_AGENT_API_KEY) {
+    return { 'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY, Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}` };
+  }
+  return {};
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function secondsUntilIso(iso) {
+  if (!iso || typeof iso !== 'string') return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.round((ms - Date.now()) / 1000));
+}
+
+function pickUpstreamErrorDetail(data) {
+  if (!data) return null;
+  if (typeof data === 'string') return data;
+  if (data.detail) return data.detail;
+  if (data.error) return data.error;
+  if (data.message) return data.message;
+  return null;
+}
 
 function requireAuroraUid(ctx) {
   const uid = String(ctx.aurora_uid || '').trim();
@@ -692,18 +735,160 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      // Stub: real storage/QC can be wired later via dedicated service.
-      const photoId = `photo_${ctx.request_id}_${Date.now()}`;
+      if (USE_AURORA_BFF_MOCK) {
+        // Stub: real storage/QC should be wired via pivota-backend photos endpoints.
+        const photoId = `photo_${ctx.request_id}_${Date.now()}`;
+        const payload = {
+          photo_id: photoId,
+          slot_id: parsed.data.slot_id,
+          upload: {
+            method: 'PUT',
+            url: null,
+            headers: {},
+            expires_in_seconds: 600,
+          },
+        };
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `presign_${ctx.request_id}`,
+              type: 'photo_presign',
+              payload,
+              field_missing: [{ field: 'upload.url', reason: 'mock_mode' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'photo_presign' })],
+        });
+        return res.json(envelope);
+      }
+
+      if (!PIVOTA_BACKEND_BASE_URL) {
+        const photoId = `photo_${ctx.request_id}_${Date.now()}`;
+        const payload = {
+          photo_id: photoId,
+          slot_id: parsed.data.slot_id,
+          upload: {
+            method: 'PUT',
+            url: null,
+            headers: {},
+            expires_in_seconds: 600,
+          },
+        };
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `presign_${ctx.request_id}`,
+              type: 'photo_presign',
+              payload,
+              field_missing: [{ field: 'upload.url', reason: 'pivota_backend_not_configured' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'photo_presign' })],
+        });
+        return res.json(envelope);
+      }
+
+      const authHeaders = buildPivotaBackendAuthHeaders(req);
+      if (!Object.keys(authHeaders).length) {
+        const photoId = `photo_${ctx.request_id}_${Date.now()}`;
+        const payload = {
+          photo_id: photoId,
+          slot_id: parsed.data.slot_id,
+          upload: {
+            method: 'PUT',
+            url: null,
+            headers: {},
+            expires_in_seconds: 600,
+          },
+        };
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `presign_${ctx.request_id}`,
+              type: 'photo_presign',
+              payload,
+              field_missing: [{ field: 'upload.url', reason: 'pivota_backend_auth_not_configured' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'photo_presign' })],
+        });
+        return res.json(envelope);
+      }
+
+      const contentType =
+        typeof parsed.data.content_type === 'string' && parsed.data.content_type.trim()
+          ? parsed.data.content_type.trim()
+          : 'image/jpeg';
+      const byteSize = typeof parsed.data.bytes === 'number' && Number.isFinite(parsed.data.bytes) ? parsed.data.bytes : null;
+
+      const upstreamResp = await axios.post(
+        `${PIVOTA_BACKEND_BASE_URL}/photos/presign`,
+        {
+          content_type: contentType,
+          ...(byteSize ? { byte_size: byteSize } : {}),
+          consent: true,
+          user_id: ctx.aurora_uid,
+        },
+        {
+          timeout: 12000,
+          validateStatus: () => true,
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+        },
+      );
+
+      if (upstreamResp.status !== 200 || !upstreamResp.data || !upstreamResp.data.upload_id || !upstreamResp.data.upload) {
+        const detail = pickUpstreamErrorDetail(upstreamResp.data);
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Failed to presign upload.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: {
+                error: 'PHOTO_PRESIGN_UPSTREAM_FAILED',
+                status: upstreamResp.status,
+                detail: detail || null,
+              },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'PHOTO_PRESIGN_UPSTREAM_FAILED', status: upstreamResp.status })],
+        });
+        return res.status(upstreamResp.status >= 400 ? upstreamResp.status : 502).json(envelope);
+      }
+
+      const uploadId = String(upstreamResp.data.upload_id);
+      const upstreamUpload = upstreamResp.data.upload || {};
+      const expiresInSeconds = secondsUntilIso(upstreamResp.data.expires_at) ?? 900;
+
       const payload = {
-        photo_id: photoId,
+        photo_id: uploadId,
         slot_id: parsed.data.slot_id,
         upload: {
-          method: 'PUT',
-          url: null,
-          headers: {},
-          expires_in_seconds: 600,
+          method: upstreamUpload.method || 'PUT',
+          url: upstreamUpload.url || null,
+          headers: upstreamUpload.headers || {},
+          expires_in_seconds: expiresInSeconds,
         },
+        ...(typeof upstreamResp.data.max_bytes === 'number' ? { max_bytes: upstreamResp.data.max_bytes } : {}),
+        ...(upstreamResp.data.tips ? { tips: upstreamResp.data.tips } : {}),
       };
+
+      const fieldMissing = [];
+      if (!payload.upload.url) fieldMissing.push({ field: 'upload.url', reason: 'upstream_missing_upload_url' });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -713,7 +898,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             card_id: `presign_${ctx.request_id}`,
             type: 'photo_presign',
             payload,
-            field_missing: [{ field: 'upload.url', reason: 'storage_presign_not_configured' }],
+            ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
           },
         ],
         session_patch: {},
@@ -749,14 +934,140 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      // Stub QC.
-      const qcStatus = 'passed';
-      const payload = { ...parsed.data, qc_status: qcStatus };
+      if (USE_AURORA_BFF_MOCK) {
+        const qcStatus = 'passed';
+        const payload = { ...parsed.data, qc_status: qcStatus };
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [{ card_id: `confirm_${ctx.request_id}`, type: 'photo_confirm', payload }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'photo_confirm', qc_status: qcStatus })],
+        });
+        return res.json(envelope);
+      }
+
+      if (!PIVOTA_BACKEND_BASE_URL) {
+        const payload = { ...parsed.data, qc_status: null };
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `confirm_${ctx.request_id}`,
+              type: 'photo_confirm',
+              payload,
+              field_missing: [{ field: 'qc_status', reason: 'pivota_backend_not_configured' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'photo_confirm', qc_status: null })],
+        });
+        return res.json(envelope);
+      }
+
+      const authHeaders = buildPivotaBackendAuthHeaders(req);
+      if (!Object.keys(authHeaders).length) {
+        const payload = { ...parsed.data, qc_status: null };
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `confirm_${ctx.request_id}`,
+              type: 'photo_confirm',
+              payload,
+              field_missing: [{ field: 'qc_status', reason: 'pivota_backend_auth_not_configured' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'photo_confirm', qc_status: null })],
+        });
+        return res.json(envelope);
+      }
+
+      const uploadId = parsed.data.photo_id;
+      const confirmResp = await axios.post(
+        `${PIVOTA_BACKEND_BASE_URL}/photos/confirm`,
+        { upload_id: uploadId },
+        {
+          timeout: 12000,
+          validateStatus: () => true,
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+        },
+      );
+
+      if (confirmResp.status !== 200 || !confirmResp.data) {
+        const detail = pickUpstreamErrorDetail(confirmResp.data);
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Failed to confirm upload.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: {
+                error: 'PHOTO_CONFIRM_UPSTREAM_FAILED',
+                status: confirmResp.status,
+                detail: detail || null,
+              },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'PHOTO_CONFIRM_UPSTREAM_FAILED', status: confirmResp.status })],
+        });
+        return res.status(confirmResp.status >= 400 ? confirmResp.status : 502).json(envelope);
+      }
+
+      let qcStatus =
+        typeof confirmResp.data.qc_status === 'string' && confirmResp.data.qc_status ? confirmResp.data.qc_status : null;
+      let qc = confirmResp.data.qc && typeof confirmResp.data.qc === 'object' ? confirmResp.data.qc : null;
+      let nextPollMs = typeof confirmResp.data.next_poll_ms === 'number' ? confirmResp.data.next_poll_ms : null;
+
+      const deadlineMs = Date.now() + 6000;
+      let lastQcData = null;
+      while (!qcStatus && Date.now() < deadlineMs) {
+        const waitMs = Math.min(1200, Math.max(400, nextPollMs || 1000));
+        await sleep(waitMs);
+
+        const qcResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/qc`, {
+          timeout: 12000,
+          validateStatus: () => true,
+          headers: authHeaders,
+          params: { upload_id: uploadId },
+        });
+
+        if (qcResp.status !== 200 || !qcResp.data) break;
+
+        lastQcData = qcResp.data;
+        qcStatus = typeof qcResp.data.qc_status === 'string' && qcResp.data.qc_status ? qcResp.data.qc_status : null;
+        qc = qcResp.data.qc && typeof qcResp.data.qc === 'object' ? qcResp.data.qc : qc;
+        nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
+      }
+
+      const payload = {
+        ...parsed.data,
+        qc_status: qcStatus,
+        ...(qc ? { qc } : {}),
+        ...(typeof nextPollMs === 'number' ? { next_poll_ms: nextPollMs } : {}),
+        ...(lastQcData && lastQcData.qc_status == null ? { qc_pending: true } : {}),
+      };
+
+      const fieldMissing = [];
+      if (!qcStatus) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
-        cards: [{ card_id: `confirm_${ctx.request_id}`, type: 'photo_confirm', payload }],
+        cards: [
+          {
+            card_id: `confirm_${ctx.request_id}`,
+            type: 'photo_confirm',
+            payload,
+            ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
+          },
+        ],
         session_patch: {},
         events: [makeEvent(ctx, 'value_moment', { kind: 'photo_confirm', qc_status: qcStatus })],
       });

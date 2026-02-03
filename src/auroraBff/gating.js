@@ -44,6 +44,18 @@ function looksLikeSuitabilityRequest(message) {
   );
 }
 
+function looksLikeDiagnosisStart(message) {
+  const text = String(message || '').trim().toLowerCase();
+  if (!text) return false;
+  return (
+    /\bstart\b.*\bdiagnos/.test(text) ||
+    /\bskin\b.*\bdiagnos/.test(text) ||
+    /\bskin profile\b/.test(text) ||
+    /\bprofile\b.*\bskin\b/.test(text) ||
+    /(皮肤诊断|开始.*诊断|做.*诊断|诊断一下|肤况确认|肤质确认|skin diagnosis)/.test(text)
+  );
+}
+
 function recommendationsAllowed(triggerSource) {
   return triggerSource === 'chip' || triggerSource === 'action' || triggerSource === 'text_explicit';
 }
@@ -55,7 +67,8 @@ function stateChangeAllowed(triggerSource) {
 function shouldDiagnosisGate({ message, triggerSource, profile }) {
   const wantsRecs = looksLikeRecommendationRequest(message);
   const wantsFit = looksLikeSuitabilityRequest(message);
-  const intentTriggersGate = wantsRecs || wantsFit;
+  const wantsDiag = looksLikeDiagnosisStart(message);
+  const intentTriggersGate = wantsRecs || wantsFit || wantsDiag;
 
   const { score, missing } = profileCompleteness(profile);
   const missingEnough = score < 3;
@@ -67,9 +80,9 @@ function shouldDiagnosisGate({ message, triggerSource, profile }) {
   // Gate even if the user is explicit: we can proceed only after minimal profile.
   return {
     gated: true,
-    reason: 'diagnosis_first',
+    reason: wantsDiag && !wantsRecs && !wantsFit ? 'diagnosis_start' : 'diagnosis_first',
     missing,
-    wants: wantsRecs ? 'recommendation' : 'fit_check',
+    wants: wantsRecs ? 'recommendation' : wantsFit ? 'fit_check' : 'diagnosis',
     triggerSource,
   };
 }
@@ -207,6 +220,7 @@ module.exports = {
   profileCompleteness,
   looksLikeRecommendationRequest,
   looksLikeSuitabilityRequest,
+  looksLikeDiagnosisStart,
   recommendationsAllowed,
   stateChangeAllowed,
   shouldDiagnosisGate,
