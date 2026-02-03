@@ -230,10 +230,11 @@ function mapAuroraProductAnalysis(upstreamStructured) {
   };
 }
 
-function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze } = {}) {
+function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback } = {}) {
   const structured = asPlainObject(originalStructured);
   const parse = structured && asPlainObject(structured.parse);
   const originalAnchor = parse && asPlainObject(parse.anchor_product || parse.anchorProduct);
+  const original = originalAnchor || asPlainObject(originalAnchorFallback) || null;
   const alternatives = structured && Array.isArray(structured.alternatives) ? structured.alternatives : [];
 
   const dupe = asPlainObject(dupeAnchor);
@@ -270,7 +271,7 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
 
   if (!match) {
     return {
-      original: originalAnchor || null,
+      original,
       dupe: dupe || null,
       tradeoffs: [],
       evidence: null,
@@ -323,7 +324,7 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
   };
 
   return {
-    original: originalAnchor || null,
+    original,
     dupe: matchProduct || dupe || null,
     ...(similarityScore != null ? { similarity: similarityScore } : {}),
     tradeoffs: uniqueStrings(tradeoffsOut),

@@ -856,12 +856,15 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const originalStructured = getUpstreamStructuredOrJson(originalUpstream);
       const dupeStructured = getUpstreamStructuredOrJson(dupeUpstream);
-      const originalAnchor = originalStructured && originalStructured.parse && typeof originalStructured.parse === 'object'
+      const originalAnchorFromUpstream = originalStructured && originalStructured.parse && typeof originalStructured.parse === 'object'
         ? (originalStructured.parse.anchor_product || originalStructured.parse.anchorProduct)
-        : (parsed.data.original || null);
-      const dupeAnchor = dupeStructured && dupeStructured.parse && typeof dupeStructured.parse === 'object'
+        : null;
+      const dupeAnchorFromUpstream = dupeStructured && dupeStructured.parse && typeof dupeStructured.parse === 'object'
         ? (dupeStructured.parse.anchor_product || dupeStructured.parse.anchorProduct)
-        : (parsed.data.dupe || null);
+        : null;
+
+      const originalAnchor = originalAnchorFromUpstream || parsed.data.original || null;
+      const dupeAnchor = dupeAnchorFromUpstream || parsed.data.dupe || null;
 
       const fallbackAnalyze = () => {
         if (!originalStructured || !dupeStructured) {
@@ -914,7 +917,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
 
       const mapped = originalStructured && originalStructured.alternatives
-        ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze })
+        ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback: originalAnchor })
         : fallbackAnalyze();
 
       const norm = normalizeDupeCompare(mapped);
