@@ -215,4 +215,15 @@ describe('Aurora BFF (/v1)', () => {
     expect(Array.isArray(card.payload.analysis.features)).toBe(true);
     expect(typeof card.payload.analysis.strategy).toBe('string');
   });
+
+  test('Photo upload proxy: endpoint exists (mock)', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/photos/upload')
+      .set('X-Aurora-UID', 'uid_test_photo_upload_1')
+      .send({})
+      .expect(200);
+
+    expect(res.body.cards.some((c) => c.type === 'photo_confirm')).toBe(true);
+  });
 });

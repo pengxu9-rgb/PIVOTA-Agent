@@ -1,4 +1,7 @@
 const axios = require('axios');
+const OpenAI = require('openai');
+const sharp = require('sharp');
+const fs = require('fs');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const {
@@ -41,6 +44,7 @@ const {
 const { simulateConflicts } = require('./routineRules');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject } = require('./jsonExtract');
+const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   normalizeBudgetHint,
   mapConcerns,
@@ -65,6 +69,18 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(
     process.env.AGENT_API_KEY ||
     '',
 ).trim();
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
+const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
+const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
+const SKIN_VISION_MODEL = String(process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+const SKIN_VISION_TIMEOUT_MS = Math.max(
+  2000,
+  Math.min(30000, Number(process.env.AURORA_SKIN_VISION_TIMEOUT_MS || 12000)),
+);
+const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
+  1024 * 1024,
+  Math.min(25 * 1024 * 1024, Number(process.env.AURORA_PHOTO_UPLOAD_MAX_BYTES || 10 * 1024 * 1024)),
+);
 
 function getCheckoutToken(req) {
   const v = req.get('X-Checkout-Token') || req.get('x-checkout-token');
@@ -78,6 +94,157 @@ function buildPivotaBackendAuthHeaders(req) {
     return { 'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY, Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}` };
   }
   return {};
+}
+
+let openaiClient;
+function getOpenAIClient() {
+  if (!OPENAI_API_KEY) return null;
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: OPENAI_API_KEY,
+      ...(OPENAI_BASE_URL ? { baseURL: OPENAI_BASE_URL } : {}),
+    });
+  }
+  return openaiClient;
+}
+
+function chooseVisionPhoto(passedPhotos) {
+  if (!Array.isArray(passedPhotos) || !passedPhotos.length) return null;
+  return (
+    passedPhotos.find((p) => String(p.slot_id || '').trim().toLowerCase() === 'daylight') ||
+    passedPhotos[0] ||
+    null
+  );
+}
+
+async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
+  if (!photoId) return { ok: false, reason: 'photo_id_missing' };
+  if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, reason: 'pivota_backend_not_configured' };
+
+  const authHeaders = buildPivotaBackendAuthHeaders(req);
+  if (!Object.keys(authHeaders).length) return { ok: false, reason: 'pivota_backend_auth_not_configured' };
+
+  const upstreamResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/download-url`, {
+    timeout: 12000,
+    validateStatus: () => true,
+    headers: authHeaders,
+    params: { upload_id: photoId },
+  });
+
+  const download = upstreamResp && upstreamResp.data && upstreamResp.data.download ? upstreamResp.data.download : null;
+  const downloadUrl = download && typeof download.url === 'string' ? download.url.trim() : '';
+  if (upstreamResp.status !== 200 || !downloadUrl) {
+    const detail = pickUpstreamErrorDetail(upstreamResp.data);
+    return {
+      ok: false,
+      reason: 'pivota_backend_download_url_failed',
+      status: upstreamResp.status,
+      detail: detail || null,
+    };
+  }
+
+  const contentTypeUpstream =
+    typeof upstreamResp.data.content_type === 'string' && upstreamResp.data.content_type.trim()
+      ? upstreamResp.data.content_type.trim()
+      : null;
+
+  const blobResp = await axios.get(downloadUrl, {
+    timeout: 12000,
+    validateStatus: () => true,
+    responseType: 'arraybuffer',
+    maxBodyLength: 15 * 1024 * 1024,
+    maxContentLength: 15 * 1024 * 1024,
+  });
+  if (blobResp.status !== 200 || !blobResp.data) {
+    return { ok: false, reason: 'photo_download_failed', status: blobResp.status };
+  }
+  const buffer = Buffer.from(blobResp.data);
+  const contentTypeHeader =
+    blobResp.headers && (blobResp.headers['content-type'] || blobResp.headers['Content-Type'])
+      ? String(blobResp.headers['content-type'] || blobResp.headers['Content-Type']).trim()
+      : null;
+  return {
+    ok: true,
+    buffer,
+    contentType: contentTypeHeader || contentTypeUpstream || 'image/jpeg',
+  };
+}
+
+async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSummary, recentLogsSummary } = {}) {
+  if (!SKIN_VISION_ENABLED) return { ok: false, reason: 'vision_disabled' };
+  const client = getOpenAIClient();
+  if (!client) return { ok: false, reason: 'openai_not_configured' };
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) return { ok: false, reason: 'image_missing' };
+
+  const optimized = await sharp(imageBuffer)
+    .rotate()
+    .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 82 })
+    .toBuffer();
+  const dataUrl = `data:image/jpeg;base64,${optimized.toString('base64')}`;
+
+  const replyLanguage = language === 'CN' ? 'Simplified Chinese' : 'English';
+  const replyInstruction =
+    language === 'CN' ? '请只用简体中文回答，不要使用英文。' : 'IMPORTANT: Reply ONLY in English. Do not use Chinese.';
+
+  const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
+  const logsLine = Array.isArray(recentLogsSummary) && recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
+
+  const prompt =
+    `${profileLine}\n` +
+    `${logsLine ? `${logsLine}\n` : ''}` +
+    `Task: You are a cautious skincare assistant. Use the provided daylight selfie photo ONLY to infer *visible* skin signals (redness, acne, oiliness/shine, dryness/flaking, pigmentation, texture). Do NOT diagnose medical conditions.\n\n` +
+    `Return ONLY a valid JSON object (no markdown) with this exact shape:\n` +
+    `{\n` +
+    `  "features": [\n` +
+    `    {"observation": "…", "confidence": "pretty_sure" | "somewhat_sure" | "not_sure"}\n` +
+    `  ],\n` +
+    `  "strategy": "…",\n` +
+    `  "needs_risk_check": true | false\n` +
+    `}\n\n` +
+    `Rules:\n` +
+    `- DO NOT output any numeric scores/percentages.\n` +
+    `- DO NOT infer age, race/ethnicity, pregnancy status, or health conditions.\n` +
+    `- Observations must be cautious and actionable (barrier, acne risk, pigmentation, irritation, hydration, safety).\n` +
+    `- Strategy must be stepwise and END with ONE direct clarifying question (must include a '?' or '？').\n` +
+    `- DO NOT recommend specific products/brands.\n` +
+    `- Keep it concise: 4–6 features; strategy under 900 characters.\n` +
+    `Language: ${replyLanguage}.\n` +
+    `${replyInstruction}\n`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SKIN_VISION_TIMEOUT_MS);
+  try {
+    const resp = await client.chat.completions.create(
+      {
+        model: SKIN_VISION_MODEL,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'You produce ONLY JSON.' },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+      },
+      { signal: controller.signal },
+    );
+
+    const content = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
+    const parsedObj = extractJsonObject(content);
+    const analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language });
+    if (!analysis) return { ok: false, reason: 'vision_output_invalid' };
+    return { ok: true, analysis };
+  } catch (err) {
+    if (err && err.name === 'AbortError') return { ok: false, reason: 'vision_timeout' };
+    return { ok: false, reason: 'vision_failed', error: err && (err.code || err.message) ? String(err.code || err.message) : null };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function sleep(ms) {
@@ -300,6 +467,44 @@ function getUpstreamStructuredOrJson(upstream) {
   }
   if (upstream && typeof upstream.answer === 'string') return extractJsonObject(upstream.answer);
   return null;
+}
+
+function unwrapCodeFence(text) {
+  const t = String(text || '').trim();
+  if (!t.startsWith('```')) return t;
+  const firstNewline = t.indexOf('\n');
+  const lastFence = t.lastIndexOf('```');
+  if (firstNewline === -1 || lastFence === -1 || lastFence <= firstNewline) return t;
+  return t.slice(firstNewline + 1, lastFence).trim();
+}
+
+function looksLikeJsonOrCode(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) return true;
+
+  if (t.startsWith('```')) {
+    const firstLine = t.split('\n')[0].toLowerCase();
+    if (firstLine.includes('json') || firstLine.includes('typescript') || firstLine.includes('javascript') || firstLine.includes('ts') || firstLine.includes('js')) {
+      return true;
+    }
+    const inner = unwrapCodeFence(t);
+    if ((inner.startsWith('{') && inner.endsWith('}')) || (inner.startsWith('[') && inner.endsWith(']'))) return true;
+  }
+
+  return false;
+}
+
+function sanitizeUpstreamAnswer(answer, { language, hasCards, hasStructured } = {}) {
+  const t = typeof answer === 'string' ? answer : '';
+  if (!looksLikeJsonOrCode(t)) return t;
+
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const hasAnything = Boolean(hasCards) || Boolean(hasStructured);
+  if (lang === 'CN') {
+    return hasAnything ? '我已经把结果整理成结构化卡片（见下方）。' : '我已收到你的信息。';
+  }
+  return hasAnything ? 'I formatted the result into structured cards below.' : 'Got it.';
 }
 
 function buildProductInputText(inputObj, url) {
@@ -1030,6 +1235,304 @@ function mountAuroraBffRoutes(app, { logger }) {
     }
   });
 
+  // Proxy upload to avoid browser-to-storage CORS issues.
+  // Request: multipart/form-data with fields:
+  // - slot_id (required)
+  // - consent=true (required)
+  // - file field: photo (required)
+  app.post('/v1/photos/upload', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    let tmpDir = null;
+    try {
+      requireAuroraUid(ctx);
+
+      if (USE_AURORA_BFF_MOCK) {
+        const photoId = `photo_${ctx.request_id}_${Date.now()}`;
+        const payload = {
+          photo_id: photoId,
+          slot_id: 'daylight',
+          qc_status: 'passed',
+          qc: { state: 'done', qc_status: 'passed', advice: { summary: 'Mock: photo looks good.', suggestions: [] } },
+        };
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `confirm_${ctx.request_id}`,
+              type: 'photo_confirm',
+              payload,
+              field_missing: [{ field: 'upload.url', reason: 'mock_mode' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'photo_upload', qc_status: 'passed' })],
+        });
+        return res.json(envelope);
+      }
+
+      const authHeaders = buildPivotaBackendAuthHeaders(req);
+      if (!PIVOTA_BACKEND_BASE_URL) {
+        const payload = { photo_id: null, slot_id: null, qc_status: null };
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Photo upload is not configured.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `confirm_${ctx.request_id}`,
+              type: 'photo_confirm',
+              payload,
+              field_missing: [{ field: 'photo_id', reason: 'pivota_backend_not_configured' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'PHOTO_UPLOAD_NOT_CONFIGURED' })],
+        });
+        return res.status(501).json(envelope);
+      }
+      if (!Object.keys(authHeaders).length) {
+        const payload = { photo_id: null, slot_id: null, qc_status: null };
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Photo upload auth is not configured.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `confirm_${ctx.request_id}`,
+              type: 'photo_confirm',
+              payload,
+              field_missing: [{ field: 'photo_id', reason: 'pivota_backend_auth_not_configured' }],
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'PHOTO_UPLOAD_AUTH_NOT_CONFIGURED' })],
+        });
+        return res.status(501).json(envelope);
+      }
+
+      const { fields, files, tmpDir: parsedTmpDir } = await parseMultipart(req, {
+        maxBytes: PHOTO_UPLOAD_PROXY_MAX_BYTES,
+        allowedContentTypes: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']),
+        requiredFields: ['slot_id', 'consent'],
+      });
+      tmpDir = parsedTmpDir;
+
+      const slotId = String(fields.slot_id || '').trim();
+      if (!slotId) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Missing slot_id.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', detail: 'slot_id_required' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const consentRaw = String(fields.consent || '').trim().toLowerCase();
+      const consent = consentRaw === 'true' || consentRaw === '1' || consentRaw === 'yes';
+      if (!consent) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('User consent is required.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'USER_CONSENT_REQUIRED' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'USER_CONSENT_REQUIRED' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const fileEntry = files.photo || files.file || files.image || Object.values(files || {})[0];
+      if (!fileEntry || !fileEntry.path) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Missing photo file.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', detail: 'photo_file_required' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const stat = fs.statSync(fileEntry.path);
+      const byteSize = Number.isFinite(stat.size) ? stat.size : null;
+      const contentType = fileEntry.contentType || 'image/jpeg';
+
+      const presignResp = await axios.post(
+        `${PIVOTA_BACKEND_BASE_URL}/photos/presign`,
+        {
+          content_type: contentType,
+          ...(byteSize ? { byte_size: byteSize } : {}),
+          consent: true,
+          user_id: ctx.aurora_uid,
+        },
+        {
+          timeout: 12000,
+          validateStatus: () => true,
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+        },
+      );
+
+      if (presignResp.status !== 200 || !presignResp.data || !presignResp.data.upload_id || !presignResp.data.upload) {
+        const detail = pickUpstreamErrorDetail(presignResp.data);
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Failed to start photo upload.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: { error: 'PHOTO_PRESIGN_UPSTREAM_FAILED', status: presignResp.status, detail: detail || null },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'PHOTO_PRESIGN_UPSTREAM_FAILED', status: presignResp.status })],
+        });
+        return res.status(presignResp.status >= 400 ? presignResp.status : 502).json(envelope);
+      }
+
+      const uploadId = String(presignResp.data.upload_id);
+      const upstreamUpload = presignResp.data.upload || {};
+      const uploadUrl = typeof upstreamUpload.url === 'string' ? upstreamUpload.url.trim() : '';
+      const uploadMethod = typeof upstreamUpload.method === 'string' && upstreamUpload.method.trim()
+        ? upstreamUpload.method.trim().toUpperCase()
+        : 'PUT';
+      const uploadHeaders = upstreamUpload.headers && typeof upstreamUpload.headers === 'object' ? upstreamUpload.headers : {};
+
+      if (!uploadUrl) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Upload URL is missing from upstream.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'UPSTREAM_MISSING_UPLOAD_URL' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'UPSTREAM_MISSING_UPLOAD_URL' })],
+        });
+        return res.status(502).json(envelope);
+      }
+
+      const uploadResp = await axios.request({
+        method: uploadMethod,
+        url: uploadUrl,
+        headers: uploadHeaders,
+        data: fs.createReadStream(fileEntry.path),
+        timeout: 120000,
+        maxBodyLength: 30 * 1024 * 1024,
+        maxContentLength: 30 * 1024 * 1024,
+        validateStatus: () => true,
+      });
+
+      if (uploadResp.status < 200 || uploadResp.status >= 300) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Failed to upload photo bytes.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: { error: 'PHOTO_UPLOAD_BYTES_FAILED', status: uploadResp.status },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'PHOTO_UPLOAD_BYTES_FAILED', status: uploadResp.status })],
+        });
+        return res.status(502).json(envelope);
+      }
+
+      const confirmResp = await axios.post(
+        `${PIVOTA_BACKEND_BASE_URL}/photos/confirm`,
+        { upload_id: uploadId, ...(byteSize ? { byte_size: byteSize } : {}) },
+        {
+          timeout: 12000,
+          validateStatus: () => true,
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+        },
+      );
+
+      if (confirmResp.status !== 200 || !confirmResp.data) {
+        const detail = pickUpstreamErrorDetail(confirmResp.data);
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Failed to confirm upload.'),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: { error: 'PHOTO_CONFIRM_UPSTREAM_FAILED', status: confirmResp.status, detail: detail || null },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'PHOTO_CONFIRM_UPSTREAM_FAILED', status: confirmResp.status })],
+        });
+        return res.status(confirmResp.status >= 400 ? confirmResp.status : 502).json(envelope);
+      }
+
+      let qcStatus =
+        typeof confirmResp.data.qc_status === 'string' && confirmResp.data.qc_status ? confirmResp.data.qc_status : null;
+      let qc = confirmResp.data.qc && typeof confirmResp.data.qc === 'object' ? confirmResp.data.qc : null;
+      let nextPollMs = typeof confirmResp.data.next_poll_ms === 'number' ? confirmResp.data.next_poll_ms : null;
+
+      const deadlineMs = Date.now() + 6000;
+      let lastQcData = null;
+      while (!qcStatus && Date.now() < deadlineMs) {
+        const waitMs = Math.min(1200, Math.max(400, nextPollMs || 1000));
+        await sleep(waitMs);
+
+        const qcResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/qc`, {
+          timeout: 12000,
+          validateStatus: () => true,
+          headers: authHeaders,
+          params: { upload_id: uploadId },
+        });
+
+        if (qcResp.status !== 200 || !qcResp.data) break;
+        lastQcData = qcResp.data;
+        qcStatus = typeof qcResp.data.qc_status === 'string' && qcResp.data.qc_status ? qcResp.data.qc_status : null;
+        qc = qcResp.data.qc && typeof qcResp.data.qc === 'object' ? qcResp.data.qc : qc;
+        nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
+      }
+
+      const payload = {
+        photo_id: uploadId,
+        slot_id: slotId,
+        qc_status: qcStatus,
+        ...(qc ? { qc } : {}),
+        ...(typeof nextPollMs === 'number' ? { next_poll_ms: nextPollMs } : {}),
+        ...(lastQcData && lastQcData.qc_status == null ? { qc_pending: true } : {}),
+      };
+
+      const fieldMissing = [];
+      if (!qcStatus) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `confirm_${ctx.request_id}`,
+            type: 'photo_confirm',
+            payload,
+            ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'value_moment', { kind: 'photo_upload', qc_status: qcStatus })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const status = err?.statusCode || err?.status || 500;
+      const code = err?.code || 'PHOTO_UPLOAD_FAILED';
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage('Failed to upload photo.'),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code })],
+      });
+      return res.status(status).json(envelope);
+    } finally {
+      if (tmpDir) rmrf(tmpDir);
+    }
+  });
+
   app.post('/v1/photos/confirm', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -1224,20 +1727,75 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
       const photoQcParts = [];
+      const passedPhotos = [];
       let passedCount = 0;
       for (const p of photos) {
         const slot = String(p.slot_id || '').trim();
         const qc = String(p.qc_status || '').trim().toLowerCase();
+        const photoId = typeof p.photo_id === 'string' ? p.photo_id.trim() : '';
         if (slot && qc) photoQcParts.push(`${slot}:${qc}`);
-        if (qc === 'passed') passedCount += 1;
+        if (qc === 'passed') {
+          passedCount += 1;
+          if (slot && photoId) passedPhotos.push({ slot_id: slot, photo_id: photoId, qc_status: qc });
+        }
       }
       const photosProvided = passedCount > 0;
 
       const profileSummary = summarizeProfileForContext(profile);
       const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
 
+      const usePhoto = parsed.data.use_photo === true;
+      const analysisFieldMissing = [];
+      let usedPhotos = false;
+      let analysisSource = 'rule_based';
+
       let analysis = null;
-      if (AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+      if (usePhoto) {
+        const chosen = chooseVisionPhoto(passedPhotos);
+        if (!chosen) {
+          analysisFieldMissing.push({ field: 'photos', reason: 'no_passed_photo' });
+        } else {
+          let photoBytes = null;
+          try {
+            const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: chosen.photo_id });
+            if (resp && resp.ok) photoBytes = resp.buffer;
+            else {
+              analysisFieldMissing.push({
+                field: 'analysis.used_photos',
+                reason: resp && resp.reason ? resp.reason : 'photo_fetch_failed',
+              });
+            }
+          } catch (err) {
+            analysisFieldMissing.push({
+              field: 'analysis.used_photos',
+              reason: 'photo_fetch_failed',
+            });
+            logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes');
+          }
+
+          if (photoBytes) {
+            const vision = await runOpenAIVisionSkinAnalysis({
+              imageBuffer: photoBytes,
+              language: ctx.lang,
+              profileSummary,
+              recentLogsSummary,
+            });
+            if (vision && vision.ok && vision.analysis) {
+              analysis = vision.analysis;
+              usedPhotos = true;
+              analysisSource = 'vision_openai';
+            } else if (vision && !vision.ok) {
+              analysisFieldMissing.push({
+                field: 'analysis.used_photos',
+                reason: vision.reason || 'vision_failed',
+              });
+              if (vision.error) logger?.warn({ err: vision.error }, 'aurora bff: vision skin analysis failed');
+            }
+          }
+        }
+      }
+
+      if (!analysis && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
         const replyLanguage = ctx.lang === 'CN' ? 'Simplified Chinese' : 'English';
         const replyInstruction = ctx.lang === 'CN'
           ? '请只用简体中文回答，不要使用英文。'
@@ -1245,7 +1803,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
         const logsLine = recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
-        const photoLine = `photos_provided=${photosProvided ? 'yes' : 'no'}; photo_qc=${photoQcParts.length ? photoQcParts.join(', ') : 'none'}.`;
+        const photoLine = `photos_provided=${photosProvided ? 'yes' : 'no'}; photo_qc=${photoQcParts.length ? photoQcParts.join(', ') : 'none'}; photos_accessible=no.`;
 
         const prompt =
           `${profileLine}\n` +
@@ -1279,6 +1837,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
         const parsedObj = extractJsonObject(answer);
         analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
+        if (analysis) analysisSource = 'aurora_text';
       }
 
       if (!analysis) analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
@@ -1294,11 +1853,14 @@ function mountAuroraBffRoutes(app, { logger }) {
               analysis,
               photos_provided: photosProvided,
               photo_qc: photoQcParts,
+              used_photos: usedPhotos,
+              analysis_source: analysisSource,
             },
+            ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'value_moment', { kind: 'skin_analysis' })],
+        events: [makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: analysisSource })],
       });
       return res.json(envelope);
     } catch (err) {
@@ -2047,8 +2609,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         fieldMissing.push({ field: 'aurora_structured', reason: 'recommendations_not_requested' });
       }
 
+      const safeAnswer = sanitizeUpstreamAnswer(answer, {
+        language: ctx.lang,
+        hasCards: rawCards.length > 0,
+        hasStructured: Boolean(structured && !structuredBlocked),
+      });
+
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage(answer, 'markdown'),
+        assistant_message: makeAssistantMessage(safeAnswer, 'markdown'),
         suggested_chips: suggestedChips,
         cards: [
           ...(structured && !structuredBlocked
