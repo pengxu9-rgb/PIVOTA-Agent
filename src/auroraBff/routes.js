@@ -914,20 +914,21 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     lang: ctx.lang,
     trigger_source: ctx.trigger_source,
     intent: 'alternatives',
+    action_id: 'chip.action.dupe_compare',
   });
 
   const query =
     `${prefix}` +
-    `Task: Parse the user's product input into a normalized product entity.\n` +
-    `Also return alternatives (dupe/similar/premium) for the anchor product if available.\n` +
-    `Input: ${bestInput}`;
+    `Task: Deep-scan this product and return alternatives (dupe/similar/premium) if available.\n` +
+    `Return ONLY a JSON object with keys: alternatives (array).\n` +
+    `Product: ${bestInput}`;
 
   let upstream = null;
   try {
     upstream = await auroraChat({
       baseUrl: AURORA_DECISION_BASE_URL,
       query,
-      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+      timeoutMs: Math.max(RECO_ALTERNATIVES_TIMEOUT_MS, 14000),
       ...(anchor ? { anchor_product_id: anchor } : {}),
     });
   } catch (err) {

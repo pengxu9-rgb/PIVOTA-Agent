@@ -207,7 +207,29 @@ function mockAuroraChat(query) {
           expert_notes: { sensitivity_flags: 'Patch test recommended.', citations: ['kb:mock_scan_1'] },
           how_to_use: null,
         },
-        alternatives: [],
+        alternatives: [
+          {
+            product: {
+              product_id: 'mock_dupe_1',
+              sku_id: 'mock_dupe_1',
+              brand: 'MockDupeBrand',
+              name: 'Mock Dupe Product',
+              category: 'treatment',
+              display_name: 'MockDupeBrand Mock Dupe Product',
+              availability: ['Global'],
+              price: { usd: null, cny: null, unknown: true },
+            },
+            similarity_score: 82,
+            tradeoffs: {
+              missing_actives: ['niacinamide'],
+              added_benefits: ['peptides'],
+              texture_finish_differences: ['Mock: dupe has a lighter texture.'],
+              price_delta_usd: null,
+              availability_note: null,
+            },
+            evidence: { kb_citations: ['kb:mock_alt_1'] },
+          },
+        ],
         kb_requirements_check: { missing_fields: [], notes: [] },
       },
     };
