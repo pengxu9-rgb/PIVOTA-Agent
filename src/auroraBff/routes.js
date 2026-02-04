@@ -566,6 +566,17 @@ function coerceBoolean(value) {
   return s === 'true' || s === '1' || s === 'yes' || s === 'y' || s === 'on';
 }
 
+function classifyStorageError(err) {
+  const code = err && err.code ? String(err.code) : null;
+  const sqlState = code && /^[0-9A-Z]{5}$/.test(code) ? code : null;
+  const netCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN']);
+
+  const dbNotConfigured = code === 'NO_DATABASE';
+  const dbSchemaError = sqlState === '42P01' || sqlState === '42703' || sqlState === '42883';
+  const dbError = dbNotConfigured || Boolean(sqlState) || netCodes.has(code);
+  return { code, sqlState, dbError, dbNotConfigured, dbSchemaError };
+}
+
 function extractIncludeAlternativesFromAction(action) {
   if (!action || typeof action !== 'object') return false;
   const data = action.data && typeof action.data === 'object' ? action.data : null;
@@ -1404,20 +1415,35 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_START_FAILED';
-      const status = code === 'INVALID_EMAIL' ? 400 : code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+      const fallbackCode = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_START_FAILED';
+      const { code: storageCode, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+      const code = storageCode || fallbackCode;
+      const status = code === 'INVALID_EMAIL' ? 400 : code === 'AUTH_NOT_CONFIGURED' ? 503 : dbError ? 503 : 500;
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage(
           code === 'AUTH_NOT_CONFIGURED'
             ? ctx.lang === 'CN'
               ? '登录暂不可用（缺少配置）。'
               : 'Sign-in is not configured yet.'
+            : dbError
+              ? ctx.lang === 'CN'
+                ? '登录暂不可用（存储未就绪）。请稍后重试。'
+                : 'Sign-in is not ready yet (storage unavailable). Please try again shortly.'
             : ctx.lang === 'CN'
               ? '验证码发送失败，请稍后重试。'
               : "Couldn't send a sign-in code. Please try again.",
         ),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        cards: [
+          {
+            card_id: `err_${ctx.request_id}`,
+            type: 'error',
+            payload: {
+              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : code,
+              ...(storageCode ? { code: storageCode } : {}),
+            },
+          },
+        ],
         session_patch: {},
         events: [makeEvent(ctx, 'error', { code })],
       });
@@ -1491,20 +1517,35 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_VERIFY_FAILED';
-      const status = code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+      const fallbackCode = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_VERIFY_FAILED';
+      const { code: storageCode, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+      const code = storageCode || fallbackCode;
+      const status = code === 'AUTH_NOT_CONFIGURED' ? 503 : dbError ? 503 : 500;
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage(
           code === 'AUTH_NOT_CONFIGURED'
             ? ctx.lang === 'CN'
               ? '登录暂不可用（缺少配置）。'
               : 'Sign-in is not configured yet.'
+            : dbError
+              ? ctx.lang === 'CN'
+                ? '登录暂不可用（存储未就绪）。请稍后重试。'
+                : 'Sign-in is not ready yet (storage unavailable). Please try again shortly.'
             : ctx.lang === 'CN'
               ? '登录失败，请稍后重试。'
               : 'Sign-in failed. Please try again.',
         ),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        cards: [
+          {
+            card_id: `err_${ctx.request_id}`,
+            type: 'error',
+            payload: {
+              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : code,
+              ...(storageCode ? { code: storageCode } : {}),
+            },
+          },
+        ],
         session_patch: {},
         events: [makeEvent(ctx, 'error', { code })],
       });
@@ -1601,20 +1642,35 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_PASSWORD_LOGIN_FAILED';
-      const status = code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+      const fallbackCode = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_PASSWORD_LOGIN_FAILED';
+      const { code: storageCode, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+      const code = storageCode || fallbackCode;
+      const status = code === 'AUTH_NOT_CONFIGURED' ? 503 : dbError ? 503 : 500;
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage(
           code === 'AUTH_NOT_CONFIGURED'
             ? ctx.lang === 'CN'
               ? '登录暂不可用（缺少配置）。'
               : 'Sign-in is not configured yet.'
+            : dbError
+              ? ctx.lang === 'CN'
+                ? '登录暂不可用（存储未就绪）。请稍后重试。'
+                : 'Sign-in is not ready yet (storage unavailable). Please try again shortly.'
             : ctx.lang === 'CN'
               ? '登录失败，请稍后重试。'
               : 'Sign-in failed. Please try again.',
         ),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        cards: [
+          {
+            card_id: `err_${ctx.request_id}`,
+            type: 'error',
+            payload: {
+              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : code,
+              ...(storageCode ? { code: storageCode } : {}),
+            },
+          },
+        ],
         session_patch: {},
         events: [makeEvent(ctx, 'error', { code })],
       });
@@ -1673,9 +1729,19 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_PASSWORD_SET_FAILED';
+      const fallbackCode = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_PASSWORD_SET_FAILED';
+      const { code: storageCode, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+      const code = storageCode || fallbackCode;
       const status =
-        code === 'INVALID_PASSWORD' ? 400 : code === 'UNAUTHORIZED' ? 401 : code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+        code === 'INVALID_PASSWORD'
+          ? 400
+          : code === 'UNAUTHORIZED'
+            ? 401
+            : code === 'AUTH_NOT_CONFIGURED'
+              ? 503
+              : dbError
+                ? 503
+                : 500;
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage(
           code === 'INVALID_PASSWORD'
@@ -1686,12 +1752,25 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? ctx.lang === 'CN'
                 ? '登录暂不可用（缺少配置）。'
                 : 'Sign-in is not configured yet.'
+              : dbError
+                ? ctx.lang === 'CN'
+                  ? '暂时无法保存密码（存储未就绪）。请稍后重试。'
+                  : "Couldn't save password yet (storage unavailable). Please try again shortly."
               : ctx.lang === 'CN'
                 ? '设置密码失败，请稍后重试。'
                 : "Couldn't set password. Please try again.",
         ),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        cards: [
+          {
+            card_id: `err_${ctx.request_id}`,
+            type: 'error',
+            payload: {
+              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : code,
+              ...(storageCode ? { code: storageCode } : {}),
+            },
+          },
+        ],
         session_patch: {},
         events: [makeEvent(ctx, 'error', { code })],
       });
@@ -2948,20 +3027,39 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       const photosProvided = passedCount > 0;
 
-      const profileSummary = summarizeProfileForContext(profile);
+      let profileSummary = summarizeProfileForContext(profile);
       const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
-      const hasRoutine = Boolean(profileSummary && profileSummary.currentRoutine);
-      const hasProfileSignal = Boolean(
-        profileSummary &&
-          (profileSummary.skinType ||
-            profileSummary.sensitivity ||
-            profileSummary.barrierStatus ||
-            (Array.isArray(profileSummary.goals) && profileSummary.goals.length) ||
-            profileSummary.region ||
-            profileSummary.budgetTier ||
-            (Array.isArray(profileSummary.contraindications) && profileSummary.contraindications.length)),
+      const routineFromRequest = parsed.data.currentRoutine;
+
+      if (routineFromRequest !== undefined) {
+        // Best-effort persistence. Analysis should still proceed even if storage is unavailable.
+        profile = { ...(profile || {}), currentRoutine: routineFromRequest };
+        try {
+          profile = await upsertProfileForIdentity(
+            { auroraUid: identity.auroraUid, userId: identity.userId },
+            { currentRoutine: routineFromRequest },
+          );
+        } catch (err) {
+          logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist current routine for analysis');
+        }
+        profileSummary = summarizeProfileForContext(profile);
+      }
+
+      const routineCandidate = routineFromRequest !== undefined ? routineFromRequest : profileSummary && profileSummary.currentRoutine;
+      const hasRoutine = Boolean(
+        routineCandidate != null &&
+          (typeof routineCandidate === 'string'
+            ? String(routineCandidate).trim().length > 0
+            : Array.isArray(routineCandidate)
+              ? routineCandidate.length > 0
+              : typeof routineCandidate === 'object'
+                ? Object.keys(routineCandidate).length > 0
+                : false),
       );
-      const hasPrimaryInput = hasProfileSignal || recentLogsSummary.length > 0 || photosProvided;
+
+      // "Dual input" policy: photos optional, routine strongly recommended.
+      // Treat missing routine as low-confidence and fall back to a baseline when no other primary signals exist.
+      const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0 || photosProvided;
 
       const usePhoto = parsed.data.use_photo === true;
       const analysisFieldMissing = [];
@@ -3023,7 +3121,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
         const logsLine = recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
         const photoLine = `photos_provided=${photosProvided ? 'yes' : 'no'}; photo_qc=${photoQcParts.length ? photoQcParts.join(', ') : 'none'}; photos_accessible=no.`;
-        const routineLine = hasRoutine ? `current_routine=${JSON.stringify(profileSummary.currentRoutine)}` : '';
+        let routineText = '';
+        if (hasRoutine) {
+          if (typeof routineCandidate === 'string') routineText = routineCandidate;
+          else {
+            try {
+              routineText = JSON.stringify(routineCandidate);
+            } catch {
+              routineText = '';
+            }
+          }
+        }
+        const routineLine = routineText ? `current_routine=${routineText.slice(0, 6000)}` : '';
 
         const prompt =
           `${profileLine}\n` +
@@ -3206,14 +3315,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const code = err && err.code ? String(err.code) : null;
-      const isDbUnavailable = code === 'NO_DATABASE';
-      const isDbSchemaError = code === '42P01' || code === '42703';
-      const status = isDbUnavailable || isDbSchemaError ? 503 : 500;
-      logger?.warn({ err: err.message, code, status }, 'profile update failed');
+      const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+      const status = dbError ? 503 : 500;
+      logger?.warn({ err: err?.message || String(err), code, status }, 'profile update failed');
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage(
-          isDbUnavailable || isDbSchemaError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save profile.',
+          dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save profile.',
         ),
         suggested_chips: [],
         cards: [
@@ -3221,7 +3328,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             card_id: `err_${ctx.request_id}`,
             type: 'error',
             payload: {
-              error: isDbUnavailable ? 'DB_NOT_CONFIGURED' : isDbSchemaError ? 'DB_SCHEMA_NOT_READY' : 'PROFILE_SAVE_FAILED',
+              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : 'PROFILE_SAVE_FAILED',
               ...(code ? { code } : {}),
             },
           },
@@ -3264,20 +3371,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const status = err.code === 'NO_DATABASE' ? 503 : 500;
-      logger?.warn({ err: err.message, status }, 'tracker log failed');
+      const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+      const status = dbError ? 503 : 500;
+      logger?.warn({ err: err?.message || String(err), code, status }, 'tracker log failed');
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage('Failed to save tracker log.'),
+        assistant_message: makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save tracker log.'),
         suggested_chips: [],
         cards: [
           {
             card_id: `err_${ctx.request_id}`,
             type: 'error',
-            payload: { error: err.code === 'NO_DATABASE' ? 'DB_NOT_CONFIGURED' : 'TRACKER_LOG_FAILED' },
+            payload: {
+              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : 'TRACKER_LOG_FAILED',
+              ...(code ? { code } : {}),
+            },
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: err.code || 'TRACKER_LOG_FAILED' })],
+        events: [makeEvent(ctx, 'error', { code: code || 'TRACKER_LOG_FAILED' })],
       });
       return res.status(status).json(envelope);
     }
@@ -3299,14 +3410,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const status = err.code === 'NO_DATABASE' ? 503 : 500;
-      logger?.warn({ err: err.message, status }, 'tracker recent failed');
+      const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
+      const status = dbError ? 503 : 500;
+      logger?.warn({ err: err?.message || String(err), code, status }, 'tracker recent failed');
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage('Failed to load tracker logs.'),
+        assistant_message: makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to load tracker logs.'),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'TRACKER_LOAD_FAILED' } }],
+        cards: [
+          {
+            card_id: `err_${ctx.request_id}`,
+            type: 'error',
+            payload: {
+              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : 'TRACKER_LOAD_FAILED',
+              ...(code ? { code } : {}),
+            },
+          },
+        ],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: err.code || 'TRACKER_LOAD_FAILED' })],
+        events: [makeEvent(ctx, 'error', { code: code || 'TRACKER_LOAD_FAILED' })],
       });
       return res.status(status).json(envelope);
     }

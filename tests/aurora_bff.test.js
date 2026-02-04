@@ -285,6 +285,9 @@ describe('Aurora BFF (/v1)', () => {
     expect(card.payload).toHaveProperty('analysis');
     expect(Array.isArray(card.payload.analysis.features)).toBe(true);
     expect(typeof card.payload.analysis.strategy).toBe('string');
+    expect(Array.isArray(card.field_missing) ? card.field_missing : []).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ field: 'profile.currentRoutine' })]),
+    );
   });
 
   test('Photo upload proxy: endpoint exists (mock)', async () => {

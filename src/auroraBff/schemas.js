@@ -256,6 +256,7 @@ const PhotosConfirmRequestSchema = z
 const SkinAnalysisRequestSchema = z
   .object({
     use_photo: z.boolean().optional(),
+    currentRoutine: z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any())]).optional(),
     photos: z
       .array(
         z

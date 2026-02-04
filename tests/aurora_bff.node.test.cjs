@@ -343,5 +343,9 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
 
   assert.equal(resp.status, 200);
   assert.ok(Array.isArray(resp.body?.cards));
-  assert.equal(resp.body.cards.some((c) => c.type === 'analysis_summary'), true);
+  const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
+  assert.ok(card);
+  assert.equal(card.payload?.analysis_source, 'baseline_low_confidence');
+  const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
+  assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
 });
