@@ -343,6 +343,36 @@ function classifyAlternativeKind(priceDeltaUsd) {
   return 'similar';
 }
 
+function isNoisyAltNote(value) {
+  const s = asString(value);
+  if (!s) return true;
+  const t = s.toLowerCase();
+  if (t.length > 90) return true;
+  if (/\b(varies|verify|percent|percentage|claim)\b/i.test(t)) return true;
+  if (/\b(e\.g\.|example|i\.e\.)\b/i.test(t)) return true;
+  if (/\bby region\b/i.test(t)) return true;
+  if (/\bunknown\b|\bn\/a\b/i.test(t)) return true;
+  return false;
+}
+
+function pickCleanAltNotes(items, max = 6) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(items) ? items : []) {
+    const s = asString(raw);
+    if (!s) continue;
+    const t = s.replace(/\s+/g, ' ').trim();
+    if (!t) continue;
+    if (isNoisyAltNote(t)) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', maxTotal = 3 } = {}) {
   const items = Array.isArray(alternatives) ? alternatives : [];
   const language = String(lang).toUpperCase() === 'CN' ? 'CN' : 'EN';
@@ -363,7 +393,8 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
 
     const t = asPlainObject(a.tradeoffs);
     const missingActives = t ? uniqueStrings(asStringArray(t.missing_actives || t.missingActives)) : [];
-    const addedBenefits = t ? uniqueStrings(asStringArray(t.added_benefits || t.addedBenefits)) : [];
+    const addedBenefitsRaw = t ? uniqueStrings(asStringArray(t.added_benefits || t.addedBenefits)) : [];
+    const addedBenefits = pickCleanAltNotes(addedBenefitsRaw, 8);
     const textureDiff = t ? uniqueStrings(asStringArray(t.texture_finish_differences || t.textureFinishDifferences)) : [];
     const availabilityNote = t ? asString(t.availability_note || t.availabilityNote) : null;
     const priceDeltaUsd = t ? asNumberOrNull(t.price_delta_usd || t.priceDeltaUsd) : null;
@@ -406,19 +437,21 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       tradeoffs.push(language === 'CN' ? `可得性：${availabilityNote}` : `Availability: ${availabilityNote}`);
     }
 
-    const reasons = [];
-    if (addedBenefits.length) {
+    const upstreamReasons = pickCleanAltNotes(asStringArray(a.reasons || a.why || a.rationale), 2);
+    const reasons = [...upstreamReasons];
+    if (!reasons.length && addedBenefits.length) {
+      const top = addedBenefits.slice(0, 4);
       reasons.push(
         language === 'CN'
-          ? `优势：新增亮点/活性：${addedBenefits.join('、')}`
-          : `Pros: Added benefits/actives: ${addedBenefits.join(', ')}`,
+          ? `优势：新增亮点/活性：${top.join('、')}`
+          : `Pros: Added benefits/actives: ${top.join(', ')}`,
       );
     }
-    if (priceDeltaUsd != null && priceDeltaUsd < -0.01) {
+    if (priceDeltaUsd != null && priceDeltaUsd < -0.01 && reasons.length < 2) {
       const abs = Math.round(Math.abs(priceDeltaUsd) * 100) / 100;
       reasons.push(language === 'CN' ? `优势：通常更省预算（约省 $${abs}）` : `Pros: Usually cheaper (save ~$${abs})`);
     }
-    if (availabilityNote) {
+    if (availabilityNote && reasons.length < 2) {
       reasons.push(language === 'CN' ? `优势：更容易买到（${availabilityNote}）` : `Pros: Easier to find (${availabilityNote})`);
     }
     if (!reasons.length && textureDiff.length) {
@@ -460,7 +493,7 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       kind,
       product,
       ...(similarity != null ? { similarity } : {}),
-      ...(reasons.length ? { reasons: uniqueStrings(reasons) } : {}),
+      ...(reasons.length ? { reasons: uniqueStrings(reasons).slice(0, 2) } : {}),
       tradeoffs: uniqueStrings(tradeoffs),
       ...(Object.keys(tradeoffs_detail).length ? { tradeoffs_detail } : {}),
       evidence,

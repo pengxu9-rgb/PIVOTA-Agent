@@ -18,14 +18,26 @@ const {
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
   SkinAnalysisRequestSchema,
+  AuthStartRequestSchema,
+  AuthVerifyRequestSchema,
 } = require('./schemas');
 const {
-  getUserProfile,
-  upsertUserProfile,
-  upsertSkinLog,
-  getRecentSkinLogs,
+  getProfileForIdentity,
+  upsertProfileForIdentity,
+  upsertSkinLogForIdentity,
+  getRecentSkinLogsForIdentity,
   isCheckinDue,
+  upsertIdentityLink,
+  migrateGuestDataToUser,
 } = require('./memoryStore');
+const {
+  createOtpChallenge,
+  verifyOtpChallenge,
+  createSession,
+  resolveSessionFromToken,
+  revokeSessionToken,
+  getBearerToken,
+} = require('./authStore');
 const {
   profileCompleteness,
   looksLikeDiagnosisStart,
@@ -92,8 +104,8 @@ const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
 })();
 
 const RECO_ALTERNATIVES_MAX_PRODUCTS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_MAX_PRODUCTS || 4);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4;
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_MAX_PRODUCTS || 5);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5;
   return Math.max(0, Math.min(6, v));
 })();
 
@@ -461,8 +473,8 @@ function buildLowConfidenceBaselineSkinAnalysis({ profile, language }) {
 
   const strategy =
     lang === 'CN'
-      ? '当前信息不足（缺少照片/缺少你正在用的产品），我先给低风险的 7 天基线：\n1) 少而稳：温和洁面 + 保湿 + 白天 SPF。\n2) 若刺痛/泛红：先停用强刺激活性（酸/高浓 VC/视黄醇），以修护为主。\n3) 任何新活性都从低频开始（每周 1–2 次），观察 72 小时。\n\n为了把建议做得更准：你愿意【上传一张自然光自拍】或【把你现在 AM/PM 用的产品（洁面/活性/保湿/SPF）列出来】吗？'
-      : "I don't have enough inputs yet (no photo and no current products). Here’s a low-risk 7‑day baseline:\n1) Keep it minimal: gentle cleanser + moisturizer + daytime SPF.\n2) If stinging/redness: pause strong actives (acids/high-strength vitamin C/retinoids) and focus on repair.\n3) Any new active: start 1–2×/week and watch the 72h response.\n\nTo make this truly personalized: would you share either a daylight selfie OR your current AM/PM products (cleanser/actives/moisturizer/SPF)?";
+      ? '当前信息不足（缺少你正在用的产品/步骤），我先给低风险的 7 天基线：\n1) 少而稳：温和洁面 + 保湿 + 白天 SPF。\n2) 若刺痛/泛红：先停用强刺激活性（酸/高浓 VC/视黄醇），以修护为主。\n3) 任何新活性都从低频开始（每周 1–2 次），观察 72 小时。\n\n为了把建议做得更准：请把你现在 AM/PM 用的产品（洁面/活性/保湿/SPF，名字或链接都行）发我；如果方便，也可以补一张自然光自拍（可选）。'
+      : "I don't have your current products/steps yet, so this is a low-confidence baseline:\n1) Keep it minimal: gentle cleanser + moisturizer + daytime SPF.\n2) If stinging/redness: pause strong actives (acids/high-strength vitamin C/retinoids) and focus on repair.\n3) Any new active: start 1–2×/week and watch the 72h response.\n\nTo personalize this safely: please share your current AM/PM products (cleanser/actives/moisturizer/SPF, names or links). If you'd like, you can also add a daylight selfie (optional).";
 
   return {
     features: features.slice(0, 6),
@@ -480,6 +492,30 @@ function requireAuroraUid(ctx) {
     throw err;
   }
   return uid;
+}
+
+async function resolveIdentity(req, ctx) {
+  const token = getBearerToken(req);
+  if (!token) return { auroraUid: ctx.aurora_uid, userId: null, userEmail: null, token: null, auth_invalid: false };
+
+  let session = null;
+  try {
+    session = await resolveSessionFromToken(token);
+  } catch {
+    session = null;
+  }
+
+  if (!session) return { auroraUid: ctx.aurora_uid, userId: null, userEmail: null, token: null, auth_invalid: true };
+
+  if (ctx.aurora_uid) {
+    try {
+      await upsertIdentityLink(ctx.aurora_uid, session.userId);
+    } catch {
+      // ignore
+    }
+  }
+
+  return { auroraUid: ctx.aurora_uid, userId: session.userId, userEmail: session.email, token, auth_invalid: false };
 }
 
 function parseProfilePatchFromAction(action) {
@@ -792,11 +828,23 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
   return (
     `User profile: skin type ${skinType}; barrier status: ${barrierStatus}; concerns: ${concernsStr}; region: ${region}; budget: ${budget}.\n` +
     (req ? `User request: ${req}\n` : '') +
-    `Task: Generate skincare recommendations.\n` +
+    `Task: Generate skincare product picks (NOT a full AM/PM routine).\n` +
     `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]).\n` +
-    `Each recommendation item should include: slot ("am"|"pm"|"other"), step, sku {brand,name,display_name,sku_id,product_id,category}, notes (string[]), evidence_pack.\n` +
+    `recommendations: up to 5 items, ranked.\n` +
+    `Each recommendation item MUST include:\n` +
+    `- slot: "other"\n` +
+    `- step: category label (cleanser/sunscreen/treatment/moisturizer/other)\n` +
+    `- score: integer 0..100 (fit score)\n` +
+    `- sku: {brand,name,display_name,sku_id,product_id,category,availability(string[]),price{usd,cny,unknown}}\n` +
+    `- notes: string[] (max 4). Notes must be end-user readable and user-specific.\n` +
+    `  - Include at least one note that explicitly references the user's profile (skin type / sensitivity / barrier / goals / budget).\n` +
+    `  - If recent_logs were provided, include one note that references the last 7 days trend; otherwise add missing_info: "recent_logs_missing".\n` +
+    `  - If upcoming plan/travel context is not available, add missing_info: "itinerary_unknown" (do NOT guess).\n` +
+    `- evidence_pack: {keyActives,sensitivityFlags,pairingRules,comparisonNotes,citations} (omit unknown keys; do NOT fabricate).\n` +
+    `- missing_info: string[] (per-item)\n` +
     `Rules:\n` +
     `- Do NOT include checkout links.\n` +
+    `- Do NOT recommend the exact same sku_id/product_id twice.\n` +
     `- If unsure, use null/unknown and list missing_info (do not fabricate).\n` +
     `- All free-text strings should be in ${replyLang}.\n`
   );
@@ -920,8 +968,10 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
 
   const query =
     `${prefix}` +
-    `Task: Deep-scan this product and return alternatives (dupe/similar/premium) if available.\n` +
+    `Task: Deep-scan this product and return alternatives (dupe/similar/premium) tailored to this user if possible.\n` +
     `Return ONLY a JSON object with keys: alternatives (array).\n` +
+    `Each alternative item should include: product (object), similarity_score (0..1 or 0..100), tradeoffs (object), reasons (string[] max 2), evidence (object), missing_info (string[]).\n` +
+    `Reasons must be end-user readable and explain why this alternative is useful for THIS user's profile/logs/budget (do NOT guess missing info; use missing_info).\n` +
     `Product: ${bestInput}\n` +
     (productJson ? `Product JSON: ${productJson}\n` : '');
 
@@ -1103,7 +1153,7 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   }
   const mapped = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
   const norm = normalizeRecoGenerate(mapped);
-  norm.payload = { ...norm.payload, intent: 'routine' };
+  norm.payload = { ...norm.payload, intent: 'routine', profile: profileSummary || null };
 
   if (includeAlternatives) {
     const alt = await enrichRecommendationsWithAlternatives({
@@ -1231,7 +1281,30 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   }
 
   const norm = normalizeRecoGenerate(mapped);
-  norm.payload = { ...norm.payload, intent: 'reco_products' };
+  norm.payload = { ...norm.payload, intent: 'reco_products', profile: profileSummary || null };
+  if (Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length) {
+    const deduped = [];
+    const seen = new Set();
+    for (const item of norm.payload.recommendations) {
+      if (!item || typeof item !== 'object') continue;
+      const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+      const candidate =
+        base && base.sku && typeof base.sku === 'object'
+          ? base.sku
+          : base && base.product && typeof base.product === 'object'
+            ? base.product
+            : base;
+      const anchorId = extractAnchorIdFromProductLike(candidate) || extractAnchorIdFromProductLike(base);
+      const inputText = buildProductInputText(candidate, null);
+      const key = String(anchorId || inputText || '').trim().toLowerCase();
+      if (!key) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push({ ...base, slot: 'other' });
+      if (deduped.length >= 8) break;
+    }
+    norm.payload = { ...norm.payload, recommendations: deduped };
+  }
   let alternativesDebug = null;
 
   if (includeAlternatives) {
@@ -1259,6 +1332,245 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
+  app.post('/v1/auth/start', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = AuthStartRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [
+            { card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const challenge = await createOtpChallenge({ email: parsed.data.email, language: ctx.lang });
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(
+          ctx.lang === 'CN'
+            ? '我已把验证码发送到你的邮箱。请输入验证码完成登录。'
+            : "I've sent a sign-in code to your email. Enter the code to continue.",
+        ),
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `auth_start_${ctx.request_id}`,
+            type: 'auth_challenge',
+            payload: {
+              email: challenge.email,
+              challenge_id: challenge.challengeId,
+              expires_at: challenge.expiresAt,
+              expires_in_seconds: challenge.expiresInSeconds,
+              delivery: challenge.delivery,
+              ...(challenge.debug_code ? { debug_code: challenge.debug_code } : {}),
+              ...(challenge.delivery_error ? { delivery_error: challenge.delivery_error } : {}),
+            },
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'auth_started', { delivery: challenge.delivery })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_START_FAILED';
+      const status = code === 'INVALID_EMAIL' ? 400 : code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(
+          code === 'AUTH_NOT_CONFIGURED'
+            ? ctx.lang === 'CN'
+              ? '登录暂不可用（缺少配置）。'
+              : 'Sign-in is not configured yet.'
+            : ctx.lang === 'CN'
+              ? '验证码发送失败，请稍后重试。'
+              : "Couldn't send a sign-in code. Please try again.",
+        ),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
+  app.post('/v1/auth/verify', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = AuthVerifyRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [
+            { card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const verification = await verifyOtpChallenge({ email: parsed.data.email, code: parsed.data.code });
+      if (!verification.ok) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(
+            ctx.lang === 'CN' ? '验证码无效或已过期。' : 'Invalid or expired code.',
+          ),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'INVALID_CODE', reason: verification.reason } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'INVALID_CODE', reason: verification.reason })],
+        });
+        return res.status(401).json(envelope);
+      }
+
+      const session = await createSession({ userId: verification.userId });
+
+      if (ctx.aurora_uid) {
+        try {
+          await upsertIdentityLink(ctx.aurora_uid, verification.userId);
+        } catch {
+          // ignore
+        }
+        try {
+          await migrateGuestDataToUser({ auroraUid: ctx.aurora_uid, userId: verification.userId });
+        } catch (err) {
+          logger?.warn({ err: err?.message || String(err) }, 'aurora bff: guest->account migration failed');
+        }
+      }
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(ctx.lang === 'CN' ? '登录成功。' : 'Signed in.'),
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `auth_${ctx.request_id}`,
+            type: 'auth_session',
+            payload: {
+              token: session.token,
+              expires_at: session.expiresAt,
+              user: { user_id: verification.userId, email: verification.email },
+            },
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'auth_verified', { user_id: verification.userId })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_VERIFY_FAILED';
+      const status = code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(
+          code === 'AUTH_NOT_CONFIGURED'
+            ? ctx.lang === 'CN'
+              ? '登录暂不可用（缺少配置）。'
+              : 'Sign-in is not configured yet.'
+            : ctx.lang === 'CN'
+              ? '登录失败，请稍后重试。'
+              : 'Sign-in failed. Please try again.',
+        ),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
+  app.get('/v1/auth/me', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const identity = await resolveIdentity(req, ctx);
+      if (!identity.userId) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(ctx.lang === 'CN' ? '未登录。' : 'Not signed in.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'UNAUTHORIZED' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'UNAUTHORIZED' })],
+        });
+        return res.status(401).json(envelope);
+      }
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `me_${ctx.request_id}`,
+            type: 'auth_me',
+            payload: {
+              user: { user_id: identity.userId, email: identity.userEmail },
+            },
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'value_moment', { kind: 'auth_me' })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const status = err && err.status ? err.status : 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage('Failed to load session.'),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'AUTH_ME_FAILED' } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code: err.code || 'AUTH_ME_FAILED' })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
+  app.post('/v1/auth/logout', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const token = getBearerToken(req);
+      if (token) {
+        try {
+          await revokeSessionToken(token);
+        } catch {
+          // ignore
+        }
+      }
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(ctx.lang === 'CN' ? '已退出登录。' : 'Signed out.'),
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `logout_${ctx.request_id}`,
+            type: 'auth_logout',
+            payload: { ok: true },
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'auth_logout', {})],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const status = err && err.status ? err.status : 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage('Failed to sign out.'),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'AUTH_LOGOUT_FAILED' } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code: err.code || 'AUTH_LOGOUT_FAILED' })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
   app.post('/v1/product/parse', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -1338,8 +1650,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const profile = await getUserProfile(ctx.aurora_uid).catch(() => null);
-      const recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7).catch(() => []);
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
       const profileSummary = summarizeProfileForContext(profile);
       const prefix = buildContextPrefix({ profile: profileSummary, recentLogs });
 
@@ -1414,8 +1727,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const profile = await getUserProfile(ctx.aurora_uid).catch(() => null);
-      const recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7).catch(() => []);
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
       const profileSummary = summarizeProfileForContext(profile);
       const prefix = buildContextPrefix({ profile: profileSummary, recentLogs });
 
@@ -1578,8 +1892,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const profile = await getUserProfile(ctx.aurora_uid).catch(() => null);
-      const recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7).catch(() => []);
+      const identity = await resolveIdentity(req, ctx);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
       const profileSummary = summarizeProfileForContext(profile);
 
       const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
@@ -2396,9 +2711,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let profile = null;
       let recentLogs = [];
+      const identity = await resolveIdentity(req, ctx);
       try {
-        profile = await getUserProfile(ctx.aurora_uid);
-        recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7);
+        profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
+        recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
       } catch (err) {
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
       }
@@ -2422,18 +2738,16 @@ function mountAuroraBffRoutes(app, { logger }) {
       const profileSummary = summarizeProfileForContext(profile);
       const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
       const hasRoutine = Boolean(profileSummary && profileSummary.currentRoutine);
-      const hasPrimaryInput = hasRoutine || photosProvided;
+      const hasPrimaryInput = hasRoutine;
 
       const usePhoto = parsed.data.use_photo === true;
       const analysisFieldMissing = [];
-      if (!hasPrimaryInput) {
-        analysisFieldMissing.push({ field: 'analysis.inputs', reason: 'missing_photos_and_currentRoutine' });
-      }
+      if (!hasRoutine) analysisFieldMissing.push({ field: 'profile.currentRoutine', reason: 'required_for_analysis' });
       let usedPhotos = false;
       let analysisSource = 'rule_based';
 
       let analysis = null;
-      if (usePhoto) {
+      if (usePhoto && hasRoutine) {
         const chosen = chooseVisionPhoto(passedPhotos);
         if (!chosen) {
           analysisFieldMissing.push({ field: 'photos', reason: 'no_passed_photo' });
@@ -2478,7 +2792,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      if (!analysis && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+      if (!analysis && hasRoutine && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
         const replyLanguage = ctx.lang === 'CN' ? 'Simplified Chinese' : 'English';
         const replyInstruction = ctx.lang === 'CN'
           ? '请只用简体中文回答，不要使用英文。'
@@ -2576,9 +2890,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       let profile = null;
       let recentLogs = [];
       let dbError = null;
+      const identity = await resolveIdentity(req, ctx);
       try {
-        profile = await getUserProfile(ctx.aurora_uid);
-        recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7);
+        profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
+        recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
       } catch (err) {
         dbError = err;
       }
@@ -2647,7 +2962,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const updated = await upsertUserProfile(ctx.aurora_uid, parsed.data);
+      const identity = await resolveIdentity(req, ctx);
+      const updated = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -2695,8 +3011,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const saved = await upsertSkinLog(ctx.aurora_uid, parsed.data);
-      const recent = await getRecentSkinLogs(ctx.aurora_uid, 7);
+      const identity = await resolveIdentity(req, ctx);
+      const saved = await upsertSkinLogForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
+      const recent = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -2733,7 +3050,8 @@ function mountAuroraBffRoutes(app, { logger }) {
     try {
       requireAuroraUid(ctx);
       const days = req.query.days ? Number(req.query.days) : 7;
-      const recent = await getRecentSkinLogs(ctx.aurora_uid, days);
+      const identity = await resolveIdentity(req, ctx);
+      const recent = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, days);
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
@@ -2961,12 +3279,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
+      const identity = await resolveIdentity(req, ctx);
+
       // Best-effort context injection.
       let profile = null;
       let recentLogs = [];
       try {
-        profile = await getUserProfile(ctx.aurora_uid);
-        recentLogs = await getRecentSkinLogs(ctx.aurora_uid, 7);
+        profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
+        recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
       } catch (err) {
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
       }
@@ -2981,7 +3301,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           // Always apply inline for gating even if DB is unavailable.
           profile = { ...(profile || {}), ...patchParsed.data };
           try {
-            profile = await upsertUserProfile(ctx.aurora_uid, patchParsed.data);
+            profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, patchParsed.data);
           } catch (err) {
             logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to apply profile chip patch');
           }
@@ -3090,7 +3410,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!profile || profile.budgetTier !== rawBudget) {
           profile = { ...(profile || {}), budgetTier: rawBudget };
           try {
-            profile = await upsertUserProfile(ctx.aurora_uid, { budgetTier: rawBudget });
+            profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, { budgetTier: rawBudget });
           } catch (err) {
             logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist budgetTier');
           }

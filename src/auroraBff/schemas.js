@@ -270,6 +270,19 @@ const SkinAnalysisRequestSchema = z
 	  })
 	  .strict();
 
+const AuthStartRequestSchema = z
+  .object({
+    email: z.string().email(),
+  })
+  .strict();
+
+const AuthVerifyRequestSchema = z
+  .object({
+    email: z.string().email(),
+    code: z.string().min(4).max(12),
+  })
+  .strict();
+
 module.exports = {
   LanguageSchema,
   TriggerSourceSchema,
@@ -296,4 +309,6 @@ module.exports = {
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
   SkinAnalysisRequestSchema,
+  AuthStartRequestSchema,
+  AuthVerifyRequestSchema,
 };
