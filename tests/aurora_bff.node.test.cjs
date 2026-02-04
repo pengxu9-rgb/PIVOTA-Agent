@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
+process.env.AURORA_DECISION_BASE_URL = '';
 
 const {
   shouldDiagnosisGate,
@@ -347,5 +348,95 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
   assert.ok(card);
   assert.equal(card.payload?.analysis_source, 'baseline_low_confidence');
   const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
+  assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), true);
+});
+
+test('/v1/analysis/skin: accepts routine input and avoids low-confidence baseline', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+    headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
+    body: {
+      use_photo: false,
+      currentRoutine: {
+        am: { cleanser: 'CeraVe Foaming Cleanser', spf: 'EltaMD UV Clear' },
+        pm: { cleanser: 'CeraVe Foaming Cleanser', treatment: 'Retinol 0.2%', moisturizer: 'CeraVe PM' },
+        notes: 'Sometimes stings after retinol.',
+      },
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  assert.ok(Array.isArray(resp.body?.cards));
+  const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
+  assert.ok(card);
+  assert.notEqual(card.payload?.analysis_source, 'baseline_low_confidence');
+
+  const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
   assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
+
+  const analysis = card.payload?.analysis;
+  assert.equal(Boolean(analysis && typeof analysis === 'object'), true);
+  assert.equal(Array.isArray(analysis.features), true);
+  assert.ok(analysis.features.length > 0);
 });

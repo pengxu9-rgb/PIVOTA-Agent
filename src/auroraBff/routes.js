@@ -3066,6 +3066,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       let usedPhotos = false;
       let analysisSource = 'rule_based';
 
+      if (!hasRoutine) analysisFieldMissing.push({ field: 'profile.currentRoutine', reason: 'missing' });
+
       let analysis = null;
       if (usePhoto) {
         const chosen = chooseVisionPhoto(passedPhotos);
