@@ -8,8 +8,17 @@ const AUTH_DEBUG_RETURN_CODE = String(process.env.AURORA_BFF_AUTH_DEBUG_RETURN_C
 
 const AUTH_PEPPER = String(process.env.AURORA_BFF_AUTH_PEPPER || process.env.AURORA_AUTH_PEPPER || '').trim();
 
+const EMAIL_PROVIDER = String(process.env.AURORA_BFF_AUTH_EMAIL_PROVIDER || '').trim().toLowerCase();
+
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const AUTH_EMAIL_FROM = String(process.env.AURORA_BFF_AUTH_EMAIL_FROM || process.env.AURORA_AUTH_EMAIL_FROM || '').trim();
+
+const SES_REGION = String(
+  process.env.AURORA_BFF_AUTH_SES_REGION ||
+    process.env.AWS_REGION ||
+    process.env.AWS_DEFAULT_REGION ||
+    '',
+).trim();
 
 const CHALLENGE_TTL_MS = Math.max(
   60_000,
@@ -55,6 +64,32 @@ function hashWithPepper(value) {
   return sha256Hex(`${AUTH_PEPPER}:${String(value || '')}`);
 }
 
+let _sesClient = null;
+
+function getSesClient() {
+  if (_sesClient) return _sesClient;
+  const region = SES_REGION;
+  if (!region) return null;
+
+  let mod = null;
+  try {
+    mod = require('@aws-sdk/client-ses');
+  } catch {
+    mod = null;
+  }
+  if (!mod || !mod.SESClient) return null;
+
+  _sesClient = new mod.SESClient({ region });
+  return _sesClient;
+}
+
+function extractEmailAddress(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  const m = s.match(/<([^>]+)>/);
+  return String(m ? m[1] : s).trim();
+}
+
 async function pruneExpired() {
   if (!AUTH_ENABLED) return;
   try {
@@ -96,15 +131,47 @@ function getBearerToken(req) {
 async function sendOtpEmail({ email, code, language }) {
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
 
-  if (!RESEND_API_KEY || !AUTH_EMAIL_FROM) {
-    return { ok: false, reason: 'email_not_configured' };
-  }
-
   const subject = lang === 'CN' ? 'Aurora 登录验证码' : 'Your Aurora sign-in code';
   const text =
     lang === 'CN'
       ? `你的 Aurora 登录验证码是：${code}\n\n10 分钟内有效。`
       : `Your Aurora sign-in code is: ${code}\n\nIt expires in 10 minutes.`;
+
+  const provider = EMAIL_PROVIDER || (RESEND_API_KEY ? 'resend' : 'ses');
+
+  if (provider === 'ses') {
+    const fromEmail = extractEmailAddress(AUTH_EMAIL_FROM);
+    const ses = getSesClient();
+    if (!ses || !fromEmail) return { ok: false, reason: 'email_not_configured' };
+
+    let mod = null;
+    try {
+      mod = require('@aws-sdk/client-ses');
+    } catch {
+      mod = null;
+    }
+    if (!mod || !mod.SendEmailCommand) return { ok: false, reason: 'email_not_configured' };
+
+    try {
+      await ses.send(
+        new mod.SendEmailCommand({
+          Source: fromEmail,
+          Destination: { ToAddresses: [email] },
+          Message: {
+            Subject: { Data: subject, Charset: 'UTF-8' },
+            Body: { Text: { Data: text, Charset: 'UTF-8' } },
+          },
+        }),
+      );
+      return { ok: true };
+    } catch (err) {
+      const message = err?.name || err?.message ? `${err?.name || ''} ${err?.message || ''}`.trim() : String(err);
+      return { ok: false, reason: 'email_send_failed', message: message.slice(0, 400) };
+    }
+  }
+
+  if (provider !== 'resend') return { ok: false, reason: 'email_not_configured' };
+  if (!RESEND_API_KEY || !AUTH_EMAIL_FROM) return { ok: false, reason: 'email_not_configured' };
 
   try {
     await axios.post(
@@ -125,7 +192,10 @@ async function sendOtpEmail({ email, code, language }) {
     );
     return { ok: true };
   } catch (err) {
-    const message = err && err.response && err.response.data ? JSON.stringify(err.response.data).slice(0, 400) : err?.message || String(err);
+    const message =
+      err && err.response && err.response.data
+        ? JSON.stringify(err.response.data).slice(0, 400)
+        : err?.message || String(err);
     return { ok: false, reason: 'email_send_failed', message };
   }
 }
