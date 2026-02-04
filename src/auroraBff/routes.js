@@ -3206,20 +3206,28 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const status = err.code === 'NO_DATABASE' ? 503 : 500;
-      logger?.warn({ err: err.message, status }, 'profile update failed');
+      const code = err && err.code ? String(err.code) : null;
+      const isDbUnavailable = code === 'NO_DATABASE';
+      const isDbSchemaError = code === '42P01' || code === '42703';
+      const status = isDbUnavailable || isDbSchemaError ? 503 : 500;
+      logger?.warn({ err: err.message, code, status }, 'profile update failed');
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage('Failed to save profile.'),
+        assistant_message: makeAssistantMessage(
+          isDbUnavailable || isDbSchemaError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save profile.',
+        ),
         suggested_chips: [],
         cards: [
           {
             card_id: `err_${ctx.request_id}`,
             type: 'error',
-            payload: { error: err.code === 'NO_DATABASE' ? 'DB_NOT_CONFIGURED' : 'PROFILE_SAVE_FAILED' },
+            payload: {
+              error: isDbUnavailable ? 'DB_NOT_CONFIGURED' : isDbSchemaError ? 'DB_SCHEMA_NOT_READY' : 'PROFILE_SAVE_FAILED',
+              ...(code ? { code } : {}),
+            },
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: err.code || 'PROFILE_SAVE_FAILED' })],
+        events: [makeEvent(ctx, 'error', { code: code || 'PROFILE_SAVE_FAILED' })],
       });
       return res.status(status).json(envelope);
     }
