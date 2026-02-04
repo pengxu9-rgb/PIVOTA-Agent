@@ -540,7 +540,8 @@ function normalizeRecoGenerate(raw) {
         recommendations: [],
         evidence: evOut.evidence,
         confidence: null,
-        missing_info: uniqueStrings(['upstream_missing_or_unstructured', ...(evOut.evidence?.missing_info || [])]),
+        missing_info: uniqueStrings(['upstream_missing_or_unstructured']),
+        warnings: uniqueStrings(evOut.evidence?.missing_info || []),
       },
       field_missing: [{ field: 'recommendations', reason: 'upstream_missing_or_unstructured' }, ...evOut.field_missing],
     };
@@ -557,11 +558,41 @@ function normalizeRecoGenerate(raw) {
   const confidence = asNumberOrNull(o.confidence);
   if (confidence == null) field_missing.push({ field: 'confidence', reason: 'upstream_missing_or_invalid' });
 
-  const missing_info = uniqueStrings(asStringArray(o.missing_info ?? o.missingInfo));
-  if (evOut.evidence.missing_info?.length) missing_info.push(...evOut.evidence.missing_info);
+  const missing_info_raw = uniqueStrings(asStringArray(o.missing_info ?? o.missingInfo));
+  const warnings_raw = uniqueStrings(
+    asStringArray(o.warnings ?? o.warning ?? o.context_gaps ?? o.contextGaps ?? o.warnings_info ?? o.warningsInfo),
+  );
+
+  const warningLike = new Set([
+    'routine_missing',
+    'over_budget',
+    'price_unknown',
+    'availability_unknown',
+    'recent_logs_missing',
+    'itinerary_unknown',
+    'analysis_missing',
+    'evidence_missing',
+    'upstream_missing_or_unstructured',
+    'upstream_missing_or_empty',
+    'alternatives_partial',
+  ]);
+
+  const warnings = uniqueStrings([
+    ...warnings_raw,
+    ...missing_info_raw.filter((c) => warningLike.has(String(c || '').trim())),
+    ...(evOut.evidence.missing_info || []),
+  ]);
+
+  const missing_info = uniqueStrings(missing_info_raw.filter((c) => !warningLike.has(String(c || '').trim())));
 
   return {
-    payload: { recommendations, evidence: evOut.evidence, confidence, missing_info: uniqueStrings(missing_info) },
+    payload: {
+      recommendations,
+      evidence: evOut.evidence,
+      confidence,
+      missing_info,
+      warnings,
+    },
     field_missing,
   };
 }
