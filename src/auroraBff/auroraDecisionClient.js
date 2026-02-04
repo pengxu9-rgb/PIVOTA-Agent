@@ -304,6 +304,46 @@ function mockAuroraChat(query) {
     };
   }
 
+  if (/Task:\s*Generate skincare product picks\b/i.test(q)) {
+    return {
+      answer: JSON.stringify({
+        recommendations: [
+          {
+            slot: 'other',
+            step: 'Treatment',
+            score: 68,
+            sku: {
+              sku_id: 'mock_reco_sku_1',
+              product_id: 'mock_reco_sku_1',
+              brand: 'MockBrand',
+              name: 'Mock Gentle Treatment',
+              category: 'treatment',
+              display_name: 'MockBrand Mock Gentle Treatment',
+              availability: ['Global'],
+              price: { usd: null, cny: null, unknown: true },
+            },
+            reasons: ['Mock: gentle option that fits most oily skin routines.'],
+            evidence_pack: { keyActives: ['niacinamide'], sensitivityFlags: ['low irritant'], citations: ['kb:mock_reco_1'] },
+            missing_info: [],
+            warnings: [],
+          },
+        ],
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.4,
+          missing_info: [],
+        },
+        confidence: 0.4,
+        missing_info: [],
+        warnings: [],
+      }),
+      intent: 'reco',
+      cards: [],
+    };
+  }
+
   if (/AM\s*\/\s*PM\s*skincare routine/i.test(q) || /recommend a simple AM\/PM skincare routine/i.test(q)) {
     return {
       answer: 'Mock routine generated.',

@@ -150,6 +150,7 @@ const UserProfilePatchSchema = z
     region: z.string().min(1).optional(),
     budgetTier: z.string().min(1).optional(),
     currentRoutine: z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any())]).optional(),
+    itinerary: z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any())]).optional(),
     contraindications: z.array(z.string().min(1)).optional(),
     lang_pref: LanguageSchema.optional(),
   })

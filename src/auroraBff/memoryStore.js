@@ -60,6 +60,7 @@ function mapProfileToDb(profilePatch) {
   const goals = Array.isArray(p.goals) ? p.goals : undefined;
   const contraindications = Array.isArray(p.contraindications) ? p.contraindications : undefined;
   const currentRoutine = p.currentRoutine;
+  const itinerary = p.itinerary;
 
   return {
     skin_type: p.skinType,
@@ -69,9 +70,31 @@ function mapProfileToDb(profilePatch) {
     region: p.region,
     budget_tier: p.budgetTier,
     current_routine: currentRoutine !== undefined ? JSON.stringify(currentRoutine) : undefined,
+    itinerary: itinerary !== undefined ? JSON.stringify(itinerary) : undefined,
     contraindications: contraindications ? JSON.stringify(contraindications) : undefined,
     lang_pref: p.lang_pref,
   };
+}
+
+function normalizeJsonbParam(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+
+  // node-postgres serializes JS arrays as Postgres arrays, which breaks JSONB inserts.
+  // Normalize all JSONB-bound params to JSON text.
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return JSON.stringify(value);
+    const first = trimmed[0];
+    if (first === '{' || first === '[' || first === '"') return value;
+    return JSON.stringify(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
 }
 
 function mapProfileFromDb(row) {
@@ -85,6 +108,7 @@ function mapProfileFromDb(row) {
     region: row.region || null,
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
+    itinerary: row.itinerary || null,
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
@@ -110,6 +134,7 @@ function mapAccountProfileFromDb(row) {
     region: row.region || null,
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
+    itinerary: row.itinerary || null,
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
@@ -189,11 +214,12 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         region,
         budget_tier,
         current_routine,
+        itinerary,
         contraindications,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
       ON CONFLICT (aurora_uid) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -202,6 +228,7 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         region = EXCLUDED.region,
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
+        itinerary = EXCLUDED.itinerary,
         contraindications = EXCLUDED.contraindications,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
@@ -212,11 +239,12 @@ async function upsertUserProfile(auroraUid, profilePatch) {
       merged.skin_type ?? null,
       merged.sensitivity ?? null,
       merged.barrier_status ?? null,
-      merged.goals ?? null,
+      normalizeJsonbParam(merged.goals ?? null),
       merged.region ?? null,
       merged.budget_tier ?? null,
-      merged.current_routine ?? null,
-      merged.contraindications ?? null,
+      normalizeJsonbParam(merged.current_routine ?? null),
+      normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.contraindications ?? null),
       merged.lang_pref ?? null,
     ],
   );
@@ -260,11 +288,12 @@ async function upsertAccountProfile(userId, profilePatch) {
         region,
         budget_tier,
         current_routine,
+        itinerary,
         contraindications,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
       ON CONFLICT (user_id) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -273,6 +302,7 @@ async function upsertAccountProfile(userId, profilePatch) {
         region = EXCLUDED.region,
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
+        itinerary = EXCLUDED.itinerary,
         contraindications = EXCLUDED.contraindications,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
@@ -283,11 +313,12 @@ async function upsertAccountProfile(userId, profilePatch) {
       merged.skin_type ?? null,
       merged.sensitivity ?? null,
       merged.barrier_status ?? null,
-      merged.goals ?? null,
+      normalizeJsonbParam(merged.goals ?? null),
       merged.region ?? null,
       merged.budget_tier ?? null,
-      merged.current_routine ?? null,
-      merged.contraindications ?? null,
+      normalizeJsonbParam(merged.current_routine ?? null),
+      normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.contraindications ?? null),
       merged.lang_pref ?? null,
     ],
   );
@@ -484,6 +515,7 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
     if (!accountProfile || !accountProfile.region) patch.region = guestProfile.region;
     if (!accountProfile || !accountProfile.budgetTier) patch.budgetTier = guestProfile.budgetTier;
     if (!accountProfile || accountProfile.currentRoutine == null) patch.currentRoutine = guestProfile.currentRoutine;
+    if (!accountProfile || accountProfile.itinerary == null) patch.itinerary = guestProfile.itinerary;
     if ((!accountProfile || !Array.isArray(accountProfile.contraindications) || accountProfile.contraindications.length === 0) && Array.isArray(guestProfile.contraindications) && guestProfile.contraindications.length) {
       patch.contraindications = guestProfile.contraindications;
     }

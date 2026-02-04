@@ -589,6 +589,20 @@ function summarizeProfileForContext(profile) {
     }
   }
 
+  const itineraryRaw = profile.itinerary;
+  let itinerary = null;
+  if (typeof itineraryRaw === 'string') {
+    const t = itineraryRaw.trim();
+    itinerary = t ? t.slice(0, 1200) : null;
+  } else if (itineraryRaw && typeof itineraryRaw === 'object') {
+    try {
+      const json = JSON.stringify(itineraryRaw);
+      itinerary = json.length > 1500 ? `${json.slice(0, 1500)}…` : json;
+    } catch {
+      itinerary = null;
+    }
+  }
+
   const contraindications = Array.isArray(profile.contraindications)
     ? profile.contraindications.filter((v) => typeof v === 'string' && v.trim()).slice(0, 12)
     : [];
@@ -601,6 +615,7 @@ function summarizeProfileForContext(profile) {
     region: profile.region || null,
     budgetTier: profile.budgetTier || null,
     currentRoutine,
+    itinerary,
     contraindications,
   };
 }
@@ -2936,16 +2951,25 @@ function mountAuroraBffRoutes(app, { logger }) {
       const profileSummary = summarizeProfileForContext(profile);
       const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
       const hasRoutine = Boolean(profileSummary && profileSummary.currentRoutine);
-      const hasPrimaryInput = hasRoutine;
+      const hasProfileSignal = Boolean(
+        profileSummary &&
+          (profileSummary.skinType ||
+            profileSummary.sensitivity ||
+            profileSummary.barrierStatus ||
+            (Array.isArray(profileSummary.goals) && profileSummary.goals.length) ||
+            profileSummary.region ||
+            profileSummary.budgetTier ||
+            (Array.isArray(profileSummary.contraindications) && profileSummary.contraindications.length)),
+      );
+      const hasPrimaryInput = hasProfileSignal || recentLogsSummary.length > 0 || photosProvided;
 
       const usePhoto = parsed.data.use_photo === true;
       const analysisFieldMissing = [];
-      if (!hasRoutine) analysisFieldMissing.push({ field: 'profile.currentRoutine', reason: 'required_for_analysis' });
       let usedPhotos = false;
       let analysisSource = 'rule_based';
 
       let analysis = null;
-      if (usePhoto && hasRoutine) {
+      if (usePhoto) {
         const chosen = chooseVisionPhoto(passedPhotos);
         if (!chosen) {
           analysisFieldMissing.push({ field: 'photos', reason: 'no_passed_photo' });
@@ -2990,7 +3014,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      if (!analysis && hasRoutine && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+      if (!analysis && hasPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
         const replyLanguage = ctx.lang === 'CN' ? 'Simplified Chinese' : 'English';
         const replyInstruction = ctx.lang === 'CN'
           ? '请只用简体中文回答，不要使用英文。'
