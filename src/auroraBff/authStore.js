@@ -142,7 +142,7 @@ async function sendOtpEmail({ email, code, language }) {
   if (provider === 'ses') {
     const fromEmail = extractEmailAddress(AUTH_EMAIL_FROM);
     const ses = getSesClient();
-    if (!ses || !fromEmail) return { ok: false, reason: 'email_not_configured' };
+    if (!ses || !fromEmail) return { ok: false, reason: 'email_not_configured', provider };
 
     let mod = null;
     try {
@@ -150,7 +150,7 @@ async function sendOtpEmail({ email, code, language }) {
     } catch {
       mod = null;
     }
-    if (!mod || !mod.SendEmailCommand) return { ok: false, reason: 'email_not_configured' };
+    if (!mod || !mod.SendEmailCommand) return { ok: false, reason: 'email_not_configured', provider };
 
     try {
       await ses.send(
@@ -163,15 +163,15 @@ async function sendOtpEmail({ email, code, language }) {
           },
         }),
       );
-      return { ok: true };
+      return { ok: true, provider };
     } catch (err) {
       const message = err?.name || err?.message ? `${err?.name || ''} ${err?.message || ''}`.trim() : String(err);
-      return { ok: false, reason: 'email_send_failed', message: message.slice(0, 400) };
+      return { ok: false, reason: 'email_send_failed', message: message.slice(0, 400), provider };
     }
   }
 
-  if (provider !== 'resend') return { ok: false, reason: 'email_not_configured' };
-  if (!RESEND_API_KEY || !AUTH_EMAIL_FROM) return { ok: false, reason: 'email_not_configured' };
+  if (provider !== 'resend') return { ok: false, reason: 'email_not_configured', provider };
+  if (!RESEND_API_KEY || !AUTH_EMAIL_FROM) return { ok: false, reason: 'email_not_configured', provider };
 
   try {
     await axios.post(
@@ -190,13 +190,13 @@ async function sendOtpEmail({ email, code, language }) {
         timeout: 8000,
       },
     );
-    return { ok: true };
+    return { ok: true, provider };
   } catch (err) {
     const message =
       err && err.response && err.response.data
         ? JSON.stringify(err.response.data).slice(0, 400)
         : err?.message || String(err);
-    return { ok: false, reason: 'email_send_failed', message };
+    return { ok: false, reason: 'email_send_failed', message, provider };
   }
 }
 
@@ -244,7 +244,7 @@ async function createOtpChallenge({ email, language } = {}) {
     challengeId,
     expiresAt: toIso(expiresAtMs),
     expiresInSeconds: Math.round((expiresAtMs - createdAtMs) / 1000),
-    delivery: deliveryResult.ok ? 'resend' : 'debug',
+    delivery: deliveryResult.ok ? (deliveryResult.provider || 'email') : 'debug',
     ...(AUTH_DEBUG || AUTH_DEBUG_RETURN_CODE ? { debug_code: code } : {}),
     ...(deliveryResult.ok
       ? {}
