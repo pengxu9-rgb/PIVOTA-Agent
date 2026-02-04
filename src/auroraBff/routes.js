@@ -998,10 +998,32 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
     return { recommendations: recos, field_missing: [{ field: 'recommendations[].alternatives', reason: 'aurora_not_configured' }] };
   }
 
-  const targets = [];
+  const firstBySlot = { am: null, pm: null, other: null };
   for (let i = 0; i < recos.length; i += 1) {
-    if (targets.length >= maxProducts) break;
     const item = recos[i];
+    const slot = item && typeof item === 'object' ? String(item.slot || '').trim().toLowerCase() : '';
+    const key = slot === 'am' ? 'am' : slot === 'pm' ? 'pm' : 'other';
+    if (firstBySlot[key] == null) firstBySlot[key] = i;
+  }
+
+  const orderedIdx = [];
+  const seenIdx = new Set();
+  for (const key of ['am', 'pm', 'other']) {
+    const idx = firstBySlot[key];
+    if (typeof idx !== 'number') continue;
+    if (seenIdx.has(idx)) continue;
+    seenIdx.add(idx);
+    orderedIdx.push(idx);
+  }
+  for (let i = 0; i < recos.length; i += 1) {
+    if (seenIdx.has(i)) continue;
+    orderedIdx.push(i);
+  }
+
+  const targets = [];
+  for (const idx of orderedIdx) {
+    if (targets.length >= maxProducts) break;
+    const item = recos[idx];
     const base = item && typeof item === 'object' ? item : null;
     const candidate =
       base && base.sku && typeof base.sku === 'object'
@@ -1013,7 +1035,7 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
     const inputText = buildProductInputText(candidate, base && typeof base.url === 'string' ? base.url : null);
     const anchorId = extractAnchorIdFromProductLike(candidate) || extractAnchorIdFromProductLike(base);
     if (!inputText && !anchorId) continue;
-    targets.push({ idx: i, inputText, anchorId, productObj: candidate });
+    targets.push({ idx, inputText, anchorId, productObj: candidate });
   }
 
   if (!targets.length) {

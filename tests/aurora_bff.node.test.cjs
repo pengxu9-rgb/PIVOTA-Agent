@@ -101,6 +101,56 @@ test('/v1/chat: Start diagnosis chip enters diagnosis flow (no upstream loop)', 
   assert.ok(resp.body.suggested_chips.every((c) => !String(c.chip_id).startsWith('chip.clarify.next.')));
 });
 
+test('/v1/chat: Routine alternatives cover AM + PM', async () => {
+  const express = require('express');
+  const request = require('supertest');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await request(app)
+    .post('/v1/chat')
+    .set('X-Aurora-UID', 'test_uid')
+    .set('X-Trace-ID', 'test_trace')
+    .set('X-Brief-ID', 'test_brief')
+    .send({
+      action: {
+        action_id: 'chip.start.routine',
+        kind: 'chip',
+        data: {
+          reply_text: 'Build an AM/PM routine',
+          include_alternatives: true,
+          profile_patch: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['pores'],
+            budgetTier: '¥500',
+          },
+        },
+      },
+      session: { state: 'S2_DIAGNOSIS' },
+      language: 'EN',
+    });
+
+  assert.equal(resp.status, 200);
+
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const recoCard = cards.find((c) => c && c.type === 'recommendations');
+  assert.ok(recoCard);
+
+  const recos = Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
+  const am = recos.find((r) => String(r?.slot || '').toLowerCase() === 'am');
+  const pm = recos.find((r) => String(r?.slot || '').toLowerCase() === 'pm');
+  assert.ok(am);
+  assert.ok(pm);
+
+  assert.ok(Array.isArray(am.alternatives) && am.alternatives.length > 0);
+  assert.ok(Array.isArray(pm.alternatives) && pm.alternatives.length > 0);
+});
+
 test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {
   const express = require('express');
   const request = require('supertest');
