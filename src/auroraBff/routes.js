@@ -28,6 +28,7 @@ const {
   upsertProfileForIdentity,
   upsertSkinLogForIdentity,
   getRecentSkinLogsForIdentity,
+  saveLastAnalysisForIdentity,
   isCheckinDue,
   upsertIdentityLink,
   migrateGuestDataToUser,
@@ -1200,6 +1201,9 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 
 async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
   const profileSummary = summarizeProfileForContext(profile);
+  const analysisSummary =
+    profile && profile.lastAnalysis && (!profile.lastAnalysisLang || profile.lastAnalysisLang === ctx.lang) ? profile.lastAnalysis : null;
+  const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
     recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
@@ -1208,6 +1212,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     trigger_source: ctx.trigger_source,
     action_id: 'chip.start.reco_products',
     intent: 'reco_products',
+    ...(analysisSummary ? { analysis_summary: analysisSummary } : {}),
+    ...(analysisSummaryAt ? { analysis_summary_at: analysisSummaryAt } : {}),
   });
   const userAsk =
     String(message || '').trim() ||
@@ -3038,6 +3044,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           analysisSource = 'baseline_low_confidence';
         } else {
           analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
+        }
+      }
+
+      if (analysis) {
+        try {
+          await saveLastAnalysisForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, { analysis, lang: ctx.lang });
+        } catch (err) {
+          logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: failed to persist last analysis');
         }
       }
 

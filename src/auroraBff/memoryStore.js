@@ -90,6 +90,9 @@ function mapProfileFromDb(row) {
       : row.contraindications
         ? row.contraindications
         : [],
+    lastAnalysis: row.last_analysis || null,
+    lastAnalysisAt: row.last_analysis_at ? new Date(row.last_analysis_at).toISOString() : null,
+    lastAnalysisLang: row.last_analysis_lang || null,
     lang_pref: row.lang_pref || null,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
@@ -112,6 +115,9 @@ function mapAccountProfileFromDb(row) {
       : row.contraindications
         ? row.contraindications
         : [],
+    lastAnalysis: row.last_analysis || null,
+    lastAnalysisAt: row.last_analysis_at ? new Date(row.last_analysis_at).toISOString() : null,
+    lastAnalysisLang: row.last_analysis_lang || null,
     lang_pref: row.lang_pref || null,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
@@ -490,6 +496,25 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
     await ensureAccountProfileRow(user);
   }
 
+  if (guestProfile && guestProfile.lastAnalysis && (!accountProfile || !accountProfile.lastAnalysis)) {
+    try {
+      await query(
+        `
+          UPDATE aurora_account_profiles
+          SET last_analysis = $2::jsonb,
+              last_analysis_at = now(),
+              last_analysis_lang = $3,
+              updated_at = now(),
+              deleted_at = NULL
+          WHERE user_id = $1
+        `,
+        [user, JSON.stringify(guestProfile.lastAnalysis), guestProfile.lastAnalysisLang || null],
+      );
+    } catch {
+      // Best-effort migration; ignore failures.
+    }
+  }
+
   if (Array.isArray(guestLogs) && guestLogs.length) {
     for (const log of guestLogs) {
       const date = coerceIsoDate(log && log.date);
@@ -549,6 +574,54 @@ async function upsertSkinLogForIdentity({ auroraUid, userId }, log) {
   return await upsertSkinLog(identity.aurora_uid, log);
 }
 
+async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, lang }) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const analysisObj = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? analysis : null;
+  if (!analysisObj) return null;
+
+  let json = null;
+  try {
+    json = JSON.stringify(analysisObj);
+  } catch {
+    json = null;
+  }
+  if (!json) return null;
+
+  if (identity.user_id) {
+    await ensureAccountProfileRow(identity.user_id);
+    const res = await query(
+      `
+        UPDATE aurora_account_profiles
+        SET last_analysis = $2::jsonb,
+            last_analysis_at = now(),
+            last_analysis_lang = $3,
+            updated_at = now(),
+            deleted_at = NULL
+        WHERE user_id = $1
+        RETURNING *
+      `,
+      [identity.user_id, json, typeof lang === 'string' ? lang.trim() || null : null],
+    );
+    return mapAccountProfileFromDb(res.rows && res.rows[0]);
+  }
+
+  await ensureUserProfileRow(identity.aurora_uid);
+  const res = await query(
+    `
+      UPDATE aurora_user_profiles
+      SET last_analysis = $2::jsonb,
+          last_analysis_at = now(),
+          last_analysis_lang = $3,
+          updated_at = now(),
+          deleted_at = NULL
+      WHERE aurora_uid = $1
+      RETURNING *
+    `,
+    [identity.aurora_uid, json, typeof lang === 'string' ? lang.trim() || null : null],
+  );
+  return mapProfileFromDb(res.rows && res.rows[0]);
+}
+
 module.exports = {
   isoDateUTC,
   normalizeAuroraUid,
@@ -567,5 +640,6 @@ module.exports = {
   upsertProfileForIdentity,
   getRecentSkinLogsForIdentity,
   upsertSkinLogForIdentity,
+  saveLastAnalysisForIdentity,
   isCheckinDue,
 };
