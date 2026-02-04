@@ -20,6 +20,8 @@ const {
   SkinAnalysisRequestSchema,
   AuthStartRequestSchema,
   AuthVerifyRequestSchema,
+  AuthPasswordSetRequestSchema,
+  AuthPasswordLoginRequestSchema,
 } = require('./schemas');
 const {
   getProfileForIdentity,
@@ -37,6 +39,8 @@ const {
   resolveSessionFromToken,
   revokeSessionToken,
   getBearerToken,
+  setUserPassword,
+  verifyPasswordForEmail,
 } = require('./authStore');
 const {
   profileCompleteness,
@@ -829,23 +833,24 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
     `User profile: skin type ${skinType}; barrier status: ${barrierStatus}; concerns: ${concernsStr}; region: ${region}; budget: ${budget}.\n` +
     (req ? `User request: ${req}\n` : '') +
     `Task: Generate skincare product picks (NOT a full AM/PM routine).\n` +
-    `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]).\n` +
+    `Return ONLY a JSON object with keys: recommendations (array), evidence (object), confidence (0..1), missing_info (string[]), warnings (string[]).\n` +
     `recommendations: up to 5 items, ranked.\n` +
     `Each recommendation item MUST include:\n` +
     `- slot: "other"\n` +
     `- step: category label (cleanser/sunscreen/treatment/moisturizer/other)\n` +
     `- score: integer 0..100 (fit score)\n` +
     `- sku: {brand,name,display_name,sku_id,product_id,category,availability(string[]),price{usd,cny,unknown}}\n` +
-    `- notes: string[] (max 4). Notes must be end-user readable and user-specific.\n` +
-    `  - Include at least one note that explicitly references the user's profile (skin type / sensitivity / barrier / goals / budget).\n` +
-    `  - If recent_logs were provided, include one note that references the last 7 days trend; otherwise add missing_info: "recent_logs_missing".\n` +
-    `  - If upcoming plan/travel context is not available, add missing_info: "itinerary_unknown" (do NOT guess).\n` +
+    `- reasons: string[] (max 4). Reasons must be end-user readable and user-specific.\n` +
+    `  - Include at least one reason that explicitly references the user's profile (skin type / sensitivity / barrier / goals / budget).\n` +
+    `  - If recent_logs were provided, include one reason that references the last 7 days trend; otherwise add warnings: "recent_logs_missing".\n` +
+    `  - If upcoming plan/travel context is not available, add warnings: "itinerary_unknown" (do NOT guess).\n` +
     `- evidence_pack: {keyActives,sensitivityFlags,pairingRules,comparisonNotes,citations} (omit unknown keys; do NOT fabricate).\n` +
-    `- missing_info: string[] (per-item)\n` +
+    `- missing_info: string[] (per-item; ONLY user-provided fields like budget_unknown)\n` +
+    `- warnings: string[] (per-item; quality signals like over_budget/price_unknown/recent_logs_missing)\n` +
     `Rules:\n` +
     `- Do NOT include checkout links.\n` +
     `- Do NOT recommend the exact same sku_id/product_id twice.\n` +
-    `- If unsure, use null/unknown and list missing_info (do not fabricate).\n` +
+    `- If unsure, use null/unknown and list missing_info/warnings (do not fabricate).\n` +
     `- All free-text strings should be in ${replyLang}.\n`
   );
 }
@@ -1476,6 +1481,193 @@ function mountAuroraBffRoutes(app, { logger }) {
             : ctx.lang === 'CN'
               ? '登录失败，请稍后重试。'
               : 'Sign-in failed. Please try again.',
+        ),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
+  app.post('/v1/auth/password/login', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = AuthPasswordLoginRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [
+            { card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const verification = await verifyPasswordForEmail({ email: parsed.data.email, password: parsed.data.password });
+      if (!verification.ok) {
+        const isLocked = verification.reason === 'locked';
+        const status = isLocked ? 429 : verification.reason === 'no_password_set' ? 409 : 401;
+        const message =
+          verification.reason === 'no_password_set'
+            ? ctx.lang === 'CN'
+              ? '该邮箱尚未设置密码，请先用邮箱验证码登录后再设置密码。'
+              : 'No password is set for this email yet. Use an email code to sign in first, then set a password.'
+            : isLocked
+              ? ctx.lang === 'CN'
+                ? '尝试次数过多，请稍后再试。'
+                : 'Too many attempts. Please try again later.'
+              : ctx.lang === 'CN'
+                ? '邮箱或密码错误。'
+                : 'Invalid email or password.';
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(message),
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `err_${ctx.request_id}`,
+              type: 'error',
+              payload: {
+                error: isLocked ? 'PASSWORD_LOCKED' : 'INVALID_CREDENTIALS',
+                reason: verification.reason,
+                ...(verification.locked_until ? { locked_until: verification.locked_until } : {}),
+              },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: isLocked ? 'PASSWORD_LOCKED' : 'INVALID_CREDENTIALS' })],
+        });
+        return res.status(status).json(envelope);
+      }
+
+      const session = await createSession({ userId: verification.userId });
+
+      if (ctx.aurora_uid) {
+        try {
+          await upsertIdentityLink(ctx.aurora_uid, verification.userId);
+        } catch {
+          // ignore
+        }
+        try {
+          await migrateGuestDataToUser({ auroraUid: ctx.aurora_uid, userId: verification.userId });
+        } catch (err) {
+          logger?.warn({ err: err?.message || String(err) }, 'aurora bff: guest->account migration failed');
+        }
+      }
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(ctx.lang === 'CN' ? '登录成功。' : 'Signed in.'),
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `auth_${ctx.request_id}`,
+            type: 'auth_session',
+            payload: {
+              token: session.token,
+              expires_at: session.expiresAt,
+              user: { user_id: verification.userId, email: verification.email },
+            },
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'auth_verified', { user_id: verification.userId, method: 'password' })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_PASSWORD_LOGIN_FAILED';
+      const status = code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(
+          code === 'AUTH_NOT_CONFIGURED'
+            ? ctx.lang === 'CN'
+              ? '登录暂不可用（缺少配置）。'
+              : 'Sign-in is not configured yet.'
+            : ctx.lang === 'CN'
+              ? '登录失败，请稍后重试。'
+              : 'Sign-in failed. Please try again.',
+        ),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
+  app.post('/v1/auth/password/set', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const identity = await resolveIdentity(req, ctx);
+      if (!identity.userId) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(ctx.lang === 'CN' ? '请先登录。' : 'Please sign in first.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'UNAUTHORIZED' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'UNAUTHORIZED' })],
+        });
+        return res.status(401).json(envelope);
+      }
+
+      const parsed = AuthPasswordSetRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [
+            { card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      await setUserPassword({ userId: identity.userId, password: parsed.data.password });
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(
+          ctx.lang === 'CN'
+            ? '密码已设置。下次你可以用邮箱 + 密码直接登录（仍可用邮箱验证码）。'
+            : 'Password set. Next time you can sign in with email + password (OTP still works too).',
+        ),
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `auth_password_set_${ctx.request_id}`,
+            type: 'auth_password_set',
+            payload: { ok: true },
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'auth_password_set', { user_id: identity.userId })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const code = err && err.code ? err.code : err && err.message ? err.message : 'AUTH_PASSWORD_SET_FAILED';
+      const status =
+        code === 'INVALID_PASSWORD' ? 400 : code === 'UNAUTHORIZED' ? 401 : code === 'AUTH_NOT_CONFIGURED' ? 503 : 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage(
+          code === 'INVALID_PASSWORD'
+            ? ctx.lang === 'CN'
+              ? '密码格式不正确（至少 8 位）。'
+              : 'Invalid password (min 8 characters).'
+            : code === 'AUTH_NOT_CONFIGURED'
+              ? ctx.lang === 'CN'
+                ? '登录暂不可用（缺少配置）。'
+                : 'Sign-in is not configured yet.'
+              : ctx.lang === 'CN'
+                ? '设置密码失败，请稍后重试。'
+                : "Couldn't set password. Please try again.",
         ),
         suggested_chips: [],
         cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],

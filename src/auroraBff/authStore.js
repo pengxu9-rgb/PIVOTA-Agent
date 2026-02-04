@@ -29,6 +29,33 @@ const SESSION_TTL_MS = Math.max(
   Math.min(180 * 24 * 60_000, Number(process.env.AURORA_BFF_AUTH_SESSION_TTL_MS || 30 * 24 * 60_000)),
 );
 
+const PASSWORD_MAX_FAILED_ATTEMPTS = (() => {
+  const n = Number(process.env.AURORA_BFF_AUTH_PASSWORD_MAX_ATTEMPTS || 5);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5;
+  return Math.max(3, Math.min(10, v));
+})();
+
+const PASSWORD_LOCKOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_AUTH_PASSWORD_LOCKOUT_MS || 15 * 60_000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 15 * 60_000;
+  return Math.max(60_000, Math.min(60 * 60_000, v));
+})();
+
+const PASSWORD_SCRYPT_OPTIONS = (() => {
+  const n = Number(process.env.AURORA_BFF_AUTH_PASSWORD_SCRYPT_N || 16384);
+  const r = Number(process.env.AURORA_BFF_AUTH_PASSWORD_SCRYPT_R || 8);
+  const p = Number(process.env.AURORA_BFF_AUTH_PASSWORD_SCRYPT_P || 1);
+  return {
+    N: Number.isFinite(n) ? Math.max(1024, Math.min(1 << 18, Math.trunc(n))) : 16384,
+    r: Number.isFinite(r) ? Math.max(1, Math.min(32, Math.trunc(r))) : 8,
+    p: Number.isFinite(p) ? Math.max(1, Math.min(8, Math.trunc(p))) : 1,
+    maxmem: 64 * 1024 * 1024,
+  };
+})();
+
+const PASSWORD_SCRYPT_KEYLEN = 64;
+const PASSWORD_SCRYPT_SALT_BYTES = 16;
+
 function makeError(code, status = 500, message) {
   const err = new Error(message || code);
   err.code = code;
@@ -62,6 +89,31 @@ function sha256Hex(input) {
 
 function hashWithPepper(value) {
   return sha256Hex(`${AUTH_PEPPER}:${String(value || '')}`);
+}
+
+function scryptPromise(input, salt, keylen, options) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(input, salt, keylen, options, (err, derivedKey) => {
+      if (err) return reject(err);
+      resolve(derivedKey);
+    });
+  });
+}
+
+function isHexString(value) {
+  const s = String(value || '').trim();
+  if (!s) return false;
+  return /^[0-9a-f]+$/i.test(s) && s.length % 2 === 0;
+}
+
+function coerceHexBuffer(value) {
+  const s = String(value || '').trim();
+  if (!isHexString(s)) return null;
+  try {
+    return Buffer.from(s, 'hex');
+  } catch {
+    return null;
+  }
 }
 
 let _sesClient = null;
@@ -392,6 +444,161 @@ async function revokeSessionToken(token) {
   return { ok: true };
 }
 
+function validatePasswordInput(password) {
+  const p = String(password || '');
+  if (!p || p.length < 8 || p.length > 128) return { ok: false, reason: 'length' };
+  if (!p.trim()) return { ok: false, reason: 'blank' };
+  return { ok: true };
+}
+
+async function setUserPassword({ userId, password } = {}) {
+  requireAuthConfigured();
+  const uid = String(userId || '').trim();
+  if (!uid) throw makeError('USER_ID_MISSING', 400);
+
+  const valid = validatePasswordInput(password);
+  if (!valid.ok) throw makeError('INVALID_PASSWORD', 400);
+
+  const salt = crypto.randomBytes(PASSWORD_SCRYPT_SALT_BYTES);
+  const saltHex = salt.toString('hex');
+  const derived = await scryptPromise(
+    `${AUTH_PEPPER}:${String(password)}`,
+    salt,
+    PASSWORD_SCRYPT_KEYLEN,
+    PASSWORD_SCRYPT_OPTIONS,
+  );
+  const hashHex = Buffer.from(derived).toString('hex');
+  const params = { ...PASSWORD_SCRYPT_OPTIONS, keylen: PASSWORD_SCRYPT_KEYLEN };
+
+  const res = await query(
+    `
+      UPDATE aurora_users
+      SET password_salt = $2,
+          password_hash = $3,
+          password_alg = $4,
+          password_params = $5::jsonb,
+          password_updated_at = now(),
+          password_failed_attempts = 0,
+          password_locked_until = NULL,
+          updated_at = now(),
+          deleted_at = NULL
+      WHERE user_id = $1
+        AND deleted_at IS NULL
+    `,
+    [uid, saltHex, hashHex, 'scrypt', JSON.stringify(params)],
+  );
+
+  if (!res || typeof res.rowCount !== 'number' || res.rowCount < 1) throw makeError('USER_NOT_FOUND', 404);
+
+  return { ok: true, userId: uid, password_updated_at: new Date().toISOString() };
+}
+
+async function verifyPasswordForEmail({ email, password } = {}) {
+  requireAuthConfigured();
+  const mail = String(email || '').trim().toLowerCase();
+  const inputPassword = String(password || '');
+  if (!isValidEmail(mail) || !inputPassword) return { ok: false, reason: 'missing_input' };
+
+  const res = await query(
+    `
+      SELECT user_id,
+             email,
+             password_salt,
+             password_hash,
+             password_alg,
+             password_params,
+             password_failed_attempts,
+             password_locked_until
+      FROM aurora_users
+      WHERE email = $1
+        AND deleted_at IS NULL
+      LIMIT 1
+    `,
+    [mail],
+  );
+  const row = res.rows && res.rows[0] ? res.rows[0] : null;
+  if (!row) return { ok: false, reason: 'not_found' };
+
+  const userId = String(row.user_id || '').trim();
+  const lockedUntilMs = row.password_locked_until ? Date.parse(row.password_locked_until) : NaN;
+  if (Number.isFinite(lockedUntilMs) && lockedUntilMs > nowMs()) {
+    return { ok: false, reason: 'locked', locked_until: new Date(lockedUntilMs).toISOString() };
+  }
+
+  const alg = String(row.password_alg || '').trim().toLowerCase();
+  const saltBuf = coerceHexBuffer(row.password_salt);
+  const expectedBuf = coerceHexBuffer(row.password_hash);
+  if (!alg || !saltBuf || !expectedBuf) return { ok: false, reason: 'no_password_set' };
+  if (alg !== 'scrypt') return { ok: false, reason: 'unsupported_alg' };
+
+  const paramsRaw = row.password_params;
+  const paramsObj = paramsRaw && typeof paramsRaw === 'object' && !Array.isArray(paramsRaw) ? paramsRaw : null;
+
+  const N = Number.isFinite(Number(paramsObj?.N)) ? Math.trunc(Number(paramsObj.N)) : PASSWORD_SCRYPT_OPTIONS.N;
+  const r = Number.isFinite(Number(paramsObj?.r)) ? Math.trunc(Number(paramsObj.r)) : PASSWORD_SCRYPT_OPTIONS.r;
+  const p = Number.isFinite(Number(paramsObj?.p)) ? Math.trunc(Number(paramsObj.p)) : PASSWORD_SCRYPT_OPTIONS.p;
+  const keylen = Number.isFinite(Number(paramsObj?.keylen)) ? Math.trunc(Number(paramsObj.keylen)) : PASSWORD_SCRYPT_KEYLEN;
+
+  const options = {
+    N: Math.max(1024, Math.min(1 << 18, N)),
+    r: Math.max(1, Math.min(32, r)),
+    p: Math.max(1, Math.min(8, p)),
+    maxmem: 64 * 1024 * 1024,
+  };
+
+  let derived = null;
+  try {
+    derived = await scryptPromise(`${AUTH_PEPPER}:${inputPassword}`, saltBuf, keylen, options);
+  } catch {
+    derived = null;
+  }
+
+  const actualBuf = derived && Buffer.isBuffer(derived) ? derived : Buffer.from([]);
+  const match =
+    expectedBuf.length === actualBuf.length && expectedBuf.length > 0 && crypto.timingSafeEqual(expectedBuf, actualBuf);
+
+  if (!match) {
+    const attempts = Number.isFinite(Number(row.password_failed_attempts)) ? Number(row.password_failed_attempts) : 0;
+    const nextAttempts = Math.max(0, Math.min(32000, attempts + 1));
+    const shouldLock = nextAttempts >= PASSWORD_MAX_FAILED_ATTEMPTS;
+    const lockedUntilIso = shouldLock ? new Date(nowMs() + PASSWORD_LOCKOUT_MS).toISOString() : null;
+    try {
+      await query(
+        `
+          UPDATE aurora_users
+          SET password_failed_attempts = $2,
+              password_locked_until = $3,
+              updated_at = now()
+          WHERE user_id = $1
+            AND deleted_at IS NULL
+        `,
+        [userId, nextAttempts, lockedUntilIso],
+      );
+    } catch {
+      // ignore
+    }
+    return { ok: false, reason: 'mismatch', locked_until: lockedUntilIso };
+  }
+
+  try {
+    await query(
+      `
+        UPDATE aurora_users
+        SET password_failed_attempts = 0,
+            password_locked_until = NULL,
+            updated_at = now()
+        WHERE user_id = $1
+          AND deleted_at IS NULL
+      `,
+      [userId],
+    );
+  } catch {
+    // ignore
+  }
+
+  return { ok: true, userId, email: mail };
+}
+
 module.exports = {
   getBearerToken,
   createOtpChallenge,
@@ -399,4 +606,6 @@ module.exports = {
   createSession,
   resolveSessionFromToken,
   revokeSessionToken,
+  setUserPassword,
+  verifyPasswordForEmail,
 };

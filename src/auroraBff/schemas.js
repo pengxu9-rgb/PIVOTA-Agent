@@ -255,20 +255,20 @@ const PhotosConfirmRequestSchema = z
 const SkinAnalysisRequestSchema = z
   .object({
     use_photo: z.boolean().optional(),
-	    photos: z
-	      .array(
-	        z
-	          .object({
-	            photo_id: z.string().min(1).optional(),
-	            slot_id: z.string().min(1),
-	            qc_status: z.string().min(1).optional(),
-	          })
-	          .strict(),
-	      )
-	      .max(4)
-	      .optional(),
-	  })
-	  .strict();
+    photos: z
+      .array(
+        z
+          .object({
+            photo_id: z.string().min(1).optional(),
+            slot_id: z.string().min(1),
+            qc_status: z.string().min(1).optional(),
+          })
+          .strict(),
+      )
+      .max(4)
+      .optional(),
+  })
+  .strict();
 
 const AuthStartRequestSchema = z
   .object({
