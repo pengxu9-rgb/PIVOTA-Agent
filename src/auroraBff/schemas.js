@@ -283,6 +283,19 @@ const AuthVerifyRequestSchema = z
   })
   .strict();
 
+const AuthPasswordSetRequestSchema = z
+  .object({
+    password: z.string().min(8).max(128),
+  })
+  .strict();
+
+const AuthPasswordLoginRequestSchema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(1).max(128),
+  })
+  .strict();
+
 module.exports = {
   LanguageSchema,
   TriggerSourceSchema,
@@ -311,4 +324,6 @@ module.exports = {
   SkinAnalysisRequestSchema,
   AuthStartRequestSchema,
   AuthVerifyRequestSchema,
+  AuthPasswordSetRequestSchema,
+  AuthPasswordLoginRequestSchema,
 };
