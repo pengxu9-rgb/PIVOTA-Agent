@@ -7645,7 +7645,8 @@ if (require.main === module) {
   (async () => {
     const hasDb = Boolean(process.env.DATABASE_URL);
     const autoMigrateDisabled = String(process.env.DB_AUTO_MIGRATE || '').toLowerCase() === 'false';
-    const shouldAutoMigrate = hasDb && !autoMigrateDisabled && process.env.NODE_ENV === 'production';
+    const env = String(process.env.NODE_ENV || '').toLowerCase();
+    const shouldAutoMigrate = hasDb && !autoMigrateDisabled && env !== 'test';
 
     if (shouldAutoMigrate) {
       logger.info('Running DB migrations (auto)');
