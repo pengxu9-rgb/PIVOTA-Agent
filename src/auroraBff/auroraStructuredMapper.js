@@ -349,28 +349,80 @@ function isNoisyAltNote(value) {
   const t = s.toLowerCase();
   if (t.length > 90) return true;
   if (/\b(varies|verify|percent|percentage|claim)\b/i.test(t)) return true;
+  if (/\b(snapshot|estimat|estimate|approx)\b/i.test(t)) return true;
   if (/\b(e\.g\.|example|i\.e\.)\b/i.test(t)) return true;
   if (/\bby region\b/i.test(t)) return true;
   if (/\bunknown\b|\bn\/a\b/i.test(t)) return true;
   return false;
 }
 
+function splitAltNoteTokens(value) {
+  const s = asString(value);
+  if (!s) return [];
+  return String(s)
+    .replace(/\r?\n/g, ' ')
+    .split(/[|·•;,]/g)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+function cleanAltToken(value) {
+  const s = asString(value);
+  if (!s) return null;
+  let t = String(s).replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+
+  const cutWords = ['e.g.', 'example', 'i.e.', 'varies', 'verify', 'claim'];
+  const lower = t.toLowerCase();
+  for (const w of cutWords) {
+    const idx = lower.indexOf(w);
+    if (idx > 0) {
+      t = t.slice(0, idx).trim();
+      break;
+    }
+  }
+
+  t = t.replace(/^(pros|优势|added benefits\/actives)[:：]\s*/i, '').trim();
+  t = t.replace(/[.，,;；:\s]+$/g, '').trim();
+  if (!t) return null;
+  if (isNoisyAltNote(t)) return null;
+  return t;
+}
+
 function pickCleanAltNotes(items, max = 6) {
   const out = [];
   const seen = new Set();
-  for (const raw of Array.isArray(items) ? items : []) {
-    const s = asString(raw);
-    if (!s) continue;
-    const t = s.replace(/\s+/g, ' ').trim();
-    if (!t) continue;
-    if (isNoisyAltNote(t)) continue;
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-    if (out.length >= max) break;
+  outer: for (const raw of Array.isArray(items) ? items : []) {
+    const tokens = splitAltNoteTokens(raw);
+    if (!tokens.length) continue;
+    for (const token of tokens) {
+      const cleaned = cleanAltToken(token);
+      if (!cleaned) continue;
+      const key = cleaned.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(cleaned);
+      if (out.length >= max) break outer;
+    }
   }
   return out;
+}
+
+function describeActiveBenefit(token, language) {
+  const t = asString(token);
+  if (!t) return null;
+  const s = t.toLowerCase();
+  if (s.includes('niacinamide') || s.includes('nicotinamide')) return language === 'CN' ? '控油/均匀肤色' : 'oil-control + tone-evening';
+  if (s.includes('panthenol') || /\bb5\b/.test(s)) return language === 'CN' ? '修护/舒缓' : 'barrier support + soothing';
+  if (s.includes('hyal') || /\bha\b/.test(s)) return language === 'CN' ? '补水' : 'hydration';
+  if (s.includes('ceramide')) return language === 'CN' ? '屏障脂质修护' : 'barrier lipid support';
+  if (s.includes('allantoin')) return language === 'CN' ? '舒缓' : 'soothing';
+  if (s.includes('pha')) return language === 'CN' ? '温和去角质' : 'gentle exfoliation';
+  if (s.includes('salicy') || s.includes('bha')) return language === 'CN' ? '疏通毛孔' : 'pore unclogging';
+  if (s.includes('glycolic') || s.includes('aha') || s.includes('lactic')) return language === 'CN' ? '去角质/提亮' : 'exfoliation/brightening';
+  if (s.includes('zinc pca')) return language === 'CN' ? '控油' : 'oil-control';
+  if (s.includes('peptide')) return language === 'CN' ? '抗老/紧致倾向' : 'anti-aging/firming';
+  return null;
 }
 
 function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', maxTotal = 3 } = {}) {
@@ -440,11 +492,12 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     const upstreamReasons = pickCleanAltNotes(asStringArray(a.reasons || a.why || a.rationale), 2);
     const reasons = [...upstreamReasons];
     if (!reasons.length && addedBenefits.length) {
-      const top = addedBenefits.slice(0, 4);
+      const top = addedBenefits[0];
+      const benefit = describeActiveBenefit(top, language);
       reasons.push(
         language === 'CN'
-          ? `优势：新增亮点/活性：${top.join('、')}`
-          : `Pros: Added benefits/actives: ${top.join(', ')}`,
+          ? `优势：新增${top}${benefit ? `（${benefit}）` : ''}`
+          : `Pros: adds ${top}${benefit ? ` (${benefit})` : ''}`,
       );
     }
     if (priceDeltaUsd != null && priceDeltaUsd < -0.01 && reasons.length < 2) {
