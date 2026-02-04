@@ -75,23 +75,75 @@ test('Recommendation gate: does not unlock commerce for diagnosis chip', async (
 
 test('/v1/chat: Start diagnosis chip enters diagnosis flow (no upstream loop)', async () => {
   const express = require('express');
-  const request = require('supertest');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   mountAuroraBffRoutes(app, { logger: null });
 
-  const resp = await request(app)
-    .post('/v1/chat')
-    .set('X-Aurora-UID', 'test_uid')
-    .set('X-Trace-ID', 'test_trace')
-    .set('X-Brief-ID', 'test_brief')
-    .send({
+  const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+    headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
+    body: {
       action: { action_id: 'chip.start.diagnosis', kind: 'chip', data: { reply_text: 'Start skin diagnosis' } },
       session: { state: 'idle' },
       language: 'EN',
-    });
+    },
+  });
 
   assert.equal(resp.status, 200);
   assert.equal(typeof resp.body?.assistant_message?.content, 'string');
@@ -103,19 +155,70 @@ test('/v1/chat: Start diagnosis chip enters diagnosis flow (no upstream loop)', 
 
 test('/v1/chat: Routine alternatives cover AM + PM', async () => {
   const express = require('express');
-  const request = require('supertest');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   mountAuroraBffRoutes(app, { logger: null });
 
-  const resp = await request(app)
-    .post('/v1/chat')
-    .set('X-Aurora-UID', 'test_uid')
-    .set('X-Trace-ID', 'test_trace')
-    .set('X-Brief-ID', 'test_brief')
-    .send({
+  const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+    headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
+    body: {
       action: {
         action_id: 'chip.start.routine',
         kind: 'chip',
@@ -133,7 +236,8 @@ test('/v1/chat: Routine alternatives cover AM + PM', async () => {
       },
       session: { state: 'S2_DIAGNOSIS' },
       language: 'EN',
-    });
+    },
+  });
 
   assert.equal(resp.status, 200);
 
@@ -153,19 +257,71 @@ test('/v1/chat: Routine alternatives cover AM + PM', async () => {
 
 test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {
   const express = require('express');
-  const request = require('supertest');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   mountAuroraBffRoutes(app, { logger: null });
 
-  const resp = await request(app)
-    .post('/v1/analysis/skin')
-    .set('X-Aurora-UID', 'test_uid')
-    .set('X-Trace-ID', 'test_trace')
-    .set('X-Brief-ID', 'test_brief')
-    .send({ use_photo: false, photos: [] });
+  const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+    headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
+    body: { use_photo: false, photos: [] },
+  });
 
   assert.equal(resp.status, 200);
   assert.ok(Array.isArray(resp.body?.cards));

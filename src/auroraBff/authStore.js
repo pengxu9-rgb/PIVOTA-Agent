@@ -1,14 +1,24 @@
 const crypto = require('crypto');
+const axios = require('axios');
+const { query } = require('../db');
 
 const AUTH_ENABLED = String(process.env.AURORA_BFF_AUTH_ENABLED || '').toLowerCase() === 'true';
 const AUTH_DEBUG = String(process.env.AURORA_BFF_AUTH_DEBUG || '').toLowerCase() === 'true';
+const AUTH_DEBUG_RETURN_CODE = String(process.env.AURORA_BFF_AUTH_DEBUG_RETURN_CODE || '').toLowerCase() === 'true';
 
-const CHALLENGE_TTL_MS = Math.max(60_000, Math.min(30 * 60_000, Number(process.env.AURORA_BFF_AUTH_CHALLENGE_TTL_MS || 10 * 60_000)));
-const SESSION_TTL_MS = Math.max(5 * 60_000, Math.min(180 * 24 * 60_000, Number(process.env.AURORA_BFF_AUTH_SESSION_TTL_MS || 30 * 24 * 60_000)));
+const AUTH_PEPPER = String(process.env.AURORA_BFF_AUTH_PEPPER || process.env.AURORA_AUTH_PEPPER || '').trim();
 
-const challengesByEmail = new Map();
-const sessionsByToken = new Map();
-const emailsByUserId = new Map();
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
+const AUTH_EMAIL_FROM = String(process.env.AURORA_BFF_AUTH_EMAIL_FROM || process.env.AURORA_AUTH_EMAIL_FROM || '').trim();
+
+const CHALLENGE_TTL_MS = Math.max(
+  60_000,
+  Math.min(30 * 60_000, Number(process.env.AURORA_BFF_AUTH_CHALLENGE_TTL_MS || 10 * 60_000)),
+);
+const SESSION_TTL_MS = Math.max(
+  5 * 60_000,
+  Math.min(180 * 24 * 60_000, Number(process.env.AURORA_BFF_AUTH_SESSION_TTL_MS || 30 * 24 * 60_000)),
+);
 
 function makeError(code, status = 500, message) {
   const err = new Error(message || code);
@@ -32,13 +42,45 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
-function pruneExpired() {
-  const ts = nowMs();
-  for (const [email, c] of challengesByEmail.entries()) {
-    if (!c || typeof c !== 'object' || !c.expiresAtMs || c.expiresAtMs <= ts) challengesByEmail.delete(email);
+function requireAuthConfigured() {
+  if (!AUTH_ENABLED) throw makeError('AUTH_NOT_CONFIGURED', 503);
+  if (!AUTH_PEPPER) throw makeError('AUTH_NOT_CONFIGURED', 503, 'Missing AURORA_BFF_AUTH_PEPPER');
+}
+
+function sha256Hex(input) {
+  return crypto.createHash('sha256').update(String(input || '')).digest('hex');
+}
+
+function hashWithPepper(value) {
+  return sha256Hex(`${AUTH_PEPPER}:${String(value || '')}`);
+}
+
+async function pruneExpired() {
+  if (!AUTH_ENABLED) return;
+  try {
+    await query(
+      `
+        DELETE FROM aurora_auth_challenges
+        WHERE expires_at < now()
+           OR consumed_at IS NOT NULL
+      `,
+      [],
+    );
+  } catch {
+    // ignore (auth can still work without pruning)
   }
-  for (const [token, s] of sessionsByToken.entries()) {
-    if (!s || typeof s !== 'object' || !s.expiresAtMs || s.expiresAtMs <= ts) sessionsByToken.delete(token);
+
+  try {
+    await query(
+      `
+        DELETE FROM aurora_auth_sessions
+        WHERE expires_at < now()
+           OR revoked_at IS NOT NULL
+      `,
+      [],
+    );
+  } catch {
+    // ignore
   }
 }
 
@@ -51,99 +93,232 @@ function getBearerToken(req) {
   return String(m[1] || '').trim();
 }
 
+async function sendOtpEmail({ email, code, language }) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+
+  if (!RESEND_API_KEY || !AUTH_EMAIL_FROM) {
+    return { ok: false, reason: 'email_not_configured' };
+  }
+
+  const subject = lang === 'CN' ? 'Aurora 登录验证码' : 'Your Aurora sign-in code';
+  const text =
+    lang === 'CN'
+      ? `你的 Aurora 登录验证码是：${code}\n\n10 分钟内有效。`
+      : `Your Aurora sign-in code is: ${code}\n\nIt expires in 10 minutes.`;
+
+  try {
+    await axios.post(
+      'https://api.resend.com/emails',
+      {
+        from: AUTH_EMAIL_FROM,
+        to: [email],
+        subject,
+        text,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 8000,
+      },
+    );
+    return { ok: true };
+  } catch (err) {
+    const message = err && err.response && err.response.data ? JSON.stringify(err.response.data).slice(0, 400) : err?.message || String(err);
+    return { ok: false, reason: 'email_send_failed', message };
+  }
+}
+
 async function createOtpChallenge({ email, language } = {}) {
-  pruneExpired();
-  if (!AUTH_ENABLED) throw makeError('AUTH_NOT_CONFIGURED', 503);
+  requireAuthConfigured();
+  await pruneExpired();
 
   const mail = String(email || '').trim().toLowerCase();
   if (!isValidEmail(mail)) throw makeError('INVALID_EMAIL', 400);
 
-  const challengeId = crypto.randomBytes(12).toString('hex');
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const challengeId = crypto.randomBytes(16).toString('hex');
+  const code = String(Math.floor(100000 + Math.random() * 900000)).padStart(6, '0');
   const createdAtMs = nowMs();
   const expiresAtMs = createdAtMs + CHALLENGE_TTL_MS;
 
-  challengesByEmail.set(mail, {
-    email: mail,
-    challengeId,
-    code,
-    createdAtMs,
-    expiresAtMs,
-    language: String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN',
-  });
+  const codeHash = hashWithPepper(`${challengeId}:${code}`);
 
+  // Keep only one active challenge per email to reduce confusion.
+  await query(
+    `
+      DELETE FROM aurora_auth_challenges
+      WHERE email = $1
+        AND consumed_at IS NULL
+    `,
+    [mail],
+  );
+
+  await query(
+    `
+      INSERT INTO aurora_auth_challenges (challenge_id, email, code_hash, expires_at)
+      VALUES ($1, $2, $3, $4)
+    `,
+    [challengeId, mail, codeHash, new Date(expiresAtMs).toISOString()],
+  );
+
+  const deliveryResult = await sendOtpEmail({ email: mail, code, language });
+  if (!deliveryResult.ok && !AUTH_DEBUG && !AUTH_DEBUG_RETURN_CODE) {
+    if (deliveryResult.reason === 'email_not_configured') {
+      throw makeError('AUTH_NOT_CONFIGURED', 503, deliveryResult.reason);
+    }
+    throw makeError('AUTH_START_FAILED', 500, deliveryResult.reason || 'email_send_failed');
+  }
   return {
     email: mail,
     challengeId,
     expiresAt: toIso(expiresAtMs),
     expiresInSeconds: Math.round((expiresAtMs - createdAtMs) / 1000),
-    delivery: 'not_configured',
-    ...(AUTH_DEBUG ? { debug_code: code } : {}),
-    ...(AUTH_DEBUG ? { delivery_error: 'email_delivery_not_implemented' } : {}),
+    delivery: deliveryResult.ok ? 'resend' : 'debug',
+    ...(AUTH_DEBUG || AUTH_DEBUG_RETURN_CODE ? { debug_code: code } : {}),
+    ...(deliveryResult.ok
+      ? {}
+      : {
+          delivery_error: deliveryResult.message
+            ? `email_send_failed:${deliveryResult.message}`
+            : deliveryResult.reason || 'email_send_failed',
+        }),
   };
 }
 
 async function verifyOtpChallenge({ email, code } = {}) {
-  pruneExpired();
-  if (!AUTH_ENABLED) throw makeError('AUTH_NOT_CONFIGURED', 503);
+  requireAuthConfigured();
+  await pruneExpired();
 
   const mail = String(email || '').trim().toLowerCase();
   const inputCode = String(code || '').trim();
   if (!mail || !inputCode) return { ok: false, reason: 'missing_input' };
 
-  const challenge = challengesByEmail.get(mail);
-  if (!challenge) return { ok: false, reason: 'not_found_or_expired' };
-  if (challenge.expiresAtMs <= nowMs()) {
-    challengesByEmail.delete(mail);
+  const res = await query(
+    `
+      SELECT challenge_id, code_hash, expires_at, attempts
+      FROM aurora_auth_challenges
+      WHERE email = $1
+        AND consumed_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [mail],
+  );
+  const row = res.rows && res.rows[0] ? res.rows[0] : null;
+  if (!row) return { ok: false, reason: 'not_found_or_expired' };
+
+  const expiresAt = row.expires_at ? Date.parse(row.expires_at) : NaN;
+  if (!Number.isFinite(expiresAt) || expiresAt <= nowMs()) {
+    await query(`DELETE FROM aurora_auth_challenges WHERE challenge_id = $1`, [row.challenge_id]);
     return { ok: false, reason: 'expired' };
   }
-  if (String(challenge.code) !== inputCode) return { ok: false, reason: 'code_mismatch' };
 
-  challengesByEmail.delete(mail);
-  const userId = `usr_${crypto.createHash('sha256').update(mail).digest('hex').slice(0, 16)}`;
-  emailsByUserId.set(userId, mail);
+  const expectedHash = String(row.code_hash || '');
+  const actualHash = hashWithPepper(`${row.challenge_id}:${inputCode}`);
+  if (!expectedHash || expectedHash !== actualHash) {
+    const attempts = Number.isFinite(Number(row.attempts)) ? Number(row.attempts) : 0;
+    await query(`UPDATE aurora_auth_challenges SET attempts = $2 WHERE challenge_id = $1`, [row.challenge_id, attempts + 1]);
+    return { ok: false, reason: 'code_mismatch' };
+  }
+
+  await query(`UPDATE aurora_auth_challenges SET consumed_at = now() WHERE challenge_id = $1`, [row.challenge_id]);
+
+  // Find or create user for this email.
+  const existing = await query(
+    `
+      SELECT user_id
+      FROM aurora_users
+      WHERE email = $1
+        AND deleted_at IS NULL
+      LIMIT 1
+    `,
+    [mail],
+  );
+  let userId = existing.rows && existing.rows[0] && existing.rows[0].user_id ? String(existing.rows[0].user_id) : '';
+  if (!userId) {
+    userId = `usr_${sha256Hex(mail).slice(0, 16)}`;
+    await query(
+      `
+        INSERT INTO aurora_users (user_id, email, updated_at)
+        VALUES ($1, $2, now())
+        ON CONFLICT (email) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
+          updated_at = now(),
+          deleted_at = NULL
+      `,
+      [userId, mail],
+    );
+  }
+
   return { ok: true, userId, email: mail };
 }
 
 async function createSession({ userId } = {}) {
-  pruneExpired();
-  if (!AUTH_ENABLED) throw makeError('AUTH_NOT_CONFIGURED', 503);
+  requireAuthConfigured();
+  await pruneExpired();
   const uid = String(userId || '').trim();
   if (!uid) throw makeError('USER_ID_MISSING', 400);
 
   const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashWithPepper(token);
   const createdAtMs = nowMs();
   const expiresAtMs = createdAtMs + SESSION_TTL_MS;
 
-  sessionsByToken.set(token, {
-    token,
-    userId: uid,
-    email: emailsByUserId.get(uid) || null,
-    createdAtMs,
-    expiresAtMs,
-  });
+  await query(
+    `
+      INSERT INTO aurora_auth_sessions (token_hash, user_id, expires_at)
+      VALUES ($1, $2, $3)
+    `,
+    [tokenHash, uid, new Date(expiresAtMs).toISOString()],
+  );
 
   return { token, expiresAt: toIso(expiresAtMs) };
 }
 
 async function resolveSessionFromToken(token) {
-  pruneExpired();
-  if (!AUTH_ENABLED) return null;
+  if (!AUTH_ENABLED || !AUTH_PEPPER) return null;
+  await pruneExpired();
   const t = String(token || '').trim();
   if (!t) return null;
-  const session = sessionsByToken.get(t);
-  if (!session) return null;
-  if (session.expiresAtMs <= nowMs()) {
-    sessionsByToken.delete(t);
-    return null;
+  const tokenHash = hashWithPepper(t);
+
+  const res = await query(
+    `
+      SELECT s.user_id, s.expires_at, u.email
+      FROM aurora_auth_sessions s
+      LEFT JOIN aurora_users u ON u.user_id = s.user_id AND u.deleted_at IS NULL
+      WHERE s.token_hash = $1
+        AND s.revoked_at IS NULL
+        AND s.expires_at > now()
+      LIMIT 1
+    `,
+    [tokenHash],
+  );
+  const row = res.rows && res.rows[0] ? res.rows[0] : null;
+  if (!row) return null;
+
+  try {
+    await query(`UPDATE aurora_auth_sessions SET last_seen_at = now() WHERE token_hash = $1`, [tokenHash]);
+  } catch {
+    // ignore
   }
-  return { userId: session.userId, email: session.email || null, expiresAt: toIso(session.expiresAtMs) };
+
+  const expiresAt = row.expires_at ? new Date(row.expires_at).toISOString() : null;
+  return { userId: String(row.user_id), email: row.email ? String(row.email) : null, expiresAt };
 }
 
 async function revokeSessionToken(token) {
-  pruneExpired();
-  if (!token) return { ok: true };
-  sessionsByToken.delete(String(token || '').trim());
+  if (!AUTH_ENABLED || !AUTH_PEPPER) return { ok: true };
+  await pruneExpired();
+  const t = String(token || '').trim();
+  if (!t) return { ok: true };
+  const tokenHash = hashWithPepper(t);
+  try {
+    await query(`UPDATE aurora_auth_sessions SET revoked_at = now() WHERE token_hash = $1`, [tokenHash]);
+  } catch {
+    // ignore
+  }
   return { ok: true };
 }
 
@@ -155,4 +330,3 @@ module.exports = {
   resolveSessionFromToken,
   revokeSessionToken,
 };
-
