@@ -10,6 +10,7 @@ const {
   stateChangeAllowed,
   stripRecommendationCards,
 } = require('../src/auroraBff/gating');
+const { normalizeRecoGenerate } = require('../src/auroraBff/normalize');
 const { simulateConflicts } = require('../src/auroraBff/routineRules');
 const { auroraChat } = require('../src/auroraBff/auroraDecisionClient');
 
@@ -51,6 +52,23 @@ test('Aurora mock: returns recommendations card (for offline gating tests)', asy
   assert.ok(resp);
   assert.equal(Array.isArray(resp.cards), true);
   assert.equal(resp.cards.some((c) => String(c.type).includes('recommend')), true);
+});
+
+test('normalizeRecoGenerate: moves warning-like codes into warnings', async () => {
+  const norm = normalizeRecoGenerate({
+    recommendations: [{ slot: 'other', step: 'serum', sku: { brand: 'X', name: 'Y', sku_id: 'id' } }],
+    evidence: null,
+    confidence: 0.5,
+    missing_info: ['over_budget', 'budget_unknown', 'recent_logs_missing'],
+  });
+
+  assert.ok(norm);
+  assert.equal(Array.isArray(norm.payload.missing_info), true);
+  assert.equal(Array.isArray(norm.payload.warnings), true);
+  assert.equal(norm.payload.missing_info.includes('budget_unknown'), true);
+  assert.equal(norm.payload.missing_info.includes('over_budget'), false);
+  assert.equal(norm.payload.warnings.includes('over_budget'), true);
+  assert.equal(norm.payload.warnings.includes('recent_logs_missing'), true);
 });
 
 test('Recommendation gate: does not unlock commerce for diagnosis chip', async () => {
