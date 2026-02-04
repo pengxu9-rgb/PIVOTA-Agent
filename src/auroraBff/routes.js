@@ -92,8 +92,8 @@ const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
 })();
 
 const RECO_ALTERNATIVES_MAX_PRODUCTS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_MAX_PRODUCTS || 2);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_MAX_PRODUCTS || 4);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4;
   return Math.max(0, Math.min(6, v));
 })();
 
@@ -1103,6 +1103,7 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   }
   const mapped = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
   const norm = normalizeRecoGenerate(mapped);
+  norm.payload = { ...norm.payload, intent: 'routine' };
 
   if (includeAlternatives) {
     const alt = await enrichRecommendationsWithAlternatives({
@@ -1114,6 +1115,11 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
     });
     norm.payload = { ...norm.payload, recommendations: alt.recommendations };
     norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
+  }
+
+  const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
+  if (budgetKnown && Array.isArray(norm.payload?.missing_info)) {
+    norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
   }
 
   const suggestedChips = [];
@@ -1171,6 +1177,10 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
 
   const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
   const routine = contextObj ? contextObj.routine : null;
+  const contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
+  if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
+    contextMeta.budget = profileSummary.budgetTier;
+  }
 
   const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
   const structuredFallback = getUpstreamStructuredOrJson(upstream);
@@ -1179,7 +1189,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   let structured = answerJson;
   let structuredSource = answerJson ? 'answer_json' : null;
   if (!structured && routine) {
-    structured = mapAuroraRoutineToRecoGenerate(routine, contextObj);
+    structured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
     structuredSource = 'context_routine';
   }
   if (!structured) {
@@ -1221,6 +1231,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   }
 
   const norm = normalizeRecoGenerate(mapped);
+  norm.payload = { ...norm.payload, intent: 'reco_products' };
   let alternativesDebug = null;
 
   if (includeAlternatives) {
@@ -1237,6 +1248,11 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     if (debug && alt && typeof alt === 'object' && alt.debug) {
       alternativesDebug = alt.debug;
     }
+  }
+
+  const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
+  if (budgetKnown && Array.isArray(norm.payload?.missing_info)) {
+    norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
   }
 
   return { norm, upstreamDebug, alternativesDebug };

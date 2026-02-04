@@ -406,6 +406,25 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       tradeoffs.push(language === 'CN' ? `可得性：${availabilityNote}` : `Availability: ${availabilityNote}`);
     }
 
+    const reasons = [];
+    if (addedBenefits.length) {
+      reasons.push(
+        language === 'CN'
+          ? `优势：新增亮点/活性：${addedBenefits.join('、')}`
+          : `Pros: Added benefits/actives: ${addedBenefits.join(', ')}`,
+      );
+    }
+    if (priceDeltaUsd != null && priceDeltaUsd < -0.01) {
+      const abs = Math.round(Math.abs(priceDeltaUsd) * 100) / 100;
+      reasons.push(language === 'CN' ? `优势：通常更省预算（约省 $${abs}）` : `Pros: Usually cheaper (save ~$${abs})`);
+    }
+    if (availabilityNote) {
+      reasons.push(language === 'CN' ? `优势：更容易买到（${availabilityNote}）` : `Pros: Easier to find (${availabilityNote})`);
+    }
+    if (!reasons.length && textureDiff.length) {
+      reasons.push(language === 'CN' ? `优势：肤感/质地差异：${textureDiff[0]}` : `Pros: Texture/finish: ${textureDiff[0]}`);
+    }
+
     const confidence = similarity == null ? null : Math.max(0, Math.min(1, similarity / 100));
 
     const evidence = {
@@ -441,6 +460,7 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       kind,
       product,
       ...(similarity != null ? { similarity } : {}),
+      ...(reasons.length ? { reasons: uniqueStrings(reasons) } : {}),
       tradeoffs: uniqueStrings(tradeoffs),
       ...(Object.keys(tradeoffs_detail).length ? { tradeoffs_detail } : {}),
       evidence,
