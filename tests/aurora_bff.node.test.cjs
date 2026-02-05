@@ -627,7 +627,7 @@ test('/v1/product/analyze: returns verdict + enriched reasons', async () => {
   assert.ok(reasons.some((r) => /most impactful ingredient/i.test(String(r || ''))));
 });
 
-test('/v1/dupe/compare: returns tradeoffs (compare task)', async () => {
+test('/v1/dupe/compare: returns tradeoffs (prefers structured alternatives)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
@@ -709,7 +709,7 @@ test('/v1/dupe/compare: returns tradeoffs (compare task)', async () => {
 
   const tradeoffs = Array.isArray(payload.tradeoffs) ? payload.tradeoffs : [];
   assert.ok(tradeoffs.length > 0);
-  assert.ok(tradeoffs.some((t) => /mock tradeoff/i.test(String(t || ''))));
+  assert.ok(tradeoffs.some((t) => /missing actives|added benefits|texture/i.test(String(t || ''))));
 });
 
 test('/v1/dupe/compare: falls back to deepscan diff when compare is empty', async () => {

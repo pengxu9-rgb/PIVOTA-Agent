@@ -2390,13 +2390,31 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
       };
 
-      const mapped = compareStructured
-        ? compareStructured && compareStructured.alternatives
-          ? mapAuroraAlternativesToDupeCompare(compareStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback: originalAnchor })
-          : compareStructured
-        : originalStructured && originalStructured.alternatives
-          ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback: originalAnchor })
-          : fallbackAnalyze();
+      const mappedFromOriginalAlts =
+        originalStructured && originalStructured.alternatives
+          ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, {
+            fallbackAnalyze,
+            originalAnchorFallback: originalAnchor,
+          })
+          : null;
+
+      const mapped = (() => {
+        // Prefer structured.alternatives (when present) because it yields stable similarity/tradeoffs.
+        if (mappedFromOriginalAlts && Array.isArray(mappedFromOriginalAlts.tradeoffs) && mappedFromOriginalAlts.tradeoffs.length) {
+          return mappedFromOriginalAlts;
+        }
+        if (compareStructured) {
+          if (compareStructured.alternatives) {
+            return mapAuroraAlternativesToDupeCompare(compareStructured, dupeAnchor, {
+              fallbackAnalyze,
+              originalAnchorFallback: originalAnchor,
+            });
+          }
+          return compareStructured;
+        }
+        if (mappedFromOriginalAlts) return mappedFromOriginalAlts;
+        return fallbackAnalyze();
+      })();
 
       const norm = normalizeDupeCompare(mapped);
       let payload = norm.payload;
