@@ -230,7 +230,11 @@ function mapAuroraProductAnalysis(upstreamStructured) {
   };
 }
 
-function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback } = {}) {
+function mapAuroraAlternativesToDupeCompare(
+  originalStructured,
+  dupeAnchor,
+  { fallbackAnalyze, originalAnchorFallback, lang, barrierStatus } = {},
+) {
   const structured = asPlainObject(originalStructured);
   const parse = structured && asPlainObject(structured.parse);
   const originalAnchor = parse && asPlainObject(parse.anchor_product || parse.anchorProduct);
@@ -241,6 +245,10 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
   const dupeSkuId = dupe ? asString(dupe.sku_id || dupe.skuId || dupe.product_id || dupe.productId) : null;
   const dupeDisplay = dupe ? asString(dupe.display_name || dupe.displayName || dupe.name) : null;
   const dupeBrand = dupe ? asString(dupe.brand) : null;
+
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const barrierRaw = typeof barrierStatus === 'string' ? barrierStatus.trim().toLowerCase() : '';
+  const barrierImpaired = barrierRaw === 'impaired' || barrierRaw === 'damaged' || barrierRaw === 'reactive' || barrierRaw === 'sensitive';
 
   function normName(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -282,14 +290,146 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
 
   const tradeoffsOut = [];
   const t = asPlainObject(match.tradeoffs);
-  const missingActives = t ? uniqueStrings(asStringArray(t.missing_actives || t.missingActives)) : [];
-  const addedBenefits = t ? uniqueStrings(asStringArray(t.added_benefits || t.addedBenefits)) : [];
+  const missingActivesRaw = t ? uniqueStrings(asStringArray(t.missing_actives || t.missingActives)) : [];
+  const addedBenefitsRaw = t ? uniqueStrings(asStringArray(t.added_benefits || t.addedBenefits)) : [];
   const textureDiff = t ? uniqueStrings(asStringArray(t.texture_finish_differences || t.textureFinishDifferences)) : [];
   const availabilityNote = t ? asString(t.availability_note || t.availabilityNote) : null;
   const priceDeltaUsd = t ? asNumberOrNull(t.price_delta_usd || t.priceDeltaUsd) : null;
 
-  if (missingActives.length) tradeoffsOut.push(`Missing actives vs original: ${missingActives.join(', ')}`);
-  if (addedBenefits.length) tradeoffsOut.push(`Added benefits/actives: ${addedBenefits.join(', ')}`);
+  const isTrivialCarrier = (value) => {
+    const s = String(value || '').trim().toLowerCase();
+    return s === 'water' || s === 'aqua';
+  };
+  const pickFew = (items, max) => uniqueStrings(items).filter((x) => x && !isTrivialCarrier(x)).slice(0, max);
+  const formatFew = (items, max) => {
+    const list = pickFew(items, max);
+    const tail = Math.max(0, uniqueStrings(items).filter((x) => x && !isTrivialCarrier(x)).length - list.length);
+    return list.length ? `${list.join(', ')}${tail > 0 ? '…' : ''}` : '';
+  };
+
+  const ingredientSignals = (items) => {
+    const out = { occlusives: [], humectants: [], exfoliants: [], fragrance: [] };
+    const add = (k, v) => {
+      const s = asString(v);
+      if (!s || isTrivialCarrier(s)) return;
+      out[k].push(s);
+    };
+
+    for (const raw of Array.isArray(items) ? items : []) {
+      const s = asString(raw);
+      if (!s) continue;
+      const n = s.toLowerCase();
+
+      if (
+        n.includes('petrolatum') ||
+        n.includes('petroleum jelly') ||
+        n.includes('mineral oil') ||
+        n.includes('paraffin') ||
+        n.includes('dimethicone') ||
+        n.includes('lanolin') ||
+        n.includes('wax') ||
+        n.includes('beeswax') ||
+        n.includes('shea butter') ||
+        n.includes('cocoa butter')
+      ) {
+        add('occlusives', s);
+      }
+
+      if (
+        n.includes('glycerin') ||
+        n.includes('hyaluronic') ||
+        n.includes('sodium hyaluronate') ||
+        n.includes('panthenol') ||
+        n.includes('urea') ||
+        n.includes('betaine') ||
+        n.includes('sodium pca') ||
+        n.includes('trehalose') ||
+        n.includes('propanediol') ||
+        n.includes('butylene glycol') ||
+        n.includes('sorbitol')
+      ) {
+        add('humectants', s);
+      }
+
+      if (
+        n.includes('glycolic') ||
+        n.includes('lactic') ||
+        n.includes('mandelic') ||
+        n.includes('salicylic') ||
+        n.includes('gluconolactone') ||
+        n.includes('pha') ||
+        n.includes('bha') ||
+        n.includes('aha')
+      ) {
+        add('exfoliants', s);
+      }
+
+      if (
+        n.includes('fragrance') ||
+        n.includes('parfum') ||
+        n.includes('essential oil') ||
+        n.includes('limonene') ||
+        n.includes('linalool') ||
+        n.includes('citral')
+      ) {
+        add('fragrance', s);
+      }
+    }
+
+    return {
+      occlusives: uniqueStrings(out.occlusives),
+      humectants: uniqueStrings(out.humectants),
+      exfoliants: uniqueStrings(out.exfoliants),
+      fragrance: uniqueStrings(out.fragrance),
+    };
+  };
+
+  const missingActivesAll = uniqueStrings(missingActivesRaw).filter((x) => x && !isTrivialCarrier(x));
+  const addedBenefitsAll = uniqueStrings(addedBenefitsRaw).filter((x) => x && !isTrivialCarrier(x));
+  const missingActives = missingActivesAll.slice(0, 12);
+  const addedBenefits = addedBenefitsAll.slice(0, 12);
+  const origOnly = ingredientSignals(missingActivesAll);
+  const dupeOnly = ingredientSignals(addedBenefitsAll);
+
+  if (origOnly.occlusives.length && dupeOnly.humectants.length) {
+    tradeoffsOut.push(
+      isCn
+        ? `质地/封闭性：原产品可能更偏封闭锁水（例如 ${formatFew(origOnly.occlusives, 2)}）；平替更偏补水（例如 ${formatFew(dupeOnly.humectants, 2)}）→ 通常更清爽，但可能需要叠加面霜来“锁水”。`
+        : `Texture/finish: Original may feel more occlusive/sealing (e.g., ${formatFew(origOnly.occlusives, 2)}) while the dupe leans more humectant (e.g., ${formatFew(dupeOnly.humectants, 2)}) → lighter feel, but may need a moisturizer on top to seal.`,
+    );
+  }
+
+  if (dupeOnly.exfoliants.length) {
+    tradeoffsOut.push(
+      isCn
+        ? `刺激风险：平替新增去角质类成分（例如 ${formatFew(dupeOnly.exfoliants, 2)}）→ ${barrierImpaired ? '屏障受损时更容易不耐受，建议低频' : '更易刺激，建议低频'}，不要叠加强活性。`
+        : `Irritation risk: Dupe adds exfoliant-like actives (e.g., ${formatFew(dupeOnly.exfoliants, 2)}) → ${barrierImpaired ? 'higher risk if your barrier is impaired; start low' : 'higher irritation risk; start low'}, avoid stacking strong actives.`,
+    );
+  }
+
+  if (dupeOnly.fragrance.length) {
+    tradeoffsOut.push(
+      isCn
+        ? `气味/敏感风险：平替可能含香精/香料相关成分（例如 ${formatFew(dupeOnly.fragrance, 1)}）→ 更敏感人群需要谨慎。`
+        : `Fragrance risk: Dupe may include fragrance-related ingredients (e.g., ${formatFew(dupeOnly.fragrance, 1)}) → higher risk for sensitive skin.`,
+    );
+  }
+
+  if (!tradeoffsOut.length) {
+    const miss = formatFew(missingActives, 4);
+    const add = formatFew(addedBenefits, 4);
+    if (miss) {
+      tradeoffsOut.push(
+        isCn ? `相对原产品，平替可能缺少：${miss}` : `Compared to original, the dupe may omit: ${miss}`,
+      );
+    }
+    if (add) {
+      tradeoffsOut.push(
+        isCn ? `平替可能新增：${add}` : `Dupe adds: ${add}`,
+      );
+    }
+  }
+
   tradeoffsOut.push(...textureDiff);
   if (priceDeltaUsd != null) tradeoffsOut.push(`Price delta (USD): ${priceDeltaUsd}`);
   if (availabilityNote) tradeoffsOut.push(`Availability: ${availabilityNote}`);
@@ -316,8 +456,8 @@ function mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fa
 
   const matchProduct = asPlainObject(match.product) || null;
   const tradeoffs_detail = {
-    ...(missingActives.length ? { missing_actives: missingActives } : {}),
-    ...(addedBenefits.length ? { added_benefits: addedBenefits } : {}),
+    ...(missingActivesAll.length ? { missing_actives: missingActivesAll } : {}),
+    ...(addedBenefitsAll.length ? { added_benefits: addedBenefitsAll } : {}),
     ...(textureDiff.length ? { texture_finish_differences: textureDiff } : {}),
     ...(priceDeltaUsd != null ? { price_delta_usd: priceDeltaUsd } : {}),
     ...(availabilityNote ? { availability_note: availabilityNote } : {}),

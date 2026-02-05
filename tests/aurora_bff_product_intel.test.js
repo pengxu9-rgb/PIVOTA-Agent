@@ -62,7 +62,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'dupe_compare');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload.tradeoffs)).toBe(true);
-    expect(card.payload.tradeoffs.some((t) => String(t).includes('Missing actives'))).toBe(true);
+    expect(
+      card.payload.tradeoffs.some((t) => /compared to original|dupe adds|texture/i.test(String(t || ''))),
+    ).toBe(true);
     expect(card.payload.confidence).toBeGreaterThan(0);
 
     const ev = card.payload.evidence;
@@ -79,4 +81,3 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(normalizeRecoGenerate(null).payload.evidence).toBeTruthy();
   });
 });
-

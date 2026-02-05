@@ -14,6 +14,8 @@ const {
 const { normalizeRecoGenerate } = require('../src/auroraBff/normalize');
 const { simulateConflicts } = require('../src/auroraBff/routineRules');
 const { auroraChat } = require('../src/auroraBff/auroraDecisionClient');
+const { createStageProfiler } = require('../src/auroraBff/skinAnalysisProfiling');
+const { should_call_llm: shouldCallLlm } = require('../src/auroraBff/skinLlmPolicy');
 
 test('Phase0 gate: no recos when profile is missing', async () => {
   const gate = shouldDiagnosisGate({
@@ -46,6 +48,101 @@ test('Routine simulate: detects retinoid x acids conflict', async () => {
   });
   assert.equal(sim.safe, false);
   assert.equal(sim.conflicts.some((c) => c.rule_id === 'retinoid_x_acids'), true);
+});
+
+test('Skin LLM policy: quality fail skips all LLM calls', async () => {
+  const profiler = createStageProfiler();
+  const base = {
+    hasPrimaryInput: true,
+    userRequestedPhoto: true,
+    detectorConfidenceLevel: 'low',
+    visionAvailable: true,
+    reportAvailable: true,
+    degradedMode: 'report',
+    quality: { grade: 'fail', reasons: ['qc_failed'] },
+  };
+
+  const visionDecision = shouldCallLlm({ ...base, kind: 'vision' });
+  const reportDecision = shouldCallLlm({ ...base, kind: 'report' });
+
+  assert.equal(visionDecision.decision, 'skip');
+  assert.equal(reportDecision.decision, 'skip');
+
+  if (visionDecision.decision === 'call') {
+    await profiler.timeLlmCall({ provider: 'test', model: 'mock', kind: 'vision' }, async () => ({ ok: true }));
+  }
+  if (reportDecision.decision === 'call') {
+    await profiler.timeLlmCall({ provider: 'test', model: 'mock', kind: 'report' }, async () => ({ ok: true }));
+  }
+
+  const report = profiler.report();
+  assert.equal(report.llm_summary.calls, 0);
+});
+
+test('Skin LLM policy: degraded calls only one model (configurable)', async () => {
+  const base = {
+    hasPrimaryInput: true,
+    userRequestedPhoto: true,
+    detectorConfidenceLevel: 'low',
+    visionAvailable: true,
+    reportAvailable: true,
+    quality: { grade: 'degraded', reasons: ['qc_degraded'] },
+  };
+
+  {
+    const profiler = createStageProfiler();
+    const visionDecision = shouldCallLlm({ ...base, kind: 'vision', degradedMode: 'report' });
+    const reportDecision = shouldCallLlm({ ...base, kind: 'report', degradedMode: 'report' });
+
+    assert.equal(visionDecision.decision, 'skip');
+    assert.equal(reportDecision.decision, 'call');
+    assert.equal(reportDecision.downgrade_confidence, true);
+
+    if (visionDecision.decision === 'call') {
+      await profiler.timeLlmCall({ provider: 'test', model: 'mock', kind: 'vision' }, async () => ({ ok: true }));
+    }
+    if (reportDecision.decision === 'call') {
+      await profiler.timeLlmCall({ provider: 'test', model: 'mock', kind: 'report' }, async () => ({ ok: true }));
+    }
+    const report = profiler.report();
+    assert.equal(report.llm_summary.calls, 1);
+  }
+
+  {
+    const profiler = createStageProfiler();
+    const visionDecision = shouldCallLlm({ ...base, kind: 'vision', degradedMode: 'vision' });
+    const reportDecision = shouldCallLlm({ ...base, kind: 'report', degradedMode: 'vision' });
+
+    assert.equal(visionDecision.decision, 'call');
+    assert.equal(reportDecision.decision, 'skip');
+    assert.equal(visionDecision.downgrade_confidence, true);
+
+    if (visionDecision.decision === 'call') {
+      await profiler.timeLlmCall({ provider: 'test', model: 'mock', kind: 'vision' }, async () => ({ ok: true }));
+    }
+    if (reportDecision.decision === 'call') {
+      await profiler.timeLlmCall({ provider: 'test', model: 'mock', kind: 'report' }, async () => ({ ok: true }));
+    }
+    const report = profiler.report();
+    assert.equal(report.llm_summary.calls, 1);
+  }
+});
+
+test('Skin LLM policy: pass skips report when detector is confident', async () => {
+  const base = {
+    hasPrimaryInput: true,
+    userRequestedPhoto: true,
+    visionAvailable: true,
+    reportAvailable: true,
+    degradedMode: 'report',
+    quality: { grade: 'pass', reasons: ['qc_passed'] },
+  };
+
+  const reportDecision = shouldCallLlm({ ...base, kind: 'report', detectorConfidenceLevel: 'high' });
+  assert.equal(reportDecision.decision, 'skip');
+
+  const reportDecisionUncertain = shouldCallLlm({ ...base, kind: 'report', detectorConfidenceLevel: 'low' });
+  assert.equal(reportDecisionUncertain.decision, 'call');
 });
 
 test('Aurora mock: returns recommendations card (for offline gating tests)', async () => {
@@ -791,7 +888,13 @@ test('/v1/dupe/compare: falls back to deepscan diff when compare is empty', asyn
 
   const tradeoffs = Array.isArray(card.payload?.tradeoffs) ? card.payload.tradeoffs : [];
   assert.ok(tradeoffs.length > 0);
-  assert.ok(tradeoffs.some((t) => /missing actives vs original|added actives|hero ingredient shift/i.test(String(t || ''))));
+  assert.ok(
+    tradeoffs.some((t) =>
+      /compared to original|dupe adds|texture|irritation risk|fragrance risk|dupe risk notes|hero ingredient shift|key ingredient emphasis|no tradeoff details were returned/i.test(
+        String(t || ''),
+      ),
+    ),
+  );
 });
 
 test('/v1/dupe/compare: dupe not in alternatives uses human tradeoffs (no raw diff)', async () => {
@@ -873,4 +976,90 @@ test('/v1/dupe/compare: dupe not in alternatives uses human tradeoffs (no raw di
   const tradeoffs = Array.isArray(card.payload?.tradeoffs) ? card.payload.tradeoffs : [];
   assert.ok(tradeoffs.length > 0);
   assert.ok(tradeoffs.every((t) => !/missing actives vs original|added actives/i.test(String(t || ''))));
+});
+
+test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+    headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' },
+    body: {
+      use_photo: true,
+      currentRoutine: 'AM: gentle cleanser + SPF. PM: gentle cleanser + adapalene + moisturizer.',
+      photos: [{ slot_id: 'daylight', photo_id: 'photo_1', qc_status: 'fail' }],
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  assert.ok(resp.body);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const card = cards.find((c) => c && c.type === 'analysis_summary');
+  assert.ok(card);
+
+  assert.equal(card.payload.analysis_source, 'retake');
+  assert.equal(card.payload?.quality_report?.photo_quality?.grade, 'fail');
+  assert.equal(card.payload?.quality_report?.llm?.vision?.decision, 'skip');
+  assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
+  assert.equal(Array.isArray(card.payload?.analysis?.features), true);
+  assert.match(String(card.payload.analysis.features[0].observation || ''), /photo/i);
 });

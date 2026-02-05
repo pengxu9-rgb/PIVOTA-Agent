@@ -6,6 +6,13 @@ const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
 const {
+  classifyPhotoQuality,
+  inferDetectorConfidence,
+  shouldCallLlm,
+  downgradeSkinAnalysisConfidence,
+  humanizeLlmReasons,
+} = require('./skinLlmPolicy');
+const {
   V1ChatRequestSchema,
   UserProfilePatchSchema,
   TrackerLogSchema,
@@ -94,6 +101,12 @@ const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
 const SKIN_VISION_MODEL = String(process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+const SKIN_DEGRADED_MODE = (() => {
+  const raw = String(process.env.AURORA_SKIN_DEGRADED_MODE || 'report')
+    .trim()
+    .toLowerCase();
+  return raw === 'vision' ? 'vision' : 'report';
+})();
 const SKIN_VISION_TIMEOUT_MS = Math.max(
   2000,
   Math.min(30000, Number(process.env.AURORA_SKIN_VISION_TIMEOUT_MS || 12000)),
@@ -572,6 +585,40 @@ function buildLowConfidenceBaselineSkinAnalysis({ profile, language }) {
     lang === 'CN'
       ? '当前信息不足（缺少你正在用的产品/步骤），我先给低风险的 7 天基线：\n1) 少而稳：温和洁面 + 保湿 + 白天 SPF。\n2) 若刺痛/泛红：先停用强刺激活性（酸/高浓 VC/视黄醇），以修护为主。\n3) 任何新活性都从低频开始（每周 1–2 次），观察 72 小时。\n\n为了把建议做得更准：请把你现在 AM/PM 用的产品（洁面/活性/保湿/SPF，名字或链接都行）发我；如果方便，也可以补一张自然光自拍（可选）。'
       : "I don't have your current products/steps yet, so this is a low-confidence baseline:\n1) Keep it minimal: gentle cleanser + moisturizer + daytime SPF.\n2) If stinging/redness: pause strong actives (acids/high-strength vitamin C/retinoids) and focus on repair.\n3) Any new active: start 1–2×/week and watch the 72h response.\n\nTo personalize this safely: please share your current AM/PM products (cleanser/actives/moisturizer/SPF, names or links). If you'd like, you can also add a daylight selfie (optional).";
+
+  return {
+    features: features.slice(0, 6),
+    strategy: strategy.slice(0, 1200),
+    needs_risk_check: false,
+  };
+}
+
+function buildRetakeSkinAnalysis({ language, photoQuality } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const reasonsRaw = photoQuality && Array.isArray(photoQuality.reasons) ? photoQuality.reasons : [];
+  const failedHint = reasonsRaw.includes('qc_failed');
+
+  const features = [
+    {
+      observation:
+        lang === 'CN'
+          ? `这张照片${failedHint ? '没有通过' : '质量不够'}，我不会基于照片下皮肤结论（避免误判）。`
+          : `This photo ${failedHint ? "didn't pass" : 'is too low-quality'}, so I won’t make skin conclusions from it (to avoid wrong guesses).`,
+      confidence: 'pretty_sure',
+    },
+    {
+      observation:
+        lang === 'CN'
+          ? '重拍要点：自然光/正脸/无遮挡（头发、口罩）/不美颜滤镜/对焦清晰，距离约 30–50cm。'
+          : 'Retake tips: daylight, straight-on, no obstructions (hair/mask), no beauty filters, sharp focus, ~30–50cm distance.',
+      confidence: 'pretty_sure',
+    },
+  ];
+
+  const strategy =
+    lang === 'CN'
+      ? '为了更安全更准：\n1) 按上面的要点重拍一张（自然光）。\n2) 先不要同晚叠加多种强活性（维A/酸/高浓VC）。\n3) 如果你愿意，也可以先把你现在 AM/PM 用的产品/活性和频率发我，我可以先给一个“低刺激”的临时安排。\n\n你最近是否有刺痛/泛红/爆皮？'
+      : "To keep this safe and accurate:\n1) Retake a daylight photo using the tips above.\n2) Avoid stacking multiple strong actives on the same night (retinoid/acids/high-strength vitamin C).\n3) If you want, share your current AM/PM products and active frequency and I’ll draft a low-irritation temporary plan.\n\nAny stinging/redness/flaking recently?";
 
   return {
     features: features.slice(0, 6),
@@ -2901,11 +2948,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!tradeoffs.length) {
           const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
           const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
-          tradeoffs.push(
-            ctx.lang === 'CN'
-              ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
-              : `Key ingredient emphasis (brief): original — ${origPreview.length ? origPreview.join(' / ') : 'unknown'}; dupe — ${dupPreview.length ? dupPreview.join(' / ') : 'unknown'}.`,
-          );
+          if (origPreview.length || dupPreview.length) {
+            tradeoffs.push(
+              ctx.lang === 'CN'
+                ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
+                : `Key ingredient emphasis (brief): original — ${origPreview.length ? origPreview.join(' / ') : 'unknown'}; dupe — ${dupPreview.length ? dupPreview.join(' / ') : 'unknown'}.`,
+            );
+          }
         }
 
         const confidence = typeof orig.confidence === 'number' && typeof dup.confidence === 'number'
@@ -2938,9 +2987,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       const mappedFromOriginalAlts =
         originalStructured && originalStructured.alternatives
           ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, {
-            fallbackAnalyze,
-            originalAnchorFallback: originalAnchor,
-          })
+              fallbackAnalyze,
+              originalAnchorFallback: originalAnchor,
+              lang: ctx.lang,
+              barrierStatus: profileSummary && profileSummary.barrierStatus,
+            })
           : null;
 
       const mapped = (() => {
@@ -2953,6 +3004,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             return mapAuroraAlternativesToDupeCompare(compareStructured, dupeAnchor, {
               fallbackAnalyze,
               originalAnchorFallback: originalAnchor,
+              lang: ctx.lang,
+              barrierStatus: profileSummary && profileSummary.barrierStatus,
             });
           }
           return compareStructured;
@@ -4277,8 +4330,26 @@ function mountAuroraBffRoutes(app, { logger }) {
       profiler.start('quality', { kind: 'memory' });
       const identity = await resolveIdentity(req, ctx);
       try {
-        profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-        recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+        const [profileRes, logsRes] = await Promise.allSettled([
+          getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }),
+          getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7),
+        ]);
+        if (profileRes.status === 'fulfilled') profile = profileRes.value;
+        else {
+          const r = profileRes.reason;
+          logger?.warn(
+            { err: r && (r.code || r.message) ? String(r.code || r.message) : String(r) },
+            'aurora bff: failed to load profile',
+          );
+        }
+        if (logsRes.status === 'fulfilled') recentLogs = logsRes.value;
+        else {
+          const r = logsRes.reason;
+          logger?.warn(
+            { err: r && (r.code || r.message) ? String(r.code || r.message) : String(r) },
+            'aurora bff: failed to load recent logs',
+          );
+        }
       } catch (err) {
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
       }
@@ -4286,18 +4357,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
       const photoQcParts = [];
       const passedPhotos = [];
-      let passedCount = 0;
+      const degradedPhotos = [];
+      const failedPhotos = [];
+      let photosSubmittedCount = 0;
       for (const p of photos) {
         const slot = String(p.slot_id || '').trim();
         const qc = String(p.qc_status || '').trim().toLowerCase();
         const photoId = typeof p.photo_id === 'string' ? p.photo_id.trim() : '';
         if (slot && qc) photoQcParts.push(`${slot}:${qc}`);
-        if (qc === 'passed') {
-          passedCount += 1;
-          if (slot && photoId) passedPhotos.push({ slot_id: slot, photo_id: photoId, qc_status: qc });
-        }
+        if (!slot || !photoId) continue;
+        photosSubmittedCount += 1;
+        const entry = { slot_id: slot, photo_id: photoId, qc_status: qc || 'unknown' };
+        if (qc === 'passed' || qc === 'pass' || qc === 'ok') passedPhotos.push(entry);
+        else if (qc === 'degraded' || qc === 'warn' || qc === 'warning' || qc === 'low' || !qc) degradedPhotos.push(entry);
+        else if (qc === 'fail' || qc === 'failed' || qc === 'reject' || qc === 'rejected' || qc === 'bad') failedPhotos.push(entry);
+        else degradedPhotos.push(entry);
       }
-      const photosProvided = passedCount > 0;
+      const photosProvided = photosSubmittedCount > 0;
+      const photoQuality = classifyPhotoQuality(photos);
 
       let profileSummary = summarizeProfileForContext(profile);
       const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
@@ -4335,19 +4412,60 @@ function mountAuroraBffRoutes(app, { logger }) {
       const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0;
 
       const userRequestedPhoto = parsed.data.use_photo === true;
-      const usePhoto = userRequestedPhoto && hasPrimaryInput;
+      const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
+      const visionAvailable = SKIN_VISION_ENABLED && Boolean(OPENAI_API_KEY);
+      const reportAvailable = Boolean(AURORA_DECISION_BASE_URL) && !USE_AURORA_BFF_MOCK;
+      const qualityForReport = userRequestedPhoto && photosProvided ? photoQuality : { grade: 'pass', reasons: ['no_photo'] };
+
+      const visionDecision = shouldCallLlm({
+        kind: 'vision',
+        quality: photoQuality,
+        hasPrimaryInput,
+        userRequestedPhoto,
+        detectorConfidenceLevel: detectorConfidence.level,
+        visionAvailable,
+        reportAvailable,
+        degradedMode: SKIN_DEGRADED_MODE,
+      });
+      const reportDecision = shouldCallLlm({
+        kind: 'report',
+        quality: qualityForReport,
+        hasPrimaryInput,
+        userRequestedPhoto,
+        detectorConfidenceLevel: detectorConfidence.level,
+        visionAvailable,
+        reportAvailable,
+        degradedMode: SKIN_DEGRADED_MODE,
+      });
+
       const analysisFieldMissing = [];
+      const qualityReportReasons = [];
       let usedPhotos = false;
       let analysisSource = 'rule_based';
 
       let analysis = null;
       if (userRequestedPhoto && photosProvided && !hasPrimaryInput) {
         analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
+        if (ctx.lang === 'CN') qualityReportReasons.push('你提供了照片，但缺少“正在用什么/最近打卡”等关键信息；我会先给低风险基线。');
+        else qualityReportReasons.push('You provided a photo, but I’m missing routine/recent logs; returning a low-risk baseline first.');
       }
-      if (usePhoto) {
-        const chosen = chooseVisionPhoto(passedPhotos);
+
+      if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail') {
+        analysis = profiler.timeSync('detector', () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality }), {
+          kind: 'retake',
+        });
+        analysisSource = 'retake';
+        if (ctx.lang === 'CN') qualityReportReasons.push('照片质量未通过：我不会调用 AI 做皮肤结论，避免误判；建议按提示重拍。');
+        else qualityReportReasons.push('Photo quality failed: skipping all AI analysis to avoid guessy results; please retake.');
+      }
+
+      if (!analysis && visionDecision.decision === 'call') {
+        const candidates = photoQuality.grade === 'pass' ? passedPhotos : degradedPhotos.length ? degradedPhotos : passedPhotos;
+        const chosen = chooseVisionPhoto(candidates);
         if (!chosen) {
-          analysisFieldMissing.push({ field: 'photos', reason: 'no_passed_photo' });
+          analysisFieldMissing.push({ field: 'photos', reason: photosProvided ? 'no_usable_photo' : 'no_photo_uploaded' });
+          if (ctx.lang === 'CN') qualityReportReasons.push('没有可用的照片（缺少 photo_id 或未通过质量门槛）；我会跳过照片解析。');
+          else qualityReportReasons.push('No usable photo (missing photo_id or failed quality gate); skipping photo analysis.');
         } else {
           let photoBytes = null;
           try {
@@ -4387,13 +4505,19 @@ function mountAuroraBffRoutes(app, { logger }) {
                 field: 'analysis.used_photos',
                 reason: vision.reason || 'vision_failed',
               });
+              if (ctx.lang === 'CN') qualityReportReasons.push(`照片解析失败（${vision.reason || 'unknown'}）；我会退回到确定性基线。`);
+              else qualityReportReasons.push(`Photo analysis failed (${vision.reason || 'unknown'}); falling back to deterministic baseline.`);
               if (vision.error) logger?.warn({ err: vision.error }, 'aurora bff: vision skin analysis failed');
             }
           }
         }
+      } else if (!analysis && visionDecision.decision === 'skip' && userRequestedPhoto && photosProvided) {
+        const r = humanizeLlmReasons(visionDecision.reasons, { language: ctx.lang });
+        if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过照片解析：${r.join('；') || '原因未知'}`);
+        else qualityReportReasons.push(`Skipped photo analysis: ${r.join('; ') || 'unknown reason'}`);
       }
 
-      if (!analysis && hasPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+      if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
         const replyLanguage = ctx.lang === 'CN' ? 'Simplified Chinese' : 'English';
         const replyInstruction = ctx.lang === 'CN'
           ? '请只用简体中文回答，不要使用英文。'
@@ -4453,6 +4577,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
         if (analysis) analysisSource = 'aurora_text';
       }
+      if (!analysis && reportDecision.decision === 'skip' && reportAvailable && hasPrimaryInput) {
+        const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
+        if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
+        else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
+      }
 
       if (!analysis) {
         if (!hasPrimaryInput) {
@@ -4470,6 +4599,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
       }
+
+      const mustDowngrade =
+        userRequestedPhoto &&
+        photosProvided &&
+        (photoQuality.grade === 'degraded' || photoQuality.grade === 'unknown') &&
+        analysisSource !== 'retake';
+      if (analysis && mustDowngrade) analysis = downgradeSkinAnalysisConfidence(analysis, { language: ctx.lang });
 
       if (analysis) {
         try {
@@ -4494,6 +4630,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               photo_qc: photoQcParts,
               used_photos: usedPhotos,
               analysis_source: analysisSource,
+              quality_report: {
+                photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
+                detector_confidence: detectorConfidence,
+                degraded_mode: SKIN_DEGRADED_MODE,
+                llm: { vision: visionDecision, report: reportDecision },
+                reasons: qualityReportReasons.slice(0, 8),
+              },
             },
             ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
           },
