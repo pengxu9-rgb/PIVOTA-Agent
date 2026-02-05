@@ -350,6 +350,9 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
         : '';
   const routineTextLower = String(routineText || '').toLowerCase();
 
+  const hasStingingSignal =
+    /\bsting\b|\bstinging\b|\bburn\b|\bburning\b|\birritat|\bredness\b|\bflak|\bpeel/.test(routineTextLower);
+
   const features = [];
   if (p.barrierStatus === 'impaired') {
     features.push({
@@ -358,6 +361,14 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
           ? '你自述屏障不稳定（易刺痛/泛红）→ 先把“舒缓修护”放在优先级第一。'
           : 'You reported an irritated barrier → prioritize calming + repair first.',
       confidence: 'pretty_sure',
+    });
+  } else if (hasStingingSignal) {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? '你提到最近有刺痛/泛红/脱皮信号 → 先按“屏障压力”处理，建议先降阶与简化。'
+          : 'You mentioned stinging/redness/flaking signals → treat this as barrier stress and simplify first.',
+      confidence: 'somewhat_sure',
     });
   }
   if (p.skinType === 'oily' || p.skinType === 'combination') {
@@ -394,6 +405,7 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
     const hasExfoliatingAcid =
       /\bglycolic\b|\blactic\b|\bmandelic\b|\bsalicylic\b|\bbha\b|\baha\b/.test(routineTextLower);
     const hasBpo = /\bbenzoyl\b|\bbpo\b/.test(routineTextLower);
+    const hasHighStrengthVitC = /\bascorbic\b|\bl-ascorbic\b|\bvitamin c\b|\bhigh[- ]?strength\b/.test(routineTextLower);
     if (hasRetinoid || hasExfoliatingAcid || hasBpo) {
       const actives = [
         ...(hasRetinoid ? [lang === 'CN' ? '维A类' : 'retinoid'] : []),
@@ -405,6 +417,26 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
           lang === 'CN'
             ? `你当前 routine 里包含 ${actives.join(' / ')} → 先避免叠加、从低频开始，降低刺激风险。`
             : `Your current routine includes ${actives.join(' / ')} → avoid stacking and start low-frequency to reduce irritation risk.`,
+        confidence: 'somewhat_sure',
+      });
+    }
+
+    if (hasRetinoid && hasStingingSignal) {
+      features.push({
+        observation:
+          lang === 'CN'
+            ? '你提到用维A后会刺痛 → 常见原因是频率过高/叠加刺激/屏障压力；先暂停几晚再用更低频。'
+            : 'Stinging after a retinoid often means frequency/stacking is too aggressive; pause a few nights and restart lower.',
+        confidence: 'somewhat_sure',
+      });
+    }
+
+    if (hasExfoliatingAcid && hasHighStrengthVitC && (p.barrierStatus === 'impaired' || hasStingingSignal)) {
+      features.push({
+        observation:
+          lang === 'CN'
+            ? '酸类 + 高浓 VC 同期叠加在屏障压力期更容易刺激 → 建议分开天用或先停一类。'
+            : 'Acids + high-strength vitamin C can be harsh during barrier stress → separate days or pause one active.',
         confidence: 'somewhat_sure',
       });
     }
@@ -430,10 +462,51 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
     }
   }
 
-  const strategy =
+  const goalText = goals.map((g) => String(g || '').trim().toLowerCase()).filter(Boolean);
+  const wantsPoresOrAcne = goalText.includes('pores') || goalText.includes('acne');
+  const wantsWrinkles = goalText.includes('wrinkles') || goalText.includes('anti-aging') || goalText.includes('aging');
+
+  const plan = [];
+  if (lang === 'CN') {
+    plan.push('少而稳：温和洁面 + 保湿 + 白天 SPF。');
+    plan.push(
+      p.barrierStatus === 'impaired' || hasStingingSignal
+        ? '若刺痛/泛红：先停 5–7 天强刺激活性（酸/高浓 VC/维A），以修护为主。'
+        : '活性只引入 1 个：从低频（每周 1–2 次）开始，观察 72 小时。'
+    );
+    plan.push(
+      wantsPoresOrAcne
+        ? '毛孔/闭口：等皮肤稳定后再从每周 2 次开始，别和维A同晚叠加。'
+        : wantsWrinkles
+          ? '细纹/抗老：优先 SPF + 补水；维A等稳定后再慢慢加。'
+          : '如果你愿意，我可以先按“最少新增”给你一个 3–4 步 AM/PM 框架。'
+    );
+  } else {
+    plan.push('Keep it minimal: gentle cleanser + moisturizer + daytime SPF.');
+    plan.push(
+      p.barrierStatus === 'impaired' || hasStingingSignal
+        ? 'If stinging/redness: pause strong actives for 5–7 days (acids/high-strength vitamin C/retinoids) and focus on repair.'
+        : 'Introduce only ONE active at a time: start 1–2×/week and watch the 72h response.'
+    );
+    plan.push(
+      wantsPoresOrAcne
+        ? 'For pores/texture: wait until calm, then start 2×/week; avoid stacking with a retinoid on the same night.'
+        : wantsWrinkles
+          ? 'For fine lines: prioritize SPF + hydration; consider retinoid only after skin feels stable.'
+          : 'If you want, I can draft a minimal 3–4 step AM/PM framework with minimal new purchases.'
+    );
+  }
+
+  const question =
     lang === 'CN'
-      ? '接下来 7 天建议：\n1) 护肤先“少而稳”：温和洁面 + 保湿 + 白天 SPF。\n2) 如果刺痛/泛红：先停用强刺激活性（酸/高浓 VC/视黄醇），以修护为主。\n3) 若想开始控毛孔/闭口：先从低频（每周 2 次）开始，观察 72 小时反应。\n\n你最近有刺痛/泛红吗？'
-      : 'Next 7 days:\n1) Keep it minimal: gentle cleanser + moisturizer + daytime SPF.\n2) If stinging/redness: pause harsh actives (acids/high-strength vitamin C/retinoids) and focus on repair.\n3) If you want pores/texture work: start low frequency (2x/week) and watch the 72h response.\n\nDo you have stinging or redness recently?';
+      ? /\bretinol\b|\badapalene\b|\btretinoin\b|\bretinoid\b/.test(routineTextLower)
+        ? '你现在维A大概每周用几晚？会不会和酸/VC同晚叠加？'
+        : '你最近有刺痛或泛红吗？'
+      : /\bretinol\b|\badapalene\b|\btretinoin\b|\bretinoid\b/.test(routineTextLower)
+        ? 'How many nights/week are you using your retinoid, and are you stacking it with acids/vitamin C?'
+        : 'Any stinging or redness recently?';
+
+  const strategy = `${lang === 'CN' ? '接下来 7 天建议：' : 'Next 7 days:'}\n1) ${plan[0]}\n2) ${plan[1]}\n3) ${plan[2]}\n\n${question}`;
 
   return {
     features: features.slice(0, 6),
@@ -2240,7 +2313,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         : fallbackAnalyze();
 
       const norm = normalizeDupeCompare(mapped);
-      const payload = norm.payload;
+      let payload = norm.payload;
+      if (!Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0) {
+        const note =
+          ctx.lang === 'CN'
+            ? '上游未返回可用的取舍对比细节（仅能提供有限对比）。你可以提供平替的链接/完整名称，或从推荐的替代里选择再比对。'
+            : 'No tradeoff details were returned (comparison is limited). Provide the dupe link/full name or pick from suggested alternatives to compare again.';
+        payload = { ...payload, tradeoffs: [note] };
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -3168,8 +3248,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       let usedPhotos = false;
       let analysisSource = 'rule_based';
 
-      if (!hasRoutine) analysisFieldMissing.push({ field: 'profile.currentRoutine', reason: 'missing' });
-
       let analysis = null;
       if (usePhoto) {
         const chosen = chooseVisionPhoto(passedPhotos);
@@ -3784,6 +3862,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
       const debugUpstream = debugFromHeader ?? debugFromBody;
+      const anchorProductId =
+        typeof parsed.data.anchor_product_id === 'string' && parsed.data.anchor_product_id.trim()
+          ? parsed.data.anchor_product_id.trim()
+          : '';
+      const anchorProductUrl =
+        typeof parsed.data.anchor_product_url === 'string' && parsed.data.anchor_product_url.trim()
+          ? parsed.data.anchor_product_url.trim()
+          : '';
+      const upstreamMessages = Array.isArray(parsed.data.messages) ? parsed.data.messages : null;
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
@@ -4136,7 +4223,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       const query = `${prefix}${message || '(no message)'}`;
       try {
-        upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 12000, debug: debugUpstream });
+        upstream = await auroraChat({
+          baseUrl: AURORA_DECISION_BASE_URL,
+          query,
+          timeoutMs: 12000,
+          debug: debugUpstream,
+          ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
+          ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
+          ...(upstreamMessages && upstreamMessages.length ? { messages: upstreamMessages } : {}),
+        });
       } catch (err) {
         if (err.code !== 'AURORA_NOT_CONFIGURED') {
           logger?.warn({ err: err.message }, 'aurora bff: aurora upstream failed');
@@ -4210,7 +4305,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (contextRaw) {
         const envStressRaw = isPlainObject(contextRaw.env_stress) ? contextRaw.env_stress : isPlainObject(contextRaw.envStress) ? contextRaw.envStress : null;
         const envStressUi = buildEnvStressUiModelFromUpstream(envStressRaw, { language: ctx.lang });
-        if (envStressUi) {
+        const wantsEnvStressCard = Boolean(debugUpstream) ||
+          (typeof actionId === 'string' && /env[_-]?stress|environment[_-]?stress|weather|itinerary/i.test(actionId)) ||
+          (typeof message === 'string' && /\buv\b|\bhumidity\b|\bweather\b|\bclimate\b|\btravel\b|\bdestination\b/i.test(message));
+        if (envStressUi && wantsEnvStressCard) {
           derivedCards.push({
             card_id: `env_${ctx.request_id}`,
             type: 'env_stress',

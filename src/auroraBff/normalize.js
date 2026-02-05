@@ -424,7 +424,48 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN' } = {}) {
   const p = asPlainObject(payload);
   if (!p) return payload;
   const assessment = asPlainObject(p.assessment);
-  if (!assessment) return payload;
+  if (!assessment) {
+    const ev = asPlainObject(p.evidence) || {};
+    const science = asPlainObject(ev.science) || {};
+    const social = asPlainObject(ev.social_signals || ev.socialSignals) || {};
+    const evidenceLooksMissing = (() => {
+      const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+      const mechanisms = asStringArray(science.mechanisms);
+      const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+      const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+      const expertNotes = asStringArray(ev.expert_notes ?? ev.expertNotes);
+      const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
+      const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
+      return (
+        keyIngredients.length === 0 &&
+        mechanisms.length === 0 &&
+        fitNotes.length === 0 &&
+        riskNotes.length === 0 &&
+        expertNotes.length === 0 &&
+        positives.length === 0 &&
+        negatives.length === 0
+      );
+    })();
+
+    const reasons = [];
+    if (String(lang).toUpperCase() === 'CN') {
+      reasons.push('目前无法获取可靠的产品分析结果，因此结论暂时为“未知”。');
+      if (evidenceLooksMissing) reasons.push('证据链缺失（成分/口碑/专家笔记未返回），无法做出有把握的评估。');
+      reasons.push('你可以补充产品链接或完整成分表（INCI），我再做更准确的 Deep Scan。');
+    } else {
+      reasons.push('I couldn’t retrieve a reliable product analysis right now, so the verdict is “Unknown”.');
+      if (evidenceLooksMissing) reasons.push('Evidence is missing (ingredients/social/expert notes were not returned), so confidence is low.');
+      reasons.push('Send the product link or full INCI ingredient list and I’ll re-run a deeper scan.');
+    }
+
+    return {
+      ...p,
+      assessment: {
+        verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
+        reasons: uniqueStrings(reasons).slice(0, 5),
+      },
+    };
+  }
 
   const verdict =
     typeof assessment.verdict === 'string' ? assessment.verdict.trim() : String(assessment.verdict || '').trim();

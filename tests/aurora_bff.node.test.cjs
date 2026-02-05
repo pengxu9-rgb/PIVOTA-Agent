@@ -341,6 +341,7 @@ test('/v1/chat: exposes env_stress + citations + conflicts cards (contracts)', a
     headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
     body: {
       message: 'CONTEXT_CARDS_TEST',
+      anchor_product_id: 'mock_anchor_1',
       session: { state: 'idle' },
       language: 'EN',
       debug: true,

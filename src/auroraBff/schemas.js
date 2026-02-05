@@ -121,9 +121,19 @@ const V1ResponseEnvelopeSchema = z
   })
   .strict();
 
+const AuroraUpstreamMessageSchema = z
+  .object({
+    role: z.string().min(1),
+    content: z.string().min(1),
+  })
+  .strict();
+
 const V1ChatRequestSchema = z
   .object({
     message: z.string().min(1).optional(),
+    anchor_product_id: z.string().min(1).optional(),
+    anchor_product_url: z.string().min(1).optional(),
+    messages: z.array(AuroraUpstreamMessageSchema).max(50).optional(),
     action: z
       .union([
         z.string().min(1),

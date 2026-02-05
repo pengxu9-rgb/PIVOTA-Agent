@@ -60,8 +60,21 @@ function buildContextPrefix({ profile, recentLogs, ...meta } = {}) {
   return lines.length ? `${lines.join('\n')}\n\n` : '';
 }
 
-function mockAuroraChat(query) {
-  const q = String(query || '');
+function normalizeMockInput(input) {
+  if (typeof input === 'string') return { query: input, anchor_product_id: null, messages: [] };
+  if (!input || typeof input !== 'object') return { query: '', anchor_product_id: null, messages: [] };
+  const obj = input;
+  return {
+    query: String(obj.query || ''),
+    anchor_product_id: typeof obj.anchor_product_id === 'string' ? obj.anchor_product_id : null,
+    messages: Array.isArray(obj.messages) ? obj.messages : [],
+  };
+}
+
+function mockAuroraChat(input) {
+  const norm = normalizeMockInput(input);
+  const q = String(norm.query || '');
+  const anchorId = String(norm.anchor_product_id || '').trim();
 
   if (/ACTION_REPLY_TEXT_TEST/.test(q)) {
     return {
@@ -72,6 +85,7 @@ function mockAuroraChat(query) {
   }
 
   if (/CONTEXT_CARDS_TEST/i.test(q)) {
+    const hasAnchor = Boolean(anchorId);
     return {
       answer: 'Mock: context cards test.',
       intent: 'science',
@@ -112,18 +126,22 @@ function mockAuroraChat(query) {
           missing_inputs: [],
           generated_at: '2026-02-04T06:00:00.000Z',
         },
-        conflict_detector: {
-          schema_version: 'aurora.conflicts.v1',
-          safe: false,
-          conflicts: [
-            {
-              severity: 'warn',
-              rule_id: 'retinoid_x_acids',
-              message: '维A类 + 去角质酸（AHA/BHA/PHA）叠加更容易刺痛/爆皮；更安全的做法是错开晚用，并从低频开始逐步加量。',
+        ...(hasAnchor
+          ? {
+            conflict_detector: {
+              schema_version: 'aurora.conflicts.v1',
+              safe: false,
+              conflicts: [
+                {
+                  severity: 'warn',
+                  rule_id: 'retinoid_x_acids',
+                  message: '维A类 + 去角质酸（AHA/BHA/PHA）叠加更容易刺痛/爆皮；更安全的做法是错开晚用，并从低频开始逐步加量。',
+                },
+              ],
+              summary: '需要注意：共 1 条提示（0 条为阻断级）。',
             },
-          ],
-          summary: '需要注意：共 1 条提示（0 条为阻断级）。',
-        },
+          }
+          : {}),
       },
     };
   }
@@ -468,9 +486,10 @@ async function auroraChat({
   llm_model,
   anchor_product_id,
   anchor_product_url,
+  messages,
   debug,
 } = {}) {
-  if (USE_AURORA_MOCK) return mockAuroraChat(query);
+  if (USE_AURORA_MOCK) return mockAuroraChat({ query, anchor_product_id, messages });
   const base = normalizeBaseUrl(baseUrl);
   if (!base) {
     const err = new Error('AURORA_DECISION_BASE_URL not configured');
@@ -483,6 +502,7 @@ async function auroraChat({
   if (llm_model) payload.llm_model = llm_model;
   if (anchor_product_id) payload.anchor_product_id = anchor_product_id;
   if (anchor_product_url) payload.anchor_product_url = anchor_product_url;
+  if (Array.isArray(messages) && messages.length) payload.messages = messages;
   if (typeof debug === 'boolean') payload.debug = debug;
   const resp = await postWithRetry(url, payload, { timeoutMs, retries: 1, retryDelayMs: 250 });
   const data = resp && resp.data;
