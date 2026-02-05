@@ -3382,7 +3382,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!derivedTradeoffs.length) {
           const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
           const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
-          if (origPreview.length || dupPreview.length) {
+          if (origPreview.length && dupPreview.length) {
             derivedTradeoffs.push(
               isCn
                 ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
@@ -4375,7 +4375,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         else degradedPhotos.push(entry);
       }
       const photosProvided = photosSubmittedCount > 0;
-      const photoQuality = classifyPhotoQuality(photos);
+      let photoQuality = classifyPhotoQuality(photos);
 
       let profileSummary = summarizeProfileForContext(profile);
       const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
