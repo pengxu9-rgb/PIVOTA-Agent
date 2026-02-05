@@ -62,7 +62,7 @@ const {
 } = require('./normalize');
 const { simulateConflicts } = require('./routineRules');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
-const { extractJsonObject } = require('./jsonExtract');
+const { extractJsonObject, extractJsonObjectByKeys } = require('./jsonExtract');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   normalizeBudgetHint,
@@ -865,6 +865,196 @@ function buildEnvStressUiModelFromUpstream(value, { language } = {}) {
   };
 }
 
+function looksLikeWeatherOrEnvironmentQuestion(message) {
+  const t = String(message || '').trim();
+  if (!t) return false;
+
+  const lower = t.toLowerCase();
+
+  // English
+  if (
+    /\b(snow|rain|weather|humidity|uv|climate|wind|dry air|cold|heat|sun exposure|travel|itinerary|destination|flight|ski)\b/i.test(
+      lower,
+    )
+  )
+    return true;
+
+  // Chinese (keep focused on environment, not general skin symptoms)
+  if (
+    /(下雪|雪天|下雨|雨天|天气|气温|温度|湿度|紫外线|UV|风大|大风|寒冷|冷空气|高温|热浪|干燥(空气|天气)?|雾霾|污染|花粉|旅行|出差|飞行|飞机|高原|海边|滑雪|户外)/.test(
+      t,
+    )
+  )
+    return true;
+
+  return false;
+}
+
+function extractWeatherScenario(message) {
+  const t = String(message || '').trim();
+  if (!t) return 'unknown';
+  const lower = t.toLowerCase();
+
+  if (/(下雪|雪天|滑雪)/.test(t) || /\bsnow|ski\b/i.test(lower)) return 'snow';
+  if (/(下雨|雨天|暴雨)/.test(t) || /\brain|storm\b/i.test(lower)) return 'rain';
+  if (/(紫外线|UV|日晒|阳光|晒)/.test(t) || /\buv|sun|sunlight\b/i.test(lower)) return 'uv';
+  if (/(湿度|潮湿|闷热)/.test(t) || /\bhumid|humidity\b/i.test(lower)) return 'humid';
+  if (/(干燥|干冷|冷空气)/.test(t) || /\bdry air|dry|dehydrating\b/i.test(lower)) return 'dry';
+  if (/(寒冷|冷|低温)/.test(t) || /\bcold|freez(e|ing)\b/i.test(lower)) return 'cold';
+  if (/(大风|风大|风|刮风)/.test(t) || /\bwind|windy\b/i.test(lower)) return 'wind';
+  if (/(旅行|出差|飞行|飞机|高原|海边)/.test(t) || /\btravel|flight|itinerary|destination\b/i.test(lower)) return 'travel';
+  return 'unknown';
+}
+
+function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+
+  const barrier = String(profile && profile.barrierStatus ? profile.barrierStatus : '').trim().toLowerCase();
+  const sensitivity = String(profile && profile.sensitivity ? profile.sensitivity : '').trim().toLowerCase();
+
+  let ess = 35;
+  if (barrier === 'impaired' || barrier === 'damaged') ess = 75;
+  else if (barrier === 'healthy' || barrier === 'stable') ess = 20;
+  else if (barrier) ess = 35;
+
+  if (sensitivity === 'high' || sensitivity === 'sensitive') ess += 10;
+
+  const scenario = extractWeatherScenario(message);
+  const bumpMap = {
+    snow: 18,
+    cold: 15,
+    wind: 12,
+    dry: 15,
+    uv: 15,
+    rain: 8,
+    humid: 8,
+    travel: 12,
+    unknown: 6,
+  };
+  ess += bumpMap[scenario] ?? 6;
+  ess = clamp0to100(ess);
+
+  const tier = ess <= 30 ? 'Low' : ess <= 60 ? 'Medium' : 'High';
+
+  const barrierScore = barrier === 'impaired' || barrier === 'damaged' ? 80 : barrier === 'healthy' || barrier === 'stable' ? 20 : 40;
+  const weatherScore = scenario === 'snow' || scenario === 'cold' || scenario === 'dry' || scenario === 'wind' ? 70 : scenario === 'rain' || scenario === 'humid' ? 45 : scenario === 'travel' ? 55 : 35;
+  const uvScore = scenario === 'uv' || scenario === 'snow' ? 65 : 30;
+
+  const radar = [
+    { axis: 'Barrier', value: clamp0to100(barrierScore) },
+    { axis: 'Weather', value: clamp0to100(weatherScore) },
+    { axis: 'UV', value: clamp0to100(uvScore) },
+  ];
+
+  const missing = [];
+  if (!String(profile && profile.sensitivity ? profile.sensitivity : '').trim()) missing.push('profile.sensitivity');
+  if (!Array.isArray(recentLogs) || recentLogs.length === 0) missing.push('recent_logs');
+
+  const notes = [];
+  if (missing.length) {
+    notes.push(lang === 'CN' ? `缺少：${missing.slice(0, 4).join(' / ')}` : `Missing: ${missing.slice(0, 4).join(' / ')}`);
+  }
+  if (barrier) notes.push(`barrier_status=${barrier}`.slice(0, 220));
+  if (scenario && scenario !== 'unknown') notes.push((lang === 'CN' ? `场景：${scenario}（推断）` : `Scenario: ${scenario} (inferred)`).slice(0, 220));
+
+  return {
+    schema_version: 'aurora.ui.env_stress.v1',
+    ess,
+    tier,
+    radar,
+    notes: notes.slice(0, 4),
+  };
+}
+
+function buildWeatherAdviceMessage({ language, scenario, profile } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const skin = String(profile && profile.skinType ? profile.skinType : '').trim();
+
+  const skinLine =
+    skin && lang === 'CN'
+      ? `你的肤质：${skin}。`
+      : skin && lang === 'EN'
+        ? `Your skin type: ${skin}.`
+        : '';
+
+  if (lang === 'CN') {
+    if (scenario === 'snow') {
+      return [
+        '雪天的皮肤压力通常来自：低温 + 干燥 + 大风 + 雪地反光导致的 UV（更容易晒/更容易干裂）。',
+        skinLine,
+        '',
+        '**护肤要点（优先级从高到低）**',
+        '1) **保湿 + 封闭**：面霜稍厚一点；口周/鼻翼/脸颊干处可薄薄封一层凡士林类。',
+        '2) **防晒**：即使阴天/下雪也建议 SPF30+（雪地反光会加剧 UV）。',
+        '3) **温和清洁**：避免强清洁/磨砂；回家后用温和洁面即可。',
+        '4) **活性减量**：如果你晚上用维A/酸，雪天更容易刺痛；更稳妥是把强酸和维A错开晚用。',
+        '',
+        '想要我根据你现有产品给你一个「雪天 AM/PM 版本」吗？也可以直接点下面的选项继续。',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    if (scenario === 'uv') {
+      return [
+        '这类问题更像是「紫外线/日晒压力」场景：主要风险是晒黑/反黑、屏障受刺激、炎症后色沉加重。',
+        skinLine,
+        '',
+        '**护肤要点**',
+        '1) 防晒优先：足量 SPF30+，户外注意补涂。',
+        '2) 轻薄但够保湿：避免晒后紧绷脱皮。',
+        '3) 活性分开用：敏感/刺痛时先停酸/维A，先修护。',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    return [
+      '我把你的问题理解成「天气/环境变化对皮肤的影响」。',
+      skinLine,
+      '',
+      '**通用要点**',
+      '1) 保湿与屏障优先（面霜/修护类）。',
+      '2) 容易刺痛就先减量/停用强活性（酸/维A）。',
+      '3) 白天注意防晒（户外更重要）。',
+      '',
+      '如果你告诉我你明天大概会在户外多久、以及最近是否有刺痛/爆皮，我可以把建议进一步细化。',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  // EN
+  if (scenario === 'snow') {
+    return [
+      'Snowy days usually stress skin via: cold + dry air + wind + higher UV exposure from snow reflection.',
+      skinLine,
+      '',
+      '**Skincare priorities**',
+      '1) **Moisturize + seal**: use a richer moisturizer; consider a thin occlusive layer on dry-prone areas.',
+      '2) **Sunscreen**: SPF 30+ even on cloudy/snowy days (reflection matters).',
+      '3) **Gentle cleanse**: avoid harsh cleansing or scrubs.',
+      '4) **Reduce actives**: if you use retinoids/acids, avoid stacking them on the same night—snowy weather increases irritation risk.',
+      '',
+      'Want me to adapt this into a simple AM/PM “snow day routine” for what you already use?',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return [
+    'I’m treating this as a “weather / environment stress” question for skin.',
+    skinLine,
+    '',
+    '**General guidance**',
+    '1) Prioritize barrier support (moisturizer, gentle routine).',
+    '2) If you feel stinging/flaking, reduce strong actives (acids/retinoids).',
+    '3) Use sunscreen for outdoor exposure.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 function mergeExternalVerificationIntoStructured(structured, contextRaw) {
   const s = isPlainObject(structured) ? structured : null;
   if (!s) return structured;
@@ -1209,7 +1399,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     };
   }
 
-  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['alternatives']) : null;
   const structuredFallback = getUpstreamStructuredOrJson(upstream);
   const structured =
     answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) && Array.isArray(answerJson.alternatives)
@@ -1444,7 +1634,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     contextMeta.budget = profileSummary.budgetTier;
   }
 
-  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
   const structuredFallback = getUpstreamStructuredOrJson(upstream);
 
   // Prefer: explicit JSON (from answer) → routine object (from context) → any structured blob.
@@ -2149,7 +2339,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
           });
 
-          const parseStructured = getUpstreamStructuredOrJson(parseUpstream);
+          const parseStructured = (() => {
+            if (parseUpstream && parseUpstream.structured && typeof parseUpstream.structured === 'object' && !Array.isArray(parseUpstream.structured)) {
+              return parseUpstream.structured;
+            }
+            const a =
+              parseUpstream && typeof parseUpstream.answer === 'string'
+                ? extractJsonObjectByKeys(parseUpstream.answer, ['product'])
+                : null;
+            return a;
+          })();
           const parseMapped =
             parseStructured && parseStructured.parse && typeof parseStructured.parse === 'object'
               ? mapAuroraProductParse(parseStructured)
@@ -2186,7 +2385,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       const upstreamStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
         ? upstream.structured
         : null;
-      const upstreamAnswerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+      const upstreamAnswerJson =
+        upstream && typeof upstream.answer === 'string'
+          ? extractJsonObjectByKeys(upstream.answer, ['assessment', 'evidence', 'confidence', 'missing_info'])
+          : null;
       const upstreamAnswerObj = upstreamAnswerJson && typeof upstreamAnswerJson === 'object' && !Array.isArray(upstreamAnswerJson) ? upstreamAnswerJson : null;
       const answerLooksLikeProductAnalysis =
         upstreamAnswerObj &&
@@ -2362,7 +2564,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         const structured = compareUpstream && compareUpstream.structured && typeof compareUpstream.structured === 'object' && !Array.isArray(compareUpstream.structured)
           ? compareUpstream.structured
           : null;
-        const answerJson = compareUpstream && typeof compareUpstream.answer === 'string' ? extractJsonObject(compareUpstream.answer) : null;
+        const answerJson =
+          compareUpstream && typeof compareUpstream.answer === 'string'
+            ? extractJsonObjectByKeys(compareUpstream.answer, ['tradeoffs', 'evidence', 'original', 'dupe'])
+            : null;
         const answerObj = answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? answerJson : null;
         if (structured && Array.isArray(structured.alternatives)) return structured;
         if (answerObj && (Array.isArray(answerObj.tradeoffs) || answerObj.tradeoffs_detail || answerObj.tradeoffsDetail)) return answerObj;
@@ -2493,7 +2698,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           const upStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
             ? upstream.structured
             : null;
-          const upAnswerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+          const upAnswerJson =
+            upstream && typeof upstream.answer === 'string'
+              ? extractJsonObjectByKeys(upstream.answer, ['assessment', 'evidence', 'confidence', 'missing_info'])
+              : null;
           const upAnswerObj = upAnswerJson && typeof upAnswerJson === 'object' && !Array.isArray(upAnswerJson) ? upAnswerJson : null;
           const answerLooksLikeProductAnalysis =
             upAnswerObj &&
@@ -3651,7 +3859,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.warn({ err: err.message }, 'aurora bff: skin analysis upstream failed');
         }
         const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
-        const parsedObj = extractJsonObject(answer);
+        const parsedObj = extractJsonObjectByKeys(answer, ['features', 'strategy', 'needs_risk_check']) || extractJsonObject(answer);
         analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
         if (analysis) analysisSource = 'aurora_text';
       }
@@ -4507,6 +4715,39 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       // Upstream Aurora decision system (best-effort).
+      if (looksLikeWeatherOrEnvironmentQuestion(message) && ctx.trigger_source === 'text') {
+        const scenario = extractWeatherScenario(message);
+        const envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
+        const advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
+
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const suggestedChips = [
+          {
+            chip_id: 'chip.start.routine',
+            label: lang === 'CN' ? '生成雪天 AM/PM 护肤流程' : 'Build a snow-day AM/PM routine',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '帮我按雪天生成 AM/PM 护肤流程' : 'Build an AM/PM routine for snow-day conditions' },
+          },
+          {
+            chip_id: 'chip.start.reco_products',
+            label: lang === 'CN' ? '推荐雪天防护产品' : 'Recommend protective products',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '雪天我应该用什么类型的防护产品？' : 'What protective products should I use for snow-day conditions?' },
+          },
+        ];
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(advice, 'markdown'),
+          suggested_chips: suggestedChips,
+          cards: envStressUi
+            ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
+            : [],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
+        });
+        return res.json(envelope);
+      }
+
       let upstream = null;
       const profileSummary = summarizeProfileForContext(profile);
       const prefix = buildContextPrefix({
@@ -4605,20 +4846,27 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const contextRaw = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
       const derivedCards = [];
+      const envStressActionRequested = typeof actionId === 'string' && /env[_-]?stress|environment[_-]?stress|weather|itinerary/i.test(actionId);
+      const looksEnv = looksLikeWeatherOrEnvironmentQuestion(message);
+      const wantsEnvStressCard = Boolean(debugUpstream) || envStressActionRequested || looksEnv;
+
+      let envStressUi = null;
       if (contextRaw) {
         const envStressRaw = isPlainObject(contextRaw.env_stress) ? contextRaw.env_stress : isPlainObject(contextRaw.envStress) ? contextRaw.envStress : null;
-        const envStressUi = buildEnvStressUiModelFromUpstream(envStressRaw, { language: ctx.lang });
-        const wantsEnvStressCard = Boolean(debugUpstream) ||
-          (typeof actionId === 'string' && /env[_-]?stress|environment[_-]?stress|weather|itinerary/i.test(actionId)) ||
-          (typeof message === 'string' && /\buv\b|\bhumidity\b|\bweather\b|\bclimate\b|\btravel\b|\bdestination\b/i.test(message));
-        if (envStressUi && wantsEnvStressCard) {
-          derivedCards.push({
-            card_id: `env_${ctx.request_id}`,
-            type: 'env_stress',
-            payload: envStressUi,
-          });
-        }
+        envStressUi = buildEnvStressUiModelFromUpstream(envStressRaw, { language: ctx.lang });
+      }
+      if (!envStressUi && (envStressActionRequested || looksEnv)) {
+        envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
+      }
+      if (envStressUi && wantsEnvStressCard) {
+        derivedCards.push({
+          card_id: `env_${ctx.request_id}`,
+          type: 'env_stress',
+          payload: envStressUi,
+        });
+      }
 
+      if (contextRaw) {
         const conflictDetector = isPlainObject(contextRaw.conflict_detector)
           ? contextRaw.conflict_detector
           : isPlainObject(contextRaw.conflictDetector)
