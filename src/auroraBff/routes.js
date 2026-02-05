@@ -2252,6 +2252,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         trigger_source: ctx.trigger_source,
       };
       const parsePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
+      const analyzePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
       const comparePrefix = buildContextPrefix({ ...commonMeta, intent: 'dupe_compare', action_id: 'chip.action.dupe_compare' });
 
       const originalInput = buildProductInputText(parsed.data.original, parsed.data.original_url);
@@ -2313,15 +2314,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const originalAnchor = originalAnchorFromUpstream || parsed.data.original || null;
       const dupeAnchor = dupeAnchorFromUpstream || parsed.data.dupe || null;
 
-      const compareQuery = (() => {
-        const originalText = buildProductInputText(originalAnchor, parsed.data.original_url) || originalInput;
-        const dupeText = buildProductInputText(dupeAnchor, parsed.data.dupe_url) || dupeInput;
-        return `${comparePrefix}Task: Compare the original product vs the dupe/alternative.\n` +
-          `Return ONLY a JSON object with keys: original, dupe, tradeoffs (string[]), evidence, confidence (0..1), missing_info (string[]).\n` +
-          `Evidence must include science/social_signals/expert_notes.\n` +
-          `Original: ${originalText}\n` +
-          `Dupe: ${dupeText}`;
-      })();
+      const originalText = buildProductInputText(originalAnchor, parsed.data.original_url) || originalInput;
+      const dupeText = buildProductInputText(dupeAnchor, parsed.data.dupe_url) || dupeInput;
+
+      const compareQuery =
+        `${comparePrefix}Task: Compare the original product vs the dupe/alternative.\n` +
+        `Return ONLY a JSON object with keys: original, dupe, tradeoffs (string[]), evidence, confidence (0..1), missing_info (string[]).\n` +
+        `Evidence must include science/social_signals/expert_notes.\n` +
+        `Original: ${originalText}\n` +
+        `Dupe: ${dupeText}`;
 
       let compareUpstream = null;
       try {
@@ -2399,8 +2400,158 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const norm = normalizeDupeCompare(mapped);
       let payload = norm.payload;
+      let field_missing = norm.field_missing;
       if (!payload.original && originalAnchor) payload = { ...payload, original: originalAnchor };
       if (!payload.dupe && dupeAnchor) payload = { ...payload, dupe: dupeAnchor };
+
+      const uniqStrings = (arr) => {
+        const out = [];
+        const seen = new Set();
+        for (const v of Array.isArray(arr) ? arr : []) {
+          const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
+          if (!s) continue;
+          if (seen.has(s)) continue;
+          seen.add(s);
+          out.push(s);
+        }
+        return out;
+      };
+
+      const isMissingTradeoffs = !Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0;
+      if (isMissingTradeoffs) {
+        const deepScanQuery = (input) => (
+          `${analyzePrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+          `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+          `Evidence must include science/social_signals/expert_notes.\n` +
+          `Product: ${input}`
+        );
+
+        const scanOne = async ({ productText, productObj, productUrl }) => {
+          const anchorId = extractAnchorIdFromProductLike(productObj);
+          const bestText = String(productText || '').trim() || (anchorId ? String(anchorId) : '');
+          if (!bestText) return null;
+          let upstream = null;
+          try {
+            upstream = await auroraChat({
+              baseUrl: AURORA_DECISION_BASE_URL,
+              query: deepScanQuery(bestText),
+              timeoutMs: 12000,
+              ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
+              ...(productUrl ? { anchor_product_url: productUrl } : {}),
+            });
+          } catch (err) {
+            return null;
+          }
+
+          const structured = getUpstreamStructuredOrJson(upstream);
+          const mappedAnalyze = structured && structured.analyze && typeof structured.analyze === 'object'
+            ? mapAuroraProductAnalysis(structured)
+            : structured;
+          const normAnalyze = normalizeProductAnalysis(mappedAnalyze);
+          const enriched = enrichProductAnalysisPayload(normAnalyze.payload, { lang: ctx.lang });
+          return { payload: enriched, field_missing: normAnalyze.field_missing };
+        };
+
+        const [origScan, dupeScan] = await Promise.all([
+          scanOne({ productText: originalText, productObj: originalAnchor, productUrl: parsed.data.original_url }),
+          scanOne({ productText: dupeText, productObj: dupeAnchor, productUrl: parsed.data.dupe_url }),
+        ]);
+
+        const origPayload = origScan && origScan.payload && typeof origScan.payload === 'object' ? origScan.payload : null;
+        const dupePayload = dupeScan && dupeScan.payload && typeof dupeScan.payload === 'object' ? dupeScan.payload : null;
+
+        const extractEvidence = (p) => {
+          const ev = p && typeof p === 'object' ? p.evidence : null;
+          const sci = ev && typeof ev === 'object' ? ev.science : null;
+          const soc = ev && typeof ev === 'object' ? (ev.social_signals || ev.socialSignals) : null;
+          return {
+            key: uniqStrings(sci && Array.isArray(sci.key_ingredients || sci.keyIngredients) ? (sci.key_ingredients || sci.keyIngredients) : []),
+            mech: uniqStrings(sci && Array.isArray(sci.mechanisms) ? sci.mechanisms : []),
+            fit: uniqStrings(sci && Array.isArray(sci.fit_notes || sci.fitNotes) ? (sci.fit_notes || sci.fitNotes) : []),
+            risk: uniqStrings(sci && Array.isArray(sci.risk_notes || sci.riskNotes) ? (sci.risk_notes || sci.riskNotes) : []),
+            pos: uniqStrings(soc && Array.isArray(soc.typical_positive || soc.typicalPositive) ? (soc.typical_positive || soc.typicalPositive) : []),
+            neg: uniqStrings(soc && Array.isArray(soc.typical_negative || soc.typicalNegative) ? (soc.typical_negative || soc.typicalNegative) : []),
+            expert: uniqStrings(ev && Array.isArray(ev.expert_notes || ev.expertNotes) ? (ev.expert_notes || ev.expertNotes) : []),
+            missing: uniqStrings(ev && Array.isArray(ev.missing_info || ev.missingInfo) ? (ev.missing_info || ev.missingInfo) : []),
+            conf: ev && typeof ev.confidence === 'number' ? ev.confidence : null,
+          };
+        };
+
+        const origEv = extractEvidence(origPayload);
+        const dupEv = extractEvidence(dupePayload);
+
+        const missingKeys = origEv.key.filter((k) => !dupEv.key.includes(k));
+        const addedKeys = dupEv.key.filter((k) => !origEv.key.includes(k));
+        const addedRisks = dupEv.risk.filter((k) => !origEv.risk.includes(k));
+
+        const derivedTradeoffs = [];
+        if (missingKeys.length) derivedTradeoffs.push(`Missing actives vs original: ${missingKeys.join(', ')}`);
+        if (addedKeys.length) derivedTradeoffs.push(`Added actives: ${addedKeys.join(', ')}`);
+        if (addedRisks.length) derivedTradeoffs.push(`Dupe risk notes: ${addedRisks.slice(0, 2).join(' · ')}`);
+
+        const origHero = origPayload && origPayload.assessment && typeof origPayload.assessment === 'object'
+          ? (origPayload.assessment.hero_ingredient || origPayload.assessment.heroIngredient)
+          : null;
+        const dupHero = dupePayload && dupePayload.assessment && typeof dupePayload.assessment === 'object'
+          ? (dupePayload.assessment.hero_ingredient || dupePayload.assessment.heroIngredient)
+          : null;
+        if (origHero && dupHero && origHero.name && dupHero.name && String(origHero.name).toLowerCase() !== String(dupHero.name).toLowerCase()) {
+          derivedTradeoffs.push(`Hero ingredient shift: ${origHero.name} → ${dupHero.name}`);
+        }
+
+        const outConfidence = typeof origEv.conf === 'number' && typeof dupEv.conf === 'number'
+          ? (origEv.conf + dupEv.conf) / 2
+          : (origEv.conf || dupEv.conf || null);
+
+        const labelLines = (label, arr, max) => uniqStrings(arr).slice(0, max).map((x) => `${label}: ${x}`);
+
+        const mergedEvidence = {
+          science: {
+            key_ingredients: uniqStrings([...origEv.key, ...dupEv.key]),
+            mechanisms: uniqStrings([...origEv.mech, ...dupEv.mech]).slice(0, 8),
+            fit_notes: uniqStrings([...labelLines('Original', origEv.fit, 3), ...labelLines('Dupe', dupEv.fit, 3)]),
+            risk_notes: uniqStrings([...labelLines('Original', origEv.risk, 3), ...labelLines('Dupe', dupEv.risk, 3)]),
+          },
+          social_signals: {
+            typical_positive: uniqStrings([...labelLines('Original', origEv.pos, 3), ...labelLines('Dupe', dupEv.pos, 3)]),
+            typical_negative: uniqStrings([...labelLines('Original', origEv.neg, 3), ...labelLines('Dupe', dupEv.neg, 3)]),
+            risk_for_groups: [],
+          },
+          expert_notes: uniqStrings([...labelLines('Original', origEv.expert, 2), ...labelLines('Dupe', dupEv.expert, 2)]),
+          confidence: outConfidence,
+          missing_info: uniqStrings(['tradeoffs_from_product_analyze_diff', ...origEv.missing, ...dupEv.missing]),
+        };
+
+        const origAnchorOut =
+          (origPayload && origPayload.assessment && typeof origPayload.assessment === 'object'
+            ? (origPayload.assessment.anchor_product || origPayload.assessment.anchorProduct)
+            : null) || payload.original || null;
+        const dupeAnchorOut =
+          (dupePayload && dupePayload.assessment && typeof dupePayload.assessment === 'object'
+            ? (dupePayload.assessment.anchor_product || dupePayload.assessment.anchorProduct)
+            : null) || payload.dupe || null;
+
+        if (derivedTradeoffs.length) {
+          const rawOut = {
+            original: origAnchorOut,
+            dupe: dupeAnchorOut,
+            ...(payload.similarity != null ? { similarity: payload.similarity } : {}),
+            ...(payload.tradeoffs_detail ? { tradeoffs_detail: payload.tradeoffs_detail } : {}),
+            tradeoffs: derivedTradeoffs.slice(0, 6),
+            evidence: mergedEvidence,
+            confidence: outConfidence,
+            missing_info: uniqStrings([
+              ...uniqStrings(payload.missing_info).filter((c) => c !== 'evidence_missing'),
+              'compare_tradeoffs_missing_used_deepscan_diff',
+            ]),
+          };
+          const norm2 = normalizeDupeCompare(rawOut);
+          payload = norm2.payload;
+          field_missing = mergeFieldMissing(field_missing.filter((x) => x && x.field !== 'tradeoffs'), norm2.field_missing);
+          field_missing = mergeFieldMissing(field_missing, mergeFieldMissing(origScan && origScan.field_missing, dupeScan && dupeScan.field_missing));
+        }
+      }
+
       if (!Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0) {
         const note =
           ctx.lang === 'CN'
@@ -2417,7 +2568,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             card_id: `dupe_${ctx.request_id}`,
             type: 'dupe_compare',
             payload,
-            ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+            ...(field_missing?.length ? { field_missing: field_missing.slice(0, 8) } : {}),
           },
         ],
         session_patch: {},

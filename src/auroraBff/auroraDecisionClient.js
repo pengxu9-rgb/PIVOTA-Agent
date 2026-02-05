@@ -238,6 +238,28 @@ function mockAuroraChat(input) {
   }
 
   if (/Task:\s*Deep-scan\b/i.test(q)) {
+    const isDupe = anchorId === 'mock_dupe_1' || /\bmock_dupe\b/i.test(q);
+    const anchorProduct = isDupe
+      ? {
+        product_id: 'mock_dupe_1',
+        sku_id: 'mock_dupe_1',
+        brand: 'MockDupeBrand',
+        name: 'Mock Dupe Product',
+        category: 'treatment',
+        display_name: 'MockDupeBrand Mock Dupe Product',
+        availability: ['Global'],
+        price: { usd: null, cny: null, unknown: true },
+      }
+      : {
+        product_id: 'mock_sku_1',
+        sku_id: 'mock_sku_1',
+        brand: 'MockBrand',
+        name: 'Mock Parsed Product',
+        category: 'treatment',
+        display_name: 'MockBrand Mock Parsed Product',
+        availability: ['Global'],
+        price: { usd: null, cny: null, unknown: true },
+      };
     return {
       answer: 'Mock deep-scan completed.',
       intent: 'product',
@@ -248,29 +270,20 @@ function mockAuroraChat(input) {
           normalized_query: 'Mock Parsed Product',
           parse_confidence: 0.8,
           normalized_query_language: 'en-US',
-          anchor_product: {
-            product_id: 'mock_sku_1',
-            sku_id: 'mock_sku_1',
-            brand: 'MockBrand',
-            name: 'Mock Parsed Product',
-            category: 'treatment',
-            display_name: 'MockBrand Mock Parsed Product',
-            availability: ['Global'],
-            price: { usd: null, cny: null, unknown: true },
-          },
+          anchor_product: anchorProduct,
         },
         analyze: {
           verdict: 'Suitable',
-          confidence: 0.6,
-          reasons: ['Mock: fits typical oily skin routines.'],
+          confidence: 0.62,
+          reasons: [isDupe ? 'Mock: hydrating-focused option.' : 'Mock: fits typical oily skin routines.'],
           science_evidence: [
             {
-              key: 'niacinamide',
+              key: isDupe ? 'hyaluronic acid' : 'niacinamide',
               in_product: true,
-              mechanism: 'Barrier support; oil control.',
-              targets: ['Oil control'],
-              risks: ['Start slowly if sensitive.'],
-              evidence: [{ kind: 'kb', citations: ['kb:mock_scan_1'] }],
+              mechanism: isDupe ? 'Humectant hydration support.' : 'Barrier support; oil control.',
+              targets: [isDupe ? 'Hydration' : 'Oil control'],
+              risks: [isDupe ? 'Low irritation risk.' : 'Start slowly if sensitive.'],
+              evidence: [{ kind: 'kb', citations: [isDupe ? 'kb:mock_scan_dupe_1' : 'kb:mock_scan_1'] }],
             },
           ],
           social_signals: {
@@ -311,6 +324,18 @@ function mockAuroraChat(input) {
   }
 
   if (/Task:\s*Compare\b/i.test(q)) {
+    if (/COMPARE_EMPTY_TEST/i.test(q)) {
+      return {
+        answer: JSON.stringify({
+          tradeoffs: [],
+          evidence: null,
+          confidence: null,
+          missing_info: ['upstream_missing_or_empty'],
+        }),
+        intent: 'dupe',
+        cards: [],
+      };
+    }
     return {
       answer: JSON.stringify({
         tradeoffs: ['Mock tradeoff: texture difference', 'Mock tradeoff: fragrance risk'],
