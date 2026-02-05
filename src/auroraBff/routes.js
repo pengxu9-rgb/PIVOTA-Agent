@@ -767,8 +767,37 @@ function looksLikeJsonOrCode(text) {
   return false;
 }
 
-function sanitizeUpstreamAnswer(answer, { language, hasCards, hasStructured } = {}) {
-  const t = typeof answer === 'string' ? answer : '';
+function stripInternalKbRefsFromText(text) {
+  const input = typeof text === 'string' ? text : '';
+  if (!input.trim()) return input;
+
+  const withoutKb = input.replace(
+    /\bkb:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8,})\b/gi,
+    '',
+  );
+
+  const cleaned = withoutKb
+    .replace(/\(\s*\)/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, '').replace(/^[ \t]+/g, ''))
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return true;
+      if (/^(evidence|citation|citations|source|sources)[:：]?\s*$/i.test(t)) return false;
+      if (/^(证据|引用|来源)[:：]?\s*$/.test(t)) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return cleaned;
+}
+
+function sanitizeUpstreamAnswer(answer, { language, hasCards, hasStructured, stripInternalRefs } = {}) {
+  let t = typeof answer === 'string' ? answer : '';
+  if (stripInternalRefs) t = stripInternalKbRefsFromText(t);
   if (!looksLikeJsonOrCode(t)) return t;
 
   const lang = language === 'CN' ? 'CN' : 'EN';
@@ -2345,7 +2374,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
             const a =
               parseUpstream && typeof parseUpstream.answer === 'string'
-                ? extractJsonObjectByKeys(parseUpstream.answer, ['product'])
+                ? extractJsonObjectByKeys(parseUpstream.answer, ['product', 'parse', 'anchor_product', 'anchorProduct'])
                 : null;
             return a;
           })();
@@ -2369,31 +2398,47 @@ function mountAuroraBffRoutes(app, { logger }) {
         `Evidence must include science/social_signals/expert_notes.\n` +
         `Product: ${input}`;
 
-      let upstream = null;
-      try {
-        upstream = await auroraChat({
-          baseUrl: AURORA_DECISION_BASE_URL,
-          query,
-          timeoutMs: 16000,
-          ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
-          ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
-        });
-      } catch (err) {
-        // ignore; fall back
-      }
+      const runDeepScan = async ({ queryText, timeoutMs }) => {
+        try {
+          return await auroraChat({
+            baseUrl: AURORA_DECISION_BASE_URL,
+            query: queryText,
+            timeoutMs,
+            ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
+            ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
+          });
+        } catch {
+          return null;
+        }
+      };
+
+      let upstream = await runDeepScan({ queryText: query, timeoutMs: 16000 });
 
       const upstreamStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
         ? upstream.structured
         : null;
       const upstreamAnswerJson =
         upstream && typeof upstream.answer === 'string'
-          ? extractJsonObjectByKeys(upstream.answer, ['assessment', 'evidence', 'confidence', 'missing_info'])
+          ? extractJsonObjectByKeys(upstream.answer, [
+            'assessment',
+            'evidence',
+            'confidence',
+            'missing_info',
+            'missingInfo',
+            'analyze',
+            'verdict',
+            'reasons',
+            'science_evidence',
+            'social_signals',
+            'expert_notes',
+          ])
           : null;
       const upstreamAnswerObj = upstreamAnswerJson && typeof upstreamAnswerJson === 'object' && !Array.isArray(upstreamAnswerJson) ? upstreamAnswerJson : null;
       const answerLooksLikeProductAnalysis =
         upstreamAnswerObj &&
         (upstreamAnswerObj.assessment != null ||
           upstreamAnswerObj.evidence != null ||
+          upstreamAnswerObj.analyze != null ||
           upstreamAnswerObj.confidence != null ||
           upstreamAnswerObj.missing_info != null ||
           upstreamAnswerObj.missingInfo != null);
@@ -2409,7 +2454,62 @@ function mountAuroraBffRoutes(app, { logger }) {
       const mapped = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
         ? mapAuroraProductAnalysis(structuredOrJson)
         : structuredOrJson;
-      const norm = normalizeProductAnalysis(mapped);
+      let norm = normalizeProductAnalysis(mapped);
+
+      // If personalized scan fails (often due to upstream echoing context or dropping analysis),
+      // retry once with a minimal prefix to improve reliability. Mark the payload as less personalized.
+      if (!norm.payload.assessment && profileSummary && input) {
+        const minimalPrefix = buildContextPrefix({
+          lang: ctx.lang,
+          state: ctx.state || 'idle',
+          trigger_source: ctx.trigger_source,
+          intent: 'product_analyze_fallback',
+          action_id: 'chip.action.analyze_product_fallback',
+        });
+        const minimalQuery =
+          `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+          `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+          `Evidence must include science/social_signals/expert_notes.\n` +
+          `Product: ${input}`;
+        const upstream2 = await runDeepScan({ queryText: minimalQuery, timeoutMs: 14000 });
+        const structured2 = upstream2 && upstream2.structured && typeof upstream2.structured === 'object' && !Array.isArray(upstream2.structured)
+          ? upstream2.structured
+          : null;
+        const answer2 =
+          upstream2 && typeof upstream2.answer === 'string'
+            ? extractJsonObjectByKeys(upstream2.answer, [
+              'assessment',
+              'evidence',
+              'confidence',
+              'missing_info',
+              'missingInfo',
+              'analyze',
+              'verdict',
+              'reasons',
+              'science_evidence',
+              'social_signals',
+              'expert_notes',
+            ])
+            : null;
+        const structuredOrJson2 =
+          structured2 && structured2.analyze && typeof structured2.analyze === 'object'
+            ? structured2
+            : answer2 && typeof answer2 === 'object' && !Array.isArray(answer2)
+              ? answer2
+              : structured2 || answer2;
+        const mapped2 = structuredOrJson2 && structuredOrJson2.analyze && typeof structuredOrJson2.analyze === 'object'
+          ? mapAuroraProductAnalysis(structuredOrJson2)
+          : structuredOrJson2;
+        const norm2 = normalizeProductAnalysis(mapped2);
+        if (norm2 && norm2.payload && norm2.payload.assessment) {
+          const missingInfo = Array.isArray(norm2.payload.missing_info) ? norm2.payload.missing_info : [];
+          norm = {
+            payload: { ...norm2.payload, missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])) },
+            field_missing: norm2.field_missing,
+          };
+        }
+      }
+
       let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
       if (parsedProduct && payload && typeof payload === 'object') {
         const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
@@ -2566,7 +2666,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           : null;
         const answerJson =
           compareUpstream && typeof compareUpstream.answer === 'string'
-            ? extractJsonObjectByKeys(compareUpstream.answer, ['tradeoffs', 'evidence', 'original', 'dupe'])
+            ? extractJsonObjectByKeys(compareUpstream.answer, [
+              'tradeoffs',
+              'tradeoffs_detail',
+              'tradeoffsDetail',
+              'evidence',
+              'original',
+              'dupe',
+              'alternatives',
+              'compare',
+            ])
             : null;
         const answerObj = answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? answerJson : null;
         if (structured && Array.isArray(structured.alternatives)) return structured;
@@ -2700,13 +2809,26 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null;
           const upAnswerJson =
             upstream && typeof upstream.answer === 'string'
-              ? extractJsonObjectByKeys(upstream.answer, ['assessment', 'evidence', 'confidence', 'missing_info'])
+              ? extractJsonObjectByKeys(upstream.answer, [
+                'assessment',
+                'evidence',
+                'confidence',
+                'missing_info',
+                'missingInfo',
+                'analyze',
+                'verdict',
+                'reasons',
+                'science_evidence',
+                'social_signals',
+                'expert_notes',
+              ])
               : null;
           const upAnswerObj = upAnswerJson && typeof upAnswerJson === 'object' && !Array.isArray(upAnswerJson) ? upAnswerJson : null;
           const answerLooksLikeProductAnalysis =
             upAnswerObj &&
             (upAnswerObj.assessment != null ||
               upAnswerObj.evidence != null ||
+              upAnswerObj.analyze != null ||
               upAnswerObj.confidence != null ||
               upAnswerObj.missing_info != null ||
               upAnswerObj.missingInfo != null);
@@ -2720,7 +2842,71 @@ function mountAuroraBffRoutes(app, { logger }) {
           const mappedAnalyze = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
             ? mapAuroraProductAnalysis(structuredOrJson)
             : structuredOrJson;
-          const normAnalyze = normalizeProductAnalysis(mappedAnalyze);
+          let normAnalyze = normalizeProductAnalysis(mappedAnalyze);
+
+          if (!normAnalyze.payload.assessment && profileSummary && bestText) {
+            // Retry without personalized context if upstream dropped the analysis.
+            try {
+              const minimalPrefix = buildContextPrefix({
+                lang: ctx.lang,
+                state: ctx.state || 'idle',
+                trigger_source: ctx.trigger_source,
+                intent: 'product_analyze_fallback',
+                action_id: 'chip.action.analyze_product_fallback',
+              });
+              const minimalQuery =
+                `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+                `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+                `Evidence must include science/social_signals/expert_notes.\n` +
+                `Product: ${bestText}`;
+              const upstream2 = await auroraChat({
+                baseUrl: AURORA_DECISION_BASE_URL,
+                query: minimalQuery,
+                timeoutMs: 10000,
+                ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
+                ...(productUrl ? { anchor_product_url: productUrl } : {}),
+              });
+              const structured2 = upstream2 && upstream2.structured && typeof upstream2.structured === 'object' && !Array.isArray(upstream2.structured)
+                ? upstream2.structured
+                : null;
+              const answer2 =
+                upstream2 && typeof upstream2.answer === 'string'
+                  ? extractJsonObjectByKeys(upstream2.answer, [
+                    'assessment',
+                    'evidence',
+                    'confidence',
+                    'missing_info',
+                    'missingInfo',
+                    'analyze',
+                    'verdict',
+                    'reasons',
+                    'science_evidence',
+                    'social_signals',
+                    'expert_notes',
+                  ])
+                  : null;
+              const structuredOrJson2 =
+                structured2 && structured2.analyze && typeof structured2.analyze === 'object'
+                  ? structured2
+                  : answer2 && typeof answer2 === 'object' && !Array.isArray(answer2)
+                    ? answer2
+                    : structured2 || answer2;
+              const mapped2 = structuredOrJson2 && structuredOrJson2.analyze && typeof structuredOrJson2.analyze === 'object'
+                ? mapAuroraProductAnalysis(structuredOrJson2)
+                : structuredOrJson2;
+              const norm2 = normalizeProductAnalysis(mapped2);
+              if (norm2 && norm2.payload && norm2.payload.assessment) {
+                const missingInfo = Array.isArray(norm2.payload.missing_info) ? norm2.payload.missing_info : [];
+                normAnalyze = {
+                  payload: { ...norm2.payload, missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])) },
+                  field_missing: norm2.field_missing,
+                };
+              }
+            } catch {
+              // ignore
+            }
+          }
+
           const enriched = enrichProductAnalysisPayload(normAnalyze.payload, { lang: ctx.lang });
           return { payload: enriched, field_missing: normAnalyze.field_missing };
         };
@@ -3752,14 +3938,18 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // "Dual input" policy: photos optional, routine strongly recommended.
       // Treat missing routine as low-confidence and fall back to a baseline when no other primary signals exist.
-      const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0 || photosProvided;
+      const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0;
 
-      const usePhoto = parsed.data.use_photo === true;
+      const userRequestedPhoto = parsed.data.use_photo === true;
+      const usePhoto = userRequestedPhoto && hasPrimaryInput;
       const analysisFieldMissing = [];
       let usedPhotos = false;
       let analysisSource = 'rule_based';
 
       let analysis = null;
+      if (userRequestedPhoto && photosProvided && !hasPrimaryInput) {
+        analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
+      }
       if (usePhoto) {
         const chosen = chooseVisionPhoto(passedPhotos);
         if (!chosen) {
@@ -3890,6 +4080,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             type: 'analysis_summary',
             payload: {
               analysis,
+              low_confidence: analysisSource === 'baseline_low_confidence',
               photos_provided: photosProvided,
               photo_qc: photoQcParts,
               used_photos: usedPhotos,
@@ -4009,25 +4200,40 @@ function mountAuroraBffRoutes(app, { logger }) {
       return res.json(envelope);
     } catch (err) {
       const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
-      const status = dbError ? 503 : 500;
+      const status =
+        err && typeof err.status === 'number' && Number.isFinite(err.status) && err.status >= 400 && err.status < 600
+          ? err.status
+          : dbError
+            ? 503
+            : 500;
       logger?.warn({ err: err?.message || String(err), code, status }, 'profile update failed');
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage(
-          dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save profile.',
-        ),
+        assistant_message:
+          status >= 400 && status < 500
+            ? makeAssistantMessage('Invalid request.')
+            : makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save profile.'),
         suggested_chips: [],
         cards: [
           {
             card_id: `err_${ctx.request_id}`,
             type: 'error',
             payload: {
-              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : 'PROFILE_SAVE_FAILED',
-              ...(code ? { code } : {}),
+              error:
+                status >= 400 && status < 500
+                  ? err.code || 'BAD_REQUEST'
+                  : dbNotConfigured
+                    ? 'DB_NOT_CONFIGURED'
+                    : dbSchemaError
+                      ? 'DB_SCHEMA_NOT_READY'
+                      : dbError
+                        ? 'DB_UNAVAILABLE'
+                        : 'PROFILE_SAVE_FAILED',
+              ...(status >= 400 && status < 500 ? {} : code ? { code } : {}),
             },
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: code || 'PROFILE_SAVE_FAILED' })],
+        events: [makeEvent(ctx, 'error', { code: (status >= 400 && status < 500 ? err.code : code) || 'PROFILE_SAVE_FAILED' })],
       });
       return res.status(status).json(envelope);
     }
@@ -4065,23 +4271,40 @@ function mountAuroraBffRoutes(app, { logger }) {
       return res.json(envelope);
     } catch (err) {
       const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
-      const status = dbError ? 503 : 500;
+      const status =
+        err && typeof err.status === 'number' && Number.isFinite(err.status) && err.status >= 400 && err.status < 600
+          ? err.status
+          : dbError
+            ? 503
+            : 500;
       logger?.warn({ err: err?.message || String(err), code, status }, 'tracker log failed');
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save tracker log.'),
+        assistant_message:
+          status >= 400 && status < 500
+            ? makeAssistantMessage('Invalid request.')
+            : makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save tracker log.'),
         suggested_chips: [],
         cards: [
           {
             card_id: `err_${ctx.request_id}`,
             type: 'error',
             payload: {
-              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : 'TRACKER_LOG_FAILED',
-              ...(code ? { code } : {}),
+              error:
+                status >= 400 && status < 500
+                  ? err.code || 'BAD_REQUEST'
+                  : dbNotConfigured
+                    ? 'DB_NOT_CONFIGURED'
+                    : dbSchemaError
+                      ? 'DB_SCHEMA_NOT_READY'
+                      : dbError
+                        ? 'DB_UNAVAILABLE'
+                        : 'TRACKER_LOG_FAILED',
+              ...(status >= 400 && status < 500 ? {} : code ? { code } : {}),
             },
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: code || 'TRACKER_LOG_FAILED' })],
+        events: [makeEvent(ctx, 'error', { code: (status >= 400 && status < 500 ? err.code : code) || 'TRACKER_LOG_FAILED' })],
       });
       return res.status(status).json(envelope);
     }
@@ -4104,23 +4327,40 @@ function mountAuroraBffRoutes(app, { logger }) {
       return res.json(envelope);
     } catch (err) {
       const { code, dbError, dbNotConfigured, dbSchemaError } = classifyStorageError(err);
-      const status = dbError ? 503 : 500;
+      const status =
+        err && typeof err.status === 'number' && Number.isFinite(err.status) && err.status >= 400 && err.status < 600
+          ? err.status
+          : dbError
+            ? 503
+            : 500;
       logger?.warn({ err: err?.message || String(err), code, status }, 'tracker recent failed');
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to load tracker logs.'),
+        assistant_message:
+          status >= 400 && status < 500
+            ? makeAssistantMessage('Invalid request.')
+            : makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to load tracker logs.'),
         suggested_chips: [],
         cards: [
           {
             card_id: `err_${ctx.request_id}`,
             type: 'error',
             payload: {
-              error: dbNotConfigured ? 'DB_NOT_CONFIGURED' : dbSchemaError ? 'DB_SCHEMA_NOT_READY' : dbError ? 'DB_UNAVAILABLE' : 'TRACKER_LOAD_FAILED',
-              ...(code ? { code } : {}),
+              error:
+                status >= 400 && status < 500
+                  ? err.code || 'BAD_REQUEST'
+                  : dbNotConfigured
+                    ? 'DB_NOT_CONFIGURED'
+                    : dbSchemaError
+                      ? 'DB_SCHEMA_NOT_READY'
+                      : dbError
+                        ? 'DB_UNAVAILABLE'
+                        : 'TRACKER_LOAD_FAILED',
+              ...(status >= 400 && status < 500 ? {} : code ? { code } : {}),
             },
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: code || 'TRACKER_LOAD_FAILED' })],
+        events: [makeEvent(ctx, 'error', { code: (status >= 400 && status < 500 ? err.code : code) || 'TRACKER_LOAD_FAILED' })],
       });
       return res.status(status).json(envelope);
     }
@@ -4850,6 +5090,23 @@ function mountAuroraBffRoutes(app, { logger }) {
       const looksEnv = looksLikeWeatherOrEnvironmentQuestion(message);
       const wantsEnvStressCard = Boolean(debugUpstream) || envStressActionRequested || looksEnv;
 
+      const isEnvStressCard = (card) => {
+        if (!card || typeof card !== 'object') return false;
+        const t = typeof card.type === 'string' ? card.type.trim().toLowerCase() : '';
+        if (/^(env_stress|environment_stress|envstress|environmentstress)$/.test(t)) return true;
+        if (t.includes('env') && t.includes('stress')) return true;
+        const payload = card.payload && typeof card.payload === 'object' ? card.payload : null;
+        const schema = payload && typeof payload.schema_version === 'string' ? payload.schema_version.trim() : '';
+        if (schema === 'aurora.ui.env_stress.v1' || schema === 'aurora.env_stress.v1') return true;
+        return false;
+      };
+
+      if (!wantsEnvStressCard && Array.isArray(cards) && cards.length) {
+        const before = cards.length;
+        cards = cards.filter((c) => !isEnvStressCard(c));
+        if (before !== cards.length) fieldMissing.push({ field: 'cards.env_stress', reason: 'not_requested' });
+      }
+
       let envStressUi = null;
       if (contextRaw) {
         const envStressRaw = isPlainObject(contextRaw.env_stress) ? contextRaw.env_stress : isPlainObject(contextRaw.envStress) ? contextRaw.envStress : null;
@@ -4909,6 +5166,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         language: ctx.lang,
         hasCards: rawCards.length > 0,
         hasStructured: Boolean(structured && !structuredBlocked),
+        stripInternalRefs: !debugUpstream,
       });
 
       const envelope = buildEnvelope(ctx, {
