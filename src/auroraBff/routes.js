@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const fs = require('fs');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
+const { createStageProfiler } = require('./skinAnalysisProfiling');
 const {
   V1ChatRequestSchema,
   UserProfilePatchSchema,
@@ -208,17 +209,29 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
   };
 }
 
-async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSummary, recentLogsSummary } = {}) {
+async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSummary, recentLogsSummary, profiler } = {}) {
   if (!SKIN_VISION_ENABLED) return { ok: false, reason: 'vision_disabled' };
   const client = getOpenAIClient();
   if (!client) return { ok: false, reason: 'openai_not_configured' };
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) return { ok: false, reason: 'image_missing' };
 
-  const optimized = await sharp(imageBuffer)
-    .rotate()
-    .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: 82 })
-    .toBuffer();
+  const optimized =
+    profiler && typeof profiler.time === 'function'
+      ? await profiler.time(
+          'decode',
+          async () =>
+            sharp(imageBuffer)
+              .rotate()
+              .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 82 })
+              .toBuffer(),
+          { kind: 'vision_prepare' },
+        )
+      : await sharp(imageBuffer)
+          .rotate()
+          .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 82 })
+          .toBuffer();
   const dataUrl = `data:image/jpeg;base64,${optimized.toString('base64')}`;
 
   const replyLanguage = language === 'CN' ? 'Simplified Chinese' : 'English';
@@ -253,24 +266,30 @@ async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSumma
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SKIN_VISION_TIMEOUT_MS);
   try {
-    const resp = await client.chat.completions.create(
-      {
-        model: SKIN_VISION_MODEL,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: 'You produce ONLY JSON.' },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: dataUrl } },
-            ],
-          },
-        ],
-      },
-      { signal: controller.signal },
-    );
+    const callOpenAI = async () =>
+      client.chat.completions.create(
+        {
+          model: SKIN_VISION_MODEL,
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'You produce ONLY JSON.' },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: dataUrl } },
+              ],
+            },
+          ],
+        },
+        { signal: controller.signal },
+      );
+
+    const resp =
+      profiler && typeof profiler.timeLlmCall === 'function'
+        ? await profiler.timeLlmCall({ provider: 'openai', model: SKIN_VISION_MODEL, kind: 'skin_vision' }, callOpenAI)
+        : await callOpenAI();
 
     const content = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
     const parsedObj = extractJsonObject(content);
@@ -2699,12 +2718,195 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const origKeys = Array.isArray(orig.evidence?.science?.key_ingredients) ? orig.evidence.science.key_ingredients : [];
         const dupKeys = Array.isArray(dup.evidence?.science?.key_ingredients) ? dup.evidence.science.key_ingredients : [];
-        const missing = origKeys.filter((k) => !dupKeys.includes(k));
-        const added = dupKeys.filter((k) => !origKeys.includes(k));
+        const origRisk = Array.isArray(orig.evidence?.science?.risk_notes) ? orig.evidence.science.risk_notes : [];
+        const dupRisk = Array.isArray(dup.evidence?.science?.risk_notes) ? dup.evidence.science.risk_notes : [];
+
+        const barrierRaw = profileSummary && typeof profileSummary.barrierStatus === 'string' ? profileSummary.barrierStatus.trim().toLowerCase() : '';
+        const barrierImpaired = barrierRaw === 'impaired' || barrierRaw === 'damaged';
+
+        const ingredientSignals = (items) => {
+          const out = {
+            occlusives: [],
+            humectants: [],
+            soothing: [],
+            exfoliants: [],
+            brightening: [],
+            peptides: [],
+            fragrance: [],
+            alcohol: [],
+          };
+
+          const seen = new Set();
+          const add = (k, v) => {
+            const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
+            if (!s) return;
+            const key = `${k}:${s.toLowerCase()}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            out[k].push(s);
+          };
+
+          for (const raw of Array.isArray(items) ? items : []) {
+            const s = typeof raw === 'string' ? raw.trim() : String(raw || '').trim();
+            if (!s) continue;
+            const n = s.toLowerCase();
+
+            // Ignore trivial carriers.
+            if (n === 'water' || n === 'aqua') continue;
+
+            if (
+              n.includes('petrolatum') ||
+              n.includes('petroleum jelly') ||
+              n.includes('mineral oil') ||
+              n.includes('paraffin') ||
+              n.includes('dimethicone') ||
+              n.includes('lanolin') ||
+              n.includes('wax') ||
+              n.includes('beeswax') ||
+              n.includes('shea butter') ||
+              n.includes('cocoa butter')
+            ) {
+              add('occlusives', s);
+            }
+
+            if (
+              n.includes('glycerin') ||
+              n.includes('hyaluronic') ||
+              n.includes('sodium hyaluronate') ||
+              n.includes('panthenol') ||
+              n.includes('urea') ||
+              n.includes('betaine') ||
+              n.includes('sodium pca') ||
+              n.includes('trehalose') ||
+              n.includes('propanediol') ||
+              n.includes('butylene glycol') ||
+              n.includes('sorbitol')
+            ) {
+              add('humectants', s);
+            }
+
+            if (
+              n.includes('panthenol') ||
+              n.includes('allantoin') ||
+              n.includes('madecassoside') ||
+              n.includes('centella') ||
+              n.includes('ceramide') ||
+              n.includes('cholesterol') ||
+              n.includes('beta-glucan') ||
+              n.includes('cica')
+            ) {
+              add('soothing', s);
+            }
+
+            if (
+              n.includes('glycolic') ||
+              n.includes('lactic') ||
+              n.includes('mandelic') ||
+              n.includes('salicylic') ||
+              n.includes('gluconolactone') ||
+              n.includes('pha') ||
+              n.includes('bha') ||
+              n.includes('aha')
+            ) {
+              add('exfoliants', s);
+            }
+
+            if (
+              n.includes('niacinamide') ||
+              n.includes('tranexamic') ||
+              n.includes('azelaic') ||
+              n.includes('ascorbic') ||
+              n.includes('vitamin c') ||
+              n.includes('arbutin') ||
+              n.includes('kojic') ||
+              n.includes('licorice')
+            ) {
+              add('brightening', s);
+            }
+
+            if (n.includes('peptide')) add('peptides', s);
+
+            if (
+              n.includes('fragrance') ||
+              n.includes('parfum') ||
+              n.includes('essential oil') ||
+              n.includes('limonene') ||
+              n.includes('linalool') ||
+              n.includes('citral')
+            ) {
+              add('fragrance', s);
+            }
+
+            if (n.includes('alcohol denat') || n.includes('denatured alcohol')) add('alcohol', s);
+          }
+
+          return out;
+        };
+
+        const pickFew = (arr, max) => Array.from(new Set(Array.isArray(arr) ? arr.map((x) => String(x || '').trim()).filter(Boolean) : [])).slice(0, max);
+        const joinFew = (arr, max) => pickFew(arr, max).join(', ');
+        const nonEmpty = (arr) => Array.isArray(arr) && arr.length > 0;
+
+        const origSig = ingredientSignals(origKeys);
+        const dupSig = ingredientSignals(dupKeys);
 
         const tradeoffs = [];
-        if (missing.length) tradeoffs.push(`Missing actives vs original: ${missing.join(', ')}`);
-        if (added.length) tradeoffs.push(`Added actives: ${added.join(', ')}`);
+        if (nonEmpty(origSig.occlusives) && !nonEmpty(dupSig.occlusives) && nonEmpty(dupSig.humectants)) {
+          tradeoffs.push(
+            ctx.lang === 'CN'
+              ? `质地/封闭性：原产品更偏封闭锁水（例如 ${joinFew(origSig.occlusives, 2)}）；平替更偏补水（例如 ${joinFew(dupSig.humectants, 2)}）→ 通常更清爽，但可能需要叠加面霜来“锁水”。`
+              : `Texture/finish: Original is more occlusive (e.g., ${joinFew(origSig.occlusives, 2)}) while the dupe is more humectant (e.g., ${joinFew(dupSig.humectants, 2)}) → lighter feel, but may need a moisturizer on top to seal.`,
+          );
+        } else if (nonEmpty(origSig.occlusives) && nonEmpty(dupSig.occlusives)) {
+          tradeoffs.push(
+            ctx.lang === 'CN'
+              ? `共同点：两者都含封闭/油脂类成分（原：${joinFew(origSig.occlusives, 2)}；平替：${joinFew(dupSig.occlusives, 2)}）→ 都可能偏“锁水/滋润”，差异更多来自比例与配方。`
+              : `Shared: Both include occlusive/emollient components (orig: ${joinFew(origSig.occlusives, 2)}; dupe: ${joinFew(dupSig.occlusives, 2)}) → both can be “sealing”; differences may come from formula balance.`,
+          );
+        }
+
+        if (nonEmpty(origSig.humectants) && nonEmpty(dupSig.humectants) && tradeoffs.length < 2) {
+          tradeoffs.push(
+            ctx.lang === 'CN'
+              ? `共同点：两者都含常见保湿成分（原：${joinFew(origSig.humectants, 2)}；平替：${joinFew(dupSig.humectants, 2)}）→ 都能提升含水量，但“锁水力度”仍取决于封闭类成分。`
+              : `Shared: Both include humectants (orig: ${joinFew(origSig.humectants, 2)}; dupe: ${joinFew(dupSig.humectants, 2)}) → both support hydration; how “sealing” it feels depends on occlusives.`,
+          );
+        }
+
+        if (nonEmpty(dupSig.exfoliants)) {
+          tradeoffs.push(
+            ctx.lang === 'CN'
+              ? `刺激风险：平替含去角质类成分（例如 ${joinFew(dupSig.exfoliants, 2)}）→ ${barrierImpaired ? '屏障受损时更容易不耐受，建议低频' : '更易刺激，建议低频'}，不要叠加强活性。`
+              : `Irritation risk: Dupe includes exfoliant-like actives (e.g., ${joinFew(dupSig.exfoliants, 2)}) → ${barrierImpaired ? 'higher irritation risk if your barrier is impaired; start low' : 'higher irritation risk; start low'}, avoid stacking strong actives.`,
+          );
+        }
+
+        if (nonEmpty(dupSig.fragrance) && !nonEmpty(origSig.fragrance)) {
+          tradeoffs.push(
+            ctx.lang === 'CN'
+              ? `气味/敏感风险：平替可能含香精/香料相关成分（例如 ${joinFew(dupSig.fragrance, 1)}）→ 更敏感人群需要谨慎。`
+              : `Fragrance risk: Dupe may include fragrance-related ingredients (e.g., ${joinFew(dupSig.fragrance, 1)}) → higher risk for sensitive skin.`,
+          );
+        }
+
+        const addedRisks = dupRisk.filter((k) => !origRisk.includes(k));
+        if (addedRisks.length) {
+          tradeoffs.push(
+            ctx.lang === 'CN'
+              ? `平替风险提示：${addedRisks.slice(0, 2).join(' · ')}`
+              : `Dupe risk notes: ${addedRisks.slice(0, 2).join(' · ')}`,
+          );
+        }
+
+        if (!tradeoffs.length) {
+          const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
+          const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
+          tradeoffs.push(
+            ctx.lang === 'CN'
+              ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
+              : `Key ingredient emphasis (brief): original — ${origPreview.length ? origPreview.join(' / ') : 'unknown'}; dupe — ${dupPreview.length ? dupPreview.join(' / ') : 'unknown'}.`,
+          );
+        }
 
         const confidence = typeof orig.confidence === 'number' && typeof dup.confidence === 'number'
           ? (orig.confidence + dup.confidence) / 2
@@ -4053,6 +4255,9 @@ function mountAuroraBffRoutes(app, { logger }) {
 
   app.post('/v1/analysis/skin', async (req, res) => {
     const ctx = buildRequestContext(req, {});
+    const profiler = createStageProfiler();
+    profiler.skip('face', 'not_implemented');
+    profiler.skip('skin_roi', 'not_implemented');
     try {
       requireAuroraUid(ctx);
       const parsed = SkinAnalysisRequestSchema.safeParse(req.body || {});
@@ -4069,6 +4274,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let profile = null;
       let recentLogs = [];
+      profiler.start('quality', { kind: 'memory' });
       const identity = await resolveIdentity(req, ctx);
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
@@ -4122,6 +4328,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? Object.keys(routineCandidate).length > 0
                 : false),
       );
+      profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
 
       // "Dual input" policy: photos optional, routine strongly recommended.
       // Treat missing routine as low-confidence and fall back to a baseline when no other primary signals exist.
@@ -4144,6 +4351,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         } else {
           let photoBytes = null;
           try {
+            profiler.start('decode', { kind: 'photo_fetch', slot: chosen.slot_id });
             const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: chosen.photo_id });
             if (resp && resp.ok) photoBytes = resp.buffer;
             else {
@@ -4152,11 +4360,13 @@ function mountAuroraBffRoutes(app, { logger }) {
                 reason: resp && resp.reason ? resp.reason : 'photo_fetch_failed',
               });
             }
+            profiler.end('decode', { kind: 'photo_fetch', ok: Boolean(photoBytes), bytes: photoBytes ? photoBytes.length : 0 });
           } catch (err) {
             analysisFieldMissing.push({
               field: 'analysis.used_photos',
               reason: 'photo_fetch_failed',
             });
+            profiler.fail('decode', err, { kind: 'photo_fetch', slot: chosen.slot_id });
             logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes');
           }
 
@@ -4166,6 +4376,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               language: ctx.lang,
               profileSummary,
               recentLogsSummary,
+              profiler,
             });
             if (vision && vision.ok && vision.analysis) {
               analysis = vision.analysis;
@@ -4231,7 +4442,9 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let upstream = null;
         try {
-          upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query: prompt, timeoutMs: 12000 });
+          upstream = await profiler.timeLlmCall({ provider: 'aurora', model: null, kind: 'skin_text' }, async () =>
+            auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query: prompt, timeoutMs: 12000 }),
+          );
         } catch (err) {
           logger?.warn({ err: err.message }, 'aurora bff: skin analysis upstream failed');
         }
@@ -4243,10 +4456,18 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (!analysis) {
         if (!hasPrimaryInput) {
-          analysis = buildLowConfidenceBaselineSkinAnalysis({ profile: profileSummary || profile, language: ctx.lang });
+          analysis = profiler.timeSync(
+            'detector',
+            () => buildLowConfidenceBaselineSkinAnalysis({ profile: profileSummary || profile, language: ctx.lang }),
+            { kind: 'baseline_low_confidence' },
+          );
           analysisSource = 'baseline_low_confidence';
         } else {
-          analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang });
+          analysis = profiler.timeSync(
+            'detector',
+            () => buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang }),
+            { kind: 'rule_based' },
+          );
         }
       }
 
@@ -4258,6 +4479,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
+      profiler.start('render', { kind: 'envelope' });
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
@@ -4279,6 +4501,22 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
         events: [makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: analysisSource })],
       });
+      profiler.end('render', { kind: 'envelope' });
+
+      const report = profiler.report();
+      logger?.info(
+        {
+          kind: 'skin_analysis_profile',
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          total_ms: report.total_ms,
+          llm_summary: report.llm_summary,
+          stages: report.stages,
+        },
+        'aurora bff: skin analysis profile',
+      );
+      logger?.info({ kind: 'metric', name: 'aurora.skin_analysis.total_ms', value: report.total_ms }, 'metric');
+
       return res.json(envelope);
     } catch (err) {
       const status = err.status || 500;
@@ -5402,4 +5640,11 @@ function mountAuroraBffRoutes(app, { logger }) {
   });
 }
 
-module.exports = { mountAuroraBffRoutes };
+const __internal = {
+  runOpenAIVisionSkinAnalysis,
+  buildLowConfidenceBaselineSkinAnalysis,
+  buildRuleBasedSkinAnalysis,
+  normalizeSkinAnalysisFromLLM,
+};
+
+module.exports = { mountAuroraBffRoutes, __internal };
