@@ -5,7 +5,8 @@ const fs = require('fs');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
-const { runSkinDiagnosisV1 } = require('./skinDiagnosisV1');
+const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDiagnosisV1 } = require('./skinDiagnosisV1');
+const { buildSkinVisionPrompt, buildSkinReportPrompt } = require('./skinLlmPrompts');
 const {
   classifyPhotoQuality,
   inferDetectorConfidence,
@@ -71,7 +72,7 @@ const {
 } = require('./normalize');
 const { simulateConflicts } = require('./routineRules');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
-const { extractJsonObject, extractJsonObjectByKeys } = require('./jsonExtract');
+const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   normalizeBudgetHint,
@@ -255,7 +256,7 @@ async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSumma
   const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
   const logsLine = Array.isArray(recentLogsSummary) && recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
 
-  const prompt =
+  const promptBase =
     `${profileLine}\n` +
     `${logsLine ? `${logsLine}\n` : ''}` +
     `Task: You are a cautious skincare assistant. Use the provided daylight selfie photo ONLY to infer *visible* skin signals (redness, acne, oiliness/shine, dryness/flaking, pigmentation, texture). Do NOT diagnose medical conditions.\n\n` +
@@ -273,43 +274,54 @@ async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSumma
     `- Observations must be cautious and actionable (barrier, acne risk, pigmentation, irritation, hydration, safety).\n` +
     `- Strategy must be stepwise and END with ONE direct clarifying question (must include a '?' or '？').\n` +
     `- DO NOT recommend specific products/brands.\n` +
-    `- Keep it concise: 4–6 features; strategy under 900 characters.\n` +
+    `- Keep it concise: 4–6 features; each observation <= 200 characters; strategy <= 900 characters.\n` +
     `Language: ${replyLanguage}.\n` +
     `${replyInstruction}\n`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SKIN_VISION_TIMEOUT_MS);
   try {
-    const callOpenAI = async () =>
-      client.chat.completions.create(
-        {
-          model: SKIN_VISION_MODEL,
-          temperature: 0.2,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: 'You produce ONLY JSON.' },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: dataUrl } },
-              ],
-            },
-          ],
-        },
-        { signal: controller.signal },
-      );
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const prompt =
+        attempt === 0
+          ? promptBase
+          : `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and end strategy with a single direct question mark.\n`;
 
-    const resp =
-      profiler && typeof profiler.timeLlmCall === 'function'
-        ? await profiler.timeLlmCall({ provider: 'openai', model: SKIN_VISION_MODEL, kind: 'skin_vision' }, callOpenAI)
-        : await callOpenAI();
+      const temperature = attempt === 0 ? 0.2 : 0.0;
+      const callOpenAI = async () =>
+        client.chat.completions.create(
+          {
+            model: SKIN_VISION_MODEL,
+            temperature,
+            max_tokens: 520,
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: 'You produce ONLY JSON.' },
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  { type: 'image_url', image_url: { url: dataUrl } },
+                ],
+              },
+            ],
+          },
+          { signal: controller.signal },
+        );
 
-    const content = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
-    const parsedObj = extractJsonObject(content);
-    const analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language });
-    if (!analysis) return { ok: false, reason: 'vision_output_invalid' };
-    return { ok: true, analysis };
+      const resp =
+        profiler && typeof profiler.timeLlmCall === 'function'
+          ? await profiler.timeLlmCall({ provider: 'openai', model: SKIN_VISION_MODEL, kind: 'skin_vision' }, callOpenAI)
+          : await callOpenAI();
+
+      const content = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
+      const jsonOnly = unwrapCodeFence(content);
+      const parsedObj = parseJsonOnlyObject(jsonOnly);
+      const analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language });
+      if (analysis) return { ok: true, analysis };
+    }
+
+    return { ok: false, reason: 'vision_output_invalid' };
   } catch (err) {
     if (err && err.name === 'AbortError') return { ok: false, reason: 'vision_timeout' };
     return { ok: false, reason: 'vision_failed', error: err && (err.code || err.message) ? String(err.code || err.message) : null };
@@ -343,29 +355,42 @@ function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
   const o = obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : null;
   if (!o) return null;
 
+  function clampText(raw, maxLen) {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    if (!s) return '';
+    if (s.length <= maxLen) return s;
+    return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+  }
+
   const featuresRaw = Array.isArray(o.features) ? o.features : [];
   const features = [];
   for (const raw of featuresRaw) {
     const f = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
     if (!f) continue;
-    const observation = typeof f.observation === 'string' ? f.observation.trim() : '';
+    const observation = clampText(f.observation, 200);
     if (!observation) continue;
     const c = typeof f.confidence === 'string' ? f.confidence.trim() : '';
     const confidence = c === 'pretty_sure' || c === 'somewhat_sure' || c === 'not_sure' ? c : 'somewhat_sure';
     features.push({ observation, confidence });
   }
 
-  const strategyRaw = typeof o.strategy === 'string' ? o.strategy.trim() : '';
+  let strategyRaw = clampText(o.strategy, 900);
   const needsRiskCheckRaw = o.needs_risk_check ?? o.needsRiskCheck;
   const needs_risk_check = typeof needsRiskCheckRaw === 'boolean' ? needsRiskCheckRaw : false;
 
-  const strategy = strategyRaw || (lang === 'CN' ? '我需要再确认一点信息：你最近是否有刺痛/泛红？' : 'Quick check: have you had stinging or redness recently?');
+  const fallbackStrategy = lang === 'CN' ? '我需要再确认一点信息：你最近是否有刺痛/泛红？' : 'Quick check: have you had stinging or redness recently?';
+  if (strategyRaw) {
+    const qIdx = Math.max(strategyRaw.lastIndexOf('?'), strategyRaw.lastIndexOf('？'));
+    if (qIdx !== -1) strategyRaw = strategyRaw.slice(0, qIdx + 1).trim();
+  }
+  const strategy = strategyRaw || fallbackStrategy;
+  if (!/[?？]$/.test(strategy)) return null;
 
   if (!features.length && !strategyRaw) return null;
 
   return {
     features: features.slice(0, 6),
-    strategy: strategy.slice(0, 1200),
+    strategy,
     needs_risk_check,
   };
 }
@@ -3047,17 +3072,43 @@ function mountAuroraBffRoutes(app, { logger }) {
           const anchorId = extractAnchorIdFromProductLike(productObj);
           const bestText = String(productText || '').trim() || (anchorId ? String(anchorId) : '');
           if (!bestText) return null;
-          let upstream = null;
-          try {
-            upstream = await auroraChat({
+          const buildMinimalQuery = () => {
+            const minimalPrefix = buildContextPrefix({
+              lang: ctx.lang,
+              state: ctx.state || 'idle',
+              trigger_source: ctx.trigger_source,
+              intent: 'product_analyze_fallback',
+              action_id: 'chip.action.analyze_product_fallback',
+            });
+            return (
+              `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+              `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+              `Evidence must include science/social_signals/expert_notes.\n` +
+              `Product: ${bestText}`
+            );
+          };
+
+          const runScan = async (queryText, timeoutMs) =>
+            auroraChat({
               baseUrl: AURORA_DECISION_BASE_URL,
-              query: deepScanQuery(bestText),
-              timeoutMs: 12000,
+              query: queryText,
+              timeoutMs,
               ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
               ...(productUrl ? { anchor_product_url: productUrl } : {}),
             });
+
+          let upstream = null;
+          let usedMinimalQuery = false;
+          try {
+            upstream = await runScan(deepScanQuery(bestText), 16000);
           } catch (err) {
-            return null;
+            // Retry once with a minimal (no-profile) prefix to improve reliability under load.
+            try {
+              upstream = await runScan(buildMinimalQuery(), 14000);
+              usedMinimalQuery = true;
+            } catch {
+              return null;
+            }
           }
 
           const upStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
@@ -3103,25 +3154,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (!normAnalyze.payload.assessment && profileSummary && bestText) {
             // Retry without personalized context if upstream dropped the analysis.
             try {
-              const minimalPrefix = buildContextPrefix({
-                lang: ctx.lang,
-                state: ctx.state || 'idle',
-                trigger_source: ctx.trigger_source,
-                intent: 'product_analyze_fallback',
-                action_id: 'chip.action.analyze_product_fallback',
-              });
-              const minimalQuery =
-                `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-                `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-                `Evidence must include science/social_signals/expert_notes.\n` +
-                `Product: ${bestText}`;
-              const upstream2 = await auroraChat({
-                baseUrl: AURORA_DECISION_BASE_URL,
-                query: minimalQuery,
-                timeoutMs: 10000,
-                ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
-                ...(productUrl ? { anchor_product_url: productUrl } : {}),
-              });
+              const upstream2 = await runScan(buildMinimalQuery(), 14000);
+              usedMinimalQuery = true;
               const structured2 = upstream2 && upstream2.structured && typeof upstream2.structured === 'object' && !Array.isArray(upstream2.structured)
                 ? upstream2.structured
                 : null;
@@ -3156,6 +3190,64 @@ function mountAuroraBffRoutes(app, { logger }) {
                 normAnalyze = {
                   payload: { ...norm2.payload, missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])) },
                   field_missing: norm2.field_missing,
+                };
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          const keyIngredientsNow = (() => {
+            const ev = normAnalyze.payload && typeof normAnalyze.payload === 'object' ? normAnalyze.payload.evidence : null;
+            const sci = ev && typeof ev === 'object' ? ev.science : null;
+            const key = sci && typeof sci === 'object' ? (sci.key_ingredients || sci.keyIngredients) : null;
+            return Array.isArray(key) ? key.filter(Boolean) : [];
+          })();
+          if (profileSummary && bestText && keyIngredientsNow.length === 0 && !usedMinimalQuery) {
+            // If key ingredient evidence is still missing, retry once without personalized context.
+            try {
+              const upstream3 = await runScan(buildMinimalQuery(), 14000);
+              usedMinimalQuery = true;
+              const structured3 = upstream3 && upstream3.structured && typeof upstream3.structured === 'object' && !Array.isArray(upstream3.structured)
+                ? upstream3.structured
+                : null;
+              const answer3 =
+                upstream3 && typeof upstream3.answer === 'string'
+                  ? extractJsonObjectByKeys(upstream3.answer, [
+                      'assessment',
+                      'evidence',
+                      'confidence',
+                      'missing_info',
+                      'missingInfo',
+                      'analyze',
+                      'verdict',
+                      'reasons',
+                      'science_evidence',
+                      'social_signals',
+                      'expert_notes',
+                    ])
+                  : null;
+              const structuredOrJson3 =
+                structured3 && structured3.analyze && typeof structured3.analyze === 'object'
+                  ? structured3
+                  : answer3 && typeof answer3 === 'object' && !Array.isArray(answer3)
+                    ? answer3
+                    : structured3 || answer3;
+              const mapped3 = structuredOrJson3 && structuredOrJson3.analyze && typeof structuredOrJson3.analyze === 'object'
+                ? mapAuroraProductAnalysis(structuredOrJson3)
+                : structuredOrJson3;
+              const norm3 = normalizeProductAnalysis(mapped3);
+              const key3 = (() => {
+                const ev = norm3 && norm3.payload && typeof norm3.payload === 'object' ? norm3.payload.evidence : null;
+                const sci = ev && typeof ev === 'object' ? ev.science : null;
+                const key = sci && typeof sci === 'object' ? (sci.key_ingredients || sci.keyIngredients) : null;
+                return Array.isArray(key) ? key.filter(Boolean) : [];
+              })();
+              if (norm3 && norm3.payload && norm3.payload.assessment && key3.length) {
+                const missingInfo = Array.isArray(norm3.payload.missing_info) ? norm3.payload.missing_info : [];
+                normAnalyze = {
+                  payload: { ...norm3.payload, missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])) },
+                  field_missing: norm3.field_missing,
                 };
               }
             } catch {
@@ -4416,14 +4508,111 @@ function mountAuroraBffRoutes(app, { logger }) {
       const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
       const visionAvailable = SKIN_VISION_ENABLED && Boolean(OPENAI_API_KEY);
       const reportAvailable = Boolean(AURORA_DECISION_BASE_URL) && !USE_AURORA_BFF_MOCK;
+
+      const analysisFieldMissing = [];
+      const qualityReportReasons = [];
+      let usedPhotos = false;
+      let analysisSource = 'rule_based';
+
+      let diagnosisPhoto = null;
+      let diagnosisPhotoBytes = null;
+      let diagnosisV1 = null;
+      let diagnosisPolicy = null;
+
+      function mergePhotoQuality(baseQuality, extraQuality, { extraPrefix } = {}) {
+        const base = baseQuality && typeof baseQuality === 'object' ? baseQuality : { grade: 'unknown', reasons: [] };
+        const extra = extraQuality && typeof extraQuality === 'object' ? extraQuality : null;
+        if (!extra) return base;
+        const order = { unknown: 0, pass: 1, degraded: 2, fail: 3 };
+        const g0 = String(base.grade || 'unknown').trim().toLowerCase();
+        const g1 = String(extra.grade || 'unknown').trim().toLowerCase();
+        const grade0 = order[g0] != null ? g0 : 'unknown';
+        const grade1 = order[g1] != null ? g1 : 'unknown';
+        const mergedGrade = order[grade1] > order[grade0] ? grade1 : grade0;
+        const r0 = Array.isArray(base.reasons) ? base.reasons : [];
+        const r1raw = Array.isArray(extra.reasons) ? extra.reasons : [];
+        const r1 = extraPrefix ? r1raw.map((r) => `${extraPrefix}${r}`) : r1raw;
+        const mergedReasons = Array.from(new Set([...r0, ...r1])).slice(0, 10);
+        return { grade: mergedGrade, reasons: mergedReasons };
+      }
+
+      if (userRequestedPhoto && photosProvided && hasPrimaryInput && photoQuality.grade !== 'fail') {
+        const candidates = photoQuality.grade === 'pass' ? passedPhotos : degradedPhotos.length ? degradedPhotos : passedPhotos;
+        diagnosisPhoto = chooseVisionPhoto(candidates);
+        if (!diagnosisPhoto) {
+          analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'no_usable_photo' });
+          if (ctx.lang === 'CN') qualityReportReasons.push('没有可用的照片（缺少 photo_id 或未通过质量门槛）；我会跳过照片检测。');
+          else qualityReportReasons.push('No usable photo (missing photo_id or failed quality gate); skipping photo checks.');
+        } else {
+          try {
+            profiler.start('decode', { kind: 'photo_fetch', slot: diagnosisPhoto.slot_id, purpose: 'diagnosis_v1' });
+            const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: diagnosisPhoto.photo_id });
+            if (resp && resp.ok) {
+              diagnosisPhotoBytes = resp.buffer;
+              usedPhotos = true;
+            } else {
+              analysisFieldMissing.push({
+                field: 'analysis.used_photos',
+                reason: resp && resp.reason ? resp.reason : 'photo_fetch_failed',
+              });
+            }
+            profiler.end('decode', {
+              kind: 'photo_fetch',
+              slot: diagnosisPhoto.slot_id,
+              purpose: 'diagnosis_v1',
+              ok: Boolean(diagnosisPhotoBytes),
+              bytes: diagnosisPhotoBytes ? diagnosisPhotoBytes.length : 0,
+            });
+          } catch (err) {
+            analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'photo_fetch_failed' });
+            profiler.fail('decode', err, { kind: 'photo_fetch', slot: diagnosisPhoto.slot_id, purpose: 'diagnosis_v1' });
+            logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes for diagnosis');
+          }
+
+          if (diagnosisPhotoBytes) {
+            const diag = await runSkinDiagnosisV1({
+              imageBuffer: diagnosisPhotoBytes,
+              language: ctx.lang,
+              profileSummary,
+              recentLogsSummary,
+              profiler,
+            });
+            if (diag && diag.ok && diag.diagnosis) {
+              diagnosisV1 = diag.diagnosis;
+              diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
+              const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
+              if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
+              if (dq && dq.grade === 'fail') {
+                if (ctx.lang === 'CN') qualityReportReasons.push('照片像素质量未通过（模糊/光照/白平衡/覆盖不足等）；为避免误判我会建议重拍。');
+                else
+                  qualityReportReasons.push(
+                    'Pixel-level photo quality did not pass (blur/lighting/WB/coverage); recommending a retake to avoid wrong guesses.',
+                  );
+              } else if (dq && dq.grade === 'degraded') {
+                if (ctx.lang === 'CN') qualityReportReasons.push('照片质量一般：我会更保守，并减少/避免无效模型调用。');
+                else qualityReportReasons.push('Photo quality is degraded: keeping conclusions conservative and reducing unnecessary model calls.');
+              }
+            } else if (diag && !diag.ok) {
+              const reason = String(diag.reason || 'diagnosis_failed');
+              photoQuality = mergePhotoQuality(photoQuality, { grade: 'fail', reasons: [reason] }, { extraPrefix: 'pixel_' });
+              if (ctx.lang === 'CN') qualityReportReasons.push(`照片检测未能稳定完成（${reason}）；为避免误判建议重拍。`);
+              else qualityReportReasons.push(`Photo checks could not complete reliably (${reason}); recommending a retake to avoid wrong guesses.`);
+            }
+          }
+        }
+      }
+
       const qualityForReport = userRequestedPhoto && photosProvided ? photoQuality : { grade: 'pass', reasons: ['no_photo'] };
+      const policyDetectorConfidenceLevel = diagnosisPolicy ? diagnosisPolicy.detector_confidence_level : detectorConfidence.level;
+      const policyUncertainty = diagnosisPolicy ? diagnosisPolicy.uncertainty : null;
 
       const visionDecision = shouldCallLlm({
         kind: 'vision',
         quality: photoQuality,
         hasPrimaryInput,
         userRequestedPhoto,
-        detectorConfidenceLevel: detectorConfidence.level,
+        detectorConfidenceLevel: policyDetectorConfidenceLevel,
+        uncertainty: policyUncertainty,
         visionAvailable,
         reportAvailable,
         degradedMode: SKIN_DEGRADED_MODE,
@@ -4433,16 +4622,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         quality: qualityForReport,
         hasPrimaryInput,
         userRequestedPhoto,
-        detectorConfidenceLevel: detectorConfidence.level,
+        detectorConfidenceLevel: policyDetectorConfidenceLevel,
+        uncertainty: policyUncertainty,
         visionAvailable,
         reportAvailable,
         degradedMode: SKIN_DEGRADED_MODE,
       });
-
-      const analysisFieldMissing = [];
-      const qualityReportReasons = [];
-      let usedPhotos = false;
-      let analysisSource = 'rule_based';
 
       let analysis = null;
       if (userRequestedPhoto && photosProvided && !hasPrimaryInput) {
@@ -4469,24 +4654,34 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push('No usable photo (missing photo_id or failed quality gate); skipping photo analysis.');
         } else {
           let photoBytes = null;
-          try {
-            profiler.start('decode', { kind: 'photo_fetch', slot: chosen.slot_id });
-            const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: chosen.photo_id });
-            if (resp && resp.ok) photoBytes = resp.buffer;
-            else {
+          if (diagnosisPhotoBytes && diagnosisPhoto && diagnosisPhoto.photo_id === chosen.photo_id) {
+            photoBytes = diagnosisPhotoBytes;
+          } else {
+            try {
+              profiler.start('decode', { kind: 'photo_fetch', slot: chosen.slot_id, purpose: 'vision' });
+              const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: chosen.photo_id });
+              if (resp && resp.ok) photoBytes = resp.buffer;
+              else {
+                analysisFieldMissing.push({
+                  field: 'analysis.used_photos',
+                  reason: resp && resp.reason ? resp.reason : 'photo_fetch_failed',
+                });
+              }
+              profiler.end('decode', {
+                kind: 'photo_fetch',
+                slot: chosen.slot_id,
+                purpose: 'vision',
+                ok: Boolean(photoBytes),
+                bytes: photoBytes ? photoBytes.length : 0,
+              });
+            } catch (err) {
               analysisFieldMissing.push({
                 field: 'analysis.used_photos',
-                reason: resp && resp.reason ? resp.reason : 'photo_fetch_failed',
+                reason: 'photo_fetch_failed',
               });
+              profiler.fail('decode', err, { kind: 'photo_fetch', slot: chosen.slot_id, purpose: 'vision' });
+              logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes');
             }
-            profiler.end('decode', { kind: 'photo_fetch', ok: Boolean(photoBytes), bytes: photoBytes ? photoBytes.length : 0 });
-          } catch (err) {
-            analysisFieldMissing.push({
-              field: 'analysis.used_photos',
-              reason: 'photo_fetch_failed',
-            });
-            profiler.fail('decode', err, { kind: 'photo_fetch', slot: chosen.slot_id });
-            logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes');
           }
 
           if (photoBytes) {
@@ -4540,7 +4735,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         const routineLine = routineText ? `current_routine=${routineText.slice(0, 6000)}` : '';
 
-        const prompt =
+        const promptBase =
           `${profileLine}\n` +
           `${logsLine ? `${logsLine}\n` : ''}` +
           `${routineLine ? `${routineLine}\n` : ''}` +
@@ -4561,22 +4756,42 @@ function mountAuroraBffRoutes(app, { logger }) {
           `- Observations must be about barrier, acne risk, pigmentation, irritation, hydration, and safety.\n` +
           `- Strategy must be actionable and stepwise and END with ONE direct clarifying question (must include a '?' or '？').\n` +
           `- DO NOT recommend specific products/brands (you may reference the user's own products if provided).\n` +
-          `- Keep it concise: 4–6 features; strategy under 900 characters.\n` +
+          `- Keep it concise: 4–6 features; each observation <= 200 characters; strategy <= 900 characters.\n` +
           `Language: ${replyLanguage}.\n` +
           `${replyInstruction}\n`;
 
-        let upstream = null;
-        try {
-          upstream = await profiler.timeLlmCall({ provider: 'aurora', model: null, kind: 'skin_text' }, async () =>
-            auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query: prompt, timeoutMs: 12000 }),
-          );
-        } catch (err) {
-          logger?.warn({ err: err.message }, 'aurora bff: skin analysis upstream failed');
+        let reportFailure = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const prompt =
+            attempt === 0
+              ? promptBase
+              : `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON only (no markdown/text), exactly the specified keys, and strategy must end with a single direct question.\n`;
+
+          let upstream = null;
+          try {
+            upstream = await profiler.timeLlmCall({ provider: 'aurora', model: null, kind: 'skin_text' }, async () =>
+              auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query: prompt, timeoutMs: 12000 }),
+            );
+          } catch (err) {
+            logger?.warn({ err: err.message }, 'aurora bff: skin analysis upstream failed');
+            reportFailure = 'report_upstream_failed';
+            break;
+          }
+
+          const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
+          const jsonOnly = unwrapCodeFence(answer);
+          const parsedObj = parseJsonOnlyObject(jsonOnly);
+          analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
+          if (analysis) {
+            analysisSource = 'aurora_text';
+            break;
+          }
+          reportFailure = 'report_output_invalid';
         }
-        const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
-        const parsedObj = extractJsonObjectByKeys(answer, ['features', 'strategy', 'needs_risk_check']) || extractJsonObject(answer);
-        analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
-        if (analysis) analysisSource = 'aurora_text';
+        if (!analysis && reportFailure) {
+          if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailure}）；我会退回到确定性基线。`);
+          else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
+        }
       }
       if (!analysis && reportDecision.decision === 'skip' && reportAvailable && hasPrimaryInput) {
         const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
@@ -4593,11 +4808,21 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
           analysisSource = 'baseline_low_confidence';
         } else {
-          analysis = profiler.timeSync(
-            'detector',
-            () => buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang }),
-            { kind: 'rule_based' },
-          );
+          if (userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality) {
+            analysis = profiler.timeSync(
+              'postprocess',
+              () => buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language: ctx.lang, profileSummary }),
+              { kind: 'diagnosis_v1_template' },
+            );
+            if (analysis) analysisSource = 'diagnosis_v1_template';
+          }
+          if (!analysis) {
+            analysis = profiler.timeSync(
+              'detector',
+              () => buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language: ctx.lang }),
+              { kind: 'rule_based' },
+            );
+          }
         }
       }
 
@@ -4634,6 +4859,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               quality_report: {
                 photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
                 detector_confidence: detectorConfidence,
+                ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
                 degraded_mode: SKIN_DEGRADED_MODE,
                 llm: { vision: visionDecision, report: reportDecision },
                 reasons: qualityReportReasons.slice(0, 8),
