@@ -1,0 +1,977 @@
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+
+const ANALYSIS_MAX_SIDE = 256;
+
+const SRGB_TO_LINEAR = new Float32Array(256);
+for (let i = 0; i < 256; i += 1) {
+  const c = i / 255;
+  SRGB_TO_LINEAR[i] = c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function round3(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 1000) / 1000;
+}
+
+function median(sorted) {
+  if (!Array.isArray(sorted) || sorted.length === 0) return null;
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid];
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function percentile(sorted, p) {
+  if (!Array.isArray(sorted) || sorted.length === 0) return null;
+  const pp = clamp01(p);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.round(pp * (sorted.length - 1))));
+  return sorted[idx];
+}
+
+function rgbToYCrCb(r, g, b) {
+  const y = 0.299 * r + 0.587 * g + 0.114 * b;
+  const cr = (r - y) * 0.713 + 128;
+  const cb = (b - y) * 0.564 + 128;
+  return { y, cr, cb };
+}
+
+function rgbToLabFast(r8, g8, b8) {
+  const r = SRGB_TO_LINEAR[r8];
+  const g = SRGB_TO_LINEAR[g8];
+  const b = SRGB_TO_LINEAR[b8];
+
+  // D65
+  let x = r * 0.4124 + g * 0.3576 + b * 0.1805;
+  let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+  let z = r * 0.0193 + g * 0.1192 + b * 0.9505;
+
+  // Normalize by reference white.
+  x /= 0.95047;
+  y /= 1.0;
+  z /= 1.08883;
+
+  const fx = x > 0.008856 ? Math.cbrt(x) : 7.787 * x + 16 / 116;
+  const fy = y > 0.008856 ? Math.cbrt(y) : 7.787 * y + 16 / 116;
+  const fz = z > 0.008856 ? Math.cbrt(z) : 7.787 * z + 16 / 116;
+
+  const L = 116 * fy - 16;
+  const a = 500 * (fx - fy);
+  const b2 = 200 * (fy - fz);
+  return { L, a, b: b2 };
+}
+
+async function decodeToSmallRgb(imageBuffer, { maxSide = ANALYSIS_MAX_SIDE } = {}) {
+  const { data, info } = await sharp(imageBuffer)
+    .rotate()
+    .resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const width = info && typeof info.width === 'number' ? info.width : null;
+  const height = info && typeof info.height === 'number' ? info.height : null;
+  if (!width || !height) throw new Error('decode_failed');
+  if (!data || data.length !== width * height * 3) throw new Error('decode_failed');
+  return { rgb: data, width, height };
+}
+
+function computeSkinMask(rgb, width, height) {
+  const n = width * height;
+  const labels = new Int32Array(n);
+  let nextId = 0;
+
+  const centerX0 = Math.floor(width * 0.35);
+  const centerX1 = Math.ceil(width * 0.65);
+  const centerY0 = Math.floor(height * 0.35);
+  const centerY1 = Math.ceil(height * 0.7);
+
+  function isSeedSkin(i) {
+    const off = i * 3;
+    const r = rgb[off];
+    const g = rgb[off + 1];
+    const b = rgb[off + 2];
+    const { y, cr, cb } = rgbToYCrCb(r, g, b);
+    // Conservative classic thresholds, avoid very dark pixels.
+    if (y < 40) return false;
+    if (cr < 133 || cr > 178) return false;
+    if (cb < 80 || cb > 135) return false;
+    return true;
+  }
+
+  const components = [];
+  const stack = new Int32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    if (labels[i] !== 0) continue;
+    if (!isSeedSkin(i)) continue;
+
+    nextId += 1;
+    const id = nextId;
+    let top = 0;
+    stack[top++] = i;
+    labels[i] = id;
+
+    let size = 0;
+    let touchCenter = false;
+    let minX = width;
+    let maxX = 0;
+    let minY = height;
+    let maxY = 0;
+
+    while (top > 0) {
+      const idx = stack[--top];
+      size += 1;
+      const x = idx % width;
+      const y = Math.floor(idx / width);
+      if (x >= centerX0 && x <= centerX1 && y >= centerY0 && y <= centerY1) touchCenter = true;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+
+      const up = y > 0 ? idx - width : -1;
+      const down = y + 1 < height ? idx + width : -1;
+      const left = x > 0 ? idx - 1 : -1;
+      const right = x + 1 < width ? idx + 1 : -1;
+
+      if (up >= 0 && labels[up] === 0 && isSeedSkin(up)) {
+        labels[up] = id;
+        stack[top++] = up;
+      }
+      if (down >= 0 && labels[down] === 0 && isSeedSkin(down)) {
+        labels[down] = id;
+        stack[top++] = down;
+      }
+      if (left >= 0 && labels[left] === 0 && isSeedSkin(left)) {
+        labels[left] = id;
+        stack[top++] = left;
+      }
+      if (right >= 0 && labels[right] === 0 && isSeedSkin(right)) {
+        labels[right] = id;
+        stack[top++] = right;
+      }
+    }
+
+    components.push({
+      id,
+      size,
+      touchCenter,
+      bbox: { x0: minX, y0: minY, x1: maxX, y1: maxY },
+    });
+  }
+
+  if (!components.length) {
+    return { ok: false, reason: 'skin_roi_not_found' };
+  }
+
+  const minAcceptSize = Math.max(200, Math.floor(n * 0.06));
+  let best = null;
+  for (const c of components) {
+    if (c.size < minAcceptSize) continue;
+    const score = c.size * (c.touchCenter ? 1.35 : 1.0);
+    if (!best || score > best.score) best = { ...c, score };
+  }
+  if (!best) return { ok: false, reason: 'skin_roi_too_small' };
+
+  const mask = new Uint8Array(n);
+  let skinPixels = 0;
+  for (let i = 0; i < n; i += 1) {
+    if (labels[i] === best.id) {
+      mask[i] = 1;
+      skinPixels += 1;
+    }
+  }
+
+  const coverage = skinPixels / n;
+  return {
+    ok: true,
+    mask,
+    skinPixels,
+    coverage,
+    bbox: best.bbox,
+    touchCenter: best.touchCenter,
+  };
+}
+
+function computeRegionBoxes(bbox) {
+  const x0 = bbox.x0;
+  const y0 = bbox.y0;
+  const x1 = bbox.x1;
+  const y1 = bbox.y1;
+  const w = Math.max(1, x1 - x0 + 1);
+  const h = Math.max(1, y1 - y0 + 1);
+
+  function box(rx0, ry0, rx1, ry1) {
+    const xx0 = Math.round(x0 + rx0 * w);
+    const yy0 = Math.round(y0 + ry0 * h);
+    const xx1 = Math.round(x0 + rx1 * w);
+    const yy1 = Math.round(y0 + ry1 * h);
+    return {
+      x0: Math.min(xx0, xx1),
+      y0: Math.min(yy0, yy1),
+      x1: Math.max(xx0, xx1),
+      y1: Math.max(yy0, yy1),
+    };
+  }
+
+  return {
+    full: { x0, y0, x1, y1 },
+    forehead: box(0.2, 0.0, 0.8, 0.28),
+    nose: box(0.4, 0.34, 0.6, 0.66),
+    cheeks: box(0.12, 0.34, 0.88, 0.74),
+    left_cheek: box(0.12, 0.38, 0.42, 0.74),
+    right_cheek: box(0.58, 0.38, 0.88, 0.74),
+    chin: box(0.25, 0.74, 0.75, 1.0),
+    // Exclusions (very approximate).
+    exclude_eyes: box(0.15, 0.22, 0.85, 0.46),
+    exclude_mouth: box(0.22, 0.74, 0.78, 0.93),
+  };
+}
+
+function isInside(x, y, box) {
+  return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+}
+
+function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox }) {
+  const n = width * height;
+
+  let sumY = 0;
+  let sumY2 = 0;
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+
+  const gray = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const off = i * 3;
+    const r = rgb[off];
+    const g = rgb[off + 1];
+    const b = rgb[off + 2];
+    const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    gray[i] = y;
+    if (skinMask[i] !== 1) continue;
+    sumY += y;
+    sumY2 += y * y;
+    sumR += r;
+    sumG += g;
+    sumB += b;
+  }
+
+  const meanY = skinPixels ? sumY / skinPixels : 0;
+  const varY = skinPixels ? Math.max(0, sumY2 / skinPixels - meanY * meanY) : 0;
+  const stdY = Math.sqrt(varY);
+
+  const meanR = skinPixels ? sumR / skinPixels : 0;
+  const meanG = skinPixels ? sumG / skinPixels : 0;
+  const meanB = skinPixels ? sumB / skinPixels : 0;
+
+  const rg = meanG > 0 ? meanR / meanG : 1;
+  const bg = meanG > 0 ? meanB / meanG : 1;
+  const wbCast = Math.max(Math.abs(rg - 1), Math.abs(bg - 1));
+
+  // Blur proxy: Laplacian energy (mean abs laplacian) within skin bbox.
+  let lapSum = 0;
+  let lapN = 0;
+  for (let y = bbox.y0 + 1; y < bbox.y1; y += 1) {
+    for (let x = bbox.x0 + 1; x < bbox.x1; x += 1) {
+      const idx = y * width + x;
+      if (skinMask[idx] !== 1) continue;
+      const c = gray[idx];
+      const lap = -4 * c + gray[idx - 1] + gray[idx + 1] + gray[idx - width] + gray[idx + width];
+      lapSum += Math.abs(lap);
+      lapN += 1;
+    }
+  }
+  const lapEnergy = lapN ? lapSum / lapN : 0;
+
+  const coverage = skinPixels / n;
+
+  const blurFactor = clamp01((lapEnergy - 6) / 18);
+  const exposureFactor = clamp01(1 - Math.abs(meanY - 135) / 110);
+  const wbFactor = clamp01(1 - wbCast / 0.45);
+  const coverageFactor = clamp01((coverage - 0.06) / 0.18);
+
+  const qualityFactor = clamp01(blurFactor * exposureFactor * wbFactor * coverageFactor);
+
+  const reasons = [];
+  if (coverage < 0.06) reasons.push('low_skin_coverage');
+  if (blurFactor < 0.35) reasons.push('blur');
+  if (exposureFactor < 0.4) reasons.push(meanY < 80 ? 'too_dark' : 'too_bright');
+  if (wbFactor < 0.55) reasons.push('white_balance_unstable');
+
+  let grade = 'pass';
+  if (coverage < 0.06 || blurFactor < 0.2 || exposureFactor < 0.2 || qualityFactor < 0.25) grade = 'fail';
+  else if (blurFactor < 0.45 || exposureFactor < 0.45 || wbFactor < 0.65 || qualityFactor < 0.55) grade = 'degraded';
+
+  return {
+    grade,
+    quality_factor: round3(qualityFactor),
+    reasons,
+    metrics: {
+      skin_coverage: round3(coverage),
+      mean_luma: round3(meanY),
+      luma_std: round3(stdY),
+      laplacian_energy: round3(lapEnergy),
+      white_balance_cast: round3(wbCast),
+      blur_factor: round3(blurFactor),
+      exposure_factor: round3(exposureFactor),
+      wb_factor: round3(wbFactor),
+      coverage_factor: round3(coverageFactor),
+    },
+  };
+}
+
+function computeLabStats({ rgb, width, height, skinMask, regionBoxes }) {
+  const n = width * height;
+
+  const global = { L: [], a: [], b: [] };
+  const region = {};
+  for (const key of ['forehead', 'nose', 'left_cheek', 'right_cheek', 'chin', 'cheeks']) region[key] = { L: [], a: [], b: [] };
+
+  for (let i = 0; i < n; i += 1) {
+    if (skinMask[i] !== 1) continue;
+    const x = i % width;
+    const y = Math.floor(i / width);
+    const off = i * 3;
+    const lab = rgbToLabFast(rgb[off], rgb[off + 1], rgb[off + 2]);
+
+    // sample limit: keep arrays reasonably sized
+    if (global.L.length < 24000 || (i % 3 === 0 && global.L.length < 42000)) {
+      global.L.push(lab.L);
+      global.a.push(lab.a);
+      global.b.push(lab.b);
+    }
+    for (const [k, box] of Object.entries(regionBoxes)) {
+      if (!region[k]) continue;
+      if (!isInside(x, y, box)) continue;
+      if (region[k].L.length < 12000 || (i % 4 === 0 && region[k].L.length < 22000)) {
+        region[k].L.push(lab.L);
+        region[k].a.push(lab.a);
+        region[k].b.push(lab.b);
+      }
+    }
+  }
+
+  function summarize(arr) {
+    const out = { mean: null, p10: null, p50: null, p90: null, std: null };
+    if (!arr.length) return out;
+    const sorted = arr.slice().sort((a, b) => a - b);
+    const sum = arr.reduce((acc, v) => acc + v, 0);
+    const mean = sum / arr.length;
+    const sum2 = arr.reduce((acc, v) => acc + (v - mean) ** 2, 0);
+    const std = Math.sqrt(sum2 / arr.length);
+    out.mean = mean;
+    out.p10 = percentile(sorted, 0.1);
+    out.p50 = median(sorted);
+    out.p90 = percentile(sorted, 0.9);
+    out.std = std;
+    return out;
+  }
+
+  const globalSummary = { L: summarize(global.L), a: summarize(global.a), b: summarize(global.b) };
+  const regionSummary = {};
+  for (const [k, v] of Object.entries(region)) regionSummary[k] = { L: summarize(v.L), a: summarize(v.a), b: summarize(v.b) };
+
+  return {
+    global: globalSummary,
+    regions: regionSummary,
+  };
+}
+
+function computeSpecularFraction({ rgb, width, height, skinMask, box }) {
+  let n = 0;
+  let spec = 0;
+  for (let y = box.y0; y <= box.y1; y += 1) {
+    for (let x = box.x0; x <= box.x1; x += 1) {
+      const idx = y * width + x;
+      if (skinMask[idx] !== 1) continue;
+      const off = idx * 3;
+      const r = rgb[off];
+      const g = rgb[off + 1];
+      const b = rgb[off + 2];
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const sat = max > 0 ? (max - min) / max : 0; // 0..1
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      n += 1;
+      if (luma > 215 && sat < 0.12) spec += 1;
+    }
+  }
+  return n ? spec / n : 0;
+}
+
+function connectedComponentsCount(binary, width, height, box, { minArea = 2, maxArea = 400 } = {}) {
+  const n = width * height;
+  const labels = new Int32Array(n);
+  let nextId = 0;
+  const stack = new Int32Array(n);
+  let count = 0;
+
+  function idxInside(i) {
+    const x = i % width;
+    const y = Math.floor(i / width);
+    return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+  }
+
+  for (let y = box.y0; y <= box.y1; y += 1) {
+    for (let x = box.x0; x <= box.x1; x += 1) {
+      const start = y * width + x;
+      if (binary[start] !== 1) continue;
+      if (labels[start] !== 0) continue;
+      nextId += 1;
+      const id = nextId;
+      let top = 0;
+      stack[top++] = start;
+      labels[start] = id;
+      let size = 0;
+
+      while (top > 0) {
+        const idx = stack[--top];
+        size += 1;
+        const xx = idx % width;
+        const yy = Math.floor(idx / width);
+        const up = yy > box.y0 ? idx - width : -1;
+        const down = yy < box.y1 ? idx + width : -1;
+        const left = xx > box.x0 ? idx - 1 : -1;
+        const right = xx < box.x1 ? idx + 1 : -1;
+
+        for (const nb of [up, down, left, right]) {
+          if (nb < 0) continue;
+          if (!idxInside(nb)) continue;
+          if (binary[nb] !== 1) continue;
+          if (labels[nb] !== 0) continue;
+          labels[nb] = id;
+          stack[top++] = nb;
+        }
+      }
+
+      if (size >= minArea && size <= maxArea) count += 1;
+    }
+  }
+
+  return count;
+}
+
+const SEVERITY_THRESHOLDS = Object.freeze({
+  acne: {
+    all: [0.12, 0.3, 0.52],
+  },
+  redness: {
+    all: [0.18, 0.38, 0.6],
+  },
+  pores: {
+    nose: [0.35, 0.6, 0.82],
+    cheeks: [0.3, 0.55, 0.78],
+    forehead: [0.28, 0.5, 0.72],
+    all: [0.3, 0.55, 0.78],
+  },
+  dark_spots: {
+    all: [0.22, 0.42, 0.65],
+  },
+});
+
+function scoreToSeverity({ issueType, region = 'all', score }) {
+  const s = clamp01(score);
+  const map = SEVERITY_THRESHOLDS[issueType] || SEVERITY_THRESHOLDS.redness;
+  const th = map[region] || map.all || [0.25, 0.5, 0.75];
+  const [t1, t2, t3] = th;
+  if (s < t1) return { level: 0, severity: 'none' };
+  if (s < t2) return { level: 1, severity: 'mild' };
+  if (s < t3) return { level: 2, severity: 'moderate' };
+  return { level: 3, severity: 'severe' };
+}
+
+function confidenceToLabel(conf) {
+  const c = clamp01(conf);
+  if (c >= 0.78) return 'pretty_sure';
+  if (c >= 0.52) return 'somewhat_sure';
+  return 'not_sure';
+}
+
+function agreementFactor({ issueType, detectorSeverityLevel, profileSummary, recentLogsSummary }) {
+  let factor = 1;
+  const latest = Array.isArray(recentLogsSummary) && recentLogsSummary[0] ? recentLogsSummary[0] : null;
+  const p = profileSummary && typeof profileSummary === 'object' ? profileSummary : {};
+  const goals = Array.isArray(p.goals) ? p.goals.map((g) => String(g || '').toLowerCase()) : [];
+
+  const sev = typeof detectorSeverityLevel === 'number' ? detectorSeverityLevel : 0;
+  if (issueType === 'acne' && latest && typeof latest.acne === 'number') {
+    const log = clamp(latest.acne, 0, 5);
+    const logSev = log <= 1 ? 0 : log <= 2 ? 1 : log <= 3 ? 2 : 3;
+    const diff = Math.abs(sev - logSev);
+    factor = diff === 0 ? 1.15 : diff === 1 ? 1.05 : 0.78;
+  } else if (issueType === 'redness' && latest && typeof latest.redness === 'number') {
+    const log = clamp(latest.redness, 0, 5);
+    const logSev = log <= 1 ? 0 : log <= 2 ? 1 : log <= 3 ? 2 : 3;
+    const diff = Math.abs(sev - logSev);
+    factor = diff === 0 ? 1.12 : diff === 1 ? 1.03 : 0.8;
+  } else if (issueType === 'pores' && goals.some((g) => g.includes('pores'))) {
+    factor = sev > 0 ? 1.05 : 1.0;
+  } else if (issueType === 'dark_spots' && goals.some((g) => g.includes('dark') || g.includes('spot') || g.includes('pigment'))) {
+    factor = sev > 0 ? 1.03 : 1.0;
+  }
+  return round3(clamp(factor, 0.55, 1.25));
+}
+
+function logit(p) {
+  const v = clamp01(p);
+  const eps = 1e-6;
+  const pp = Math.min(1 - eps, Math.max(eps, v));
+  return Math.log(pp / (1 - pp));
+}
+
+function sigmoid(x) {
+  if (!Number.isFinite(x)) return 0.5;
+  return 1 / (1 + Math.exp(-x));
+}
+
+function applyTemperatureScaling(p, temperature) {
+  const t = Number.isFinite(temperature) && temperature > 0 ? temperature : 1;
+  return sigmoid(logit(p) / t);
+}
+
+function applyIsotonicPoints(p, points) {
+  const x = clamp01(p);
+  const pts = Array.isArray(points) ? points.filter((pt) => Array.isArray(pt) && pt.length >= 2) : [];
+  if (!pts.length) return x;
+  const sorted = pts
+    .map((pt) => [clamp01(Number(pt[0])), clamp01(Number(pt[1]))])
+    .sort((a, b) => a[0] - b[0]);
+
+  if (x <= sorted[0][0]) return sorted[0][1];
+  if (x >= sorted[sorted.length - 1][0]) return sorted[sorted.length - 1][1];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const [x0, y0] = sorted[i - 1];
+    const [x1, y1] = sorted[i];
+    if (x >= x0 && x <= x1) {
+      const t = x1 === x0 ? 0 : (x - x0) / (x1 - x0);
+      return y0 + t * (y1 - y0);
+    }
+  }
+  return x;
+}
+
+const CALIBRATION_CACHE = { loaded: false, config: null };
+
+function getCalibrationConfig() {
+  if (CALIBRATION_CACHE.loaded) return CALIBRATION_CACHE.config;
+  CALIBRATION_CACHE.loaded = true;
+  const envPath = String(process.env.AURORA_SKIN_CALIBRATION_PATH || '').trim();
+  const filePath = envPath || path.join(__dirname, '..', '..', 'data', 'skin_calibration_v1.json');
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const obj = JSON.parse(raw);
+    CALIBRATION_CACHE.config = obj && typeof obj === 'object' ? obj : null;
+  } catch {
+    CALIBRATION_CACHE.config = null;
+  }
+  return CALIBRATION_CACHE.config;
+}
+
+function calibrateModelConfidence(modelConf, { issueType } = {}) {
+  const p = clamp01(modelConf);
+  const cfg = getCalibrationConfig();
+  const issues = cfg && cfg.issues && typeof cfg.issues === 'object' ? cfg.issues : null;
+  const entry = issues && issueType && issues[issueType] ? issues[issueType] : null;
+  if (!entry || typeof entry !== 'object') return p;
+  const method = typeof entry.method === 'string' ? entry.method : null;
+  if (method === 'temperature') return applyTemperatureScaling(p, Number(entry.temperature));
+  if (method === 'isotonic') return applyIsotonicPoints(p, entry.points);
+  return p;
+}
+
+function buildEvidenceShort({ issueType, severity, confidence, metrics, language, qualityGrade, wbUnstable }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const confLabel = confidenceToLabel(confidence);
+  const confidentText = confLabel === 'pretty_sure' ? (lang === 'CN' ? '较确定' : 'fairly confident') : confLabel === 'somewhat_sure' ? (lang === 'CN' ? '中等把握' : 'somewhat confident') : (lang === 'CN' ? '把握不高' : 'low confidence');
+
+  if (issueType === 'dark_spots' && (qualityGrade !== 'pass' || wbUnstable)) {
+    return lang === 'CN'
+      ? ['光照/白平衡不够稳定，本次不可靠判断色沉/暗沉。', '建议自然光、无滤镜重拍后再评估。']
+      : ['Lighting/white balance is unstable; I cannot reliably assess dark spots today.', 'Retake in daylight with no filters to reassess.'];
+  }
+
+  const sevText =
+    severity === 'none'
+      ? lang === 'CN'
+        ? '未见明显'
+        : 'no strong signal'
+      : severity === 'mild'
+        ? lang === 'CN'
+          ? '轻度'
+          : 'mild'
+        : severity === 'moderate'
+          ? lang === 'CN'
+            ? '中度'
+            : 'moderate'
+          : lang === 'CN'
+            ? '偏重'
+            : 'high';
+
+  if (issueType === 'acne') {
+    const c = metrics && typeof metrics.acne_count === 'number' ? metrics.acne_count : null;
+    const d = metrics && typeof metrics.acne_density === 'number' ? metrics.acne_density : null;
+    return lang === 'CN'
+      ? [`疑似炎性小红点：${c != null ? c : '—'} 个（密度 ${d != null ? round3(d) : '—'}）。`, `结论为${sevText}，${confidentText}。`]
+      : [`Possible inflamed red spots: ${c != null ? c : '—'} (density ${d != null ? round3(d) : '—'}).`, `Overall: ${sevText}, ${confidentText}.`];
+  }
+  if (issueType === 'redness') {
+    const aShift = metrics && typeof metrics.a_shift === 'number' ? metrics.a_shift : null;
+    const frac = metrics && typeof metrics.red_fraction === 'number' ? metrics.red_fraction : null;
+    return lang === 'CN'
+      ? [`泛红信号：a* 偏移 ${aShift != null ? round3(aShift) : '—'}，红区占比 ${frac != null ? round3(frac) : '—'}。`, `结论为${sevText}，${confidentText}。`]
+      : [`Redness signals: a* shift ${aShift != null ? round3(aShift) : '—'}, red fraction ${frac != null ? round3(frac) : '—'}.`, `Overall: ${sevText}, ${confidentText}.`];
+  }
+  if (issueType === 'pores') {
+    const idx = metrics && typeof metrics.pore_index === 'number' ? metrics.pore_index : null;
+    const spec = metrics && typeof metrics.specular_fraction === 'number' ? metrics.specular_fraction : null;
+    return lang === 'CN'
+      ? [`纹理/毛孔指数：${idx != null ? round3(idx) : '—'}（油光校正系数已应用）。`, `结论为${sevText}，${confidentText}${spec != null && spec > 0.15 ? '（鼻部油光较强 → 更保守）' : ''}。`]
+      : [`Texture/pore index: ${idx != null ? round3(idx) : '—'} (with specular correction).`, `Overall: ${sevText}, ${confidentText}${spec != null && spec > 0.15 ? ' (strong shine → more conservative)' : ''}.`];
+  }
+  if (issueType === 'dark_spots') {
+    const drop = metrics && typeof metrics.luma_drop === 'number' ? metrics.luma_drop : null;
+    const hue = metrics && typeof metrics.hue_shift === 'number' ? metrics.hue_shift : null;
+    return lang === 'CN'
+      ? [`暗沉/色沉信号：luma_drop ${drop != null ? round3(drop) : '—'}，色相偏移 ${hue != null ? round3(hue) : '—'}。`, `结论为${sevText}，${confidentText}。`]
+      : [`Dark spot signals: luma_drop ${drop != null ? round3(drop) : '—'}, hue shift ${hue != null ? round3(hue) : '—'}.`, `Overall: ${sevText}, ${confidentText}.`];
+  }
+  return lang === 'CN' ? ['已生成诊断结论。', `把握度：${confidentText}。`] : ['Diagnosis computed.', `Confidence: ${confidentText}.`];
+}
+
+function runIssueScoring({ issueType, rawScore, modelConf, region, quality, profileSummary, recentLogsSummary, metrics, wbUnstable, language }) {
+  const sev = scoreToSeverity({ issueType, region, score: rawScore });
+  const qualityFactor = quality && typeof quality.quality_factor === 'number' ? quality.quality_factor : 1;
+  const agree = agreementFactor({ issueType, detectorSeverityLevel: sev.level, profileSummary, recentLogsSummary });
+  const calibratedModel = calibrateModelConfidence(modelConf, { issueType });
+  const finalConf = clamp01(calibratedModel * qualityFactor * agree);
+  const evidenceShort = buildEvidenceShort({
+    issueType,
+    severity: sev.severity,
+    confidence: finalConf,
+    metrics,
+    language,
+    qualityGrade: quality && quality.grade ? quality.grade : 'pass',
+    wbUnstable,
+  });
+
+  return {
+    issue_type: issueType,
+    region: region || 'all',
+    severity: sev.severity,
+    severity_level: sev.level,
+    severity_score: round3(clamp01(rawScore)),
+    confidence: round3(finalConf),
+    confidence_label: confidenceToLabel(finalConf),
+    calibration: {
+      model_conf: round3(clamp01(modelConf)),
+      model_conf_calibrated: round3(clamp01(calibratedModel)),
+      quality_factor: round3(clamp01(qualityFactor)),
+      agreement_factor: agree,
+    },
+    evidence: {
+      evidence_short: evidenceShort,
+      metrics: metrics || {},
+      quality_notes:
+        quality && Array.isArray(quality.reasons) && quality.reasons.length
+          ? quality.reasons.slice(0, 6)
+          : [],
+    },
+  };
+}
+
+function computeIssueRawScores({ labStats, rgb, width, height, skinMask, regionBoxes, quality }) {
+  const globalA = labStats.global.a;
+  const globalL = labStats.global.L;
+  const globalB = labStats.global.b;
+  const wbUnstable = Boolean(quality && Array.isArray(quality.reasons) && quality.reasons.includes('white_balance_unstable'));
+
+  const medianA = globalA && typeof globalA.p50 === 'number' ? globalA.p50 : 0;
+  const meanA = globalA && typeof globalA.mean === 'number' ? globalA.mean : 0;
+  const stdA = globalA && typeof globalA.std === 'number' ? globalA.std : 0;
+
+  const medianL = globalL && typeof globalL.p50 === 'number' ? globalL.p50 : 0;
+  const p10L = globalL && typeof globalL.p10 === 'number' ? globalL.p10 : 0;
+
+  const meanB = globalB && typeof globalB.mean === 'number' ? globalB.mean : 0;
+
+  // ---- Acne (localized red + edges) ----
+  const n = width * height;
+  const gray = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const off = i * 3;
+    const r = rgb[off];
+    const g = rgb[off + 1];
+    const b = rgb[off + 2];
+    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+  const grad = new Uint8Array(n);
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const idx = y * width + x;
+      const gx = Math.abs(gray[idx + 1] - gray[idx - 1]);
+      const gy = Math.abs(gray[idx + width] - gray[idx - width]);
+      grad[idx] = Math.min(255, gx + gy);
+    }
+  }
+
+  const acneCandidates = new Uint8Array(n);
+  const acneBox = regionBoxes.cheeks;
+  const eyeEx = regionBoxes.exclude_eyes;
+  const mouthEx = regionBoxes.exclude_mouth;
+  const aThresh = medianA + 10;
+  for (let y = acneBox.y0; y <= acneBox.y1; y += 1) {
+    for (let x = acneBox.x0; x <= acneBox.x1; x += 1) {
+      if (isInside(x, y, eyeEx) || isInside(x, y, mouthEx)) continue;
+      const idx = y * width + x;
+      if (skinMask[idx] !== 1) continue;
+      const off = idx * 3;
+      const lab = rgbToLabFast(rgb[off], rgb[off + 1], rgb[off + 2]);
+      if (lab.a <= aThresh) continue;
+      if (grad[idx] < 35) continue;
+      acneCandidates[idx] = 1;
+    }
+  }
+  const acneCount = connectedComponentsCount(acneCandidates, width, height, acneBox, { minArea: 2, maxArea: 110 });
+  const acneDensity = skinMask && skinMask.length ? acneCount / Math.max(1, skinMask.reduce((acc, v) => acc + (v === 1 ? 1 : 0), 0)) : 0;
+  const acneScore = clamp01(acneDensity * 520);
+  const acneModelConf = clamp01(0.18 + Math.min(1, acneCount / 18) * 0.65);
+
+  // ---- Redness (diffuse + localized) ----
+  const redFraction = clamp01((stdA > 0 ? stdA / 22 : 0) * 0.35 + clamp01((meanA - medianA) / 10) * 0.55);
+  const rednessScore = clamp01(redFraction);
+  const rednessModelConf = clamp01(0.22 + clamp01(stdA / 22) * 0.55);
+
+  // ---- Pores (texture index in nose/cheeks with specular correction) ----
+  const noseBox = regionBoxes.nose;
+  const cheeksBox = regionBoxes.cheeks;
+  let lapNose = 0;
+  let lapCheeks = 0;
+  let lapN = 0;
+  let lapC = 0;
+  for (let y = regionBoxes.full.y0 + 1; y < regionBoxes.full.y1; y += 1) {
+    for (let x = regionBoxes.full.x0 + 1; x < regionBoxes.full.x1; x += 1) {
+      const idx = y * width + x;
+      if (skinMask[idx] !== 1) continue;
+      const lap = Math.abs(-4 * gray[idx] + gray[idx - 1] + gray[idx + 1] + gray[idx - width] + gray[idx + width]);
+      if (isInside(x, y, noseBox)) {
+        lapNose += lap;
+        lapN += 1;
+      } else if (isInside(x, y, cheeksBox) && !isInside(x, y, noseBox)) {
+        lapCheeks += lap;
+        lapC += 1;
+      }
+    }
+  }
+  const noseTex = lapN ? lapNose / lapN : 0;
+  const cheekTex = lapC ? lapCheeks / lapC : 0;
+  const specFrac = computeSpecularFraction({ rgb, width, height, skinMask, box: noseBox });
+  const shinePenalty = clamp01((specFrac - 0.06) / 0.22);
+  const poreIndex = clamp01(((noseTex + cheekTex) / 2 - 6) / 18) * (1 - 0.65 * shinePenalty);
+  const poresScore = poreIndex;
+  const poresModelConf = clamp01(0.22 + poreIndex * 0.65) * (1 - 0.55 * shinePenalty);
+
+  // ---- Dark spots (only when quality pass + WB stable) ----
+  const globalLumaDrop = clamp01((medianL - p10L - 2) / 16);
+  const hueShift = clamp01(Math.abs(meanB) / 35);
+  const darkScoreRaw = clamp01(globalLumaDrop * 0.85 + hueShift * 0.15);
+  const darkScore = quality && quality.grade === 'pass' && !wbUnstable ? darkScoreRaw : 0;
+  const darkModelConf = quality && quality.grade === 'pass' && !wbUnstable ? clamp01(0.15 + darkScoreRaw * 0.55) : 0.1;
+
+  return {
+    wbUnstable,
+    acne: { score: acneScore, model_conf: acneModelConf, metrics: { acne_count: acneCount, acne_density: acneDensity } },
+    redness: {
+      score: rednessScore,
+      model_conf: rednessModelConf,
+      metrics: { a_shift: meanA - medianA, red_fraction: redFraction },
+    },
+    pores: {
+      score: poresScore,
+      model_conf: poresModelConf,
+      metrics: { texture_energy: (noseTex + cheekTex) / 2, pore_index: poreIndex, specular_fraction: specFrac },
+    },
+    dark_spots: {
+      score: darkScore,
+      model_conf: darkModelConf,
+      metrics: { luma_drop: medianL - p10L, hue_shift: meanB },
+    },
+  };
+}
+
+function toDiagnosisCardPayload({ diagnosis, quality, language }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const summaryNotes = [];
+  if (quality && quality.grade !== 'pass') {
+    summaryNotes.push(
+      lang === 'CN'
+        ? `照片质量=${quality.grade}（置信度会更保守；建议自然光重拍提升准确度）`
+        : `photo_quality=${quality.grade} (more conservative; retake in daylight for accuracy)`,
+    );
+  }
+  if (quality && Array.isArray(quality.reasons) && quality.reasons.includes('white_balance_unstable')) {
+    summaryNotes.push(lang === 'CN' ? '白平衡不稳定：色沉/暗沉判断将更保守。' : 'White balance unstable: dark spot assessment is conservative.');
+  }
+  return {
+    schema_version: 'aurora.skin_diagnosis.v1',
+    quality,
+    issues: diagnosis,
+    notes: summaryNotes.slice(0, 6),
+  };
+}
+
+async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recentLogsSummary, profiler } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const prof = profiler && typeof profiler.start === 'function' ? profiler : null;
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || imageBuffer.length < 50) {
+    return { ok: false, reason: 'no_image' };
+  }
+
+  let decoded = null;
+  try {
+    if (prof) prof.start('decode', { kind: 'downscale_rgb', max_side: ANALYSIS_MAX_SIDE });
+    decoded = await decodeToSmallRgb(imageBuffer, { maxSide: ANALYSIS_MAX_SIDE });
+    if (prof) prof.end('decode', { kind: 'downscale_rgb', w: decoded.width, h: decoded.height });
+  } catch {
+    if (prof) prof.fail('decode', new Error('decode_failed'), { kind: 'downscale_rgb' });
+    return { ok: false, reason: 'decode_failed' };
+  }
+
+  const { rgb, width, height } = decoded;
+  let skin = null;
+  try {
+    if (prof) prof.start('skin_roi', { kind: 'ycrcb_connected_components' });
+    skin = computeSkinMask(rgb, width, height);
+    if (!skin.ok) throw new Error(String(skin.reason || 'skin_roi_failed'));
+    if (prof) prof.end('skin_roi', { kind: 'ycrcb_connected_components', coverage: round3(skin.coverage) });
+  } catch (err) {
+    if (prof) prof.fail('skin_roi', err, { kind: 'ycrcb_connected_components' });
+    return { ok: false, reason: skin && skin.reason ? skin.reason : 'skin_roi_failed' };
+  }
+
+  const regionBoxes = computeRegionBoxes(skin.bbox);
+  let quality = null;
+  try {
+    if (prof) prof.start('quality', { kind: 'quality_metrics' });
+    quality = computeQualityMetrics({
+      rgb,
+      width,
+      height,
+      skinMask: skin.mask,
+      skinPixels: skin.skinPixels,
+      bbox: skin.bbox,
+    });
+    if (prof)
+      prof.end('quality', {
+        kind: 'quality_metrics',
+        grade: quality.grade,
+        qf: quality.quality_factor,
+        coverage: quality.metrics && quality.metrics.skin_coverage ? quality.metrics.skin_coverage : null,
+      });
+  } catch (err) {
+    if (prof) prof.fail('quality', err, { kind: 'quality_metrics' });
+    return { ok: false, reason: 'quality_failed' };
+  }
+
+  let labStats = null;
+  let raw = null;
+  try {
+    if (prof) prof.start('detector', { kind: 'lab_texture_rules' });
+    labStats = computeLabStats({ rgb, width, height, skinMask: skin.mask, regionBoxes });
+    raw = computeIssueRawScores({ labStats, rgb, width, height, skinMask: skin.mask, regionBoxes, quality });
+    if (prof)
+      prof.end('detector', {
+        kind: 'lab_texture_rules',
+        acne_n: raw && raw.acne && raw.acne.metrics ? raw.acne.metrics.count : null,
+      });
+  } catch (err) {
+    if (prof) prof.fail('detector', err, { kind: 'lab_texture_rules' });
+    return { ok: false, reason: 'detector_failed' };
+  }
+
+  const issues = [];
+  try {
+    if (prof) prof.start('postprocess', { kind: 'severity_calibration' });
+    issues.push(
+      runIssueScoring({
+        issueType: 'acne',
+        rawScore: raw.acne.score,
+        modelConf: raw.acne.model_conf,
+        region: 'all',
+        quality,
+        profileSummary,
+        recentLogsSummary,
+        metrics: raw.acne.metrics,
+        wbUnstable: raw.wbUnstable,
+        language: lang,
+      }),
+    );
+    issues.push(
+      runIssueScoring({
+        issueType: 'redness',
+        rawScore: raw.redness.score,
+        modelConf: raw.redness.model_conf,
+        region: 'all',
+        quality,
+        profileSummary,
+        recentLogsSummary,
+        metrics: raw.redness.metrics,
+        wbUnstable: raw.wbUnstable,
+        language: lang,
+      }),
+    );
+    issues.push(
+      runIssueScoring({
+        issueType: 'pores',
+        rawScore: raw.pores.score,
+        modelConf: raw.pores.model_conf,
+        region: 'nose',
+        quality,
+        profileSummary,
+        recentLogsSummary,
+        metrics: raw.pores.metrics,
+        wbUnstable: raw.wbUnstable,
+        language: lang,
+      }),
+    );
+    issues.push(
+      runIssueScoring({
+        issueType: 'dark_spots',
+        rawScore: raw.dark_spots.score,
+        modelConf: raw.dark_spots.model_conf,
+        region: 'all',
+        quality,
+        profileSummary,
+        recentLogsSummary,
+        metrics: raw.dark_spots.metrics,
+        wbUnstable: raw.wbUnstable,
+        language: lang,
+      }),
+    );
+    if (prof) prof.end('postprocess', { kind: 'severity_calibration', issues_n: issues.length });
+  } catch (err) {
+    if (prof) prof.fail('postprocess', err, { kind: 'severity_calibration' });
+    return { ok: false, reason: 'postprocess_failed' };
+  }
+
+  const payload = toDiagnosisCardPayload({ diagnosis: issues, quality, language: lang });
+  return { ok: true, diagnosis: payload };
+}
+
+module.exports = {
+  runSkinDiagnosisV1,
+  scoreToSeverity,
+  calibrateModelConfidence,
+  agreementFactor,
+  applyTemperatureScaling,
+  applyIsotonicPoints,
+};
