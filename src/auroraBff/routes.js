@@ -2183,10 +2183,30 @@ function mountAuroraBffRoutes(app, { logger }) {
         // ignore; fall back
       }
 
-      const structured = getUpstreamStructuredOrJson(upstream);
-      const mapped = structured && structured.analyze && typeof structured.analyze === 'object'
-        ? mapAuroraProductAnalysis(structured)
-        : structured;
+      const upstreamStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
+        ? upstream.structured
+        : null;
+      const upstreamAnswerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+      const upstreamAnswerObj = upstreamAnswerJson && typeof upstreamAnswerJson === 'object' && !Array.isArray(upstreamAnswerJson) ? upstreamAnswerJson : null;
+      const answerLooksLikeProductAnalysis =
+        upstreamAnswerObj &&
+        (upstreamAnswerObj.assessment != null ||
+          upstreamAnswerObj.evidence != null ||
+          upstreamAnswerObj.confidence != null ||
+          upstreamAnswerObj.missing_info != null ||
+          upstreamAnswerObj.missingInfo != null);
+
+      // Prefer answer JSON when `structured` exists but is missing `analyze`.
+      const structuredOrJson =
+        upstreamStructured && upstreamStructured.analyze && typeof upstreamStructured.analyze === 'object'
+          ? upstreamStructured
+          : answerLooksLikeProductAnalysis
+            ? upstreamAnswerObj
+            : upstreamStructured || upstreamAnswerObj;
+
+      const mapped = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
+        ? mapAuroraProductAnalysis(structuredOrJson)
+        : structuredOrJson;
       const norm = normalizeProductAnalysis(mapped);
       let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
       if (parsedProduct && payload && typeof payload === 'object') {
@@ -2338,7 +2358,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         // ignore; fall back below
       }
 
-      const compareStructured = getUpstreamStructuredOrJson(compareUpstream);
+      const compareStructured = (() => {
+        const structured = compareUpstream && compareUpstream.structured && typeof compareUpstream.structured === 'object' && !Array.isArray(compareUpstream.structured)
+          ? compareUpstream.structured
+          : null;
+        const answerJson = compareUpstream && typeof compareUpstream.answer === 'string' ? extractJsonObject(compareUpstream.answer) : null;
+        const answerObj = answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? answerJson : null;
+        if (structured && Array.isArray(structured.alternatives)) return structured;
+        if (answerObj && (Array.isArray(answerObj.tradeoffs) || answerObj.tradeoffs_detail || answerObj.tradeoffsDetail)) return answerObj;
+        return structured || answerObj;
+      })();
 
       const fallbackAnalyze = () => {
         if (!originalStructured || !dupeStructured) {
@@ -2461,10 +2490,28 @@ function mountAuroraBffRoutes(app, { logger }) {
             return null;
           }
 
-          const structured = getUpstreamStructuredOrJson(upstream);
-          const mappedAnalyze = structured && structured.analyze && typeof structured.analyze === 'object'
-            ? mapAuroraProductAnalysis(structured)
-            : structured;
+          const upStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
+            ? upstream.structured
+            : null;
+          const upAnswerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObject(upstream.answer) : null;
+          const upAnswerObj = upAnswerJson && typeof upAnswerJson === 'object' && !Array.isArray(upAnswerJson) ? upAnswerJson : null;
+          const answerLooksLikeProductAnalysis =
+            upAnswerObj &&
+            (upAnswerObj.assessment != null ||
+              upAnswerObj.evidence != null ||
+              upAnswerObj.confidence != null ||
+              upAnswerObj.missing_info != null ||
+              upAnswerObj.missingInfo != null);
+          const structuredOrJson =
+            upStructured && upStructured.analyze && typeof upStructured.analyze === 'object'
+              ? upStructured
+              : answerLooksLikeProductAnalysis
+                ? upAnswerObj
+                : upStructured || upAnswerObj;
+
+          const mappedAnalyze = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
+            ? mapAuroraProductAnalysis(structuredOrJson)
+            : structuredOrJson;
           const normAnalyze = normalizeProductAnalysis(mappedAnalyze);
           const enriched = enrichProductAnalysisPayload(normAnalyze.payload, { lang: ctx.lang });
           return { payload: enriched, field_missing: normAnalyze.field_missing };
