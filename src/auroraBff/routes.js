@@ -2939,14 +2939,201 @@ function mountAuroraBffRoutes(app, { logger }) {
         const origEv = extractEvidence(origPayload);
         const dupEv = extractEvidence(dupePayload);
 
-        const missingKeys = origEv.key.filter((k) => !dupEv.key.includes(k));
-        const addedKeys = dupEv.key.filter((k) => !origEv.key.includes(k));
-        const addedRisks = dupEv.risk.filter((k) => !origEv.risk.includes(k));
+        const isCn = ctx.lang === 'CN';
+
+        const ingredientSignals = (items) => {
+          const out = {
+            occlusives: [],
+            humectants: [],
+            soothing: [],
+            exfoliants: [],
+            brightening: [],
+            peptides: [],
+            fragrance: [],
+            alcohol: [],
+          };
+
+          const seen = new Set();
+          const add = (k, v) => {
+            const s = typeof v === 'string' ? v.trim() : String(v || '').trim();
+            if (!s) return;
+            const key = `${k}:${s.toLowerCase()}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            out[k].push(s);
+          };
+
+          for (const raw of Array.isArray(items) ? items : []) {
+            const s = typeof raw === 'string' ? raw.trim() : String(raw || '').trim();
+            if (!s) continue;
+            const n = s.toLowerCase();
+
+            // Ignore trivial carriers.
+            if (n === 'water' || n === 'aqua') continue;
+
+            if (
+              n.includes('petrolatum') ||
+              n.includes('petroleum jelly') ||
+              n.includes('mineral oil') ||
+              n.includes('paraffin') ||
+              n.includes('dimethicone') ||
+              n.includes('lanolin') ||
+              n.includes('wax') ||
+              n.includes('beeswax') ||
+              n.includes('shea butter') ||
+              n.includes('cocoa butter')
+            ) {
+              add('occlusives', s);
+            }
+
+            if (
+              n.includes('glycerin') ||
+              n.includes('hyaluronic') ||
+              n.includes('sodium hyaluronate') ||
+              n.includes('panthenol') ||
+              n.includes('urea') ||
+              n.includes('betaine') ||
+              n.includes('sodium pca') ||
+              n.includes('trehalose') ||
+              n.includes('propanediol') ||
+              n.includes('butylene glycol') ||
+              n.includes('sorbitol')
+            ) {
+              add('humectants', s);
+            }
+
+            if (
+              n.includes('panthenol') ||
+              n.includes('allantoin') ||
+              n.includes('madecassoside') ||
+              n.includes('centella') ||
+              n.includes('ceramide') ||
+              n.includes('cholesterol') ||
+              n.includes('beta-glucan') ||
+              n.includes('cica')
+            ) {
+              add('soothing', s);
+            }
+
+            if (
+              n.includes('glycolic') ||
+              n.includes('lactic') ||
+              n.includes('mandelic') ||
+              n.includes('salicylic') ||
+              n.includes('gluconolactone') ||
+              n.includes('pha') ||
+              n.includes('bha') ||
+              n.includes('aha')
+            ) {
+              add('exfoliants', s);
+            }
+
+            if (
+              n.includes('niacinamide') ||
+              n.includes('tranexamic') ||
+              n.includes('azelaic') ||
+              n.includes('ascorbic') ||
+              n.includes('vitamin c') ||
+              n.includes('arbutin') ||
+              n.includes('kojic') ||
+              n.includes('licorice')
+            ) {
+              add('brightening', s);
+            }
+
+            if (n.includes('peptide')) add('peptides', s);
+
+            if (
+              n.includes('fragrance') ||
+              n.includes('parfum') ||
+              n.includes('essential oil') ||
+              n.includes('limonene') ||
+              n.includes('linalool') ||
+              n.includes('citral')
+            ) {
+              add('fragrance', s);
+            }
+
+            if (n.includes('alcohol denat') || n.includes('denatured alcohol')) add('alcohol', s);
+          }
+
+          return out;
+        };
+
+        const pickFew = (arr, max) => uniqStrings(arr).slice(0, max);
+        const joinFew = (arr, max) => pickFew(arr, max).join(', ');
+        const nonEmpty = (arr) => Array.isArray(arr) && arr.length > 0;
+
+        const origSig = ingredientSignals(origEv.key);
+        const dupSig = ingredientSignals(dupEv.key);
 
         const derivedTradeoffs = [];
-        if (missingKeys.length) derivedTradeoffs.push(`Missing actives vs original: ${missingKeys.join(', ')}`);
-        if (addedKeys.length) derivedTradeoffs.push(`Added actives: ${addedKeys.join(', ')}`);
-        if (addedRisks.length) derivedTradeoffs.push(`Dupe risk notes: ${addedRisks.slice(0, 2).join(' · ')}`);
+
+        // More human, high-signal comparisons (avoid dumping full INCI).
+        if (nonEmpty(origSig.occlusives) && !nonEmpty(dupSig.occlusives) && nonEmpty(dupSig.humectants)) {
+          derivedTradeoffs.push(
+            isCn
+              ? `质地/封闭性：原产品更偏封闭锁水（例如 ${joinFew(origSig.occlusives, 2)}）；平替更偏补水（例如 ${joinFew(dupSig.humectants, 2)}）→ 通常更清爽，但可能需要叠加面霜来“锁水”。`
+              : `Texture/finish: Original is more occlusive (e.g., ${joinFew(origSig.occlusives, 2)}) while the dupe is more humectant (e.g., ${joinFew(dupSig.humectants, 2)}) → lighter feel, but may need a moisturizer on top to seal.`,
+          );
+        } else if (nonEmpty(dupSig.occlusives) && !nonEmpty(origSig.occlusives) && nonEmpty(origSig.humectants)) {
+          derivedTradeoffs.push(
+            isCn
+              ? `质地/封闭性：平替更偏封闭锁水（例如 ${joinFew(dupSig.occlusives, 2)}）；原产品更偏补水（例如 ${joinFew(origSig.humectants, 2)}）→ 平替通常更厚重、更“锁水”。`
+              : `Texture/finish: Dupe is more occlusive (e.g., ${joinFew(dupSig.occlusives, 2)}) while the original is more humectant (e.g., ${joinFew(origSig.humectants, 2)}) → dupe may feel richer and more sealing.`,
+          );
+        } else if (nonEmpty(origSig.occlusives) && nonEmpty(dupSig.occlusives)) {
+          derivedTradeoffs.push(
+            isCn
+              ? `共同点：两者都含封闭/油脂类成分（原：${joinFew(origSig.occlusives, 2)}；平替：${joinFew(dupSig.occlusives, 2)}）→ 都可能偏“锁水/滋润”，差异更多来自比例与配方。`
+              : `Shared: Both include occlusive/emollient components (orig: ${joinFew(origSig.occlusives, 2)}; dupe: ${joinFew(dupSig.occlusives, 2)}) → both can be “sealing”; differences may come from formula balance.`,
+          );
+        }
+
+        if (nonEmpty(origSig.humectants) && nonEmpty(dupSig.humectants) && derivedTradeoffs.length < 2) {
+          derivedTradeoffs.push(
+            isCn
+              ? `共同点：两者都含常见保湿成分（原：${joinFew(origSig.humectants, 2)}；平替：${joinFew(dupSig.humectants, 2)}）→ 都能提升含水量，但“锁水力度”仍取决于封闭类成分。`
+              : `Shared: Both include humectants (orig: ${joinFew(origSig.humectants, 2)}; dupe: ${joinFew(dupSig.humectants, 2)}) → both support hydration; how “sealing” it feels depends on occlusives.`,
+          );
+        }
+
+        if (nonEmpty(dupSig.exfoliants)) {
+          derivedTradeoffs.push(
+            isCn
+              ? `刺激风险：平替含去角质类成分（例如 ${joinFew(dupSig.exfoliants, 2)}）→ 屏障受损/刺痛时更容易不耐受，建议低频、不要叠加强活性。`
+              : `Irritation risk: Dupe includes exfoliant-like actives (e.g., ${joinFew(dupSig.exfoliants, 2)}) → higher irritation risk if your barrier is impaired; start low and avoid stacking strong actives.`,
+          );
+        }
+
+        if (nonEmpty(dupSig.fragrance) && !nonEmpty(origSig.fragrance)) {
+          derivedTradeoffs.push(
+            isCn
+              ? `气味/敏感风险：平替可能含香精/香料相关成分（例如 ${joinFew(dupSig.fragrance, 1)}）→ 更敏感人群需要谨慎。`
+              : `Fragrance risk: Dupe may include fragrance-related ingredients (e.g., ${joinFew(dupSig.fragrance, 1)}) → higher risk for sensitive skin.`,
+          );
+        }
+
+        const addedRisks = dupEv.risk.filter((k) => !origEv.risk.includes(k));
+        if (addedRisks.length) {
+          derivedTradeoffs.push(
+            isCn
+              ? `平替风险提示：${addedRisks.slice(0, 2).join(' · ')}`
+              : `Dupe risk notes: ${addedRisks.slice(0, 2).join(' · ')}`,
+          );
+        }
+
+        if (!derivedTradeoffs.length) {
+          const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
+          const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
+          if (origPreview.length || dupPreview.length) {
+            derivedTradeoffs.push(
+              isCn
+                ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
+                : `Key ingredient emphasis (brief): original — ${origPreview.length ? origPreview.join(' / ') : 'unknown'}; dupe — ${dupPreview.length ? dupPreview.join(' / ') : 'unknown'}.`,
+            );
+          }
+        }
 
         const origHero = origPayload && origPayload.assessment && typeof origPayload.assessment === 'object'
           ? (origPayload.assessment.hero_ingredient || origPayload.assessment.heroIngredient)
