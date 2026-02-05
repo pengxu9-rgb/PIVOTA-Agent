@@ -21,6 +21,7 @@ const {
   extractMerchantIdFromOfferId,
   parseOfferId,
 } = require('./offers/offerIds');
+const { prioritizeOffersResolveResponse } = require('./offers/offersPriority');
 const { buildPdpPayload } = require('./pdpBuilder');
 const {
   getAllPromotions,
@@ -7239,6 +7240,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         limit: queryParams?.limit,
         offset: queryParams?.offset,
       });
+    }
+
+    if (operation === 'offers.resolve') {
+      upstreamData = prioritizeOffersResolveResponse(upstreamData);
     }
 
     if (operation === 'get_product_detail') {

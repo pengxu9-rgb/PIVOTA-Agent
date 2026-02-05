@@ -2121,9 +2121,50 @@ function mountAuroraBffRoutes(app, { logger }) {
       const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
       const profileSummary = summarizeProfileForContext(profile);
-      const prefix = buildContextPrefix({ profile: profileSummary, recentLogs });
+      const commonMeta = {
+        profile: profileSummary,
+        recentLogs,
+        lang: ctx.lang,
+        state: ctx.state || 'idle',
+        trigger_source: ctx.trigger_source,
+      };
+      const parsePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
+      const prefix = buildContextPrefix({ ...commonMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
 
       const input = parsed.data.url || parsed.data.name || JSON.stringify(parsed.data.product || {});
+      let parsedProduct = parsed.data.product || null;
+      let anchorId = parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id);
+
+      // If caller only provided a name/url, try to parse into an anchor product first to improve KB hit rate.
+      if (!anchorId && input) {
+        try {
+          const parseQuery = `${parsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
+            `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
+            `Input: ${input}`;
+
+          const parseUpstream = await auroraChat({
+            baseUrl: AURORA_DECISION_BASE_URL,
+            query: parseQuery,
+            timeoutMs: 12000,
+            ...(parsed.data.url ? { anchor_product_url: parsed.data.url } : {}),
+          });
+
+          const parseStructured = getUpstreamStructuredOrJson(parseUpstream);
+          const parseMapped =
+            parseStructured && parseStructured.parse && typeof parseStructured.parse === 'object'
+              ? mapAuroraProductParse(parseStructured)
+              : parseStructured;
+          const parseNorm = normalizeProductParse(parseMapped);
+          parsedProduct = parseNorm.payload.product || parsedProduct;
+          anchorId =
+            parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id)
+              ? String(parsedProduct.sku_id || parsedProduct.product_id)
+              : anchorId;
+        } catch (err) {
+          // ignore; continue without anchor id
+        }
+      }
+
       const query = `${prefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
         `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
         `Evidence must include science/social_signals/expert_notes.\n` +
@@ -2131,7 +2172,6 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let upstream = null;
       try {
-        const anchorId = parsed.data.product && (parsed.data.product.sku_id || parsed.data.product.product_id);
         upstream = await auroraChat({
           baseUrl: AURORA_DECISION_BASE_URL,
           query,
@@ -2148,7 +2188,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? mapAuroraProductAnalysis(structured)
         : structured;
       const norm = normalizeProductAnalysis(mapped);
-      const payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
+      let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
+      if (parsedProduct && payload && typeof payload === 'object') {
+        const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
+        if (a && !a.anchor_product && !a.anchorProduct) {
+          payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
+        }
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -2198,7 +2244,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
       const profileSummary = summarizeProfileForContext(profile);
-      const prefix = buildContextPrefix({ profile: profileSummary, recentLogs });
+      const commonMeta = {
+        profile: profileSummary,
+        recentLogs,
+        lang: ctx.lang,
+        state: ctx.state || 'idle',
+        trigger_source: ctx.trigger_source,
+      };
+      const parsePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
+      const comparePrefix = buildContextPrefix({ ...commonMeta, intent: 'dupe_compare', action_id: 'chip.action.dupe_compare' });
 
       const originalInput = buildProductInputText(parsed.data.original, parsed.data.original_url);
       const dupeInput = buildProductInputText(parsed.data.dupe, parsed.data.dupe_url);
@@ -2215,7 +2269,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const productQuery = (input) => (
-        `${prefix}Task: Parse the user's product input into a normalized product entity.\n` +
+        `${parsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
+        `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
         `Input: ${input}`
       );
 
@@ -2257,6 +2312,32 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const originalAnchor = originalAnchorFromUpstream || parsed.data.original || null;
       const dupeAnchor = dupeAnchorFromUpstream || parsed.data.dupe || null;
+
+      const compareQuery = (() => {
+        const originalText = buildProductInputText(originalAnchor, parsed.data.original_url) || originalInput;
+        const dupeText = buildProductInputText(dupeAnchor, parsed.data.dupe_url) || dupeInput;
+        return `${comparePrefix}Task: Compare the original product vs the dupe/alternative.\n` +
+          `Return ONLY a JSON object with keys: original, dupe, tradeoffs (string[]), evidence, confidence (0..1), missing_info (string[]).\n` +
+          `Evidence must include science/social_signals/expert_notes.\n` +
+          `Original: ${originalText}\n` +
+          `Dupe: ${dupeText}`;
+      })();
+
+      let compareUpstream = null;
+      try {
+        const originalAnchorId = originalAnchor && (originalAnchor.sku_id || originalAnchor.product_id);
+        compareUpstream = await auroraChat({
+          baseUrl: AURORA_DECISION_BASE_URL,
+          query: compareQuery,
+          timeoutMs: 18000,
+          ...(originalAnchorId ? { anchor_product_id: String(originalAnchorId) } : {}),
+          ...(parsed.data.original_url ? { anchor_product_url: parsed.data.original_url } : {}),
+        });
+      } catch (err) {
+        // ignore; fall back below
+      }
+
+      const compareStructured = getUpstreamStructuredOrJson(compareUpstream);
 
       const fallbackAnalyze = () => {
         if (!originalStructured || !dupeStructured) {
@@ -2308,12 +2389,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
       };
 
-      const mapped = originalStructured && originalStructured.alternatives
-        ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback: originalAnchor })
-        : fallbackAnalyze();
+      const mapped = compareStructured
+        ? compareStructured && compareStructured.alternatives
+          ? mapAuroraAlternativesToDupeCompare(compareStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback: originalAnchor })
+          : compareStructured
+        : originalStructured && originalStructured.alternatives
+          ? mapAuroraAlternativesToDupeCompare(originalStructured, dupeAnchor, { fallbackAnalyze, originalAnchorFallback: originalAnchor })
+          : fallbackAnalyze();
 
       const norm = normalizeDupeCompare(mapped);
       let payload = norm.payload;
+      if (!payload.original && originalAnchor) payload = { ...payload, original: originalAnchor };
+      if (!payload.dupe && dupeAnchor) payload = { ...payload, dupe: dupeAnchor };
       if (!Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0) {
         const note =
           ctx.lang === 'CN'
