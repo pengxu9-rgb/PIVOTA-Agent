@@ -56,6 +56,36 @@ function safeErrorCode(err) {
   return safeStr(code, 120) || 'error';
 }
 
+function extractUsage(result) {
+  const r = result && typeof result === 'object' ? result : null;
+  const usage = r && r.usage && typeof r.usage === 'object' ? r.usage : null;
+  if (!usage) return null;
+  const promptTokens = Number.isFinite(usage.prompt_tokens)
+    ? usage.prompt_tokens
+    : Number.isFinite(usage.promptTokens)
+      ? usage.promptTokens
+      : null;
+  const completionTokens = Number.isFinite(usage.completion_tokens)
+    ? usage.completion_tokens
+    : Number.isFinite(usage.completionTokens)
+      ? usage.completionTokens
+      : null;
+  const totalTokens = Number.isFinite(usage.total_tokens)
+    ? usage.total_tokens
+    : Number.isFinite(usage.totalTokens)
+      ? usage.totalTokens
+      : promptTokens != null && completionTokens != null
+        ? promptTokens + completionTokens
+        : null;
+
+  if (promptTokens == null && completionTokens == null && totalTokens == null) return null;
+  return {
+    ...(promptTokens != null ? { prompt_tokens: Math.max(0, Math.trunc(promptTokens)) } : {}),
+    ...(completionTokens != null ? { completion_tokens: Math.max(0, Math.trunc(completionTokens)) } : {}),
+    ...(totalTokens != null ? { total_tokens: Math.max(0, Math.trunc(totalTokens)) } : {}),
+  };
+}
+
 function initStageState(name) {
   return {
     name,
@@ -160,12 +190,14 @@ function createStageProfiler({ stages } = {}) {
       ok: false,
       reason: null,
       ms: 0,
+      usage: null,
     };
     const c0 = nowNs();
     try {
       const result = await time('llm', fn, { provider: call.provider, model: call.model, kind: call.kind });
       call.ok = true;
       call.ms = nsToMs(nowNs() - c0);
+      call.usage = extractUsage(result);
       llmCalls.push(call);
       return result;
     } catch (err) {
@@ -210,6 +242,20 @@ function createStageProfiler({ stages } = {}) {
       ok: llmCalls.filter((c) => c.ok).length,
       failed: llmCalls.filter((c) => !c.ok).length,
     };
+    const tokenTotals = llmCalls.reduce(
+      (acc, c) => {
+        const u = c && c.usage && typeof c.usage === 'object' ? c.usage : null;
+        if (!u) return acc;
+        if (Number.isFinite(u.prompt_tokens)) acc.prompt_tokens += u.prompt_tokens;
+        if (Number.isFinite(u.completion_tokens)) acc.completion_tokens += u.completion_tokens;
+        if (Number.isFinite(u.total_tokens)) acc.total_tokens += u.total_tokens;
+        return acc;
+      },
+      { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    );
+    if (tokenTotals.total_tokens || tokenTotals.prompt_tokens || tokenTotals.completion_tokens) {
+      llmSummary.tokens = tokenTotals;
+    }
 
     return {
       stages: stagesOut,
@@ -235,4 +281,3 @@ module.exports = {
   DEFAULT_STAGES,
   createStageProfiler,
 };
-

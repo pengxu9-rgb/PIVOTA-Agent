@@ -14,6 +14,19 @@ function extractJsonObject(text) {
   return null;
 }
 
+function parseJsonOnlyObject(text) {
+  if (!text || typeof text !== 'string') return null;
+  const t = text.trim();
+  if (!t.startsWith('{') || !t.endsWith('}')) return null;
+  try {
+    const parsed = JSON.parse(t);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function extractJsonObjectByKeys(text, requiredKeys) {
   const keys = Array.isArray(requiredKeys) ? requiredKeys.map((k) => String(k || '').trim()).filter(Boolean) : [];
   if (!keys.length) return extractJsonObject(text);
@@ -90,4 +103,4 @@ function extractBraced(text, startIdx) {
   return text.slice(startIdx, end + 1);
 }
 
-module.exports = { extractJsonObject, extractJsonObjectByKeys };
+module.exports = { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject };

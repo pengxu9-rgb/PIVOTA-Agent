@@ -97,6 +97,7 @@ function shouldCallLlm({
   hasPrimaryInput,
   userRequestedPhoto,
   detectorConfidenceLevel,
+  uncertainty,
   visionAvailable,
   reportAvailable,
   degradedMode,
@@ -104,6 +105,7 @@ function shouldCallLlm({
   const k = normalizeToken(kind);
   const q = normalizeToken(quality && quality.grade ? quality.grade : quality);
   const confidence = normalizeToken(detectorConfidenceLevel);
+  const uncertainFlag = typeof uncertainty === 'boolean' ? uncertainty : null;
   const degradeMode = normalizeToken(degradedMode) || 'report';
 
   const reasons = [];
@@ -129,13 +131,19 @@ function shouldCallLlm({
       return { decision: 'skip', reasons, downgrade_confidence };
     }
 
+    // Pass quality: If the deterministic detector is confident *and* explicitly not uncertain,
+    // skip the photo LMM to reduce cost / avoid redundant analysis.
+    if (uncertainFlag === false && confidence === 'high') {
+      return { decision: 'skip', reasons: ['detector_confident_template'], downgrade_confidence: false };
+    }
+
     return { decision: 'call', reasons: ['quality_pass'], downgrade_confidence: false };
   }
 
   if (k === 'report') {
     if (!reportAvailable) return { decision: 'skip', reasons: ['report_unavailable'], downgrade_confidence: false };
 
-    if (userRequestedPhoto && q === 'fail') {
+    if (q === 'fail') {
       return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
     }
 
@@ -150,6 +158,14 @@ function shouldCallLlm({
     }
 
     // Pass quality: only escalate to report LLM when the deterministic detector is uncertain.
+    if (uncertainFlag === false) {
+      return { decision: 'skip', reasons: ['detector_confident_template'], downgrade_confidence: false };
+    }
+    if (uncertainFlag === true) {
+      return { decision: 'call', reasons: ['detector_uncertain'], downgrade_confidence: false };
+    }
+
+    // Fallback when uncertainty is unknown: preserve legacy behavior.
     if (confidence === 'high') {
       return { decision: 'skip', reasons: ['detector_confident_template'], downgrade_confidence: false };
     }

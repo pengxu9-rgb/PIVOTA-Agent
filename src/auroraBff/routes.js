@@ -136,6 +136,44 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
   return Math.max(1, Math.min(4, v));
 })();
 
+const DUPE_DEEPSCAN_CACHE_MAX = (() => {
+  const n = Number(process.env.AURORA_BFF_DUPE_DEEPSCAN_CACHE_MAX || 80);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 80;
+  return Math.max(0, Math.min(300, v));
+})();
+
+const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_DUPE_DEEPSCAN_CACHE_TTL_MS || 6 * 60 * 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6 * 60 * 60 * 1000;
+  return Math.max(30 * 1000, Math.min(24 * 60 * 60 * 1000, v));
+})();
+
+const dupeDeepscanCache = new Map();
+
+function getDupeDeepscanCache(key) {
+  if (!key || DUPE_DEEPSCAN_CACHE_MAX <= 0) return null;
+  const entry = dupeDeepscanCache.get(key);
+  if (!entry) return null;
+  if (!entry.expiresAt || entry.expiresAt <= Date.now()) {
+    dupeDeepscanCache.delete(key);
+    return null;
+  }
+  // Touch for LRU-ish behavior.
+  dupeDeepscanCache.delete(key);
+  dupeDeepscanCache.set(key, entry);
+  return entry.value || null;
+}
+
+function setDupeDeepscanCache(key, value) {
+  if (!key || DUPE_DEEPSCAN_CACHE_MAX <= 0) return;
+  dupeDeepscanCache.set(key, { value, expiresAt: Date.now() + DUPE_DEEPSCAN_CACHE_TTL_MS });
+  while (dupeDeepscanCache.size > DUPE_DEEPSCAN_CACHE_MAX) {
+    const oldestKey = dupeDeepscanCache.keys().next().value;
+    if (!oldestKey) break;
+    dupeDeepscanCache.delete(oldestKey);
+  }
+}
+
 function getCheckoutToken(req) {
   const v = req.get('X-Checkout-Token') || req.get('x-checkout-token');
   return v ? String(v).trim() : '';
@@ -224,7 +262,16 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
   };
 }
 
-async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSummary, recentLogsSummary, profiler } = {}) {
+async function runOpenAIVisionSkinAnalysis({
+  imageBuffer,
+  language,
+  photoQuality,
+  diagnosisPolicy,
+  diagnosisV1,
+  profileSummary,
+  recentLogsSummary,
+  profiler,
+} = {}) {
   if (!SKIN_VISION_ENABLED) return { ok: false, reason: 'vision_disabled' };
   const client = getOpenAIClient();
   if (!client) return { ok: false, reason: 'openai_not_configured' };
@@ -249,34 +296,14 @@ async function runOpenAIVisionSkinAnalysis({ imageBuffer, language, profileSumma
           .toBuffer();
   const dataUrl = `data:image/jpeg;base64,${optimized.toString('base64')}`;
 
-  const replyLanguage = language === 'CN' ? 'Simplified Chinese' : 'English';
-  const replyInstruction =
-    language === 'CN' ? '请只用简体中文回答，不要使用英文。' : 'IMPORTANT: Reply ONLY in English. Do not use Chinese.';
-
-  const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
-  const logsLine = Array.isArray(recentLogsSummary) && recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
-
-  const promptBase =
-    `${profileLine}\n` +
-    `${logsLine ? `${logsLine}\n` : ''}` +
-    `Task: You are a cautious skincare assistant. Use the provided daylight selfie photo ONLY to infer *visible* skin signals (redness, acne, oiliness/shine, dryness/flaking, pigmentation, texture). Do NOT diagnose medical conditions.\n\n` +
-    `Return ONLY a valid JSON object (no markdown) with this exact shape:\n` +
-    `{\n` +
-    `  "features": [\n` +
-    `    {"observation": "…", "confidence": "pretty_sure" | "somewhat_sure" | "not_sure"}\n` +
-    `  ],\n` +
-    `  "strategy": "…",\n` +
-    `  "needs_risk_check": true | false\n` +
-    `}\n\n` +
-    `Rules:\n` +
-    `- DO NOT output any numeric scores/percentages.\n` +
-    `- DO NOT infer age, race/ethnicity, pregnancy status, or health conditions.\n` +
-    `- Observations must be cautious and actionable (barrier, acne risk, pigmentation, irritation, hydration, safety).\n` +
-    `- Strategy must be stepwise and END with ONE direct clarifying question (must include a '?' or '？').\n` +
-    `- DO NOT recommend specific products/brands.\n` +
-    `- Keep it concise: 4–6 features; each observation <= 200 characters; strategy <= 900 characters.\n` +
-    `Language: ${replyLanguage}.\n` +
-    `${replyInstruction}\n`;
+  const promptBase = buildSkinVisionPrompt({
+    language,
+    photoQuality,
+    diagnosisPolicy,
+    diagnosisV1,
+    profileSummary,
+    recentLogsSummary,
+  });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SKIN_VISION_TIMEOUT_MS);
@@ -2658,16 +2685,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
       const profileSummary = summarizeProfileForContext(profile);
-      const commonMeta = {
-        profile: profileSummary,
-        recentLogs,
+      // Use minimal upstream context for stability: dupe_compare should not depend on per-user logs/profile size.
+      const upstreamMeta = {
         lang: ctx.lang,
         state: ctx.state || 'idle',
         trigger_source: ctx.trigger_source,
       };
-      const parsePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
-      const analyzePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
-      const comparePrefix = buildContextPrefix({ ...commonMeta, intent: 'dupe_compare', action_id: 'chip.action.dupe_compare' });
+      const parsePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
+      const analyzePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
+      const comparePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'dupe_compare', action_id: 'chip.action.dupe_compare' });
 
       const originalInput = buildProductInputText(parsed.data.original, parsed.data.original_url);
       const dupeInput = buildProductInputText(parsed.data.dupe, parsed.data.dupe_url);
@@ -2689,32 +2715,26 @@ function mountAuroraBffRoutes(app, { logger }) {
         `Input: ${input}`
       );
 
-      let originalUpstream = null;
-      let dupeUpstream = null;
-      try {
-        const originalAnchor = parsed.data.original && (parsed.data.original.sku_id || parsed.data.original.product_id);
-        originalUpstream = await auroraChat({
-          baseUrl: AURORA_DECISION_BASE_URL,
-          query: productQuery(originalInput),
-          timeoutMs: 16000,
-          ...(originalAnchor ? { anchor_product_id: String(originalAnchor) } : {}),
-          ...(parsed.data.original_url ? { anchor_product_url: parsed.data.original_url } : {}),
-        });
-      } catch (err) {
-        // ignore
-      }
-      try {
-        const dupeAnchor = parsed.data.dupe && (parsed.data.dupe.sku_id || parsed.data.dupe.product_id);
-        dupeUpstream = await auroraChat({
-          baseUrl: AURORA_DECISION_BASE_URL,
-          query: productQuery(dupeInput),
-          timeoutMs: 16000,
-          ...(dupeAnchor ? { anchor_product_id: String(dupeAnchor) } : {}),
-          ...(parsed.data.dupe_url ? { anchor_product_url: parsed.data.dupe_url } : {}),
-        });
-      } catch (err) {
-        // ignore
-      }
+      const parseOne = async ({ inputText, anchorObj, anchorUrl }) => {
+        try {
+          const anchorId = anchorObj && (anchorObj.sku_id || anchorObj.product_id);
+          return await auroraChat({
+            baseUrl: AURORA_DECISION_BASE_URL,
+            query: productQuery(inputText),
+            // Best-effort only; keep fast so dupe_compare doesn't hang on parse.
+            timeoutMs: 9000,
+            ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
+            ...(anchorUrl ? { anchor_product_url: anchorUrl } : {}),
+          });
+        } catch {
+          return null;
+        }
+      };
+
+      const [originalUpstream, dupeUpstream] = await Promise.all([
+        parseOne({ inputText: originalInput, anchorObj: parsed.data.original, anchorUrl: parsed.data.original_url }),
+        parseOne({ inputText: dupeInput, anchorObj: parsed.data.dupe, anchorUrl: parsed.data.dupe_url }),
+      ]);
 
       const originalStructured = getUpstreamStructuredOrJson(originalUpstream);
       const dupeStructured = getUpstreamStructuredOrJson(dupeUpstream);
@@ -3061,32 +3081,29 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const isMissingTradeoffs = !Array.isArray(payload.tradeoffs) || payload.tradeoffs.length === 0;
       if (isMissingTradeoffs) {
-        const deepScanQuery = (input) => (
-          `${analyzePrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-          `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-          `Evidence must include science/social_signals/expert_notes.\n` +
-          `Product: ${input}`
-        );
-
         const scanOne = async ({ productText, productObj, productUrl }) => {
           const anchorId = extractAnchorIdFromProductLike(productObj);
           const bestText = String(productText || '').trim() || (anchorId ? String(anchorId) : '');
           if (!bestText) return null;
-          const buildMinimalQuery = () => {
-            const minimalPrefix = buildContextPrefix({
-              lang: ctx.lang,
-              state: ctx.state || 'idle',
-              trigger_source: ctx.trigger_source,
-              intent: 'product_analyze_fallback',
-              action_id: 'chip.action.analyze_product_fallback',
-            });
-            return (
-              `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
-              `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
-              `Evidence must include science/social_signals/expert_notes.\n` +
-              `Product: ${bestText}`
-            );
-          };
+
+          const cacheKey = (() => {
+            const langKey = ctx.lang === 'CN' ? 'CN' : 'EN';
+            if (anchorId) return `dupe_deepscan:${langKey}:id:${String(anchorId).trim()}`;
+            const url = typeof productUrl === 'string' ? productUrl.trim() : '';
+            if (url) return `dupe_deepscan:${langKey}:url:${url}`;
+            const norm = bestText.toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
+            return `dupe_deepscan:${langKey}:text:${norm}`;
+          })();
+          const cached = getDupeDeepscanCache(cacheKey);
+          if (cached) return cached;
+
+          const buildQuery = (strict = false) => (
+            `${analyzePrefix}Task: Deep-scan this product for a product-level ingredient/benefit/risk snapshot.\n` +
+            `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+            `Evidence must include science/social_signals/expert_notes.\n` +
+            `${strict ? 'If possible, include at least 4 items in evidence.science.key_ingredients; if unavailable, return [] and add missing_info: \"key_ingredients_missing\".\n' : ''}` +
+            `Product: ${bestText}`
+          );
 
           const runScan = async (queryText, timeoutMs) =>
             auroraChat({
@@ -3097,71 +3114,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...(productUrl ? { anchor_product_url: productUrl } : {}),
             });
 
-          let upstream = null;
-          let usedMinimalQuery = false;
-          try {
-            upstream = await runScan(deepScanQuery(bestText), 16000);
-          } catch (err) {
-            // Retry once with a minimal (no-profile) prefix to improve reliability under load.
-            try {
-              upstream = await runScan(buildMinimalQuery(), 14000);
-              usedMinimalQuery = true;
-            } catch {
-              return null;
-            }
-          }
-
-          const upStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
-            ? upstream.structured
-            : null;
-          const upAnswerJson =
-            upstream && typeof upstream.answer === 'string'
-              ? extractJsonObjectByKeys(upstream.answer, [
-                'assessment',
-                'evidence',
-                'confidence',
-                'missing_info',
-                'missingInfo',
-                'analyze',
-                'verdict',
-                'reasons',
-                'science_evidence',
-                'social_signals',
-                'expert_notes',
-              ])
+          const parseUpstream = (upstream) => {
+            const upStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
+              ? upstream.structured
               : null;
-          const upAnswerObj = upAnswerJson && typeof upAnswerJson === 'object' && !Array.isArray(upAnswerJson) ? upAnswerJson : null;
-          const answerLooksLikeProductAnalysis =
-            upAnswerObj &&
-            (upAnswerObj.assessment != null ||
-              upAnswerObj.evidence != null ||
-              upAnswerObj.analyze != null ||
-              upAnswerObj.confidence != null ||
-              upAnswerObj.missing_info != null ||
-              upAnswerObj.missingInfo != null);
-          const structuredOrJson =
-            upStructured && upStructured.analyze && typeof upStructured.analyze === 'object'
-              ? upStructured
-              : answerLooksLikeProductAnalysis
-                ? upAnswerObj
-                : upStructured || upAnswerObj;
-
-          const mappedAnalyze = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
-            ? mapAuroraProductAnalysis(structuredOrJson)
-            : structuredOrJson;
-          let normAnalyze = normalizeProductAnalysis(mappedAnalyze);
-
-          if (!normAnalyze.payload.assessment && profileSummary && bestText) {
-            // Retry without personalized context if upstream dropped the analysis.
-            try {
-              const upstream2 = await runScan(buildMinimalQuery(), 14000);
-              usedMinimalQuery = true;
-              const structured2 = upstream2 && upstream2.structured && typeof upstream2.structured === 'object' && !Array.isArray(upstream2.structured)
-                ? upstream2.structured
-                : null;
-              const answer2 =
-                upstream2 && typeof upstream2.answer === 'string'
-                  ? extractJsonObjectByKeys(upstream2.answer, [
+            const upAnswerJson =
+              upstream && typeof upstream.answer === 'string'
+                ? extractJsonObjectByKeys(upstream.answer, [
                     'assessment',
                     'evidence',
                     'confidence',
@@ -3174,89 +3133,73 @@ function mountAuroraBffRoutes(app, { logger }) {
                     'social_signals',
                     'expert_notes',
                   ])
-                  : null;
-              const structuredOrJson2 =
-                structured2 && structured2.analyze && typeof structured2.analyze === 'object'
-                  ? structured2
-                  : answer2 && typeof answer2 === 'object' && !Array.isArray(answer2)
-                    ? answer2
-                    : structured2 || answer2;
-              const mapped2 = structuredOrJson2 && structuredOrJson2.analyze && typeof structuredOrJson2.analyze === 'object'
-                ? mapAuroraProductAnalysis(structuredOrJson2)
-                : structuredOrJson2;
-              const norm2 = normalizeProductAnalysis(mapped2);
-              if (norm2 && norm2.payload && norm2.payload.assessment) {
-                const missingInfo = Array.isArray(norm2.payload.missing_info) ? norm2.payload.missing_info : [];
-                normAnalyze = {
-                  payload: { ...norm2.payload, missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])) },
-                  field_missing: norm2.field_missing,
-                };
+                : null;
+            const upAnswerObj = upAnswerJson && typeof upAnswerJson === 'object' && !Array.isArray(upAnswerJson) ? upAnswerJson : null;
+            const answerLooksLikeProductAnalysis =
+              upAnswerObj &&
+              (upAnswerObj.assessment != null ||
+                upAnswerObj.evidence != null ||
+                upAnswerObj.analyze != null ||
+                upAnswerObj.confidence != null ||
+                upAnswerObj.missing_info != null ||
+                upAnswerObj.missingInfo != null);
+            const structuredOrJson =
+              upStructured && upStructured.analyze && typeof upStructured.analyze === 'object'
+                ? upStructured
+                : answerLooksLikeProductAnalysis
+                  ? upAnswerObj
+                  : upStructured || upAnswerObj;
+
+            const mappedAnalyze = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
+              ? mapAuroraProductAnalysis(structuredOrJson)
+              : structuredOrJson;
+            const normAnalyze = normalizeProductAnalysis(mappedAnalyze);
+            const keyIngredientsNow = (() => {
+              const ev = normAnalyze.payload && typeof normAnalyze.payload === 'object' ? normAnalyze.payload.evidence : null;
+              const sci = ev && typeof ev === 'object' ? ev.science : null;
+              const key = sci && typeof sci === 'object' ? (sci.key_ingredients || sci.keyIngredients) : null;
+              return Array.isArray(key) ? key.filter(Boolean) : [];
+            })();
+            return { normAnalyze, keyIngredientsNow };
+          };
+
+          let best = null;
+          try {
+            const upstream1 = await runScan(buildQuery(false), 12000);
+            best = parseUpstream(upstream1);
+          } catch {
+            // ignore
+          }
+
+          const needsRetry = !best || !best.normAnalyze.payload.assessment || best.keyIngredientsNow.length === 0;
+          if (needsRetry) {
+            try {
+              const upstream2 = await runScan(buildQuery(true), 11000);
+              const parsed2 = parseUpstream(upstream2);
+              if (parsed2 && parsed2.normAnalyze && parsed2.normAnalyze.payload && parsed2.normAnalyze.payload.assessment) {
+                best = parsed2;
               }
             } catch {
               // ignore
             }
           }
 
-          const keyIngredientsNow = (() => {
-            const ev = normAnalyze.payload && typeof normAnalyze.payload === 'object' ? normAnalyze.payload.evidence : null;
+          if (!best) return null;
+
+          const enriched = enrichProductAnalysisPayload(best.normAnalyze.payload, { lang: ctx.lang });
+          const out = { payload: enriched, field_missing: best.normAnalyze.field_missing };
+
+          const keyAfterEnrich = (() => {
+            const ev = enriched && typeof enriched === 'object' ? enriched.evidence : null;
             const sci = ev && typeof ev === 'object' ? ev.science : null;
             const key = sci && typeof sci === 'object' ? (sci.key_ingredients || sci.keyIngredients) : null;
             return Array.isArray(key) ? key.filter(Boolean) : [];
           })();
-          if (profileSummary && bestText && keyIngredientsNow.length === 0 && !usedMinimalQuery) {
-            // If key ingredient evidence is still missing, retry once without personalized context.
-            try {
-              const upstream3 = await runScan(buildMinimalQuery(), 14000);
-              usedMinimalQuery = true;
-              const structured3 = upstream3 && upstream3.structured && typeof upstream3.structured === 'object' && !Array.isArray(upstream3.structured)
-                ? upstream3.structured
-                : null;
-              const answer3 =
-                upstream3 && typeof upstream3.answer === 'string'
-                  ? extractJsonObjectByKeys(upstream3.answer, [
-                      'assessment',
-                      'evidence',
-                      'confidence',
-                      'missing_info',
-                      'missingInfo',
-                      'analyze',
-                      'verdict',
-                      'reasons',
-                      'science_evidence',
-                      'social_signals',
-                      'expert_notes',
-                    ])
-                  : null;
-              const structuredOrJson3 =
-                structured3 && structured3.analyze && typeof structured3.analyze === 'object'
-                  ? structured3
-                  : answer3 && typeof answer3 === 'object' && !Array.isArray(answer3)
-                    ? answer3
-                    : structured3 || answer3;
-              const mapped3 = structuredOrJson3 && structuredOrJson3.analyze && typeof structuredOrJson3.analyze === 'object'
-                ? mapAuroraProductAnalysis(structuredOrJson3)
-                : structuredOrJson3;
-              const norm3 = normalizeProductAnalysis(mapped3);
-              const key3 = (() => {
-                const ev = norm3 && norm3.payload && typeof norm3.payload === 'object' ? norm3.payload.evidence : null;
-                const sci = ev && typeof ev === 'object' ? ev.science : null;
-                const key = sci && typeof sci === 'object' ? (sci.key_ingredients || sci.keyIngredients) : null;
-                return Array.isArray(key) ? key.filter(Boolean) : [];
-              })();
-              if (norm3 && norm3.payload && norm3.payload.assessment && key3.length) {
-                const missingInfo = Array.isArray(norm3.payload.missing_info) ? norm3.payload.missing_info : [];
-                normAnalyze = {
-                  payload: { ...norm3.payload, missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])) },
-                  field_missing: norm3.field_missing,
-                };
-              }
-            } catch {
-              // ignore
-            }
+          if (enriched && enriched.assessment && keyAfterEnrich.length >= 3) {
+            setDupeDeepscanCache(cacheKey, out);
           }
 
-          const enriched = enrichProductAnalysisPayload(normAnalyze.payload, { lang: ctx.lang });
-          return { payload: enriched, field_missing: normAnalyze.field_missing };
+          return out;
         };
 
         const [origScan, dupeScan] = await Promise.all([
@@ -3471,10 +3414,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
-        if (!derivedTradeoffs.length) {
+        if (derivedTradeoffs.length < 2) {
           const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
           const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
-          if (origPreview.length && dupPreview.length) {
+          if (origPreview.length || dupPreview.length) {
             derivedTradeoffs.push(
               isCn
                 ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
@@ -4688,6 +4631,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             const vision = await runOpenAIVisionSkinAnalysis({
               imageBuffer: photoBytes,
               language: ctx.lang,
+              photoQuality,
+              diagnosisPolicy,
+              diagnosisV1,
               profileSummary,
               recentLogsSummary,
               profiler,
@@ -4714,51 +4660,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
-        const replyLanguage = ctx.lang === 'CN' ? 'Simplified Chinese' : 'English';
-        const replyInstruction = ctx.lang === 'CN'
-          ? '请只用简体中文回答，不要使用英文。'
-          : 'IMPORTANT: Reply ONLY in English. Do not use Chinese.';
-
-        const profileLine = `profile=${JSON.stringify(profileSummary || {})}`;
-        const logsLine = recentLogsSummary.length ? `recent_logs=${JSON.stringify(recentLogsSummary)}` : '';
-        const photoLine = `photos_provided=${photosProvided ? 'yes' : 'no'}; photo_qc=${photoQcParts.length ? photoQcParts.join(', ') : 'none'}; photos_accessible=no.`;
-        let routineText = '';
-        if (hasRoutine) {
-          if (typeof routineCandidate === 'string') routineText = routineCandidate;
-          else {
-            try {
-              routineText = JSON.stringify(routineCandidate);
-            } catch {
-              routineText = '';
-            }
-          }
-        }
-        const routineLine = routineText ? `current_routine=${routineText.slice(0, 6000)}` : '';
-
-        const promptBase =
-          `${profileLine}\n` +
-          `${logsLine ? `${logsLine}\n` : ''}` +
-          `${routineLine ? `${routineLine}\n` : ''}` +
-          `${photoLine}\n` +
-          `Task: Provide a skin assessment that is honest about uncertainty and feels like a cautious dermatologist.\n` +
-          `If current_routine is provided, also flag likely irritation/conflict risks and suggest minimal, safe adjustments (do NOT recommend new brands).\n\n` +
-          `Return ONLY a valid JSON object (no markdown) with this exact shape:\n` +
-          `{\n` +
-          `  "features": [\n` +
-          `    {"observation": "…", "confidence": "pretty_sure" | "somewhat_sure" | "not_sure"}\n` +
-          `  ],\n` +
-          `  "strategy": "…",\n` +
-          `  "needs_risk_check": true | false\n` +
-          `}\n\n` +
-          `Rules:\n` +
-          `- DO NOT output any numeric scores/percentages.\n` +
-          `- DO NOT claim you can see the user's skin in the photo. Photos are for quality checks only.\n` +
-          `- Observations must be about barrier, acne risk, pigmentation, irritation, hydration, and safety.\n` +
-          `- Strategy must be actionable and stepwise and END with ONE direct clarifying question (must include a '?' or '？').\n` +
-          `- DO NOT recommend specific products/brands (you may reference the user's own products if provided).\n` +
-          `- Keep it concise: 4–6 features; each observation <= 200 characters; strategy <= 900 characters.\n` +
-          `Language: ${replyLanguage}.\n` +
-          `${replyInstruction}\n`;
+        const promptBase = buildSkinReportPrompt({
+          language: ctx.lang,
+          photoQuality: qualityForReport,
+          diagnosisPolicy,
+          diagnosisV1,
+          profileSummary,
+          routineCandidate: hasRoutine ? routineCandidate : null,
+          recentLogsSummary,
+        });
 
         let reportFailure = null;
         for (let attempt = 0; attempt < 2; attempt += 1) {

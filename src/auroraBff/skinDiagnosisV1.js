@@ -334,13 +334,9 @@ function computeLabStats({ rgb, width, height, skinMask, regionBoxes }) {
   const n = width * height;
 
   const global = { L: [], a: [], b: [] };
-  const region = {};
-  for (const key of ['forehead', 'nose', 'left_cheek', 'right_cheek', 'chin', 'cheeks']) region[key] = { L: [], a: [], b: [] };
 
   for (let i = 0; i < n; i += 1) {
     if (skinMask[i] !== 1) continue;
-    const x = i % width;
-    const y = Math.floor(i / width);
     const off = i * 3;
     const lab = rgbToLabFast(rgb[off], rgb[off + 1], rgb[off + 2]);
 
@@ -349,15 +345,6 @@ function computeLabStats({ rgb, width, height, skinMask, regionBoxes }) {
       global.L.push(lab.L);
       global.a.push(lab.a);
       global.b.push(lab.b);
-    }
-    for (const [k, box] of Object.entries(regionBoxes)) {
-      if (!region[k]) continue;
-      if (!isInside(x, y, box)) continue;
-      if (region[k].L.length < 12000 || (i % 4 === 0 && region[k].L.length < 22000)) {
-        region[k].L.push(lab.L);
-        region[k].a.push(lab.a);
-        region[k].b.push(lab.b);
-      }
     }
   }
 
@@ -378,12 +365,10 @@ function computeLabStats({ rgb, width, height, skinMask, regionBoxes }) {
   }
 
   const globalSummary = { L: summarize(global.L), a: summarize(global.a), b: summarize(global.b) };
-  const regionSummary = {};
-  for (const [k, v] of Object.entries(region)) regionSummary[k] = { L: summarize(v.L), a: summarize(v.a), b: summarize(v.b) };
 
   return {
     global: globalSummary,
-    regions: regionSummary,
+    regions: {},
   };
 }
 
@@ -689,7 +674,7 @@ function runIssueScoring({ issueType, rawScore, modelConf, region, quality, prof
   };
 }
 
-function computeIssueRawScores({ labStats, rgb, width, height, skinMask, regionBoxes, quality }) {
+function computeIssueRawScores({ labStats, rgb, width, height, skinMask, skinPixels, regionBoxes, quality }) {
   const globalA = labStats.global.a;
   const globalL = labStats.global.L;
   const globalB = labStats.global.b;
@@ -742,7 +727,7 @@ function computeIssueRawScores({ labStats, rgb, width, height, skinMask, regionB
     }
   }
   const acneCount = connectedComponentsCount(acneCandidates, width, height, acneBox, { minArea: 2, maxArea: 110 });
-  const acneDensity = skinMask && skinMask.length ? acneCount / Math.max(1, skinMask.reduce((acc, v) => acc + (v === 1 ? 1 : 0), 0)) : 0;
+  const acneDensity = acneCount / Math.max(1, Number.isFinite(skinPixels) ? skinPixels : 0);
   const acneScore = clamp01(acneDensity * 520);
   const acneModelConf = clamp01(0.18 + Math.min(1, acneCount / 18) * 0.65);
 
@@ -887,7 +872,7 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
   try {
     if (prof) prof.start('detector', { kind: 'lab_texture_rules' });
     labStats = computeLabStats({ rgb, width, height, skinMask: skin.mask, regionBoxes });
-    raw = computeIssueRawScores({ labStats, rgb, width, height, skinMask: skin.mask, regionBoxes, quality });
+    raw = computeIssueRawScores({ labStats, rgb, width, height, skinMask: skin.mask, skinPixels: skin.skinPixels, regionBoxes, quality });
     if (prof)
       prof.end('detector', {
         kind: 'lab_texture_rules',
@@ -967,8 +952,222 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
   return { ok: true, diagnosis: payload };
 }
 
+function summarizeDiagnosisForPolicy(diagnosisV1) {
+  const d = diagnosisV1 && typeof diagnosisV1 === 'object' && !Array.isArray(diagnosisV1) ? diagnosisV1 : null;
+  const issues = d && Array.isArray(d.issues) ? d.issues : [];
+  const quality = d && d.quality && typeof d.quality === 'object' ? d.quality : null;
+  const qualityGrade = quality && typeof quality.grade === 'string' ? quality.grade : 'unknown';
+
+  const sorted = issues
+    .map((it) => (it && typeof it === 'object' && !Array.isArray(it) ? it : null))
+    .filter(Boolean)
+    .slice()
+    .sort((a, b) => {
+      const sa = Number.isFinite(a.severity_level) ? a.severity_level : 0;
+      const sb = Number.isFinite(b.severity_level) ? b.severity_level : 0;
+      if (sb !== sa) return sb - sa;
+      const ca = Number.isFinite(a.confidence) ? a.confidence : 0;
+      const cb = Number.isFinite(b.confidence) ? b.confidence : 0;
+      return cb - ca;
+    });
+
+  const top = sorted[0] || null;
+  const second = sorted[1] || null;
+  const topSeverity = top && Number.isFinite(top.severity_level) ? top.severity_level : 0;
+  const topConf = top && Number.isFinite(top.confidence) ? top.confidence : 0;
+  const topScore = top && Number.isFinite(top.severity_score) ? top.severity_score : null;
+  const secondScore = second && Number.isFinite(second.severity_score) ? second.severity_score : null;
+
+  let detectorConfidenceLevel = 'low';
+  if (qualityGrade === 'pass' && topSeverity >= 2 && topConf >= 0.75) detectorConfidenceLevel = 'high';
+  else if (qualityGrade === 'pass' && topSeverity >= 1 && topConf >= 0.55) detectorConfidenceLevel = 'medium';
+
+  const uncertaintyReasons = [];
+  if (qualityGrade !== 'pass') uncertaintyReasons.push(`quality_${qualityGrade}`);
+  if (topConf < 0.6) uncertaintyReasons.push('low_top_confidence');
+  if (topScore != null && secondScore != null) {
+    const gap = Math.abs(topScore - secondScore);
+    if (gap < 0.06) uncertaintyReasons.push('top2_close');
+  }
+  // "Uncertainty" should be reserved for cases where deterministic signals are genuinely ambiguous
+  // (e.g. low confidence, close top-2 scores, or non-pass quality). Medium confidence ≠ uncertainty.
+  const uncertainty = uncertaintyReasons.length > 0;
+
+  const topIssueTypes = sorted
+    .filter((it) => (Number.isFinite(it.severity_level) ? it.severity_level : 0) > 0)
+    .map((it) => (typeof it.issue_type === 'string' ? it.issue_type : null))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  return {
+    schema_version: 'aurora.skin_diagnosis_policy.v1',
+    detector_confidence_level: detectorConfidenceLevel,
+    uncertainty,
+    ...(uncertaintyReasons.length ? { uncertainty_reasons: uncertaintyReasons.slice(0, 6) } : {}),
+    ...(topIssueTypes.length ? { top_issue_types: topIssueTypes } : {}),
+  };
+}
+
+function buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language, profileSummary } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const d = diagnosisV1 && typeof diagnosisV1 === 'object' && !Array.isArray(diagnosisV1) ? diagnosisV1 : null;
+  const issues = d && Array.isArray(d.issues) ? d.issues : [];
+  const quality = d && d.quality && typeof d.quality === 'object' ? d.quality : null;
+  if (!d || !issues.length) return null;
+
+  function clampText(raw, maxLen) {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    if (!s) return '';
+    if (s.length <= maxLen) return s;
+    return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+  }
+
+  const sorted = issues
+    .map((it) => (it && typeof it === 'object' && !Array.isArray(it) ? it : null))
+    .filter(Boolean)
+    .slice()
+    .sort((a, b) => {
+      const sa = Number.isFinite(a.severity_level) ? a.severity_level : 0;
+      const sb = Number.isFinite(b.severity_level) ? b.severity_level : 0;
+      if (sb !== sa) return sb - sa;
+      const ca = Number.isFinite(a.confidence) ? a.confidence : 0;
+      const cb = Number.isFinite(b.confidence) ? b.confidence : 0;
+      return cb - ca;
+    });
+
+  const features = [];
+  const qualityGrade = quality && typeof quality.grade === 'string' ? quality.grade : null;
+  if (qualityGrade && qualityGrade !== 'pass') {
+    features.push({
+      observation:
+        lang === 'CN'
+          ? `照片质量=${qualityGrade}，我会更保守（避免把光照/油光/虚焦当成皮肤问题）。`
+          : `Photo quality=${qualityGrade}; I’ll be more conservative (to avoid mistaking lighting/shine/blur for skin issues).`,
+      confidence: 'pretty_sure',
+    });
+  }
+
+  const issueText = (it) => {
+    const type = typeof it.issue_type === 'string' ? it.issue_type : null;
+    const sev = typeof it.severity === 'string' ? it.severity : 'none';
+    const conf = typeof it.confidence_label === 'string' ? it.confidence_label : 'somewhat_sure';
+    if (!type) return null;
+
+    if (type === 'acne') {
+      if (sev === 'none') {
+        return {
+          observation:
+            lang === 'CN'
+              ? '痘/红点信号不强（仅基于可见线索）；如果你有在用强活性，优先避免刺激叠加。'
+              : 'Acne-like red bump signals are not strong (visible cues only); if you use strong actives, avoid stacking irritation.',
+          confidence: conf,
+        };
+      }
+      return {
+        observation:
+          lang === 'CN'
+            ? `有痘/红点倾向（${sev}）：先把“温和+控刺激”放在第一位，再逐步做控痘。`
+            : `Some acne-like red bump tendency (${sev}): prioritize gentle + low-irritation first, then step up acne control gradually.`,
+        confidence: conf,
+      };
+    }
+
+    if (type === 'redness') {
+      if (sev === 'none') {
+        return {
+          observation: lang === 'CN' ? '泛红信号不强；如果最近有刺痛/爆皮，更应以修护为主。' : 'Redness signals are not strong; if you’ve had stinging/flaking, prioritize barrier repair.',
+          confidence: conf,
+        };
+      }
+      return {
+        observation:
+          lang === 'CN'
+            ? `泛红/刺激信号偏多（${sev}）：建议减少叠加与频率，先稳住屏障。`
+            : `More redness/irritation signals (${sev}): reduce stacking/frequency and stabilize the barrier first.`,
+        confidence: conf,
+      };
+    }
+
+    if (type === 'pores') {
+      if (sev === 'none') {
+        return {
+          observation: lang === 'CN' ? '毛孔/纹理信号不强；油光/反光会让判断偏保守。' : 'Pore/texture signals are not strong; shine can bias this, so I keep it conservative.',
+          confidence: conf,
+        };
+      }
+      return {
+        observation:
+          lang === 'CN'
+            ? `毛孔/纹理较明显（${sev}）：更适合“温和清洁+保湿+控油”，避免过度去角质。`
+            : `Pores/texture look more noticeable (${sev}): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.`,
+        confidence: conf,
+      };
+    }
+
+    if (type === 'dark_spots') {
+      const wbUnstable = quality && Array.isArray(quality.reasons) ? quality.reasons.includes('white_balance_unstable') : false;
+      const isDegraded = qualityGrade && qualityGrade !== 'pass';
+      if (isDegraded || wbUnstable) {
+        return {
+          observation:
+            lang === 'CN'
+              ? '光照/白平衡不够稳定：本次对暗沉/色沉会更保守，建议自然光无滤镜再评估。'
+              : 'Lighting/white balance is unstable: I’m conservative about dark spots/uneven tone; retake in daylight with no filters to reassess.',
+          confidence: 'not_sure',
+        };
+      }
+      if (sev === 'none') {
+        return {
+          observation: lang === 'CN' ? '暗沉/色沉信号不强；想要更准需要更稳定的自然光。' : 'Dark spot/uneven tone signals are not strong; stable daylight helps reliability.',
+          confidence: conf,
+        };
+      }
+      return {
+        observation:
+          lang === 'CN'
+            ? `肤色不均/暗沉倾向（${sev}）：建议先把防晒和温和提亮节奏做稳。`
+            : `Some uneven tone/dark spot tendency (${sev}): prioritize consistent SPF and gentle brightening pace.`,
+        confidence: conf,
+      };
+    }
+
+    return null;
+  };
+
+  for (const it of sorted) {
+    if (features.length >= 6) break;
+    const f = issueText(it);
+    if (!f) continue;
+    const observation = clampText(f.observation, 200);
+    if (!observation) continue;
+    const c = typeof f.confidence === 'string' ? f.confidence.trim() : '';
+    const confidence = c === 'pretty_sure' || c === 'somewhat_sure' || c === 'not_sure' ? c : 'somewhat_sure';
+    features.push({ observation, confidence });
+  }
+
+  const routineText = profileSummary && typeof profileSummary.currentRoutine === 'string' ? profileSummary.currentRoutine : '';
+  const routineLower = String(routineText || '').toLowerCase();
+  const hasRetinoid = /\bretinol\b|\btretinoin\b|\badapalene\b|\bretinoid\b|维a|阿达帕林|维a酸|视黄醇/.test(routineLower);
+  const hasAcids = /\b(aha|bha|pha|glycolic|lactic|salicylic)\b|果酸|水杨酸|乳酸|葡糖酸内酯/.test(routineLower);
+
+  const needs_risk_check = Boolean(hasRetinoid || hasAcids);
+
+  const strategy =
+    lang === 'CN'
+      ? `建议按 3 步走：\n1) 基础稳住：温和洁面 + 保湿；白天一定要 SPF。\n2) 若想改善（痘/泛红/毛孔/肤色不均）：一次只改一个变量，从低频开始，观察 72 小时。\n3) 避免同晚叠加多种强活性（维A/酸/高浓VC），有刺痛/爆皮就先修护。\n\n你最近是否有刺痛/泛红/爆皮？`
+      : `A safe 3-step plan:\n1) Stabilize basics: gentle cleanser + moisturizer; daytime SPF is non-negotiable.\n2) If targeting acne/redness/pores/uneven tone: change one variable at a time, start low-frequency, watch the 72h response.\n3) Avoid stacking multiple strong actives (retinoid/acids/high-strength vitamin C); if stinging/flaking, switch to repair mode.\n\nAny stinging/redness/flaking recently?`;
+
+  return {
+    features: features.slice(0, 6),
+    strategy: clampText(strategy, 1200),
+    needs_risk_check,
+  };
+}
+
 module.exports = {
   runSkinDiagnosisV1,
+  summarizeDiagnosisForPolicy,
+  buildSkinAnalysisFromDiagnosisV1,
   scoreToSeverity,
   calibrateModelConfidence,
   agreementFactor,

@@ -145,6 +145,44 @@ test('Skin LLM policy: pass skips report when detector is confident', async () =
   assert.equal(reportDecisionUncertain.decision, 'call');
 });
 
+test('Skin LLM policy: explicit uncertainty flag tightens LLM calls on pass quality', async () => {
+  const base = {
+    hasPrimaryInput: true,
+    userRequestedPhoto: true,
+    visionAvailable: true,
+    reportAvailable: true,
+    degradedMode: 'report',
+    quality: { grade: 'pass', reasons: ['qc_passed'] },
+  };
+
+  // If deterministic policy says "not uncertain", skip even if the confidence level is not "high".
+  const reportSkip = shouldCallLlm({
+    ...base,
+    kind: 'report',
+    detectorConfidenceLevel: 'low',
+    uncertainty: false,
+  });
+  assert.equal(reportSkip.decision, 'skip');
+
+  // If deterministic policy says "uncertain", allow calling even when confidence level is high.
+  const reportCall = shouldCallLlm({
+    ...base,
+    kind: 'report',
+    detectorConfidenceLevel: 'high',
+    uncertainty: true,
+  });
+  assert.equal(reportCall.decision, 'call');
+
+  // Vision LMM should also be skippable when detector is confident and explicitly not uncertain.
+  const visionSkip = shouldCallLlm({
+    ...base,
+    kind: 'vision',
+    detectorConfidenceLevel: 'high',
+    uncertainty: false,
+  });
+  assert.equal(visionSkip.decision, 'skip');
+});
+
 test('Aurora mock: returns recommendations card (for offline gating tests)', async () => {
   const resp = await auroraChat({ baseUrl: '', query: 'Hello' });
   assert.ok(resp);
