@@ -5,6 +5,7 @@ const fs = require('fs');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
+const { runSkinDiagnosisV1 } = require('./skinDiagnosisV1');
 const {
   classifyPhotoQuality,
   inferDetectorConfidence,
@@ -2948,7 +2949,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!tradeoffs.length) {
           const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
           const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
-          if (origPreview.length || dupPreview.length) {
+          if (origPreview.length && dupPreview.length) {
             tradeoffs.push(
               ctx.lang === 'CN'
                 ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
