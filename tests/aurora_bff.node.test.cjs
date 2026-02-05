@@ -274,6 +274,111 @@ test('/v1/chat: Routine alternatives cover AM + PM', async () => {
   assert.ok(Array.isArray(pm.alternatives) && pm.alternatives.length > 0);
 });
 
+test('/v1/chat: exposes env_stress + citations + conflicts cards (contracts)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+    headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
+    body: {
+      message: 'CONTEXT_CARDS_TEST',
+      session: { state: 'idle' },
+      language: 'EN',
+      debug: true,
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  assert.ok(Array.isArray(resp.body?.cards));
+
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+
+  const structured = cards.find((c) => c && c.type === 'aurora_structured');
+  assert.ok(structured);
+  const citations = structured?.payload?.external_verification?.citations;
+  assert.ok(Array.isArray(citations));
+  assert.ok(citations.length > 0);
+
+  const envStress = cards.find((c) => c && c.type === 'env_stress');
+  assert.ok(envStress);
+  assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
+  assert.equal(envStress?.payload?.ess, 88);
+  const radar = envStress?.payload?.radar;
+  assert.ok(Array.isArray(radar));
+  assert.ok(radar.length > 0);
+  assert.ok(radar.every((r) => typeof r?.value === 'number' && r.value >= 0 && r.value <= 100));
+
+  const sim = cards.find((c) => c && c.type === 'routine_simulation');
+  assert.ok(sim);
+  assert.equal(sim?.payload?.schema_version, 'aurora.conflicts.v1');
+  assert.equal(sim?.payload?.safe, false);
+  assert.ok(Array.isArray(sim?.payload?.conflicts));
+  assert.ok(sim.payload.conflicts.some((c) => c && c.rule_id === 'retinoid_x_acids'));
+
+  const heatmap = cards.find((c) => c && c.type === 'conflict_heatmap');
+  assert.ok(heatmap);
+  assert.equal(heatmap?.payload?.schema_version, 'aurora.ui.conflict_heatmap.v1');
+});
+
 test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');

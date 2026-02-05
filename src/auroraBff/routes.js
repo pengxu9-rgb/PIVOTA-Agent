@@ -706,6 +706,108 @@ function sanitizeUpstreamAnswer(answer, { language, hasCards, hasStructured } = 
   return hasAnything ? 'I formatted the result into structured cards below.' : 'Got it.';
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function coerceNumber(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function clamp0to100(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function titleCase(value) {
+  const t = String(value || '').trim();
+  if (!t) return t;
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function buildEnvStressUiModelFromUpstream(value, { language } = {}) {
+  if (!isPlainObject(value)) return null;
+  const schema = typeof value.schema_version === 'string' ? value.schema_version : '';
+
+  if (schema === 'aurora.ui.env_stress.v1') return value;
+  if (schema !== 'aurora.env_stress.v1') return null;
+
+  const essRaw = coerceNumber(value.ess);
+  const ess = essRaw == null ? null : clamp0to100(essRaw);
+  const tier = typeof value.tier === 'string' ? value.tier.trim() || null : null;
+
+  const contributors = Array.isArray(value.contributors) ? value.contributors : [];
+  const weights = contributors.map((c) => {
+    if (!isPlainObject(c)) return null;
+    const w = coerceNumber(c.weight);
+    return w == null || w < 0 ? null : w;
+  });
+
+  const weightSum = weights.reduce((acc, w) => acc + (w ?? 0), 0);
+  const denom = weightSum > 0 ? weightSum : contributors.length;
+
+  const radar = [];
+  for (let i = 0; i < contributors.length; i += 1) {
+    const c = contributors[i];
+    if (!isPlainObject(c)) continue;
+    const axisRaw = typeof c.key === 'string' ? c.key.trim() : '';
+    if (!axisRaw) continue;
+    const w = weightSum > 0 ? (weights[i] ?? 0) / denom : 1 / denom;
+    const v = ess == null ? 0 : clamp0to100(Math.round(ess * w));
+    radar.push({ axis: titleCase(axisRaw).slice(0, 40), value: v });
+    if (radar.length >= 8) break;
+  }
+
+  const notes = [];
+  const missing = Array.isArray(value.missing_inputs) ? value.missing_inputs : [];
+  const missingFlat = missing.map((m) => String(m || '').trim()).filter(Boolean);
+  if (missingFlat.length) {
+    notes.push(
+      language === 'CN'
+        ? `缺少：${missingFlat.slice(0, 4).join(' / ')}`
+        : `Missing: ${missingFlat.slice(0, 4).join(' / ')}`,
+    );
+  }
+
+  for (const c of contributors) {
+    if (!isPlainObject(c)) continue;
+    const note = typeof c.note === 'string' ? c.note.trim() : '';
+    if (!note) continue;
+    notes.push(note.slice(0, 220));
+    if (notes.length >= 4) break;
+  }
+
+  return {
+    schema_version: 'aurora.ui.env_stress.v1',
+    ess,
+    tier,
+    radar,
+    notes,
+  };
+}
+
+function mergeExternalVerificationIntoStructured(structured, contextRaw) {
+  const s = isPlainObject(structured) ? structured : null;
+  if (!s) return structured;
+
+  const hasExt = isPlainObject(s.external_verification) || isPlainObject(s.externalVerification);
+  if (hasExt) return structured;
+
+  const ctx = isPlainObject(contextRaw) ? contextRaw : null;
+  if (!ctx) return structured;
+
+  const ext = isPlainObject(ctx.external_verification) ? ctx.external_verification : isPlainObject(ctx.externalVerification) ? ctx.externalVerification : null;
+  if (!ext) return structured;
+
+  return { ...s, external_verification: ext };
+}
+
 function buildProductInputText(inputObj, url) {
   if (typeof url === 'string' && url.trim()) return url.trim();
   const o = inputObj && typeof inputObj === 'object' && !Array.isArray(inputObj) ? inputObj : null;
@@ -3678,7 +3780,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? parsed.data.action
             : null;
       const includeAlternatives = extractIncludeAlternativesFromAction(parsed.data.action);
-      const debugUpstream = coerceBoolean(req.get('X-Debug') || req.get('X-Aurora-Debug'));
+      const debugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
+      const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
+      const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
+      const debugUpstream = debugFromHeader ?? debugFromBody;
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
@@ -4031,7 +4136,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       const query = `${prefix}${message || '(no message)'}`;
       try {
-        upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 12000 });
+        upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 12000, debug: debugUpstream });
       } catch (err) {
         if (err.code !== 'AURORA_NOT_CONFIGURED') {
           logger?.warn({ err: err.message }, 'aurora bff: aurora upstream failed');
@@ -4101,6 +4206,37 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const contextRaw = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
+      const derivedCards = [];
+      if (contextRaw) {
+        const envStressRaw = isPlainObject(contextRaw.env_stress) ? contextRaw.env_stress : isPlainObject(contextRaw.envStress) ? contextRaw.envStress : null;
+        const envStressUi = buildEnvStressUiModelFromUpstream(envStressRaw, { language: ctx.lang });
+        if (envStressUi) {
+          derivedCards.push({
+            card_id: `env_${ctx.request_id}`,
+            type: 'env_stress',
+            payload: envStressUi,
+          });
+        }
+
+        const conflictDetector = isPlainObject(contextRaw.conflict_detector)
+          ? contextRaw.conflict_detector
+          : isPlainObject(contextRaw.conflictDetector)
+            ? contextRaw.conflictDetector
+            : null;
+        if (conflictDetector && typeof conflictDetector.safe === 'boolean') {
+          derivedCards.push({
+            card_id: `conflicts_${ctx.request_id}`,
+            type: 'routine_simulation',
+            payload: conflictDetector,
+          });
+          derivedCards.push({
+            card_id: `heatmap_${ctx.request_id}`,
+            type: 'conflict_heatmap',
+            payload: { schema_version: 'aurora.ui.conflict_heatmap.v1' },
+          });
+        }
+      }
+
       const contextCard = INCLUDE_RAW_AURORA_CONTEXT && contextRaw
         ? [{
           card_id: `aurora_ctx_${ctx.request_id}`,
@@ -4118,6 +4254,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (structuredBlocked) {
         fieldMissing.push({ field: 'aurora_structured', reason: 'recommendations_not_requested' });
       }
+      const structuredWithExternalVerification = mergeExternalVerificationIntoStructured(structured, contextRaw);
 
       const safeAnswer = sanitizeUpstreamAnswer(answer, {
         language: ctx.lang,
@@ -4129,13 +4266,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         assistant_message: makeAssistantMessage(safeAnswer, 'markdown'),
         suggested_chips: suggestedChips,
         cards: [
-          ...(structured && !structuredBlocked
+          ...(structuredWithExternalVerification && !structuredBlocked
             ? [{
               card_id: `structured_${ctx.request_id}`,
               type: 'aurora_structured',
-              payload: structured,
+              payload: structuredWithExternalVerification,
             }]
             : []),
+          ...derivedCards,
           ...cards.map((c, idx) => ({
             card_id: c.card_id || `aurora_${ctx.request_id}_${idx}`,
             type: c.type || 'aurora_card',

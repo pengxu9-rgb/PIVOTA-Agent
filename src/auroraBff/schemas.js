@@ -138,6 +138,7 @@ const V1ChatRequestSchema = z
       .optional(),
     session: z.record(z.string(), z.any()).optional(),
     language: LanguageSchema.optional(),
+    debug: z.boolean().optional(),
   })
   .strict();
 

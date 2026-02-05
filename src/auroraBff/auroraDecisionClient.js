@@ -71,6 +71,63 @@ function mockAuroraChat(query) {
     };
   }
 
+  if (/CONTEXT_CARDS_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: context cards test.',
+      intent: 'science',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'CONTEXT_CARDS_TEST', parse_confidence: 1, normalized_query_language: 'en-US' },
+      },
+      context: {
+        external_verification: {
+          query: 'niacinamide clinical evidence',
+          citations: [
+            {
+              title: 'Niacinamide - mechanisms of action and its topical use in dermatology.',
+              source: 'Skin pharmacology and physiology',
+              year: 2014,
+              url: 'https://pubmed.ncbi.nlm.nih.gov/24993939/',
+              note: 'PMID:24993939',
+            },
+            {
+              title: 'Niacinamide: A B vitamin that improves aging facial skin appearance.',
+              source: 'Dermatologic surgery : official publication for American Society for Dermatologic Surgery [et al.]',
+              year: 2005,
+              url: 'https://pubmed.ncbi.nlm.nih.gov/16029679/',
+              note: 'PMID:16029679',
+            },
+          ],
+          note: 'Mock citations list.',
+        },
+        env_stress: {
+          schema_version: 'aurora.env_stress.v1',
+          ess: 88,
+          tier: 'High',
+          contributors: [
+            { key: 'barrier', weight: 0.5, note: 'barrier_status=impaired' },
+            { key: 'sensitivity', weight: 0.5, note: 'sensitivity=high' },
+          ],
+          missing_inputs: [],
+          generated_at: '2026-02-04T06:00:00.000Z',
+        },
+        conflict_detector: {
+          schema_version: 'aurora.conflicts.v1',
+          safe: false,
+          conflicts: [
+            {
+              severity: 'warn',
+              rule_id: 'retinoid_x_acids',
+              message: '维A类 + 去角质酸（AHA/BHA/PHA）叠加更容易刺痛/爆皮；更安全的做法是错开晚用，并从低频开始逐步加量。',
+            },
+          ],
+          summary: '需要注意：共 1 条提示（0 条为阻断级）。',
+        },
+      },
+    };
+  }
+
   if (/Task:\s*Parse\b/i.test(q)) {
     const inputMatch = q.match(/Input:\s*(.+)\s*$/im);
     const input = inputMatch ? String(inputMatch[1]).trim() : 'Mock Parsed Product';
@@ -411,6 +468,7 @@ async function auroraChat({
   llm_model,
   anchor_product_id,
   anchor_product_url,
+  debug,
 } = {}) {
   if (USE_AURORA_MOCK) return mockAuroraChat(query);
   const base = normalizeBaseUrl(baseUrl);
@@ -425,6 +483,7 @@ async function auroraChat({
   if (llm_model) payload.llm_model = llm_model;
   if (anchor_product_id) payload.anchor_product_id = anchor_product_id;
   if (anchor_product_url) payload.anchor_product_url = anchor_product_url;
+  if (typeof debug === 'boolean') payload.debug = debug;
   const resp = await postWithRetry(url, payload, { timeoutMs, retries: 1, retryDelayMs: 250 });
   const data = resp && resp.data;
   return data && typeof data === 'object' ? data : { raw: data };
