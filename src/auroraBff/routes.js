@@ -320,7 +320,7 @@ async function runOpenAIVisionSkinAnalysis({
           {
             model: SKIN_VISION_MODEL,
             temperature,
-            max_tokens: 520,
+            max_tokens: 480,
             response_format: { type: 'json_object' },
             messages: [
               { role: 'system', content: 'You produce ONLY JSON.' },
@@ -382,6 +382,11 @@ function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
   const o = obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : null;
   if (!o) return null;
 
+  const forbiddenRegex =
+    lang === 'CN'
+      ? /玫瑰痤疮|湿疹|银屑病|皮炎|感染|抗生素|激素|氢化可的松|维A酸|异维A酸|阿达帕林|克林霉素|多西环素|甲硝唑/i
+      : /rosacea|eczema|psoriasis|dermatitis|melanoma|infection|antibiotic|steroid|hydrocortisone|tretinoin|adapalene|isotretinoin|accutane|clindamycin|doxycycline|metronidazole/i;
+
   function clampText(raw, maxLen) {
     const s = typeof raw === 'string' ? raw.trim() : '';
     if (!s) return '';
@@ -394,14 +399,15 @@ function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
   for (const raw of featuresRaw) {
     const f = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
     if (!f) continue;
-    const observation = clampText(f.observation, 200);
+    const observation = clampText(f.observation, 120);
     if (!observation) continue;
+    if (forbiddenRegex.test(observation)) return null;
     const c = typeof f.confidence === 'string' ? f.confidence.trim() : '';
     const confidence = c === 'pretty_sure' || c === 'somewhat_sure' || c === 'not_sure' ? c : 'somewhat_sure';
     features.push({ observation, confidence });
   }
 
-  let strategyRaw = clampText(o.strategy, 900);
+  let strategyRaw = clampText(o.strategy, 420);
   const needsRiskCheckRaw = o.needs_risk_check ?? o.needsRiskCheck;
   const needs_risk_check = typeof needsRiskCheckRaw === 'boolean' ? needsRiskCheckRaw : false;
 
@@ -409,11 +415,19 @@ function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
   if (strategyRaw) {
     const qIdx = Math.max(strategyRaw.lastIndexOf('?'), strategyRaw.lastIndexOf('？'));
     if (qIdx !== -1) strategyRaw = strategyRaw.slice(0, qIdx + 1).trim();
+    // Ensure "ONE direct question": replace earlier question marks with sentence punctuation.
+    if (strategyRaw) {
+      const last = strategyRaw[strategyRaw.length - 1];
+      const replaceWith = lang === 'CN' ? '。' : '.';
+      const body = strategyRaw.slice(0, -1).replace(/[?？]/g, replaceWith);
+      strategyRaw = `${body}${last}`.trim();
+    }
+    if (forbiddenRegex.test(strategyRaw)) return null;
   }
   const strategy = strategyRaw || fallbackStrategy;
   if (!/[?？]$/.test(strategy)) return null;
 
-  if (!features.length && !strategyRaw) return null;
+  if (features.length < 2 && !strategyRaw) return null;
 
   return {
     features: features.slice(0, 6),
@@ -474,12 +488,26 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
       confidence: 'pretty_sure',
     });
   }
-  if (goals.includes('pores') || goals.includes('acne')) {
+  const wantsPores = goals.includes('pores');
+  const wantsAcne = goals.includes('acne');
+  if (wantsPores || wantsAcne) {
+    const targetText =
+      wantsPores && wantsAcne
+        ? lang === 'CN'
+          ? '毛孔/控痘'
+          : 'pores + acne'
+        : wantsPores
+          ? lang === 'CN'
+            ? '毛孔/纹理'
+            : 'pores/texture'
+          : lang === 'CN'
+            ? '控痘'
+            : 'acne';
     features.push({
       observation:
         lang === 'CN'
-          ? '你的目标包含毛孔/控痘 → 后续更适合“温和去角质 + 控油”路线，但要以不刺激为前提。'
-          : 'Your goals include pores/acne → gentle exfoliation + oil control may help later, if tolerated.',
+          ? `你的目标包含${targetText} → 后续更适合“温和去角质 + 控油”路线，但要以不刺激为前提。`
+          : `Your goals include ${targetText} → gentle exfoliation + oil control may help later, if tolerated.`,
       confidence: 'somewhat_sure',
     });
   }
@@ -1383,6 +1411,7 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
     `- reasons: string[] (max 4). Reasons must be end-user readable and user-specific.\n` +
     `  - Include at least one reason that explicitly references the user's profile (skin type / sensitivity / barrier / goals / budget).\n` +
     `  - If recent_logs were provided, include one reason that references the last 7 days trend; otherwise add warnings: "recent_logs_missing".\n` +
+    `  - If profile.itinerary (upcoming plan/travel context) is available, include one reason that references it.\n` +
     `  - If upcoming plan/travel context is not available, add warnings: "itinerary_unknown" (do NOT guess).\n` +
     `- evidence_pack: {keyActives,sensitivityFlags,pairingRules,comparisonNotes,citations} (omit unknown keys; do NOT fabricate).\n` +
     `- missing_info: string[] (per-item; ONLY user-provided fields like budget_unknown)\n` +
@@ -1876,6 +1905,89 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
   if (budgetKnown && Array.isArray(norm.payload?.missing_info)) {
     norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
+  }
+
+  const uniqStrings = (items, max = null) => {
+    const out = [];
+    const seen = new Set();
+    for (const raw of Array.isArray(items) ? items : []) {
+      const s = typeof raw === 'string' ? raw.trim() : raw == null ? '' : String(raw).trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+      if (typeof max === 'number' && max > 0 && out.length >= max) break;
+    }
+    return out;
+  };
+
+  const itineraryText = profileSummary && typeof profileSummary.itinerary === 'string' ? profileSummary.itinerary.trim() : '';
+  const itinerary = itineraryText ? itineraryText.slice(0, 160) : '';
+  if (itinerary && Array.isArray(norm.payload?.recommendations)) {
+    const itineraryReason = ctx.lang === 'CN' ? `接下来计划：${itinerary}` : `Upcoming plan: ${itinerary}`;
+    const itineraryRegex =
+      ctx.lang === 'CN'
+        ? /(行程|计划|旅行|出差|户外|飞行|滑雪|天气|气候)/
+        : /\b(upcoming plan|itinerary|travel|trip|flight|outdoor|cold|dry|uv|ski)\b/i;
+
+    const pickReasons = (reasonsRaw) => {
+      const base = uniqStrings(reasonsRaw, 12);
+      const alreadyHasItinerary = base.some((r) => itineraryRegex.test(String(r || '')));
+      const reasons = alreadyHasItinerary ? base : [...base, itineraryReason];
+
+      const activeRegex =
+        ctx.lang === 'CN'
+          ? /(最有效成分|关键成分|核心成分|主打成分)/
+          : /\b(most effective active|hero ingredient|key actives?|key ingredients?)\b/i;
+      const goalRegex = ctx.lang === 'CN' ? /(目标|匹配|针对)/ : /\b(goal fit|targets?:|goals?:)\b/i;
+      const barrierRegex =
+        ctx.lang === 'CN'
+          ? /(屏障|敏感|刺激|低刺激|耐受|刺痛|泛红)/
+          : /\b(barrier|sensitivity|irritat|low[- ]irritation|patch test|tolerance)\b/i;
+      const logsRegex =
+        ctx.lang === 'CN'
+          ? /(近7天|最近7天|打卡|记录|泛红|痘|补水|保湿)/
+          : /\b(last 7d|check-?in|redness|hydration)\b/i;
+      const analysisRegex =
+        ctx.lang === 'CN'
+          ? /(皮肤分析|诊断|分析结果|上次分析)/
+          : /\b(last skin analysis|skin analysis)\b/i;
+
+      const picked = [];
+      const usedIdx = new Set();
+      const takeFirstMatch = (re) => {
+        const idx = reasons.findIndex((r, i) => !usedIdx.has(i) && re.test(String(r || '')));
+        if (idx === -1) return;
+        usedIdx.add(idx);
+        picked.push(reasons[idx]);
+      };
+
+      for (const re of [activeRegex, goalRegex, barrierRegex, logsRegex, analysisRegex, itineraryRegex]) {
+        if (picked.length >= 6) break;
+        takeFirstMatch(re);
+      }
+
+      for (let i = 0; i < reasons.length && picked.length < 6; i += 1) {
+        if (usedIdx.has(i)) continue;
+        picked.push(reasons[i]);
+        usedIdx.add(i);
+      }
+
+      if (!picked.some((r) => itineraryRegex.test(String(r || '')))) {
+        if (picked.length < 6) picked.push(itineraryReason);
+        else picked[picked.length - 1] = itineraryReason;
+      }
+
+      return uniqStrings(picked, 6);
+    };
+
+    norm.payload.recommendations = norm.payload.recommendations.map((item) => {
+      const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+      if (!base) return item;
+      const reasonsRaw = Array.isArray(base.reasons) ? base.reasons : [];
+      return { ...base, reasons: pickReasons(reasonsRaw) };
+    });
   }
 
   return { norm, upstreamDebug, alternativesDebug };
@@ -3417,7 +3529,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (derivedTradeoffs.length < 2) {
           const origPreview = pickFew([...origSig.occlusives, ...origSig.humectants, ...origSig.soothing, ...origSig.brightening, ...origSig.exfoliants], 3);
           const dupPreview = pickFew([...dupSig.occlusives, ...dupSig.humectants, ...dupSig.soothing, ...dupSig.brightening, ...dupSig.exfoliants], 3);
-          if (origPreview.length || dupPreview.length) {
+          if (origPreview.length && dupPreview.length) {
             derivedTradeoffs.push(
               isCn
                 ? `关键成分侧重（简要）：原产品—${origPreview.length ? origPreview.join(' / ') : '未知'}；平替—${dupPreview.length ? dupPreview.join(' / ') : '未知'}。`
