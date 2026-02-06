@@ -1209,10 +1209,7 @@ function stripInternalKbRefsFromText(text) {
   const input = typeof text === 'string' ? text : '';
   if (!input.trim()) return input;
 
-  const withoutKb = input.replace(
-    /\bkb:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8,})\b/gi,
-    '',
-  );
+  const withoutKb = input.replace(/\bkb:[a-z0-9_-]+\b/gi, '');
 
   const cleaned = withoutKb
     .replace(/\(\s*\)/g, '')
@@ -1231,6 +1228,44 @@ function stripInternalKbRefsFromText(text) {
     .trim();
 
   return cleaned;
+}
+
+function isInternalKbCitationId(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return false;
+  const lower = v.toLowerCase();
+  if (lower.startsWith('kb:')) return true;
+  if (/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v)) return true;
+  return false;
+}
+
+function stripInternalRefsDeep(value, { parentKey } = {}) {
+  if (typeof value === 'string') return stripInternalKbRefsFromText(value);
+  if (Array.isArray(value)) {
+    const key = String(parentKey || '').trim().toLowerCase();
+    const isCitationsField = key === 'citations' || key.endsWith('_citations') || key.endsWith('citations');
+    if (isCitationsField) {
+      const out = [];
+      for (const item of value) {
+        if (typeof item === 'string') {
+          const t = item.trim();
+          if (!t) continue;
+          if (isInternalKbCitationId(t)) continue;
+          out.push(t);
+          continue;
+        }
+        out.push(stripInternalRefsDeep(item));
+      }
+      return out;
+    }
+    return value.map((v) => stripInternalRefsDeep(v));
+  }
+  if (!isPlainObject(value)) return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    out[k] = stripInternalRefsDeep(v, { parentKey: k });
+  }
+  return out;
 }
 
 function sanitizeUpstreamAnswer(answer, { language, hasCards, hasStructured, stripInternalRefs } = {}) {
@@ -1397,6 +1432,61 @@ function extractKnownActivesFromText(text) {
   return out;
 }
 
+function collectKnownActivesFromRoutine(routine) {
+  const routineObj = routine && typeof routine === 'object' ? routine : {};
+  const am = Array.isArray(routineObj.am) ? routineObj.am : [];
+  const pm = Array.isArray(routineObj.pm) ? routineObj.pm : [];
+  const out = [];
+  const seen = new Set();
+
+  const push = (token) => {
+    const key = String(token || '').trim().toLowerCase();
+    if (!key) return;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(key);
+  };
+
+  const scanText = (raw) => {
+    const tokens = extractKnownActivesFromText(String(raw || ''));
+    for (const t of tokens) push(t);
+  };
+
+  const scanItem = (item) => {
+    if (!item) return;
+    if (typeof item === 'string') {
+      scanText(item);
+      return;
+    }
+    if (typeof item !== 'object' || Array.isArray(item)) return;
+
+    const actives = item.key_actives || item.keyActives || item.actives;
+    if (Array.isArray(actives)) {
+      for (const a of actives) scanText(a);
+    }
+
+    const fields = [
+      item.step,
+      item.category,
+      item.slot_step,
+      item.slotStep,
+      item.title,
+      item.name,
+      item.display_name,
+      item.displayName,
+      item.product,
+    ];
+    for (const f of fields) {
+      if (typeof f === 'string' && f.trim()) scanText(f);
+    }
+  };
+
+  for (const item of am) scanItem(item);
+  for (const item of pm) scanItem(item);
+
+  return out;
+}
+
 function looksLikeCompatibilityOrConflictQuestion(message) {
   const t = String(message || '').trim();
   if (!t) return false;
@@ -1481,7 +1571,12 @@ function buildLocalCompatibilitySimulationInput({ message, profile } = {}) {
       ? profile.currentRoutine
       : null;
 
-  const routine = routineFromProfile || {
+  const profileRoutineActives = routineFromProfile ? collectKnownActivesFromRoutine(routineFromProfile) : [];
+  const shouldUseProfileRoutine = Boolean(
+    routineFromProfile && routineTokens.some((t) => profileRoutineActives.includes(String(t || '').toLowerCase())),
+  );
+
+  const routine = shouldUseProfileRoutine ? routineFromProfile : {
     am: [],
     pm: routineTokens.length ? [{ step: 'Treatment', key_actives: routineTokens }] : [],
   };
@@ -6529,6 +6624,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+        const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(
@@ -6541,7 +6637,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `reco_${ctx.request_id}`,
               type: 'recommendations',
-              payload: norm.payload,
+              payload,
               ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
             },
           ],
@@ -6590,6 +6686,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+        const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(
@@ -6602,7 +6699,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `reco_${ctx.request_id}`,
               type: 'recommendations',
-              payload: norm.payload,
+              payload,
               ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
             },
           ],
@@ -6630,6 +6727,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+        const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(
@@ -6646,7 +6744,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `reco_${ctx.request_id}`,
               type: 'recommendations',
-              payload: norm.payload,
+              payload,
               ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
             },
             ...(debugUpstream && upstreamDebug
@@ -6949,6 +7047,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         fieldMissing.push({ field: 'aurora_structured', reason: 'recommendations_not_requested' });
       }
       const structuredWithExternalVerification = mergeExternalVerificationIntoStructured(structured, contextRaw);
+      const structuredForEnvelope =
+        structuredWithExternalVerification && !debugUpstream
+          ? stripInternalRefsDeep(structuredWithExternalVerification)
+          : structuredWithExternalVerification;
 
       const safeAnswer = sanitizeUpstreamAnswer(answer, {
         language: ctx.lang,
@@ -6957,19 +7059,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         stripInternalRefs: !debugUpstream,
       });
 
+      const cardsForEnvelope = !debugUpstream ? stripInternalRefsDeep(cards) : cards;
+
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage(safeAnswer, 'markdown'),
         suggested_chips: suggestedChips,
         cards: [
-          ...(structuredWithExternalVerification && !structuredBlocked
+          ...(structuredForEnvelope && !structuredBlocked
             ? [{
               card_id: `structured_${ctx.request_id}`,
               type: 'aurora_structured',
-              payload: structuredWithExternalVerification,
+              payload: structuredForEnvelope,
             }]
             : []),
           ...derivedCards,
-          ...cards.map((c, idx) => ({
+          ...cardsForEnvelope.map((c, idx) => ({
             card_id: c.card_id || `aurora_${ctx.request_id}_${idx}`,
             type: c.type || 'aurora_card',
             title: c.title,
