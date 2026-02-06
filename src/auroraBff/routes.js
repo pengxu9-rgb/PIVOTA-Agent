@@ -1373,6 +1373,130 @@ function extractWeatherScenario(message) {
   return 'unknown';
 }
 
+function extractKnownActivesFromText(text) {
+  const t = String(text || '').trim();
+  if (!t) return [];
+  const lower = t.toLowerCase();
+  const out = [];
+
+  const push = (token) => {
+    const key = String(token || '').trim().toLowerCase();
+    if (!key) return;
+    if (!out.includes(key)) out.push(key);
+  };
+
+  if (/(tretinoin|adapalene|retinal|retinol|retinoid)/i.test(lower)) push('retinoid');
+  if (/(benzoyl\s*peroxide|bpo)/i.test(lower)) push('benzoyl_peroxide');
+  if (/(salicylic|bha)/i.test(lower)) push('bha');
+  if (/(glycolic|lactic|mandelic|aha)/i.test(lower)) push('aha');
+  if (/(vitamin\s*c|ascorbic|l-ascorbic|ascorbate)/i.test(lower)) push('vitamin_c');
+  if (/(niacinamide)/i.test(lower)) push('niacinamide');
+  if (/(azelaic)/i.test(lower)) push('azelaic_acid');
+  if (/(tranexamic)/i.test(lower)) push('tranexamic_acid');
+
+  return out;
+}
+
+function looksLikeCompatibilityOrConflictQuestion(message) {
+  const t = String(message || '').trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+
+  const hasCompatVerbEn =
+    /\b(conflict|conflicts|compatible|incompatible|pair|layer|stack|mix|combine|together|same routine|same night|can i add|should i add|with)\b/i.test(
+      lower,
+    );
+  const hasCompatVerbZh = /(冲突|相克|兼容|叠加|同晚|一起用|能不能一起|还能和|搭配|同用)/.test(t);
+  if (!(hasCompatVerbEn || hasCompatVerbZh)) return false;
+
+  // Avoid triggering on generic “conflict” questions without any known skincare actives.
+  const actives = extractKnownActivesFromText(t);
+  return actives.length > 0;
+}
+
+function buildLocalCompatibilitySimulationInput({ message, profile } = {}) {
+  const text = String(message || '').trim();
+  if (!text) return null;
+
+  const clauses = text
+    .split(/[.?!。！？\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
+  let routineText = '';
+  let testText = '';
+  for (const clause of clauses) {
+    const lower = clause.toLowerCase();
+    const isRoutineContextEn = /\b(my|i use|i'm using|currently|routine|am|pm|at night|morning)\b/i.test(lower);
+    const isRoutineContextZh = /(我(现在|目前|早上|晚上|一直)|我的(早晚)?(流程|步骤|routine)|正在用)/.test(clause);
+    const isTestContextEn = /\b(add|can i|layer|stack|mix|combine|together|with|conflict|compatible)\b/i.test(lower);
+    const isTestContextZh = /(叠加|同晚|一起用|能不能|还能和|搭配|冲突|兼容|同用)/.test(clause);
+
+    if (isRoutineContextEn || isRoutineContextZh) routineText = `${routineText} ${clause}`.trim();
+    if (isTestContextEn || isTestContextZh) testText = `${testText} ${clause}`.trim();
+  }
+
+  const all = extractKnownActivesFromText(text);
+  const routineActives = routineText ? extractKnownActivesFromText(routineText) : [];
+  const testActives = testText ? extractKnownActivesFromText(testText) : [];
+
+  const setEq = (a, b) => {
+    const aa = new Set((a || []).map((v) => String(v).toLowerCase()));
+    const bb = new Set((b || []).map((v) => String(v).toLowerCase()));
+    if (aa.size !== bb.size) return false;
+    for (const v of aa) if (!bb.has(v)) return false;
+    return true;
+  };
+
+  let routineTokens = routineActives;
+  let testTokens = testActives;
+
+  if (!routineTokens.length || !testTokens.length || setEq(routineTokens, testTokens)) {
+    const has = (tok) => all.includes(tok);
+    if (has('retinoid') && (has('aha') || has('bha'))) {
+      routineTokens = ['retinoid'];
+      testTokens = [...new Set([...(has('aha') ? ['aha'] : []), ...(has('bha') ? ['bha'] : [])])];
+    } else if (has('retinoid') && has('benzoyl_peroxide')) {
+      routineTokens = ['retinoid'];
+      testTokens = ['benzoyl_peroxide'];
+    } else if (has('vitamin_c') && (has('aha') || has('bha'))) {
+      routineTokens = ['vitamin_c'];
+      testTokens = [...new Set([...(has('aha') ? ['aha'] : []), ...(has('bha') ? ['bha'] : [])])];
+    } else if (all.length >= 2) {
+      routineTokens = [all[0]];
+      testTokens = [all[1]];
+    } else {
+      // If we can’t confidently form a pair from text, don’t short-circuit.
+      return null;
+    }
+  }
+
+  const routineFromProfile =
+    profile &&
+    profile.currentRoutine &&
+    typeof profile.currentRoutine === 'object' &&
+    !Array.isArray(profile.currentRoutine) &&
+    (Array.isArray(profile.currentRoutine.am) || Array.isArray(profile.currentRoutine.pm))
+      ? profile.currentRoutine
+      : null;
+
+  const routine = routineFromProfile || {
+    am: [],
+    pm: routineTokens.length ? [{ step: 'Treatment', key_actives: routineTokens }] : [],
+  };
+
+  const testProduct = {
+    step: 'Add-on',
+    name: testTokens.join(' + ') || 'Test product',
+    key_actives: testTokens,
+  };
+
+  if (!Array.isArray(testProduct.key_actives) || testProduct.key_actives.length === 0) return null;
+
+  return { routine, testProduct };
+}
+
 function buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
 
@@ -1452,9 +1576,17 @@ function buildWeatherAdviceMessage({ language, scenario, profile } = {}) {
         '',
         '**护肤要点（优先级从高到低）**',
         '1) **保湿 + 封闭**：面霜稍厚一点；口周/鼻翼/脸颊干处可薄薄封一层凡士林类。',
-        '2) **防晒**：即使阴天/下雪也建议 SPF30+（雪地反光会加剧 UV）。',
-        '3) **温和清洁**：避免强清洁/磨砂；回家后用温和洁面即可。',
-        '4) **活性减量**：如果你晚上用维A/酸，雪天更容易刺痛；更稳妥是把强酸和维A错开晚用。',
+        '2) **防晒**：即使阴天/下雪也建议 SPF30+；如果户外时间长或雪地强反光，尽量提高防晒强度并注意补涂。',
+        '3) **物理防护**：围巾/口罩/帽子减少冷风直吹；干裂倾向的手部建议戴手套。',
+        '4) **温和清洁**：避免强清洁/磨砂；回家后用温和洁面即可。',
+        '5) **活性减量**：如果你晚上用维A/酸，雪天更容易刺痛；更稳妥是把强酸和维A错开晚用。',
+        '',
+        '**对应产品清单（按“品类/关键词”找）**',
+        '- 温和洁面（低泡/无磨砂）',
+        '- 修护面霜（偏屏障修护/保湿）',
+        '- 封闭修护（凡士林/修护膏；局部薄涂）',
+        '- 防晒（广谱 SPF30+；户外注意补涂）',
+        '- 润唇膏 + 护手霜（干裂优先）',
         '',
         '想要我根据你现有产品给你一个「雪天 AM/PM 版本」吗？也可以直接点下面的选项继续。',
       ]
@@ -1499,9 +1631,17 @@ function buildWeatherAdviceMessage({ language, scenario, profile } = {}) {
       '',
       '**Skincare priorities**',
       '1) **Moisturize + seal**: use a richer moisturizer; consider a thin occlusive layer on dry-prone areas.',
-      '2) **Sunscreen**: SPF 30+ even on cloudy/snowy days (reflection matters).',
-      '3) **Gentle cleanse**: avoid harsh cleansing or scrubs.',
-      '4) **Reduce actives**: if you use retinoids/acids, avoid stacking them on the same night—snowy weather increases irritation risk.',
+      '2) **Sunscreen**: SPF 30+ even on cloudy/snowy days. If you’re outdoors on snow for longer, go higher and reapply.',
+      '3) **Physical protection**: scarf/mask/hat for wind; gloves if hands crack easily.',
+      '4) **Gentle cleanse**: avoid harsh cleansing or scrubs.',
+      '5) **Reduce actives**: if you use retinoids/acids, avoid stacking them on the same night—snowy weather increases irritation risk.',
+      '',
+      '**Product-type checklist**',
+      '- Gentle cleanser',
+      '- Barrier-support moisturizer',
+      '- Occlusive (petrolatum/ointment) for dry spots',
+      '- Broad-spectrum SPF 30+',
+      '- Lip balm + hand cream',
       '',
       'Want me to adapt this into a simple AM/PM “snow day routine” for what you already use?',
     ]
@@ -6125,18 +6265,46 @@ function mountAuroraBffRoutes(app, { logger }) {
         const advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
 
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const scenarioHint =
+          scenario === 'snow'
+            ? { cn: '雪天', en: 'snowy weather' }
+            : scenario === 'rain'
+              ? { cn: '雨天', en: 'rainy weather' }
+              : scenario === 'uv'
+                ? { cn: '日晒/高 UV', en: 'high UV' }
+                : scenario === 'humid'
+                  ? { cn: '潮湿闷热', en: 'humid weather' }
+                  : scenario === 'dry'
+                    ? { cn: '干燥天气', en: 'dry air' }
+                    : scenario === 'cold'
+                      ? { cn: '寒冷天气', en: 'cold weather' }
+                      : scenario === 'wind'
+                        ? { cn: '大风天气', en: 'windy weather' }
+                        : scenario === 'travel'
+                          ? { cn: '旅行/飞行', en: 'travel' }
+                          : { cn: '这个天气', en: 'these conditions' };
         const suggestedChips = [
           {
             chip_id: 'chip.start.routine',
             label: lang === 'CN' ? '生成 AM/PM 护肤流程' : 'Build an AM/PM routine',
             kind: 'quick_reply',
-            data: { reply_text: lang === 'CN' ? '帮我按这个天气生成 AM/PM 护肤流程' : 'Build an AM/PM routine for these conditions' },
+            data: {
+              reply_text:
+                lang === 'CN'
+                  ? `帮我按${scenarioHint.cn}生成 AM/PM 护肤流程`
+                  : `Build an AM/PM routine for ${scenarioHint.en}`,
+            },
           },
           {
             chip_id: 'chip.start.reco_products',
             label: lang === 'CN' ? '推荐防护产品' : 'Recommend protective products',
             kind: 'quick_reply',
-            data: { reply_text: lang === 'CN' ? '这个天气下我应该用什么类型的防护产品？' : 'What protective products should I use for these conditions?' },
+            data: {
+              reply_text:
+                lang === 'CN'
+                  ? `${scenarioHint.cn}我应该用什么类型的防护产品？`
+                  : `What protective products should I use for ${scenarioHint.en}?`,
+            },
           },
         ];
 
@@ -6150,6 +6318,68 @@ function mountAuroraBffRoutes(app, { logger }) {
           events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
         });
         return res.json(envelope);
+      }
+
+      // Local compatibility/conflict short-circuit: return routine_simulation + conflict_heatmap without upstream.
+      // Only for user-typed text (including text_explicit). Chips/actions should keep their intended routing.
+      if (
+        looksLikeCompatibilityOrConflictQuestion(message) &&
+        (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
+      ) {
+        const simInput = buildLocalCompatibilitySimulationInput({ message, profile });
+        if (simInput) {
+          const { routine, testProduct } = simInput;
+          const sim = simulateConflicts({ routine, testProduct });
+          const simPayload = { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary };
+          const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
+          const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+            ? buildConflictHeatmapV1({ routineSimulation: simPayload, routineSteps: heatmapSteps })
+            : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
+
+          const msgText =
+            ctx.lang === 'CN'
+              ? sim.safe
+                ? '未发现明显冲突（见下方冲突热力图）。如果出现刺痛/爆皮，优先降频并加强保湿。'
+                : '检测到可能的叠加风险（见下方冲突热力图）。更稳妥：错开晚用/隔天用，并从低频开始。'
+              : sim.safe
+                ? 'No major conflicts detected (see the heatmap below). If you feel irritation, reduce frequency and moisturize.'
+                : 'Potential conflict detected (see the heatmap below). Safer: alternate nights and start low frequency.';
+
+          const events = [
+            makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length, source: 'local_chat' }),
+          ];
+          if (CONFLICT_HEATMAP_V1_ENABLED) {
+            events.push(
+              makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
+                schema_version: heatmapPayload.schema_version,
+                state: heatmapPayload.state,
+                num_steps: Array.isArray(heatmapPayload.axes?.rows?.items) ? heatmapPayload.axes.rows.items.length : 0,
+                num_cells_nonzero: Array.isArray(heatmapPayload.cells?.items) ? heatmapPayload.cells.items.length : 0,
+                num_unmapped_conflicts: Array.isArray(heatmapPayload.unmapped_conflicts) ? heatmapPayload.unmapped_conflicts.length : 0,
+                max_severity: Math.max(
+                  0,
+                  ...((Array.isArray(heatmapPayload.cells?.items) ? heatmapPayload.cells.items : []).map((c) => Number(c?.severity) || 0)),
+                  ...((Array.isArray(heatmapPayload.unmapped_conflicts) ? heatmapPayload.unmapped_conflicts : []).map((c) => Number(c?.severity) || 0)),
+                ),
+                routine_simulation_safe: Boolean(simPayload.safe),
+                routine_conflict_count: Array.isArray(simPayload.conflicts) ? simPayload.conflicts.length : 0,
+                trigger_source: ctx.trigger_source,
+              }),
+            );
+          }
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeAssistantMessage(msgText, 'markdown'),
+            suggested_chips: [],
+            cards: [
+              { card_id: `sim_${ctx.request_id}`, type: 'routine_simulation', payload: simPayload },
+              { card_id: `heatmap_${ctx.request_id}`, type: 'conflict_heatmap', payload: heatmapPayload },
+            ],
+            session_patch: {},
+            events,
+          });
+          return res.json(envelope);
+        }
       }
 
       const allowRecoCards =
