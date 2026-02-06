@@ -103,6 +103,8 @@ const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || pr
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
 const CONFLICT_HEATMAP_V1_ENABLED = String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
+const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
+const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
   process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
     process.env.PIVOTA_BACKEND_API_KEY ||
@@ -199,6 +201,199 @@ function buildPivotaBackendAuthHeaders(req) {
     return { 'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY, Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}` };
   }
   return {};
+}
+
+function buildPivotaBackendAgentHeaders() {
+  if (PIVOTA_BACKEND_AGENT_API_KEY) {
+    return { 'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY, Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}` };
+  }
+  return {};
+}
+
+function extractAgentProductsFromSearchResponse(raw) {
+  if (!raw) return [];
+  const obj = raw && typeof raw === 'object' ? raw : null;
+  if (!obj) return [];
+  if (Array.isArray(obj)) return obj;
+  if (Array.isArray(obj.products)) return obj.products;
+  if (Array.isArray(obj.items)) return obj.items;
+  if (Array.isArray(obj.results)) return obj.results;
+  const data = obj.data;
+  if (data && typeof data === 'object') {
+    if (Array.isArray(data.products)) return data.products;
+    if (Array.isArray(data.items)) return data.items;
+    if (Array.isArray(data.results)) return data.results;
+  }
+  return [];
+}
+
+function normalizeRecoCatalogProduct(raw) {
+  const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+
+  const productId =
+    (typeof base.product_id === 'string' && base.product_id) ||
+    (typeof base.productId === 'string' && base.productId) ||
+    (typeof base.id === 'string' && base.id) ||
+    '';
+
+  const merchantId =
+    (typeof base.merchant_id === 'string' && base.merchant_id) ||
+    (typeof base.merchantId === 'string' && base.merchantId) ||
+    (base.merchant && typeof base.merchant === 'object' && !Array.isArray(base.merchant) && typeof base.merchant.merchant_id === 'string'
+      ? base.merchant.merchant_id
+      : '') ||
+    '';
+
+  const brand =
+    (typeof base.brand === 'string' && base.brand) ||
+    (typeof base.brand_name === 'string' && base.brand_name) ||
+    (typeof base.brandName === 'string' && base.brandName) ||
+    '';
+
+  const name =
+    (typeof base.name === 'string' && base.name) ||
+    (typeof base.title === 'string' && base.title) ||
+    '';
+
+  const displayName =
+    (typeof base.display_name === 'string' && base.display_name) ||
+    (typeof base.displayName === 'string' && base.displayName) ||
+    name ||
+    '';
+
+  const skuId =
+    (typeof base.sku_id === 'string' && base.sku_id) ||
+    (typeof base.skuId === 'string' && base.skuId) ||
+    '';
+
+  const imageUrl =
+    (typeof base.image_url === 'string' && base.image_url) ||
+    (typeof base.imageUrl === 'string' && base.imageUrl) ||
+    (typeof base.thumbnail_url === 'string' && base.thumbnail_url) ||
+    (typeof base.thumbnailUrl === 'string' && base.thumbnailUrl) ||
+    '';
+
+  const out = {
+    product_id: String(productId || '').trim(),
+    merchant_id: String(merchantId || '').trim() || null,
+    ...(String(skuId || '').trim() ? { sku_id: String(skuId).trim() } : {}),
+    ...(String(brand || '').trim() ? { brand: String(brand).trim() } : {}),
+    ...(String(name || '').trim() ? { name: String(name).trim() } : {}),
+    ...(String(displayName || '').trim() ? { display_name: String(displayName).trim() } : {}),
+    ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
+  };
+
+  return out.product_id ? out : null;
+}
+
+async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return { ok: false, products: [], reason: 'query_missing' };
+  if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], reason: 'pivota_backend_not_configured' };
+
+  try {
+    const resp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`, {
+      params: {
+        query: q,
+        search_all_merchants: true,
+        in_stock_only: false,
+        limit: Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6)),
+        offset: 0,
+      },
+      headers: buildPivotaBackendAgentHeaders(),
+      timeout: 12000,
+    });
+
+    const rawList = extractAgentProductsFromSearchResponse(resp && resp.data ? resp.data : null);
+    const products = rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
+
+    return { ok: true, products };
+  } catch (err) {
+    logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: reco catalog search failed');
+    return { ok: false, products: [], reason: 'upstream_error' };
+  }
+}
+
+function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
+  const raw = RECO_CATALOG_GROUNDED_QUERIES;
+  const fromEnv = raw
+    ? raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 8)
+    : null;
+
+  const base = fromEnv && fromEnv.length > 0 ? fromEnv : ['cleanser', 'moisturizer', 'sunscreen'];
+
+  const goalPrimaryRaw = profileSummary && typeof profileSummary.goal_primary === 'string' ? profileSummary.goal_primary.trim().toLowerCase() : '';
+  const goals = Array.isArray(profileSummary?.goals) ? profileSummary.goals : [];
+  const goalsText = [goalPrimaryRaw, ...goals.map((g) => String(g || '').trim().toLowerCase())].filter(Boolean).join(' ');
+  const hasAcne = /\b(acne|breakout|breakouts)\b/.test(goalsText) || /痘/.test(goalsText);
+
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const stepLabels = {
+    cleanser: isCn ? '洁面' : 'Cleanser',
+    moisturizer: isCn ? '保湿' : 'Moisturizer',
+    sunscreen: isCn ? '防晒' : 'Sunscreen',
+    treatment: isCn ? '功效' : 'Treatment',
+  };
+
+  const items = base.map((q, idx) => {
+    const key = String(q || '').trim().toLowerCase();
+    const step = stepLabels[key] || (isCn ? `推荐 ${idx + 1}` : `Recommendation ${idx + 1}`);
+    const slot = idx === 0 ? 'am' : idx === 1 ? 'pm' : 'other';
+    const query = hasAcne && key === 'cleanser' ? 'acne cleanser' : q;
+    return { query: String(query || '').trim(), step, slot };
+  });
+
+  return items.slice(0, 8);
+}
+
+async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger } = {}) {
+  if (!RECO_CATALOG_GROUNDED_ENABLED) return null;
+  if (!PIVOTA_BACKEND_BASE_URL) return null;
+
+  const queries = buildRecoCatalogQueries({ profileSummary, lang: ctx && ctx.lang ? ctx.lang : 'EN' });
+  if (!queries.length) return null;
+
+  const results = await mapWithConcurrency(queries, 3, async (q) => {
+    const out = await searchPivotaBackendProducts({ query: q.query, limit: 6, logger });
+    return { ...q, ...out };
+  });
+
+  const usedProductIds = new Set();
+  const recos = [];
+  for (const r of results) {
+    const products = Array.isArray(r?.products) ? r.products : [];
+    const picked = products.find((p) => p && p.product_id && !usedProductIds.has(p.product_id));
+    if (!picked) continue;
+    usedProductIds.add(picked.product_id);
+    recos.push({
+      slot: r.slot || 'other',
+      step: r.step || (ctx && ctx.lang === 'CN' ? '推荐' : 'Recommendation'),
+      score: 95,
+      sku: picked,
+      ...(debug
+        ? {
+          notes:
+            ctx && ctx.lang === 'CN'
+              ? ['来自 Pivota 商品库（PDP 测试模式）']
+              : ['From Pivota catalog (PDP test mode)'],
+        }
+        : {}),
+    });
+  }
+
+  if (!recos.length) return null;
+
+  return {
+    recommendations: recos,
+    evidence: null,
+    confidence: 0.9,
+    missing_info: [],
+    warnings: [],
+  };
 }
 
 function normalizeHeatmapStepLabel(raw, { slot } = {}) {
@@ -1883,44 +2078,55 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     String(message || '').trim() ||
     (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
 
-  const query =
-    `${prefix}` +
-    buildAuroraProductRecommendationsQuery({
-      profile: profileSummary || {},
-      requestText: userAsk,
-      lang: ctx.lang,
-    });
-
   let upstream = null;
-  try {
-    upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 22000 });
-  } catch (err) {
-    if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
-      logger?.warn({ err: err.message }, 'aurora bff: product reco upstream failed');
+  let contextMeta = {};
+
+  const catalogStructured = await buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger });
+
+  // Prefer: catalog-grounded → explicit JSON (from answer) → routine object (from context) → any structured blob.
+  let structured = catalogStructured;
+  let structuredSource = catalogStructured ? 'catalog_grounded' : null;
+  let answerJson = null;
+
+  if (!structured) {
+    const query =
+      `${prefix}` +
+      buildAuroraProductRecommendationsQuery({
+        profile: profileSummary || {},
+        requestText: userAsk,
+        lang: ctx.lang,
+      });
+
+    try {
+      upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 22000 });
+    } catch (err) {
+      if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
+        logger?.warn({ err: err.message }, 'aurora bff: product reco upstream failed');
+      }
+    }
+
+    const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
+    const routine = contextObj ? contextObj.routine : null;
+    contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
+    if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
+      contextMeta.budget = profileSummary.budgetTier;
+    }
+
+    answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
+    const structuredFallback = getUpstreamStructuredOrJson(upstream);
+
+    structured = answerJson;
+    structuredSource = answerJson ? 'answer_json' : null;
+    if (!structured && routine) {
+      structured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
+      structuredSource = 'context_routine';
+    }
+    if (!structured) {
+      structured = structuredFallback;
+      structuredSource = structuredFallback ? 'structured_fallback' : null;
     }
   }
 
-  const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
-  const routine = contextObj ? contextObj.routine : null;
-  const contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
-  if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
-    contextMeta.budget = profileSummary.budgetTier;
-  }
-
-  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
-  const structuredFallback = getUpstreamStructuredOrJson(upstream);
-
-  // Prefer: explicit JSON (from answer) → routine object (from context) → any structured blob.
-  let structured = answerJson;
-  let structuredSource = answerJson ? 'answer_json' : null;
-  if (!structured && routine) {
-    structured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
-    structuredSource = 'context_routine';
-  }
-  if (!structured) {
-    structured = structuredFallback;
-    structuredSource = structuredFallback ? 'structured_fallback' : null;
-  }
   const upstreamDebug = debug
     ? {
       intent: upstream && typeof upstream.intent === 'string' ? upstream.intent : null,
@@ -1948,6 +2154,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? Object.keys(answerJson).slice(0, 24) : [],
       extracted_structured_keys:
         structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
+      reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
     }
     : null;
   const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
