@@ -13,6 +13,7 @@ const {
 } = require('../src/auroraBff/gating');
 const { normalizeRecoGenerate } = require('../src/auroraBff/normalize');
 const { simulateConflicts } = require('../src/auroraBff/routineRules');
+const { buildConflictHeatmapV1 } = require('../src/auroraBff/conflictHeatmapV1');
 const { auroraChat } = require('../src/auroraBff/auroraDecisionClient');
 const { createStageProfiler } = require('../src/auroraBff/skinAnalysisProfiling');
 const { should_call_llm: shouldCallLlm } = require('../src/auroraBff/skinLlmPolicy');
@@ -66,6 +67,182 @@ test('Routine simulate: detects retinoid x acids conflict', async () => {
   });
   assert.equal(sim.safe, false);
   assert.equal(sim.conflicts.some((c) => c.rule_id === 'retinoid_x_acids'), true);
+});
+
+test('Conflict heatmap V1: retinoid_x_acids maps to severity 3 at (1,2)', async () => {
+  const payload = buildConflictHeatmapV1({
+    routineSimulation: {
+      schema_version: 'aurora.conflicts.v1',
+      safe: false,
+      conflicts: [{ severity: 'block', rule_id: 'retinoid_x_acids', message: 'x', step_indices: [1, 2] }],
+      summary: 'x',
+    },
+    routineSteps: ['AM Cleanser', 'PM Treatment', 'PM Moisturizer'],
+  });
+
+  assert.equal(payload.schema_version, 'aurora.ui.conflict_heatmap.v1');
+  assert.equal(payload.state, 'has_conflicts');
+  assert.equal(payload.cells.encoding, 'sparse');
+  assert.equal(payload.cells.default_severity, 0);
+  assert.ok(Array.isArray(payload.cells.items));
+  assert.equal(payload.cells.items.length, 1);
+  assert.deepEqual(payload.cells.items[0], {
+    cell_id: 'cell_1_2',
+    row_index: 1,
+    col_index: 2,
+    severity: 3,
+    rule_ids: ['retinoid_x_acids'],
+    headline_i18n: { en: 'Retinoid × acids', zh: '维A类 × 酸类' },
+    why_i18n: {
+      en: 'Using retinoids with AHAs/BHAs in the same routine can significantly increase irritation and barrier stress.',
+      zh: '维A类与 AHA/BHA 同晚叠加更容易刺激、爆皮，并加重屏障压力。',
+    },
+    recommendations: payload.cells.items[0].recommendations,
+  });
+  assert.ok(Array.isArray(payload.cells.items[0].recommendations));
+  assert.ok(payload.cells.items[0].recommendations.length > 0);
+  assert.ok(payload.cells.items[0].recommendations.every((r) => typeof r?.en === 'string' && typeof r?.zh === 'string'));
+});
+
+test('Conflict heatmap V1: multiple_exfoliants maps to severity 2 at (1,2)', async () => {
+  const payload = buildConflictHeatmapV1({
+    routineSimulation: {
+      schema_version: 'aurora.conflicts.v1',
+      safe: false,
+      conflicts: [{ severity: 'warn', rule_id: 'multiple_exfoliants', message: 'x', step_indices: [2, 1] }],
+      summary: 'x',
+    },
+    routineSteps: ['AM Cleanser', 'PM Treatment', 'PM Moisturizer'],
+  });
+
+  assert.equal(payload.state, 'has_conflicts');
+  assert.equal(payload.cells.items.length, 1);
+  assert.equal(payload.cells.items[0].cell_id, 'cell_1_2');
+  assert.equal(payload.cells.items[0].severity, 2);
+  assert.deepEqual(payload.cells.items[0].rule_ids, ['multiple_exfoliants']);
+});
+
+test('Conflict heatmap V1: safe + no conflicts -> no_conflicts', async () => {
+  const payload = buildConflictHeatmapV1({
+    routineSimulation: { safe: true, conflicts: [], summary: 'ok' },
+    routineSteps: ['AM Cleanser', 'PM Moisturizer'],
+  });
+
+  assert.equal(payload.state, 'no_conflicts');
+  assert.equal(Array.isArray(payload.cells.items), true);
+  assert.equal(payload.cells.items.length, 0);
+  assert.equal(Array.isArray(payload.unmapped_conflicts), true);
+  assert.equal(payload.unmapped_conflicts.length, 0);
+});
+
+test('Conflict heatmap V1: missing step pair -> unmapped_conflicts + partial state', async () => {
+  const payload = buildConflictHeatmapV1({
+    routineSimulation: {
+      schema_version: 'aurora.conflicts.v1',
+      safe: false,
+      conflicts: [{ severity: 'warn', rule_id: 'multiple_exfoliants', message: 'x' }],
+      summary: 'x',
+    },
+    routineSteps: ['AM Cleanser', 'PM Treatment', 'PM Moisturizer'],
+  });
+
+  assert.equal(payload.state, 'has_conflicts_partial');
+  assert.equal(payload.cells.items.length, 0);
+  assert.equal(payload.unmapped_conflicts.length, 1);
+  assert.equal(payload.unmapped_conflicts[0].rule_id, 'multiple_exfoliants');
+  assert.equal(payload.unmapped_conflicts[0].severity, 2);
+  assert.ok(payload.unmapped_conflicts[0].message_i18n);
+});
+
+test('/v1/routine/simulate: emits conflict_heatmap payload when enabled', async () => {
+  await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true' }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await invokeRoute(app, 'POST', '/v1/routine/simulate', {
+      headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' },
+      body: {
+        routine: { pm: [{ key_actives: ['retinol'], step: 'Treatment' }] },
+        test_product: { key_actives: ['glycolic acid'], name: 'Test Acid' },
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    assert.ok(Array.isArray(resp.body?.cards));
+    const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+    const heatmap = cards.find((c) => c && c.type === 'conflict_heatmap');
+    assert.ok(heatmap);
+    assert.equal(heatmap?.payload?.schema_version, 'aurora.ui.conflict_heatmap.v1');
+    assert.equal(heatmap?.payload?.state, 'has_conflicts');
+    assert.ok(Array.isArray(heatmap?.payload?.cells?.items));
+    assert.equal(heatmap.payload.cells.items.length, 1);
+    assert.equal(heatmap.payload.cells.items[0].severity, 2);
+
+    const impression = Array.isArray(resp.body?.events)
+      ? resp.body.events.find((e) => e && e.event_name === 'aurora_conflict_heatmap_impression')
+      : null;
+    assert.ok(impression);
+    assert.equal(impression?.data?.state, heatmap.payload.state);
+  });
 });
 
 test('Skin LLM policy: quality fail skips all LLM calls', async () => {
@@ -572,6 +749,187 @@ test('/v1/chat: exposes env_stress + citations + conflicts cards (contracts)', a
   const heatmap = cards.find((c) => c && c.type === 'conflict_heatmap');
   assert.ok(heatmap);
   assert.equal(heatmap?.payload?.schema_version, 'aurora.ui.conflict_heatmap.v1');
+});
+
+test('/v1/chat: weather question short-circuits to env_stress (trigger_source=text)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+    headers: { 'X-Aurora-UID': 'test_uid_env_1', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+    body: {
+      message: '明天要下雪，我应该注意什么？',
+      // Simulate being mid-flow: should still short-circuit instead of calling upstream/diagnosis routing.
+      client_state: 'DIAG_PROFILE',
+      session: { state: 'S7_PRODUCT_RECO' },
+      language: 'CN',
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  assert.ok(Array.isArray(resp.body?.cards));
+  assert.ok(Array.isArray(resp.body?.suggested_chips));
+
+  const envStress = resp.body.cards.find((c) => c && c.type === 'env_stress');
+  assert.ok(envStress);
+  assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
+
+  assert.ok(resp.body.suggested_chips.some((c) => c && c.chip_id === 'chip.start.routine'));
+  assert.ok(resp.body.suggested_chips.some((c) => c && c.chip_id === 'chip.start.reco_products'));
+
+  const vm = (resp.body?.events || []).find((e) => e && e.event_name === 'value_moment') || null;
+  assert.ok(vm);
+  assert.equal(vm?.data?.kind, 'weather_advice');
+  assert.equal(vm?.data?.scenario, 'snow');
+});
+
+test('/v1/chat: weather question short-circuits to env_stress (trigger_source=text_explicit)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+    headers: { 'X-Aurora-UID': 'test_uid_env_2', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+    body: {
+      // Contains "推荐" -> trigger_source=text_explicit. Should still go to env-stress, not upstream.
+      message: '下雪天推荐我怎么护肤？',
+      session: { state: 'S7_PRODUCT_RECO' },
+      language: 'CN',
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  assert.ok(Array.isArray(resp.body?.cards));
+  assert.ok(Array.isArray(resp.body?.suggested_chips));
+
+  const envStress = resp.body.cards.find((c) => c && c.type === 'env_stress');
+  assert.ok(envStress);
+  assert.equal(envStress?.payload?.schema_version, 'aurora.ui.env_stress.v1');
+
+  assert.ok(resp.body.suggested_chips.some((c) => c && c.chip_id === 'chip.start.routine'));
+  assert.ok(resp.body.suggested_chips.some((c) => c && c.chip_id === 'chip.start.reco_products'));
+
+  const vm = (resp.body?.events || []).find((e) => e && e.event_name === 'value_moment') || null;
+  assert.ok(vm);
+  assert.equal(vm?.data?.kind, 'weather_advice');
+  assert.equal(vm?.data?.scenario, 'snow');
 });
 
 test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', async () => {

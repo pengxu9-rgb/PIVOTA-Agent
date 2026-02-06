@@ -70,6 +70,11 @@ function simulateConflicts({ routine, testProduct }) {
   const am = Array.isArray(routine && routine.am) ? routine.am : [];
   const pm = Array.isArray(routine && routine.pm) ? routine.pm : [];
 
+  const stepActives = [];
+  for (const item of am) stepActives.push(extractActives(item).map((t) => t.toLowerCase()));
+  for (const item of pm) stepActives.push(extractActives(item).map((t) => t.toLowerCase()));
+  if (testProduct) stepActives.push(extractActives(testProduct).map((t) => t.toLowerCase()));
+
   const routineActives = uniq([
     ...am.flatMap(extractActives),
     ...pm.flatMap(extractActives),
@@ -84,40 +89,69 @@ function simulateConflicts({ routine, testProduct }) {
 
   const conflicts = [];
 
+  const indicesWith = (token) => {
+    const out = [];
+    for (let i = 0; i < stepActives.length; i += 1) {
+      if (stepActives[i].includes(token)) out.push(i);
+    }
+    return out;
+  };
+
+  const findDistinctPair = (aIndices, bIndices) => {
+    const a = Array.isArray(aIndices) ? aIndices : [];
+    const b = Array.isArray(bIndices) ? bIndices : [];
+    for (const i of a) {
+      for (const j of b) {
+        if (i === j) continue;
+        return i < j ? [i, j] : [j, i];
+      }
+    }
+    return null;
+  };
+
   // Retinoid + strong acids
   if (has('retinoid') && (has('aha') || has('bha'))) {
+    const pair = findDistinctPair(indicesWith('retinoid'), [...indicesWith('aha'), ...indicesWith('bha')]);
     conflicts.push({
       severity: 'warn',
       rule_id: 'retinoid_x_acids',
       message: 'Retinoids + AHAs/BHAs can increase irritation. Consider alternating nights or spacing them apart.',
+      ...(pair ? { step_indices: pair } : {}),
     });
   }
 
   // Retinoid + benzoyl peroxide
   if (has('retinoid') && has('benzoyl_peroxide')) {
+    const pair = findDistinctPair(indicesWith('retinoid'), indicesWith('benzoyl_peroxide'));
     conflicts.push({
       severity: 'block',
       rule_id: 'retinoid_x_bpo',
       message: 'Avoid layering retinoids with benzoyl peroxide in the same routine; it can be very irritating and reduce efficacy.',
+      ...(pair ? { step_indices: pair } : {}),
     });
   }
 
   // Vitamin C + acids
   if (has('vitamin_c') && (has('aha') || has('bha'))) {
+    const pair = findDistinctPair(indicesWith('vitamin_c'), [...indicesWith('aha'), ...indicesWith('bha')]);
     conflicts.push({
       severity: 'warn',
       rule_id: 'vitc_x_acids',
       message: 'Vitamin C + strong acids may be too irritating for some skin types. Consider separating AM/PM.',
+      ...(pair ? { step_indices: pair } : {}),
     });
   }
 
   // Over-exfoliation
   const exfoliantCount = ['aha', 'bha'].filter((t) => routineActives.includes(t)).length;
   if (exfoliantCount >= 2) {
+    const exfoliantSteps = Array.from(new Set([...indicesWith('aha'), ...indicesWith('bha')])).sort((a, b) => a - b);
+    const pair = exfoliantSteps.length >= 2 ? [exfoliantSteps[0], exfoliantSteps[1]] : null;
     conflicts.push({
       severity: 'warn',
       rule_id: 'multiple_exfoliants',
       message: 'Multiple exfoliants detected in the routine. Watch for dryness/irritation and reduce frequency if needed.',
+      ...(pair ? { step_indices: pair } : {}),
     });
   }
 
@@ -135,4 +169,3 @@ module.exports = {
   extractActives,
   simulateConflicts,
 };
-

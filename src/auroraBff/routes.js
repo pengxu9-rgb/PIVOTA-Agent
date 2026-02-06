@@ -82,6 +82,7 @@ const {
   normalizeRecoGenerate,
 } = require('./normalize');
 const { simulateConflicts } = require('./routineRules');
+const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
@@ -101,6 +102,7 @@ const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || pr
   .replace(/\/$/, '');
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
+const CONFLICT_HEATMAP_V1_ENABLED = String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
   process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
     process.env.PIVOTA_BACKEND_API_KEY ||
@@ -197,6 +199,87 @@ function buildPivotaBackendAuthHeaders(req) {
     return { 'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY, Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}` };
   }
   return {};
+}
+
+function normalizeHeatmapStepLabel(raw, { slot } = {}) {
+  const slotPrefix = String(slot || '').trim().toUpperCase();
+  const base =
+    raw && typeof raw === 'object'
+      ? String(raw.step || raw.category || raw.slot_step || raw.title || raw.name || raw.display_name || '').trim()
+      : String(raw || '').trim();
+  const label = base || '';
+  if (!label) return '';
+  if (!slotPrefix) return label.slice(0, 60);
+  return `${slotPrefix} ${label}`.slice(0, 60);
+}
+
+function buildHeatmapStepsFromRoutine(routine, { testProduct } = {}) {
+  const routineObj = routine && typeof routine === 'object' ? routine : {};
+  const am = Array.isArray(routineObj.am) ? routineObj.am : [];
+  const pm = Array.isArray(routineObj.pm) ? routineObj.pm : [];
+  const out = [];
+
+  for (const item of am) {
+    const label = normalizeHeatmapStepLabel(item, { slot: 'AM' });
+    out.push(label || item);
+    if (out.length >= 16) return out;
+  }
+  for (const item of pm) {
+    const label = normalizeHeatmapStepLabel(item, { slot: 'PM' });
+    out.push(label || item);
+    if (out.length >= 16) return out;
+  }
+  if (testProduct) {
+    const label = normalizeHeatmapStepLabel(testProduct, { slot: 'TEST' });
+    out.push(label || testProduct);
+  }
+  return out;
+}
+
+function extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw } = {}) {
+  if (conflictDetector && typeof conflictDetector === 'object') {
+    const candidates = [
+      conflictDetector.steps,
+      conflictDetector.routine_steps,
+      conflictDetector.routineSteps,
+      conflictDetector.routineStepsV1,
+      conflictDetector.routine && conflictDetector.routine.steps,
+      conflictDetector.routine && conflictDetector.routine.routine_steps,
+      conflictDetector.routine && conflictDetector.routine.routineSteps,
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate) && candidate.length) return candidate;
+    }
+    const routineCandidate =
+      conflictDetector.routine && typeof conflictDetector.routine === 'object'
+        ? conflictDetector.routine
+        : null;
+    if (routineCandidate) {
+      const steps = buildHeatmapStepsFromRoutine(routineCandidate);
+      if (steps.length) return steps;
+    }
+  }
+
+  if (contextRaw && typeof contextRaw === 'object') {
+    const candidates = [
+      contextRaw.routine,
+      contextRaw.routine_v1,
+      contextRaw.routineV1,
+      contextRaw.current_routine,
+      contextRaw.currentRoutine,
+      contextRaw.recommended_routine,
+      contextRaw.recommendedRoutine,
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate) && candidate.length) return candidate;
+      if (candidate && typeof candidate === 'object') {
+        const steps = buildHeatmapStepsFromRoutine(candidate);
+        if (steps.length) return steps;
+      }
+    }
+  }
+
+  return [];
 }
 
 let openaiClient;
@@ -5461,6 +5544,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       const routine = parsed.data.routine || {};
       const testProduct = parsed.data.test_product || null;
       const sim = simulateConflicts({ routine, testProduct });
+      const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
+      const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+        ? buildConflictHeatmapV1({ routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary }, routineSteps: heatmapSteps })
+        : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
@@ -5470,9 +5557,35 @@ function mountAuroraBffRoutes(app, { logger }) {
             type: 'routine_simulation',
             payload: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary },
           },
+          {
+            card_id: `heatmap_${ctx.request_id}`,
+            type: 'conflict_heatmap',
+            payload: heatmapPayload,
+          },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length })],
+        events: [
+          makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length }),
+          ...(CONFLICT_HEATMAP_V1_ENABLED
+            ? [
+              makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
+                schema_version: heatmapPayload.schema_version,
+                state: heatmapPayload.state,
+                num_steps: Array.isArray(heatmapPayload.axes?.rows?.items) ? heatmapPayload.axes.rows.items.length : 0,
+                num_cells_nonzero: Array.isArray(heatmapPayload.cells?.items) ? heatmapPayload.cells.items.length : 0,
+                num_unmapped_conflicts: Array.isArray(heatmapPayload.unmapped_conflicts) ? heatmapPayload.unmapped_conflicts.length : 0,
+                max_severity: Math.max(
+                  0,
+                  ...((Array.isArray(heatmapPayload.cells?.items) ? heatmapPayload.cells.items : []).map((c) => Number(c?.severity) || 0)),
+                  ...((Array.isArray(heatmapPayload.unmapped_conflicts) ? heatmapPayload.unmapped_conflicts : []).map((c) => Number(c?.severity) || 0)),
+                ),
+                routine_simulation_safe: Boolean(sim.safe),
+                routine_conflict_count: sim.conflicts.length,
+                trigger_source: ctx.trigger_source,
+              }),
+            ]
+            : []),
+        ],
       });
       return res.json(envelope);
     } catch (err) {
@@ -5792,6 +5905,44 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         agentState = validation.next_state;
+      }
+
+      // Local env-stress short-circuit: answer weather/environment questions without upstream.
+      // Only for user-typed text (including text_explicit). Chips/actions should keep their intended routing.
+      if (
+        looksLikeWeatherOrEnvironmentQuestion(message) &&
+        (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
+      ) {
+        const scenario = extractWeatherScenario(message);
+        const envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
+        const advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
+
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const suggestedChips = [
+          {
+            chip_id: 'chip.start.routine',
+            label: lang === 'CN' ? '生成 AM/PM 护肤流程' : 'Build an AM/PM routine',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '帮我按这个天气生成 AM/PM 护肤流程' : 'Build an AM/PM routine for these conditions' },
+          },
+          {
+            chip_id: 'chip.start.reco_products',
+            label: lang === 'CN' ? '推荐防护产品' : 'Recommend protective products',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '这个天气下我应该用什么类型的防护产品？' : 'What protective products should I use for these conditions?' },
+          },
+        ];
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(advice, 'markdown'),
+          suggested_chips: suggestedChips,
+          cards: envStressUi
+            ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
+            : [],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
+        });
+        return res.json(envelope);
       }
 
       const allowRecoCards =
@@ -6164,40 +6315,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
-      // Upstream Aurora decision system (best-effort).
-      if (looksLikeWeatherOrEnvironmentQuestion(message) && ctx.trigger_source === 'text') {
-        const scenario = extractWeatherScenario(message);
-        const envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
-        const advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
-
-        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-        const suggestedChips = [
-          {
-            chip_id: 'chip.start.routine',
-            label: lang === 'CN' ? '生成雪天 AM/PM 护肤流程' : 'Build a snow-day AM/PM routine',
-            kind: 'quick_reply',
-            data: { reply_text: lang === 'CN' ? '帮我按雪天生成 AM/PM 护肤流程' : 'Build an AM/PM routine for snow-day conditions' },
-          },
-          {
-            chip_id: 'chip.start.reco_products',
-            label: lang === 'CN' ? '推荐雪天防护产品' : 'Recommend protective products',
-            kind: 'quick_reply',
-            data: { reply_text: lang === 'CN' ? '雪天我应该用什么类型的防护产品？' : 'What protective products should I use for snow-day conditions?' },
-          },
-        ];
-
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(advice, 'markdown'),
-          suggested_chips: suggestedChips,
-          cards: envStressUi
-            ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
-            : [],
-          session_patch: {},
-          events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
-        });
-        return res.json(envelope);
-      }
-
       let upstream = null;
       const profileSummary = summarizeProfileForContext(profile);
       const prefix = buildContextPrefix({
@@ -6298,6 +6415,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const contextRaw = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
       const derivedCards = [];
+      let heatmapImpressionEvent = null;
       const envStressActionRequested = typeof actionId === 'string' && /env[_-]?stress|environment[_-]?stress|weather|itinerary/i.test(actionId);
       const looksEnv = looksLikeWeatherOrEnvironmentQuestion(message);
       const wantsEnvStressCard = Boolean(debugUpstream) || envStressActionRequested || looksEnv;
@@ -6347,11 +6465,32 @@ function mountAuroraBffRoutes(app, { logger }) {
             type: 'routine_simulation',
             payload: conflictDetector,
           });
+          const heatmapSteps = extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw });
+          const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+            ? buildConflictHeatmapV1({ routineSimulation: conflictDetector, routineSteps: heatmapSteps })
+            : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
           derivedCards.push({
             card_id: `heatmap_${ctx.request_id}`,
             type: 'conflict_heatmap',
-            payload: { schema_version: 'aurora.ui.conflict_heatmap.v1' },
+            payload: heatmapPayload,
           });
+          if (CONFLICT_HEATMAP_V1_ENABLED) {
+            heatmapImpressionEvent = makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
+              schema_version: heatmapPayload.schema_version,
+              state: heatmapPayload.state,
+              num_steps: Array.isArray(heatmapPayload.axes?.rows?.items) ? heatmapPayload.axes.rows.items.length : 0,
+              num_cells_nonzero: Array.isArray(heatmapPayload.cells?.items) ? heatmapPayload.cells.items.length : 0,
+              num_unmapped_conflicts: Array.isArray(heatmapPayload.unmapped_conflicts) ? heatmapPayload.unmapped_conflicts.length : 0,
+              max_severity: Math.max(
+                0,
+                ...((Array.isArray(heatmapPayload.cells?.items) ? heatmapPayload.cells.items : []).map((c) => Number(c?.severity) || 0)),
+                ...((Array.isArray(heatmapPayload.unmapped_conflicts) ? heatmapPayload.unmapped_conflicts : []).map((c) => Number(c?.severity) || 0)),
+              ),
+              routine_simulation_safe: Boolean(conflictDetector.safe),
+              routine_conflict_count: Array.isArray(conflictDetector.conflicts) ? conflictDetector.conflicts.length : 0,
+              trigger_source: ctx.trigger_source,
+            });
+          }
         }
       }
 
@@ -6409,6 +6548,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'chat_reply' }),
           ...(allowRecs ? [makeEvent(ctx, 'recos_requested', { explicit: true })] : []),
+          ...(heatmapImpressionEvent ? [heatmapImpressionEvent] : []),
         ],
       });
       return res.json(envelope);

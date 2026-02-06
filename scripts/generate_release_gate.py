@@ -159,8 +159,12 @@ def _bench_check(path: Optional[Path]) -> CheckResult:
         )
 
     summary = data.get("summary") or {}
+    payload = data.get("payload") or {}
+    qc = _norm_token(payload.get("qc") or "unknown") or "unknown"
+    images = payload.get("images") or []
     total_p50 = float(summary.get("total_p50") or 0.0)
     total_p95 = float(summary.get("total_p95") or 0.0)
+    n = int(summary.get("n") or 0)
     llm_calls = int(summary.get("llm_calls") or 0)
     failure_rate = float(summary.get("failure_rate") or 0.0)
 
@@ -173,9 +177,19 @@ def _bench_check(path: Optional[Path]) -> CheckResult:
     p95_budget_ms = _parse_float_env("RELEASE_BENCH_P95_BUDGET_MS", None)
     fail_rate_budget = _parse_float_env("RELEASE_BENCH_FAILURE_RATE_MAX", 0.05)
     llm_schema_fail_budget = _parse_float_env("RELEASE_BENCH_LLM_SCHEMA_FAIL_MAX", 0.05)
+    sanity_min_p95_ms = _parse_float_env("RELEASE_BENCH_MIN_P95_MS", 1.0)
 
     status = "PASS"
     reasons = []
+    if n <= 0:
+        status = "FAIL"
+        reasons.append("bench report has no samples (summary.n <= 0)")
+    if total_p95 <= 0:
+        status = "FAIL"
+        reasons.append("total_p95_ms <= 0 (bench likely did not run a real pipeline)")
+    if qc != "fail" and sanity_min_p95_ms is not None and sanity_min_p95_ms > 0 and 0 < total_p95 < sanity_min_p95_ms:
+        status = "FAIL"
+        reasons.append(f"suspiciously low total_p95_ms {total_p95:.2f} < sanity_min_p95_ms {sanity_min_p95_ms:.2f}")
     if p95_budget_ms is not None and p95_budget_ms > 0 and total_p95 > p95_budget_ms:
         status = "FAIL"
         reasons.append(f"p95 {total_p95:.2f} ms > budget {p95_budget_ms:.0f} ms")
@@ -192,8 +206,12 @@ def _bench_check(path: Optional[Path]) -> CheckResult:
     budget_line.append(f"- Budget (optional): `RELEASE_BENCH_P95_BUDGET_MS={p95_budget_ms}`")
     budget_line.append(f"- Budget: `RELEASE_BENCH_FAILURE_RATE_MAX={fail_rate_budget}`")
     budget_line.append(f"- Budget: `RELEASE_BENCH_LLM_SCHEMA_FAIL_MAX={llm_schema_fail_budget}`")
+    budget_line.append(f"- Sanity: `RELEASE_BENCH_MIN_P95_MS={sanity_min_p95_ms}` (skipped when qc=fail)")
 
     rows = [
+        ("qc", qc),
+        ("images", str(len(images)) if isinstance(images, list) else "unknown"),
+        ("n", str(n)),
         ("total_p50_ms", f"{total_p50:.2f}"),
         ("total_p95_ms", f"{total_p95:.2f}"),
         ("failure_rate", f"{failure_rate:.2%}"),

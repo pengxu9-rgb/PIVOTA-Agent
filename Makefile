@@ -21,7 +21,7 @@ stability:
 	python3 scripts/perturb_stability.py --lang $(AURORA_LANG) --out $(if $(OUT),$(OUT),artifacts/stability_report.json) $(IMAGES)
 
 test:
-	python3 -m pytest -q tests/test_e2e_contract.py tests/test_perturb_stability.py tests/test_release_gate_discovery.py
+	python3 -m pytest -q tests/test_e2e_contract.py tests/test_perturb_stability.py tests/test_release_gate_discovery.py tests/test_release_gate_bench_sanity.py
 
 golden:
 	UPDATE_GOLDEN=1 python3 -m pytest -q tests/test_e2e_contract.py

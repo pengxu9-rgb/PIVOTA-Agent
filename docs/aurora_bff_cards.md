@@ -71,8 +71,68 @@ Returned by `POST /v1/routine/simulate`.
 
 `payload`:
 - `safe` (boolean)
-- `conflicts` (array of `{ severity, message, step_index?, rule_id? }`)
+- `conflicts` (array of `{ severity, message, rule_id?, step_index?, step_indices? }`)
 - `summary` (string)
+
+`conflicts[]` notes:
+- `severity`: `"warn" | "block"` (string; upstream may extend)
+- `rule_id`: machine-readable rule identifier (optional but preferred)
+- `step_index`: optional single step index (legacy; not used by heatmap v1)
+- `step_indices`: optional step pair indices (preferred for heatmap v1), e.g. `[1, 2]`
+
+### `conflict_heatmap`
+
+Emitted alongside `routine_simulation` when available (feature-flagged rollout).
+
+`payload` (schema version: `aurora.ui.conflict_heatmap.v1`):
+- `schema_version`: `"aurora.ui.conflict_heatmap.v1"` (string; fixed)
+- `state`: `"unavailable" | "no_conflicts" | "has_conflicts" | "has_conflicts_partial"`
+- `title_i18n`: `{ en, zh }`
+- `subtitle_i18n`: `{ en, zh }`
+- `axes`:
+  - `rows`: `{ axis_id:"steps", type:"routine_steps", max_items:16, items:[AxisItem...] }`
+  - `cols`: same as `rows`
+  - `diagonal_policy`: `"empty"`
+- `severity_scale`:
+  - `min`: `0`
+  - `max`: `3`
+  - `meaning`: `"0 none, 1 low, 2 warn, 3 block"`
+  - `labels_i18n`: `{ en: string[], zh: string[] }`
+  - `mapping_from_routine_simulation`: `{ warn: 2, block: 3 }`
+- `cells`:
+  - `encoding`: `"sparse"`
+  - `default_severity`: `0`
+  - `items`: `HeatmapCell[]`
+  - `max_items`: `64`
+  - `max_rule_ids_per_cell`: `3`
+  - `max_recommendations_per_cell`: `3`
+- `unmapped_conflicts`: `UnmappedConflict[]` (max ~10)
+- `footer_note_i18n`: `{ en, zh }`
+- `generated_from`: `{ routine_simulation_schema_version, routine_simulation_safe, conflict_count }`
+- optional: `debug` (default omitted)
+
+Where:
+
+`AxisItem`:
+- `index`: number (0-based)
+- `step_key`: string (e.g. `"step_0"`)
+- `label_i18n`: `{ en, zh }`
+- `short_label_i18n`: `{ en, zh }`
+
+`HeatmapCell`:
+- `cell_id`: string (e.g. `"cell_1_2"`)
+- `row_index`: number
+- `col_index`: number
+- `severity`: `0..3` (number)
+- `rule_ids`: string[] (max ~3)
+- `headline_i18n`: `{ en, zh }`
+- `why_i18n`: `{ en, zh }`
+- `recommendations`: `{ en, zh }[]` (max ~3)
+
+`UnmappedConflict`:
+- `rule_id`: string
+- `severity`: `0..3` (number)
+- `message_i18n`: `{ en, zh }`
 
 ## Product intelligence cards (delegated to Aurora)
 
