@@ -1,0 +1,16 @@
+{
+  "schema_version": "aurora.skin.e2e_contract_golden.v1",
+  "case_id": "analysis_skin_qc_fail",
+  "snapshot": {
+    "analysis_source": "retake",
+    "quality_grade": "fail",
+    "failure_codes": [
+      "qc_failed"
+    ],
+    "llm_called": {
+      "vision": false,
+      "report": false
+    },
+    "finding_types": []
+  }
+}

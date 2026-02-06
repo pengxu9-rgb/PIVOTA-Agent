@@ -203,6 +203,7 @@ function downgradeSkinAnalysisConfidence(analysis, { language } = {}) {
 
 const REASON_TEXT = Object.freeze({
   EN: Object.freeze({
+    llm_kill_switch: 'LLM kill switch is enabled; skipping all model calls.',
     missing_primary_input: 'Missing routine / recent logs; returning a conservative baseline first.',
     photo_not_requested: 'Photo analysis was not requested.',
     vision_unavailable: 'Photo model is unavailable (missing key or disabled).',
@@ -218,6 +219,7 @@ const REASON_TEXT = Object.freeze({
     unknown_kind: 'Unknown LLM kind.',
   }),
   CN: Object.freeze({
+    llm_kill_switch: '已开启 LLM 总开关：强制跳过所有模型调用。',
     missing_primary_input: '缺少当前流程/最近打卡等关键信息；我会先给更保守的基线。',
     photo_not_requested: '你没有选择使用照片解析。',
     vision_unavailable: '照片解析模型不可用（缺少 key 或未启用）。',

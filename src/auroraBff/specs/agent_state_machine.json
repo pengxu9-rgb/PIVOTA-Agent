@@ -1,0 +1,126 @@
+{
+  "version": "0.1",
+  "default_state": "IDLE_CHAT",
+  "states": [
+    "IDLE_CHAT",
+    "SOFT_INTENT_SUGGEST",
+    "QUICK_PROFILE",
+    "DIAG_PROFILE",
+    "DIAG_PHOTO_OPTIN",
+    "DIAG_ANALYSIS_SUMMARY",
+    "ROUTINE_INTAKE",
+    "ROUTINE_REVIEW",
+    "MINIMAL_PLAN",
+    "PRODUCT_LINK_EVAL",
+    "RECO_GATE",
+    "RECO_CONSTRAINTS",
+    "RECO_RESULTS",
+    "SAVE_PROFILE_PROMPT",
+    "RETURN_WELCOME",
+    "CHECKIN_PROMPT",
+    "CHECKIN_FLOW",
+    "SAFETY_TRIAGE"
+  ],
+  "transition_rules": {
+    "hard_rule": "NO_STATE_ADVANCE_WITHOUT_EXPLICIT_TRIGGER"
+  },
+  "trigger_source": ["chip", "action", "text_explicit"],
+  "chips": [
+    {
+      "chip_id": "chip_start_diagnosis",
+      "label_en": "Start Skin Diagnosis",
+      "label_cn": "开始皮肤诊断",
+      "allowed_states": ["IDLE_CHAT", "SOFT_INTENT_SUGGEST", "RETURN_WELCOME"],
+      "next_state": "DIAG_PROFILE",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_quick_profile",
+      "label_en": "30-sec quick profile",
+      "label_cn": "30秒快速画像",
+      "allowed_states": ["IDLE_CHAT", "SOFT_INTENT_SUGGEST", "RETURN_WELCOME"],
+      "next_state": "QUICK_PROFILE",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_eval_routine",
+      "label_en": "Review my current routine",
+      "label_cn": "评估我现在用的",
+      "allowed_states": ["IDLE_CHAT", "SOFT_INTENT_SUGGEST", "DIAG_ANALYSIS_SUMMARY", "RETURN_WELCOME"],
+      "next_state": "ROUTINE_INTAKE",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_eval_single_product",
+      "label_en": "Check a product/link",
+      "label_cn": "评估单品/链接",
+      "allowed_states": ["IDLE_CHAT", "SOFT_INTENT_SUGGEST", "RETURN_WELCOME"],
+      "next_state": "PRODUCT_LINK_EVAL",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_get_recos",
+      "label_en": "Get product recommendations",
+      "label_cn": "获取产品推荐",
+      "allowed_states": ["IDLE_CHAT", "DIAG_ANALYSIS_SUMMARY", "MINIMAL_PLAN", "RETURN_WELCOME"],
+      "next_state": "RECO_GATE",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_keep_chatting",
+      "label_en": "Just keep chatting",
+      "label_cn": "继续聊聊",
+      "allowed_states": ["SOFT_INTENT_SUGGEST", "DIAG_ANALYSIS_SUMMARY", "MINIMAL_PLAN", "RETURN_WELCOME", "CHECKIN_PROMPT"],
+      "next_state": "IDLE_CHAT",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_sensitive_help",
+      "label_en": "I feel irritation / burning",
+      "label_cn": "我有刺痛/刺激",
+      "allowed_states": ["IDLE_CHAT", "SOFT_INTENT_SUGGEST", "RETURN_WELCOME", "MINIMAL_PLAN"],
+      "next_state": "SAFETY_TRIAGE",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_from_scratch",
+      "label_en": "I'm starting from scratch",
+      "label_cn": "我从零开始",
+      "allowed_states": ["ROUTINE_INTAKE"],
+      "next_state": "MINIMAL_PLAN",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_no_products",
+      "label_en": "I'm not using anything now",
+      "label_cn": "我现在什么都没用",
+      "allowed_states": ["ROUTINE_INTAKE"],
+      "next_state": "MINIMAL_PLAN",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_save_profile",
+      "label_en": "Save this for next time",
+      "label_cn": "保存，方便下次继续",
+      "allowed_states": ["MINIMAL_PLAN", "DIAG_ANALYSIS_SUMMARY", "RECO_RESULTS"],
+      "next_state": "SAVE_PROFILE_PROMPT",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_checkin_now",
+      "label_en": "2-week check-in",
+      "label_cn": "两周复盘",
+      "allowed_states": ["IDLE_CHAT", "RETURN_WELCOME", "CHECKIN_PROMPT"],
+      "next_state": "CHECKIN_FLOW",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
+      "chip_id": "chip_update_products",
+      "label_en": "I added/changed products",
+      "label_cn": "我换/加了产品",
+      "allowed_states": ["IDLE_CHAT", "RETURN_WELCOME"],
+      "next_state": "ROUTINE_INTAKE",
+      "analytics_event": "ui_chip_clicked"
+    }
+  ]
+}

@@ -1,5 +1,50 @@
 const { query } = require('../db');
 
+function parseRetentionDays() {
+  const raw =
+    process.env.AURORA_BFF_RETENTION_DAYS ??
+    process.env.AURORA_RETENTION_DAYS ??
+    process.env.RETENTION_DAYS;
+  if (raw === undefined || raw === null || raw === '') return 30;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 30;
+  return Math.max(0, Math.min(365, Math.trunc(n)));
+}
+
+function persistenceDisabled() {
+  return parseRetentionDays() === 0;
+}
+
+const EPHEMERAL_MAX_IDENTITIES = (() => {
+  const n = Number(process.env.AURORA_BFF_EPHEMERAL_MAX_IDENTITIES || 200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 200;
+  return Math.max(10, Math.min(2000, v));
+})();
+
+const ephemeral = {
+  profiles: new Map(),
+  logs: new Map(),
+  identityLinks: new Map(),
+};
+
+function touchEphemeral(map, key, value) {
+  if (!key) return;
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > EPHEMERAL_MAX_IDENTITIES) {
+    const oldestKey = map.keys().next().value;
+    if (!oldestKey) break;
+    map.delete(oldestKey);
+  }
+}
+
+function profileKeyFor({ kind, id }) {
+  const k = String(kind || '').trim() || 'unknown';
+  const uid = String(id || '').trim();
+  if (!uid) return null;
+  return `${k}:${uid}`;
+}
+
 function normalizeAuroraUid(auroraUid) {
   const uid = String(auroraUid || '').trim();
   if (!uid) return null;
@@ -18,6 +63,10 @@ function isoDateUTC(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+function isoTs(d = new Date()) {
+  return d.toISOString();
+}
+
 function coerceIsoDate(value) {
   if (!value) return isoDateUTC();
   const raw = String(value).trim();
@@ -30,6 +79,7 @@ function coerceIsoDate(value) {
 async function ensureUserProfileRow(auroraUid) {
   const uid = normalizeAuroraUid(auroraUid);
   if (!uid) return null;
+  if (persistenceDisabled()) return uid;
   await query(
     `
       INSERT INTO aurora_user_profiles (aurora_uid)
@@ -44,6 +94,7 @@ async function ensureUserProfileRow(auroraUid) {
 async function ensureAccountProfileRow(userId) {
   const uid = normalizeUserId(userId);
   if (!uid) return null;
+  if (persistenceDisabled()) return uid;
   await query(
     `
       INSERT INTO aurora_account_profiles (user_id)
@@ -149,9 +200,87 @@ function mapAccountProfileFromDb(row) {
   };
 }
 
+function ensureEphemeralProfile({ kind, id }) {
+  const key = profileKeyFor({ kind, id });
+  if (!key) return null;
+  const existing = ephemeral.profiles.get(key);
+  if (existing) return existing;
+  const now = isoTs();
+  const base =
+    kind === 'account'
+      ? {
+          user_id: id,
+          skinType: null,
+          sensitivity: null,
+          barrierStatus: null,
+          goals: [],
+          region: null,
+          budgetTier: null,
+          currentRoutine: null,
+          itinerary: null,
+          contraindications: [],
+          lastAnalysis: null,
+          lastAnalysisAt: null,
+          lastAnalysisLang: null,
+          lang_pref: null,
+          updated_at: now,
+          created_at: now,
+        }
+      : {
+          aurora_uid: id,
+          skinType: null,
+          sensitivity: null,
+          barrierStatus: null,
+          goals: [],
+          region: null,
+          budgetTier: null,
+          currentRoutine: null,
+          itinerary: null,
+          contraindications: [],
+          lastAnalysis: null,
+          lastAnalysisAt: null,
+          lastAnalysisLang: null,
+          lang_pref: null,
+          updated_at: now,
+          created_at: now,
+        };
+  touchEphemeral(ephemeral.profiles, key, base);
+  return base;
+}
+
+function upsertEphemeralProfile({ kind, id }, profilePatch) {
+  const key = profileKeyFor({ kind, id });
+  if (!key) return null;
+  const existing = ensureEphemeralProfile({ kind, id });
+  if (!existing) return null;
+  const p = profilePatch || {};
+
+  const next = {
+    ...existing,
+    ...(p.skinType !== undefined ? { skinType: p.skinType } : {}),
+    ...(p.sensitivity !== undefined ? { sensitivity: p.sensitivity } : {}),
+    ...(p.barrierStatus !== undefined ? { barrierStatus: p.barrierStatus } : {}),
+    ...(p.goals !== undefined ? { goals: Array.isArray(p.goals) ? p.goals : [] } : {}),
+    ...(p.region !== undefined ? { region: p.region } : {}),
+    ...(p.budgetTier !== undefined ? { budgetTier: p.budgetTier } : {}),
+    ...(p.currentRoutine !== undefined ? { currentRoutine: p.currentRoutine } : {}),
+    ...(p.itinerary !== undefined ? { itinerary: p.itinerary } : {}),
+    ...(p.contraindications !== undefined ? { contraindications: Array.isArray(p.contraindications) ? p.contraindications : [] } : {}),
+    ...(p.lang_pref !== undefined ? { lang_pref: p.lang_pref } : {}),
+    updated_at: isoTs(),
+  };
+
+  touchEphemeral(ephemeral.profiles, key, next);
+  return next;
+}
+
 async function getUserProfile(auroraUid) {
   const uid = normalizeAuroraUid(auroraUid);
   if (!uid) return null;
+  if (persistenceDisabled()) {
+    const key = profileKeyFor({ kind: 'guest', id: uid });
+    return key ? ephemeral.profiles.get(key) || null : null;
+  }
   const res = await query(
     `
       SELECT *
@@ -168,6 +297,10 @@ async function getUserProfile(auroraUid) {
 async function getAccountProfile(userId) {
   const uid = normalizeUserId(userId);
   if (!uid) return null;
+  if (persistenceDisabled()) {
+    const key = profileKeyFor({ kind: 'account', id: uid });
+    return key ? ephemeral.profiles.get(key) || null : null;
+  }
   const res = await query(
     `
       SELECT *
@@ -184,6 +317,7 @@ async function getAccountProfile(userId) {
 async function upsertUserProfile(auroraUid, profilePatch) {
   const uid = normalizeAuroraUid(auroraUid);
   if (!uid) return null;
+  if (persistenceDisabled()) return upsertEphemeralProfile({ kind: 'guest', id: uid }, profilePatch);
 
   await ensureUserProfileRow(uid);
   const existingRes = await query(
@@ -255,6 +389,7 @@ async function upsertUserProfile(auroraUid, profilePatch) {
 async function upsertAccountProfile(userId, profilePatch) {
   const uid = normalizeUserId(userId);
   if (!uid) return null;
+  if (persistenceDisabled()) return upsertEphemeralProfile({ kind: 'account', id: uid }, profilePatch);
 
   await ensureAccountProfileRow(uid);
   const existingRes = await query(
@@ -365,6 +500,39 @@ function mapAccountSkinLogFromDb(row) {
 async function upsertSkinLog(auroraUid, log) {
   const uid = normalizeAuroraUid(auroraUid);
   if (!uid) return null;
+  if (persistenceDisabled()) {
+    ensureEphemeralProfile({ kind: 'guest', id: uid });
+    const date = coerceIsoDate(log && log.date);
+    const redness = log && typeof log.redness === 'number' ? Math.max(0, Math.min(5, Math.trunc(log.redness))) : null;
+    const acne = log && typeof log.acne === 'number' ? Math.max(0, Math.min(5, Math.trunc(log.acne))) : null;
+    const hydration =
+      log && typeof log.hydration === 'number' ? Math.max(0, Math.min(5, Math.trunc(log.hydration))) : null;
+    const notes = log && typeof log.notes === 'string' ? log.notes.slice(0, 4000) : null;
+    const targetProduct = log && typeof log.targetProduct === 'string' ? log.targetProduct.slice(0, 500) : null;
+    const sensation = log && typeof log.sensation === 'string' ? log.sensation.slice(0, 500) : null;
+
+    const key = profileKeyFor({ kind: 'guest', id: uid });
+    const logsKey = key ? `${key}:logs` : null;
+    if (!logsKey) return null;
+    const byDate = ephemeral.logs.get(logsKey) || new Map();
+    const now = isoTs();
+    const entry = {
+      id: `${uid}:${date}`,
+      aurora_uid: uid,
+      date,
+      redness,
+      acne,
+      hydration,
+      notes,
+      targetProduct,
+      sensation,
+      updated_at: now,
+      created_at: now,
+    };
+    byDate.set(date, entry);
+    touchEphemeral(ephemeral.logs, logsKey, byDate);
+    return entry;
+  }
   await ensureUserProfileRow(uid);
   const date = coerceIsoDate(log && log.date);
 
@@ -401,6 +569,39 @@ async function upsertSkinLog(auroraUid, log) {
 async function upsertAccountSkinLog(userId, log) {
   const uid = normalizeUserId(userId);
   if (!uid) return null;
+  if (persistenceDisabled()) {
+    ensureEphemeralProfile({ kind: 'account', id: uid });
+    const date = coerceIsoDate(log && log.date);
+    const redness = log && typeof log.redness === 'number' ? Math.max(0, Math.min(5, Math.trunc(log.redness))) : null;
+    const acne = log && typeof log.acne === 'number' ? Math.max(0, Math.min(5, Math.trunc(log.acne))) : null;
+    const hydration =
+      log && typeof log.hydration === 'number' ? Math.max(0, Math.min(5, Math.trunc(log.hydration))) : null;
+    const notes = log && typeof log.notes === 'string' ? log.notes.slice(0, 4000) : null;
+    const targetProduct = log && typeof log.targetProduct === 'string' ? log.targetProduct.slice(0, 500) : null;
+    const sensation = log && typeof log.sensation === 'string' ? log.sensation.slice(0, 500) : null;
+
+    const key = profileKeyFor({ kind: 'account', id: uid });
+    const logsKey = key ? `${key}:logs` : null;
+    if (!logsKey) return null;
+    const byDate = ephemeral.logs.get(logsKey) || new Map();
+    const now = isoTs();
+    const entry = {
+      id: `${uid}:${date}`,
+      user_id: uid,
+      date,
+      redness,
+      acne,
+      hydration,
+      notes,
+      targetProduct,
+      sensation,
+      updated_at: now,
+      created_at: now,
+    };
+    byDate.set(date, entry);
+    touchEphemeral(ephemeral.logs, logsKey, byDate);
+    return entry;
+  }
   const date = coerceIsoDate(log && log.date);
 
   const redness = log && typeof log.redness === 'number' ? Math.max(0, Math.min(5, Math.trunc(log.redness))) : null;
@@ -436,6 +637,17 @@ async function upsertAccountSkinLog(userId, log) {
 async function getRecentSkinLogs(auroraUid, days = 7) {
   const uid = normalizeAuroraUid(auroraUid);
   if (!uid) return [];
+  if (persistenceDisabled()) {
+    const key = profileKeyFor({ kind: 'guest', id: uid });
+    const logsKey = key ? `${key}:logs` : null;
+    if (!logsKey) return [];
+    const byDate = ephemeral.logs.get(logsKey);
+    if (!byDate) return [];
+    const n = Math.max(1, Math.min(30, Number(days) || 7));
+    return Array.from(byDate.values())
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+      .slice(0, n);
+  }
   const n = Math.max(1, Math.min(30, Number(days) || 7));
   const res = await query(
     `
@@ -453,6 +665,17 @@ async function getRecentSkinLogs(auroraUid, days = 7) {
 async function getRecentAccountSkinLogs(userId, days = 7) {
   const uid = normalizeUserId(userId);
   if (!uid) return [];
+  if (persistenceDisabled()) {
+    const key = profileKeyFor({ kind: 'account', id: uid });
+    const logsKey = key ? `${key}:logs` : null;
+    if (!logsKey) return [];
+    const byDate = ephemeral.logs.get(logsKey);
+    if (!byDate) return [];
+    const n = Math.max(1, Math.min(30, Number(days) || 7));
+    return Array.from(byDate.values())
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+      .slice(0, n);
+  }
   const n = Math.max(1, Math.min(30, Number(days) || 7));
   const res = await query(
     `
@@ -479,6 +702,10 @@ async function upsertIdentityLink(auroraUid, userId) {
   const uid = normalizeAuroraUid(auroraUid);
   const user = normalizeUserId(userId);
   if (!uid || !user) return null;
+  if (persistenceDisabled()) {
+    ephemeral.identityLinks.set(uid, user);
+    return { aurora_uid: uid, user_id: user };
+  }
   await query(
     `
       INSERT INTO aurora_identity_links (aurora_uid, user_id, created_at, last_seen_at)
@@ -496,6 +723,18 @@ async function migrateGuestDataToUser({ auroraUid, userId }) {
   const uid = normalizeAuroraUid(auroraUid);
   const user = normalizeUserId(userId);
   if (!uid || !user) return { ok: false, reason: 'missing_identity' };
+  if (persistenceDisabled()) {
+    // Retention disabled: best-effort ephemeral merge for the active process only.
+    ephemeral.identityLinks.set(uid, user);
+    const guestKey = profileKeyFor({ kind: 'guest', id: uid });
+    const accountKey = profileKeyFor({ kind: 'account', id: user });
+    if (guestKey && accountKey) {
+      const guest = ephemeral.profiles.get(guestKey);
+      const acct = ephemeral.profiles.get(accountKey);
+      if (guest && !acct) touchEphemeral(ephemeral.profiles, accountKey, { ...guest, user_id: user });
+    }
+    return { ok: true, migrated: false };
+  }
 
   const guestProfile = await getUserProfile(uid);
   const guestLogs = await getRecentSkinLogs(uid, 30);
@@ -619,6 +858,24 @@ async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, la
   }
   if (!json) return null;
 
+  if (persistenceDisabled()) {
+    const key = identity.user_id
+      ? profileKeyFor({ kind: 'account', id: identity.user_id })
+      : profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
+    if (!key) return null;
+    const existing = ephemeral.profiles.get(key) || ensureEphemeralProfile({ kind: identity.user_id ? 'account' : 'guest', id: identity.user_id || identity.aurora_uid });
+    if (!existing) return null;
+    const next = {
+      ...existing,
+      lastAnalysis: analysisObj,
+      lastAnalysisAt: isoTs(),
+      lastAnalysisLang: typeof lang === 'string' ? lang.trim() || null : null,
+      updated_at: isoTs(),
+    };
+    touchEphemeral(ephemeral.profiles, key, next);
+    return next;
+  }
+
   if (identity.user_id) {
     await ensureAccountProfileRow(identity.user_id);
     const res = await query(
@@ -654,6 +911,50 @@ async function saveLastAnalysisForIdentity({ auroraUid, userId }, { analysis, la
   return mapProfileFromDb(res.rows && res.rows[0]);
 }
 
+async function deleteIdentityData({ auroraUid, userId }) {
+  const identity = identityFromRequest({ auroraUid, userId });
+  const hasAny = Boolean(identity.aurora_uid) || Boolean(identity.user_id);
+  if (!hasAny) return { ok: false, deleted: false, reason: 'missing_identity' };
+
+  if (persistenceDisabled()) {
+    if (identity.user_id) {
+      const accountKey = profileKeyFor({ kind: 'account', id: identity.user_id });
+      if (accountKey) {
+        ephemeral.profiles.delete(accountKey);
+        ephemeral.logs.delete(`${accountKey}:logs`);
+      }
+      for (const [k, v] of Array.from(ephemeral.identityLinks.entries())) {
+        if (v === identity.user_id) ephemeral.identityLinks.delete(k);
+      }
+    }
+
+    if (identity.aurora_uid) {
+      const guestKey = profileKeyFor({ kind: 'guest', id: identity.aurora_uid });
+      if (guestKey) {
+        ephemeral.profiles.delete(guestKey);
+        ephemeral.logs.delete(`${guestKey}:logs`);
+      }
+      ephemeral.identityLinks.delete(identity.aurora_uid);
+    }
+
+    return { ok: true, deleted: true, storage: 'ephemeral' };
+  }
+
+  if (identity.user_id) {
+    // Hard-delete account profile and logs (ON DELETE CASCADE).
+    await query(`DELETE FROM aurora_account_profiles WHERE user_id = $1`, [identity.user_id]);
+    // Also delete any guest->account links for this account.
+    await query(`DELETE FROM aurora_identity_links WHERE user_id = $1`, [identity.user_id]);
+  }
+
+  if (identity.aurora_uid) {
+    // Hard-delete guest profile and logs (ON DELETE CASCADE).
+    await query(`DELETE FROM aurora_user_profiles WHERE aurora_uid = $1`, [identity.aurora_uid]);
+  }
+
+  return { ok: true, deleted: true, storage: 'db' };
+}
+
 module.exports = {
   isoDateUTC,
   normalizeAuroraUid,
@@ -673,5 +974,6 @@ module.exports = {
   getRecentSkinLogsForIdentity,
   upsertSkinLogForIdentity,
   saveLastAnalysisForIdentity,
+  deleteIdentityData,
   isCheckinDue,
 };

@@ -16,6 +16,24 @@ const { simulateConflicts } = require('../src/auroraBff/routineRules');
 const { auroraChat } = require('../src/auroraBff/auroraDecisionClient');
 const { createStageProfiler } = require('../src/auroraBff/skinAnalysisProfiling');
 const { should_call_llm: shouldCallLlm } = require('../src/auroraBff/skinLlmPolicy');
+const { getDiagRolloutDecision, hashToBucket0to99 } = require('../src/auroraBff/diagRollout');
+
+function withEnv(patch, fn) {
+  const prev = {};
+  for (const [k, v] of Object.entries(patch || {})) {
+    prev[k] = Object.prototype.hasOwnProperty.call(process.env, k) ? process.env[k] : undefined;
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = String(v);
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
 
 test('Phase0 gate: no recos when profile is missing', async () => {
   const gate = shouldDiagnosisGate({
@@ -181,6 +199,47 @@ test('Skin LLM policy: explicit uncertainty flag tightens LLM calls on pass qual
     uncertainty: false,
   });
   assert.equal(visionSkip.decision, 'skip');
+});
+
+test('Diag rollout: bucket is stable and within 0..99', async () => {
+  const a = hashToBucket0to99('req_abc');
+  const b = hashToBucket0to99('req_abc');
+  assert.equal(a, b);
+  assert.equal(a >= 0 && a < 100, true);
+});
+
+test('Diag rollout: DIAG_PIPELINE_VERSION overrides canary', async () => {
+  withEnv(
+    {
+      DIAG_PIPELINE_VERSION: 'v2',
+      DIAG_SHADOW_MODE: 'false',
+      DIAG_CANARY_PERCENT: '0',
+      LLM_KILL_SWITCH: 'false',
+    },
+    () => {
+      const d = getDiagRolloutDecision({ requestId: 'req_any' });
+      assert.equal(d.selectedVersion, 'v2');
+      assert.equal(d.reason, 'forced');
+      assert.equal(d.shadowMode, false);
+      assert.equal(d.llmKillSwitch, false);
+    },
+  );
+});
+
+test('Diag rollout: canary percent selects v2', async () => {
+  withEnv({ DIAG_PIPELINE_VERSION: '', DIAG_CANARY_PERCENT: '100', DIAG_SHADOW_MODE: 'true', LLM_KILL_SWITCH: 'true' }, () => {
+    const d = getDiagRolloutDecision({ requestId: 'req_any' });
+    assert.equal(d.selectedVersion, 'v2');
+    assert.equal(d.reason, 'canary');
+    assert.equal(d.shadowMode, true);
+    assert.equal(d.llmKillSwitch, true);
+  });
+
+  withEnv({ DIAG_PIPELINE_VERSION: '', DIAG_CANARY_PERCENT: '0', DIAG_SHADOW_MODE: 'false', LLM_KILL_SWITCH: 'false' }, () => {
+    const d = getDiagRolloutDecision({ requestId: 'req_any' });
+    assert.equal(d.selectedVersion, 'legacy');
+    assert.equal(d.reason, 'default');
+  });
 });
 
 test('Aurora mock: returns recommendations card (for offline gating tests)', async () => {

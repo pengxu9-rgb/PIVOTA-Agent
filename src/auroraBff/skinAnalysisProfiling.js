@@ -237,10 +237,19 @@ function createStageProfiler({ stages } = {}) {
     }
     stagesOut.sort((a, b) => stageNames.indexOf(a.name) - stageNames.indexOf(b.name));
 
+    const llmOk = llmCalls.filter((c) => c.ok).length;
+    const llmFailed = llmCalls.length - llmOk;
+    const llmTimeouts = llmCalls.filter((c) => {
+      if (!c || c.ok) return false;
+      const reason = typeof c.reason === 'string' ? c.reason : '';
+      return /timeout|timed out|etimedout|econnaborted|deadline|context deadline/i.test(reason);
+    }).length;
+
     const llmSummary = {
       calls: llmCalls.length,
-      ok: llmCalls.filter((c) => c.ok).length,
-      failed: llmCalls.filter((c) => !c.ok).length,
+      ok: llmOk,
+      failed: llmFailed,
+      ...(llmTimeouts ? { timeouts: llmTimeouts } : {}),
     };
     const tokenTotals = llmCalls.reduce(
       (acc, c) => {

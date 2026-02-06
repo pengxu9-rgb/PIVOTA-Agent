@@ -131,6 +131,15 @@ const AuroraUpstreamMessageSchema = z
 const V1ChatRequestSchema = z
   .object({
     message: z.string().min(1).optional(),
+    client_state: z.string().min(1).optional(),
+    requested_transition: z
+      .object({
+        trigger_source: z.enum(['chip', 'action', 'text_explicit']),
+        trigger_id: z.string().min(1),
+        requested_next_state: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     anchor_product_id: z.string().min(1).optional(),
     anchor_product_url: z.string().min(1).optional(),
     messages: z.array(AuroraUpstreamMessageSchema).max(50).optional(),

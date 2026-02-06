@@ -241,7 +241,121 @@ function isInside(x, y, box) {
   return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
 }
 
-function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox }) {
+const DEFAULT_QUALITY_GATE = Object.freeze({
+  fail: Object.freeze({
+    min_coverage: 0.06,
+    min_blur_factor: 0.2,
+    min_exposure_factor: 0.2,
+    min_quality_factor: 0.25,
+  }),
+  degraded: Object.freeze({
+    min_blur_factor: 0.45,
+    min_exposure_factor: 0.45,
+    min_wb_factor: 0.65,
+    min_quality_factor: 0.55,
+  }),
+});
+
+function normalizeQualityGateConfig(overrides) {
+  const obj = overrides && typeof overrides === 'object' && !Array.isArray(overrides) ? overrides : null;
+  const failRaw = obj && obj.fail && typeof obj.fail === 'object' && !Array.isArray(obj.fail) ? obj.fail : null;
+  const degradedRaw =
+    obj && obj.degraded && typeof obj.degraded === 'object' && !Array.isArray(obj.degraded) ? obj.degraded : null;
+
+  const fail = {
+    min_coverage: clamp01(
+      clamp(
+        Number(failRaw && failRaw.min_coverage != null ? failRaw.min_coverage : DEFAULT_QUALITY_GATE.fail.min_coverage),
+        0,
+        1,
+      ),
+    ),
+    min_blur_factor: clamp01(
+      clamp(
+        Number(
+          failRaw && failRaw.min_blur_factor != null
+            ? failRaw.min_blur_factor
+            : DEFAULT_QUALITY_GATE.fail.min_blur_factor,
+        ),
+        0,
+        1,
+      ),
+    ),
+    min_exposure_factor: clamp01(
+      clamp(
+        Number(
+          failRaw && failRaw.min_exposure_factor != null
+            ? failRaw.min_exposure_factor
+            : DEFAULT_QUALITY_GATE.fail.min_exposure_factor,
+        ),
+        0,
+        1,
+      ),
+    ),
+    min_quality_factor: clamp01(
+      clamp(
+        Number(
+          failRaw && failRaw.min_quality_factor != null
+            ? failRaw.min_quality_factor
+            : DEFAULT_QUALITY_GATE.fail.min_quality_factor,
+        ),
+        0,
+        1,
+      ),
+    ),
+  };
+
+  const degraded = {
+    min_blur_factor: clamp01(
+      clamp(
+        Number(
+          degradedRaw && degradedRaw.min_blur_factor != null
+            ? degradedRaw.min_blur_factor
+            : DEFAULT_QUALITY_GATE.degraded.min_blur_factor,
+        ),
+        0,
+        1,
+      ),
+    ),
+    min_exposure_factor: clamp01(
+      clamp(
+        Number(
+          degradedRaw && degradedRaw.min_exposure_factor != null
+            ? degradedRaw.min_exposure_factor
+            : DEFAULT_QUALITY_GATE.degraded.min_exposure_factor,
+        ),
+        0,
+        1,
+      ),
+    ),
+    min_wb_factor: clamp01(
+      clamp(
+        Number(
+          degradedRaw && degradedRaw.min_wb_factor != null
+            ? degradedRaw.min_wb_factor
+            : DEFAULT_QUALITY_GATE.degraded.min_wb_factor,
+        ),
+        0,
+        1,
+      ),
+    ),
+    min_quality_factor: clamp01(
+      clamp(
+        Number(
+          degradedRaw && degradedRaw.min_quality_factor != null
+            ? degradedRaw.min_quality_factor
+            : DEFAULT_QUALITY_GATE.degraded.min_quality_factor,
+        ),
+        0,
+        1,
+      ),
+    ),
+  };
+
+  return { fail, degraded };
+}
+
+function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox, qualityGateConfig }) {
   const n = width * height;
 
   let sumY = 0;
@@ -308,9 +422,25 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox 
   if (exposureFactor < 0.4) reasons.push(meanY < 80 ? 'too_dark' : 'too_bright');
   if (wbFactor < 0.55) reasons.push('white_balance_unstable');
 
+  const gate = normalizeQualityGateConfig(qualityGateConfig);
+  const failGate = gate.fail;
+  const degradedGate = gate.degraded;
+
   let grade = 'pass';
-  if (coverage < 0.06 || blurFactor < 0.2 || exposureFactor < 0.2 || qualityFactor < 0.25) grade = 'fail';
-  else if (blurFactor < 0.45 || exposureFactor < 0.45 || wbFactor < 0.65 || qualityFactor < 0.55) grade = 'degraded';
+  if (
+    coverage < failGate.min_coverage ||
+    blurFactor < failGate.min_blur_factor ||
+    exposureFactor < failGate.min_exposure_factor ||
+    qualityFactor < failGate.min_quality_factor
+  )
+    grade = 'fail';
+  else if (
+    blurFactor < degradedGate.min_blur_factor ||
+    exposureFactor < degradedGate.min_exposure_factor ||
+    wbFactor < degradedGate.min_wb_factor ||
+    qualityFactor < degradedGate.min_quality_factor
+  )
+    grade = 'degraded';
 
   return {
     grade,
@@ -464,9 +594,61 @@ const SEVERITY_THRESHOLDS = Object.freeze({
   },
 });
 
-function scoreToSeverity({ issueType, region = 'all', score }) {
+function normalizeThresholdTriplet(raw, fallback) {
+  const base = Array.isArray(fallback) && fallback.length >= 3 ? fallback : [0.25, 0.5, 0.75];
+  if (!Array.isArray(raw) || raw.length < 3) return base.slice(0, 3);
+  let t1 = clamp01(Number(raw[0]));
+  let t2 = clamp01(Number(raw[1]));
+  let t3 = clamp01(Number(raw[2]));
+  if (!Number.isFinite(t1)) t1 = clamp01(Number(base[0]));
+  if (!Number.isFinite(t2)) t2 = clamp01(Number(base[1]));
+  if (!Number.isFinite(t3)) t3 = clamp01(Number(base[2]));
+  t2 = clamp(t2, t1, 1);
+  t3 = clamp(t3, t2, 1);
+  return [t1, t2, t3];
+}
+
+function mergeSeverityThresholds(overrides) {
+  const base = SEVERITY_THRESHOLDS;
+  const out = {};
+  for (const [issueType, regions] of Object.entries(base)) {
+    const regionMap = regions && typeof regions === 'object' ? regions : {};
+    const copy = {};
+    for (const [regionKey, triplet] of Object.entries(regionMap)) {
+      copy[regionKey] = Array.isArray(triplet) ? triplet.slice(0, 3) : triplet;
+    }
+    out[issueType] = copy;
+  }
+
+  const obj = overrides && typeof overrides === 'object' && !Array.isArray(overrides) ? overrides : null;
+  if (!obj) return out;
+
+  for (const [issueTypeRaw, regionOverridesRaw] of Object.entries(obj)) {
+    const issueType = typeof issueTypeRaw === 'string' ? issueTypeRaw : '';
+    if (!issueType || !out[issueType]) continue;
+    const regionOverrides =
+      regionOverridesRaw && typeof regionOverridesRaw === 'object' && !Array.isArray(regionOverridesRaw)
+        ? regionOverridesRaw
+        : null;
+    if (!regionOverrides) continue;
+
+    const current = out[issueType];
+    const fallbackAll = current.all || [0.25, 0.5, 0.75];
+    for (const [regionRaw, tripletRaw] of Object.entries(regionOverrides)) {
+      const region = typeof regionRaw === 'string' && regionRaw.trim() ? regionRaw.trim() : null;
+      if (!region) continue;
+      const fallback = current[region] || fallbackAll;
+      current[region] = normalizeThresholdTriplet(tripletRaw, fallback);
+    }
+  }
+
+  return out;
+}
+
+function scoreToSeverity({ issueType, region = 'all', score, thresholds } = {}) {
   const s = clamp01(score);
-  const map = SEVERITY_THRESHOLDS[issueType] || SEVERITY_THRESHOLDS.redness;
+  const thMap = thresholds && typeof thresholds === 'object' && !Array.isArray(thresholds) ? thresholds : null;
+  const map = (thMap && thMap[issueType]) || SEVERITY_THRESHOLDS[issueType] || SEVERITY_THRESHOLDS.redness;
   const th = map[region] || map.all || [0.25, 0.5, 0.75];
   const [t1, t2, t3] = th;
   if (s < t1) return { level: 0, severity: 'none' };
@@ -633,8 +815,20 @@ function buildEvidenceShort({ issueType, severity, confidence, metrics, language
   return lang === 'CN' ? ['已生成诊断结论。', `把握度：${confidentText}。`] : ['Diagnosis computed.', `Confidence: ${confidentText}.`];
 }
 
-function runIssueScoring({ issueType, rawScore, modelConf, region, quality, profileSummary, recentLogsSummary, metrics, wbUnstable, language }) {
-  const sev = scoreToSeverity({ issueType, region, score: rawScore });
+function runIssueScoring({
+  issueType,
+  rawScore,
+  modelConf,
+  region,
+  quality,
+  profileSummary,
+  recentLogsSummary,
+  metrics,
+  wbUnstable,
+  language,
+  severityThresholds,
+}) {
+  const sev = scoreToSeverity({ issueType, region, score: rawScore, thresholds: severityThresholds });
   const qualityFactor = quality && typeof quality.quality_factor === 'number' ? quality.quality_factor : 1;
   const agree = agreementFactor({ issueType, detectorSeverityLevel: sev.level, profileSummary, recentLogsSummary });
   const calibratedModel = calibrateModelConfidence(modelConf, { issueType });
@@ -814,12 +1008,25 @@ function toDiagnosisCardPayload({ diagnosis, quality, language }) {
   };
 }
 
-async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recentLogsSummary, profiler } = {}) {
+async function runSkinDiagnosisV1({
+  imageBuffer,
+  language,
+  profileSummary,
+  recentLogsSummary,
+  profiler,
+  qualityGateConfig,
+  severityThresholdsOverrides,
+} = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const prof = profiler && typeof profiler.start === 'function' ? profiler : null;
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || imageBuffer.length < 50) {
     return { ok: false, reason: 'no_image' };
   }
+
+  const severityThresholds =
+    severityThresholdsOverrides && typeof severityThresholdsOverrides === 'object' && !Array.isArray(severityThresholdsOverrides)
+      ? mergeSeverityThresholds(severityThresholdsOverrides)
+      : null;
 
   let decoded = null;
   try {
@@ -854,6 +1061,7 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
       skinMask: skin.mask,
       skinPixels: skin.skinPixels,
       bbox: skin.bbox,
+      qualityGateConfig,
     });
     if (prof)
       prof.end('quality', {
@@ -898,6 +1106,7 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
         metrics: raw.acne.metrics,
         wbUnstable: raw.wbUnstable,
         language: lang,
+        severityThresholds,
       }),
     );
     issues.push(
@@ -912,6 +1121,7 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
         metrics: raw.redness.metrics,
         wbUnstable: raw.wbUnstable,
         language: lang,
+        severityThresholds,
       }),
     );
     issues.push(
@@ -926,6 +1136,7 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
         metrics: raw.pores.metrics,
         wbUnstable: raw.wbUnstable,
         language: lang,
+        severityThresholds,
       }),
     );
     issues.push(
@@ -940,6 +1151,7 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
         metrics: raw.dark_spots.metrics,
         wbUnstable: raw.wbUnstable,
         language: lang,
+        severityThresholds,
       }),
     );
     if (prof) prof.end('postprocess', { kind: 'severity_calibration', issues_n: issues.length });
@@ -949,7 +1161,21 @@ async function runSkinDiagnosisV1({ imageBuffer, language, profileSummary, recen
   }
 
   const payload = toDiagnosisCardPayload({ diagnosis: issues, quality, language: lang });
-  return { ok: true, diagnosis: payload };
+  const bbox = skin && skin.bbox && typeof skin.bbox === 'object' ? skin.bbox : null;
+  const w = Number.isFinite(width) ? width : null;
+  const h = Number.isFinite(height) ? height : null;
+  const internal =
+    bbox && w && h
+      ? {
+          skin_bbox_norm: {
+            x0: clamp01(bbox.x0 / w),
+            y0: clamp01(bbox.y0 / h),
+            x1: clamp01(bbox.x1 / w),
+            y1: clamp01(bbox.y1 / h),
+          },
+        }
+      : null;
+  return { ok: true, diagnosis: payload, ...(internal ? { internal } : {}) };
 }
 
 function summarizeDiagnosisForPolicy(diagnosisV1) {

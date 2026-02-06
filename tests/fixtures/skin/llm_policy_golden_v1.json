@@ -1,0 +1,63 @@
+{
+  "schema_version": "aurora.skin.llm_policy_golden.v1",
+  "cases": [
+    {
+      "id": "fail_quality_skips_vision",
+      "input": {
+        "kind": "vision",
+        "quality": { "grade": "fail", "reasons": ["qc_failed"] },
+        "hasPrimaryInput": true,
+        "userRequestedPhoto": true,
+        "detectorConfidenceLevel": "low",
+        "uncertainty": true,
+        "visionAvailable": true,
+        "reportAvailable": true,
+        "degradedMode": "report"
+      },
+      "expect": {
+        "decision": "skip",
+        "downgrade_confidence": true,
+        "reasons_include": ["photo_quality_fail_retake"]
+      }
+    },
+    {
+      "id": "degraded_quality_report_only",
+      "input": {
+        "kind": "report",
+        "quality": { "grade": "degraded", "reasons": ["qc_degraded"] },
+        "hasPrimaryInput": true,
+        "userRequestedPhoto": true,
+        "detectorConfidenceLevel": "low",
+        "uncertainty": true,
+        "visionAvailable": true,
+        "reportAvailable": true,
+        "degradedMode": "report"
+      },
+      "expect": {
+        "decision": "call",
+        "downgrade_confidence": true,
+        "reasons_include": ["degraded_mode_report"]
+      }
+    },
+    {
+      "id": "pass_quality_confident_skips_report",
+      "input": {
+        "kind": "report",
+        "quality": { "grade": "pass", "reasons": ["qc_passed"] },
+        "hasPrimaryInput": true,
+        "userRequestedPhoto": true,
+        "detectorConfidenceLevel": "high",
+        "uncertainty": false,
+        "visionAvailable": true,
+        "reportAvailable": true,
+        "degradedMode": "report"
+      },
+      "expect": {
+        "decision": "skip",
+        "downgrade_confidence": false,
+        "reasons_include": ["detector_confident_template"]
+      }
+    }
+  ]
+}
+

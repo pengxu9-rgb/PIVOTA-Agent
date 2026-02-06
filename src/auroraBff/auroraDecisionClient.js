@@ -513,6 +513,7 @@ async function auroraChat({
   anchor_product_url,
   messages,
   debug,
+  allow_recommendations,
 } = {}) {
   if (USE_AURORA_MOCK) return mockAuroraChat({ query, anchor_product_id, messages });
   const base = normalizeBaseUrl(baseUrl);
@@ -529,6 +530,7 @@ async function auroraChat({
   if (anchor_product_url) payload.anchor_product_url = anchor_product_url;
   if (Array.isArray(messages) && messages.length) payload.messages = messages;
   if (typeof debug === 'boolean') payload.debug = debug;
+  if (typeof allow_recommendations === 'boolean') payload.allow_recommendations = allow_recommendations;
   const resp = await postWithRetry(url, payload, { timeoutMs, retries: 1, retryDelayMs: 250 });
   const data = resp && resp.data;
   return data && typeof data === 'object' ? data : { raw: data };

@@ -15,34 +15,31 @@ function detectTextExplicit(message) {
   const text = String(message || '').trim().toLowerCase();
   if (!text) return false;
 
-  // Recommendation / purchase / "give me products" explicit asks.
+  // MVP explicit allowlist (conservative): only these phrases count as "text_explicit".
   const patterns = [
+    // EN
     /\brecommend\b/,
-    /\brecommendation\b/,
-    /\bsuggest\b/,
-    /\bwhat should i (buy|use)\b/,
-    /\bshow me\b.*\bproducts?\b/,
-    /\broutine\b/,
-    /\bam\s*\/\s*pm\b/,
-    /\bbuy\b/,
-    /\bcheckout\b/,
-    /\bwhere to buy\b/,
-    /\blink\b/,
+    /product recommendations?/,
+    /build me a routine/,
+    /diagnose my skin/,
+    /review my routine/,
+    // CN
     /推荐/,
-    /给我.*(产品|清单)/,
-    /(护肤方案|早晚护肤|早晚.*(routine|护肤))/,
-    /(怎么买|购买|下单|链接)/,
-    /(种草|买哪个)/,
-    // Explicit "start diagnosis / skin profile" also counts as a user-triggered state change.
-    /\bstart\b.*\bdiagnos/i,
-    /\bskin\b.*\bdiagnos/i,
-    /\bskin profile\b/i,
-    /(皮肤诊断|开始.*诊断|做.*诊断|诊断一下|肤况确认|肤质确认)/,
+    /产品推荐/,
+    /给我方案/,
+    /诊断/,
+    /评估我现在用的/,
   ];
   return patterns.some((re) => re.test(text));
 }
 
 function inferTriggerSource(body) {
+  const rt = body && body.requested_transition;
+  if (rt && typeof rt === 'object') {
+    const ts = String(rt.trigger_source || '').trim();
+    if (ts === 'chip' || ts === 'action' || ts === 'text_explicit') return ts;
+  }
+
   const action = body && body.action;
   if (action) {
     if (typeof action === 'string') {

@@ -32,6 +32,7 @@ describe('Aurora BFF (/v1)', () => {
     const res = await request(app)
       .post('/v1/chat')
       .set('X-Aurora-UID', 'uid_test_diag_start_1')
+      .set('X-Lang', 'CN')
       .send({
         message: '开始皮肤诊断',
         // Simulate an already-partial profile (3/4 dimensions) — diagnosis start should still gate
@@ -181,6 +182,7 @@ describe('Aurora BFF (/v1)', () => {
       .set('X-Aurora-UID', 'uid_test_budget_gate_2')
       .set('X-Lang', 'CN')
       .send({
+        client_state: 'RECO_GATE',
         action: {
           action_id: 'chip.budget._500',
           kind: 'chip',

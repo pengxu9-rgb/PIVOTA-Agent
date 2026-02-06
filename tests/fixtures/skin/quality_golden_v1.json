@@ -1,0 +1,30 @@
+{
+  "schema_version": "aurora.skin.quality_golden.v1",
+  "cases": [
+    {
+      "id": "tone_light_ok",
+      "input": { "kind": "tone", "r0": 180, "g0": 170, "b0": 160, "seed": 1 },
+      "expect": {
+        "grade_not": ["fail"],
+        "reasons_exclude": ["too_dark"]
+      }
+    },
+    {
+      "id": "tone_deep_ok",
+      "input": { "kind": "tone", "r0": 105, "g0": 95, "b0": 88, "seed": 2 },
+      "expect": {
+        "grade_not": ["fail"],
+        "reasons_exclude": ["too_dark"]
+      }
+    },
+    {
+      "id": "low_dynamic_range_underexposed",
+      "input": { "kind": "low_dr_underexposed" },
+      "expect": {
+        "grade_not": ["pass"],
+        "reasons_include": ["too_dark"]
+      }
+    }
+  ]
+}
+
