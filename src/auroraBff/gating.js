@@ -82,6 +82,8 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
 
     // Whitelist known explicit "product output" entry points.
     if (id === 'chip.start.reco_products') return true;
+    // Canonical Aurora Chatbox chip id (specs/agent_state_machine.json).
+    if (id === 'chip_get_recos') return true;
     if (id === 'chip.start.routine') return true;
     if (id === 'chip.action.reco_routine') return true;
     if (id === 'chip.action.analyze_product') return true;

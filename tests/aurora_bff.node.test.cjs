@@ -746,6 +746,10 @@ test('Recommendation gate: does not unlock commerce for diagnosis chip', async (
     false,
   );
   assert.equal(
+    recommendationsAllowed({ triggerSource: 'chip', actionId: 'chip_get_recos', message: '' }),
+    true,
+  );
+  assert.equal(
     recommendationsAllowed({ triggerSource: 'chip', actionId: 'chip.start.routine', message: 'Build an AM/PM routine' }),
     true,
   );
@@ -1289,6 +1293,86 @@ test('/v1/chat: strips internal kb: citations from recommendations (non-debug)',
   assert.ok(firstDebug);
   assert.ok(Array.isArray(firstDebug?.evidence_pack?.citations));
   assert.ok(firstDebug.evidence_pack.citations.some((c) => String(c).startsWith('kb:')));
+});
+
+test('/v1/chat: chip_get_recos yields recommendations card (canonical chip id)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+    headers: { 'X-Aurora-UID': 'test_uid_chip_get_recos', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' },
+    body: {
+      action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
+      session: { state: 'idle' },
+      language: 'EN',
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const reco = cards.find((c) => c && c.type === 'recommendations') || null;
+  assert.ok(reco);
+  const first = Array.isArray(reco?.payload?.recommendations) ? reco.payload.recommendations[0] : null;
+  assert.ok(first);
 });
 
 test('/v1/chat: CN reco request yields recommendations (no conflict cards)', async () => {

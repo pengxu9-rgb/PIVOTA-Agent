@@ -6690,7 +6690,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         allowRecoCards &&
         !looksLikeRoutineRequest(message, parsed.data.action) &&
         recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message }) &&
-        (actionId === 'chip.start.reco_products' || looksLikeRecommendationRequest(message));
+        (actionId === 'chip.start.reco_products' || actionId === 'chip_get_recos' || looksLikeRecommendationRequest(message));
 
       if (wantsProductRecommendations) {
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
