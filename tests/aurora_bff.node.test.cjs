@@ -1484,6 +1484,51 @@ test('/v1/chat: anchor-derived product_analysis personalizes reasons using profi
   });
 });
 
+test('enrichProductAnalysisPayload: adds profile-fit reasons and hides raw risk codes (CN)', () => {
+  const { enrichProductAnalysisPayload } = require('../src/auroraBff/normalize');
+
+  const payload = {
+    assessment: {
+      verdict: 'Caution',
+      reasons: ['Some people experience flushing/tingling.', 'high_irritation', 'Targets: Brightening, Oil control'],
+    },
+    evidence: {
+      science: {
+        key_ingredients: ['Niacinamide', 'Zinc PCA'],
+        mechanisms: [],
+        fit_notes: [],
+        risk_notes: ['high_irritation'],
+      },
+      social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+      expert_notes: [],
+      confidence: 0.7,
+      missing_info: [],
+    },
+    confidence: 0.7,
+    missing_info: [],
+  };
+
+  const profileSummary = {
+    skinType: 'oily',
+    sensitivity: 'low',
+    barrierStatus: 'healthy',
+    goals: ['brightening', 'acne'],
+    region: 'CN',
+    budgetTier: '¥500',
+    currentRoutine: null,
+    itinerary: null,
+    contraindications: [],
+  };
+
+  const out = enrichProductAnalysisPayload(payload, { lang: 'CN', profileSummary });
+  const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
+  const joined = reasons.join(' | ');
+  assert.ok(joined.includes('油皮'));
+  assert.equal(joined.includes('high_irritation'), false);
+  // CN flow should prefer CN reasons when available.
+  assert.equal(/\bTargets:\b/i.test(joined), false);
+});
+
 test('/v1/chat: chip_get_recos yields recommendations card (canonical chip id)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');

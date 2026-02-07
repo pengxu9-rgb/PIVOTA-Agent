@@ -191,6 +191,145 @@ function isGenericReason(reason, lang) {
   return false;
 }
 
+function truncateText(s, max = 200) {
+  const t = typeof s === 'string' ? s.trim() : s == null ? '' : String(s).trim();
+  if (!t) return '';
+  return t.length > max ? `${t.slice(0, Math.max(0, max - 1))}…` : t;
+}
+
+function isMostlyEnglishText(s) {
+  const t = String(s || '').trim();
+  if (!t) return false;
+  const letters = (t.match(/[A-Za-z]/g) || []).length;
+  if (!letters) return false;
+  // If it has no CJK and a lot of latin letters, treat as EN-ish.
+  const hasCjk = /[\u4e00-\u9fff]/.test(t);
+  return !hasCjk && letters / Math.max(1, t.length) > 0.25;
+}
+
+function humanizeRiskToken(token, lang) {
+  const t = String(token || '').trim();
+  if (!t) return '';
+  const lower = t.toLowerCase();
+
+  const cn = String(lang).toUpperCase() === 'CN';
+  const map = {
+    high_irritation: cn ? '刺激性偏高（更容易刺痛/泛红）' : 'Higher irritation potential (stinging/redness more likely)',
+    strong_acid: cn ? '酸类偏强（更容易刺激）' : 'Stronger acids (higher irritation risk)',
+    mild_acid: cn ? '含温和酸类' : 'Contains mild acids',
+    acid: cn ? '含酸类（注意频率）' : 'Contains acids (watch frequency)',
+    fragrance: cn ? '可能含香精/香料（以成分表为准）' : 'May be fragranced (verify INCI)',
+    fungal_acne: cn ? '真菌痘倾向人群需谨慎（以个人情况为准）' : 'If fungal-acne prone, use with caution (depends on the person)',
+    comedogenic: cn ? '可能更闷（以个人情况为准）' : 'May feel occlusive for some users',
+  };
+
+  if (map[lower]) return map[lower];
+
+  // If the token is a bare snake_case flag, do not surface it to end users.
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(lower)) return '';
+
+  return t;
+}
+
+function humanizeRiskLine(line, lang) {
+  const raw = String(line || '').trim();
+  if (!raw) return '';
+  // Common KB-ish formatting: "a | b | c"
+  const parts = raw.split('|').map((p) => p.trim()).filter(Boolean);
+  const tokens = parts.length >= 2 ? parts : [raw];
+  const out = uniqueStrings(tokens.map((t) => humanizeRiskToken(t, lang)).filter(Boolean));
+  return out.length ? truncateText(out.join('；'), 200) : '';
+}
+
+function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) {
+  const p = asPlainObject(profileSummary);
+  if (!p) return [];
+
+  const cn = String(lang).toUpperCase() === 'CN';
+  const normalizeEnum = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+  const skinType = normalizeEnum(p.skinType);
+  const sensitivity = normalizeEnum(p.sensitivity);
+  const barrier = normalizeEnum(p.barrierStatus);
+  const goals = Array.isArray(p.goals) ? p.goals.map((g) => normalizeEnum(g)).filter(Boolean) : [];
+
+  const tags = [];
+  if (cn) {
+    if (skinType === 'oily') tags.push('油皮');
+    else if (skinType === 'dry') tags.push('干皮');
+    else if (skinType === 'combo' || skinType === 'combination') tags.push('混合皮');
+    else if (skinType) tags.push(`肤质：${skinType}`);
+
+    if (sensitivity === 'low') tags.push('低敏');
+    else if (sensitivity === 'medium') tags.push('中敏');
+    else if (sensitivity === 'high') tags.push('高敏');
+    else if (sensitivity) tags.push(`敏感：${sensitivity}`);
+
+    if (barrier === 'healthy') tags.push('屏障健康');
+    else if (barrier === 'impaired') tags.push('屏障受损');
+    else if (barrier) tags.push(`屏障：${barrier}`);
+  } else {
+    if (skinType) tags.push(skinType === 'combination' || skinType === 'combo' ? 'combination' : skinType);
+    if (sensitivity) tags.push(`sensitivity=${sensitivity}`);
+    if (barrier) tags.push(`barrier=${barrier}`);
+  }
+
+  const ev = asPlainObject(evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+
+  const lower = uniqueStrings(keyIngredients.map((x) => String(x || '').trim()).filter(Boolean)).join(' | ').toLowerCase();
+  const hasNiacinamide = /\bniacinamide\b|烟酰胺/.test(lower);
+  const hasZincPca = /\bzinc\b.*\bpca\b|锌\s*pca/.test(lower);
+  const hasStrongActives =
+    /\b(retinol|retinal|tretinoin|adapalene)\b|维a|阿达帕林/.test(lower) ||
+    /\baha\b|\bbha\b|\bpha\b|\bglycolic\b|\blactic\b|果酸|水杨酸|杏仁酸|乳酸|葡糖酸内酯/.test(lower);
+
+  const humanizedRisk = uniqueStrings(riskNotes.map((r) => humanizeRiskLine(r, lang)).filter(Boolean));
+  const isHighIrr = humanizedRisk.some((r) => /刺激|irrit/i.test(r)) || riskNotes.some((r) => /high_irritation/i.test(String(r || '')));
+
+  const out = [];
+
+  if (tags.length) {
+    out.push(
+      cn
+        ? `你的情况：${truncateText(tags.join(' / '), 80)}。`
+        : `Your profile: ${truncateText(tags.join(' / '), 120)}.`,
+    );
+  }
+
+  if (cn) {
+    const goalHint = [];
+    if (goals.includes('brightening')) goalHint.push('提亮');
+    if (goals.includes('acne')) goalHint.push('痘痘/痘印');
+    if (goalHint.length && (hasNiacinamide || hasZincPca)) {
+      out.push(`匹配点：你的目标包含${goalHint.join('、')}；烟酰胺/锌类通常更偏这条路线。`);
+    } else if (skinType === 'oily' && (hasNiacinamide || hasZincPca)) {
+      out.push('匹配点：油皮更常用烟酰胺/锌类来控油、改善痘印与毛孔观感。');
+    }
+  } else {
+    const goalHint = [];
+    if (goals.includes('brightening')) goalHint.push('brightening');
+    if (goals.includes('acne')) goalHint.push('acne/marks');
+    if (goalHint.length && (hasNiacinamide || hasZincPca)) {
+      out.push(`Fit: your goals include ${goalHint.join(' + ')}; niacinamide/zinc commonly align with that.`);
+    } else if (skinType === 'oily' && (hasNiacinamide || hasZincPca)) {
+      out.push('Fit: oily skin often uses niacinamide/zinc for oil control and the look of pores/marks.');
+    }
+  }
+
+  const needsCaution = barrier === 'impaired' || sensitivity === 'high' || (sensitivity === 'medium' && (hasStrongActives || isHighIrr));
+  if (needsCaution) {
+    out.push(
+      cn
+        ? '使用建议：先低频、少量；若刺痛/泛红就暂停，并以修护保湿为主。'
+        : 'How to use: start low and small; if stinging/redness happens, pause and focus on barrier support.',
+    );
+  }
+
+  return uniqueStrings(out.map((x) => truncateText(x, 200)).filter(Boolean)).slice(0, 2);
+}
+
 function pickHeroIngredientFromEvidence(evidence, { lang = 'EN' } = {}) {
   const ev = asPlainObject(evidence);
   if (!ev) return null;
@@ -363,7 +502,10 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   const take = (arr, n) => (Array.isArray(arr) ? arr.slice(0, n) : []);
 
   if (isCaution) {
-    if (riskNotes.length) out.push(...take(riskNotes, 2));
+    if (riskNotes.length) {
+      const human = uniqueStrings(riskNotes.map((r) => humanizeRiskLine(r, lang)).filter(Boolean));
+      if (human.length) out.push(...take(human, 2));
+    }
     if (negatives.length) {
       out.push(
         String(lang).toUpperCase() === 'CN'
@@ -420,7 +562,7 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   return uniqueStrings(out);
 }
 
-function enrichProductAnalysisPayload(payload, { lang = 'EN' } = {}) {
+function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = null } = {}) {
   const p = asPlainObject(payload);
   if (!p) return payload;
   const assessment = asPlainObject(p.assessment);
@@ -471,12 +613,45 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN' } = {}) {
     typeof assessment.verdict === 'string' ? assessment.verdict.trim() : String(assessment.verdict || '').trim();
 
   const existingReasons = asStringArray(assessment.reasons);
-  const keptReasons = existingReasons.filter((r) => !isGenericReason(r, lang));
+  const keptReasons = existingReasons
+    .filter((r) => !isGenericReason(r, lang))
+    .map((r) => truncateText(r, 200))
+    .filter(Boolean);
 
   const minReasons = 2;
   const maxReasons = 5;
 
   let reasons = keptReasons.slice();
+
+  // Optional: inject profile-fit explanations when profile context is available (chat/product-analyze flows).
+  const profileReasons = buildProfileFitReasons(profileSummary ?? p.profile_summary ?? p.profileSummary ?? null, p.evidence, { lang });
+  if (profileReasons.length) {
+    // CN users often receive mixed-language upstream reasons; prefer CN-ish reasons when we have them.
+    if (String(lang).toUpperCase() === 'CN') {
+      const hasCn = profileReasons.some((r) => /[\u4e00-\u9fff]/.test(String(r || '')));
+      if (hasCn) reasons = reasons.filter((r) => !isMostlyEnglishText(r));
+    }
+    // Prepend, but keep room for the hero ingredient line (added later) when possible.
+    const budget = Math.max(1, maxReasons - 1);
+    const pre = profileReasons.slice(0, budget);
+    reasons = uniqueStrings([...pre, ...reasons]).slice(0, maxReasons);
+  }
+
+  // Remove raw risk-code fragments that are not user-readable.
+  reasons = uniqueStrings(
+    reasons
+      .map((r) => {
+        const hr = humanizeRiskLine(r, lang);
+        return hr || r;
+      })
+      .filter((r) => {
+        const t = String(r || '').trim();
+        if (!t) return false;
+        if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(t)) return false;
+        return true;
+      }),
+  ).slice(0, maxReasons);
+
   if (reasons.length < minReasons) {
     const derived = buildReasonsFromEvidence(p.evidence, { lang, verdict });
     for (const r of derived) {

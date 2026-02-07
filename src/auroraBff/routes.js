@@ -3335,7 +3335,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
+      let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang, profileSummary });
       if (parsedProduct && payload && typeof payload === 'object') {
         const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
         if (a && !a.anchor_product && !a.anchorProduct) {
@@ -3892,7 +3892,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
           if (!best) return null;
 
-          const enriched = enrichProductAnalysisPayload(best.normAnalyze.payload, { lang: ctx.lang });
+          const enriched = enrichProductAnalysisPayload(best.normAnalyze.payload, { lang: ctx.lang, profileSummary });
           const out = { payload: enriched, field_missing: best.normAnalyze.field_missing };
 
           const keyAfterEnrich = (() => {
@@ -7580,7 +7580,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
-          let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
+          let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang, profileSummary });
           if (parsedProduct && payload && typeof payload === 'object') {
             const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
             if (a && !a.anchor_product && !a.anchorProduct) {
