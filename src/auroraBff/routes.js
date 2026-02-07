@@ -1276,6 +1276,35 @@ function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInt
 
   const lang = language === 'CN' ? 'CN' : 'EN';
 
+  const noRenderableCardsMessage =
+    lang === 'CN'
+      ? '我这次没有拿到可展示的结构化结果卡片（上游仅返回了摘要/解析信息）。请重试一次，或换一种问法（例如：评估这款：<产品名>）。'
+      : 'I did not receive any renderable structured cards from upstream (only a parse/summary stub). Please retry, or rephrase (e.g. “Evaluate: <product name>”).';
+  const hasRenderableCardsMessage =
+    lang === 'CN' ? '我已经把核心结果整理成结构化卡片（见下方）。' : 'I summarized the key results into structured cards below.';
+
+  const looksLikeCardsBelowTemplate = (() => {
+    const raw = String(t || '').trim();
+    if (!raw) return false;
+    const lower = raw.toLowerCase();
+
+    // EN: "cards below" style.
+    if (/\bcards?\s+below\b/.test(lower)) return true;
+    if (/\bstructured\s+cards?\s+below\b/.test(lower)) return true;
+    if (/\bsee\s+(the\s+)?(structured\s+)?cards?\s+below\b/.test(lower)) return true;
+    if (/\bsee\s+the\s+card\s+below\b/.test(lower)) return true;
+
+    // CN: "见下方/下方卡片".
+    if (/见下方/.test(raw)) return true;
+    if (/下方.*(卡片|卡)\b/.test(raw)) return true;
+    if (/(结构化|结构).*卡片.*(下方|如下)/.test(raw)) return true;
+    return false;
+  })();
+
+  if (looksLikeCardsBelowTemplate) {
+    return hasRenderableCards ? hasRenderableCardsMessage : noRenderableCardsMessage;
+  }
+
   // If we provide renderable cards, keep assistant_message concise and avoid confusing
   // "templated" multi-part essays (often redundant with the cards).
   //
@@ -1288,13 +1317,9 @@ function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInt
       /(^|\n)#+\s*(am|pm|budget|safety)\b/i.test(t));
   if (looksLikeOverlongTemplate) {
     if (hasRenderableCards) {
-      if (lang === 'CN') return '我已经把核心结果整理成结构化卡片（见下方）。';
-      return 'I summarized the key results into structured cards below.';
+      return hasRenderableCardsMessage;
     }
-    if (lang === 'CN') {
-      return '我这次没有拿到可展示的结构化结果卡片（上游仅返回了摘要/解析信息）。请重试一次，或换一种问法（例如：评估这款：<产品名>）。';
-    }
-    return 'I did not receive any renderable structured cards from upstream (only a parse/summary stub). Please retry, or rephrase (e.g. “Evaluate: <product name>”).';
+    return noRenderableCardsMessage;
   }
 
   if (!looksLikeJsonOrCode(t)) return t;

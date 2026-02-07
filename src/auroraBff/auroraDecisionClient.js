@@ -183,6 +183,20 @@ function mockAuroraChat(input) {
     };
   }
 
+  if (/SHORT_CARDS_BELOW_STUB_TEST/i.test(q)) {
+    return {
+      answer: 'I summarized the key results into structured cards below.',
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'SHORT_CARDS_BELOW_STUB_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
   if (/ANCHOR_CONTEXT_ONLY_TEST/i.test(q)) {
     const longAnswer = [
       'Part 1: Diagnosis 🩺',
