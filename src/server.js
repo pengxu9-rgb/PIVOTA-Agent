@@ -56,6 +56,12 @@ const { mountRecommendationRoutes } = require('./recommendations/routes');
 const { mountAuroraBffRoutes } = require('./auroraBff/routes');
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
+const { resolveProductRef } = require('./services/productGroundingResolver');
+const {
+  upsertMissingCatalogProduct,
+  listMissingCatalogProducts,
+  toCsv: missingCatalogProductsToCsv,
+} = require('./services/missingCatalogProductsStore');
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
@@ -4195,6 +4201,148 @@ async function proxyAgentSearchToBackend(req, res) {
 }
 
 app.get('/agent/v1/products/search', proxyAgentSearchToBackend);
+
+// ---------------- Product grounding resolver (Aurora recos → PDP-openable product_ref) ----------------
+
+function normalizeResolveLang(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return 'en';
+  if (s === 'cn' || s === 'zh' || s === 'zh-cn' || s === 'zh_hans') return 'cn';
+  return 'en';
+}
+
+function pickResolveOptions(raw) {
+  const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const prefer =
+    o.prefer_merchants ||
+    o.preferMerchants ||
+    o.prefer_merchant_ids ||
+    o.preferMerchantIds ||
+    undefined;
+  return {
+    ...(prefer ? { prefer_merchants: prefer } : {}),
+    ...(o.search_all_merchants !== undefined ? { search_all_merchants: o.search_all_merchants } : {}),
+    ...(o.searchAllMerchants !== undefined ? { search_all_merchants: o.searchAllMerchants } : {}),
+    ...(o.allow_external_seed !== undefined ? { allow_external_seed: o.allow_external_seed } : {}),
+    ...(o.allowExternalSeed !== undefined ? { allow_external_seed: o.allowExternalSeed } : {}),
+    ...(o.timeout_ms !== undefined ? { timeout_ms: o.timeout_ms } : {}),
+    ...(o.timeoutMs !== undefined ? { timeout_ms: o.timeoutMs } : {}),
+    ...(o.limit !== undefined ? { limit: o.limit } : {}),
+    ...(o.candidates_limit !== undefined ? { candidates_limit: o.candidates_limit } : {}),
+    ...(o.candidatesLimit !== undefined ? { candidates_limit: o.candidatesLimit } : {}),
+    ...(o.min_confidence !== undefined ? { min_confidence: o.min_confidence } : {}),
+    ...(o.minConfidence !== undefined ? { min_confidence: o.minConfidence } : {}),
+  };
+}
+
+app.post('/agent/v1/products/resolve', async (req, res) => {
+  const checkoutToken =
+    String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
+
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const queryText = String(body.query || '').trim();
+  const lang = normalizeResolveLang(body.lang);
+  const options = pickResolveOptions(body.options);
+  const hints = body.hints && typeof body.hints === 'object' && !Array.isArray(body.hints) ? body.hints : null;
+
+  if (!queryText) {
+    return res.status(400).json({
+      error: 'MISSING_PARAMETERS',
+      message: 'query is required',
+    });
+  }
+
+  try {
+    const result = await resolveProductRef({
+      query: queryText,
+      lang,
+      hints,
+      options,
+      pivotaApiBase: PIVOTA_API_BASE,
+      pivotaApiKey: PIVOTA_API_KEY,
+      checkoutToken,
+    });
+
+    // Best-effort: record gaps for ops restock (do not block the UI).
+    if (!result?.resolved) {
+      const caller =
+        String(body.caller || req.header('X-Caller') || req.header('User-Agent') || '')
+          .trim()
+          .slice(0, 120) || null;
+      const sessionId =
+        String(body.session_id || body.sessionId || req.header('X-Session-Id') || req.header('x-session-id') || '')
+          .trim()
+          .slice(0, 120) || null;
+      const event = {
+        query: queryText,
+        normalized_query: result?.normalized_query || null,
+        lang,
+        hints,
+        caller,
+        session_id: sessionId,
+        reason: result?.reason || 'unresolved',
+        timestamp: new Date().toISOString(),
+      };
+      logger.info({ event_name: 'missing_catalog_product', ...event }, 'missing_catalog_product');
+      upsertMissingCatalogProduct(event).catch((err) => {
+        logger.warn({ err: err?.message || String(err) }, 'missing_catalog_product upsert failed');
+      });
+    }
+
+    return res.json(result);
+  } catch (err) {
+    logger.warn({ err: err?.message || String(err) }, 'products.resolve failed; returning unresolved');
+    return res.json({
+      resolved: false,
+      product_ref: null,
+      confidence: 0,
+      reason: 'internal_error',
+      candidates: [],
+      normalized_query: queryText,
+      metadata: {
+        lang,
+        error: 'internal_error',
+      },
+    });
+  }
+});
+
+// ---------------- Ops export: missing catalog products (requires X-ADMIN-KEY) ----------------
+
+app.get('/api/admin/missing-catalog-products', requireAdmin, async (req, res) => {
+  const format = String(req.query.format || '').trim().toLowerCase() || 'json';
+  const limit = req.query.limit;
+  const offset = req.query.offset;
+  const sort = req.query.sort;
+  const since = req.query.since;
+
+  const out = await listMissingCatalogProducts({
+    limit,
+    offset,
+    sort,
+    since,
+  });
+
+  if (!out.ok) {
+    return res.status(500).json({
+      error: 'MISSING_CATALOG_PRODUCTS_UNAVAILABLE',
+      reason: out.reason || 'unknown',
+      ...(out.error ? { message: out.error } : {}),
+    });
+  }
+
+  if (format === 'csv') {
+    const csv = missingCatalogProductsToCsv(out.rows);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="missing_catalog_products_${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
+    return res.status(200).send(csv);
+  }
+
+  return res.json({ ok: true, rows: out.rows });
+});
 
 // ---------------- Main invoke endpoint ----------------
 
