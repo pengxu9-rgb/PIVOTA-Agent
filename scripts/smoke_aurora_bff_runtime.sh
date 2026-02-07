@@ -62,5 +62,15 @@ printf "%s\n" "$chat_json" | jq_assert "chat includes routine_simulation" '.card
 printf "%s\n" "$chat_json" | jq_assert "chat includes conflict_heatmap" '.cards | any(.type=="conflict_heatmap")'
 printf "%s\n" "$chat_json" | jq_assert "chat heatmap has >=1 cell" '(.cards[]|select(.type=="conflict_heatmap")|.payload.cells.items|length) >= 1'
 
+say "ui events ingest (POST /v1/events should return 204)"
+events_code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BASE}/v1/events" \
+  -H 'Content-Type: application/json' \
+  --data "{\"source\":\"pivota-aurora-chatbox\",\"events\":[{\"event_name\":\"aurora_conflict_heatmap_impression\",\"brief_id\":\"${BRIEF_ID}\",\"trace_id\":\"${TRACE_ID}\",\"timestamp\":$(date +%s000),\"data\":{\"aurora_uid\":\"${AURORA_UID}\",\"lang\":\"${AURORA_LANG}\",\"state\":\"has_conflicts\"}}]}")"
+if [[ "$events_code" != "204" ]]; then
+  printf "\n[FAIL] ui events ingest\n  expected http_code=204 got=%s\n" "$events_code" >&2
+  exit 1
+fi
+printf "[PASS] ui events ingest\n"
+
 say "summary"
 printf "PASS: runtime smoke OK\n"
