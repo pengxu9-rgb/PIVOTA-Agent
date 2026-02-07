@@ -4155,6 +4155,47 @@ app.post('/photos/confirm', proxyPhotosToBackend);
 app.get('/photos/qc', proxyPhotosToBackend);
 app.delete('/photos', proxyPhotosToBackend);
 
+// ---------------- Agent search proxy (PDP resolution) ----------------
+
+// Aurora Chatbox uses this to resolve `merchant_id` for a given `product_id`/name so it can open PDP.
+// Keep it lightweight: pass-through query params; server-side auth only.
+async function proxyAgentSearchToBackend(req, res) {
+  const checkoutToken =
+    String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
+
+  const url = `${PIVOTA_API_BASE}${req.path}`;
+
+  try {
+    const resp = await axios({
+      method: 'GET',
+      url,
+      params: req.query,
+      headers: {
+        ...(checkoutToken
+          ? { 'X-Checkout-Token': checkoutToken }
+          : {
+              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+            }),
+      },
+      timeout: getUpstreamTimeoutMs('find_products_multi'),
+      validateStatus: () => true,
+    });
+
+    return res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const { code, message, data } = extractUpstreamErrorCode(err);
+    const statusCode = err?.response?.status || err?.status || 500;
+    return res.status(statusCode).json({
+      error: code || 'FAILED_TO_PROXY_AGENT_SEARCH',
+      message: message || 'Failed to proxy agent search request',
+      details: data || null,
+    });
+  }
+}
+
+app.get('/agent/v1/products/search', proxyAgentSearchToBackend);
+
 // ---------------- Main invoke endpoint ----------------
 
 app.post('/agent/shop/v1/invoke', async (req, res) => {
