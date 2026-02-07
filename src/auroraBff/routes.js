@@ -1501,14 +1501,32 @@ function extractKnownActivesFromText(text) {
     if (!out.includes(key)) out.push(key);
   };
 
-  if (/(tretinoin|adapalene|retinal|retinol|retinoid)/i.test(lower)) push('retinoid');
+  // NOTE: This is used for routing + local compatibility simulation. Keep it conservative but multilingual.
+  // EN: tretinoin/adapalene/retinal/retinol/retinoid
+  // CN: 阿达帕林 / 维A(类)/维A酸 / 维甲酸 / 视黄醇/视黄醛 / A醇/A酸
+  if (
+    /(tretinoin|adapalene|retinal|retinol|retinoid)/i.test(lower) ||
+    /(阿达帕林|维a类|维a酸|维a|维甲酸|维甲|视黄醇|视黄醛|a醇|a酸)/i.test(t)
+  ) {
+    push('retinoid');
+  }
+  // Strong acids: BHA (salicylic) / AHA (glycolic/lactic/mandelic) / PHA.
+  // CN: 水杨酸 / 果酸(甘醇酸/乳酸/杏仁酸) / PHA(葡糖酸内酯)
+  // Treat PHA as "aha" for conflict heuristics (retinoid_x_acids includes AHA/BHA/PHA).
   if (/(benzoyl\s*peroxide|bpo)/i.test(lower)) push('benzoyl_peroxide');
-  if (/(salicylic|bha)/i.test(lower)) push('bha');
-  if (/(glycolic|lactic|mandelic|aha)/i.test(lower)) push('aha');
+  if (/(过氧化苯甲酰)/i.test(t)) push('benzoyl_peroxide');
+  if (/(salicylic|bha)/i.test(lower) || /(水杨酸)/i.test(t)) push('bha');
+  if (
+    /(glycolic|lactic|mandelic|aha|pha|gluconolactone)/i.test(lower) ||
+    /(果酸|甘醇酸|乙醇酸|乳酸|杏仁酸|葡糖酸内酯)/i.test(t)
+  ) {
+    push('aha');
+  }
   if (/(vitamin\s*c|ascorbic|l-ascorbic|ascorbate)/i.test(lower)) push('vitamin_c');
-  if (/(niacinamide)/i.test(lower)) push('niacinamide');
-  if (/(azelaic)/i.test(lower)) push('azelaic_acid');
-  if (/(tranexamic)/i.test(lower)) push('tranexamic_acid');
+  if (/(维c|维生素c|抗坏血酸)/i.test(t)) push('vitamin_c');
+  if (/(niacinamide)/i.test(lower) || /(烟酰胺)/i.test(t)) push('niacinamide');
+  if (/(azelaic)/i.test(lower) || /(壬二酸)/i.test(t)) push('azelaic_acid');
+  if (/(tranexamic)/i.test(lower) || /(传明酸|氨甲环酸)/i.test(t)) push('tranexamic_acid');
 
   return out;
 }
