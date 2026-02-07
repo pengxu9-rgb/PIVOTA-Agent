@@ -29,6 +29,8 @@ function looksLikeRecommendationRequest(message) {
     /\bam\b/.test(text) ||
     /\bpm\b/.test(text) ||
     /(怎么买|购买|下单|链接)/.test(text)
+    // CN: "想要/要/求" + product-type (avoid matching weather like "要下雪")
+    || /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/.test(text)
   );
 }
 

@@ -11,6 +11,13 @@ function getHeader(req, name) {
   return v == null ? null : String(v);
 }
 
+function looksLikeChineseText(text) {
+  const t = String(text || '');
+  if (!t) return false;
+  // Rough heuristic: presence of CJK unified ideographs.
+  return /[\u4e00-\u9fff]/.test(t);
+}
+
 function detectTextExplicit(message) {
   const text = String(message || '').trim().toLowerCase();
   if (!text) return false;
@@ -27,6 +34,8 @@ function detectTextExplicit(message) {
     /推荐/,
     /产品推荐/,
     /给我方案/,
+    // CN: "想要/要/求" + product-type (avoid matching weather like "要下雪")
+    /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/,
     /诊断/,
     /评估我现在用的/,
   ];
@@ -64,7 +73,12 @@ function buildRequestContext(req, body) {
   const auroraUid = getHeader(req, 'X-Aurora-UID');
   const briefId = getHeader(req, 'X-Brief-ID') || (body && body.session && body.session.brief_id) || null;
   const traceId = getHeader(req, 'X-Trace-ID') || (body && body.session && body.session.trace_id) || randomUUID();
-  const lang = normalizeLang(getHeader(req, 'X-Lang') || (body && body.language));
+  const explicitLang = getHeader(req, 'X-Lang') || (body && body.language) || null;
+  const fallbackText =
+    (body && typeof body.message === 'string' && body.message) ||
+    (body && typeof body.query === 'string' && body.query) ||
+    '';
+  const lang = explicitLang ? normalizeLang(explicitLang) : looksLikeChineseText(fallbackText) ? 'CN' : 'EN';
   const requestId = getHeader(req, 'X-Request-ID') || randomUUID();
   const triggerSource = inferTriggerSource(body || {});
   const state = (body && body.session && body.session.state) || null;

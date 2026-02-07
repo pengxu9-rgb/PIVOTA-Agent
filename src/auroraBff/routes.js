@@ -60,6 +60,7 @@ const {
 const {
   profileCompleteness,
   looksLikeDiagnosisStart,
+  looksLikeRecommendationRequest,
   recommendationsAllowed,
   stateChangeAllowed,
   shouldDiagnosisGate,
@@ -6714,9 +6715,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
-      // If user explicitly asks for a few product recommendations, generate them deterministically
+      // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
-      if (allowRecoCards && actionId === 'chip.start.reco_products' && recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message })) {
+      const wantsProductRecommendations =
+        allowRecoCards &&
+        !looksLikeRoutineRequest(message, parsed.data.action) &&
+        recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message }) &&
+        (actionId === 'chip.start.reco_products' || looksLikeRecommendationRequest(message));
+
+      if (wantsProductRecommendations) {
         const { norm, upstreamDebug, alternativesDebug } = await generateProductRecommendations({
           ctx,
           profile,
@@ -6996,7 +7003,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           : isPlainObject(contextRaw.conflictDetector)
             ? contextRaw.conflictDetector
             : null;
-        if (conflictDetector && typeof conflictDetector.safe === 'boolean') {
+        const wantsConflictCards =
+          Boolean(debugUpstream) ||
+          looksLikeCompatibilityOrConflictQuestion(message) ||
+          (typeof actionId === 'string' && /(routine|compat|conflict|heatmap)/i.test(actionId)) ||
+          (conflictDetector && conflictDetector.safe === false) ||
+          (Array.isArray(conflictDetector && conflictDetector.conflicts) && conflictDetector.conflicts.length > 0);
+
+        if (wantsConflictCards && conflictDetector && typeof conflictDetector.safe === 'boolean') {
           derivedCards.push({
             card_id: `conflicts_${ctx.request_id}`,
             type: 'routine_simulation',
@@ -7058,7 +7072,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         language: ctx.lang,
         hasCards: rawCards.length > 0,
         hasStructured: Boolean(structured && !structuredBlocked),
-        stripInternalRefs: !debugUpstream,
+        // Always keep assistant_message end-user readable; internal kb:* refs belong in debug payloads only.
+        stripInternalRefs: true,
       });
 
       const cardsForEnvelope = !debugUpstream ? stripInternalRefsDeep(cards) : cards;

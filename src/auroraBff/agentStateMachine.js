@@ -68,7 +68,10 @@ function inferTextExplicitTransition(message, language) {
   if (wantsRoutineReview) return { requested_next_state: 'ROUTINE_INTAKE', trigger_id: raw.slice(0, 120) };
 
   const wantsRecs = lang === 'CN'
-    ? /产品推荐/.test(raw) || /推荐/.test(raw) || /给我方案/.test(raw)
+    ? /产品推荐/.test(raw) ||
+      /推荐/.test(raw) ||
+      /给我方案/.test(raw) ||
+      /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/.test(raw)
     : /\brecommend\b/i.test(text) || /product recommendations?/i.test(text) || /build me a routine/i.test(text);
   if (wantsRecs) return { requested_next_state: 'RECO_GATE', trigger_id: raw.slice(0, 120) };
 
@@ -97,4 +100,3 @@ module.exports = {
   inferTextExplicitTransition,
   deriveRequestedTransitionFromAction,
 };
-
