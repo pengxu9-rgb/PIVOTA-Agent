@@ -423,7 +423,9 @@ async function fetchCandidatesViaProductsCache({ merchantIds, query, limit, time
   try {
     const res = await withClient(async (client) => {
       const ms = Math.max(25, safeTimeout);
-      await client.query('SET statement_timeout = $1', [ms]);
+      // Note: Postgres does not reliably accept bind params in `SET statement_timeout`.
+      // `ms` is clamped to a small integer range, so string interpolation is safe here.
+      await client.query(`SET statement_timeout = ${Math.trunc(ms)}`);
       try {
         return await client.query(sql, params);
       } finally {
