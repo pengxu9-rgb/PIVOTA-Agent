@@ -13,6 +13,7 @@ LOADTEST_CONCURRENCY ?= 8
 LOADTEST_REQUEST_TIMEOUT_S ?= 8
 LOADTEST_QC ?= pass
 LOADTEST_P95_BUDGET_MS ?= 2000
+BASE ?= https://pivota-agent-production.up.railway.app
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -45,3 +46,6 @@ release-gate:
 
 gate-debug:
 	python3 scripts/generate_release_gate.py --debug
+
+runtime-smoke:
+	BASE=$(BASE) AURORA_LANG=$(AURORA_LANG) bash scripts/smoke_aurora_bff_runtime.sh
