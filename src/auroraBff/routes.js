@@ -7093,9 +7093,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         return null;
       })();
 
-      const mapAnchorContextToProductAnalysis = (anchor, { lang } = {}) => {
+      const mapAnchorContextToProductAnalysis = (anchor, { lang, profileSummary: profileSummaryOpt } = {}) => {
         const a = isPlainObject(anchor) ? anchor : {};
         const outLang = String(lang || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+        const p = isPlainObject(profileSummaryOpt) ? profileSummaryOpt : null;
 
         const uniqStrings = (items, max = null) => {
           const out = [];
@@ -7166,11 +7167,130 @@ function mountAuroraBffRoutes(app, { logger }) {
           return t.length > max ? `${t.slice(0, max - 1)}…` : t;
         };
 
+        const normalizeProfileEnum = (v) => {
+          const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
+          return s || null;
+        };
+        const profileSkinType = normalizeProfileEnum(p?.skinType);
+        const profileSensitivity = normalizeProfileEnum(p?.sensitivity);
+        const profileBarrier = normalizeProfileEnum(p?.barrierStatus);
+        const profileGoals = Array.isArray(p?.goals) ? p.goals.map((g) => normalizeProfileEnum(g)).filter(Boolean) : [];
+
+        const profileTags = (() => {
+          if (!p) return [];
+          const tags = [];
+
+          const skinTypeLabel = (() => {
+            if (!profileSkinType) return null;
+            if (outLang === 'CN') {
+              if (profileSkinType === 'oily') return '油皮';
+              if (profileSkinType === 'dry') return '干皮';
+              if (profileSkinType === 'combo' || profileSkinType === 'combination') return '混合皮';
+              if (profileSkinType === 'normal') return '中性皮';
+              if (profileSkinType === 'sensitive') return '敏感肌';
+              return `肤质：${profileSkinType}`;
+            }
+            if (profileSkinType === 'combo' || profileSkinType === 'combination') return 'combination';
+            return profileSkinType;
+          })();
+
+          const sensitivityLabel = (() => {
+            if (!profileSensitivity) return null;
+            if (outLang === 'CN') {
+              if (profileSensitivity === 'low') return '低敏';
+              if (profileSensitivity === 'medium') return '中敏';
+              if (profileSensitivity === 'high') return '高敏';
+              return `敏感：${profileSensitivity}`;
+            }
+            if (profileSensitivity === 'low') return 'low sensitivity';
+            if (profileSensitivity === 'medium') return 'medium sensitivity';
+            if (profileSensitivity === 'high') return 'high sensitivity';
+            return `sensitivity=${profileSensitivity}`;
+          })();
+
+          const barrierLabel = (() => {
+            if (!profileBarrier) return null;
+            if (outLang === 'CN') {
+              if (profileBarrier === 'healthy') return '屏障健康';
+              if (profileBarrier === 'impaired') return '屏障受损';
+              return `屏障：${profileBarrier}`;
+            }
+            if (profileBarrier === 'healthy') return 'healthy barrier';
+            if (profileBarrier === 'impaired') return 'impaired barrier';
+            return `barrier=${profileBarrier}`;
+          })();
+
+          if (skinTypeLabel) tags.push(skinTypeLabel);
+          if (sensitivityLabel) tags.push(sensitivityLabel);
+          if (barrierLabel) tags.push(barrierLabel);
+          return tags;
+        })();
+
+        const lowerKeyActives = uniqStrings(take(keyActives, 12).map((x) => String(x || '').trim()).filter(Boolean))
+          .join(' | ')
+          .toLowerCase();
+        const hasNiacinamide = /\bniacinamide\b|烟酰胺/.test(lowerKeyActives);
+        const hasZincPca = /\bzinc\b.*\bpca\b|锌\s*pca/.test(lowerKeyActives);
+        const isAcidLike =
+          riskFlags.some((f) => /\bacid\b/i.test(f)) ||
+          /\baha\b|\bbha\b|\bpha\b|\bglycolic\b|\blactic\b|\bsalicylic\b|果酸|水杨酸|杏仁酸|乳酸|葡糖酸内酯/.test(lowerKeyActives);
+
+        const isHighIrritation =
+          riskFlags.some((f) => /high_irritation/i.test(f)) ||
+          /\bhigh irritation\b|刺激性偏高|can sting|may sting/.test(String(sensitivityNotes || '').toLowerCase());
+
+        const profileSuggestsCaution =
+          profileBarrier === 'impaired' ||
+          profileSensitivity === 'high' ||
+          (profileSensitivity === 'medium' && (isAcidLike || isHighIrritation));
+
         const reasons = uniqStrings([
           ...take(comparisonNotes, 1).map((s) => truncate(s, 200)),
+          ...(profileTags.length
+            ? [
+              outLang === 'CN'
+                ? `基于你的皮肤特性：${truncate(profileTags.join(' / '), 80)}。`
+                : `Based on your profile: ${truncate(profileTags.join(' / '), 80)}.`,
+            ]
+            : []),
+          ...(profileSkinType === 'oily' && (hasNiacinamide || hasZincPca)
+            ? [
+              outLang === 'CN'
+                ? '更偏油皮友好：烟酰胺/锌类通常用于控油、痘印与毛孔观感。'
+                : 'Oily-skin friendly: niacinamide/zinc are commonly used for oil control and the look of pores/marks.',
+            ]
+            : []),
+          ...(profileGoals.includes('brightening') && hasNiacinamide
+            ? [
+              outLang === 'CN' ? '你的目标包含提亮：烟酰胺在“肤色不均/痘印”方向常见。' : 'Your goal includes brightening: niacinamide is commonly used for uneven tone/marks.',
+            ]
+            : []),
+          ...(profileGoals.includes('acne') && (hasNiacinamide || hasZincPca)
+            ? [
+              outLang === 'CN' ? '你的目标包含痘痘：这类成分更常见于“控油/痘痘倾向”方向。' : 'Your goal includes acne-prone concerns: these actives are often used for oil/acne-prone routines.',
+            ]
+            : []),
           ...take(keyActives, 3).map((s) => (outLang === 'CN' ? `关键活性：${truncate(s, 180)}` : `Key active: ${truncate(s, 180)}`)),
-          ...(riskFlags.some((f) => /high_irritation/i.test(f))
-            ? [outLang === 'CN' ? '风险提示：刺激性偏高，建议从低频开始并注意屏障反应。' : 'Risk: higher irritation potential; start low and watch barrier response.']
+          ...(profileSuggestsCaution
+            ? [
+              outLang === 'CN'
+                ? '使用建议：先从低频（每周 2–3 次或更少）开始；若刺痛/泛红，先停用并以修护保湿为主。'
+                : 'How to use: start low (2–3×/week or less); if stinging/redness happens, pause and focus on barrier support.',
+            ]
+            : []),
+          ...(isHighIrritation
+            ? [
+              outLang === 'CN'
+                ? '风险提示：刺激性偏高（部分人会刺痛/搓泥），建议少量、等待吸收、减少叠加。'
+                : 'Risk: higher irritation/pilling potential; use a small amount, let it absorb, and avoid heavy layering.',
+            ]
+            : []),
+          ...(isAcidLike
+            ? [
+              outLang === 'CN'
+                ? '叠加提醒：同一晚尽量不要叠加强酸/维A类（更容易刺痛/爆皮）。'
+                : 'Layering note: avoid stacking strong acids/retinoids in the same night to reduce irritation.',
+            ]
             : []),
         ]).filter(Boolean).slice(0, 5);
 
@@ -7245,7 +7365,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         !derivedCards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis') &&
         !cards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis')
       ) {
-        const mapped = mapAnchorContextToProductAnalysis(anchorFromContext, { lang: ctx.lang });
+        const mapped = mapAnchorContextToProductAnalysis(anchorFromContext, { lang: ctx.lang, profileSummary });
         const norm = normalizeProductAnalysis(mapped);
         const payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
         derivedCards.push({
@@ -7510,7 +7630,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const hasRenderableCards =
         structuredIsRenderable ||
         derivedCards.length > 0 ||
-        rawCards.length > 0 ||
+        cards.length > 0 ||
+        contextCard.length > 0 ||
         (fieldMissing.length > 0); // gate_notice renders missing-field reasons
 
       const safeAnswer = sanitizeUpstreamAnswer(answer, {

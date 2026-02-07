@@ -183,6 +183,63 @@ function mockAuroraChat(input) {
     };
   }
 
+  if (/ANCHOR_CONTEXT_ONLY_TEST/i.test(q)) {
+    const longAnswer = [
+      'Part 1: Diagnosis 🩺',
+      '- This is a long templated answer, but upstream only returned parse/conflicts plus an anchor in context.',
+      '',
+      'Part 2: The Routine 📅',
+      'AM (Protection):',
+      '- Cleanser - Mock Gentle Cleanser',
+      'PM (Treatment):',
+      '- Treatment - Mock Gentle Treatment',
+      '',
+      'Part 3: Budget Analysis 💰',
+      '- Price unknown.',
+      '',
+      'Part 4: Safety Warning ⚠️',
+      '- Wear SPF.',
+      '',
+      'Notes:',
+      '- (filler) '.repeat(80),
+    ].join('\n');
+
+    return {
+      answer: longAnswer,
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'ANCHOR_CONTEXT_ONLY_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {
+        anchor: {
+          id: 'mock_anchor_niacinamide',
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          vetoed: false,
+          score: { science: 42, social: 73, engineering: 75, total: 64, vetoed: false },
+          risk_flags: ['high_irritation'],
+          risk_flags_canonical: ['high_irritation'],
+          kb_profile: {
+            keyActives: ['Niacinamide 10%', 'Zinc PCA 1%'],
+            comparisonNotes: ['Good budget option'],
+            sensitivityFlags: ['high_irritation'],
+            pairingRules: [],
+            textureFinish: ['Texture: lotion', 'Finish: natural'],
+          },
+          social: {
+            red_score: 65,
+            reddit_score: 80,
+            burn_rate: 0.1,
+            top_keywords: ['oil control', 'pores', 'blemishes'],
+          },
+        },
+      },
+    };
+  }
+
   if (/CONTEXT_CARDS_TEST/i.test(q)) {
     const hasAnchor = Boolean(anchorId);
     return {

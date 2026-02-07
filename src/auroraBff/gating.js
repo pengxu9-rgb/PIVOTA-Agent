@@ -42,7 +42,9 @@ function looksLikeSuitabilityRequest(message) {
     /\bcan i use\b/.test(text) ||
     /\bwill it (irritate|break me out)\b/.test(text) ||
     /\bsuitable\b/.test(text) ||
-    /(适合吗|适不适合|适合我吗|能用吗|可以用吗|刺激吗|爆痘吗)/.test(text)
+    /(适合吗|适不适合|适合我吗|能用吗|可以用吗|刺激吗|爆痘吗)/.test(text) ||
+    // CN: common fit-check phrasing without explicitly saying "适合吗" (e.g. "请评估：<product>")
+    /(评估|测评|评价)\s*[:：]\s*[^\\s]{3,}/.test(text)
   );
 }
 
