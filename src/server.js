@@ -48,7 +48,7 @@ const {
   scorePairOverlap,
 } = require('./services/productTagSignals');
 const { mountLookReplicatorRoutes } = require('./lookReplicator');
-const { mountOutcomeTelemetryRoutes, mountLookReplicatorEventRoutes } = require('./telemetry');
+const { mountOutcomeTelemetryRoutes, mountLookReplicatorEventRoutes, mountUiEventRoutes } = require('./telemetry');
 const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compatibility');
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
@@ -3720,6 +3720,10 @@ mountOutcomeTelemetryRoutes(app, { logger });
 // ---------------- Telemetry (internal): Look Replicator events ----------------
 
 mountLookReplicatorEventRoutes(app, { logger });
+
+// ---------------- Telemetry (internal): Aurora Chatbox UI events ----------------
+
+mountUiEventRoutes(app, { logger });
 
 // ---------------- Layer 3: External offers (external-first) ----------------
 
