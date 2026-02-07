@@ -1607,6 +1607,102 @@ test('/v1/chat: collapses overlong templated answers when cards are present', as
 	  });
 	});
 
+test('/v1/chat: overlong template without renderable cards does NOT claim "cards below"', async () => {
+  await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true', AURORA_BFF_RETENTION_DAYS: '0' }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
+      headers: { 'X-Aurora-UID': 'test_uid_stub_only', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['brightening'],
+        budgetTier: '¥500',
+        region: 'CN',
+      },
+    });
+    assert.equal(seed.status, 200);
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_stub_only', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        // Mock upstream returns an overlong templated essay + structured stub, but no citations/cards.
+        message: 'STRUCTURED_STUB_ONLY_TEST',
+        session: { state: 'idle' },
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const assistant = String(resp.body?.assistant_message?.content || '').trim();
+    assert.ok(assistant);
+    // Must not claim "see cards below" when UI is expected to hide structured stub (no citations).
+    assert.equal(assistant.includes('见下方'), false);
+    assert.equal(/\bcards\s+below\b/i.test(assistant), false);
+  });
+});
+
 test('/v1/chat: exposes env_stress + citations + conflicts cards (contracts)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');

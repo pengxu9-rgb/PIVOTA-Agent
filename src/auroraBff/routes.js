@@ -1269,32 +1269,39 @@ function stripInternalRefsDeep(value, { parentKey } = {}) {
   return out;
 }
 
-function sanitizeUpstreamAnswer(answer, { language, hasCards, hasStructured, stripInternalRefs } = {}) {
+function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInternalRefs } = {}) {
   let t = typeof answer === 'string' ? answer : '';
   if (stripInternalRefs) t = stripInternalKbRefsFromText(t);
 
   const lang = language === 'CN' ? 'CN' : 'EN';
-  const hasAnything = Boolean(hasCards) || Boolean(hasStructured);
 
-  // If we already provide structured cards, keep assistant_message concise and avoid
-  // confusing "templated" multi-part essays (often redundant with the cards).
+  // If we provide renderable cards, keep assistant_message concise and avoid confusing
+  // "templated" multi-part essays (often redundant with the cards).
+  //
+  // IMPORTANT: do not reference "cards below" unless we are confident the UI will
+  // actually render at least one card (e.g. structured citations, env_stress, recos).
   const looksLikeOverlongTemplate =
-    hasAnything &&
     t.length > 600 &&
     (/\bpart\s*\d+\s*:/i.test(t) ||
       /\b(budget analysis|am\s*\(|pm\s*\(|am\s*:|pm\s*:)\b/i.test(t) ||
       /(^|\n)#+\s*(am|pm|budget|safety)\b/i.test(t));
   if (looksLikeOverlongTemplate) {
-    if (lang === 'CN') return '我已经把核心结果整理成结构化卡片（见下方）。';
-    return 'I summarized the key results into structured cards below.';
+    if (hasRenderableCards) {
+      if (lang === 'CN') return '我已经把核心结果整理成结构化卡片（见下方）。';
+      return 'I summarized the key results into structured cards below.';
+    }
+    if (lang === 'CN') {
+      return '我这次没有拿到可展示的结构化结果卡片（上游仅返回了摘要/解析信息）。请重试一次，或换一种问法（例如：评估这款：<产品名>）。';
+    }
+    return 'I did not receive any renderable structured cards from upstream (only a parse/summary stub). Please retry, or rephrase (e.g. “Evaluate: <product name>”).';
   }
 
   if (!looksLikeJsonOrCode(t)) return t;
 
   if (lang === 'CN') {
-    return hasAnything ? '我已经把结果整理成结构化卡片（见下方）。' : '我已收到你的信息。';
+    return hasRenderableCards ? '我已经把结果整理成结构化卡片（见下方）。' : '我已收到你的信息。';
   }
-  return hasAnything ? 'I formatted the result into structured cards below.' : 'Got it.';
+  return hasRenderableCards ? 'I formatted the result into structured cards below.' : 'Got it.';
 }
 
 function isPlainObject(value) {
@@ -7066,10 +7073,20 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? stripInternalRefsDeep(structuredWithExternalVerification)
           : structuredWithExternalVerification;
 
+      const structuredCitations = Array.isArray(structuredForEnvelope?.external_verification?.citations)
+        ? structuredForEnvelope.external_verification.citations
+        : [];
+      // UI treats aurora_structured primarily as a "references" card; if citations are empty it is hidden.
+      const structuredIsRenderable = Boolean(structuredForEnvelope && !structuredBlocked && structuredCitations.length > 0);
+      const hasRenderableCards =
+        structuredIsRenderable ||
+        derivedCards.length > 0 ||
+        rawCards.length > 0 ||
+        (fieldMissing.length > 0); // gate_notice renders missing-field reasons
+
       const safeAnswer = sanitizeUpstreamAnswer(answer, {
         language: ctx.lang,
-        hasCards: rawCards.length > 0,
-        hasStructured: Boolean(structured && !structuredBlocked),
+        hasRenderableCards,
         // Always keep assistant_message end-user readable; internal kb:* refs belong in debug payloads only.
         stripInternalRefs: true,
       });

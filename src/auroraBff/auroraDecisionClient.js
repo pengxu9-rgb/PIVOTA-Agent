@@ -149,6 +149,40 @@ function mockAuroraChat(input) {
     };
   }
 
+  if (/STRUCTURED_STUB_ONLY_TEST/i.test(q)) {
+    const longAnswer = [
+      'Part 1: Diagnosis 🩺',
+      '- This is a long templated answer, but upstream did not return any renderable cards.',
+      '',
+      'Part 2: The Routine 📅',
+      'AM (Protection):',
+      '- Cleanser - Mock Gentle Cleanser',
+      'PM (Treatment):',
+      '- Treatment - Mock Gentle Treatment',
+      '',
+      'Part 3: Budget Analysis 💰',
+      '- Price unknown.',
+      '',
+      'Part 4: Safety Warning ⚠️',
+      '- Wear SPF.',
+      '',
+      'Notes:',
+      '- (filler) '.repeat(80),
+    ].join('\n');
+
+    return {
+      answer: longAnswer,
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'STRUCTURED_STUB_ONLY_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
   if (/CONTEXT_CARDS_TEST/i.test(q)) {
     const hasAnchor = Boolean(anchorId);
     return {
