@@ -73,6 +73,7 @@ DELETE FROM schema_migrations WHERE id = '012_aurora_bff_memory.sql';
 
 - OpenAPI: `docs/aurora_bff_openapi.json`
 - Card protocol (UI render contract): `docs/aurora_bff_cards.md`
+- Telemetry (`/v1/events`): `docs/aurora_bff_telemetry.md`
 
 ### Health
 
