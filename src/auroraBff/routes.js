@@ -7083,12 +7083,184 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
+      // Product suitability derived card: if upstream provides an anchor product context (common for "评估/适合吗" flows),
+      // emit a renderable `product_analysis` card (UI expects this, not the raw context blob).
+      const anchorFromContext = (() => {
+        if (!contextRaw) return null;
+        if (isPlainObject(contextRaw.anchor)) return contextRaw.anchor;
+        if (isPlainObject(contextRaw.anchor_product)) return contextRaw.anchor_product;
+        if (isPlainObject(contextRaw.anchorProduct)) return contextRaw.anchorProduct;
+        return null;
+      })();
+
+      const mapAnchorContextToProductAnalysis = (anchor, { lang } = {}) => {
+        const a = isPlainObject(anchor) ? anchor : {};
+        const outLang = String(lang || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+
+        const uniqStrings = (items, max = null) => {
+          const out = [];
+          const seen = new Set();
+          for (const raw of Array.isArray(items) ? items : []) {
+            const s = typeof raw === 'string' ? raw.trim() : raw == null ? '' : String(raw).trim();
+            if (!s) continue;
+            const key = s.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(s);
+            if (typeof max === 'number' && max > 0 && out.length >= max) break;
+          }
+          return out;
+        };
+
+        const brand = typeof a.brand === 'string' ? a.brand.trim() : '';
+        const name = typeof a.name === 'string' ? a.name.trim() : '';
+        const productId = typeof a.id === 'string' ? a.id.trim() : typeof a.product_id === 'string' ? a.product_id.trim() : '';
+        const displayName = [brand, name].filter(Boolean).join(' ').trim() || (typeof a.display_name === 'string' ? a.display_name.trim() : '');
+
+        const score = isPlainObject(a.score) ? a.score : {};
+        const scoreTotal = coerceNumber(score.total);
+        const scoreScience = coerceNumber(score.science);
+        const scoreSocial = coerceNumber(score.social);
+        const scoreEng = coerceNumber(score.engineering);
+
+        const social = isPlainObject(a.social) ? a.social : {};
+        const redScore = coerceNumber(social.red_score ?? social.redScore);
+        const redditScore = coerceNumber(social.reddit_score ?? social.redditScore);
+        const burnRate = coerceNumber(social.burn_rate ?? social.burnRate);
+        const topKeywords = Array.isArray(social.top_keywords) ? social.top_keywords : Array.isArray(social.topKeywords) ? social.topKeywords : [];
+
+        const kb = isPlainObject(a.kb_profile) ? a.kb_profile : isPlainObject(a.kbProfile) ? a.kbProfile : {};
+        const keyActives = Array.isArray(kb.keyActives) ? kb.keyActives : [];
+        const comparisonNotes = Array.isArray(kb.comparisonNotes) ? kb.comparisonNotes : [];
+        const sensitivityFlags = Array.isArray(kb.sensitivityFlags) ? kb.sensitivityFlags : [];
+        const pairingRules = Array.isArray(kb.pairingRules) ? kb.pairingRules : [];
+        const textureFinish = Array.isArray(kb.textureFinish) ? kb.textureFinish : [];
+
+        const expert = isPlainObject(a.expert_knowledge) ? a.expert_knowledge : isPlainObject(a.expertKnowledge) ? a.expertKnowledge : {};
+        const chemistNotes = typeof expert.chemist_notes === 'string' ? expert.chemist_notes : typeof expert.chemistNotes === 'string' ? expert.chemistNotes : '';
+        const sensitivityNotes =
+          typeof expert.sensitivity_notes === 'string'
+            ? expert.sensitivity_notes
+            : typeof expert.sensitivityNotes === 'string'
+              ? expert.sensitivityNotes
+              : '';
+
+        const riskFlags = uniqStrings([
+          ...(Array.isArray(a.risk_flags_canonical) ? a.risk_flags_canonical : []),
+          ...(Array.isArray(a.risk_flags) ? a.risk_flags : []),
+          ...(Array.isArray(sensitivityFlags) ? sensitivityFlags : []),
+        ].map((x) => String(x || '').trim()).filter(Boolean));
+
+        const vetoed = Boolean(a.vetoed);
+        const verdict = (() => {
+          if (vetoed) return outLang === 'CN' ? '不建议' : 'Avoid';
+          if (riskFlags.some((f) => /high_irritation/i.test(f))) return outLang === 'CN' ? '谨慎' : 'Caution';
+          if (scoreTotal != null && scoreTotal < 55) return outLang === 'CN' ? '谨慎' : 'Caution';
+          return outLang === 'CN' ? '适合' : 'Suitable';
+        })();
+
+        const take = (arr, n) => (Array.isArray(arr) ? arr.filter(Boolean).slice(0, n) : []);
+        const truncate = (s, max = 200) => {
+          const t = typeof s === 'string' ? s.trim() : s == null ? '' : String(s).trim();
+          if (!t) return '';
+          return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+        };
+
+        const reasons = uniqStrings([
+          ...take(comparisonNotes, 1).map((s) => truncate(s, 200)),
+          ...take(keyActives, 3).map((s) => (outLang === 'CN' ? `关键活性：${truncate(s, 180)}` : `Key active: ${truncate(s, 180)}`)),
+          ...(riskFlags.some((f) => /high_irritation/i.test(f))
+            ? [outLang === 'CN' ? '风险提示：刺激性偏高，建议从低频开始并注意屏障反应。' : 'Risk: higher irritation potential; start low and watch barrier response.']
+            : []),
+        ]).filter(Boolean).slice(0, 5);
+
+        const assessment = {
+          verdict,
+          reasons,
+          ...(productId || brand || name || displayName
+            ? {
+              anchor_product: {
+                ...(productId ? { product_id: productId, sku_id: productId } : {}),
+                ...(brand ? { brand } : {}),
+                ...(name ? { name } : {}),
+                ...(displayName ? { display_name: displayName } : {}),
+                availability: Array.isArray(a.availability) ? a.availability : [],
+              },
+            }
+            : {}),
+        };
+
+        const platformScores = {};
+        if (redScore != null) platformScores.RED = redScore;
+        if (redditScore != null) platformScores.Reddit = redditScore;
+        if (burnRate != null) platformScores.burn_rate = burnRate;
+
+        const evidence = {
+          science: {
+            key_ingredients: uniqStrings(take(keyActives, 8).map((s) => truncate(s, 120)), 8),
+            mechanisms: [],
+            fit_notes: uniqStrings([...take(textureFinish, 2), ...take(pairingRules, 1)].map((s) => truncate(s, 200)), 3),
+            risk_notes: uniqStrings(
+              [
+                ...riskFlags.map((s) => truncate(s, 120)),
+                ...(sensitivityNotes ? [truncate(sensitivityNotes, 200)] : []),
+              ].filter(Boolean),
+              4,
+            ),
+          },
+          social_signals: {
+            ...(Object.keys(platformScores).length ? { platform_scores: platformScores } : {}),
+            typical_positive: uniqStrings(take(topKeywords, 6).map((s) => truncate(s, 60)), 6),
+            typical_negative: [],
+            risk_for_groups: [],
+          },
+          expert_notes: uniqStrings([chemistNotes, sensitivityNotes].map((s) => truncate(s, 200)).filter(Boolean), 2),
+          confidence: scoreScience != null ? Math.max(0, Math.min(1, scoreScience / 100)) : null,
+          missing_info: [],
+        };
+
+        const confidence = scoreTotal != null ? Math.max(0, Math.min(1, scoreTotal / 100)) : null;
+        const missing_info = [];
+
+        // Preserve score breakdown as lightweight expert note (no internal kb ids).
+        const scoreLineParts = [
+          scoreTotal != null ? `Total ${Math.round(scoreTotal)}/100` : null,
+          scoreScience != null ? `Science ${Math.round(scoreScience)}` : null,
+          scoreSocial != null ? `Social ${Math.round(scoreSocial)}` : null,
+          scoreEng != null ? `Eng ${Math.round(scoreEng)}` : null,
+        ].filter(Boolean);
+        if (scoreLineParts.length) {
+          evidence.expert_notes = uniqStrings([
+            ...(Array.isArray(evidence.expert_notes) ? evidence.expert_notes : []),
+            truncate(scoreLineParts.join(', '), 200),
+          ], 3);
+        }
+
+        return { assessment, evidence, confidence, missing_info };
+      };
+
+      if (
+        looksLikeSuitabilityRequest(message) &&
+        anchorFromContext &&
+        !derivedCards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis') &&
+        !cards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis')
+      ) {
+        const mapped = mapAnchorContextToProductAnalysis(anchorFromContext, { lang: ctx.lang });
+        const norm = normalizeProductAnalysis(mapped);
+        const payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
+        derivedCards.push({
+          card_id: `analyze_${ctx.request_id}`,
+          type: 'product_analysis',
+          payload: debugUpstream ? payload : stripInternalRefsDeep(payload),
+          ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+        });
+      }
+
       // Fit-check fallback: some upstream flows return only a parse/conflicts stub (no recommendations or analysis cards).
       // If the user explicitly asked whether a specific product is suitable, run a dedicated deep-scan and emit a
       // renderable `product_analysis` card so the UI has something actionable to display.
       const wantsSuitabilityFallback =
-        looksLikeSuitabilityRequest(message) &&
-        recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message });
+        looksLikeSuitabilityRequest(message);
 
       const hasProductOutputCard = (arr) =>
         Array.isArray(arr) &&
@@ -7104,8 +7276,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         wantsSuitabilityFallback &&
         structuredIsParseOnlyStub &&
         !hasProductOutputCard(cards) &&
-        !hasProductOutputCard(derivedCards) &&
-        rawCards.length === 0
+        !hasProductOutputCard(derivedCards)
       ) {
         const productInput =
           anchorProductUrl ||
@@ -7297,7 +7468,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
-          if (payload && payload.assessment) {
+          if (payload) {
             derivedCards.push({
               card_id: `analyze_${ctx.request_id}`,
               type: 'product_analysis',
