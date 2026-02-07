@@ -4242,7 +4242,7 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const queryText = String(body.query || '').trim();
   const lang = normalizeResolveLang(body.lang);
-  const options = pickResolveOptions(body.options);
+  let options = pickResolveOptions(body.options);
   const hints = body.hints && typeof body.hints === 'object' && !Array.isArray(body.hints) ? body.hints : null;
 
   if (!queryText) {
@@ -4250,6 +4250,29 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
       error: 'MISSING_PARAMETERS',
       message: 'query is required',
     });
+  }
+
+  // Aurora Chatbox should remain merchant-agnostic. If callers don't specify prefer_merchants,
+  // default to the server-side creator catalog merchants (when available) so we can resolve
+  // via products_cache instead of timing out on upstream search.
+  const callerHint = String(body.caller || '').trim().toLowerCase();
+  const hasAuroraUid = Boolean(String(req.header('X-Aurora-Uid') || req.header('x-aurora-uid') || '').trim());
+  const origin = String(req.headers.origin || '').trim();
+  const shouldDefaultPreferMerchants =
+    callerHint === 'aurora_chatbox' || callerHint === 'aurora-chatbox' || hasAuroraUid || origin === 'https://aurora.pivota.cc';
+  const preferMerchantsRaw = options?.prefer_merchants;
+  const hasPreferMerchants =
+    (Array.isArray(preferMerchantsRaw) && preferMerchantsRaw.length > 0) ||
+    (typeof preferMerchantsRaw === 'string' && preferMerchantsRaw.trim().length > 0);
+  if (shouldDefaultPreferMerchants && !hasPreferMerchants) {
+    const defaultMerchants = getCreatorCatalogMerchantIds();
+    if (defaultMerchants.length) {
+      options = {
+        ...options,
+        prefer_merchants: defaultMerchants,
+        ...(options.search_all_merchants === undefined ? { search_all_merchants: false } : {}),
+      };
+    }
   }
 
   try {
