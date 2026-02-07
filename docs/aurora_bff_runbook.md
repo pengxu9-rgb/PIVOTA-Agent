@@ -133,7 +133,7 @@ Expected: `code=204`.
 ## Release gate (recommended)
 
 - Run unit tests: `npm run test:aurora-bff:unit`
-- Runtime smoke (hits `BASE` and includes `/v1/events` ingest check):
+- Runtime smoke (hits `BASE`; checks key `/v1/*` flows + `/v1/events` ingest):
 
 ```bash
 BASE='https://pivota-agent-production.up.railway.app' make runtime-smoke

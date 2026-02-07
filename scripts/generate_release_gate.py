@@ -519,7 +519,7 @@ def _render_release_gate_md(checks: Sequence[CheckResult]) -> str:
     lines.append("- `make stability OUT=artifacts/stability_report.json`")
     lines.append("- `make loadtest OUT=artifacts/loadtest_report.md`")
     lines.append("- `make privacy-check`")
-    lines.append("- `make runtime-smoke` (optional; hits `BASE` — also checks `/v1/events` ingest)")
+    lines.append("- `make runtime-smoke` (optional; hits `BASE` — checks key `/v1/*` flows + `/v1/events` ingest)")
     lines.append("")
     lines.append("## Env flags (diagnosis rollout)")
     lines.append("")
