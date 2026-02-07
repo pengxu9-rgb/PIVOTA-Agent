@@ -6421,7 +6421,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         looksLikeCompatibilityOrConflictQuestion(message) &&
         (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
       ) {
-        const simInput = buildLocalCompatibilitySimulationInput({ message, profile });
+        // NOTE: For ad-hoc "can I combine X with Y?" questions, do NOT auto-apply `profile.currentRoutine`.
+        // Routine-specific simulation should be triggered from the routine feature/flow explicitly (e.g. /v1/routine/simulate).
+        const simInput = buildLocalCompatibilitySimulationInput({ message });
         if (simInput) {
           const { routine, testProduct } = simInput;
           const sim = simulateConflicts({ routine, testProduct });
