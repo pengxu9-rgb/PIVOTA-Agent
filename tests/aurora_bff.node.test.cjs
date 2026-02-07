@@ -1523,6 +1523,11 @@ test('enrichProductAnalysisPayload: adds profile-fit reasons and hides raw risk 
   const out = enrichProductAnalysisPayload(payload, { lang: 'CN', profileSummary });
   const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
   const joined = reasons.join(' | ');
+  // Profile-fit reasons should lead (more user-specific), hero ingredient can follow.
+  assert.ok(String(reasons[0] || '').startsWith('你的情况：'));
+  assert.ok(/^(匹配点|使用建议)：/.test(String(reasons[1] || '')));
+  const heroIdx = reasons.findIndex((r) => String(r || '').startsWith('最关键成分：'));
+  assert.ok(heroIdx >= 2);
   assert.ok(joined.includes('油皮'));
   assert.equal(joined.includes('high_irritation'), false);
   // CN flow should prefer CN reasons when available.

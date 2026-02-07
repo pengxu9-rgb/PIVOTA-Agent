@@ -625,6 +625,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
 
   // Optional: inject profile-fit explanations when profile context is available (chat/product-analyze flows).
   const profileReasons = buildProfileFitReasons(profileSummary ?? p.profile_summary ?? p.profileSummary ?? null, p.evidence, { lang });
+  let profileReasonsUsed = 0;
   if (profileReasons.length) {
     // CN users often receive mixed-language upstream reasons; prefer CN-ish reasons when we have them.
     if (String(lang).toUpperCase() === 'CN') {
@@ -634,6 +635,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     // Prepend, but keep room for the hero ingredient line (added later) when possible.
     const budget = Math.max(1, maxReasons - 1);
     const pre = profileReasons.slice(0, budget);
+    profileReasonsUsed = pre.length;
     reasons = uniqueStrings([...pre, ...reasons]).slice(0, maxReasons);
   }
 
@@ -681,7 +683,14 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
         String(lang).toUpperCase() === 'CN'
           ? `最关键成分：${hero.name}（${hero.role || '未知'}）— ${hero.why}`
           : `Most impactful ingredient: ${hero.name} (${hero.role || 'unknown'}) — ${hero.why}`;
-      reasons.unshift(heroLine);
+      // If we have profile-fit reasons, keep them as the top lines (more user-specific),
+      // then insert hero ingredient after them.
+      if (profileReasonsUsed > 0) {
+        const idx = Math.max(0, Math.min(profileReasonsUsed, reasons.length));
+        reasons.splice(idx, 0, heroLine);
+      } else {
+        reasons.unshift(heroLine);
+      }
     }
   }
 
