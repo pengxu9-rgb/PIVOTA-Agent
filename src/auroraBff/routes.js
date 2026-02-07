@@ -1330,6 +1330,28 @@ function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInt
   return hasRenderableCards ? 'I formatted the result into structured cards below.' : 'Got it.';
 }
 
+const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
+  'recommendations',
+  'product_analysis',
+  'env_stress',
+  'routine_simulation',
+  'conflict_heatmap',
+  'analysis_summary',
+  'diagnosis_gate',
+]);
+
+const CHATBOX_UI_HIDDEN_CARD_TYPES = new Set(['gate_notice', 'session_bootstrap', 'budget_gate', 'aurora_context_raw']);
+
+function isRenderableCardForChatboxUi(card, { debug } = {}) {
+  if (!card || typeof card !== 'object') return false;
+  const type = String(card.type || '').trim().toLowerCase();
+  if (!type) return false;
+  if (debug) return true;
+  if (type === 'aurora_structured') return false; // Renderability depends on citations; handled separately.
+  if (CHATBOX_UI_HIDDEN_CARD_TYPES.has(type)) return false;
+  return CHATBOX_UI_RENDERABLE_CARD_TYPES.has(type);
+}
+
 function structuredLooksLikeParseOnlyStub(value) {
   if (!isPlainObject(value)) return false;
   const allowed = new Set(['schema_version', 'parse', 'conflicts']);
@@ -1493,6 +1515,9 @@ function extractKnownActivesFromText(text) {
   const t = String(text || '').trim();
   if (!t) return [];
   const lower = t.toLowerCase();
+  // Some CN inputs may contain spaces between characters (e.g. "阿达 帕林", "维 A").
+  // Keep an additional whitespace-stripped view for conservative CN matching.
+  const compact = t.replace(/\s+/g, '');
   const out = [];
 
   const push = (token) => {
@@ -1506,7 +1531,7 @@ function extractKnownActivesFromText(text) {
   // CN: 阿达帕林 / 维A(类)/维A酸 / 维甲酸 / 视黄醇/视黄醛 / A醇/A酸
   if (
     /(tretinoin|adapalene|retinal|retinol|retinoid)/i.test(lower) ||
-    /(阿达帕林|维a类|维a酸|维a|维甲酸|维甲|视黄醇|视黄醛|a醇|a酸)/i.test(t)
+    /(阿达帕林|维a类|维a酸|维a|维甲酸|维甲|视黄醇|视黄醛|a醇|a酸)/i.test(compact)
   ) {
     push('retinoid');
   }
@@ -1514,19 +1539,19 @@ function extractKnownActivesFromText(text) {
   // CN: 水杨酸 / 果酸(甘醇酸/乳酸/杏仁酸) / PHA(葡糖酸内酯)
   // Treat PHA as "aha" for conflict heuristics (retinoid_x_acids includes AHA/BHA/PHA).
   if (/(benzoyl\s*peroxide|bpo)/i.test(lower)) push('benzoyl_peroxide');
-  if (/(过氧化苯甲酰)/i.test(t)) push('benzoyl_peroxide');
-  if (/(salicylic|bha)/i.test(lower) || /(水杨酸)/i.test(t)) push('bha');
+  if (/(过氧化苯甲酰)/i.test(compact)) push('benzoyl_peroxide');
+  if (/(salicylic|bha)/i.test(lower) || /(水杨酸)/i.test(compact)) push('bha');
   if (
     /(glycolic|lactic|mandelic|aha|pha|gluconolactone)/i.test(lower) ||
-    /(果酸|甘醇酸|乙醇酸|乳酸|杏仁酸|葡糖酸内酯)/i.test(t)
+    /(果酸|甘醇酸|乙醇酸|乳酸|杏仁酸|葡糖酸内酯)/i.test(compact)
   ) {
     push('aha');
   }
   if (/(vitamin\s*c|ascorbic|l-ascorbic|ascorbate)/i.test(lower)) push('vitamin_c');
-  if (/(维c|维生素c|抗坏血酸)/i.test(t)) push('vitamin_c');
-  if (/(niacinamide)/i.test(lower) || /(烟酰胺)/i.test(t)) push('niacinamide');
-  if (/(azelaic)/i.test(lower) || /(壬二酸)/i.test(t)) push('azelaic_acid');
-  if (/(tranexamic)/i.test(lower) || /(传明酸|氨甲环酸)/i.test(t)) push('tranexamic_acid');
+  if (/(维c|维生素c|抗坏血酸)/i.test(compact)) push('vitamin_c');
+  if (/(niacinamide)/i.test(lower) || /(烟酰胺)/i.test(compact)) push('niacinamide');
+  if (/(azelaic)/i.test(lower) || /(壬二酸)/i.test(compact)) push('azelaic_acid');
+  if (/(tranexamic)/i.test(lower) || /(传明酸|氨甲环酸)/i.test(compact)) push('tranexamic_acid');
 
   return out;
 }
@@ -6515,10 +6540,13 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       // Local compatibility/conflict short-circuit: return routine_simulation + conflict_heatmap without upstream.
-      // Only for user-typed text (including text_explicit). Chips/actions should keep their intended routing.
       if (
         looksLikeCompatibilityOrConflictQuestion(message) &&
-        (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
+        // Allow both free text and chip/action reply_text, so users don't get stuck in unrelated gates (e.g. budget).
+        (ctx.trigger_source === 'text' ||
+          ctx.trigger_source === 'text_explicit' ||
+          ctx.trigger_source === 'chip' ||
+          ctx.trigger_source === 'action')
       ) {
         // NOTE: For ad-hoc "can I combine X with Y?" questions, do NOT auto-apply `profile.currentRoutine`.
         // Routine-specific simulation should be triggered from the routine feature/flow explicitly (e.g. /v1/routine/simulate).
@@ -6792,6 +6820,39 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (wantsProductRecommendations) {
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
+
+        // In the diagnosis flow, keep the user focused on completing the minimal profile before generating product recos.
+        // (Outside diagnosis, we can still give generic recos and ask for refinement via chips.)
+        const inDiagnosisFlow =
+          String(ctx.state || '').startsWith('S2_') || String(ctx.state || '').startsWith('S3_');
+        if (inDiagnosisFlow && profileScore < 3) {
+          const required = Array.isArray(profileMissing) ? profileMissing : [];
+          const prompt = buildDiagnosisPrompt(ctx.lang, required);
+          const chips = buildDiagnosisChips(ctx.lang, required);
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeAssistantMessage(prompt),
+            suggested_chips: chips,
+            cards: [
+              {
+                card_id: `diag_${ctx.request_id}`,
+                type: 'diagnosis_gate',
+                payload: {
+                  reason: 'diagnosis_first',
+                  missing_fields: required,
+                  wants: 'recommendation',
+                  profile: summarizeProfileForContext(profile),
+                  recent_logs: recentLogs,
+                },
+              },
+            ],
+            session_patch: nextState ? { next_state: nextState } : {},
+            events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first' })],
+          });
+          return res.json(envelope);
+        }
+
         const refinementMissing = (Array.isArray(profileMissing) ? profileMissing : []).filter(
           (f) => f === 'skinType' || f === 'sensitivity',
         );
@@ -6868,9 +6929,12 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const { score, missing } = profileCompleteness(profile);
 
-        if (inDiagnosisFlow && score < 3) {
-          const prompt = buildDiagnosisPrompt(ctx.lang, missing);
-          const chips = buildDiagnosisChips(ctx.lang, missing);
+        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
+
+        if (inDiagnosisFlow && missingCore.length) {
+          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
+          const chips = buildDiagnosisChips(ctx.lang, missingCore);
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
           const envelope = buildEnvelope(ctx, {
@@ -6882,14 +6946,14 @@ function mountAuroraBffRoutes(app, { logger }) {
                 type: 'diagnosis_gate',
                 payload: {
                   reason: 'diagnosis_progress',
-                  missing_fields: missing,
+                  missing_fields: missingCore,
                   wants: 'diagnosis',
                   profile: summarizeProfileForContext(profile),
                   recent_logs: recentLogs,
                 },
               },
             ],
-            session_patch: nextState ? { next_state: nextState } : {},
+            session_patch: nextState ? { next_state: nextState, profile: summarizeProfileForContext(profile) } : { profile: summarizeProfileForContext(profile) },
             events: [
               makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) }),
               makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_progress' }),
@@ -6934,7 +6998,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: { profile: summarizeProfileForContext(profile) },
             },
           ],
-          session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S3_PHOTO_OPTION' } : {},
+          session_patch: { profile: summarizeProfileForContext(profile) },
           events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) })],
         });
         return res.json(envelope);
@@ -7670,12 +7734,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         : [];
       // UI treats aurora_structured primarily as a "references" card; if citations are empty it is hidden.
       const structuredIsRenderable = Boolean(structuredForEnvelope && !structuredBlocked && structuredCitations.length > 0);
+      const uiDebug = Boolean(debugUpstream);
       const hasRenderableCards =
         structuredIsRenderable ||
-        derivedCards.length > 0 ||
-        cards.length > 0 ||
-        contextCard.length > 0 ||
-        (fieldMissing.length > 0); // gate_notice renders missing-field reasons
+        derivedCards.some((c) => isRenderableCardForChatboxUi(c, { debug: uiDebug })) ||
+        cards.some((c) => isRenderableCardForChatboxUi(c, { debug: uiDebug }));
 
       const safeAnswer = sanitizeUpstreamAnswer(answer, {
         language: ctx.lang,

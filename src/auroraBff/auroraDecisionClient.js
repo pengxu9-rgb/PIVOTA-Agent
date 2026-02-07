@@ -197,6 +197,21 @@ function mockAuroraChat(input) {
     };
   }
 
+  if (/SHORT_CARDS_BELOW_STRIPPED_RECO_TEST/i.test(q)) {
+    return {
+      answer: 'I summarized the key results into structured cards below.',
+      intent: 'product',
+      // Include a reco-like card so the BFF strips it (non-explicit), leaving only hidden cards.
+      cards: [{ type: 'recommendations', payload: { recommendations: [{ sku_id: 'mock_sku_generic' }] } }],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'SHORT_CARDS_BELOW_STRIPPED_RECO_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
   if (/ANCHOR_CONTEXT_ONLY_TEST/i.test(q)) {
     const longAnswer = [
       'Part 1: Diagnosis 🩺',

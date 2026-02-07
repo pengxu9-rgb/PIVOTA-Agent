@@ -39,6 +39,21 @@ bootstrap_json="$(curl -fsS "${BASE}/v1/session/bootstrap" "${COMMON_HEADERS[@]}
 printf "%s\n" "$bootstrap_json" | jq_assert "bootstrap envelope has cards" '.cards | type=="array" and (length >= 1)'
 printf "%s\n" "$bootstrap_json" | jq -r '.cards[0].type' >/dev/null || true
 
+say "reco gate (missing profile -> diagnosis_gate, no recommendations)"
+gate_json="$(curl -fsS -X POST "${BASE}/v1/chat" \
+  -H 'Content-Type: application/json' \
+  "${COMMON_HEADERS[@]}" \
+  --data '{
+    "action":{
+      "action_id":"chip.start.reco_products",
+      "kind":"chip",
+      "data":{"reply_text":"Recommend a few products","include_alternatives":false}
+    },
+    "session":{"state":"S2_DIAGNOSIS"}
+  }')"
+printf "%s\n" "$gate_json" | jq_assert "diagnosis_gate card exists" '.cards | any(.type=="diagnosis_gate")'
+printf "%s\n" "$gate_json" | jq_assert "recommendations card absent" '(.cards | any(.type=="recommendations")) | not'
+
 say "profile update (core + itinerary)"
 profile_json="$(curl -fsS -X POST "${BASE}/v1/profile/update" \
   -H 'Content-Type: application/json' \
