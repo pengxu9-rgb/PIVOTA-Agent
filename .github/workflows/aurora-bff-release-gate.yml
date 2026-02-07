@@ -54,7 +54,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install pytest
-        run: python -m pip install --upgrade pip pytest
+        run: python -m pip install --upgrade pip pytest numpy pillow
 
       - name: E2E contract tests (offline)
         run: make test
@@ -108,4 +108,3 @@ jobs:
         run: |
           set -euo pipefail
           BASE="$BASE_URL" bash scripts/smoke_aurora_bff_runtime.sh
-
