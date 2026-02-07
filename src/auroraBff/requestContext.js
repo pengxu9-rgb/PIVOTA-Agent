@@ -30,6 +30,9 @@ function detectTextExplicit(message) {
     /build me a routine/,
     /diagnose my skin/,
     /review my routine/,
+    // EN: explicit fit-check
+    /\bis (this|it).{0,40}\b(okay|safe|suitable|good)\b/,
+    /\bcan i use\b/,
     // CN
     /推荐/,
     /产品推荐/,
@@ -38,6 +41,8 @@ function detectTextExplicit(message) {
     /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/,
     /诊断/,
     /评估我现在用的/,
+    // CN: explicit fit-check (keep narrow)
+    /(适合吗|适不适合|能用吗|可以用吗)/,
   ];
   return patterns.some((re) => re.test(text));
 }

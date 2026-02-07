@@ -61,6 +61,7 @@ const {
   profileCompleteness,
   looksLikeDiagnosisStart,
   looksLikeRecommendationRequest,
+  looksLikeSuitabilityRequest,
   recommendationsAllowed,
   stateChangeAllowed,
   shouldDiagnosisGate,
@@ -1302,6 +1303,38 @@ function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInt
     return hasRenderableCards ? '我已经把结果整理成结构化卡片（见下方）。' : '我已收到你的信息。';
   }
   return hasRenderableCards ? 'I formatted the result into structured cards below.' : 'Got it.';
+}
+
+function structuredLooksLikeParseOnlyStub(value) {
+  if (!isPlainObject(value)) return false;
+  const allowed = new Set(['schema_version', 'parse', 'conflicts']);
+  const keys = Object.keys(value || {}).filter((k) => value[k] != null);
+  if (keys.length === 0) return false;
+  // Require parse to exist; otherwise this could be any partial structured payload.
+  if (!('parse' in value)) return false;
+  return keys.every((k) => allowed.has(k));
+}
+
+function extractProductInputFromFitCheckText(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return '';
+
+  // Remove internal test markers if they leaked into user input.
+  let t = raw.replace(/STRUCTURED_STUB_ONLY_TEST/gi, '').trim();
+
+  // Prefer suffix after the last ":" / "：" (common pattern: "Evaluate: <name>").
+  const m = t.match(/[:：]\s*([^:：]{2,400})\s*$/);
+  if (m && m[1]) t = String(m[1]).trim();
+
+  // Strip leading intent phrases; keep the product token(s).
+  t = t.replace(
+    /^(请|帮我|麻烦|想问|我要|我想|想|能否)?\s*(诊断|评估|分析|看看|判断|check|evaluate|analyze)\s*(一下|下|下这款|这款|这个)?\s*(产品|精华|serum|product)?\s*(是否|能不能|可不可以|适不适合我|适合吗|能用吗|可以用吗|suitable|safe|okay)?\s*/i,
+    '',
+  ).trim();
+
+  // If it still looks like a full sentence, keep the tail (often where the product appears).
+  if (t.length > 160) t = t.slice(-160).trim();
+  return t;
 }
 
 function isPlainObject(value) {
@@ -7045,6 +7078,231 @@ function mountAuroraBffRoutes(app, { logger }) {
               routine_simulation_safe: Boolean(conflictDetector.safe),
               routine_conflict_count: Array.isArray(conflictDetector.conflicts) ? conflictDetector.conflicts.length : 0,
               trigger_source: ctx.trigger_source,
+            });
+          }
+        }
+      }
+
+      // Fit-check fallback: some upstream flows return only a parse/conflicts stub (no recommendations or analysis cards).
+      // If the user explicitly asked whether a specific product is suitable, run a dedicated deep-scan and emit a
+      // renderable `product_analysis` card so the UI has something actionable to display.
+      const wantsSuitabilityFallback =
+        looksLikeSuitabilityRequest(message) &&
+        recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message });
+
+      const hasProductOutputCard = (arr) =>
+        Array.isArray(arr) &&
+        arr.some((c) => {
+          const t = String(c && c.type ? c.type : '').trim().toLowerCase();
+          return t === 'recommendations' || t === 'product_analysis';
+        });
+
+      const structuredRawForFallback = getUpstreamStructuredOrJson(upstream);
+      const structuredIsParseOnlyStub = structuredLooksLikeParseOnlyStub(structuredRawForFallback);
+
+      if (
+        wantsSuitabilityFallback &&
+        structuredIsParseOnlyStub &&
+        !hasProductOutputCard(cards) &&
+        !hasProductOutputCard(derivedCards) &&
+        rawCards.length === 0
+      ) {
+        const productInput =
+          anchorProductUrl ||
+          extractProductInputFromFitCheckText(message) ||
+          '';
+
+        if (productInput) {
+          const commonMeta = {
+            profile: profileSummary,
+            recentLogs,
+            lang: ctx.lang,
+            state: ctx.state || 'idle',
+            trigger_source: ctx.trigger_source,
+          };
+          const productParsePrefix = buildContextPrefix({
+            ...commonMeta,
+            intent: 'product_parse',
+            action_id: 'chat.fit_check.parse',
+          });
+          const productAnalyzePrefix = buildContextPrefix({
+            ...commonMeta,
+            intent: 'product_analyze',
+            action_id: 'chat.fit_check.deep_scan',
+          });
+
+          let parsedProduct = null;
+          let anchorId = anchorProductId || '';
+
+          // Best-effort parse to anchor_product_id to improve KB hit rate.
+          if (!anchorId) {
+            try {
+              const parseQuery =
+                `${productParsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
+                `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
+                `Input: ${productInput}`;
+              const parseUpstream = await auroraChat({
+                baseUrl: AURORA_DECISION_BASE_URL,
+                query: parseQuery,
+                timeoutMs: 12000,
+                ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
+              });
+              const parseStructured =
+                parseUpstream && parseUpstream.structured && typeof parseUpstream.structured === 'object' && !Array.isArray(parseUpstream.structured)
+                  ? parseUpstream.structured
+                  : parseUpstream && typeof parseUpstream.answer === 'string'
+                    ? extractJsonObjectByKeys(parseUpstream.answer, ['product', 'parse', 'anchor_product', 'anchorProduct'])
+                    : null;
+              const parseMapped =
+                parseStructured && parseStructured.parse && typeof parseStructured.parse === 'object'
+                  ? mapAuroraProductParse(parseStructured)
+                  : parseStructured;
+              const parseNorm = normalizeProductParse(parseMapped);
+              parsedProduct = parseNorm.payload.product || null;
+              anchorId =
+                parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id)
+                  ? String(parsedProduct.sku_id || parsedProduct.product_id)
+                  : '';
+            } catch (err) {
+              // ignore; continue without anchor id
+            }
+          }
+
+          const deepScanQuery =
+            `${productAnalyzePrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+            `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+            `Evidence must include science/social_signals/expert_notes.\n` +
+            `Product: ${productInput}`;
+
+          const runDeepScan = async ({ queryText, timeoutMs }) => {
+            try {
+              return await auroraChat({
+                baseUrl: AURORA_DECISION_BASE_URL,
+                query: queryText,
+                timeoutMs,
+                ...(anchorId ? { anchor_product_id: String(anchorId) } : {}),
+                ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
+              });
+            } catch {
+              return null;
+            }
+          };
+
+          let deepUpstream = await runDeepScan({ queryText: deepScanQuery, timeoutMs: 16000 });
+
+          const deepStructured =
+            deepUpstream && deepUpstream.structured && typeof deepUpstream.structured === 'object' && !Array.isArray(deepUpstream.structured)
+              ? deepUpstream.structured
+              : null;
+          const deepAnswerObj =
+            deepUpstream && typeof deepUpstream.answer === 'string'
+              ? extractJsonObjectByKeys(deepUpstream.answer, [
+                'assessment',
+                'evidence',
+                'confidence',
+                'missing_info',
+                'missingInfo',
+                'analyze',
+                'verdict',
+                'reasons',
+                'science_evidence',
+                'social_signals',
+                'expert_notes',
+              ])
+              : null;
+          const deepAnswerLooksLikeAnalysis =
+            deepAnswerObj &&
+            typeof deepAnswerObj === 'object' &&
+            !Array.isArray(deepAnswerObj) &&
+            (deepAnswerObj.assessment != null ||
+              deepAnswerObj.evidence != null ||
+              deepAnswerObj.analyze != null ||
+              deepAnswerObj.confidence != null);
+
+          const structuredOrJson =
+            deepStructured && deepStructured.analyze && typeof deepStructured.analyze === 'object'
+              ? deepStructured
+              : deepAnswerLooksLikeAnalysis
+                ? deepAnswerObj
+                : deepStructured || deepAnswerObj;
+          const mapped =
+            structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
+              ? mapAuroraProductAnalysis(structuredOrJson)
+              : structuredOrJson;
+          let norm = normalizeProductAnalysis(mapped);
+
+          // Retry once with minimal prefix if personalized context is dropped upstream.
+          if (!norm.payload.assessment && productInput) {
+            const minimalPrefix = buildContextPrefix({
+              lang: ctx.lang,
+              state: ctx.state || 'idle',
+              trigger_source: ctx.trigger_source,
+              intent: 'product_analyze_fallback',
+              action_id: 'chat.fit_check.deep_scan_fallback',
+            });
+            const minimalQuery =
+              `${minimalPrefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
+              `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
+              `Evidence must include science/social_signals/expert_notes.\n` +
+              `Product: ${productInput}`;
+            const deepUpstream2 = await runDeepScan({ queryText: minimalQuery, timeoutMs: 14000 });
+            const deepStructured2 =
+              deepUpstream2 && deepUpstream2.structured && typeof deepUpstream2.structured === 'object' && !Array.isArray(deepUpstream2.structured)
+                ? deepUpstream2.structured
+                : null;
+            const deepAnswer2 =
+              deepUpstream2 && typeof deepUpstream2.answer === 'string'
+                ? extractJsonObjectByKeys(deepUpstream2.answer, [
+                  'assessment',
+                  'evidence',
+                  'confidence',
+                  'missing_info',
+                  'missingInfo',
+                  'analyze',
+                  'verdict',
+                  'reasons',
+                  'science_evidence',
+                  'social_signals',
+                  'expert_notes',
+                ])
+                : null;
+            const structuredOrJson2 =
+              deepStructured2 && deepStructured2.analyze && typeof deepStructured2.analyze === 'object'
+                ? deepStructured2
+                : deepAnswer2 && typeof deepAnswer2 === 'object' && !Array.isArray(deepAnswer2)
+                  ? deepAnswer2
+                  : deepStructured2 || deepAnswer2;
+            const mapped2 =
+              structuredOrJson2 && structuredOrJson2.analyze && typeof structuredOrJson2.analyze === 'object'
+                ? mapAuroraProductAnalysis(structuredOrJson2)
+                : structuredOrJson2;
+            const norm2 = normalizeProductAnalysis(mapped2);
+            if (norm2 && norm2.payload && norm2.payload.assessment) {
+              const missingInfo = Array.isArray(norm2.payload.missing_info) ? norm2.payload.missing_info : [];
+              norm = {
+                payload: {
+                  ...norm2.payload,
+                  missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])),
+                },
+                field_missing: norm2.field_missing,
+              };
+            }
+          }
+
+          let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang });
+          if (parsedProduct && payload && typeof payload === 'object') {
+            const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
+            if (a && !a.anchor_product && !a.anchorProduct) {
+              payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
+            }
+          }
+
+          if (payload && payload.assessment) {
+            derivedCards.push({
+              card_id: `analyze_${ctx.request_id}`,
+              type: 'product_analysis',
+              payload: debugUpstream ? payload : stripInternalRefsDeep(payload),
+              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
             });
           }
         }

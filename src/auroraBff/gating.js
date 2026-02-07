@@ -42,7 +42,7 @@ function looksLikeSuitabilityRequest(message) {
     /\bcan i use\b/.test(text) ||
     /\bwill it (irritate|break me out)\b/.test(text) ||
     /\bsuitable\b/.test(text) ||
-    /(适合吗|能用吗|可以用吗|会不会|刺激吗|爆痘吗)/.test(text)
+    /(适合吗|适不适合|适合我吗|能用吗|可以用吗|刺激吗|爆痘吗)/.test(text)
   );
 }
 
