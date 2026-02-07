@@ -3519,18 +3519,35 @@ app.use((req, res, next) => {
 
   const allowedOrigins = new Set([...defaults, ...fromEnv]);
 
+  // Prevent CDN/proxy caching from mixing preflight responses across different
+  // requested headers/methods.
+  res.header('Vary', 'Origin, Access-Control-Request-Headers, Access-Control-Request-Method');
+
   const isAllowedOrigin = origin && origin !== 'null' && allowedOrigins.has(origin);
   if (isAllowedOrigin) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Vary', 'Origin');
   }
 
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
 
   // Allow both legacy and newer header names used by clients (Creator UI / SDKs).
   // Also echo requested headers to avoid preflight failures when browsers add new ones.
-  const baseAllowedHeaders = ['content-type', 'authorization', 'x-api-key', 'x-agent-api-key', 'x-checkout-token'];
+  const baseAllowedHeaders = [
+    'content-type',
+    'authorization',
+    'x-api-key',
+    'x-agent-api-key',
+    'x-checkout-token',
+
+    // Aurora Chatbox / Glow integration headers
+    'x-aurora-uid',
+    'x-aurora-lang',
+    'x-trace-id',
+    'x-brief-id',
+    'x-lang',
+    'x-session-id',
+  ];
   const requested = String(req.headers['access-control-request-headers'] || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
