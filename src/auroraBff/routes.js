@@ -6517,39 +6517,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       // Phase 0 gate: Diagnosis-first (no recos/offers before minimal profile).
-      const gate = allowRecoCards
-        ? shouldDiagnosisGate({ message, triggerSource: ctx.trigger_source, profile })
-        : { gated: false };
-      if (gate.gated) {
-        const prompt = buildDiagnosisPrompt(ctx.lang, gate.missing);
-        const chips = buildDiagnosisChips(ctx.lang, gate.missing);
-        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
-
-        const events = [
-          makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: gate.reason }),
-        ];
-
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(prompt),
-          suggested_chips: chips,
-          cards: [
-            {
-              card_id: `diag_${ctx.request_id}`,
-              type: 'diagnosis_gate',
-              payload: {
-                reason: gate.reason,
-                missing_fields: gate.missing,
-                wants: gate.wants,
-                profile: summarizeProfileForContext(profile),
-                recent_logs: recentLogs,
-              },
-            },
-          ],
-          session_patch: nextState ? { next_state: nextState } : {},
-          events,
-        });
-        return res.json(envelope);
-      }
+      // NOTE: In chat, avoid forcing users into "diagnosis-first" unless they explicitly asked to start diagnosis.
+      // For recommendation/fit-check intents, proceed with best-effort and ask optional refinement questions later.
 
       // Budget gate + routing: when waiting for budget selection, proceed to routine generation.
       if (ctx.state === 'S6_BUDGET') {
@@ -6724,6 +6693,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         (actionId === 'chip.start.reco_products' || looksLikeRecommendationRequest(message));
 
       if (wantsProductRecommendations) {
+        const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
+        const refinementMissing = (Array.isArray(profileMissing) ? profileMissing : []).filter(
+          (f) => f === 'skinType' || f === 'sensitivity',
+        );
+        const refinementChips = refinementMissing.length ? buildDiagnosisChips(ctx.lang, refinementMissing) : [];
+
         const { norm, upstreamDebug, alternativesDebug } = await generateProductRecommendations({
           ctx,
           profile,
@@ -6742,13 +6717,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           assistant_message: makeAssistantMessage(
             hasRecs
               ? ctx.lang === 'CN'
-                ? '我给你整理了几款可以直接开始的产品（见下方卡片）。'
+                ? profileScore >= 3
+                  ? '我给你整理了几款可以直接开始的产品（见下方卡片）。'
+                  : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
                 : 'I pulled a few products you can start with (see the card below).'
               : ctx.lang === 'CN'
                 ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
                 : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue.",
           ),
-          suggested_chips: [],
+          suggested_chips: refinementChips,
           cards: [
             {
               card_id: `reco_${ctx.request_id}`,
@@ -6786,8 +6763,14 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
       if (appliedProfilePatch && !message) {
+        const inDiagnosisFlow =
+          String(agentState || '').startsWith('DIAG_') ||
+          String(ctx.state || '').startsWith('S2_') ||
+          String(ctx.state || '').startsWith('S3_');
+
         const { score, missing } = profileCompleteness(profile);
-        if (score < 3) {
+
+        if (inDiagnosisFlow && score < 3) {
           const prompt = buildDiagnosisPrompt(ctx.lang, missing);
           const chips = buildDiagnosisChips(ctx.lang, missing);
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
@@ -6802,7 +6785,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 payload: {
                   reason: 'diagnosis_progress',
                   missing_fields: missing,
-                  wants: 'recommendation',
+                  wants: 'diagnosis',
                   profile: summarizeProfileForContext(profile),
                   recent_logs: recentLogs,
                 },
@@ -6842,7 +6825,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(
             lang === 'CN'
-              ? '已记录你的肤况。接下来你想做什么？'
+              ? '已更新你的偏好信息。接下来你想做什么？'
               : 'Got it. What would you like to do next?',
           ),
           suggested_chips: suggestedChips,

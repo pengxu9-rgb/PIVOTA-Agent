@@ -840,6 +840,84 @@ test('/v1/chat: Start diagnosis chip enters diagnosis flow (no upstream loop)', 
   assert.ok(resp.body.suggested_chips.every((c) => !String(c.chip_id).startsWith('chip.clarify.next.')));
 });
 
+test('/v1/chat: profile patch chips do not force diagnosis flow', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+    headers: { 'X-Aurora-UID': 'test_uid_profile_patch_idle', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+    body: {
+      action: { action_id: 'profile.skinType.oily', kind: 'chip', data: { profile_patch: { skinType: 'oily' } } },
+      session: { state: 'idle' },
+      language: 'CN',
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  assert.equal(cards.some((c) => c && c.type === 'diagnosis_gate'), false);
+  assert.ok(cards.some((c) => c && c.type === 'profile'));
+});
+
 test('/v1/chat: Routine alternatives cover AM + PM', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
@@ -1118,6 +1196,34 @@ test('/v1/chat: CN reco request yields recommendations (no conflict cards)', asy
     const app = express();
     app.use(express.json({ limit: '1mb' }));
     mountAuroraBffRoutes(app, { logger: null });
+
+    // Explicit CN reco request should work even with no profile (no diagnosis forcing).
+    const respNoProfile = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_cn_reco_noprofile', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        message: '要烟酰胺精华，最好温和点',
+        session: { state: 'idle' },
+        language: 'CN',
+      },
+    });
+
+    assert.equal(respNoProfile.status, 200);
+    const cardsNoProfile = Array.isArray(respNoProfile.body?.cards) ? respNoProfile.body.cards : [];
+    assert.ok(cardsNoProfile.some((c) => c && c.type === 'recommendations'));
+    assert.equal(cardsNoProfile.some((c) => c && c.type === 'diagnosis_gate'), false);
+    assert.equal(cardsNoProfile.some((c) => c && c.type === 'routine_simulation'), false);
+    assert.equal(cardsNoProfile.some((c) => c && c.type === 'conflict_heatmap'), false);
+    assert.ok(Array.isArray(respNoProfile.body?.suggested_chips));
+    assert.ok(
+      respNoProfile.body.suggested_chips.some((c) => {
+        const id = String(c?.chip_id || '');
+        return id.startsWith('profile.skinType.') || id.startsWith('profile.sensitivity.');
+      }),
+    );
+    assert.equal(JSON.stringify(respNoProfile.body).includes('kb:'), false);
+    const vmNoProfile = (respNoProfile.body?.events || []).find((e) => e && e.event_name === 'value_moment') || null;
+    assert.ok(vmNoProfile);
+    assert.equal(vmNoProfile?.data?.kind, 'product_reco');
 
     // Seed a minimally-complete profile so reco routing is allowed.
     const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
