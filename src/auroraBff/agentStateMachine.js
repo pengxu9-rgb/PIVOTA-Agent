@@ -55,13 +55,33 @@ function validateRequestedTransition({ fromState, triggerSource, triggerId, requ
   return { ok: true, next_state: to, canonical_trigger_id: canonicalTriggerId };
 }
 
+function looksLikeExplicitDiagnosisStart(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+
+  // EN-first: keep an explicit allowlist so we don't accidentally enter diagnosis.
+  const wantsDiagnosisEN =
+    /\b(start|begin|run)\b.{0,40}\b(skin\s*)?(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b/.test(lower) ||
+    /\b(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b.{0,40}\bmy\s*(skin|face)\b/.test(lower) ||
+    /\b(skin|face)\b.{0,40}\b(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b/.test(lower) ||
+    /\bskin\s*profile\b/.test(lower);
+  if (wantsDiagnosisEN) return true;
+
+  // CN-second: require both a skin subject + an explicit diagnosis/analysis verb.
+  // Avoid matching generic "诊断" in non-skin contexts.
+  const hasSkinCN = /(皮肤|肤质|肤况|面部|脸部|脸)/.test(text);
+  const hasDiagnosisCN = /(诊断|分析|检测|评估|测一测|测试)/.test(text);
+  return hasSkinCN && hasDiagnosisCN;
+}
+
 function inferTextExplicitTransition(message, language) {
   const raw = String(message || '').trim();
   if (!raw) return null;
   const text = raw.toLowerCase();
   const lang = language === 'CN' ? 'CN' : 'EN';
 
-  const wantsDiagnosis = lang === 'CN' ? /诊断/.test(raw) : /diagnose my skin/i.test(raw);
+  const wantsDiagnosis = looksLikeExplicitDiagnosisStart(raw);
   if (wantsDiagnosis) return { requested_next_state: 'DIAG_PROFILE', trigger_id: raw.slice(0, 120) };
 
   const wantsRoutineReview = lang === 'CN' ? /评估我现在用的/.test(raw) : /review my routine/i.test(raw);

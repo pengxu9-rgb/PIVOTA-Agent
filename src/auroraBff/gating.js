@@ -47,15 +47,22 @@ function looksLikeSuitabilityRequest(message) {
 }
 
 function looksLikeDiagnosisStart(message) {
-  const text = String(message || '').trim().toLowerCase();
-  if (!text) return false;
-  return (
-    /\bstart\b.*\bdiagnos/.test(text) ||
-    /\bskin\b.*\bdiagnos/.test(text) ||
-    /\bskin profile\b/.test(text) ||
-    /\bprofile\b.*\bskin\b/.test(text) ||
-    /(皮肤诊断|开始.*诊断|做.*诊断|诊断一下|肤况确认|肤质确认|skin diagnosis)/.test(text)
-  );
+  const raw = String(message || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+
+  // EN-first: explicit allowlist only.
+  const wantsDiagnosisEN =
+    /\b(start|begin|run)\b.{0,40}\b(skin\s*)?(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b/.test(lower) ||
+    /\b(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b.{0,40}\bmy\s*(skin|face)\b/.test(lower) ||
+    /\b(skin|face)\b.{0,40}\b(diagnos(?:e|is)?|analys(?:e|is)|analyz(?:e)?|assessment|scan|check)\b/.test(lower) ||
+    /\bskin\s*profile\b/.test(lower);
+  if (wantsDiagnosisEN) return true;
+
+  // CN-second: require both a skin subject + an explicit diagnosis/analysis verb.
+  const hasSkinCN = /(皮肤|肤质|肤况|面部|脸部|脸)/.test(raw);
+  const hasDiagnosisCN = /(诊断|分析|检测|评估|测一测|测试)/.test(raw);
+  return hasSkinCN && hasDiagnosisCN;
 }
 
 function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
