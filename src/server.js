@@ -3498,27 +3498,9 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   };
 }
 
-// Body parser with error handling
-app.use(express.json({
-  limit: '10mb',
-  verify: (req, res, buf, encoding) => {
-    try {
-      JSON.parse(buf);
-    } catch(e) {
-      throw new Error('Invalid JSON');
-    }
-  }
-}));
-
-// Add a lightweight build marker for debugging deployments (no secrets).
-app.use((req, res, next) => {
-  if (SERVICE_GIT_SHA) res.setHeader('X-Service-Commit', SERVICE_GIT_SHA.slice(0, 12));
-  if (SERVICE_GIT_BRANCH) res.setHeader('X-Service-Branch', SERVICE_GIT_BRANCH);
-  res.setHeader('X-Service-Name', SERVICE_NAME);
-  return next();
-});
-
 // CORS configuration - allow UI to call Gateway
+// NOTE: Must run BEFORE body parsing so browser clients still receive CORS headers
+// even when JSON parsing fails (otherwise Aurora Chatbox sees "No Access-Control-Allow-Origin").
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const defaults = [
@@ -3567,6 +3549,26 @@ app.use((req, res, next) => {
   }
 
   next();
+});
+
+// Body parser with error handling
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf, encoding) => {
+    try {
+      JSON.parse(buf);
+    } catch(e) {
+      throw new Error('Invalid JSON');
+    }
+  }
+}));
+
+// Add a lightweight build marker for debugging deployments (no secrets).
+app.use((req, res, next) => {
+  if (SERVICE_GIT_SHA) res.setHeader('X-Service-Commit', SERVICE_GIT_SHA.slice(0, 12));
+  if (SERVICE_GIT_BRANCH) res.setHeader('X-Service-Branch', SERVICE_GIT_BRANCH);
+  res.setHeader('X-Service-Name', SERVICE_NAME);
+  return next();
 });
 
 app.use(express.static(path.join(__dirname, '..', 'public')));

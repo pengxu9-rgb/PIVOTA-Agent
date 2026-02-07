@@ -84,6 +84,71 @@ function mockAuroraChat(input) {
     };
   }
 
+  if (/OVERLONG_TEMPLATE_CONTEXT_TEST/i.test(q)) {
+    const longAnswer = [
+      'Part 1: Diagnosis 🩺',
+      '- This is a long templated answer that should be collapsed when structured cards are present.',
+      '',
+      'Part 2: The Routine 📅',
+      'AM (Protection):',
+      '- Cleanser - Mock Gentle Cleanser kb:mock_reco_1',
+      '- Moisturizer - Mock Barrier Cream kb:mock_reco_2',
+      'PM (Treatment):',
+      '- Treatment - Mock Gentle Treatment kb:mock_reco_3',
+      '',
+      'Part 3: Budget Analysis 💰',
+      '- Price unknown for some items.',
+      '',
+      'Part 4: Safety Warning ⚠️',
+      '- Start 2-3x/week and wear SPF.',
+      '',
+      'Citations:',
+      'kb:mock_reco_1',
+      'kb:mock_reco_2',
+      'kb:mock_reco_3',
+      '',
+      'Notes:',
+      '- (filler) '.repeat(80),
+    ].join('\n');
+
+    return {
+      answer: longAnswer,
+      intent: 'science',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'OVERLONG_TEMPLATE_CONTEXT_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+      },
+      context: {
+        external_verification: {
+          query: 'niacinamide clinical evidence',
+          citations: [
+            {
+              title: 'Niacinamide - mechanisms of action and its topical use in dermatology.',
+              source: 'Skin pharmacology and physiology',
+              year: 2014,
+              url: 'https://pubmed.ncbi.nlm.nih.gov/24993939/',
+              note: 'PMID:24993939',
+            },
+          ],
+          note: 'Mock citations list.',
+        },
+        env_stress: {
+          schema_version: 'aurora.env_stress.v1',
+          ess: 53,
+          tier: 'Medium',
+          contributors: [
+            { key: 'barrier', weight: 0.4, note: 'barrier_status=healthy' },
+            { key: 'weather', weight: 0.7, note: 'scenario=snow' },
+            { key: 'uv', weight: 0.65, note: 'uv=high' },
+          ],
+          missing_inputs: ['profile.sensitivity', 'recent_logs'],
+          generated_at: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
   if (/CONTEXT_CARDS_TEST/i.test(q)) {
     const hasAnchor = Boolean(anchorId);
     return {

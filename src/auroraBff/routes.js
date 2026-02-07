@@ -1272,10 +1272,25 @@ function stripInternalRefsDeep(value, { parentKey } = {}) {
 function sanitizeUpstreamAnswer(answer, { language, hasCards, hasStructured, stripInternalRefs } = {}) {
   let t = typeof answer === 'string' ? answer : '';
   if (stripInternalRefs) t = stripInternalKbRefsFromText(t);
-  if (!looksLikeJsonOrCode(t)) return t;
 
   const lang = language === 'CN' ? 'CN' : 'EN';
   const hasAnything = Boolean(hasCards) || Boolean(hasStructured);
+
+  // If we already provide structured cards, keep assistant_message concise and avoid
+  // confusing "templated" multi-part essays (often redundant with the cards).
+  const looksLikeOverlongTemplate =
+    hasAnything &&
+    t.length > 600 &&
+    (/\bpart\s*\d+\s*:/i.test(t) ||
+      /\b(budget analysis|am\s*\(|pm\s*\(|am\s*:|pm\s*:)\b/i.test(t) ||
+      /(^|\n)#+\s*(am|pm|budget|safety)\b/i.test(t));
+  if (looksLikeOverlongTemplate) {
+    if (lang === 'CN') return '我已经把核心结果整理成结构化卡片（见下方）。';
+    return 'I summarized the key results into structured cards below.';
+  }
+
+  if (!looksLikeJsonOrCode(t)) return t;
+
   if (lang === 'CN') {
     return hasAnything ? '我已经把结果整理成结构化卡片（见下方）。' : '我已收到你的信息。';
   }
@@ -6718,9 +6733,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             hasRecs
               ? ctx.lang === 'CN'
                 ? profileScore >= 3
-                  ? '我给你整理了几款可以直接开始的产品（见下方卡片）。'
+                  ? '我已经把核心结果整理成结构化卡片（见下方）。'
                   : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
-                : 'I pulled a few products you can start with (see the card below).'
+                : 'I summarized the key results into structured cards below.'
               : ctx.lang === 'CN'
                 ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
                 : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue.",

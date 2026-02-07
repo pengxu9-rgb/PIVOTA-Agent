@@ -96,3 +96,44 @@ curl -sS -X POST "$BASE_URL/v1/chat" \
 ```
 
 Expected: diagnosis-first response with chips, and **no** recommendation/offer cards.
+
+## UI telemetry (`/v1/events`)
+
+The Aurora chat frontend can send **UI analytics** events to the BFF:
+
+- Endpoint: `POST /v1/events`
+- Response: `204 No Content` on success
+- Payload schema: `src/telemetry/schemas/uiEventIngestV0.js`
+
+### Configuration (Railway env vars)
+
+The BFF supports **one** of these sinks (in priority order):
+
+1) PostHog (recommended)
+   - `POSTHOG_API_KEY`
+   - `POSTHOG_HOST` (or `POSTHOG_URL`)
+2) JSONL sink (for debugging)
+   - `AURORA_EVENTS_JSONL_SINK_DIR=/tmp/...` (writes `aurora-ui-events-YYYY-MM-DD.jsonl`)
+3) Fallback: server logs (no persistence)
+
+### Quick verify (production)
+
+```bash
+BASE_URL='https://pivota-agent-production.up.railway.app'
+
+curl -sS -o /dev/null -w 'code=%{http_code}\n' \
+  -X POST "$BASE_URL/v1/events" \
+  -H 'Content-Type: application/json' \
+  --data '{"source":"pivota-aurora-chatbox","events":[{"event_name":"aurora_conflict_heatmap_cell_tap","brief_id":"b","trace_id":"t","timestamp":1700000000000,"data":{"aurora_uid":"uid_test"}}]}'
+```
+
+Expected: `code=204`.
+
+## Release gate (recommended)
+
+- Run unit tests: `npm run test:aurora-bff:unit`
+- Runtime smoke (hits `BASE` and includes `/v1/events` ingest check):
+
+```bash
+BASE='https://pivota-agent-production.up.railway.app' make runtime-smoke
+```
