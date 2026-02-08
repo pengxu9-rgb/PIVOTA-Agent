@@ -2186,10 +2186,9 @@ function looksLikeRoutineRequest(message, action) {
       /生成.*(早晚|am|pm).*(护肤|routine)/.test(text) ||
       /(早晚护肤|护肤方案)/.test(text));
 
-  // Guard against stale UI action_id: if the message is clearly a fit-check and the
-  // only routine signal comes from action_id, do NOT treat it as a routine request.
-  // This prevents accidental budget-gating for product evaluation questions.
-  if (looksLikeSuitabilityRequest(text) && routineByAction && !routineByMessage) return false;
+  // Guard against stale UI action_id leakage: when user typed a non-routine message,
+  // do not let a previous routine chip/action force routine routing.
+  if (routineByAction && text && !routineByMessage) return false;
 
   if (routineByAction) return true;
   return routineByMessage;
@@ -6607,16 +6606,15 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // Escape sticky budget gate early so local short-circuit paths (env/conflict) can also return a session patch.
       if (ctx.state === 'S6_BUDGET') {
-        const rawBudget =
-          normalizeBudgetHint(appliedProfilePatch && appliedProfilePatch.budgetTier) ||
-          normalizeBudgetHint(profile && profile.budgetTier) ||
-          normalizeBudgetHint(message);
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
+        const wantsRecoNoRoutine =
+          looksLikeRecommendationRequest(message) &&
+          !looksLikeRoutineRequest(message, parsed.data.action);
         const wantsEnvStress =
           looksLikeWeatherOrEnvironmentQuestion(message) &&
           (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
-        if (!rawBudget && (wantsFitCheck || wantsCompat || wantsEnvStress)) {
+        if (wantsFitCheck || wantsCompat || wantsEnvStress || wantsRecoNoRoutine) {
           if (stateChangeAllowed(ctx.trigger_source)) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
           }
@@ -6812,7 +6810,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           looksLikeWeatherOrEnvironmentQuestion(message) &&
           (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
 
-        if (!rawBudget && (wantsFitCheck || wantsCompat || wantsEnvStress || wantsRecoNoRoutine)) {
+        if (wantsFitCheck || wantsCompat || wantsEnvStress || wantsRecoNoRoutine) {
           // Clear the budget-gate state so the client doesn't get stuck in a loop.
           if (stateChangeAllowed(ctx.trigger_source)) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';

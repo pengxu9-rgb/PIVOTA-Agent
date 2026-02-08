@@ -94,7 +94,7 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
     if (id === 'chip.action.reco_routine') return true;
     if (id === 'chip.action.analyze_product') return true;
     if (id === 'chip.action.dupe_compare') return true;
-    if (id.startsWith('chip.clarify.budget') || clarificationId === 'budget') return true;
+    if (id.startsWith('chip.clarify.budget') || id.startsWith('chip.budget.') || clarificationId === 'budget') return true;
 
     // Fallback heuristic for future chips, but keep it narrow.
     if (id.startsWith('chip.action.') && /reco|recommend|offer|checkout|dupe|analy/.test(id)) return true;
