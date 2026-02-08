@@ -6982,6 +6982,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const wantsProductRecommendations =
         allowRecoCards &&
         !looksLikeRoutineRequest(message, parsed.data.action) &&
+        !looksLikeSuitabilityRequest(message) &&
         recoInteractionAllowed &&
         (
           actionId === 'chip.start.reco_products' ||

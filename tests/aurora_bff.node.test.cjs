@@ -2044,6 +2044,107 @@ test('/v1/chat: fit-check ignores stale routine action_id (no budget gate)', asy
   });
 });
 
+test('/v1/chat: fit-check ignores stale budget-clarify action_id (no reco hijack)', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
+      headers: { 'X-Aurora-UID': 'test_uid_fit_check_stale_budget_chip', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['brightening'],
+        region: 'CN',
+        budgetTier: '¥500',
+      },
+    });
+    assert.equal(seed.status, 200);
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_fit_check_stale_budget_chip', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        // Stale budget-clarify chip from previous turn; typed message is a fit-check and should win.
+        action: {
+          action_id: 'chip.clarify.budget.y500',
+          kind: 'chip',
+          data: { clarification_id: 'budget', reply_text: '¥500' },
+        },
+        client_state: 'RECO_GATE',
+        message: '这款适不适合我：The Ordinary Niacinamide 10% + Zinc 1% (STRUCTURED_STUB_ONLY_TEST)',
+        session: { state: 'S7_PRODUCT_RECO' },
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('budget_gate'), false);
+    assert.equal(cardTypes.includes('recommendations'), false);
+    assert.ok(cardTypes.includes('product_analysis'));
+  });
+});
+
 test('/v1/chat: anchor-derived product_analysis personalizes reasons using profile', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');
