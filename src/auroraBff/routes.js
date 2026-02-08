@@ -6745,106 +6745,120 @@ function mountAuroraBffRoutes(app, { logger }) {
       // NOTE: In chat, avoid forcing users into "diagnosis-first" unless they explicitly asked to start diagnosis.
       // For recommendation/fit-check intents, proceed with best-effort and ask optional refinement questions later.
 
+      // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
+      let nextStateOverride = null;
+
       // Budget gate + routing: when waiting for budget selection, proceed to routine generation.
       if (ctx.state === 'S6_BUDGET') {
-        if (!allowRecoCards) {
-          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-          const suggestedChips = [
-            {
-              chip_id: 'chip.start.reco_products',
-              label: lang === 'CN' ? '获取产品推荐' : 'Get product recommendations',
-              kind: 'quick_reply',
-              data: { reply_text: lang === 'CN' ? '给我一些产品推荐' : 'Get product recommendations' },
-            },
-            {
-              chip_id: 'chip.start.routine',
-              label: lang === 'CN' ? '生成早晚护肤 routine' : 'Build an AM/PM routine',
-              kind: 'quick_reply',
-              data: { reply_text: lang === 'CN' ? '生成一套早晚护肤 routine' : 'Build an AM/PM skincare routine' },
-            },
-          ];
-
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
-              lang === 'CN'
-                ? '如需推荐与购买入口，请先点击「获取产品推荐」。'
-                : 'To see recommendations and purchase links, please tap “Get product recommendations”.',
-            ),
-            suggested_chips: suggestedChips,
-            cards: [],
-            session_patch: {},
-            events: [],
-          });
-          return res.json(envelope);
-        }
-
         const rawBudget =
           normalizeBudgetHint(appliedProfilePatch && appliedProfilePatch.budgetTier) ||
           normalizeBudgetHint(profile && profile.budgetTier) ||
           normalizeBudgetHint(message);
 
-        if (!rawBudget) {
+        // If user asks a different explicit question while we're waiting for budget, don't trap them behind the routine budget gate.
+        // Example: "Is this product suitable for me?" should go to fit-check/product analysis (budget is irrelevant).
+        const wantsFitCheck = looksLikeSuitabilityRequest(message);
+        if (!rawBudget && wantsFitCheck) {
+          // Clear the budget-gate state so the client doesn't get stuck in a loop.
+          if (stateChangeAllowed(ctx.trigger_source)) {
+            nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
+          }
+          ctx.state = nextStateOverride || 'idle';
+        } else {
+          if (!allowRecoCards) {
+            const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+            const suggestedChips = [
+              {
+                chip_id: 'chip.start.reco_products',
+                label: lang === 'CN' ? '获取产品推荐' : 'Get product recommendations',
+                kind: 'quick_reply',
+                data: { reply_text: lang === 'CN' ? '给我一些产品推荐' : 'Get product recommendations' },
+              },
+              {
+                chip_id: 'chip.start.routine',
+                label: lang === 'CN' ? '生成早晚护肤 routine' : 'Build an AM/PM routine',
+                kind: 'quick_reply',
+                data: { reply_text: lang === 'CN' ? '生成一套早晚护肤 routine' : 'Build an AM/PM skincare routine' },
+              },
+            ];
+
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(
+                lang === 'CN'
+                  ? '如需推荐与购买入口，请先点击「获取产品推荐」。'
+                  : 'To see recommendations and purchase links, please tap “Get product recommendations”.',
+              ),
+              suggested_chips: suggestedChips,
+              cards: [],
+              session_patch: {},
+              events: [],
+            });
+            return res.json(envelope);
+          }
+
+          if (!rawBudget) {
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
+              suggested_chips: buildBudgetGateChips(ctx.lang),
+              cards: [
+                {
+                  card_id: `budget_${ctx.request_id}`,
+                  type: 'budget_gate',
+                  payload: { reason: 'budget_required_for_routine', profile: summarizeProfileForContext(profile) },
+                },
+              ],
+              session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
+              events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_required_for_routine' })],
+            });
+            return res.json(envelope);
+          }
+
+          if (!profile || profile.budgetTier !== rawBudget) {
+            profile = { ...(profile || {}), budgetTier: rawBudget };
+            try {
+              profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, { budgetTier: rawBudget });
+            } catch (err) {
+              logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist budgetTier');
+            }
+          }
+
+          const { norm, suggestedChips } = await generateRoutineReco({
+            ctx,
+            profile,
+            recentLogs,
+            focus: 'daily routine',
+            constraints: { simplicity: 'high' },
+            includeAlternatives,
+            logger,
+          });
+
+          const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
+          const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+          const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
-            suggested_chips: buildBudgetGateChips(ctx.lang),
+            assistant_message: makeChatAssistantMessage(
+              ctx.lang === 'CN'
+                ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
+                : 'Got it. I generated a simple AM/PM routine (see the card below).',
+            ),
+            suggested_chips: suggestedChips,
             cards: [
               {
-                card_id: `budget_${ctx.request_id}`,
-                type: 'budget_gate',
-                payload: { reason: 'budget_required_for_routine', profile: summarizeProfileForContext(profile) },
+                card_id: `reco_${ctx.request_id}`,
+                type: 'recommendations',
+                payload,
+                ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
               },
             ],
-            session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
-            events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_required_for_routine' })],
+            session_patch: nextState ? { next_state: nextState } : {},
+            events: [
+              makeEvent(ctx, 'value_moment', { kind: 'routine_generated' }),
+              makeEvent(ctx, 'recos_requested', { explicit: true }),
+            ],
           });
           return res.json(envelope);
         }
-
-        if (!profile || profile.budgetTier !== rawBudget) {
-          profile = { ...(profile || {}), budgetTier: rawBudget };
-          try {
-            profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, { budgetTier: rawBudget });
-          } catch (err) {
-            logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist budgetTier');
-          }
-        }
-
-        const { norm, suggestedChips } = await generateRoutineReco({
-          ctx,
-          profile,
-          recentLogs,
-          focus: 'daily routine',
-          constraints: { simplicity: 'high' },
-          includeAlternatives,
-          logger,
-        });
-
-        const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
-        const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
-        const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
-
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
-            ctx.lang === 'CN'
-              ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
-              : 'Got it. I generated a simple AM/PM routine (see the card below).',
-          ),
-          suggested_chips: suggestedChips,
-          cards: [
-            {
-              card_id: `reco_${ctx.request_id}`,
-              type: 'recommendations',
-              payload,
-              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
-            },
-          ],
-          session_patch: nextState ? { next_state: nextState } : {},
-          events: [
-            makeEvent(ctx, 'value_moment', { kind: 'routine_generated' }),
-            makeEvent(ctx, 'recos_requested', { explicit: true }),
-          ],
-        });
-        return res.json(envelope);
       }
 
       // If user explicitly asks to build an AM/PM routine, route to the routine generator (budget-gated).
@@ -7873,7 +7887,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? [{ card_id: `gate_${ctx.request_id}`, type: 'gate_notice', payload: {}, field_missing: fieldMissing }]
             : []),
         ],
-        session_patch: {},
+        session_patch: nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'chat_reply' }),
           ...(allowRecs ? [makeEvent(ctx, 'recos_requested', { explicit: true })] : []),
