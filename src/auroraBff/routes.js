@@ -6821,11 +6821,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (wantsProductRecommendations) {
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
 
-        // In the diagnosis flow, keep the user focused on completing the minimal profile before generating product recos.
-        // (Outside diagnosis, we can still give generic recos and ask for refinement via chips.)
-        const inDiagnosisFlow =
-          String(ctx.state || '').startsWith('S2_') || String(ctx.state || '').startsWith('S3_');
-        if (inDiagnosisFlow && profileScore < 3) {
+        // Diagnosis-first gate: if profile is incomplete, do NOT generate recommendations yet.
+        // This applies regardless of the current state; otherwise users see weakly-related recos before core profile.
+        if (profileScore < 3) {
           const required = Array.isArray(profileMissing) ? profileMissing : [];
           const prompt = buildDiagnosisPrompt(ctx.lang, required);
           const chips = buildDiagnosisChips(ctx.lang, required);
@@ -6848,7 +6846,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             ],
             session_patch: nextState ? { next_state: nextState } : {},
-            events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first' })],
+            events: [
+              makeEvent(ctx, 'recos_requested', { explicit: true, gated: true, reason: 'diagnosis_first' }),
+              makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first' }),
+            ],
           });
           return res.json(envelope);
         }

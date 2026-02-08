@@ -49,7 +49,7 @@ gate_json="$(curl -fsS -X POST "${BASE}/v1/chat" \
       "kind":"chip",
       "data":{"reply_text":"Recommend a few products","include_alternatives":false}
     },
-    "session":{"state":"S2_DIAGNOSIS"}
+    "session":{"state":"S7_PRODUCT_RECO"}
   }')"
 printf "%s\n" "$gate_json" | jq_assert "diagnosis_gate card exists" '.cards | any(.type=="diagnosis_gate")'
 printf "%s\n" "$gate_json" | jq_assert "recommendations card absent" '(.cards | any(.type=="recommendations")) | not'
