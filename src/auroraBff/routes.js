@@ -1330,6 +1330,100 @@ function sanitizeUpstreamAnswer(answer, { language, hasRenderableCards, stripInt
   return hasRenderableCards ? 'I formatted the result into structured cards below.' : 'Got it.';
 }
 
+const REGION_TO_TIMEZONE = {
+  CN: 'Asia/Shanghai',
+  HK: 'Asia/Hong_Kong',
+  TW: 'Asia/Taipei',
+  JP: 'Asia/Tokyo',
+  KR: 'Asia/Seoul',
+  SG: 'Asia/Singapore',
+  UK: 'Europe/London',
+  EU: 'Europe/Berlin',
+  US: 'America/Los_Angeles',
+};
+
+function guessTimeZoneForChat({ profile, language } = {}) {
+  const regionRaw = profile && typeof profile.region === 'string' ? profile.region.trim().toUpperCase() : '';
+  if (regionRaw && REGION_TO_TIMEZONE[regionRaw]) return REGION_TO_TIMEZONE[regionRaw];
+
+  // Conservative fallback: if language is CN and region is missing, assume CN timezone
+  // (better UX for most CN users; avoids relying on server locale).
+  if (language === 'CN') return REGION_TO_TIMEZONE.CN;
+  return null;
+}
+
+function hourInTimeZone(now, timeZone) {
+  if (!now || !(now instanceof Date)) return null;
+  if (!timeZone) return null;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', hour12: false }).formatToParts(now);
+    const hourStr = parts.find((p) => p && p.type === 'hour')?.value;
+    const hour = Number(hourStr);
+    return Number.isFinite(hour) ? hour : null;
+  } catch {
+    return null;
+  }
+}
+
+function timeOfDayBucket(hour) {
+  if (!Number.isFinite(hour)) return null;
+  if (hour >= 5 && hour < 11) return 'morning';
+  if (hour >= 11 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 22) return 'evening';
+  return 'night';
+}
+
+function looksLikeGreetingAlready(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const head = raw.slice(0, 80);
+  const lower = head.toLowerCase();
+
+  // EN
+  if (/^(hi|hello|hey|good\s+(morning|afternoon|evening)|morning|evening)\b/i.test(lower)) return true;
+
+  // CN
+  if (/^(你好|您好|嗨|哈喽|早(上好|安)?|下午好|晚上好|晚安|夜里好)/.test(head)) return true;
+  return false;
+}
+
+function buildEmotionalPreamble({ language, profile, now } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const timeZone = guessTimeZoneForChat({ profile, language: lang });
+  const hour = hourInTimeZone(now, timeZone);
+  const bucket = timeOfDayBucket(hour);
+
+  if (!bucket) {
+    return lang === 'CN' ? '收到，我们一步步来。' : 'Got it — I’ll keep it clear and practical.';
+  }
+
+  if (lang === 'CN') {
+    if (bucket === 'morning') return '早呀，祝你今天清爽开局。';
+    if (bucket === 'afternoon') return '下午好，辛苦啦，我们把重点快速理清。';
+    if (bucket === 'evening') return '晚上好，辛苦一天了，我们放松着来。';
+    return '夜深了，别熬太晚；我把重点浓缩给你。';
+  }
+
+  if (bucket === 'morning') return 'Good morning — let’s keep it simple and skin-friendly today.';
+  if (bucket === 'afternoon') return 'Good afternoon — quick, clear, and practical steps coming up.';
+  if (bucket === 'evening') return 'Good evening — you’ve done enough today; let’s make this easy.';
+  return 'Late-night check-in — I’ll keep this short so you can rest.';
+}
+
+function addEmotionalPreambleToAssistantText(text, { language, profile } = {}) {
+  const raw = typeof text === 'string' ? text : '';
+  if (!raw.trim()) return raw;
+  if (looksLikeGreetingAlready(raw)) return raw;
+
+  const pre = buildEmotionalPreamble({ language, profile, now: new Date() });
+  if (!pre || !String(pre).trim()) return raw;
+
+  // Keep it short for templated "cards below" style answers (tests expect concise).
+  const maxPreLen = language === 'CN' ? 28 : 90;
+  const safePre = String(pre).trim().slice(0, maxPreLen);
+  return `${safePre}\n\n${raw}`;
+}
+
 const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
   'recommendations',
   'product_analysis',
@@ -6378,6 +6472,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           : '';
       const upstreamMessages = Array.isArray(parsed.data.messages) ? parsed.data.messages : null;
 
+      const makeChatAssistantMessage = (content, format = 'text') => {
+        const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile });
+        return makeAssistantMessage(text, format);
+      };
+
       const clientAgentState = normalizeAgentState(parsed.data.client_state);
 
       const requestedTransitionFromBody =
@@ -6528,7 +6627,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ];
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(advice, 'markdown'),
+          assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
           cards: envStressUi
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
@@ -6593,7 +6692,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(msgText, 'markdown'),
+            assistant_message: makeChatAssistantMessage(msgText, 'markdown'),
             suggested_chips: [],
             cards: [
               { card_id: `sim_${ctx.request_id}`, type: 'routine_simulation', payload: simPayload },
@@ -6621,7 +6720,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(prompt),
+          assistant_message: makeChatAssistantMessage(prompt),
           suggested_chips: chips,
           cards: [
             {
@@ -6666,7 +6765,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ];
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(
+            assistant_message: makeChatAssistantMessage(
               lang === 'CN'
                 ? '如需推荐与购买入口，请先点击「获取产品推荐」。'
                 : 'To see recommendations and purchase links, please tap “Get product recommendations”.',
@@ -6686,7 +6785,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         if (!rawBudget) {
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
+            assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
             suggested_chips: buildBudgetGateChips(ctx.lang),
             cards: [
               {
@@ -6725,7 +6824,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(
+          assistant_message: makeChatAssistantMessage(
             ctx.lang === 'CN'
               ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
               : 'Got it. I generated a simple AM/PM routine (see the card below).',
@@ -6757,7 +6856,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const budget = normalizeBudgetHint(profile && profile.budgetTier);
         if (!budget) {
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
+            assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
             suggested_chips: buildBudgetGateChips(ctx.lang),
             cards: [
               {
@@ -6787,7 +6886,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(
+          assistant_message: makeChatAssistantMessage(
             ctx.lang === 'CN'
               ? '我生成了一个简洁 AM/PM routine（见下方卡片）。'
               : 'I generated a simple AM/PM routine (see the card below).',
@@ -6830,7 +6929,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(prompt),
+            assistant_message: makeChatAssistantMessage(prompt),
             suggested_chips: chips,
             cards: [
               {
@@ -6874,7 +6973,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(
+          assistant_message: makeChatAssistantMessage(
             hasRecs
               ? ctx.lang === 'CN'
                 ? profileScore >= 3
@@ -6939,7 +7038,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(prompt),
+            assistant_message: makeChatAssistantMessage(prompt),
             suggested_chips: chips,
             cards: [
               {
@@ -6986,7 +7085,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ];
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(
+          assistant_message: makeChatAssistantMessage(
             lang === 'CN'
               ? '已更新你的偏好信息。接下来你想做什么？'
               : 'Got it. What would you like to do next?',
@@ -7751,7 +7850,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const cardsForEnvelope = !debugUpstream ? stripInternalRefsDeep(cards) : cards;
 
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage(safeAnswer, 'markdown'),
+        assistant_message: makeChatAssistantMessage(safeAnswer, 'markdown'),
         suggested_chips: suggestedChips,
         cards: [
           ...(structuredForEnvelope && !structuredBlocked
