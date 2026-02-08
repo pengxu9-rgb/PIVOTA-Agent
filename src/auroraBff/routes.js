@@ -1373,55 +1373,139 @@ function timeOfDayBucket(hour) {
   return 'night';
 }
 
-function looksLikeGreetingAlready(text) {
+function detectLeadingGreetingLanguage(text) {
   const raw = String(text || '').trim();
-  if (!raw) return false;
+  if (!raw) return null;
   const head = raw.slice(0, 80);
   const lower = head.toLowerCase();
 
-  // EN
-  if (/^(hi|hello|hey|good\s+(morning|afternoon|evening)|morning|evening)\b/i.test(lower)) return true;
-
-  // CN
-  if (/^(你好|您好|嗨|哈喽|早(上好|安)?|下午好|晚上好|晚安|夜里好)/.test(head)) return true;
-  return false;
+  if (/^(hi|hello|hey|good\s+(morning|afternoon|evening)|morning|evening)\b/i.test(lower)) return 'EN';
+  if (/^(你好|您好|嗨|哈喽|早(上好|安)?|下午好|晚上好|晚安|夜里好)/.test(head)) return 'CN';
+  return null;
 }
 
-function buildEmotionalPreamble({ language, profile, now } = {}) {
+function stripMismatchedLeadingGreeting(text, { language } = {}) {
+  const raw = typeof text === 'string' ? text : '';
+  if (!raw.trim()) return raw;
+  const expected = language === 'CN' ? 'CN' : 'EN';
+  const lines = raw.split(/\r?\n/);
+  if (!lines.length) return raw;
+  const firstLine = String(lines[0] || '').trim();
+  const detected = detectLeadingGreetingLanguage(firstLine);
+  if (!detected || detected === expected) return raw;
+  const rest = lines.slice(1).join('\n').replace(/^\s+/, '');
+  return rest || raw;
+}
+
+function looksLikeGreetingAlready(text, { language } = {}) {
+  const detected = detectLeadingGreetingLanguage(text);
+  if (!detected) return false;
+  if (!language) return true;
+  return detected === (language === 'CN' ? 'CN' : 'EN');
+}
+
+function stableHashInt(input) {
+  const s = String(input == null ? '' : input);
+  let hash = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    hash ^= s.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+const EMOTIONAL_PREAMBLE_OPTIONS = {
+  CN: {
+    fallback: [
+      '收到，我们一步步来。',
+      '明白了，我们慢慢把关键点理顺。',
+      '好呀，我们先把最重要的一步定下来。',
+    ],
+    morning: [
+      '早上好，今天也一起把护肤做得稳稳的。',
+      '早上好，新的一天我们从清晰方案开始。',
+      '早上好，先抓重点，你会轻松很多。',
+    ],
+    afternoon: [
+      '下午好，辛苦啦，我们把重点快速理清。',
+      '下午好，忙碌中也别慌，我们一步步来。',
+      '下午好，我会给你一个省心好执行的方案。',
+    ],
+    evening: [
+      '晚上好，辛苦一天了，我们放松着来。',
+      '晚上好，今天也很努力了，我们走简洁稳妥路线。',
+      '晚上好，先别焦虑，我帮你把步骤压到最清晰。',
+    ],
+    night: [
+      '夜深了，别熬太晚；我把重点浓缩给你。',
+      '夜里好，咱们简短高效处理完就休息。',
+      '这么晚还在关心皮肤，已经很棒了；我尽量说得更省心。',
+    ],
+  },
+  EN: {
+    fallback: [
+      'Got it — I’ll keep it clear and practical.',
+      'Absolutely — let’s make this simple and actionable.',
+      'Sounds good — we’ll take this step by step.',
+    ],
+    morning: [
+      'Good morning — let’s keep your routine easy and steady today.',
+      'Good morning — we’ll focus on the highest-impact steps first.',
+      'Good morning — I’ll keep this practical and skin-friendly.',
+    ],
+    afternoon: [
+      'Good afternoon — quick, clear, and practical steps coming up.',
+      'Good afternoon — we can keep this efficient and low-stress.',
+      'Good afternoon — I’ll help you lock in a plan that’s easy to follow.',
+    ],
+    evening: [
+      'Good evening — you’ve done enough today; let’s make this easy.',
+      'Good evening — we’ll keep things calm, clear, and realistic.',
+      'Good evening — I’ll help you finish today with a low-stress routine.',
+    ],
+    night: [
+      'Late-night check-in — I’ll keep this short so you can rest.',
+      'It’s late — let’s keep this concise and soothing for your skin.',
+      'Quick night plan: simple steps now, better skin tomorrow.',
+    ],
+  },
+};
+
+function pickPreambleVariant(options, { seed, language, bucket }) {
+  const list = Array.isArray(options) ? options.filter((s) => typeof s === 'string' && s.trim()) : [];
+  if (!list.length) return '';
+  if (list.length === 1) return list[0];
+  const index = stableHashInt(`${language || 'EN'}|${bucket || 'fallback'}|${seed || ''}`) % list.length;
+  return list[index];
+}
+
+function buildEmotionalPreamble({ language, profile, now, seed } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const timeZone = guessTimeZoneForChat({ profile, language: lang });
   const hour = hourInTimeZone(now, timeZone);
   const bucket = timeOfDayBucket(hour);
+  const choices = EMOTIONAL_PREAMBLE_OPTIONS[lang] || EMOTIONAL_PREAMBLE_OPTIONS.EN;
+  const key = bucket || 'fallback';
+  const selected = pickPreambleVariant(choices[key], { seed, language: lang, bucket: key });
+  if (selected) return selected;
 
-  if (!bucket) {
-    return lang === 'CN' ? '收到，我们一步步来。' : 'Got it — I’ll keep it clear and practical.';
-  }
-
-  if (lang === 'CN') {
-    if (bucket === 'morning') return '早呀，祝你今天清爽开局。';
-    if (bucket === 'afternoon') return '下午好，辛苦啦，我们把重点快速理清。';
-    if (bucket === 'evening') return '晚上好，辛苦一天了，我们放松着来。';
-    return '夜深了，别熬太晚；我把重点浓缩给你。';
-  }
-
-  if (bucket === 'morning') return 'Good morning — let’s keep it simple and skin-friendly today.';
-  if (bucket === 'afternoon') return 'Good afternoon — quick, clear, and practical steps coming up.';
-  if (bucket === 'evening') return 'Good evening — you’ve done enough today; let’s make this easy.';
-  return 'Late-night check-in — I’ll keep this short so you can rest.';
+  const fallback = pickPreambleVariant(choices.fallback, { seed, language: lang, bucket: 'fallback' });
+  return fallback || (lang === 'CN' ? '收到，我们一步步来。' : 'Got it — I’ll keep it clear and practical.');
 }
 
-function addEmotionalPreambleToAssistantText(text, { language, profile } = {}) {
+function addEmotionalPreambleToAssistantText(text, { language, profile, seed } = {}) {
   const raw = typeof text === 'string' ? text : '';
   if (!raw.trim()) return raw;
-  if (looksLikeGreetingAlready(raw)) return raw;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const normalized = stripMismatchedLeadingGreeting(raw, { language: lang });
+  if (looksLikeGreetingAlready(normalized, { language: lang })) return normalized;
 
-  const pre = buildEmotionalPreamble({ language, profile, now: new Date() });
+  const pre = buildEmotionalPreamble({ language: lang, profile, now: new Date(), seed });
   if (!pre || !String(pre).trim()) return raw;
 
-  // Keep it short for templated "cards below" style answers (tests expect concise).
-  const maxPreLen = language === 'CN' ? 28 : 90;
+  const maxPreLen = lang === 'CN' ? 44 : 120;
   const safePre = String(pre).trim().slice(0, maxPreLen);
-  return `${safePre}\n\n${raw}`;
+  return `${safePre}\n\n${normalized}`;
 }
 
 const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
@@ -6500,7 +6584,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const upstreamMessages = Array.isArray(parsed.data.messages) ? parsed.data.messages : null;
 
       const makeChatAssistantMessage = (content, format = 'text') => {
-        const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile });
+        const preambleSeed = `${ctx.request_id || ''}|${ctx.trace_id || ''}|${String(content || '').slice(0, 96)}`;
+        const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
         return makeAssistantMessage(text, format);
       };
 
@@ -8043,6 +8128,10 @@ const __internal = {
   buildLowConfidenceBaselineSkinAnalysis,
   buildRuleBasedSkinAnalysis,
   normalizeSkinAnalysisFromLLM,
+  buildEmotionalPreamble,
+  addEmotionalPreambleToAssistantText,
+  stripMismatchedLeadingGreeting,
+  looksLikeGreetingAlready,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

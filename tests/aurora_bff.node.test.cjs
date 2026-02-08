@@ -48,6 +48,52 @@ function withEnv(patch, fn) {
   }
 }
 
+test('Emotional preamble: strips mismatched CN greeting when language is EN', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal: auroraRouteInternals } = require('../src/auroraBff/routes');
+  const input = '晚上好，辛苦一天了，我们放松着来。\n\nHere is your plan.';
+  const out = auroraRouteInternals.addEmotionalPreambleToAssistantText(input, {
+    language: 'EN',
+    profile: { region: 'US' },
+    seed: 'seed-en-1',
+  });
+  delete require.cache[moduleId];
+  const firstLine = String(out || '').split(/\r?\n/)[0] || '';
+  assert.match(firstLine, /^(Good (morning|afternoon|evening)|Late-night check-in|It’s late|Quick night plan)/);
+  assert.equal(/^晚上好|^下午好|^早上好|^夜深了|^夜里好/.test(firstLine), false);
+});
+
+test('Emotional preamble: has deterministic multi-variant choices for CN and EN', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal: auroraRouteInternals } = require('../src/auroraBff/routes');
+  const now = new Date('2026-02-08T06:30:00.000Z');
+  const cnSet = new Set();
+  const enSet = new Set();
+  for (const seed of ['s1', 's2', 's3', 's4', 's5', 's6']) {
+    cnSet.add(
+      auroraRouteInternals.buildEmotionalPreamble({
+        language: 'CN',
+        profile: { region: 'CN' },
+        now,
+        seed,
+      }),
+    );
+    enSet.add(
+      auroraRouteInternals.buildEmotionalPreamble({
+        language: 'EN',
+        profile: { region: 'US' },
+        now,
+        seed,
+      }),
+    );
+  }
+  delete require.cache[moduleId];
+  assert.ok(cnSet.size >= 2);
+  assert.ok(enSet.size >= 2);
+});
+
 test('Phase0 gate: no recos when profile is missing', async () => {
   const gate = shouldDiagnosisGate({
     message: 'Please recommend a moisturizer',
