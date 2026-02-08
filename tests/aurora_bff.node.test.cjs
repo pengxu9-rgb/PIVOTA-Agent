@@ -92,6 +92,12 @@ test('Emotional preamble: has deterministic multi-variant choices for CN and EN'
   delete require.cache[moduleId];
   assert.ok(cnSet.size >= 2);
   assert.ok(enSet.size >= 2);
+  for (const line of cnSet) {
+    assert.equal(/焦虑|别慌/.test(String(line || '')), false);
+  }
+  for (const line of enSet) {
+    assert.equal(/\banxious\b|\blow-stress\b/i.test(String(line || '')), false);
+  }
 });
 
 test('Phase0 gate: no recos when profile is missing', async () => {

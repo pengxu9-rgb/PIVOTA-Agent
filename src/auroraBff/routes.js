@@ -1428,16 +1428,16 @@ const EMOTIONAL_PREAMBLE_OPTIONS = {
     ],
     afternoon: [
       '下午好，辛苦啦，我们把重点快速理清。',
-      '下午好，忙碌中也别慌，我们一步步来。',
+      '下午好，忙碌中也能从容，我们一步步来。',
       '下午好，我会给你一个省心好执行的方案。',
     ],
     evening: [
       '晚上好，辛苦一天了，我们放松着来。',
       '晚上好，今天也很努力了，我们走简洁稳妥路线。',
-      '晚上好，先别焦虑，我帮你把步骤压到最清晰。',
+      '晚上好，我们把步骤整理得清楚又轻松。',
     ],
     night: [
-      '夜深了，别熬太晚；我把重点浓缩给你。',
+      '夜深了，愿你今晚好好休息；我把重点浓缩给你。',
       '夜里好，咱们简短高效处理完就休息。',
       '这么晚还在关心皮肤，已经很棒了；我尽量说得更省心。',
     ],
@@ -1455,13 +1455,13 @@ const EMOTIONAL_PREAMBLE_OPTIONS = {
     ],
     afternoon: [
       'Good afternoon — quick, clear, and practical steps coming up.',
-      'Good afternoon — we can keep this efficient and low-stress.',
+      'Good afternoon — we can keep this efficient and smooth.',
       'Good afternoon — I’ll help you lock in a plan that’s easy to follow.',
     ],
     evening: [
       'Good evening — you’ve done enough today; let’s make this easy.',
       'Good evening — we’ll keep things calm, clear, and realistic.',
-      'Good evening — I’ll help you finish today with a low-stress routine.',
+      'Good evening — I’ll help you finish today with an easy routine.',
     ],
     night: [
       'Late-night check-in — I’ll keep this short so you can rest.',
