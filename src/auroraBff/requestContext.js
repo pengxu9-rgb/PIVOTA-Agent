@@ -43,6 +43,8 @@ function detectTextExplicit(message) {
     /评估我现在用的/,
     // CN: explicit fit-check (keep narrow)
     /(适合吗|适不适合|能用吗|可以用吗)/,
+    // CN: explicit compatibility / layering questions (avoid matching weather like "要下雪")
+    /(冲突|相克|兼容|叠加|同晚|一起用|能不能一起|还能和|搭配|同用)/,
   ];
   return patterns.some((re) => re.test(text));
 }

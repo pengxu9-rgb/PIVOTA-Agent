@@ -6580,6 +6580,33 @@ function mountAuroraBffRoutes(app, { logger }) {
         agentState = validation.next_state;
       }
 
+      const allowRecoCards =
+        agentState === 'RECO_GATE' ||
+        agentState === 'RECO_CONSTRAINTS' ||
+        agentState === 'RECO_RESULTS';
+
+      // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
+      let nextStateOverride = null;
+
+      // Escape sticky budget gate early so local short-circuit paths (env/conflict) can also return a session patch.
+      if (ctx.state === 'S6_BUDGET') {
+        const rawBudget =
+          normalizeBudgetHint(appliedProfilePatch && appliedProfilePatch.budgetTier) ||
+          normalizeBudgetHint(profile && profile.budgetTier) ||
+          normalizeBudgetHint(message);
+        const wantsFitCheck = looksLikeSuitabilityRequest(message);
+        const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
+        const wantsEnvStress =
+          looksLikeWeatherOrEnvironmentQuestion(message) &&
+          (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
+        if (!rawBudget && (wantsFitCheck || wantsCompat || wantsEnvStress)) {
+          if (stateChangeAllowed(ctx.trigger_source)) {
+            nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
+          }
+          ctx.state = nextStateOverride || 'idle';
+        }
+      }
+
       // Local env-stress short-circuit: answer weather/environment questions without upstream.
       // Only for user-typed text (including text_explicit). Chips/actions should keep their intended routing.
       if (
@@ -6640,7 +6667,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           cards: envStressUi
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
             : [],
-          session_patch: {},
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
         });
         return res.json(envelope);
@@ -6706,17 +6734,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               { card_id: `sim_${ctx.request_id}`, type: 'routine_simulation', payload: simPayload },
               { card_id: `heatmap_${ctx.request_id}`, type: 'conflict_heatmap', payload: heatmapPayload },
             ],
-            session_patch: {},
+            session_patch:
+              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
             events,
           });
           return res.json(envelope);
         }
       }
-
-      const allowRecoCards =
-        agentState === 'RECO_GATE' ||
-        agentState === 'RECO_CONSTRAINTS' ||
-        agentState === 'RECO_RESULTS';
 
       // Explicit "Start diagnosis" should always enter the diagnosis flow (even if a profile already exists),
       // otherwise users can get stuck in an upstream "what next?" loop.
@@ -6753,9 +6777,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       // NOTE: In chat, avoid forcing users into "diagnosis-first" unless they explicitly asked to start diagnosis.
       // For recommendation/fit-check intents, proceed with best-effort and ask optional refinement questions later.
 
-      // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
-      let nextStateOverride = null;
-
       // Budget gate + routing: when waiting for budget selection, proceed to routine generation.
       if (ctx.state === 'S6_BUDGET') {
         const rawBudget =
@@ -6766,7 +6787,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         // If user asks a different explicit question while we're waiting for budget, don't trap them behind the routine budget gate.
         // Example: "Is this product suitable for me?" should go to fit-check/product analysis (budget is irrelevant).
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
-        if (!rawBudget && wantsFitCheck) {
+        const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
+        const wantsEnvStress =
+          looksLikeWeatherOrEnvironmentQuestion(message) &&
+          (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
+
+        if (!rawBudget && (wantsFitCheck || wantsCompat || wantsEnvStress)) {
           // Clear the budget-gate state so the client doesn't get stuck in a loop.
           if (stateChangeAllowed(ctx.trigger_source)) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
