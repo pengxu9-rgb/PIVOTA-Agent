@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const express = require('express');
+const supertest = require('supertest');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
@@ -122,6 +124,53 @@ test('Recommendation gate: strips recommendation cards unless explicit', async (
   assert.equal(filtered.some((c) => c.type === 'recommendations'), false);
   assert.equal(filtered.some((c) => c.type === 'offers_resolved'), false);
   assert.equal(filtered.some((c) => c.type === 'info'), true);
+});
+
+test('Dupe suggest: caches first result and serves from KB after', async () => {
+  const routesId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[routesId];
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '2mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const headers = {
+    'X-Aurora-Uid': 'uid_test_dupe_suggest',
+    'X-Trace-ID': 'trace_test_dupe_suggest',
+    'X-Brief-ID': 'brief_test_dupe_suggest',
+    'X-Lang': 'EN',
+  };
+
+  const body = {
+    original: { sku_id: 'mock_sku_dupe_suggest', brand: 'TestBrand', name: 'DUPE_SUGGEST_TEST Target Cleanser' },
+    max_dupes: 2,
+    max_comparables: 2,
+  };
+
+  const first = await supertest(app).post('/v1/dupe/suggest').set(headers).send(body).expect(200);
+  assert.ok(Array.isArray(first.body.cards));
+  const card1 = first.body.cards.find((c) => c && c.type === 'dupe_suggest');
+  assert.ok(card1);
+  assert.equal(card1.payload.meta.served_from_kb, false);
+  assert.equal(card1.payload.meta.validated_now, true);
+  assert.equal(card1.payload.verified, true);
+  assert.ok(Array.isArray(card1.payload.dupes));
+  assert.ok(Array.isArray(card1.payload.comparables));
+  assert.ok(card1.payload.dupes.length <= 2);
+  assert.ok(card1.payload.comparables.length <= 2);
+  assert.ok(card1.payload.dupes.length >= 1);
+
+  const second = await supertest(app).post('/v1/dupe/suggest').set(headers).send(body).expect(200);
+  const card2 = second.body.cards.find((c) => c && c.type === 'dupe_suggest');
+  assert.ok(card2);
+  assert.equal(card2.payload.meta.served_from_kb, true);
+  assert.equal(card2.payload.meta.validated_now, false);
+  assert.equal(card2.payload.verified, true);
+  assert.equal(card2.payload.kb_key, card1.payload.kb_key);
+
+  // Avoid leaking cached route-level feature flags (env-derived) into later tests.
+  delete require.cache[routesId];
 });
 
 test('State machine: PRODUCT_LINK_EVAL allows explicit recommendation transition', async () => {
@@ -990,6 +1039,10 @@ test('Recommendation gate: does not unlock commerce for diagnosis chip', async (
     true,
   );
   assert.equal(
+    recommendationsAllowed({ triggerSource: 'chip', actionId: 'chip.start.dupes', message: 'Find dupes' }),
+    true,
+  );
+  assert.equal(
     recommendationsAllowed({ triggerSource: 'text_explicit', actionId: null, message: 'Start skin diagnosis' }),
     false,
   );
@@ -1651,6 +1704,200 @@ test('/v1/chat: fit-check fallback emits product_analysis when upstream returns 
     assert.equal(resp.status, 200);
     const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
     assert.ok(cardTypes.includes('product_analysis'));
+    const assistant = String(resp.body?.assistant_message?.content || '');
+    assert.equal(/parse\/summary stub/i.test(assistant), false);
+    assert.equal(assistant.includes('结论：'), true);
+    assert.equal(assistant.includes('停用信号：'), true);
+  });
+});
+
+test('/v1/chat: recommendation parse-stub answer is rewritten to reco route contract', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
+      headers: { 'X-Aurora-UID': 'test_uid_reco_route_rewrite', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['brightening', 'acne'],
+        budgetTier: '¥500',
+        region: 'CN',
+      },
+    });
+    assert.equal(seed.status, 200);
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_reco_route_rewrite', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        message: '请推荐产品 SHORT_CARDS_BELOW_STUB_TEST',
+        action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
+        session: { state: 'idle' },
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const assistant = String(resp.body?.assistant_message?.content || '');
+    assert.equal(/parse\/summary stub/i.test(assistant), false);
+    assert.equal(/structured cards below/i.test(assistant), false);
+    assert.equal(assistant.includes('最小可行清单（早/晚）：'), true);
+    assert.equal(assistant.includes('成分方向（Top 3）：'), true);
+  });
+});
+
+test('/v1/chat: fit-check non-generic parse stub is rewritten to fit-check contract', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
+      headers: { 'X-Aurora-UID': 'test_uid_fit_check_non_generic_stub', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['brightening'],
+        budgetTier: '¥500',
+        region: 'CN',
+      },
+    });
+    assert.equal(seed.status, 200);
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_fit_check_non_generic_stub', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        message: '请评估这款产品是否适合我：The Ordinary Niacinamide 10% + Zinc 1% (NON_GENERIC_STUB_TEST)',
+        session: { state: 'idle' },
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const assistant = String(resp.body?.assistant_message?.content || '');
+    assert.equal(/结论：|Verdict:/i.test(assistant), true);
+    assert.equal(/风险点：|Risk points:/i.test(assistant), true);
+    assert.equal(/怎么用（频率\/顺序\/观察周期）：|How to use \(frequency\/order\/timeline\):/i.test(assistant), true);
   });
 });
 

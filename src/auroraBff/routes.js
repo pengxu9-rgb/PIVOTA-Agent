@@ -27,6 +27,7 @@ const {
   ProductParseRequestSchema,
   ProductAnalyzeRequestSchema,
   DupeCompareRequestSchema,
+  DupeSuggestRequestSchema,
   RecoGenerateRequestSchema,
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,
@@ -87,6 +88,7 @@ const { simulateConflicts } = require('./routineRules');
 const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
+const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   normalizeBudgetHint,
@@ -1566,6 +1568,324 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function asStringArray(value, max = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(value) ? value : []) {
+    const s = typeof raw === 'string' ? raw.trim() : raw == null ? '' : String(raw).trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function hasAnyToken(text, tokens) {
+  const haystack = String(text || '').toLowerCase();
+  return (Array.isArray(tokens) ? tokens : []).some((t) => haystack.includes(String(t || '').toLowerCase()));
+}
+
+const ROUTE_SECTION_HINTS = {
+  'fit-check': [
+    ['结论：', 'Verdict:'],
+    ['风险点：', 'Risk points:'],
+    ['更稳妥替代方向：', 'Safer alternatives:'],
+    ['怎么用（频率/顺序/观察周期）：', 'How to use (frequency/order/timeline):'],
+    ['停用信号：', 'Stop signals:'],
+  ],
+  reco: [
+    ['目标与前提：', 'Goal & context:'],
+    ['最小可行清单（早/晚）：', 'Minimum viable routine (AM/PM):'],
+    ['成分方向（Top 3）：', 'Ingredient directions (Top 3):'],
+    ['一周引入计划：', 'One-week onboarding plan:'],
+    ['怎么选（选购标准）：', 'Buying criteria (how to choose):'],
+    ['红旗信号：', 'Red flags:'],
+  ],
+  conflict: [
+    ['冲突原因：', 'Conflict reason:'],
+    ['安全排班（错开使用）：', 'Safer schedule (alternate use):'],
+    ['优先级取舍：', 'Priority choices:'],
+    ['停用信号：', 'Stop signals:'],
+  ],
+  env: [
+    ['环境判断：', 'Environment check:'],
+    ['加什么 / 减什么 / 替换什么：', 'Add / remove / replace:'],
+    ['频率调整：', 'Frequency adjustment:'],
+    ['临时极简方案：', 'Temporary minimal plan:'],
+    ['防晒/保湿策略：', 'Sun/moisture strategy:'],
+  ],
+};
+
+function isRouteStructuredAnswer(text, route) {
+  const checks = ROUTE_SECTION_HINTS[String(route || '').trim()];
+  if (!checks || !checks.length) return true;
+  return checks.every((tokens) => hasAnyToken(text, tokens));
+}
+
+function looksLikeGenericStructuredNotice(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return true;
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes('structured cards below') ||
+    lower.includes('i did not receive any renderable structured cards') ||
+    lower.includes('only a parse/summary stub') ||
+    raw.includes('我已经把核心结果整理成结构化卡片') ||
+    raw.includes('我还没能从上游拿到可结构化') ||
+    raw.includes('仅返回了摘要/解析信息')
+  );
+}
+
+function getCardPayload(card) {
+  if (!card || typeof card !== 'object') return null;
+  if (isPlainObject(card.payload)) return card.payload;
+  return isPlainObject(card) ? card : null;
+}
+
+function inferRouteFromCards(cards) {
+  const list = Array.isArray(cards) ? cards.filter((c) => c && typeof c === 'object') : [];
+  const byType = new Map();
+  for (const c of list) {
+    const type = String(c.type || '').trim();
+    if (!type) continue;
+    if (!byType.has(type)) byType.set(type, c);
+  }
+
+  if (byType.has('routine_simulation') || byType.has('conflict_heatmap')) {
+    const card = byType.get('routine_simulation') || byType.get('conflict_heatmap');
+    return { route: 'conflict', payload: getCardPayload(card) };
+  }
+  if (byType.has('env_stress')) {
+    return { route: 'env', payload: getCardPayload(byType.get('env_stress')) };
+  }
+  if (byType.has('product_analysis')) {
+    return { route: 'fit-check', payload: getCardPayload(byType.get('product_analysis')) };
+  }
+  if (byType.has('recommendations')) {
+    return { route: 'reco', payload: getCardPayload(byType.get('recommendations')) };
+  }
+  return null;
+}
+
+function inferRouteFromMessageIntent(message, { allowRecoCards } = {}) {
+  if (looksLikeCompatibilityOrConflictQuestion(message)) return { route: 'conflict', payload: {} };
+  if (looksLikeWeatherOrEnvironmentQuestion(message)) return { route: 'env', payload: {} };
+  if (looksLikeSuitabilityRequest(message)) return { route: 'fit-check', payload: {} };
+  if (allowRecoCards && looksLikeRecommendationRequest(message)) return { route: 'reco', payload: {} };
+  return null;
+}
+
+function summarizeProfileForAnswer(profile, lang) {
+  const p = isPlainObject(profile) ? profile : {};
+  const skinType = typeof p.skinType === 'string' ? p.skinType.trim() : '';
+  const sensitivity = typeof p.sensitivity === 'string' ? p.sensitivity.trim() : '';
+  const barrier = typeof p.barrierStatus === 'string' ? p.barrierStatus.trim() : '';
+  const goals = asStringArray(p.goals, 4);
+  if (lang === 'CN') {
+    const left = [skinType || '肤质待补充', sensitivity ? `${sensitivity}敏` : '敏感度待补充', barrier || '屏障状态待补充'];
+    const goalText = goals.length ? `目标：${goals.join('、')}` : '目标：待补充';
+    return `${left.join(' / ')}；${goalText}。`;
+  }
+  const left = [skinType || 'skin type pending', sensitivity ? `${sensitivity} sensitivity` : 'sensitivity pending', barrier || 'barrier pending'];
+  const goalText = goals.length ? `Goals: ${goals.join(', ')}` : 'Goals: pending';
+  return `${left.join(' / ')}; ${goalText}.`;
+}
+
+function pickRecoNames(payload, max = 3) {
+  const recos = Array.isArray(payload && payload.recommendations) ? payload.recommendations : [];
+  const out = [];
+  const seen = new Set();
+  for (const r of recos) {
+    if (!r || typeof r !== 'object') continue;
+    const sku = isPlainObject(r.sku) ? r.sku : isPlainObject(r.product) ? r.product : null;
+    const brand = typeof sku?.brand === 'string' ? sku.brand.trim() : '';
+    const name = typeof sku?.name === 'string' ? sku.name.trim() : '';
+    const title = [brand, name].filter(Boolean).join(' ').trim() || (typeof r.title === 'string' ? r.title.trim() : '');
+    if (!title) continue;
+    const key = title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(title);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function buildRouteAwareAssistantText({ route, payload, language, profile }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const p = isPlainObject(payload) ? payload : {};
+  const profileLine = summarizeProfileForAnswer(profile, lang);
+
+  if (route === 'fit-check') {
+    const assessment = isPlainObject(p.assessment) ? p.assessment : {};
+    const verdict = String(assessment.verdict || '').trim() || (lang === 'CN' ? '谨慎可试' : 'Cautious to try');
+    const reasons = asStringArray(assessment.reasons, 6);
+    const riskLines = reasons.filter((r) => /风险|刺激|刺痛|泛红|risk|irritat|sting|burn/i.test(r));
+    const fitLines = reasons.filter((r) => !riskLines.includes(r));
+    const risk = (riskLines.length ? riskLines : reasons).slice(0, 2);
+    const fit = (fitLines.length ? fitLines : reasons).slice(0, 2);
+
+    if (lang === 'CN') {
+      return [
+        `结论：${verdict}（先看耐受，再决定是否长期用）。`,
+        `你的情况：${profileLine}`,
+        '风险点：',
+        ...(risk.length ? risk.map((r) => `- ${r}`) : ['- 若近期有刺痛/爆皮，需先降频并修护屏障。']),
+        '更稳妥替代方向：',
+        ...(fit.length ? fit.map((r) => `- 可优先考虑：${r}`) : ['- 先选低刺激、简配方、无香精版本。']),
+        '怎么用（频率/顺序/观察周期）：',
+        '- 先每周 2-3 次，晚间使用；连续 2-4 周观察再决定是否加频。',
+        '- 早上务必防晒（SPF30+），并避免同晚叠加强酸/高强度活性。',
+        '停用信号：出现持续刺痛、明显泛红或爆皮时先停用 3-5 天，仅保湿修护；持续加重请就医。',
+      ].join('\n');
+    }
+
+    return [
+      `Verdict: ${verdict} (start cautiously, then scale only if tolerated).`,
+      `Your profile: ${profileLine}`,
+      'Risk points:',
+      ...(risk.length ? risk.map((r) => `- ${r}`) : ['- If stinging/peeling is active, reduce frequency and prioritize barrier repair.']),
+      'Safer alternatives:',
+      ...(fit.length ? fit.map((r) => `- Consider: ${r}`) : ['- Prefer low-irritation, simple, fragrance-free options first.']),
+      'How to use (frequency/order/timeline):',
+      '- Start at 2-3 nights/week; reassess after 2-4 weeks before increasing.',
+      '- Use sunscreen every morning (SPF30+), and avoid stacking multiple strong actives in one night.',
+      'Stop signals: pause if persistent stinging/redness/peeling, switch to barrier repair only, and seek dermatology care if worsening.',
+    ].join('\n');
+  }
+
+  if (route === 'reco') {
+    const names = pickRecoNames(p, 3);
+    const topNames = names.length ? names : [lang === 'CN' ? '温和修护类精华' : 'gentle barrier-support serum'];
+    if (lang === 'CN') {
+      return [
+        `目标与前提：${profileLine}`,
+        '最小可行清单（早/晚）：',
+        '- AM：温和清洁 → 保湿/功效精华（低刺激）→ 防晒。',
+        '- PM：温和清洁 → 单一主活性（低频）→ 保湿修护。',
+        '成分方向（Top 3）：',
+        `- 方向 1：烟酰胺/神经酰胺（兼顾提亮与屏障支持）`,
+        `- 方向 2：壬二酸/温和抗炎路线（痘印与泛红更稳）`,
+        `- 方向 3：保湿舒缓体系（甘油/透明质酸/角鲨烷）`,
+        `可优先看的示例：${topNames.join('、')}。`,
+        '一周引入计划：',
+        '- 第 1-3 天：只保留基础清洁+保湿+防晒，先稳耐受。',
+        '- 第 4-7 天：单一活性每周 2-3 次起步，其余晚修护保湿。',
+        '- 观察 2-4 周再加频；若刺痛/泛红/爆皮，立即降频或停用新活性。',
+        '怎么选（选购标准）：',
+        '- 优先考虑：低刺激、配方简洁、与你目标匹配的单一主活性。',
+        '- 筛选原则：先看耐受和可持续性，再看叠加数量，避免一次上太多功效。',
+        '红旗信号：',
+        '- 若出现持续刺痛、明显泛红或爆皮，先停新活性 3-5 天，仅做修护保湿；持续加重请就医。',
+      ].join('\n');
+    }
+
+    return [
+      `Goal & context: ${profileLine}`,
+      'Minimum viable routine (AM/PM):',
+      '- AM: gentle cleanse → treatment/hydration → sunscreen.',
+      '- PM: gentle cleanse → one core active (low frequency) → barrier moisturizer.',
+      'Ingredient directions (Top 3):',
+      '- Direction 1: niacinamide/ceramide for brightening + barrier support.',
+      '- Direction 2: azelaic-acid-friendly, low-irritation anti-redness path.',
+      '- Direction 3: hydration-soothing base (glycerin/HA/squalane).',
+      `Sample options to review first: ${topNames.join(', ')}.`,
+      'One-week onboarding plan:',
+      '- Days 1-3: keep only cleanse + moisturizer + sunscreen to stabilize tolerance.',
+      '- Days 4-7: introduce one active at 2-3 nights/week; keep recovery nights in between.',
+      '- Reassess after 2-4 weeks and scale only if skin stays stable.',
+      'Buying criteria (how to choose):',
+      '- Look for low-irritation, simple formulas and one clear active aligned to your goal.',
+      '- Prioritize tolerability and consistency before stacking more products.',
+      'Red flags:',
+      '- Pause new actives if persistent stinging/redness/peeling appears; switch to barrier repair and seek care if worsening.',
+    ].join('\n');
+  }
+
+  if (route === 'conflict') {
+    const conflicts = Array.isArray(p.conflicts) ? p.conflicts : [];
+    const safe = Boolean(p.safe);
+    const conflictMessages = asStringArray(conflicts.map((c) => (isPlainObject(c) ? c.message : null)), 3);
+    if (lang === 'CN') {
+      return [
+        safe ? '冲突判断：当前未发现明显冲突。' : '冲突判断：检测到活性叠加冲突风险。',
+        '冲突原因：',
+        ...(conflictMessages.length
+          ? conflictMessages.map((m) => `- ${m}`)
+          : ['- 同晚叠加强活性会让刺激风险上升，耐受不稳时更容易泛红/爆皮。']),
+        '安全排班（错开使用）：',
+        '- AM：温和清洁 → 保湿 → 防晒。',
+        '- PM：活性 A 与活性 B 交替晚用（例如周一/周四 A，周二/周五 B），中间留修护晚。',
+        '- 先从每周 2-3 次起步，耐受稳定后再加频。',
+        '优先级取舍：',
+        '- 优先保留一个主活性先做满 2-4 周，再决定是否加入第二个活性。',
+        '- 如果目标是“先稳后进”，优先减少叠加数量而不是提高浓度。',
+        '停用信号：出现持续刺痛、明显泛红、爆皮时先停用新活性，仅做修护保湿；若持续恶化请就医。',
+      ].join('\n');
+    }
+
+    return [
+      safe ? 'Conflict check: no major conflict detected right now.' : 'Conflict check: potential active-stacking risk detected.',
+      'Conflict reason:',
+      ...(conflictMessages.length
+        ? conflictMessages.map((m) => `- ${m}`)
+        : ['- Layering strong actives in the same night can increase irritation and reduce tolerance.']),
+      'Safer schedule (alternate use):',
+      '- AM: gentle cleanse → moisturizer → sunscreen.',
+      '- PM: alternate active A and active B on different nights; keep recovery nights between them.',
+      '- Start at 2-3 active nights/week, then increase only after stable tolerance.',
+      'Priority choices:',
+      '- Keep one core active first for 2-4 weeks before adding a second active.',
+      '- Prioritize lower stacking load before increasing concentration.',
+      'Stop signals: pause new actives if persistent stinging/redness/peeling appears; switch to barrier repair only and seek care if worsening.',
+    ].join('\n');
+  }
+
+  if (route === 'env') {
+    const tier = typeof p.tier === 'string' ? p.tier.trim() : '';
+    const ess = Number.isFinite(Number(p.ess)) ? Number(p.ess) : null;
+    const notes = asStringArray(p.notes, 3);
+    if (lang === 'CN') {
+      return [
+        `环境判断：当前环境压力 ${tier || '待评估'}${ess != null ? `（ESS ${Math.round(ess)}）` : ''}。`,
+        notes.length ? `环境线索：${notes.join('；')}` : '环境线索：以天气变化为主，先做保守调整。',
+        '加什么 / 减什么 / 替换什么：',
+        '- 加：修护保湿（神经酰胺、甘油、角鲨烷等）与舒缓产品。',
+        '- 减：同晚多活性叠加、高清洁力和高频去角质。',
+        '- 替换：把刺激型活性改为低频或更温和版本。',
+        '频率调整：',
+        '- 活性先降到每周 2-3 次；其余晚以保湿修护为主。',
+        '- 天气骤变期优先稳住 3-7 天，再逐步恢复原计划。',
+        '临时极简方案：',
+        '- 早晚都用“温和清洁 + 保湿修护”，白天固定防晒；先稳住再加功效。',
+        '防晒/保湿策略：',
+        '- 白天坚持 SPF30+ 并按需补涂；室内干燥时增加保湿层与补水频次。',
+      ].join('\n');
+    }
+
+    return [
+      `Environment check: stress level is ${tier || 'pending'}${ess != null ? ` (ESS ${Math.round(ess)})` : ''}.`,
+      notes.length ? `Context clues: ${notes.join('; ')}` : 'Context clues: keep adjustments conservative while conditions shift.',
+      'Add / remove / replace:',
+      '- Add: barrier-support hydration and soothing layers.',
+      '- Remove: same-night multi-active stacking and frequent strong exfoliation.',
+      '- Replace: high-irritation steps with lower-frequency, gentler options.',
+      'Frequency adjustment:',
+      '- Reduce actives to 2-3 nights/week; keep recovery-focused nights in between.',
+      '- Stabilize for 3-7 days during weather swings before ramping back up.',
+      'Temporary minimal plan:',
+      '- Keep cleanse + barrier moisturizer AM/PM, and hold high-irritation actives during unstable weather days.',
+      'Sun/moisture strategy:',
+      '- Keep daily SPF30+ and reapply as needed; increase moisturizer support in dry indoor air.',
+    ].join('\n');
+  }
+
+  return '';
+}
+
 function coerceNumber(value) {
   if (value == null) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -2372,7 +2692,7 @@ function mergeFieldMissing(a, b) {
   return out;
 }
 
-async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, debug, logger }) {
+async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs, productInput, productObj, anchorId, maxTotal, debug, logger }) {
   const inputText = String(productInput || '').trim();
   const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
   const anchor = anchorId ? String(anchorId).trim() : '';
@@ -2431,7 +2751,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
       ? answerJson
       : structuredFallback || answerJson;
   const alternativesRaw = structured && Array.isArray(structured.alternatives) ? structured.alternatives : [];
-  const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, { lang: ctx.lang, maxTotal: 3 });
+  const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, { lang: ctx.lang, maxTotal: maxTotal ?? 3 });
 
   return {
     ok: true,
@@ -3632,6 +3952,242 @@ function mountAuroraBffRoutes(app, { logger }) {
         cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'PRODUCT_ANALYZE_FAILED' } }],
         session_patch: {},
         events: [makeEvent(ctx, 'error', { code: err.code || 'PRODUCT_ANALYZE_FAILED' })],
+      });
+      return res.status(status).json(envelope);
+    }
+  });
+
+  app.post('/v1/dupe/suggest', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    try {
+      requireAuroraUid(ctx);
+      const parsed = DupeSuggestRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const maxDupes = Math.max(1, Math.min(6, Number.isFinite(parsed.data.max_dupes) ? parsed.data.max_dupes : 3));
+      const maxComparables = Math.max(
+        1,
+        Math.min(6, Number.isFinite(parsed.data.max_comparables) ? parsed.data.max_comparables : 2),
+      );
+      const forceRefresh = parsed.data.force_refresh === true;
+      const forceValidate = parsed.data.force_validate === true;
+
+      const originalUrl = typeof parsed.data.original_url === 'string' ? parsed.data.original_url.trim() : '';
+      let originalObj =
+        parsed.data.original && typeof parsed.data.original === 'object' && !Array.isArray(parsed.data.original) ? parsed.data.original : null;
+      let anchorId = extractAnchorIdFromProductLike(originalObj);
+
+      const inputText =
+        buildProductInputText(originalObj, originalUrl) ||
+        (typeof parsed.data.original_text === 'string' ? parsed.data.original_text.trim() : '') ||
+        '';
+      if (!inputText) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage('Invalid request.'),
+          suggested_chips: [],
+          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: 'original is required' } }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
+        });
+        return res.status(400).json(envelope);
+      }
+
+      const buildKbKey = ({ anchor, url, text }) => {
+        const id = String(anchor || '').trim();
+        if (id) return normalizeDupeKbKey(`id:${id}`);
+        const u = String(url || '').trim();
+        if (u) return normalizeDupeKbKey(`url:${u}`);
+        const t = String(text || '').trim();
+        if (!t) return null;
+        const norm = t.toLowerCase().replace(/\s+/g, ' ').slice(0, 220);
+        return normalizeDupeKbKey(`text:${norm}`);
+      };
+
+      // 1) KB fast-path (avoid upstream parse/LLM when possible)
+      let kbKey = buildKbKey({ anchor: anchorId, url: originalUrl, text: inputText });
+      let kbEntry = kbKey ? await getDupeKbEntry(kbKey) : null;
+
+      const kbVerified = kbEntry && kbEntry.verified === true;
+      const canServeKb = kbEntry && kbVerified && !forceRefresh && !forceValidate;
+      if (canServeKb) {
+        const payload = {
+          kb_key: kbKey,
+          original: kbEntry.original || originalObj || null,
+          dupes: Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [],
+          comparables: Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [],
+          verified: true,
+          verified_at: kbEntry.verified_at || null,
+          source: kbEntry.source || 'kb',
+          meta: { served_from_kb: true, validated_now: false },
+        };
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [{ card_id: `dupe_suggest_${ctx.request_id}`, type: 'dupe_suggest', payload }],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
+        });
+        return res.json(envelope);
+      }
+
+      // 2) Best-effort parse (improves kb_key stability and gives the UI a normalized product object)
+      if (!anchorId && inputText) {
+        const upstreamMeta = {
+          lang: ctx.lang,
+          state: ctx.state || 'idle',
+          trigger_source: ctx.trigger_source,
+        };
+        const parsePrefix = buildContextPrefix({ ...upstreamMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
+        const parseQuery =
+          `${parsePrefix}Task: Parse the user's product input into a normalized product entity.\n` +
+          `Return ONLY a JSON object with keys: product, confidence, missing_info (string[]).\n` +
+          `Input: ${inputText}`;
+        try {
+          const upstream = await auroraChat({
+            baseUrl: AURORA_DECISION_BASE_URL,
+            query: parseQuery,
+            timeoutMs: 9000,
+            ...(originalUrl ? { anchor_product_url: originalUrl } : {}),
+          });
+          const structured = getUpstreamStructuredOrJson(upstream);
+          const answerJson =
+            upstream && typeof upstream.answer === 'string'
+              ? extractJsonObjectByKeys(upstream.answer, ['product', 'parse', 'anchor_product', 'anchorProduct'])
+              : null;
+          const obj =
+            structured && typeof structured === 'object' && !Array.isArray(structured)
+              ? structured
+              : answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson)
+                ? answerJson
+                : null;
+          const anchor =
+            obj && obj.parse && typeof obj.parse === 'object'
+              ? (obj.parse.anchor_product || obj.parse.anchorProduct)
+              : obj && obj.product && typeof obj.product === 'object'
+                ? obj.product
+                : null;
+          if (anchor && typeof anchor === 'object' && !Array.isArray(anchor)) {
+            originalObj = originalObj || anchor;
+            anchorId = anchorId || extractAnchorIdFromProductLike(anchor);
+          }
+        } catch {
+          // ignore parse failures; continue
+        }
+      }
+
+      // If we managed to derive a more stable ID key, try the KB once more.
+      const stableKey = buildKbKey({ anchor: anchorId, url: originalUrl, text: inputText });
+      if (stableKey && stableKey !== kbKey) {
+        kbKey = stableKey;
+        kbEntry = await getDupeKbEntry(kbKey);
+        const stableVerified = kbEntry && kbEntry.verified === true;
+        if (kbEntry && stableVerified && !forceRefresh && !forceValidate) {
+          const payload = {
+            kb_key: kbKey,
+            original: kbEntry.original || originalObj || null,
+            dupes: Array.isArray(kbEntry.dupes) ? kbEntry.dupes : [],
+            comparables: Array.isArray(kbEntry.comparables) ? kbEntry.comparables : [],
+            verified: true,
+            verified_at: kbEntry.verified_at || null,
+            source: kbEntry.source || 'kb',
+            meta: { served_from_kb: true, validated_now: false },
+          };
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: null,
+            suggested_chips: [],
+            cards: [{ card_id: `dupe_suggest_${ctx.request_id}`, type: 'dupe_suggest', payload }],
+            session_patch: {},
+            events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'kb' })],
+          });
+          return res.json(envelope);
+        }
+      }
+
+      // 3) Generate and validate once via upstream LLM, then cache to KB for future calls.
+      const total = Math.max(2, Math.min(6, maxDupes + maxComparables));
+      const upstreamOut = await fetchRecoAlternativesForProduct({
+        ctx,
+        profileSummary: null,
+        recentLogs: [],
+        productInput: inputText,
+        productObj: originalObj,
+        anchorId,
+        maxTotal: total,
+        debug: false,
+        logger,
+      });
+
+      const mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives : [];
+      const kindOf = (it) => String(it && typeof it === 'object' ? it.kind : '').trim().toLowerCase();
+
+      const dupes = mapped.filter((it) => kindOf(it) === 'dupe').slice(0, maxDupes);
+      const comparables = mapped.filter((it) => kindOf(it) !== 'dupe').slice(0, maxComparables);
+
+      const verified = dupes.length > 0 || comparables.length > 0;
+      if (kbKey) {
+        await upsertDupeKbEntry({
+          kb_key: kbKey,
+          original: originalObj || null,
+          dupes,
+          comparables,
+          verified,
+          verified_at: verified ? new Date().toISOString() : null,
+          verified_by: verified ? 'aurora_llm' : null,
+          source: verified ? 'llm_generate' : 'llm_generate_empty',
+          source_meta: {
+            generated_at: new Date().toISOString(),
+            max_dupes: maxDupes,
+            max_comparables: maxComparables,
+          },
+        });
+      }
+
+      const payload = {
+        kb_key: kbKey,
+        original: originalObj || null,
+        dupes,
+        comparables,
+        verified,
+        verified_at: verified ? new Date().toISOString() : null,
+        source: verified ? 'llm_generate' : 'llm_generate_empty',
+        meta: { served_from_kb: false, validated_now: true, force_refresh: forceRefresh, force_validate: forceValidate },
+        ...(Array.isArray(upstreamOut.field_missing) && upstreamOut.field_missing.length ? { field_missing: upstreamOut.field_missing } : {}),
+      };
+
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [
+          {
+            card_id: `dupe_suggest_${ctx.request_id}`,
+            type: 'dupe_suggest',
+            payload,
+            ...(Array.isArray(upstreamOut.field_missing) && upstreamOut.field_missing.length ? { field_missing: upstreamOut.field_missing } : {}),
+          },
+        ],
+        session_patch: {},
+        events: [makeEvent(ctx, 'value_moment', { kind: 'dupe_suggest', source: 'llm' })],
+      });
+      return res.json(envelope);
+    } catch (err) {
+      const status = err.status || 500;
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: makeAssistantMessage('Failed to suggest dupes.'),
+        suggested_chips: [],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'DUPE_SUGGEST_FAILED' } }],
+        session_patch: {},
+        events: [makeEvent(ctx, 'error', { code: err.code || 'DUPE_SUGGEST_FAILED' })],
       });
       return res.status(status).json(envelope);
     }
@@ -6810,14 +7366,25 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? buildConflictHeatmapV1({ routineSimulation: simPayload, routineSteps: heatmapSteps })
             : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
 
-          const msgText =
-            ctx.lang === 'CN'
+          const routeText =
+            buildRouteAwareAssistantText({
+              route: 'conflict',
+              payload: simPayload,
+              language: ctx.lang,
+              profile,
+            }) ||
+            (ctx.lang === 'CN'
               ? sim.safe
                 ? '未发现明显冲突（见下方冲突热力图）。如果出现刺痛/爆皮，优先降频并加强保湿。'
                 : '检测到可能的叠加风险（见下方冲突热力图）。更稳妥：错开晚用/隔天用，并从低频开始。'
               : sim.safe
                 ? 'No major conflicts detected (see the heatmap below). If you feel irritation, reduce frequency and moisturize.'
-                : 'Potential conflict detected (see the heatmap below). Safer: alternate nights and start low frequency.';
+                : 'Potential conflict detected (see the heatmap below). Safer: alternate nights and start low frequency.');
+          const msgText = addEmotionalPreambleToAssistantText(routeText, {
+            language: ctx.lang,
+            profile,
+            seed: ctx.request_id,
+          });
 
           const events = [
             makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length, source: 'local_chat' }),
@@ -7205,18 +7772,35 @@ function mountAuroraBffRoutes(app, { logger }) {
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
+        const recoAssistantBase = buildRouteAwareAssistantText({
+          route: 'reco',
+          payload,
+          language: ctx.lang,
+          profile,
+        });
+        const recoUnavailableLead = ctx.lang === 'CN'
+          ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
+          : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
+        const assistantTextRaw = hasRecs
+          ? (recoAssistantBase ||
+            (ctx.lang === 'CN'
+              ? profileScore >= 3
+                ? '我已经把核心结果整理成结构化卡片（见下方）。'
+                : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
+              : 'I summarized the key results into structured cards below.'))
+          : (recoAssistantBase
+            ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
+            : (ctx.lang === 'CN'
+              ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
+              : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
+        const assistantText = addEmotionalPreambleToAssistantText(assistantTextRaw, {
+          language: ctx.lang,
+          profile,
+          seed: ctx.request_id,
+        });
+
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
-            hasRecs
-              ? ctx.lang === 'CN'
-                ? profileScore >= 3
-                  ? '我已经把核心结果整理成结构化卡片（见下方）。'
-                  : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
-                : 'I summarized the key results into structured cards below.'
-              : ctx.lang === 'CN'
-                ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
-                : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue.",
-          ),
+          assistant_message: makeChatAssistantMessage(assistantText),
           suggested_chips: refinementChips,
           cards: [
             {
@@ -8067,11 +8651,36 @@ function mountAuroraBffRoutes(app, { logger }) {
         derivedCards.some((c) => isRenderableCardForChatboxUi(c, { debug: uiDebug })) ||
         cards.some((c) => isRenderableCardForChatboxUi(c, { debug: uiDebug }));
 
-      const safeAnswer = sanitizeUpstreamAnswer(answer, {
+      let safeAnswer = sanitizeUpstreamAnswer(answer, {
         language: ctx.lang,
         hasRenderableCards,
         // Always keep assistant_message end-user readable; internal kb:* refs belong in debug payloads only.
         stripInternalRefs: true,
+      });
+
+      const routeCards = [...(Array.isArray(derivedCards) ? derivedCards : []), ...(Array.isArray(cards) ? cards : [])];
+      const routeHintFromCards = inferRouteFromCards(routeCards);
+      const routeHintFromMessage =
+        !routeHintFromCards
+          ? inferRouteFromMessageIntent(message, { allowRecoCards: allowRecs })
+          : null;
+      const routeHint = routeHintFromCards || routeHintFromMessage;
+      if (routeHint && routeHint.route) {
+        const routeStructured = buildRouteAwareAssistantText({
+          route: routeHint.route,
+          payload: routeHint.payload,
+          language: ctx.lang,
+          profile,
+        });
+        const shouldUpgrade =
+          looksLikeGenericStructuredNotice(safeAnswer) ||
+          !isRouteStructuredAnswer(safeAnswer, routeHint.route);
+        if (shouldUpgrade && routeStructured) safeAnswer = routeStructured;
+      }
+      safeAnswer = addEmotionalPreambleToAssistantText(safeAnswer, {
+        language: ctx.lang,
+        profile,
+        seed: ctx.request_id,
       });
 
       const cardsForEnvelope = !debugUpstream ? stripInternalRefsDeep(cards) : cards;

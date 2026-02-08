@@ -250,6 +250,18 @@ const DupeCompareRequestSchema = z
   })
   .strict();
 
+const DupeSuggestRequestSchema = z
+  .object({
+    original: z.record(z.string(), z.any()).optional(),
+    original_url: z.string().url().optional(),
+    original_text: z.string().min(1).optional(),
+    max_dupes: z.number().int().min(1).max(6).optional(),
+    max_comparables: z.number().int().min(1).max(6).optional(),
+    force_refresh: z.boolean().optional(),
+    force_validate: z.boolean().optional(),
+  })
+  .strict();
+
 const RecoGenerateRequestSchema = z
   .object({
     focus: z.string().min(1).optional(),
@@ -340,6 +352,7 @@ module.exports = {
   ProductParseRequestSchema,
   ProductAnalyzeRequestSchema,
   DupeCompareRequestSchema,
+  DupeSuggestRequestSchema,
   RecoGenerateRequestSchema,
   PhotosPresignRequestSchema,
   PhotosConfirmRequestSchema,

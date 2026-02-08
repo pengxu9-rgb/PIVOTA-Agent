@@ -76,6 +76,61 @@ function mockAuroraChat(input) {
   const q = String(norm.query || '');
   const anchorId = String(norm.anchor_product_id || '').trim();
 
+  if (/DUPE_SUGGEST_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: dupe suggest alternatives.',
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        alternatives: [
+          {
+            product: { sku_id: 'mock_dupe_1', brand: 'MockBrand', name: 'Mock Dupe Cleanser' },
+            similarity_score: 0.92,
+            tradeoffs: {
+              price_delta_usd: -12,
+              added_benefits: ['Niacinamide'],
+              texture_finish_differences: ['More gel-like finish'],
+              availability_note: 'Widely available',
+            },
+            reasons: ['Cheaper but close ingredient profile', 'Lower irritation risk for sensitive skin'],
+            evidence: { kb_citations: ['kb:mock_dupe_1'] },
+            missing_info: [],
+          },
+          {
+            product: { sku_id: 'mock_dupe_2', brand: 'MockBrand', name: 'Mock Budget Wash' },
+            similarity_score: 0.88,
+            tradeoffs: {
+              price_delta_usd: -7,
+              missing_actives: ['Ceramides'],
+              texture_finish_differences: ['Slightly foaming'],
+            },
+            reasons: ['Budget option with similar cleansing strength'],
+            evidence: { kb_citations: ['kb:mock_dupe_2'] },
+            missing_info: [],
+          },
+          {
+            product: { sku_id: 'mock_similar_1', brand: 'MockBrand', name: 'Mock Similar Cleanser' },
+            similarity_score: 0.9,
+            tradeoffs: { price_delta_usd: 0, texture_finish_differences: ['More creamy texture'] },
+            reasons: ['Very similar positioning and feel'],
+            evidence: { kb_citations: ['kb:mock_similar_1'] },
+            missing_info: [],
+          },
+          {
+            product: { sku_id: 'mock_premium_1', brand: 'MockBrand', name: 'Mock Premium Cleanser' },
+            similarity_score: 0.86,
+            tradeoffs: { price_delta_usd: 9, added_benefits: ['Ceramides'], availability_note: 'Sephora / Dermstore' },
+            reasons: ['Premium upgrade with added barrier support'],
+            evidence: { kb_citations: ['kb:mock_premium_1'] },
+            missing_info: [],
+          },
+        ],
+      },
+      context: {},
+    };
+  }
+
   if (/ACTION_REPLY_TEXT_TEST/.test(q)) {
     return {
       answer: 'Mock: action reply_text received.',
@@ -191,6 +246,20 @@ function mockAuroraChat(input) {
       structured: {
         schema_version: 'aurora.structured.v1',
         parse: { normalized_query: 'SHORT_CARDS_BELOW_STUB_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
+  if (/NON_GENERIC_STUB_TEST/i.test(q)) {
+    return {
+      answer: 'Here is a quick summary based on what I could parse.',
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'NON_GENERIC_STUB_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
         conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
       },
       context: {},
