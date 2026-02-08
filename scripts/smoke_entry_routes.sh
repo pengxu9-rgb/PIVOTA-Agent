@@ -5,6 +5,7 @@ BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
 AURORA_LANG="${AURORA_LANG:-CN}"
 AURORA_UID="${AURORA_UID:-test_uid_entry_smoke_$(date +%s)}"
 LANG_UPPER="$(printf "%s" "${AURORA_LANG}" | tr '[:lower:]' '[:upper:]')"
+CHECK_POSITIVE_TONE="${CHECK_POSITIVE_TONE:-true}"
 
 CURL_BIN="${CURL_BIN:-/usr/bin/curl}"
 PY_BIN="${PY_BIN:-/usr/bin/python3}"
@@ -47,6 +48,35 @@ capture_case() {
 extract_summary() {
   local file="$1"
   "$PY_BIN" -c 'import json,sys; j=json.load(open(sys.argv[1])); cards=[c.get("type") for c in (j.get("cards") or [])]; first=((j.get("assistant_message") or {}).get("content") or "").splitlines()[:1]; print("cards=",cards); print("first=",first)' "$file"
+}
+
+assert_no_banned_first_line() {
+  local file="$1"
+  local lang="$2"
+  if [[ "$CHECK_POSITIVE_TONE" != "true" ]]; then
+    return 0
+  fi
+  "$PY_BIN" -c '
+import json, re, sys
+path, lang = sys.argv[1], (sys.argv[2] or "").upper()
+j = json.load(open(path))
+content = ((j.get("assistant_message") or {}).get("content") or "")
+first = ""
+for line in str(content).splitlines():
+    line = line.strip()
+    if line:
+        first = line
+        break
+if not first:
+    raise SystemExit(0)
+if lang in ("EN", "EN-US", "EN_GB", "EN-UK"):
+    banned = [r"low-stress", r"\banxious\b", r"\bpanic\b"]
+else:
+    banned = [r"焦虑", r"别慌", r"恐慌", r"慌了"]
+for pat in banned:
+    if re.search(pat, first, flags=re.IGNORECASE):
+        raise SystemExit(f"positive-tone check failed; banned phrase matched ({pat}) in first line: {first}")
+' "$file" "$lang"
 }
 
 assert_cards() {
@@ -99,42 +129,50 @@ fi
 say "1) no-profile recommendation gate"
 capture_case "gate" "/v1/chat" "{\"message\":\"${MSG_GATE}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_gate"
+assert_no_banned_first_line "$CASE_gate" "$LANG_UPPER"
 assert_cards "$CASE_gate" "contains_all" "diagnosis_gate"
 assert_cards "$CASE_gate" "contains_none" "recommendations"
 
 say "2) profile patch"
 capture_case "profile" "/v1/profile/update" '{"skinType":"oily","sensitivity":"low","barrierStatus":"healthy","goals":["brightening","acne"],"region":"CN","budgetTier":"¥500"}'
 extract_summary "$CASE_profile"
+assert_no_banned_first_line "$CASE_profile" "$LANG_UPPER"
 assert_cards "$CASE_profile" "contains_all" "profile"
 
 say "3) fit-check"
 capture_case "fit" "/v1/chat" "{\"message\":\"${MSG_FIT}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_fit"
+assert_no_banned_first_line "$CASE_fit" "$LANG_UPPER"
 assert_cards "$CASE_fit" "contains_all" "aurora_structured,product_analysis"
 
 say "4) reco"
 capture_case "reco" "/v1/chat" "{\"message\":\"${MSG_RECO}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_reco"
+assert_no_banned_first_line "$CASE_reco" "$LANG_UPPER"
 assert_cards "$CASE_reco" "contains_all" "recommendations"
 
 say "5) anti-aging"
 capture_case "antia" "/v1/chat" "{\"message\":\"${MSG_ANTI}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_antia"
+assert_no_banned_first_line "$CASE_antia" "$LANG_UPPER"
 assert_cards "$CASE_antia" "contains_all" "recommendations"
 
 say "6) env stress"
 capture_case "env" "/v1/chat" "{\"message\":\"${MSG_ENV}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_env"
+assert_no_banned_first_line "$CASE_env" "$LANG_UPPER"
 assert_cards "$CASE_env" "contains_all" "env_stress"
 
 say "7) conflict"
 capture_case "conflict" "/v1/chat" "{\"message\":\"${MSG_CONFLICT}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_conflict"
+assert_no_banned_first_line "$CASE_conflict" "$LANG_UPPER"
 assert_cards "$CASE_conflict" "contains_all" "routine_simulation,conflict_heatmap"
 
 say "8) stale budget chip (strict guard)"
 capture_case "stale" "/v1/chat" "{\"action\":{\"action_id\":\"chip.clarify.budget.y500\",\"kind\":\"chip\",\"data\":{\"clarification_id\":\"budget\",\"reply_text\":\"¥500\"}},\"message\":\"¥500\",\"session\":{\"state\":\"idle\"},\"client_state\":\"RECO_GATE\",\"language\":\"${AURORA_LANG}\"}"
 extract_summary "$CASE_stale"
+assert_no_banned_first_line "$CASE_stale" "$LANG_UPPER"
 assert_cards "$CASE_stale" "contains_none" "recommendations,diagnosis_gate"
 assert_cards "$CASE_stale" "contains_all" "profile"
 

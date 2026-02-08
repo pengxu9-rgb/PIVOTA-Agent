@@ -108,3 +108,15 @@ jobs:
         run: |
           set -euo pipefail
           BASE="$BASE_URL" bash scripts/smoke_aurora_bff_runtime.sh
+
+      - name: Entry-route smoke (CN)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$BASE_URL" AURORA_LANG=CN CHECK_POSITIVE_TONE=true bash scripts/smoke_entry_routes.sh
+
+      - name: Entry-route smoke (EN)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$BASE_URL" AURORA_LANG=EN CHECK_POSITIVE_TONE=true bash scripts/smoke_entry_routes.sh
