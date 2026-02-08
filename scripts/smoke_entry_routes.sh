@@ -6,6 +6,8 @@ AURORA_LANG="${AURORA_LANG:-CN}"
 AURORA_UID="${AURORA_UID:-test_uid_entry_smoke_$(date +%s)}"
 LANG_UPPER="$(printf "%s" "${AURORA_LANG}" | tr '[:lower:]' '[:upper:]')"
 CHECK_POSITIVE_TONE="${CHECK_POSITIVE_TONE:-true}"
+BANNED_PHRASES_CN="${BANNED_PHRASES_CN:-焦虑,别慌,恐慌,慌了}"
+BANNED_PHRASES_EN="${BANNED_PHRASES_EN:-low-stress,anxious,panic}"
 
 CURL_BIN="${CURL_BIN:-/usr/bin/curl}"
 PY_BIN="${PY_BIN:-/usr/bin/python3}"
@@ -57,7 +59,7 @@ assert_no_banned_first_line() {
     return 0
   fi
   "$PY_BIN" -c '
-import json, re, sys
+import json, sys
 path, lang = sys.argv[1], (sys.argv[2] or "").upper()
 j = json.load(open(path))
 content = ((j.get("assistant_message") or {}).get("content") or "")
@@ -69,14 +71,22 @@ for line in str(content).splitlines():
         break
 if not first:
     raise SystemExit(0)
+
+def parse_terms(raw):
+    return [t.strip() for t in str(raw or "").split(",") if t.strip()]
+
 if lang in ("EN", "EN-US", "EN_GB", "EN-UK"):
-    banned = [r"low-stress", r"\banxious\b", r"\bpanic\b"]
+    banned = parse_terms(sys.argv[4]) or ["low-stress", "anxious", "panic"]
+    haystack = first.lower()
 else:
-    banned = [r"焦虑", r"别慌", r"恐慌", r"慌了"]
-for pat in banned:
-    if re.search(pat, first, flags=re.IGNORECASE):
-        raise SystemExit(f"positive-tone check failed; banned phrase matched ({pat}) in first line: {first}")
-' "$file" "$lang"
+    banned = parse_terms(sys.argv[3]) or ["焦虑", "别慌", "恐慌", "慌了"]
+    haystack = first
+
+for term in banned:
+    needle = term.lower() if lang in ("EN", "EN-US", "EN_GB", "EN-UK") else term
+    if needle and needle in haystack:
+        raise SystemExit(f"positive-tone check failed; banned phrase matched ({term}) in first line: {first}")
+' "$file" "$lang" "$BANNED_PHRASES_CN" "$BANNED_PHRASES_EN"
 }
 
 assert_cards() {
