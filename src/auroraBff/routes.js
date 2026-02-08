@@ -2178,13 +2178,21 @@ function looksLikeRoutineRequest(message, action) {
         : '';
   const idText = String(id || '').trim().toLowerCase();
 
-  if (idText.includes('routine') || idText.includes('reco_routine')) return true;
-  if (!text) return false;
-  if (text.includes('routine')) return true;
-  if (/am\s*\/\s*pm/.test(text)) return true;
-  if (/生成.*(早晚|am|pm).*(护肤|routine)/.test(text)) return true;
-  if (/(早晚护肤|护肤方案)/.test(text)) return true;
-  return false;
+  const routineByAction = idText.includes('routine') || idText.includes('reco_routine');
+  const routineByMessage =
+    Boolean(text) &&
+    (text.includes('routine') ||
+      /am\s*\/\s*pm/.test(text) ||
+      /生成.*(早晚|am|pm).*(护肤|routine)/.test(text) ||
+      /(早晚护肤|护肤方案)/.test(text));
+
+  // Guard against stale UI action_id: if the message is clearly a fit-check and the
+  // only routine signal comes from action_id, do NOT treat it as a routine request.
+  // This prevents accidental budget-gating for product evaluation questions.
+  if (looksLikeSuitabilityRequest(text) && routineByAction && !routineByMessage) return false;
+
+  if (routineByAction) return true;
+  return routineByMessage;
 }
 
 function buildBudgetGatePrompt(language) {
