@@ -18,6 +18,7 @@ const { auroraChat } = require('../src/auroraBff/auroraDecisionClient');
 const { createStageProfiler } = require('../src/auroraBff/skinAnalysisProfiling');
 const { should_call_llm: shouldCallLlm } = require('../src/auroraBff/skinLlmPolicy');
 const { getDiagRolloutDecision, hashToBucket0to99 } = require('../src/auroraBff/diagRollout');
+const { validateRequestedTransition } = require('../src/auroraBff/agentStateMachine');
 
 function withEnv(patch, fn) {
   const prev = {};
@@ -69,6 +70,17 @@ test('Recommendation gate: strips recommendation cards unless explicit', async (
   assert.equal(filtered.some((c) => c.type === 'recommendations'), false);
   assert.equal(filtered.some((c) => c.type === 'offers_resolved'), false);
   assert.equal(filtered.some((c) => c.type === 'info'), true);
+});
+
+test('State machine: PRODUCT_LINK_EVAL allows explicit recommendation transition', async () => {
+  const validation = validateRequestedTransition({
+    fromState: 'PRODUCT_LINK_EVAL',
+    triggerSource: 'text_explicit',
+    triggerId: 'recommend some product',
+    requestedNextState: 'RECO_GATE',
+  });
+  assert.equal(validation.ok, true);
+  if (validation.ok) assert.equal(validation.next_state, 'RECO_GATE');
 });
 
 test('Routine simulate: detects retinoid x acids conflict', async () => {
@@ -939,6 +951,17 @@ test('Recommendation gate: does not unlock commerce for diagnosis chip', async (
       actionId: 'chip.clarify.budget.¥500',
       clarificationId: 'budget',
       message: '¥500',
+      state: 'idle',
+    }),
+    false,
+  );
+  assert.equal(
+    recommendationsAllowed({
+      triggerSource: 'chip',
+      actionId: 'chip.clarify.budget.¥500',
+      clarificationId: 'budget',
+      message: '¥500',
+      state: 'S6_BUDGET',
     }),
     true,
   );
@@ -1850,7 +1873,7 @@ test('/v1/chat: recommendation intent bypasses budget gate in S6_BUDGET (anti-ag
   });
 });
 
-test('/v1/chat: budget clarification chip continues reco flow (no parse-stub fallback)', async () => {
+test('/v1/chat: budget clarification chip continues routine/reco flow when in S6_BUDGET', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');
     const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
@@ -1935,7 +1958,7 @@ test('/v1/chat: budget clarification chip continues reco flow (no parse-stub fal
           data: { clarification_id: 'budget', reply_text: '¥500' },
         },
         message: '¥500',
-        session: { state: 'idle' },
+        session: { state: 'S6_BUDGET' },
         language: 'EN',
       },
     });
@@ -1944,6 +1967,107 @@ test('/v1/chat: budget clarification chip continues reco flow (no parse-stub fal
     const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
     assert.ok(cardTypes.includes('recommendations'));
     assert.equal(cardTypes.includes('budget_gate'), false);
+    const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
+    assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
+  });
+});
+
+test('/v1/chat: stale budget-clarify chip outside budget flow returns next-step guidance (no parse-stub loop)', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
+      headers: { 'X-Aurora-UID': 'test_uid_stale_budget_chip_idle', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        skinType: 'combination',
+        sensitivity: 'medium',
+        barrierStatus: 'healthy',
+        goals: ['wrinkles'],
+        region: 'CN',
+        budgetTier: '¥500',
+      },
+    });
+    assert.equal(seed.status, 200);
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_stale_budget_chip_idle', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        action: {
+          action_id: 'chip.clarify.budget.y500',
+          kind: 'chip',
+          data: { clarification_id: 'budget', reply_text: '¥500' },
+        },
+        message: '¥500',
+        session: { state: 'idle' },
+        client_state: 'IDLE_CHAT',
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('profile'), true);
+    assert.equal(cardTypes.includes('recommendations'), false);
     const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
     assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
   });

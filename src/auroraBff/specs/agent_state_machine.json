@@ -62,7 +62,7 @@
       "chip_id": "chip_get_recos",
       "label_en": "Get product recommendations",
       "label_cn": "获取产品推荐",
-      "allowed_states": ["IDLE_CHAT", "DIAG_ANALYSIS_SUMMARY", "MINIMAL_PLAN", "RETURN_WELCOME"],
+      "allowed_states": ["IDLE_CHAT", "DIAG_ANALYSIS_SUMMARY", "MINIMAL_PLAN", "PRODUCT_LINK_EVAL", "RETURN_WELCOME"],
       "next_state": "RECO_GATE",
       "analytics_event": "ui_chip_clicked"
     },
