@@ -2194,6 +2194,19 @@ function looksLikeRoutineRequest(message, action) {
   return routineByMessage;
 }
 
+function isBudgetClarificationAction(actionId, clarificationId) {
+  const id = String(actionId || '').trim().toLowerCase();
+  const cid = String(clarificationId || '').trim().toLowerCase();
+  return id.startsWith('chip.clarify.budget') || id.startsWith('chip.budget.') || cid === 'budget';
+}
+
+function isBareBudgetSelectionMessage(message) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  if (normalizeBudgetHint(text)) return true;
+  return /^(not\s+sure|不确定)$/i.test(text);
+}
+
 function buildBudgetGatePrompt(language) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   if (lang === 'CN') {
@@ -6591,6 +6604,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionId,
         clarificationId,
         message,
+        state: ctx.state,
+        agentState,
       });
 
       const allowRecoCards =
@@ -6975,6 +6990,67 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
+      const budgetClarificationAction = isBudgetClarificationAction(actionId, clarificationId);
+      const budgetChipCanContinueReco =
+        budgetClarificationAction &&
+        ctx.state === 'S6_BUDGET';
+      const budgetChipOutOfFlow =
+        budgetClarificationAction &&
+        !budgetChipCanContinueReco &&
+        isBareBudgetSelectionMessage(message) &&
+        !looksLikeRecommendationRequest(message) &&
+        !looksLikeSuitabilityRequest(message) &&
+        !looksLikeRoutineRequest(message, parsed.data.action) &&
+        !looksLikeCompatibilityOrConflictQuestion(message) &&
+        !looksLikeWeatherOrEnvironmentQuestion(message);
+
+      // Guardrail for stale budget chips:
+      // if the client sends a leftover budget clarify action outside budget/reco flow, do not call upstream
+      // and do not emit the confusing parse-only stub fallback.
+      if (budgetChipOutOfFlow) {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            lang === 'CN'
+              ? '我已记录你的预算。你现在想做哪种帮助？（评估单品 / 获取推荐 / 检查搭配冲突）'
+              : 'Budget noted. What should I do next? (evaluate one product / get recommendations / check conflicts)',
+          ),
+          suggested_chips: [
+            {
+              chip_id: 'chip.action.analyze_product',
+              label: lang === 'CN' ? '评估这款是否适合我' : 'Evaluate one product',
+              kind: 'quick_reply',
+              data: { reply_text: lang === 'CN' ? '这款适不适合我：<产品名>' : 'Is this suitable for me: <product name>' },
+            },
+            {
+              chip_id: 'chip.start.reco_products',
+              label: lang === 'CN' ? '给我产品推荐' : 'Get recommendations',
+              kind: 'quick_reply',
+              data: { reply_text: lang === 'CN' ? '给我一些产品推荐' : 'Get product recommendations' },
+            },
+            {
+              chip_id: 'chip.action.dupe_compare',
+              label: lang === 'CN' ? '检查搭配冲突' : 'Check compatibility',
+              kind: 'quick_reply',
+              data: {
+                reply_text:
+                  lang === 'CN' ? '阿达帕林/维A + 果酸同晚叠加会冲突吗？' : 'Can I use retinoid + acids in the same night?',
+              },
+            },
+          ],
+          cards: [
+            {
+              card_id: `profile_${ctx.request_id}`,
+              type: 'profile',
+              payload: { profile: summarizeProfileForContext(profile) },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'stale_budget_chip_ignored' })],
+        });
+        return res.json(envelope);
+      }
+
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
       const wantsProductRecommendations =
@@ -6985,8 +7061,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         (
           actionId === 'chip.start.reco_products' ||
           actionId === 'chip_get_recos' ||
-          String(actionId || '').toLowerCase().startsWith('chip.clarify.budget') ||
-          String(clarificationId || '').toLowerCase() === 'budget' ||
+          budgetChipCanContinueReco ||
           looksLikeRecommendationRequest(message)
         );
 

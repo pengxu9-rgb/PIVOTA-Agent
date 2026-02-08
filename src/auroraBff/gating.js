@@ -80,6 +80,8 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
   const id = String(opts.actionId || '').trim().toLowerCase();
   const text = String(opts.message || '').trim();
   const clarificationId = String(opts.clarificationId || opts.clarification_id || '').trim().toLowerCase();
+  const state = String(opts.state || opts.sessionState || '').trim().toUpperCase();
+  const inBudgetFlow = state === 'S6_BUDGET';
 
   // Chips/actions are "explicit" interactions, but NOT all chips should unlock recommendations/commerce.
   // Only unlock when the user explicitly asked for product outputs (recommendations/routine/dupes/analysis).
@@ -94,7 +96,22 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
     if (id === 'chip.action.reco_routine') return true;
     if (id === 'chip.action.analyze_product') return true;
     if (id === 'chip.action.dupe_compare') return true;
-    if (id.startsWith('chip.clarify.budget') || id.startsWith('chip.budget.') || clarificationId === 'budget') return true;
+    if (id.startsWith('chip.clarify.budget') || id.startsWith('chip.budget.') || clarificationId === 'budget') {
+      // Budget chips can be stale (copied from previous turn by some clients).
+      // Only treat them as recommendation-unlocking when we are already in the budget flow,
+      // or the current text clearly asks for a recommendation/fit-check/routine.
+      if (inBudgetFlow) return true;
+      if (
+        looksLikeRecommendationRequest(text) ||
+        looksLikeSuitabilityRequest(text) ||
+        /\broutine\b/.test(text) ||
+        /am\s*\/\s*pm/.test(text) ||
+        /(早晚护肤|护肤方案)/.test(text)
+      ) {
+        return true;
+      }
+      return false;
+    }
 
     // Fallback heuristic for future chips, but keep it narrow.
     if (id.startsWith('chip.action.') && /reco|recommend|offer|checkout|dupe|analy/.test(id)) return true;
