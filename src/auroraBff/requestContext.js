@@ -37,6 +37,11 @@ function detectTextExplicit(message) {
     /推荐/,
     /产品推荐/,
     /给我方案/,
+    // CN/EN concern-led explicit asks should count as text_explicit recommendation intent.
+    /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|暗沉|色沉)/,
+    /\banti[-\s]?aging\b/,
+    /\bwrinkles?\b/,
+    /\bfine\s+lines?\b/,
     // CN: "想要/要/求" + product-type (avoid matching weather like "要下雪")
     /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/,
     /诊断/,

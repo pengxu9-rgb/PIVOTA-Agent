@@ -26,6 +26,9 @@ function looksLikeRecommendationRequest(message) {
     /推荐/.test(text) ||
     /给我.*(产品|清单)/.test(text) ||
     /(护肤方案|早晚)/.test(text) ||
+    // EN/CN concern-led shopping intent (no explicit "recommend" required).
+    /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|redness)\b/.test(text) ||
+    /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|痘痘|闭口|毛孔|泛红|暗沉|色沉|痘印|色斑)/.test(text) ||
     /\bam\b/.test(text) ||
     /\bpm\b/.test(text) ||
     /(怎么买|购买|下单|链接)/.test(text)
@@ -76,6 +79,7 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
   const triggerSource = String(opts.triggerSource || '').trim();
   const id = String(opts.actionId || '').trim().toLowerCase();
   const text = String(opts.message || '').trim();
+  const clarificationId = String(opts.clarificationId || opts.clarification_id || '').trim().toLowerCase();
 
   // Chips/actions are "explicit" interactions, but NOT all chips should unlock recommendations/commerce.
   // Only unlock when the user explicitly asked for product outputs (recommendations/routine/dupes/analysis).
@@ -90,6 +94,7 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
     if (id === 'chip.action.reco_routine') return true;
     if (id === 'chip.action.analyze_product') return true;
     if (id === 'chip.action.dupe_compare') return true;
+    if (id.startsWith('chip.clarify.budget') || clarificationId === 'budget') return true;
 
     // Fallback heuristic for future chips, but keep it narrow.
     if (id.startsWith('chip.action.') && /reco|recommend|offer|checkout|dupe|analy/.test(id)) return true;

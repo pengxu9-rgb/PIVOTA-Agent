@@ -6465,6 +6465,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           : typeof parsed.data.action === 'string'
             ? parsed.data.action
             : null;
+      const clarificationId =
+        parsed.data.action &&
+        typeof parsed.data.action === 'object' &&
+        parsed.data.action.data &&
+        typeof parsed.data.action.data === 'object'
+          ? parsed.data.action.data.clarification_id || parsed.data.action.data.clarificationId || null
+          : null;
       const includeAlternatives = extractIncludeAlternativesFromAction(parsed.data.action);
       const debugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
@@ -6580,10 +6587,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         agentState = validation.next_state;
       }
 
+      const recoInteractionAllowed = recommendationsAllowed({
+        triggerSource: ctx.trigger_source,
+        actionId,
+        clarificationId,
+        message,
+      });
+
       const allowRecoCards =
         agentState === 'RECO_GATE' ||
         agentState === 'RECO_CONSTRAINTS' ||
-        agentState === 'RECO_RESULTS';
+        agentState === 'RECO_RESULTS' ||
+        // Dynamic clarification chips (for example: chip.clarify.budget.*) may not exist in the
+        // static state-machine map, but are still explicit recommendation interactions.
+        recoInteractionAllowed;
 
       // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
       let nextStateOverride = null;
@@ -6788,11 +6805,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         // Example: "Is this product suitable for me?" should go to fit-check/product analysis (budget is irrelevant).
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
+        const wantsRecoNoRoutine =
+          looksLikeRecommendationRequest(message) &&
+          !looksLikeRoutineRequest(message, parsed.data.action);
         const wantsEnvStress =
           looksLikeWeatherOrEnvironmentQuestion(message) &&
           (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
 
-        if (!rawBudget && (wantsFitCheck || wantsCompat || wantsEnvStress)) {
+        if (!rawBudget && (wantsFitCheck || wantsCompat || wantsEnvStress || wantsRecoNoRoutine)) {
           // Clear the budget-gate state so the client doesn't get stuck in a loop.
           if (stateChangeAllowed(ctx.trigger_source)) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
@@ -6899,7 +6919,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (
         allowRecoCards &&
         looksLikeRoutineRequest(message, parsed.data.action) &&
-        recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message })
+        recoInteractionAllowed
       ) {
         const budget = normalizeBudgetHint(profile && profile.budgetTier);
         if (!budget) {
@@ -6962,8 +6982,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       const wantsProductRecommendations =
         allowRecoCards &&
         !looksLikeRoutineRequest(message, parsed.data.action) &&
-        recommendationsAllowed({ triggerSource: ctx.trigger_source, actionId, message }) &&
-        (actionId === 'chip.start.reco_products' || actionId === 'chip_get_recos' || looksLikeRecommendationRequest(message));
+        recoInteractionAllowed &&
+        (
+          actionId === 'chip.start.reco_products' ||
+          actionId === 'chip_get_recos' ||
+          String(actionId || '').toLowerCase().startsWith('chip.clarify.budget') ||
+          String(clarificationId || '').toLowerCase() === 'budget' ||
+          looksLikeRecommendationRequest(message)
+        );
 
       if (wantsProductRecommendations) {
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
@@ -7162,13 +7188,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         agent_state: agentState,
         trigger_source: ctx.trigger_source,
         action_id: parsed.data.action && typeof parsed.data.action === 'object' ? parsed.data.action.action_id : null,
-        clarification_id:
-          parsed.data.action &&
-          typeof parsed.data.action === 'object' &&
-          parsed.data.action.data &&
-          typeof parsed.data.action.data === 'object'
-            ? parsed.data.action.data.clarification_id || parsed.data.action.data.clarificationId || null
-            : null,
+        clarification_id: clarificationId,
       });
       const query = `${prefix}${message || '(no message)'}`;
       try {
