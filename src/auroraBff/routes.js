@@ -1189,6 +1189,32 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
   };
 }
 
+async function safeBuildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, qcStatus, logger, identity } = {}) {
+  try {
+    return await buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, qcStatus, logger, identity });
+  } catch (err) {
+    const message = err && err.message ? err.message : String(err);
+    const code = err && err.code ? String(err.code) : 'PHOTO_AUTO_ANALYSIS_FAILED';
+    logger?.error(
+      {
+        err: message,
+        code,
+        request_id: ctx && ctx.request_id ? ctx.request_id : null,
+        trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
+        aurora_uid: ctx && ctx.aurora_uid ? ctx.aurora_uid : null,
+        photo_id: photoId || null,
+        slot_id: slotId || null,
+      },
+      'aurora bff: auto analysis failed unexpectedly; returning photo_confirm only',
+    );
+    return {
+      card: null,
+      session_patch: {},
+      event: makeEvent(ctx, 'error', { code }),
+    };
+  }
+}
+
 async function runOpenAIVisionSkinAnalysis({
   imageBuffer,
   language,
@@ -7649,7 +7675,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         payload,
         ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
       };
-      const autoAnalysis = await buildAutoAnalysisFromConfirmedPhoto({
+      const autoAnalysis = await safeBuildAutoAnalysisFromConfirmedPhoto({
         req,
         ctx,
         photoId: uploadId,
@@ -7670,8 +7696,18 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const status = err?.statusCode || err?.status || 500;
+      const status = Number(err?.statusCode || err?.status || 500);
       const code = err?.code || 'PHOTO_UPLOAD_FAILED';
+      logger?.error(
+        {
+          err: err && err.message ? err.message : String(err),
+          code,
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          aurora_uid: ctx.aurora_uid,
+        },
+        'aurora bff: /v1/photos/upload failed',
+      );
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage('Failed to upload photo.'),
         suggested_chips: [],
@@ -7830,7 +7866,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         payload,
         ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
       };
-      const autoAnalysis = await buildAutoAnalysisFromConfirmedPhoto({
+      const autoAnalysis = await safeBuildAutoAnalysisFromConfirmedPhoto({
         req,
         ctx,
         photoId: uploadId,
@@ -7851,13 +7887,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return res.json(envelope);
     } catch (err) {
-      const status = err.status || 500;
+      const status = Number(err?.statusCode || err?.status || 500);
+      const code = err?.code || 'PHOTO_CONFIRM_FAILED';
+      logger?.error(
+        {
+          err: err && err.message ? err.message : String(err),
+          code,
+          request_id: ctx.request_id,
+          trace_id: ctx.trace_id,
+          aurora_uid: ctx.aurora_uid,
+        },
+        'aurora bff: /v1/photos/confirm failed',
+      );
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage('Failed to confirm upload.'),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'PHOTO_CONFIRM_FAILED' } }],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: err.code || 'PHOTO_CONFIRM_FAILED' })],
+        events: [makeEvent(ctx, 'error', { code })],
       });
       return res.status(status).json(envelope);
     }

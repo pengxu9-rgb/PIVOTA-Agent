@@ -5104,6 +5104,129 @@ test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', a
   );
 });
 
+test('/v1/photos/upload: auto analysis failure still returns photo_confirm', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM: 'true',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const metricsModuleId = require.resolve('../src/auroraBff/visionMetrics');
+      delete require.cache[routesModuleId];
+      delete require.cache[metricsModuleId];
+      const visionMetrics = require('../src/auroraBff/visionMetrics');
+      const originalRecordAnalyzeRequest = visionMetrics.recordAnalyzeRequest;
+      visionMetrics.recordAnalyzeRequest = () => {
+        throw new Error('synthetic_auto_analysis_failure');
+      };
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const pngBytes = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAsSAAALEgHS3X78AAAA' +
+          'B3RJTUUH5AICDgYk4fYQPgAAAB1pVFh0Q29tbWVudAAAAAAAvK6ymQAAAHVJREFUWMPtzsENwCAQ' +
+          'BEG9/5f2QxA6i1xAikQW2L8z8V8YfM+K7QwAAAAAAAAAAAAAAAB4t6x3K2W3fQn2eZ5n4J1wV2k8vT' +
+          '3uQv2bB0hQ7m9t9h9m9M6r8f3A2f0A8Qf8Sg8x9I3hM8AAAAASUVORK5CYII=',
+        'base64',
+      );
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+
+      axios.post = async (url) => {
+        const u = String(url);
+        if (u.endsWith('/photos/presign')) {
+          return {
+            status: 200,
+            data: {
+              upload_id: 'photo_upload_auto_fail',
+              upload: {
+                url: 'https://signed-upload.test/object',
+                method: 'PUT',
+                headers: { 'Content-Type': 'image/png' },
+              },
+            },
+          };
+        }
+        if (u.endsWith('/photos/confirm')) {
+          return {
+            status: 200,
+            data: {
+              upload_id: 'photo_upload_auto_fail',
+              qc_status: 'passed',
+              qc: { state: 'done', qc_status: 'passed' },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post url: ${u}`);
+      };
+
+      axios.get = async (url) => {
+        const u = String(url);
+        if (u.endsWith('/photos/qc')) {
+          return {
+            status: 200,
+            data: { qc_status: 'passed', qc: { state: 'done', qc_status: 'passed' } },
+          };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      axios.request = async (config = {}) => {
+        if (String(config.url || '') === 'https://signed-upload.test/object') {
+          return { status: 200, data: '' };
+        }
+        throw new Error(`Unexpected axios.request url: ${String(config.url || '')}`);
+      };
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+
+        const uploadResp = await request
+          .post('/v1/photos/upload')
+          .set({
+            'X-Aurora-UID': 'uid_photo_upload_auto_fail',
+            'X-Trace-ID': 'trace_photo_upload_auto_fail',
+            'X-Brief-ID': 'brief_photo_upload_auto_fail',
+            'X-Lang': 'EN',
+          })
+          .field('slot_id', 'daylight')
+          .field('consent', 'true')
+          .attach('photo', pngBytes, { filename: 'face.png', contentType: 'image/png' })
+          .expect(200);
+
+        const cards = Array.isArray(uploadResp.body?.cards) ? uploadResp.body.cards : [];
+        const events = Array.isArray(uploadResp.body?.events) ? uploadResp.body.events : [];
+        const confirmCard = cards.find((c) => c && c.type === 'photo_confirm');
+        const analysisCard = cards.find((c) => c && c.type === 'analysis_summary');
+        const autoFailEvent = events.find((e) => e && e.event_name === 'error' && e.data && e.data.code === 'PHOTO_AUTO_ANALYSIS_FAILED');
+
+        assert.ok(confirmCard);
+        assert.equal(Boolean(analysisCard), false);
+        assert.ok(autoFailEvent);
+      } finally {
+        visionMetrics.recordAnalyzeRequest = originalRecordAnalyzeRequest;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[metricsModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/photos/confirm: qc passed auto-triggers analysis_summary', async () => {
   await withEnv(
     {
