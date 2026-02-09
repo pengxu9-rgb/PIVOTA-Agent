@@ -326,3 +326,67 @@ test('persistPseudoLabelArtifacts writes model outputs and gated pseudo labels',
     await store.cleanup();
   }
 });
+
+test('persistPseudoLabelArtifacts writes agreement sample for cv+gemini shadow pair', async () => {
+  const store = await makeTempStore();
+  try {
+    await withEnv(
+      {
+        AURORA_PSEUDO_LABEL_ENABLED: 'true',
+        AURORA_PSEUDO_LABEL_DIR: store.root,
+        AURORA_PSEUDO_LABEL_ALLOW_ROI: 'false',
+      },
+      async () => {
+        const { persistPseudoLabelArtifacts, readNdjsonFile, getStorePaths, getStoreConfig } = loadFactoryFresh();
+
+        const result = await persistPseudoLabelArtifacts({
+          inferenceId: 'shadow_inf_1',
+          qualityGrade: 'degraded',
+          providerOutputs: [
+            makeOutput(
+              'cv_provider',
+              makeConcern({
+                type: 'tone',
+                bbox: { x0: 0.18, y0: 0.18, x1: 0.44, y1: 0.44 },
+                severity: 1.8,
+                confidence: 0.72,
+                evidence: 'cv tone',
+              }),
+              'cv-test',
+            ),
+            makeOutput(
+              'gemini_provider',
+              makeConcern({
+                type: 'tone',
+                bbox: { x0: 0.2, y0: 0.2, x1: 0.45, y1: 0.45 },
+                severity: 2,
+                confidence: 0.68,
+                evidence: 'gemini tone',
+              }),
+              'gemini-test',
+            ),
+          ],
+          skinToneBucket: 'medium',
+          lightingBucket: 'daylight',
+        });
+
+        assert.equal(result.ok, true);
+        assert.equal(result.agreement_written, true);
+        assert.equal(result.pseudo_label_written, false);
+
+        const paths = getStorePaths(getStoreConfig());
+        const agreementSamples = await readNdjsonFile(paths.agreementSamples);
+        const pseudoLabels = await readNdjsonFile(paths.pseudoLabels);
+
+        assert.equal(agreementSamples.length, 1);
+        assert.equal(pseudoLabels.length, 0);
+        assert.deepEqual(agreementSamples[0].provider_pair, ['cv_provider', 'gemini_provider']);
+        assert.equal(Number.isFinite(Number(agreementSamples[0]?.metrics?.overall)), true);
+        assert.equal(agreementSamples[0].pseudo_label_eligible, false);
+        assert.equal(agreementSamples[0].pseudo_label_emitted, false);
+      },
+    );
+  } finally {
+    await store.cleanup();
+  }
+});

@@ -856,6 +856,7 @@ function buildAgreementSampleRecord({
   agreement,
   pseudoLabelEligible,
   pseudoLabelEmitted,
+  providerPair,
 }) {
   return {
     schema_version: AGREEMENT_SAMPLE_SCHEMA_VERSION,
@@ -868,6 +869,9 @@ function buildAgreementSampleRecord({
     metrics: agreement,
     pseudo_label_eligible: Boolean(pseudoLabelEligible),
     pseudo_label_emitted: Boolean(pseudoLabelEmitted),
+    provider_pair: Array.isArray(providerPair)
+      ? providerPair.map((provider) => String(provider || '').trim() || 'unknown').slice(0, 2)
+      : [],
   };
 }
 
@@ -910,6 +914,51 @@ async function readNdjsonFile(filePath) {
   return rows;
 }
 
+function selectAgreementPair(outputs) {
+  const list = Array.isArray(outputs) ? outputs.filter(Boolean) : [];
+  const geminiOutput = list.find((output) => output.provider === 'gemini_provider');
+  const gptOutput = list.find((output) => output.provider === 'gpt_provider');
+  const cvOutput = list.find((output) => output.provider === 'cv_provider');
+
+  if (geminiOutput && gptOutput) {
+    return {
+      leftOutput: geminiOutput,
+      rightOutput: gptOutput,
+      providerPair: ['gemini_provider', 'gpt_provider'],
+      supportsPseudoLabels: true,
+      geminiOutput,
+      gptOutput,
+    };
+  }
+
+  if (cvOutput && geminiOutput) {
+    return {
+      leftOutput: cvOutput,
+      rightOutput: geminiOutput,
+      providerPair: ['cv_provider', 'gemini_provider'],
+      supportsPseudoLabels: false,
+      geminiOutput: null,
+      gptOutput: null,
+    };
+  }
+
+  if (list.length >= 2) {
+    return {
+      leftOutput: list[0],
+      rightOutput: list[1],
+      providerPair: [
+        String(list[0]?.provider || 'unknown').trim() || 'unknown',
+        String(list[1]?.provider || 'unknown').trim() || 'unknown',
+      ],
+      supportsPseudoLabels: false,
+      geminiOutput: null,
+      gptOutput: null,
+    };
+  }
+
+  return null;
+}
+
 async function persistPseudoLabelArtifacts({
   inferenceId,
   qualityGrade,
@@ -945,23 +994,58 @@ async function persistPseudoLabelArtifacts({
 
   await appendNdjson(paths.modelOutputs, modelOutputRecords);
 
-  const geminiOutput = outputs.find((output) => output.provider === 'gemini_provider');
-  const gptOutput = outputs.find((output) => output.provider === 'gpt_provider');
+  const agreementPair = selectAgreementPair(outputs);
   let agreementRecord = null;
   let pseudoLabelRecord = null;
 
-  if (geminiOutput && gptOutput) {
-    const generated = generatePseudoLabelsForPair({
-      geminiOutput,
-      gptOutput,
-      qualityGrade,
-      regionIouThreshold: config.regionIouThreshold,
-    });
-    const agreement = generated.agreement || null;
-    const agreementPass = agreement && Number.isFinite(Number(agreement.overall))
-      ? Number(agreement.overall) >= config.agreementThreshold
-      : false;
-    const emitPseudo = generated.quality_eligible && agreementPass && generated.concerns.length > 0;
+  if (agreementPair) {
+    let agreement = null;
+    let pseudoLabelEligible = false;
+    let emitPseudo = false;
+
+    if (agreementPair.supportsPseudoLabels) {
+      const generated = generatePseudoLabelsForPair({
+        geminiOutput: agreementPair.geminiOutput,
+        gptOutput: agreementPair.gptOutput,
+        qualityGrade,
+        regionIouThreshold: config.regionIouThreshold,
+      });
+      agreement = generated.agreement || null;
+      const agreementPass = agreement && Number.isFinite(Number(agreement.overall))
+        ? Number(agreement.overall) >= config.agreementThreshold
+        : false;
+      pseudoLabelEligible = generated.quality_eligible && agreementPass;
+      emitPseudo = pseudoLabelEligible && generated.concerns.length > 0;
+
+      if (emitPseudo) {
+        pseudoLabelRecord = buildPseudoLabelRecord({
+          inferenceId: traceId,
+          qualityGrade,
+          skinToneBucket,
+          lightingBucket,
+          concerns: generated.concerns,
+          agreement,
+          matches: generated.matches,
+          providerModels: [
+            {
+              provider: 'gemini_provider',
+              model_name: inferModelName(agreementPair.geminiOutput),
+              model_version: inferModelVersion(agreementPair.geminiOutput),
+            },
+            {
+              provider: 'gpt_provider',
+              model_name: inferModelName(agreementPair.gptOutput),
+              model_version: inferModelVersion(agreementPair.gptOutput),
+            },
+          ],
+        });
+      }
+    } else {
+      agreement = computeAgreementForPair({
+        leftOutput: agreementPair.leftOutput,
+        rightOutput: agreementPair.rightOutput,
+      });
+    }
 
     agreementRecord = buildAgreementSampleRecord({
       inferenceId: traceId,
@@ -969,33 +1053,10 @@ async function persistPseudoLabelArtifacts({
       skinToneBucket,
       lightingBucket,
       agreement,
-      pseudoLabelEligible: generated.quality_eligible && agreementPass,
+      pseudoLabelEligible,
       pseudoLabelEmitted: emitPseudo,
+      providerPair: agreementPair.providerPair,
     });
-
-    if (emitPseudo) {
-      pseudoLabelRecord = buildPseudoLabelRecord({
-        inferenceId: traceId,
-        qualityGrade,
-        skinToneBucket,
-        lightingBucket,
-        concerns: generated.concerns,
-        agreement,
-        matches: generated.matches,
-        providerModels: [
-          {
-            provider: 'gemini_provider',
-            model_name: inferModelName(geminiOutput),
-            model_version: inferModelVersion(geminiOutput),
-          },
-          {
-            provider: 'gpt_provider',
-            model_name: inferModelName(gptOutput),
-            model_version: inferModelVersion(gptOutput),
-          },
-        ],
-      });
-    }
   }
 
   if (agreementRecord) await appendNdjson(paths.agreementSamples, [agreementRecord]);
