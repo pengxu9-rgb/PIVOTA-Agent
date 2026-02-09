@@ -8732,7 +8732,9 @@ function mountAuroraBffRoutes(app, { logger }) {
 	              diagnosisInternal: diagnosisV1Internal,
 	              profileSummary,
 	              recentLogsSummary,
-	              inferenceId: ctx.request_id,
+	              inferenceId: ctx.request_id || ctx.trace_id || null,
+	              traceId: ctx.trace_id || null,
+	              assetId: diagnosisPhoto && typeof diagnosisPhoto.photo_id === 'string' ? diagnosisPhoto.photo_id : null,
 	              skinToneBucket:
 	                diagnosisV1Internal && typeof diagnosisV1Internal.skin_tone_bucket === 'string'
 	                  ? diagnosisV1Internal.skin_tone_bucket
@@ -8753,7 +8755,12 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                  }),
 	                onAgreement: (score) => recordEnsembleAgreementScore(score),
 	                onVerifyCall: ({ status }) => recordVerifyCall({ status }),
-	                onVerifyFail: ({ reason }) => recordVerifyFail({ reason }),
+	                onVerifyFail: ({ reason, provider, http_status_class: httpStatusClass }) =>
+	                  recordVerifyFail({
+	                    reason,
+	                    provider,
+	                    httpStatusClass,
+	                  }),
 	                onVerifyBudgetGuard: () => recordVerifyBudgetGuard(),
 	                onVerifyAgreement: (score) => recordVerifyAgreementScore(score),
 	                onVerifyHardCase: () => recordVerifyHardCase(),

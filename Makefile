@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -19,6 +19,7 @@ VERIFY_STORE_DIR ?= $(VERIFY_IN)
 VERIFY_HARD_CASES ?=
 VERIFY_REPORT_DATE ?=
 VERIFY_OUT ?= reports
+VERIFY_FAIL_OUT ?= reports
 PSEUDO_STORE_DIR ?= tmp/diag_pseudo_label_factory
 PSEUDO_OUT_DIR ?= reports/pseudo_label_job
 PSEUDO_JOB_DATE ?=
@@ -92,6 +93,9 @@ docs: status
 
 verify-daily:
 	node scripts/report_verify_daily.js --in $(VERIFY_IN) --out $(VERIFY_OUT) $(if $(VERIFY_HARD_CASES),--hard-cases $(VERIFY_HARD_CASES),) $(if $(VERIFY_REPORT_DATE),--date $(VERIFY_REPORT_DATE),)
+
+verify-fail-diagnose:
+	node scripts/diagnose_verify_failures.js --in $(VERIFY_IN) --out $(VERIFY_FAIL_OUT) $(if $(VERIFY_HARD_CASES),--hard-cases $(VERIFY_HARD_CASES),) $(if $(VERIFY_REPORT_DATE),--date $(VERIFY_REPORT_DATE),)
 
 pseudo-label-job:
 	node scripts/run_pseudo_label_job.js --store-dir $(PSEUDO_STORE_DIR) --out-dir $(PSEUDO_OUT_DIR) $(if $(PSEUDO_JOB_DATE),--date $(PSEUDO_JOB_DATE),)

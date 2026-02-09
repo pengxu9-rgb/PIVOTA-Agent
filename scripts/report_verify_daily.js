@@ -17,6 +17,7 @@ const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'UPSTREAM_5XX',
   'SCHEMA_INVALID',
   'IMAGE_FETCH_FAILED',
+  'NETWORK_ERROR',
   'UNKNOWN',
 ]);
 
@@ -190,11 +191,20 @@ function normalizeVerifyFailReason(rawReason, statusCode) {
 
   if (token === VERIFY_BUDGET_GUARD) return VERIFY_BUDGET_GUARD;
   if (VERIFY_FAIL_REASON_ALLOWLIST.has(token)) return token;
+  if (token.includes('VISION_TIMEOUT')) return 'TIMEOUT';
+  if (token.includes('VISION_RATE_LIMITED')) return 'RATE_LIMIT';
+  if (token.includes('VISION_QUOTA_EXCEEDED')) return 'QUOTA';
+  if (token.includes('VISION_SCHEMA_INVALID')) return 'SCHEMA_INVALID';
+  if (token.includes('VISION_IMAGE_INVALID')) return 'IMAGE_FETCH_FAILED';
+  if (token.includes('VISION_NETWORK_ERROR')) return 'NETWORK_ERROR';
+  if (token.includes('VISION_MISSING_KEY') || token.includes('VISION_UPSTREAM_4XX')) return 'UPSTREAM_4XX';
+  if (token.includes('VISION_UPSTREAM_5XX')) return 'UPSTREAM_5XX';
   if (token.includes('TIMEOUT')) return 'TIMEOUT';
   if (token.includes('RATE_LIMIT')) return 'RATE_LIMIT';
   if (token.includes('QUOTA')) return 'QUOTA';
   if (token.includes('SCHEMA_INVALID') || token.includes('CANONICAL_SCHEMA_INVALID')) return 'SCHEMA_INVALID';
   if (token.includes('IMAGE_FETCH') || token.includes('MISSING_IMAGE') || token.includes('PHOTO_DOWNLOAD')) return 'IMAGE_FETCH_FAILED';
+  if (token.includes('NETWORK_ERROR') || token.includes('DNS')) return 'NETWORK_ERROR';
   if (token.includes('UPSTREAM_5XX') || numericStatus >= 500) return 'UPSTREAM_5XX';
   if (token.includes('UPSTREAM_4XX') || numericStatus >= 400) return 'UPSTREAM_4XX';
   return 'UNKNOWN';
@@ -224,10 +234,15 @@ function extractVerifyRows(modelRows) {
       hasFailureSignal
     );
     rows.push({
+      trace_id: safeToken(output.trace_id || record?.trace_id || record?.inference_id, 'unknown'),
       created_at: String(record?.created_at || ''),
+      provider,
       quality_grade: safeToken(record?.quality_grade, 'unknown').toLowerCase(),
       decision,
       latency_ms: safeNumber(output.latency_ms, null),
+      provider_status_code: statusCode,
+      http_status_class: safeToken(output.http_status_class, 'unknown').toLowerCase(),
+      last_error_class: safeToken(output.error_class || output.http_status_class || 'unknown', 'unknown'),
       fail_reason: isFailure ? normalizedReason : null,
       is_failure: isFailure,
       is_guard: isGuard,
@@ -294,6 +309,64 @@ function extractAgreementRows(samples, dayPrefix) {
   return rows;
 }
 
+function deriveHardCaseReason(item) {
+  const direct = String(item?.disagreement_reason || '').trim();
+  if (direct) return direct;
+  const fromList = Array.isArray(item?.disagreement_reasons) ? item.disagreement_reasons : [];
+  for (const reason of fromList) {
+    const token = String(reason || '').trim();
+    if (token) return token;
+  }
+  const fallback = String(item?.verify_fail_reason || item?.final_reason || item?.raw_final_reason || '').trim();
+  if (fallback) return fallback;
+  return 'UNKNOWN';
+}
+
+function deriveHardCaseIssueType(item, disagreementReason) {
+  const direct = String(item?.issue_type || '').trim();
+  if (direct) return normalizeIssueType(direct);
+
+  const perIssue = Array.isArray(item?.verifier?.per_issue) ? item.verifier.per_issue : [];
+  if (perIssue.length) {
+    const reasonToken = String(disagreementReason || '').trim().toLowerCase();
+    const matchedByReason = perIssue.find((entry) => String(entry?.reason || '').trim().toLowerCase() === reasonToken);
+    const candidate = matchedByReason || perIssue.find((entry) => String(entry?.type || '').trim()) || perIssue[0];
+    return normalizeIssueType(candidate?.type);
+  }
+
+  const reason = String(disagreementReason || '').trim().toUpperCase();
+  if (reason.startsWith('QUALITY_')) return 'quality';
+  if (reason && reason !== 'UNKNOWN') return 'verify';
+  return 'other';
+}
+
+function deriveHardCaseRequestHash(item) {
+  const fromRequest = hashToken(item?.request_id);
+  const fromInference = hashToken(item?.inference_id);
+  const fallbackSeed = `${safeToken(item?.created_at, '')}|${safeToken(item?.final_reason, '')}|${safeToken(item?.provider_status_code, '')}|${safeToken(item?.attempts, '')}`;
+  const fallbackHash = hashToken(fallbackSeed);
+  return safeToken(item?.request_id_hash || fromRequest || fromInference || fallbackHash, 'unknown');
+}
+
+function deriveHardCaseAssetHash(item, issueType, disagreementReason) {
+  const fromAsset = hashToken(item?.asset_id || item?.photo_id || item?.image_id);
+  const fromInference = hashToken(item?.inference_id);
+  const fallbackSeed = `${safeToken(item?.created_at, '')}|${safeToken(issueType, 'other')}|${safeToken(disagreementReason, 'UNKNOWN')}`;
+  const fallbackHash = hashToken(fallbackSeed);
+  return safeToken(item?.asset_id_hash || fromAsset || fromInference || fallbackHash, 'unknown');
+}
+
+function normalizeHardCaseRecord(item) {
+  const disagreementReason = deriveHardCaseReason(item);
+  const issueType = deriveHardCaseIssueType(item, disagreementReason);
+  return {
+    request_id_hash: deriveHardCaseRequestHash(item),
+    asset_id_hash: deriveHardCaseAssetHash(item, issueType, disagreementReason),
+    issue_type: issueType,
+    disagreement_reason: safeToken(disagreementReason, 'UNKNOWN'),
+  };
+}
+
 function summarizeByIssueType(agreementRows, hardCases, dayPrefix) {
   const map = new Map();
   for (const row of agreementRows) {
@@ -311,8 +384,9 @@ function summarizeByIssueType(agreementRows, hardCases, dayPrefix) {
   const reasonBuckets = new Map();
   for (const hardCase of hardCases) {
     if (!String(hardCase?.created_at || '').startsWith(dayPrefix)) continue;
-    const issueType = normalizeIssueType(hardCase?.issue_type);
-    const reason = safeToken(hardCase?.disagreement_reason, 'UNKNOWN');
+    const normalized = normalizeHardCaseRecord(hardCase);
+    const issueType = normalized.issue_type;
+    const reason = normalized.disagreement_reason;
     const key = `${issueType}||${reason}`;
     reasonBuckets.set(key, (reasonBuckets.get(key) || 0) + 1);
   }
@@ -373,16 +447,7 @@ function topHardCases(hardCases, dayPrefix, limit = 20) {
   const out = [];
   for (const item of hardCases) {
     if (!String(item?.created_at || '').startsWith(dayPrefix)) continue;
-
-    const requestHash = safeToken(item?.request_id_hash || hashToken(item?.request_id) || hashToken(item?.inference_id), 'unknown');
-    const assetHash = safeToken(item?.asset_id_hash || hashToken(item?.asset_id), 'unknown');
-
-    out.push({
-      request_id_hash: requestHash,
-      asset_id_hash: assetHash,
-      issue_type: normalizeIssueType(item?.issue_type),
-      disagreement_reason: safeToken(item?.disagreement_reason, 'UNKNOWN'),
-    });
+    out.push(normalizeHardCaseRecord(item));
   }
 
   out.sort((a, b) => {
@@ -394,6 +459,28 @@ function topHardCases(hardCases, dayPrefix, limit = 20) {
   });
 
   return out.slice(0, limit);
+}
+
+function summarizeUnknownSamples(verifyRows, limit = 20) {
+  const list = verifyRows
+    .filter((row) => row && row.is_failure && row.fail_reason === 'UNKNOWN')
+    .map((row) => ({
+      trace_id: safeToken(row.trace_id, 'unknown'),
+      last_error_class: safeToken(row.last_error_class, 'unknown'),
+      latency_ms: safeNumber(row.latency_ms, null),
+      provider: safeToken(row.provider, 'unknown'),
+    }));
+
+  list.sort((left, right) => {
+    const leftLatency = Number.isFinite(Number(left.latency_ms)) ? Number(left.latency_ms) : -1;
+    const rightLatency = Number.isFinite(Number(right.latency_ms)) ? Number(right.latency_ms) : -1;
+    if (rightLatency !== leftLatency) return rightLatency - leftLatency;
+    const classCmp = String(left.last_error_class).localeCompare(String(right.last_error_class));
+    if (classCmp !== 0) return classCmp;
+    return String(left.trace_id).localeCompare(String(right.trace_id));
+  });
+
+  return list.slice(0, Math.max(0, Math.trunc(Number(limit) || 20)));
 }
 
 async function resolvePaths({ repoRoot, inputArg, storeDirLegacy, hardCasesArg, outArg, outDirLegacy }) {
@@ -446,7 +533,17 @@ async function resolvePaths({ repoRoot, inputArg, storeDirLegacy, hardCasesArg, 
   };
 }
 
-function buildMarkdown({ dateIso, generatedAt, summary, byIssueType, byQuality, failByReason, eligibleBuckets, hardCases }) {
+function buildMarkdown({
+  dateIso,
+  generatedAt,
+  summary,
+  byIssueType,
+  byQuality,
+  failByReason,
+  unknownSamples,
+  eligibleBuckets,
+  hardCases,
+}) {
   const lines = [];
   lines.push(`# Verify Daily Report (${dateIso})`);
   lines.push('');
@@ -508,6 +605,18 @@ function buildMarkdown({ dateIso, generatedAt, summary, byIssueType, byQuality, 
     ));
   } else {
     lines.push('_No verifier failures for this date._');
+  }
+  lines.push('');
+
+  lines.push('## Top UNKNOWN Samples');
+  lines.push('');
+  if (unknownSamples.length) {
+    lines.push(table(
+      ['trace_id', 'last_error_class', 'latency_ms', 'provider'],
+      unknownSamples.map((row) => [row.trace_id, row.last_error_class, row.latency_ms ?? 'n/a', row.provider]),
+    ));
+  } else {
+    lines.push('_No UNKNOWN failures for this date._');
   }
   lines.push('');
 
@@ -586,6 +695,7 @@ async function runDailyReport(options = {}) {
   const byIssueType = summarizeByIssueType(agreementRows, hardCasesAll, dateIso);
   const byQualityGrade = summarizeByQualityGrade(verifyRows, agreementRows);
   const failByReason = summarizeVerifyFailByReason(verifyRows);
+  const unknownSamples = summarizeUnknownSamples(verifyRows, 20);
   const reliabilityTable = buildReliabilityTable({
     modelOutputs,
     agreementSamples,
@@ -647,6 +757,7 @@ async function runDailyReport(options = {}) {
     by_issue_type: byIssueType,
     by_quality_grade: byQualityGrade,
     verify_fail_by_reason: failByReason,
+    top_unknown_samples: unknownSamples,
     eligible_buckets: eligibleBuckets,
     top_hard_cases: hardCases,
   };
@@ -658,6 +769,7 @@ async function runDailyReport(options = {}) {
     byIssueType,
     byQuality: byQualityGrade,
     failByReason,
+    unknownSamples,
     eligibleBuckets,
     hardCases,
   });

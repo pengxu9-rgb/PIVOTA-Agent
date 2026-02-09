@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { runCvProvider, runGeminiProvider, iou } = require('./diagEnsemble');
@@ -15,6 +16,7 @@ const VerifyFailReason = Object.freeze({
   UPSTREAM_5XX: 'UPSTREAM_5XX',
   SCHEMA_INVALID: 'SCHEMA_INVALID',
   IMAGE_FETCH_FAILED: 'IMAGE_FETCH_FAILED',
+  NETWORK_ERROR: 'NETWORK_ERROR',
   UNKNOWN: 'UNKNOWN',
 });
 const verifyBudgetState = {
@@ -48,6 +50,35 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, Number(value)));
 }
 
+function hashToken(value) {
+  const token = String(value || '').trim();
+  if (!token) return null;
+  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 24);
+}
+
+function deriveHardCaseReason({ disagreementReasons, finalReason, verifyFailReason } = {}) {
+  const list = Array.isArray(disagreementReasons) ? disagreementReasons : [];
+  for (const reason of list) {
+    const token = String(reason || '').trim();
+    if (token) return token;
+  }
+  const primary = String(verifyFailReason || finalReason || '').trim();
+  if (primary) return primary;
+  return VerifyFailReason.UNKNOWN;
+}
+
+function deriveHardCaseIssueType({ rows, fallbackReason } = {}) {
+  const disagreements = (Array.isArray(rows) ? rows : []).filter((row) => row && row.verdict !== 'agree');
+  if (!disagreements.length) {
+    if (String(fallbackReason || '').trim().startsWith('QUALITY_')) return 'quality';
+    if (String(fallbackReason || '').trim()) return 'verify';
+    return 'other';
+  }
+  const first = disagreements.find((row) => String(row.type || '').trim()) || disagreements[0];
+  const type = String(first?.type || '').trim().toLowerCase();
+  return type || 'other';
+}
+
 function normalizeQualityGrade(grade) {
   const token = String(grade || '')
     .trim()
@@ -65,6 +96,25 @@ function toInt(value, fallback = 0) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(0, Math.trunc(numeric));
+}
+
+function normalizeHttpStatusClass(input, fallbackReason = '') {
+  const token = String(input || '').trim().toLowerCase();
+  if (token === '2xx' || token === '4xx' || token === '5xx' || token === 'timeout' || token === 'unknown') return token;
+  const code = Number(input);
+  if (Number.isFinite(code) && code >= 200 && code < 300) return '2xx';
+  if (Number.isFinite(code) && code >= 400 && code < 500) return '4xx';
+  if (Number.isFinite(code) && code >= 500 && code < 600) return '5xx';
+  if (String(fallbackReason || '').toUpperCase().includes('TIMEOUT')) return 'timeout';
+  return 'unknown';
+}
+
+function summarizeSchemaError(raw) {
+  const value = String(raw || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!value) return null;
+  return value.slice(0, 120);
 }
 
 function utcDayKey(tsMs) {
@@ -320,9 +370,17 @@ function buildProviderStat(output) {
     ok: Boolean(output?.ok),
     latency_ms: round3(Math.max(0, Number(output?.latency_ms || 0))),
     provider_status_code: providerStatusCode,
+    http_status_class: normalizeHttpStatusClass(output?.http_status_class, finalReason),
     attempts,
     final_reason: finalReason,
     concern_count: concerns.length,
+    ...(output?.error_class ? { error_class: String(output.error_class) } : {}),
+    ...(Number.isFinite(Number(output?.image_bytes_len)) ? { image_bytes_len: toInt(output.image_bytes_len, 0) } : {}),
+    ...(Number.isFinite(Number(output?.request_payload_bytes_len))
+      ? { request_payload_bytes_len: toInt(output.request_payload_bytes_len, 0) }
+      : {}),
+    ...(Number.isFinite(Number(output?.response_bytes_len)) ? { response_bytes_len: toInt(output.response_bytes_len, 0) } : {}),
+    ...(output?.schema_error_summary ? { schema_error_summary: summarizeSchemaError(output.schema_error_summary) } : {}),
     ...(output?.failure_reason ? { failure_reason: String(output.failure_reason) } : {}),
     ...(output?.verify_fail_reason ? { verify_fail_reason: String(output.verify_fail_reason) } : {}),
     ...(output?.schema_failed ? { schema_failed: true } : {}),
@@ -342,30 +400,60 @@ function normalizeVerifyFailReason({ reason, providerStatusCode } = {}) {
     return VerifyFailReason.UNKNOWN;
   }
 
-  if (token === VerifyFailReason.TIMEOUT || token.includes('TIMEOUT') || token === 'ETIMEDOUT') {
+  if (
+    token === VerifyFailReason.TIMEOUT ||
+    token.includes('TIMEOUT') ||
+    token === 'ETIMEDOUT' ||
+    token.includes('VISION_TIMEOUT')
+  ) {
     return VerifyFailReason.TIMEOUT;
   }
-  if (token === VerifyFailReason.RATE_LIMIT || token.includes('RATE_LIMIT') || statusCode === 429) {
+  if (
+    token === VerifyFailReason.RATE_LIMIT ||
+    token.includes('RATE_LIMIT') ||
+    token.includes('VISION_RATE_LIMITED') ||
+    statusCode === 429
+  ) {
     return VerifyFailReason.RATE_LIMIT;
   }
-  if (token === VerifyFailReason.QUOTA || token.includes('QUOTA') || token.includes('INSUFFICIENT_QUOTA')) {
+  if (
+    token === VerifyFailReason.QUOTA ||
+    token.includes('QUOTA') ||
+    token.includes('INSUFFICIENT_QUOTA') ||
+    token.includes('VISION_QUOTA_EXCEEDED')
+  ) {
     return VerifyFailReason.QUOTA;
   }
-  if (token === VerifyFailReason.SCHEMA_INVALID || token.includes('SCHEMA_INVALID') || token.includes('CANONICAL_SCHEMA_INVALID')) {
+  if (
+    token === VerifyFailReason.SCHEMA_INVALID ||
+    token.includes('SCHEMA_INVALID') ||
+    token.includes('CANONICAL_SCHEMA_INVALID') ||
+    token.includes('VISION_SCHEMA_INVALID')
+  ) {
     return VerifyFailReason.SCHEMA_INVALID;
   }
   if (
     token === VerifyFailReason.IMAGE_FETCH_FAILED ||
     token.includes('MISSING_IMAGE') ||
     token.includes('IMAGE_FETCH') ||
-    token.includes('PHOTO_DOWNLOAD')
+    token.includes('PHOTO_DOWNLOAD') ||
+    token.includes('VISION_IMAGE_INVALID')
   ) {
     return VerifyFailReason.IMAGE_FETCH_FAILED;
+  }
+  if (token === VerifyFailReason.NETWORK_ERROR || token.includes('VISION_NETWORK_ERROR') || token.includes('DNS')) {
+    return VerifyFailReason.NETWORK_ERROR;
   }
   if (token === VerifyFailReason.UPSTREAM_5XX || token.includes('UPSTREAM_5XX') || statusCode >= 500) {
     return VerifyFailReason.UPSTREAM_5XX;
   }
-  if (token === VerifyFailReason.UPSTREAM_4XX || token.includes('UPSTREAM_4XX') || statusCode >= 400) {
+  if (
+    token === VerifyFailReason.UPSTREAM_4XX ||
+    token.includes('UPSTREAM_4XX') ||
+    token.includes('VISION_UPSTREAM_4XX') ||
+    token.includes('VISION_MISSING_KEY') ||
+    statusCode >= 400
+  ) {
     return VerifyFailReason.UPSTREAM_4XX;
   }
   return VerifyFailReason.UNKNOWN;
@@ -446,6 +534,8 @@ async function runGeminiShadowVerify({
   profileSummary,
   recentLogsSummary,
   inferenceId,
+  traceId,
+  assetId,
   skinToneBucket,
   lightingBucket,
   logger,
@@ -576,11 +666,18 @@ async function runGeminiShadowVerify({
   const verifyLatencyMs = round3(Math.max(0, Number(geminiOutput?.latency_ms || 0)));
   const verifyAttempts = Math.max(1, toInt(geminiOutput?.attempts, cfg.retries + 1));
   const providerStatusCode = toInt(geminiOutput?.provider_status_code, geminiOutput?.ok ? 200 : 0);
+  const statusClass = normalizeHttpStatusClass(geminiOutput?.http_status_class || providerStatusCode, geminiOutput?.failure_reason);
   const rawFinalReason = geminiOutput?.ok ? 'OK' : String(geminiOutput?.failure_reason || VerifyFailReason.UNKNOWN);
   const verifyFailReason = geminiOutput?.ok
     ? null
     : normalizeVerifyFailReason({ reason: rawFinalReason, providerStatusCode });
   const finalReason = geminiOutput?.ok ? 'OK' : verifyFailReason || VerifyFailReason.UNKNOWN;
+  const schemaErrorSummary = summarizeSchemaError(geminiOutput?.schema_error_summary);
+  const imageBytesLen = toInt(geminiOutput?.image_bytes_len, Buffer.isBuffer(imageBuffer) ? imageBuffer.length : 0);
+  const requestPayloadBytesLen = toInt(geminiOutput?.request_payload_bytes_len, 0);
+  const responseBytesLen = toInt(geminiOutput?.response_bytes_len, 0);
+  const errorClass = String(geminiOutput?.error_class || '').trim() || null;
+  const effectiveTraceId = String(traceId || inferenceId || '').trim() || null;
   const geminiOutputForStore = {
     ...geminiOutput,
     final_reason: finalReason,
@@ -590,6 +687,13 @@ async function runGeminiShadowVerify({
     attempts: verifyAttempts,
     provider_status_code: providerStatusCode,
     latency_ms: verifyLatencyMs,
+    http_status_class: statusClass,
+    error_class: errorClass,
+    image_bytes_len: imageBytesLen,
+    request_payload_bytes_len: requestPayloadBytesLen,
+    response_bytes_len: responseBytesLen,
+    schema_error_summary: schemaErrorSummary,
+    trace_id: effectiveTraceId,
   };
   const providerStats = [buildProviderStat(cvOutput), buildProviderStat(geminiOutputForStore)];
   if (metricsHooks && typeof metricsHooks.onProviderResult === 'function') {
@@ -645,11 +749,26 @@ async function runGeminiShadowVerify({
   let hardCasePath = null;
   if (hardCase) {
     try {
+      const requestToken = String(inferenceId || '').trim();
+      const assetToken = String(assetId || '').trim();
+      const hardCaseReason = deriveHardCaseReason({
+        disagreementReasons,
+        finalReason,
+        verifyFailReason,
+      });
+      const hardCaseIssueType = deriveHardCaseIssueType({
+        rows,
+        fallbackReason: hardCaseReason,
+      });
       hardCasePath = await appendHardCaseRecord({
         schema_version: HARD_CASE_SCHEMA_VERSION,
         created_at: new Date().toISOString(),
-        inference_id: String(inferenceId || '').trim() || null,
+        inference_id: requestToken || null,
+        request_id_hash: hashToken(requestToken),
+        asset_id_hash: hashToken(assetToken),
         quality_grade: qualityGrade,
+        issue_type: hardCaseIssueType,
+        disagreement_reason: hardCaseReason,
         agreement_score: agreementScore,
         disagreement_reasons: disagreementReasons,
         provider_stats: providerStats,
@@ -671,7 +790,41 @@ async function runGeminiShadowVerify({
   if (!geminiOutput.ok && metricsHooks && typeof metricsHooks.onVerifyFail === 'function') {
     metricsHooks.onVerifyFail({
       reason: verifyFailReason || VerifyFailReason.UNKNOWN,
+      provider: 'gemini_provider',
+      provider_status_code: providerStatusCode,
+      http_status_class: statusClass,
+      latency_ms: verifyLatencyMs,
+      attempts: verifyAttempts,
+      final_reason: finalReason,
+      raw_final_reason: rawFinalReason,
+      trace_id: effectiveTraceId,
+      error_class: errorClass,
+      image_bytes_len: imageBytesLen,
+      request_payload_bytes_len: requestPayloadBytesLen,
+      response_bytes_len: responseBytesLen,
+      schema_error_summary: schemaErrorSummary,
     });
+  }
+  if (!geminiOutput.ok) {
+    logger?.warn(
+      {
+        trace_id: effectiveTraceId,
+        provider: 'gemini_provider',
+        reason: verifyFailReason || VerifyFailReason.UNKNOWN,
+        final_reason: finalReason,
+        raw_final_reason: rawFinalReason,
+        http_status: providerStatusCode || null,
+        http_status_class: statusClass,
+        latency_ms: verifyLatencyMs,
+        attempt: verifyAttempts,
+        image_bytes_len: imageBytesLen,
+        request_payload_bytes_len: requestPayloadBytesLen,
+        response_bytes_len: responseBytesLen,
+        schema_error_summary: schemaErrorSummary,
+        error_class: errorClass,
+      },
+      'diag verify: provider failure',
+    );
   }
   if (metricsHooks && typeof metricsHooks.onVerifyAgreement === 'function') metricsHooks.onVerifyAgreement(agreementScore);
   if (hardCase && metricsHooks && typeof metricsHooks.onVerifyHardCase === 'function') metricsHooks.onVerifyHardCase();
