@@ -136,6 +136,31 @@ const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
   1024 * 1024,
   Math.min(25 * 1024 * 1024, Number(process.env.AURORA_PHOTO_UPLOAD_MAX_BYTES || 10 * 1024 * 1024)),
 );
+const PHOTO_DOWNLOAD_URL_TIMEOUT_MS = Math.max(
+  1000,
+  Math.min(20000, Number(process.env.AURORA_PHOTO_DOWNLOAD_URL_TIMEOUT_MS || 5000)),
+);
+const PHOTO_FETCH_TIMEOUT_MS = Math.max(
+  1000,
+  Math.min(20000, Number(process.env.AURORA_PHOTO_FETCH_TIMEOUT_MS || 3000)),
+);
+const PHOTO_FETCH_TOTAL_TIMEOUT_MS = Math.max(
+  2000,
+  Math.min(30000, Number(process.env.AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS || 5000)),
+);
+const PHOTO_FETCH_RETRIES = Math.max(0, Math.min(5, Number(process.env.AURORA_PHOTO_FETCH_RETRIES || 2)));
+const PHOTO_FETCH_RETRY_BASE_MS = Math.max(
+  100,
+  Math.min(2000, Number(process.env.AURORA_PHOTO_FETCH_RETRY_BASE_MS || 250)),
+);
+const PHOTO_BYTES_CACHE_MAX_ITEMS = Math.max(
+  0,
+  Math.min(500, Number(process.env.AURORA_PHOTO_CACHE_MAX_ITEMS || 40)),
+);
+const PHOTO_BYTES_CACHE_TTL_MS = Math.max(
+  10 * 1000,
+  Math.min(30 * 60 * 1000, Number(process.env.AURORA_PHOTO_CACHE_TTL_MS || 10 * 60 * 1000)),
+);
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -168,6 +193,7 @@ const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
 })();
 
 const dupeDeepscanCache = new Map();
+const photoBytesCache = new Map();
 
 function getDupeDeepscanCache(key) {
   if (!key || DUPE_DEEPSCAN_CACHE_MAX <= 0) return null;
@@ -191,6 +217,48 @@ function setDupeDeepscanCache(key, value) {
     if (!oldestKey) break;
     dupeDeepscanCache.delete(oldestKey);
   }
+}
+
+function getAuroraUidFromReq(req) {
+  if (!req || typeof req.get !== 'function') return '';
+  return String(req.get('X-Aurora-UID') || req.get('x-aurora-uid') || '').trim();
+}
+
+function makePhotoCacheKey({ photoId, auroraUid } = {}) {
+  const pid = String(photoId || '').trim();
+  const uid = String(auroraUid || '').trim();
+  if (!pid || !uid) return '';
+  return `${uid}:${pid}`;
+}
+
+function setPhotoBytesCache({ photoId, auroraUid, buffer, contentType } = {}) {
+  if (PHOTO_BYTES_CACHE_MAX_ITEMS <= 0) return;
+  const key = makePhotoCacheKey({ photoId, auroraUid });
+  if (!key || !buffer || !Buffer.isBuffer(buffer) || !buffer.length) return;
+  photoBytesCache.set(key, {
+    buffer,
+    contentType: String(contentType || 'image/jpeg').trim() || 'image/jpeg',
+    expiresAt: Date.now() + PHOTO_BYTES_CACHE_TTL_MS,
+  });
+  while (photoBytesCache.size > PHOTO_BYTES_CACHE_MAX_ITEMS) {
+    const oldestKey = photoBytesCache.keys().next().value;
+    if (!oldestKey) break;
+    photoBytesCache.delete(oldestKey);
+  }
+}
+
+function getPhotoBytesCache({ photoId, auroraUid } = {}) {
+  const key = makePhotoCacheKey({ photoId, auroraUid });
+  if (!key) return null;
+  const entry = photoBytesCache.get(key);
+  if (!entry) return null;
+  if (!entry.expiresAt || entry.expiresAt <= Date.now()) {
+    photoBytesCache.delete(key);
+    return null;
+  }
+  photoBytesCache.delete(key);
+  photoBytesCache.set(key, entry);
+  return entry;
 }
 
 function getCheckoutToken(req) {
@@ -502,19 +570,169 @@ function chooseVisionPhoto(passedPhotos) {
   );
 }
 
+function isSignedUrlExpiredSignal({ status, detail, code } = {}) {
+  const statusNum = Number(status || 0);
+  const combined = `${detail || ''} ${code || ''}`.toLowerCase();
+  const token = /(expired|request has expired|x-amz-expires|signature.*expired|token.*expired|expiredtoken|expiration)/i;
+  if (token.test(combined)) return true;
+  return statusNum === 410;
+}
+
+function classifySignedUrlFetchFailure({ status, detail, code } = {}) {
+  if (isSignedUrlExpiredSignal({ status, detail, code })) {
+    return { failure_code: 'DOWNLOAD_URL_EXPIRED', retryable: false };
+  }
+  const statusNum = Number(status || 0);
+  const errorCode = String(code || '').toUpperCase();
+  if (statusNum === 408) {
+    return { failure_code: 'DOWNLOAD_URL_TIMEOUT', retryable: true };
+  }
+  if (statusNum >= 500 && statusNum < 600) {
+    return { failure_code: 'DOWNLOAD_URL_FETCH_5XX', retryable: true };
+  }
+  if (statusNum >= 400 && statusNum < 500) {
+    return { failure_code: 'DOWNLOAD_URL_FETCH_4XX', retryable: false };
+  }
+  if (errorCode === 'ECONNABORTED' || errorCode === 'ETIMEDOUT' || /timeout/i.test(String(detail || ''))) {
+    return { failure_code: 'DOWNLOAD_URL_TIMEOUT', retryable: true };
+  }
+  if (errorCode === 'ENOTFOUND' || errorCode === 'EAI_AGAIN' || errorCode === 'EAI_FAIL') {
+    return { failure_code: 'DOWNLOAD_URL_DNS', retryable: true };
+  }
+  return { failure_code: 'DOWNLOAD_URL_FETCH_5XX', retryable: true };
+}
+
+async function fetchBytesFromSignedUrl(downloadUrl) {
+  const startedAt = Date.now();
+  let lastFailure = null;
+  const totalAttempts = PHOTO_FETCH_RETRIES + 1;
+
+  for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+    const elapsed = Date.now() - startedAt;
+    const remaining = PHOTO_FETCH_TOTAL_TIMEOUT_MS - elapsed;
+    if (remaining <= 0) {
+      return {
+        ok: false,
+        failure_code: 'DOWNLOAD_URL_TIMEOUT',
+        reason: 'download_url_fetch_timeout',
+        status: null,
+        detail: 'signed_url_fetch_total_timeout',
+      };
+    }
+
+    const perAttemptTimeout = Math.min(PHOTO_FETCH_TIMEOUT_MS, remaining);
+    try {
+      const blobResp = await axios.get(downloadUrl, {
+        timeout: perAttemptTimeout,
+        validateStatus: () => true,
+        responseType: 'arraybuffer',
+        maxBodyLength: 15 * 1024 * 1024,
+        maxContentLength: 15 * 1024 * 1024,
+      });
+      const detail = pickUpstreamErrorDetail(blobResp.data);
+      if (blobResp.status >= 200 && blobResp.status < 300 && blobResp.data) {
+        const contentTypeHeader =
+          blobResp.headers && (blobResp.headers['content-type'] || blobResp.headers['Content-Type'])
+            ? String(blobResp.headers['content-type'] || blobResp.headers['Content-Type']).trim()
+            : null;
+        return {
+          ok: true,
+          buffer: Buffer.from(blobResp.data),
+          contentTypeHeader,
+        };
+      }
+
+      const failure = classifySignedUrlFetchFailure({ status: blobResp.status, detail });
+      lastFailure = {
+        ok: false,
+        failure_code: failure.failure_code,
+        reason: String(failure.failure_code || 'download_url_fetch_failed').toLowerCase(),
+        status: blobResp.status,
+        detail: detail || null,
+      };
+      if (!failure.retryable || attempt >= totalAttempts - 1) return lastFailure;
+    } catch (err) {
+      const failure = classifySignedUrlFetchFailure({
+        status: null,
+        detail: err && err.message ? err.message : null,
+        code: err && err.code ? err.code : null,
+      });
+      lastFailure = {
+        ok: false,
+        failure_code: failure.failure_code,
+        reason: String(failure.failure_code || 'download_url_fetch_failed').toLowerCase(),
+        status: null,
+        detail: err && (err.code || err.message) ? String(err.code || err.message) : null,
+      };
+      if (!failure.retryable || attempt >= totalAttempts - 1) return lastFailure;
+    }
+
+    const backoffMs = Math.min(
+      PHOTO_FETCH_RETRY_BASE_MS * (2 ** attempt),
+      Math.max(0, PHOTO_FETCH_TOTAL_TIMEOUT_MS - (Date.now() - startedAt)),
+    );
+    if (backoffMs > 0) await sleep(backoffMs);
+  }
+
+  return (
+    lastFailure || {
+      ok: false,
+      failure_code: 'DOWNLOAD_URL_FETCH_5XX',
+      reason: 'download_url_fetch_failed',
+      status: null,
+      detail: null,
+    }
+  );
+}
+
 async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
-  if (!photoId) return { ok: false, reason: 'photo_id_missing' };
-  if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, reason: 'pivota_backend_not_configured' };
+  const auroraUid = getAuroraUidFromReq(req);
+  if (!photoId) return { ok: false, reason: 'photo_id_missing', failure_code: 'DOWNLOAD_URL_GENERATE_FAILED' };
+
+  const cached = getPhotoBytesCache({ photoId, auroraUid });
+  if (cached) {
+    return {
+      ok: true,
+      buffer: Buffer.from(cached.buffer),
+      contentType: cached.contentType || 'image/jpeg',
+      source: 'upload_cache',
+    };
+  }
+
+  if (!PIVOTA_BACKEND_BASE_URL) {
+    return {
+      ok: false,
+      reason: 'pivota_backend_not_configured',
+      failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
+    };
+  }
 
   const authHeaders = buildPivotaBackendAuthHeaders(req);
-  if (!Object.keys(authHeaders).length) return { ok: false, reason: 'pivota_backend_auth_not_configured' };
+  if (!Object.keys(authHeaders).length) {
+    return {
+      ok: false,
+      reason: 'pivota_backend_auth_not_configured',
+      failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
+    };
+  }
 
-  const upstreamResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/download-url`, {
-    timeout: 12000,
-    validateStatus: () => true,
-    headers: authHeaders,
-    params: { upload_id: photoId },
-  });
+  let upstreamResp = null;
+  try {
+    upstreamResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/download-url`, {
+      timeout: PHOTO_DOWNLOAD_URL_TIMEOUT_MS,
+      validateStatus: () => true,
+      headers: authHeaders,
+      params: { upload_id: photoId },
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      reason: 'download_url_generate_failed',
+      failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
+      status: null,
+      detail: err && (err.code || err.message) ? String(err.code || err.message) : null,
+    };
+  }
 
   const download = upstreamResp && upstreamResp.data && upstreamResp.data.download ? upstreamResp.data.download : null;
   const downloadUrl = download && typeof download.url === 'string' ? download.url.trim() : '';
@@ -522,9 +740,25 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
     const detail = pickUpstreamErrorDetail(upstreamResp.data);
     return {
       ok: false,
-      reason: 'pivota_backend_download_url_failed',
+      reason: 'download_url_generate_failed',
+      failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
       status: upstreamResp.status,
       detail: detail || null,
+    };
+  }
+
+  const downloadExpiresAt =
+    (download && typeof download.expires_at === 'string' && download.expires_at) ||
+    (upstreamResp.data && typeof upstreamResp.data.expires_at === 'string' && upstreamResp.data.expires_at) ||
+    null;
+  const secLeft = secondsUntilIso(downloadExpiresAt);
+  if (secLeft != null && secLeft <= 0) {
+    return {
+      ok: false,
+      reason: 'download_url_expired',
+      failure_code: 'DOWNLOAD_URL_EXPIRED',
+      status: 410,
+      detail: 'signed_url_expired_before_fetch',
     };
   }
 
@@ -532,26 +766,18 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
     typeof upstreamResp.data.content_type === 'string' && upstreamResp.data.content_type.trim()
       ? upstreamResp.data.content_type.trim()
       : null;
+  const blobResp = await fetchBytesFromSignedUrl(downloadUrl);
+  if (!blobResp || !blobResp.ok) return blobResp || { ok: false, reason: 'download_url_fetch_failed' };
 
-  const blobResp = await axios.get(downloadUrl, {
-    timeout: 12000,
-    validateStatus: () => true,
-    responseType: 'arraybuffer',
-    maxBodyLength: 15 * 1024 * 1024,
-    maxContentLength: 15 * 1024 * 1024,
-  });
-  if (blobResp.status !== 200 || !blobResp.data) {
-    return { ok: false, reason: 'photo_download_failed', status: blobResp.status };
-  }
-  const buffer = Buffer.from(blobResp.data);
-  const contentTypeHeader =
-    blobResp.headers && (blobResp.headers['content-type'] || blobResp.headers['Content-Type'])
-      ? String(blobResp.headers['content-type'] || blobResp.headers['Content-Type']).trim()
-      : null;
+  const buffer = blobResp.buffer;
+  const contentTypeHeader = blobResp.contentTypeHeader;
+  const finalContentType = contentTypeHeader || contentTypeUpstream || 'image/jpeg';
+  setPhotoBytesCache({ photoId, auroraUid, buffer, contentType: finalContentType });
   return {
     ok: true,
     buffer,
-    contentType: contentTypeHeader || contentTypeUpstream || 'image/jpeg',
+    contentType: finalContentType,
+    source: 'signed_url',
   };
 }
 
@@ -731,6 +957,467 @@ function normalizeSkinAnalysisFromLLM(obj, { language } = {}) {
   };
 }
 
+function mergePhotoFindingsIntoAnalysis({ analysis, diagnosisV1, language, profileSummary } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const base = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? { ...analysis } : null;
+  if (!base) return analysis;
+  const diagnosis = diagnosisV1 && typeof diagnosisV1 === 'object' && !Array.isArray(diagnosisV1) ? diagnosisV1 : null;
+  if (!diagnosis) return base;
+
+  const normalizeFinding = (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const issueType = typeof raw.issue_type === 'string' ? raw.issue_type.trim() : '';
+    const subtype = typeof raw.subtype === 'string' ? raw.subtype.trim() : '';
+    if (!issueType) return null;
+    const severity = Number.isFinite(raw.severity) ? Math.max(0, Math.min(4, Math.round(raw.severity))) : 0;
+    const confidence = Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : 0;
+    return {
+      issue_type: issueType,
+      subtype: subtype || null,
+      severity,
+      confidence,
+      evidence: typeof raw.evidence === 'string' ? raw.evidence.trim() : '',
+      computed_features: raw.computed_features && typeof raw.computed_features === 'object' ? raw.computed_features : {},
+      geometry: raw.geometry && typeof raw.geometry === 'object' ? raw.geometry : null,
+      ...(raw.uncertain === true ? { uncertain: true } : {}),
+    };
+  };
+
+  const normalizeTakeaway = (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const source = typeof raw.source === 'string' && raw.source.trim() ? raw.source.trim() : 'mixed';
+    const textRaw = typeof raw.text === 'string' ? raw.text.trim() : '';
+    if (!textRaw) return null;
+    const text =
+      source === 'photo' && !/^from photo:/i.test(textRaw)
+        ? `${lang === 'CN' ? 'From photo: ' : 'From photo: '}${textRaw}`
+        : textRaw;
+    return {
+      source,
+      issue_type: typeof raw.issue_type === 'string' && raw.issue_type.trim() ? raw.issue_type.trim() : null,
+      text,
+      confidence: Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : 0.5,
+    };
+  };
+
+  const incomingFindings = [];
+  for (const finding of Array.isArray(diagnosis.photo_findings) ? diagnosis.photo_findings : []) {
+    const normalized = normalizeFinding(finding);
+    if (normalized) incomingFindings.push(normalized);
+  }
+
+  const existingFindings = [];
+  const existingFromPhoto = Array.isArray(base.photo_findings) ? base.photo_findings : [];
+  const existingFromFindings = Array.isArray(base.findings) ? base.findings : [];
+  for (const finding of [...existingFromPhoto, ...existingFromFindings]) {
+    const normalized = normalizeFinding(finding);
+    if (normalized) existingFindings.push(normalized);
+  }
+
+  const mergedFindings = [];
+  const findingSeen = new Set();
+  for (const finding of [...existingFindings, ...incomingFindings]) {
+    const key = `${finding.issue_type}::${finding.subtype || ''}`;
+    if (findingSeen.has(key)) continue;
+    findingSeen.add(key);
+    mergedFindings.push(finding);
+  }
+
+  if (mergedFindings.length) {
+    base.photo_findings = mergedFindings.slice(0, 10);
+    base.findings = mergedFindings.slice(0, 10);
+  }
+
+  const existingTakeaways = Array.isArray(base.takeaways) ? base.takeaways : [];
+  const diagnosisTakeaways = Array.isArray(diagnosis.takeaways) ? diagnosis.takeaways : [];
+  const mergedTakeaways = [];
+  const takeawaySeen = new Set();
+
+  const addTakeaway = (candidate) => {
+    const normalized = normalizeTakeaway(candidate);
+    if (!normalized) return;
+    const key = `${normalized.source}::${normalized.text.toLowerCase()}`;
+    if (takeawaySeen.has(key)) return;
+    takeawaySeen.add(key);
+    mergedTakeaways.push(normalized);
+  };
+
+  for (const takeaway of existingTakeaways) addTakeaway(takeaway);
+  for (const takeaway of diagnosisTakeaways) addTakeaway(takeaway);
+
+  const goals = profileSummary && Array.isArray(profileSummary.goals) ? profileSummary.goals.filter((item) => typeof item === 'string') : [];
+  if (goals.length) {
+    addTakeaway({
+      source: 'user',
+      issue_type: 'goal',
+      text: lang === 'CN' ? `You mentioned your goals: ${goals.slice(0, 3).join(', ')}.` : `You mentioned your goals: ${goals.slice(0, 3).join(', ')}.`,
+      confidence: 1,
+    });
+  }
+
+  if (mergedTakeaways.length) base.takeaways = mergedTakeaways.slice(0, 12);
+  return base;
+}
+
+function normalizePlanTakeaway(raw, { language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const sourceRaw = typeof raw.source === 'string' ? raw.source.trim().toLowerCase() : '';
+  const source = sourceRaw === 'photo' || sourceRaw === 'user' || sourceRaw === 'mixed' ? sourceRaw : 'mixed';
+  let text = typeof raw.text === 'string' ? raw.text.trim() : '';
+  if (!text) return null;
+  if (source === 'photo' && !/^from photo:/i.test(text)) text = `${lang === 'CN' ? 'From photo: ' : 'From photo: '}${text}`;
+  if (source === 'user' && /^you reported/i.test(text)) text = text.replace(/^you reported/i, 'You mentioned');
+  return {
+    takeaway_id: typeof raw.takeaway_id === 'string' && raw.takeaway_id.trim() ? raw.takeaway_id.trim() : null,
+    source,
+    issue_type: typeof raw.issue_type === 'string' && raw.issue_type.trim() ? raw.issue_type.trim() : null,
+    text,
+    confidence: Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, Number(raw.confidence))) : 0.55,
+    linked_finding_ids: Array.isArray(raw.linked_finding_ids)
+      ? raw.linked_finding_ids.filter((item) => typeof item === 'string' && item.trim()).slice(0, 8)
+      : [],
+    linked_issue_types: Array.isArray(raw.linked_issue_types)
+      ? raw.linked_issue_types.filter((item) => typeof item === 'string' && item.trim()).slice(0, 8)
+      : [],
+  };
+}
+
+function renderPlanAsStrategy({ plan, language, photoNotice } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (!plan || typeof plan !== 'object') return '';
+  const getWhat = (step) => (step && typeof step.what === 'string' ? step.what.trim() : '');
+  const am = Array.isArray(plan?.today?.am_steps) ? plan.today.am_steps.map(getWhat).filter(Boolean) : [];
+  const pm = Array.isArray(plan?.today?.pm_steps) ? plan.today.pm_steps.map(getWhat).filter(Boolean) : [];
+  const pause = Array.isArray(plan?.today?.pause_now) ? plan.today.pause_now.map(getWhat).filter(Boolean) : [];
+  const rule = Array.isArray(plan?.next_7_days?.rules) ? plan.next_7_days.rules.filter((item) => typeof item === 'string' && item.trim()).slice(0, 2) : [];
+  const lines = [];
+  if (photoNotice) lines.push(photoNotice);
+  lines.push(lang === 'CN' ? 'Today' : 'Today');
+  lines.push(`${lang === 'CN' ? 'AM' : 'AM'}: ${am.length ? am.join(' -> ') : (lang === 'CN' ? '以重拍和观察为主' : 'retake + observe')}`);
+  lines.push(`${lang === 'CN' ? 'PM' : 'PM'}: ${pm.length ? pm.join(' -> ') : (lang === 'CN' ? '以重拍和观察为主' : 'retake + observe')}`);
+  if (pause.length) lines.push(`${lang === 'CN' ? 'Pause now' : 'Pause now'}: ${pause.join(' / ')}`);
+  if (rule.length) lines.push(`${lang === 'CN' ? 'Next 7 days' : 'Next 7 days'}: ${rule.join(' | ')}`);
+  const retakeDays = Number.isFinite(plan?.tracking?.retake_after_days) ? Number(plan.tracking.retake_after_days) : 7;
+  lines.push(lang === 'CN' ? `Re-evaluate in ${retakeDays} days.` : `Re-evaluate in ${retakeDays} days.`);
+  return lines.join('\n').slice(0, 1200);
+}
+
+function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQuality, profileSummary } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const base = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? { ...analysis } : null;
+  if (!base) return analysis;
+
+  const quality = photoQuality && typeof photoQuality === 'object' ? photoQuality : { grade: 'unknown', reasons: [] };
+  const qualityFail = String(quality.grade || '').trim().toLowerCase() === 'fail';
+  const photoNotice = usedPhotos ? null : 'Based on your answers only (photo not analyzed).';
+
+  const findingsInput = usedPhotos
+    ? Array.isArray(base.photo_findings)
+      ? base.photo_findings
+      : Array.isArray(base.findings)
+        ? base.findings
+        : []
+    : [];
+  const photoFindings = [];
+  const issueToFindingIds = new Map();
+  for (let i = 0; i < findingsInput.length; i += 1) {
+    const finding = findingsInput[i];
+    if (!finding || typeof finding !== 'object') continue;
+    const issueType = typeof finding.issue_type === 'string' ? finding.issue_type.trim() : '';
+    if (!issueType) continue;
+    const findingIdRaw = typeof finding.finding_id === 'string' && finding.finding_id.trim() ? finding.finding_id.trim() : `pf_${issueType}_${i + 1}`;
+    const normalizedFinding = {
+      finding_id: findingIdRaw,
+      issue_type: issueType,
+      subtype: typeof finding.subtype === 'string' && finding.subtype.trim() ? finding.subtype.trim() : null,
+      severity: Number.isFinite(finding.severity) ? Math.max(0, Math.min(4, Math.round(finding.severity))) : 0,
+      confidence: Number.isFinite(finding.confidence) ? Math.max(0, Math.min(1, Number(finding.confidence))) : 0,
+      evidence: typeof finding.evidence === 'string' ? finding.evidence.trim() : '',
+      computed_features: finding.computed_features && typeof finding.computed_features === 'object' ? finding.computed_features : {},
+      geometry: finding.geometry && typeof finding.geometry === 'object' ? finding.geometry : null,
+      ...(finding.uncertain === true ? { uncertain: true } : {}),
+    };
+    photoFindings.push(normalizedFinding);
+    const list = issueToFindingIds.get(issueType) || [];
+    list.push(findingIdRaw);
+    issueToFindingIds.set(issueType, list);
+  }
+  base.photo_findings = photoFindings;
+  base.findings = photoFindings;
+
+  const takeawaysInput = Array.isArray(base.takeaways) ? base.takeaways : [];
+  const takeaways = [];
+  const seenTakeawayText = new Set();
+  for (const item of takeawaysInput) {
+    const normalized = normalizePlanTakeaway(item, { language: lang });
+    if (!normalized) continue;
+    if (!usedPhotos && normalized.source === 'photo') continue;
+    if (normalized.source === 'photo' && normalized.linked_finding_ids.length === 0 && normalized.issue_type) {
+      normalized.linked_finding_ids = (issueToFindingIds.get(normalized.issue_type) || []).slice(0, 8);
+    }
+    if (normalized.source === 'photo' && normalized.linked_issue_types.length === 0 && normalized.issue_type) {
+      normalized.linked_issue_types = [normalized.issue_type];
+    }
+    const key = `${normalized.source}:${normalized.text.toLowerCase()}`;
+    if (seenTakeawayText.has(key)) continue;
+    seenTakeawayText.add(key);
+    takeaways.push(normalized);
+  }
+
+  const goals = profileSummary && Array.isArray(profileSummary.goals) ? profileSummary.goals.filter((item) => typeof item === 'string' && item.trim()) : [];
+  if (goals.length) {
+    const text = `You mentioned your goals: ${goals.slice(0, 3).join(', ')}.`;
+    const key = `user:${text.toLowerCase()}`;
+    if (!seenTakeawayText.has(key)) {
+      takeaways.push({
+        takeaway_id: 'tw_user_goals_plan',
+        source: 'user',
+        issue_type: 'goal',
+        text,
+        confidence: 1,
+        linked_finding_ids: [],
+        linked_issue_types: ['goal'],
+      });
+      seenTakeawayText.add(key);
+    }
+  }
+  if (profileSummary && profileSummary.barrierStatus === 'impaired') {
+    const text = 'You mentioned stinging/redness and barrier stress recently.';
+    const key = `user:${text.toLowerCase()}`;
+    if (!seenTakeawayText.has(key)) {
+      takeaways.push({
+        takeaway_id: 'tw_user_barrier_stress',
+        source: 'user',
+        issue_type: 'barrier',
+        text,
+        confidence: 0.9,
+        linked_finding_ids: [],
+        linked_issue_types: ['barrier'],
+      });
+      seenTakeawayText.add(key);
+    }
+  }
+
+  if (usedPhotos && photoFindings.length) {
+    for (const finding of photoFindings) {
+      const alreadyLinked = takeaways.some((item) => item.source === 'photo' && item.linked_finding_ids.includes(finding.finding_id));
+      if (alreadyLinked) continue;
+      takeaways.push({
+        takeaway_id: `tw_photo_${finding.finding_id}`,
+        source: 'photo',
+        issue_type: finding.issue_type,
+        text: `From photo: ${finding.issue_type} signal observed in the highlighted area.`,
+        confidence: finding.confidence,
+        linked_finding_ids: [finding.finding_id],
+        linked_issue_types: [finding.issue_type],
+      });
+    }
+  }
+
+  const takeawaysByIssue = new Map();
+  for (const item of takeaways) {
+    if (!item.issue_type) continue;
+    const list = takeawaysByIssue.get(item.issue_type) || [];
+    list.push(item.takeaway_id);
+    takeawaysByIssue.set(item.issue_type, list);
+  }
+
+  const makeStep = ({ what, why, whenToStop, priority, linkedIssueTypes = [], linkedFindingIds = [] } = {}) => ({
+    what: String(what || '').trim(),
+    why: String(why || '').trim(),
+    when_to_stop: String(whenToStop || '').trim(),
+    priority: priority === 'P0' || priority === 'P1' || priority === 'P2' ? priority : 'P1',
+    linked_issue_types: linkedIssueTypes.filter((item) => typeof item === 'string' && item.trim()).slice(0, 6),
+    linked_finding_ids: linkedFindingIds.filter((item) => typeof item === 'string' && item.trim()).slice(0, 8),
+    linked_takeaway_ids: linkedIssueTypes
+      .flatMap((issueType) => (takeawaysByIssue.get(issueType) || []).filter((item) => typeof item === 'string' && item.trim()))
+      .slice(0, 8),
+  });
+
+  const requiredCheckboxes = [
+    { metric: 'redness_stinging', label: 'redness/stinging', options: ['↓', '→', '↑'] },
+    { metric: 'new_breakouts', label: 'new breakouts', options: ['↓', '→', '↑'] },
+    { metric: 'shine_oil_control', label: 'shine/oil control', options: ['↓', '→', '↑'] },
+  ];
+
+  let plan = null;
+  if (qualityFail) {
+    plan = {
+      today: {
+        am_steps: [],
+        pm_steps: [],
+        pause_now: [
+          makeStep({
+            what: 'Retake photo under daylight with no filter and clear focus.',
+            why: 'Current photo quality failed, so reliable finding extraction is unavailable.',
+            whenToStop: 'Stop and ask support if QC keeps failing after 2 attempts.',
+            priority: 'P0',
+            linkedIssueTypes: ['quality'],
+            linkedFindingIds: [],
+          }),
+        ],
+      },
+      next_7_days: {
+        rules: ['Do not change routine based on failed-photo output.', 'Keep routine stable until a pass/degraded retake is available.'],
+        steps: [
+          makeStep({
+            what: 'Retake once every 1-2 days until QC passes.',
+            why: 'A comparable photo is required for progress tracking.',
+            whenToStop: 'Stop retaking after a pass/degraded image is obtained.',
+            priority: 'P0',
+            linkedIssueTypes: ['quality'],
+            linkedFindingIds: [],
+          }),
+        ],
+      },
+      after_calm: {
+        entry_criteria: ['Photo QC returns pass or degraded.', 'Same lighting angle can be reproduced.'],
+        steps: [],
+      },
+      tracking: {
+        checkboxes: requiredCheckboxes,
+        retake_prompt: 'Retake in 7 days using the same lighting/background and follow QC guidance.',
+        retake_after_days: 7,
+      },
+    };
+  } else {
+    const rednessFindingIds = issueToFindingIds.get('redness') || [];
+    const shineFindingIds = issueToFindingIds.get('shine') || [];
+    const textureFindingIds = issueToFindingIds.get('texture') || [];
+    const toneFindingIds = issueToFindingIds.get('tone') || [];
+    const hasRedness = rednessFindingIds.length > 0;
+    const hasShine = shineFindingIds.length > 0;
+    const hasTexture = textureFindingIds.length > 0;
+    const hasTone = toneFindingIds.length > 0;
+
+    const amSteps = [
+      makeStep({
+        what: 'Use gentle cleanser, then moisturizer.',
+        why: hasRedness ? `Linked evidence: ${rednessFindingIds.join(', ')} (photo redness) and barrier-related takeaways.` : 'Linked evidence: user-input sensitivity/barrier context.',
+        whenToStop: 'Stop if burning >10 minutes or persistent stinging.',
+        priority: 'P0',
+        linkedIssueTypes: hasRedness ? ['redness'] : ['barrier'],
+        linkedFindingIds: rednessFindingIds,
+      }),
+      makeStep({
+        what: 'Apply broad-spectrum SPF as last AM step.',
+        why: hasTone ? `Linked evidence: ${toneFindingIds.join(', ')} (uneven tone proxy).` : 'Linked evidence: prevention baseline and user goals.',
+        whenToStop: 'Stop only if rash or swelling appears.',
+        priority: 'P0',
+        linkedIssueTypes: hasTone ? ['tone'] : ['goal'],
+        linkedFindingIds: toneFindingIds,
+      }),
+    ];
+
+    const pmSteps = [
+      makeStep({
+        what: 'Cleanse gently and moisturize; keep PM routine simple for 7 days.',
+        why: hasRedness ? `Linked evidence: ${rednessFindingIds.join(', ')} indicates irritation risk.` : 'Linked evidence: user-reported sensitivity context.',
+        whenToStop: 'Stop and simplify further if redness/stinging increases for 2 consecutive days.',
+        priority: 'P0',
+        linkedIssueTypes: hasRedness ? ['redness'] : ['barrier'],
+        linkedFindingIds: rednessFindingIds,
+      }),
+    ];
+
+    if (hasShine || hasTexture) {
+      pmSteps.push(
+        makeStep({
+          what: 'If skin stays calm for 3 nights, add one low-frequency balancing step (2 nights/week).',
+          why: `Linked evidence: ${(hasTexture ? textureFindingIds : shineFindingIds).join(', ')} supports oil/texture control.`,
+          whenToStop: 'Stop if peeling, burning, or new diffuse redness appears.',
+          priority: 'P1',
+          linkedIssueTypes: hasTexture ? ['texture'] : ['shine'],
+          linkedFindingIds: hasTexture ? textureFindingIds : shineFindingIds,
+        }),
+      );
+    }
+
+    const pauseNow = [];
+    if (hasRedness) {
+      pauseNow.push(
+        makeStep({
+          what: 'Pause layering multiple strong actives on the same night.',
+          why: `Linked evidence: ${rednessFindingIds.join(', ')} and photo-linked irritation takeaways.`,
+          whenToStop: 'Resume only after 3 consecutive days with redness/stinging not increasing.',
+          priority: 'P0',
+          linkedIssueTypes: ['redness'],
+          linkedFindingIds: rednessFindingIds,
+        }),
+      );
+    }
+
+    const nextSteps = [
+      makeStep({
+        what: 'Keep one-variable-at-a-time changes across the next 7 days.',
+        why: 'Linked evidence: mixed uncertainty from photo + user signals requires controlled iteration.',
+        whenToStop: 'Stop adding new steps if any metric trends upward for 2 days.',
+        priority: 'P0',
+        linkedIssueTypes: ['mixed'],
+        linkedFindingIds: [...rednessFindingIds, ...shineFindingIds, ...textureFindingIds, ...toneFindingIds].slice(0, 8),
+      }),
+    ];
+    if (hasShine) {
+      nextSteps.push(
+        makeStep({
+          what: 'Track midday shine and reduce occlusive layering if shine worsens.',
+          why: `Linked evidence: ${shineFindingIds.join(', ')} (shine/specular proxy).`,
+          whenToStop: 'Stop reduction if tightness or flaking increases.',
+          priority: 'P1',
+          linkedIssueTypes: ['shine'],
+          linkedFindingIds: shineFindingIds,
+        }),
+      );
+    }
+
+    const afterCalmSteps = [];
+    if (hasTexture || hasTone) {
+      afterCalmSteps.push(
+        makeStep({
+          what: 'After skin is calm, add one targeted step and reassess after 7 days.',
+          why: `Linked evidence: ${[...textureFindingIds, ...toneFindingIds].join(', ')} and corresponding takeaways.`,
+          whenToStop: 'Stop targeted step if irritation rises or breakouts increase.',
+          priority: 'P2',
+          linkedIssueTypes: [...(hasTexture ? ['texture'] : []), ...(hasTone ? ['tone'] : [])],
+          linkedFindingIds: [...textureFindingIds, ...toneFindingIds],
+        }),
+      );
+    }
+
+    plan = {
+      today: {
+        am_steps: amSteps,
+        pm_steps: pmSteps,
+        pause_now: pauseNow,
+      },
+      next_7_days: {
+        rules: [
+          'Keep routine changes incremental (one new variable at a time).',
+          usedPhotos ? 'Use current photo findings as baseline and compare after retake.' : 'Use symptom trend checkboxes as baseline until photo is provided.',
+        ],
+        steps: nextSteps,
+      },
+      after_calm: {
+        entry_criteria: ['redness/stinging trend is ↓ or stable for 3 days', 'no sudden breakout spike', 'routine feels tolerable daily'],
+        steps: afterCalmSteps,
+      },
+      tracking: {
+        checkboxes: requiredCheckboxes,
+        retake_prompt: 'Retake in 7 days with the same lighting, angle, and camera distance; follow QC guidance before submit.',
+        retake_after_days: 7,
+      },
+    };
+  }
+
+  base.plan = plan;
+  base.takeaways = takeaways.slice(0, 14);
+  if (photoNotice) base.photo_notice = photoNotice;
+  else delete base.photo_notice;
+  base.strategy = renderPlanAsStrategy({ plan, language: lang, photoNotice });
+  return base;
+}
+
 function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const p = profile || {};
@@ -752,8 +1439,8 @@ function buildRuleBasedSkinAnalysis({ profile, recentLogs, language }) {
     features.push({
       observation:
         lang === 'CN'
-          ? '你自述屏障不稳定（易刺痛/泛红）→ 先把“舒缓修护”放在优先级第一。'
-          : 'You reported an irritated barrier → prioritize calming + repair first.',
+          ? '你提到最近屏障不稳定（易刺痛/泛红）→ 先把“舒缓修护”放在优先级第一。'
+          : 'You mentioned recent barrier stress (stinging/redness) -> prioritize calming + repair first.',
       confidence: 'pretty_sure',
     });
   } else if (hasStingingSignal) {
@@ -933,7 +1620,7 @@ function buildLowConfidenceBaselineSkinAnalysis({ profile, language }) {
     features.push({
       observation:
         lang === 'CN'
-          ? '你自述屏障可能不稳定 → 建议先走“舒缓修护”优先路线。'
+          ? '你提到屏障可能不稳定 → 建议先走“舒缓修护”优先路线。'
           : 'You may have a stressed barrier → prioritize calming + repair first.',
       confidence: 'somewhat_sure',
     });
@@ -942,8 +1629,8 @@ function buildLowConfidenceBaselineSkinAnalysis({ profile, language }) {
     features.push({
       observation:
         lang === 'CN'
-          ? `你自述肤质为 ${String(p.skinType)} → 我会先给“低风险通用策略”。`
-          : `You reported ${String(p.skinType)} skin → I’ll start with low-risk baseline guidance.`,
+          ? `你提到肤质为 ${String(p.skinType)} → 我会先给“低风险通用策略”。`
+          : `You mentioned ${String(p.skinType)} skin -> I’ll start with low-risk baseline guidance.`,
       confidence: 'somewhat_sure',
     });
   }
@@ -5848,6 +6535,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         ...(lastQcData && lastQcData.qc_status == null ? { qc_pending: true } : {}),
       };
 
+      try {
+        const uploadBuffer = fs.readFileSync(fileEntry.path);
+        setPhotoBytesCache({
+          photoId: uploadId,
+          auroraUid: ctx.aurora_uid,
+          buffer: uploadBuffer,
+          contentType,
+        });
+      } catch (cacheErr) {
+        logger?.warn({ err: cacheErr && cacheErr.message ? cacheErr.message : String(cacheErr) }, 'aurora bff: failed to cache upload bytes');
+      }
+
       const fieldMissing = [];
       if (!qcStatus) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
 
@@ -6229,14 +6928,23 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const analysisFieldMissing = [];
         const qualityReportReasons = [];
+        const photoFailureCodes = [];
         let usedPhotos = false;
         let analysisSource = 'rule_based';
 
 	        let diagnosisPhoto = null;
 	        let diagnosisPhotoBytes = null;
-	        let diagnosisV1 = null;
-	        let diagnosisV1Internal = null;
-	        let diagnosisPolicy = null;
+        let diagnosisV1 = null;
+        let diagnosisV1Internal = null;
+        let diagnosisPolicy = null;
+        function recordPhotoFailure(code, detail) {
+          const failureCode = String(code || '').trim().toUpperCase() || 'DOWNLOAD_URL_GENERATE_FAILED';
+          if (!photoFailureCodes.includes(failureCode)) photoFailureCodes.push(failureCode);
+          analysisFieldMissing.push({ field: 'analysis.used_photos', reason: failureCode });
+          if (detail) {
+            logger?.warn({ code: failureCode, detail }, 'aurora bff: photo fetch failure');
+          }
+        }
 
         if (rollout.llmKillSwitch) {
           if (ctx.lang === 'CN') qualityReportReasons.push('系统已开启 LLM 总开关：本次会强制跳过所有模型调用。');
@@ -6273,12 +6981,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: diagnosisPhoto.photo_id });
               if (resp && resp.ok) {
                 diagnosisPhotoBytes = resp.buffer;
-                usedPhotos = true;
               } else {
-                analysisFieldMissing.push({
-                  field: 'analysis.used_photos',
-                  reason: resp && resp.reason ? resp.reason : 'photo_fetch_failed',
-                });
+                recordPhotoFailure(resp && (resp.failure_code || resp.reason), resp && resp.detail);
               }
               profiler.end('decode', {
                 kind: 'photo_fetch',
@@ -6288,7 +6992,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 bytes: diagnosisPhotoBytes ? diagnosisPhotoBytes.length : 0,
               });
             } catch (err) {
-              analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'photo_fetch_failed' });
+              recordPhotoFailure('DOWNLOAD_URL_FETCH_5XX', err && err.message ? err.message : null);
               profiler.fail('decode', err, { kind: 'photo_fetch', slot: diagnosisPhoto.slot_id, purpose: 'diagnosis_v1' });
               logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes for diagnosis');
             }
@@ -6307,6 +7011,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                diagnosisV1 = diag.diagnosis;
 	                diagnosisV1Internal = diag.internal || null;
 	                diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
+	                usedPhotos = true;
 	                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
 	                if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
                 if (dq && dq.grade === 'fail') {
@@ -6324,6 +7029,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                 photoQuality = mergePhotoQuality(photoQuality, { grade: 'fail', reasons: [reason] }, { extraPrefix: 'pixel_' });
                 if (ctx.lang === 'CN') qualityReportReasons.push(`照片检测未能稳定完成（${reason}）；为避免误判建议重拍。`);
                 else qualityReportReasons.push(`Photo checks could not complete reliably (${reason}); recommending a retake to avoid wrong guesses.`);
+                if (!analysisFieldMissing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'diagnosis_failed')) {
+                  analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'diagnosis_failed' });
+                }
               }
             }
           }
@@ -6393,10 +7101,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: chosen.photo_id });
                 if (resp && resp.ok) photoBytes = resp.buffer;
                 else {
-                  analysisFieldMissing.push({
-                    field: 'analysis.used_photos',
-                    reason: resp && resp.reason ? resp.reason : 'photo_fetch_failed',
-                  });
+                  recordPhotoFailure(resp && (resp.failure_code || resp.reason), resp && resp.detail);
                 }
                 profiler.end('decode', {
                   kind: 'photo_fetch',
@@ -6406,10 +7111,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   bytes: photoBytes ? photoBytes.length : 0,
                 });
               } catch (err) {
-                analysisFieldMissing.push({
-                  field: 'analysis.used_photos',
-                  reason: 'photo_fetch_failed',
-                });
+                recordPhotoFailure('DOWNLOAD_URL_FETCH_5XX', err && err.message ? err.message : null);
                 profiler.fail('decode', err, { kind: 'photo_fetch', slot: chosen.slot_id, purpose: 'vision' });
                 logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes');
               }
@@ -6532,6 +7234,41 @@ function mountAuroraBffRoutes(app, { logger }) {
           (photoQuality.grade === 'degraded' || photoQuality.grade === 'unknown') &&
           analysisSource !== 'retake';
         if (analysis && mustDowngrade) analysis = downgradeSkinAnalysisConfidence(analysis, { language: ctx.lang });
+        if (analysis && diagnosisV1 && usedPhotos) {
+          analysis = mergePhotoFindingsIntoAnalysis({
+            analysis,
+            diagnosisV1,
+            language: ctx.lang,
+            profileSummary,
+          });
+        }
+        if (analysis) {
+          analysis = buildExecutablePlanForAnalysis({
+            analysis,
+            language: ctx.lang,
+            usedPhotos,
+            photoQuality,
+            profileSummary,
+          });
+        }
+
+        const photoNotUsed = Boolean(userRequestedPhoto && photosProvided && !usedPhotos);
+        const photoFailureCode = photoFailureCodes[0] || null;
+        let photoNotice = null;
+        if (photoNotUsed && photoFailureCode) {
+          photoNotice = {
+            failure_code: photoFailureCode,
+            message:
+              ctx.lang === 'CN'
+                ? `本次未能读取并分析照片（原因：${photoFailureCode}），以下结果仅基于你的问卷/历史信息。请重传后重试。`
+                : `We couldn't analyze your photo this time (reason: ${photoFailureCode}). Results below are based on your answers/history only. Please re-upload and retry.`,
+          };
+        }
+
+        let renderedAnalysisSource = analysisSource;
+        if (photoNotUsed && analysisSource !== 'retake') {
+          renderedAnalysisSource = 'rule_based_with_photo_qc';
+        }
 
         if (analysis && persistLastAnalysis) {
           try {
@@ -6558,7 +7295,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 photos_provided: photosProvided,
                 photo_qc: photoQcParts,
                 used_photos: usedPhotos,
-                analysis_source: analysisSource,
+                analysis_source: renderedAnalysisSource,
+                ...(photoNotice ? { photo_notice: photoNotice } : {}),
                 quality_report: {
                   photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
                   detector_confidence: detectorConfidence,
@@ -6573,7 +7311,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ],
           session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
           events: [
-            makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: analysisSource }),
+            makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: renderedAnalysisSource }),
           ],
         });
         profiler.end('render', { kind: 'envelope' });
@@ -6587,7 +7325,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             pipeline_version: pipelineVersion || null,
             shadow_run: Boolean(shadowRun),
             experiments: experimentsSlim,
-            analysis_source: analysisSource,
+            analysis_source: renderedAnalysisSource,
             user_requested_photo: Boolean(userRequestedPhoto),
             photos_provided: Boolean(photosProvided),
             used_photos: Boolean(usedPhotos),
@@ -8061,7 +8799,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
       // Clarification chips usually carry reply_text (for UX), so we must not require empty message here.
-      if (appliedProfilePatch && (!message || profileClarificationAction)) {
+      const hasExplicitUserIntentMessage =
+        looksLikeSuitabilityRequest(message) ||
+        looksLikeCompatibilityOrConflictQuestion(message) ||
+        looksLikeWeatherOrEnvironmentQuestion(message) ||
+        looksLikeRecommendationRequest(message);
+
+      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
         const inDiagnosisFlow =
           String(agentState || '').startsWith('DIAG_') ||
           String(ctx.state || '').startsWith('S2_') ||
@@ -8953,9 +9697,16 @@ function mountAuroraBffRoutes(app, { logger }) {
 
 const __internal = {
   runOpenAIVisionSkinAnalysis,
+  fetchPhotoBytesFromPivotaBackend,
+  classifySignedUrlFetchFailure,
+  isSignedUrlExpiredSignal,
+  setPhotoBytesCache,
+  getPhotoBytesCache,
   buildLowConfidenceBaselineSkinAnalysis,
   buildRuleBasedSkinAnalysis,
   normalizeSkinAnalysisFromLLM,
+  mergePhotoFindingsIntoAnalysis,
+  buildExecutablePlanForAnalysis,
   buildEmotionalPreamble,
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,

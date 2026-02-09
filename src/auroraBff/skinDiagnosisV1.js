@@ -868,6 +868,335 @@ function runIssueScoring({
   };
 }
 
+function scoreToSeverityLevel0to4(score) {
+  const s = clamp01(score);
+  if (s < 0.15) return 0;
+  if (s < 0.35) return 1;
+  if (s < 0.55) return 2;
+  if (s < 0.75) return 3;
+  return 4;
+}
+
+function normalizeBoxToUnit(box, width, height) {
+  if (!box || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  const x0 = clamp01(Number(box.x0) / width);
+  const y0 = clamp01(Number(box.y0) / height);
+  const x1 = clamp01(Number(box.x1) / width);
+  const y1 = clamp01(Number(box.y1) / height);
+  return { x0: Math.min(x0, x1), y0: Math.min(y0, y1), x1: Math.max(x0, x1), y1: Math.max(y0, y1) };
+}
+
+function buildGridHeatmapForBox(boxNorm, score, { rows = 6, cols = 6 } = {}) {
+  const values = new Array(rows * cols).fill(0);
+  const s = clamp01(score);
+  if (!boxNorm) return values;
+  for (let r = 0; r < rows; r += 1) {
+    const y = (r + 0.5) / rows;
+    for (let c = 0; c < cols; c += 1) {
+      const x = (c + 0.5) / cols;
+      const idx = r * cols + c;
+      const inside = x >= boxNorm.x0 && x <= boxNorm.x1 && y >= boxNorm.y0 && y <= boxNorm.y1;
+      if (inside) {
+        values[idx] = round3(s);
+        continue;
+      }
+      const dx = Math.max(0, Math.max(boxNorm.x0 - x, x - boxNorm.x1));
+      const dy = Math.max(0, Math.max(boxNorm.y0 - y, y - boxNorm.y1));
+      const d = Math.sqrt(dx * dx + dy * dy);
+      values[idx] = round3(s * Math.max(0, 1 - d * 4.5) * 0.45);
+    }
+  }
+  return values;
+}
+
+function qualityHasReason(quality, reason) {
+  if (!quality || !Array.isArray(quality.reasons) || !reason) return false;
+  return quality.reasons.some((item) => String(item || '').trim() === String(reason));
+}
+
+function buildPhotoTakeaways({ findings, language }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const out = [];
+  const push = (value) => {
+    if (!value || typeof value !== 'object') return;
+    const text = typeof value.text === 'string' ? value.text.trim() : '';
+    if (!text) return;
+    const linkedFindingIds = Array.isArray(value.linked_finding_ids)
+      ? value.linked_finding_ids.filter((item) => typeof item === 'string' && item.trim()).slice(0, 6)
+      : [];
+    const linkedIssueTypes = Array.isArray(value.linked_issue_types)
+      ? value.linked_issue_types.filter((item) => typeof item === 'string' && item.trim()).slice(0, 6)
+      : [];
+    out.push({
+      takeaway_id: typeof value.takeaway_id === 'string' && value.takeaway_id.trim() ? value.takeaway_id.trim() : null,
+      source: 'photo',
+      issue_type: value.issue_type || null,
+      text,
+      confidence: round3(clamp01(Number(value.confidence))),
+      linked_finding_ids: linkedFindingIds,
+      linked_issue_types: linkedIssueTypes,
+    });
+  };
+
+  for (const finding of findings) {
+    if (!finding || typeof finding !== 'object') continue;
+    const issueType = String(finding.issue_type || '');
+    const severity = Number.isFinite(finding.severity) ? finding.severity : 0;
+    const confidence = Number.isFinite(finding.confidence) ? finding.confidence : 0.35;
+    const uncertain = Boolean(finding.uncertain);
+    if (uncertain) {
+      push({
+        takeaway_id: `tw_photo_${issueType || 'tone'}_uncertain`,
+        issue_type: issueType,
+        confidence,
+        linked_finding_ids: typeof finding.finding_id === 'string' ? [finding.finding_id] : [],
+        linked_issue_types: issueType ? [issueType] : [],
+        text:
+          lang === 'CN'
+            ? 'From photo: 光照或白平衡不稳定，暗沉/肤色不均暂不下结论，建议自然光重拍后再评估。'
+            : 'From photo: lighting/white balance is unstable, so uneven-tone assessment is uncertain; retake in daylight.',
+      });
+      continue;
+    }
+    if (severity <= 0) continue;
+    if (issueType === 'redness') {
+      push({
+        takeaway_id: 'tw_photo_redness',
+        issue_type: issueType,
+        confidence,
+        linked_finding_ids: typeof finding.finding_id === 'string' ? [finding.finding_id] : [],
+        linked_issue_types: issueType ? [issueType] : [],
+        text:
+          lang === 'CN'
+            ? 'From photo: 泛红信号偏高，先用温和清洁+修护保湿，并降低强活性叠加频率。'
+            : 'From photo: redness signals are elevated, so prioritize gentle cleansing, barrier repair, and lower active stacking.',
+      });
+      continue;
+    }
+    if (issueType === 'shine') {
+      push({
+        takeaway_id: 'tw_photo_shine',
+        issue_type: issueType,
+        confidence,
+        linked_finding_ids: typeof finding.finding_id === 'string' ? [finding.finding_id] : [],
+        linked_issue_types: issueType ? [issueType] : [],
+        text:
+          lang === 'CN'
+            ? 'From photo: T 区油光/镜面反射偏高，白天重视防晒并避免厚重封闭型叠加。'
+            : 'From photo: T-zone shine/specular highlights are elevated, so keep SPF consistent and avoid heavy occlusive layering.',
+      });
+      continue;
+    }
+    if (issueType === 'texture') {
+      push({
+        takeaway_id: 'tw_photo_texture',
+        issue_type: issueType,
+        confidence,
+        linked_finding_ids: typeof finding.finding_id === 'string' ? [finding.finding_id] : [],
+        linked_issue_types: issueType ? [issueType] : [],
+        text:
+          lang === 'CN'
+            ? 'From photo: 纹理/毛孔信号偏高，建议从低频温和焕肤开始，并观察 72 小时反应。'
+            : 'From photo: texture/pore signals are elevated; start with low-frequency gentle exfoliation and watch the 72-hour response.',
+      });
+      continue;
+    }
+    if (issueType === 'tone') {
+      push({
+        takeaway_id: 'tw_photo_tone',
+        issue_type: issueType,
+        confidence,
+        linked_finding_ids: typeof finding.finding_id === 'string' ? [finding.finding_id] : [],
+        linked_issue_types: issueType ? [issueType] : [],
+        text:
+          lang === 'CN'
+            ? 'From photo: 肤色不均信号存在，建议优先稳定防晒，再逐步加入温和提亮。'
+            : 'From photo: uneven-tone signals are present; lock in daily SPF first, then add gentle brightening.',
+      });
+    }
+  }
+  return out.slice(0, 8);
+}
+
+function buildPhotoFindings({
+  issues,
+  raw,
+  quality,
+  regionBoxes,
+  width,
+  height,
+  language,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const safeIssues = Array.isArray(issues) ? issues : [];
+  const safeQuality = quality && typeof quality === 'object' ? quality : { grade: 'unknown', reasons: [] };
+  const issueMap = {};
+  for (const issue of safeIssues) {
+    if (!issue || typeof issue !== 'object') continue;
+    const key = typeof issue.issue_type === 'string' ? issue.issue_type : '';
+    if (!key) continue;
+    issueMap[key] = issue;
+  }
+
+  if (safeQuality.grade === 'fail') {
+    const takeaways = [
+      {
+        takeaway_id: 'tw_photo_quality_retake',
+        source: 'photo',
+        issue_type: 'quality',
+        text:
+          lang === 'CN'
+            ? 'From photo: 本次图像质量未通过（模糊/曝光/白平衡/覆盖），建议按提示重拍后再继续分析。'
+            : 'From photo: image quality failed (blur/exposure/WB/coverage), so please retake before analysis.',
+        confidence: 1,
+        linked_finding_ids: [],
+        linked_issue_types: ['quality'],
+      },
+    ];
+    return { photo_findings: [], takeaways };
+  }
+
+  const glareRisk = qualityHasReason(safeQuality, 'too_bright') || qualityHasReason(safeQuality, 'white_balance_unstable');
+  const blurRisk = qualityHasReason(safeQuality, 'blur');
+  const degraded = safeQuality.grade === 'degraded';
+  const qualityFactor = Number.isFinite(safeQuality.quality_factor) ? clamp01(safeQuality.quality_factor) : 0.6;
+  const confidencePenalty = (degraded ? 0.82 : 1) * (glareRisk ? 0.86 : 1) * (blurRisk ? 0.88 : 1);
+
+  const rednessIssue = issueMap.redness || {};
+  const rednessMetrics = rednessIssue.evidence && rednessIssue.evidence.metrics ? rednessIssue.evidence.metrics : {};
+  const rednessScore = Number.isFinite(rednessIssue.severity_score) ? clamp01(rednessIssue.severity_score) : clamp01(raw?.redness?.score);
+  const rednessConfBase = Number.isFinite(rednessIssue.confidence) ? clamp01(rednessIssue.confidence) : clamp01(0.45 + rednessScore * 0.4);
+  const rednessConfidence = round3(clamp01(rednessConfBase * confidencePenalty));
+  const rednessBox = normalizeBoxToUnit(regionBoxes && regionBoxes.cheeks, width, height);
+
+  const poresIssue = issueMap.pores || {};
+  const poresMetrics = poresIssue.evidence && poresIssue.evidence.metrics ? poresIssue.evidence.metrics : {};
+  const poreIndex = Number.isFinite(poresMetrics.pore_index) ? clamp01(poresMetrics.pore_index) : clamp01(raw?.pores?.score);
+  const textureConfidence = round3(
+    clamp01((Number.isFinite(poresIssue.confidence) ? poresIssue.confidence : 0.4 + poreIndex * 0.4) * confidencePenalty * (blurRisk ? 0.8 : 1)),
+  );
+  const textureBox = normalizeBoxToUnit(regionBoxes && regionBoxes.cheeks, width, height);
+  const specularFraction = Number.isFinite(poresMetrics.specular_fraction)
+    ? clamp01(poresMetrics.specular_fraction)
+    : clamp01(raw?.pores?.metrics?.specular_fraction);
+  const shineScore = clamp01((specularFraction - 0.04) / 0.28);
+  const shineConfidence = round3(clamp01((0.48 + shineScore * 0.45) * qualityFactor * (glareRisk ? 0.8 : 1)));
+  const shineBox = normalizeBoxToUnit(regionBoxes && regionBoxes.nose, width, height);
+
+  const darkIssue = issueMap.dark_spots || {};
+  const darkMetrics = darkIssue.evidence && darkIssue.evidence.metrics ? darkIssue.evidence.metrics : {};
+  const toneBox = normalizeBoxToUnit(regionBoxes && regionBoxes.full, width, height);
+  const wbUnstable = qualityHasReason(safeQuality, 'white_balance_unstable');
+  const toneStable = safeQuality.grade === 'pass' && !wbUnstable && !qualityHasReason(safeQuality, 'too_bright') && !qualityHasReason(safeQuality, 'too_dark');
+  const toneScore = Number.isFinite(darkIssue.severity_score) ? clamp01(darkIssue.severity_score) : clamp01(raw?.dark_spots?.score);
+  const toneConfidenceBase = Number.isFinite(darkIssue.confidence) ? clamp01(darkIssue.confidence) : clamp01(0.28 + toneScore * 0.42);
+  const toneConfidence = round3(clamp01((toneStable ? toneConfidenceBase : 0.24) * confidencePenalty));
+
+  const photoFindings = [
+    {
+      finding_id: 'pf_redness',
+      issue_type: 'redness',
+      subtype: 'diffuse_redness_proxy',
+      severity: scoreToSeverityLevel0to4(rednessScore),
+      confidence: rednessConfidence,
+      evidence:
+        lang === 'CN'
+          ? `From photo: a* 偏移=${round3(rednessMetrics.a_shift)}，红区占比=${round3(rednessMetrics.red_fraction)}。${glareRisk ? '光照/反光可能影响判断。' : ''}`
+          : `From photo: a* shift=${round3(rednessMetrics.a_shift)}, red-area ratio=${round3(rednessMetrics.red_fraction)}.${glareRisk ? ' lighting/glare may affect this.' : ''}`,
+      computed_features: {
+        a_shift: round3(rednessMetrics.a_shift),
+        red_fraction: round3(rednessMetrics.red_fraction),
+        quality_factor: round3(qualityFactor),
+      },
+      geometry: {
+        type: 'grid',
+        rows: 6,
+        cols: 6,
+        values: buildGridHeatmapForBox(rednessBox, rednessScore, { rows: 6, cols: 6 }),
+        bbox_norm: rednessBox,
+      },
+    },
+    {
+      finding_id: 'pf_shine',
+      issue_type: 'shine',
+      subtype: 'specular_highlight_proxy',
+      severity: scoreToSeverityLevel0to4(shineScore),
+      confidence: shineConfidence,
+      evidence:
+        lang === 'CN'
+          ? `From photo: 鼻部镜面反光比例=${round3(specularFraction)}。${glareRisk ? '光照/反光可能抬高该值。' : ''}`
+          : `From photo: nose specular-highlight ratio=${round3(specularFraction)}.${glareRisk ? ' lighting/glare may inflate this.' : ''}`,
+      computed_features: {
+        specular_fraction: round3(specularFraction),
+        shine_score: round3(shineScore),
+        quality_factor: round3(qualityFactor),
+      },
+      geometry: {
+        type: 'grid',
+        rows: 6,
+        cols: 6,
+        values: buildGridHeatmapForBox(shineBox, shineScore, { rows: 6, cols: 6 }),
+        bbox_norm: shineBox,
+      },
+    },
+    {
+      finding_id: 'pf_texture',
+      issue_type: 'texture',
+      subtype: 'pores_proxy',
+      severity: scoreToSeverityLevel0to4(poreIndex),
+      confidence: textureConfidence,
+      evidence:
+        lang === 'CN'
+          ? `From photo: 纹理能量=${round3(poresMetrics.texture_energy)}，毛孔代理指数=${round3(poreIndex)}。${blurRisk || glareRisk ? 'lighting/glare may affect this.' : ''}`
+          : `From photo: texture energy=${round3(poresMetrics.texture_energy)}, pore proxy=${round3(poreIndex)}.${blurRisk || glareRisk ? ' lighting/glare may affect this.' : ''}`,
+      computed_features: {
+        texture_energy: round3(poresMetrics.texture_energy),
+        pore_index: round3(poreIndex),
+        specular_fraction: round3(specularFraction),
+        quality_factor: round3(qualityFactor),
+      },
+      geometry: {
+        type: 'grid',
+        rows: 6,
+        cols: 6,
+        values: buildGridHeatmapForBox(textureBox, poreIndex, { rows: 6, cols: 6 }),
+        bbox_norm: textureBox,
+      },
+    },
+    {
+      finding_id: 'pf_tone',
+      issue_type: 'tone',
+      subtype: 'uneven_tone_proxy',
+      severity: toneStable ? scoreToSeverityLevel0to4(toneScore) : 0,
+      confidence: toneConfidence,
+      uncertain: !toneStable,
+      evidence: toneStable
+        ? lang === 'CN'
+          ? `From photo: 亮度落差=${round3(darkMetrics.luma_drop)}，色偏=${round3(darkMetrics.hue_shift)}。`
+          : `From photo: luma-drop=${round3(darkMetrics.luma_drop)}, hue shift=${round3(darkMetrics.hue_shift)}.`
+        : lang === 'CN'
+          ? 'From photo: 光照/白平衡不稳定，暗沉/肤色不均结果不确定，建议重拍。'
+          : 'From photo: uneven-tone signal is uncertain, retake recommended (lighting/WB instability).',
+      computed_features: {
+        luma_drop: round3(darkMetrics.luma_drop),
+        hue_shift: round3(darkMetrics.hue_shift),
+        white_balance_unstable: wbUnstable,
+        quality_factor: round3(qualityFactor),
+      },
+      geometry: {
+        type: 'grid',
+        rows: 6,
+        cols: 6,
+        values: buildGridHeatmapForBox(toneBox, toneStable ? toneScore : 0.2, { rows: 6, cols: 6 }),
+        bbox_norm: toneBox,
+      },
+    },
+  ];
+
+  const takeaways = buildPhotoTakeaways({ findings: photoFindings, language: lang });
+  return { photo_findings: photoFindings, takeaways };
+}
+
 function computeIssueRawScores({ labStats, rgb, width, height, skinMask, skinPixels, regionBoxes, quality }) {
   const globalA = labStats.global.a;
   const globalL = labStats.global.L;
@@ -987,7 +1316,7 @@ function computeIssueRawScores({ labStats, rgb, width, height, skinMask, skinPix
   };
 }
 
-function toDiagnosisCardPayload({ diagnosis, quality, language }) {
+function toDiagnosisCardPayload({ diagnosis, quality, language, photoFindings, takeaways }) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const summaryNotes = [];
   if (quality && quality.grade !== 'pass') {
@@ -1004,6 +1333,8 @@ function toDiagnosisCardPayload({ diagnosis, quality, language }) {
     schema_version: 'aurora.skin_diagnosis.v1',
     quality,
     issues: diagnosis,
+    photo_findings: Array.isArray(photoFindings) ? photoFindings.slice(0, 10) : [],
+    takeaways: Array.isArray(takeaways) ? takeaways.slice(0, 10) : [],
     notes: summaryNotes.slice(0, 6),
   };
 }
@@ -1160,7 +1491,23 @@ async function runSkinDiagnosisV1({
     return { ok: false, reason: 'postprocess_failed' };
   }
 
-  const payload = toDiagnosisCardPayload({ diagnosis: issues, quality, language: lang });
+  const findingsOutput = buildPhotoFindings({
+    issues,
+    raw,
+    quality,
+    regionBoxes,
+    width,
+    height,
+    language: lang,
+  });
+
+  const payload = toDiagnosisCardPayload({
+    diagnosis: issues,
+    quality,
+    language: lang,
+    photoFindings: findingsOutput.photo_findings,
+    takeaways: findingsOutput.takeaways,
+  });
   const bbox = skin && skin.bbox && typeof skin.bbox === 'object' ? skin.bbox : null;
   const w = Number.isFinite(width) ? width : null;
   const h = Number.isFinite(height) ? height : null;
@@ -1262,6 +1609,10 @@ function buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language, profileSummar
     });
 
   const features = [];
+  const photoFindings = Array.isArray(d.photo_findings)
+    ? d.photo_findings.filter((item) => item && typeof item === 'object').slice(0, 10)
+    : [];
+  const takeaways = [];
   const qualityGrade = quality && typeof quality.grade === 'string' ? quality.grade : null;
   if (qualityGrade && qualityGrade !== 'pass') {
     features.push({
@@ -1270,6 +1621,36 @@ function buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language, profileSummar
           ? `照片质量=${qualityGrade}，我会更保守（避免把光照/油光/虚焦当成皮肤问题）。`
           : `Photo quality=${qualityGrade}; I’ll be more conservative (to avoid mistaking lighting/shine/blur for skin issues).`,
       confidence: 'pretty_sure',
+    });
+  }
+
+  const diagnosisTakeaways = Array.isArray(d.takeaways) ? d.takeaways : [];
+  for (const takeaway of diagnosisTakeaways) {
+    if (!takeaway || typeof takeaway !== 'object') continue;
+    const text = typeof takeaway.text === 'string' ? takeaway.text.trim() : '';
+    if (!text) continue;
+    takeaways.push({
+      takeaway_id: takeaway.takeaway_id || null,
+      source: takeaway.source || 'photo',
+      issue_type: takeaway.issue_type || null,
+      text,
+      confidence: round3(clamp01(Number(takeaway.confidence))),
+      linked_finding_ids: Array.isArray(takeaway.linked_finding_ids) ? takeaway.linked_finding_ids.slice(0, 6) : [],
+      linked_issue_types: Array.isArray(takeaway.linked_issue_types) ? takeaway.linked_issue_types.slice(0, 6) : [],
+    });
+  }
+
+  const userGoals = profileSummary && Array.isArray(profileSummary.goals) ? profileSummary.goals.filter((item) => typeof item === 'string') : [];
+  if (userGoals.length) {
+    const goalsText = userGoals.slice(0, 3).join(', ');
+    takeaways.push({
+      takeaway_id: 'tw_user_goals',
+      source: 'user',
+      issue_type: 'goal',
+      text: lang === 'CN' ? `You mentioned your goals: ${goalsText}.` : `You mentioned your goals: ${goalsText}.`,
+      confidence: 1,
+      linked_finding_ids: [],
+      linked_issue_types: ['goal'],
     });
   }
 
@@ -1387,6 +1768,9 @@ function buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language, profileSummar
     features: features.slice(0, 6),
     strategy: clampText(strategy, 1200),
     needs_risk_check,
+    photo_findings: photoFindings,
+    findings: photoFindings,
+    takeaways: takeaways.slice(0, 10),
   };
 }
 

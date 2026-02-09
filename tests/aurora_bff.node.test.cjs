@@ -121,6 +121,144 @@ test('Emotional preamble: does not double-prefix existing known preamble', async
   assert.match(String(out || ''), /^Got it — I’ll keep it clear and practical\./);
 });
 
+test('mergePhotoFindingsIntoAnalysis: injects photo findings/takeaways with explicit photo source', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal: auroraRouteInternals } = require('../src/auroraBff/routes');
+  const merged = auroraRouteInternals.mergePhotoFindingsIntoAnalysis({
+    analysis: {
+      features: [{ observation: 'safe baseline', confidence: 'somewhat_sure' }],
+      strategy: 'test?',
+    },
+    diagnosisV1: {
+      photo_findings: [
+        {
+          issue_type: 'redness',
+          subtype: 'diffuse_redness_proxy',
+          severity: 2,
+          confidence: 0.74,
+          evidence: 'a* shift elevated',
+          computed_features: { red_fraction: 0.31 },
+          geometry: { type: 'grid', rows: 2, cols: 2, values: [0.1, 0.2, 0.3, 0.4] },
+        },
+      ],
+      takeaways: [{ source: 'photo', issue_type: 'redness', text: 'reduce irritation', confidence: 0.66 }],
+    },
+    language: 'EN',
+    profileSummary: { goals: ['acne'] },
+  });
+  delete require.cache[moduleId];
+
+  assert.ok(Array.isArray(merged.photo_findings));
+  assert.equal(merged.photo_findings.length, 1);
+  assert.ok(Array.isArray(merged.findings));
+  assert.equal(merged.findings.length, 1);
+  assert.ok(Array.isArray(merged.takeaways));
+  assert.ok(merged.takeaways.some((item) => /^From photo:/i.test(String(item?.text || ''))));
+  assert.ok(merged.takeaways.some((item) => item && item.source === 'user'));
+});
+
+test('buildExecutablePlanForAnalysis: used_photos=false keeps non-photo takeaways and photo_notice', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal: auroraRouteInternals } = require('../src/auroraBff/routes');
+  const enriched = auroraRouteInternals.buildExecutablePlanForAnalysis({
+    analysis: {
+      features: [{ observation: 'baseline', confidence: 'somewhat_sure' }],
+      strategy: 'placeholder?',
+      takeaways: [{ source: 'photo', text: 'From photo: redness area noted', issue_type: 'redness' }],
+    },
+    language: 'EN',
+    usedPhotos: false,
+    photoQuality: { grade: 'unknown', reasons: [] },
+    profileSummary: { goals: ['acne'] },
+  });
+  delete require.cache[moduleId];
+
+  assert.ok(enriched.plan);
+  assert.equal(typeof enriched.photo_notice, 'string');
+  assert.match(enriched.photo_notice, /Based on your answers only \(photo not analyzed\)/);
+  assert.ok(Array.isArray(enriched.takeaways));
+  assert.equal(enriched.takeaways.some((item) => item && item.source === 'photo'), false);
+});
+
+test('buildExecutablePlanForAnalysis: used_photos=true links step why to photo finding ids', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal: auroraRouteInternals } = require('../src/auroraBff/routes');
+  const enriched = auroraRouteInternals.buildExecutablePlanForAnalysis({
+    analysis: {
+      features: [{ observation: 'photo signal', confidence: 'somewhat_sure' }],
+      strategy: 'placeholder?',
+      photo_findings: [
+        {
+          finding_id: 'pf_redness',
+          issue_type: 'redness',
+          severity: 3,
+          confidence: 0.82,
+          evidence: 'From photo: cheek redness',
+          computed_features: { red_fraction: 0.31 },
+        },
+      ],
+      takeaways: [{ source: 'photo', issue_type: 'redness', text: 'From photo: redness in cheek area' }],
+    },
+    language: 'EN',
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    profileSummary: { goals: ['acne'] },
+  });
+  delete require.cache[moduleId];
+
+  assert.ok(enriched.plan);
+  assert.ok(Array.isArray(enriched.takeaways));
+  assert.ok(enriched.takeaways.some((item) => item && item.source === 'photo'));
+  assert.ok(
+    enriched.takeaways.some((item) => Array.isArray(item?.linked_finding_ids) && item.linked_finding_ids.includes('pf_redness')),
+  );
+  const allSteps = [
+    ...(enriched.plan.today?.am_steps || []),
+    ...(enriched.plan.today?.pm_steps || []),
+    ...(enriched.plan.today?.pause_now || []),
+    ...(enriched.plan.next_7_days?.steps || []),
+    ...(enriched.plan.after_calm?.steps || []),
+  ];
+  assert.ok(allSteps.some((step) => String(step?.why || '').includes('pf_redness')));
+});
+
+test('buildExecutablePlanForAnalysis: quality fail returns retake-only plan (no active steps)', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal: auroraRouteInternals } = require('../src/auroraBff/routes');
+  const enriched = auroraRouteInternals.buildExecutablePlanForAnalysis({
+    analysis: {
+      features: [{ observation: 'retake needed', confidence: 'pretty_sure' }],
+      strategy: 'placeholder?',
+      takeaways: [{ source: 'photo', issue_type: 'quality', text: 'From photo: retake needed' }],
+    },
+    language: 'EN',
+    usedPhotos: true,
+    photoQuality: { grade: 'fail', reasons: ['blur'] },
+    profileSummary: {},
+  });
+  delete require.cache[moduleId];
+
+  assert.ok(enriched.plan);
+  assert.equal(Array.isArray(enriched.plan.today?.am_steps), true);
+  assert.equal(enriched.plan.today.am_steps.length, 0);
+  assert.equal(Array.isArray(enriched.plan.today?.pm_steps), true);
+  assert.equal(enriched.plan.today.pm_steps.length, 0);
+  const nextRules = Array.isArray(enriched.plan.next_7_days?.rules) ? enriched.plan.next_7_days.rules.join(' ') : '';
+  assert.match(nextRules, /retake/i);
+  const allSteps = [
+    ...(enriched.plan.today?.pause_now || []),
+    ...(enriched.plan.next_7_days?.steps || []),
+    ...(enriched.plan.after_calm?.steps || []),
+  ]
+    .map((step) => `${step?.what || ''} ${step?.why || ''}`.toLowerCase())
+    .join(' ');
+  assert.equal(/retinoid|acid|vitamin c|niacinamide|exfoliat/.test(allSteps), false);
+});
+
 test('Phase0 gate: no recos when profile is missing', async () => {
   const gate = shouldDiagnosisGate({
     message: 'Please recommend a moisturizer',
@@ -4713,4 +4851,365 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   assert.equal(card.payload?.quality_report?.llm?.report?.decision, 'skip');
   assert.equal(Array.isArray(card.payload?.analysis?.features), true);
   assert.match(String(card.payload.analysis.features[0].observation || ''), /photo/i);
+});
+
+test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_photos=true)', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const sharp = require('sharp');
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 216, g: 180, b: 160 } },
+      })
+        .png()
+        .toBuffer();
+
+      axios.post = async (url) => {
+        if (String(url).endsWith('/photos/presign')) {
+          return {
+            status: 200,
+            data: {
+              upload_id: 'upload_64x64',
+              upload: { method: 'PUT', url: 'https://signed-upload.test/object', headers: {} },
+            },
+          };
+        }
+        if (String(url).endsWith('/photos/confirm')) {
+          return {
+            status: 200,
+            data: {
+              qc_status: 'passed',
+              qc: { state: 'done', qc_status: 'passed', advice: { summary: 'ok', suggestions: [] } },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post url: ${url}`);
+      };
+      axios.request = async (config) => {
+        if (String(config?.url || '') === 'https://signed-upload.test/object') {
+          if (config?.data && typeof config.data.on === 'function') {
+            await new Promise((resolve, reject) => {
+              config.data.on('data', () => {});
+              config.data.on('end', resolve);
+              config.data.on('error', reject);
+            });
+          }
+          return { status: 200, data: '' };
+        }
+        throw new Error(`Unexpected axios.request url: ${config?.url || ''}`);
+      };
+      axios.get = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/object',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+              content_type: 'image/png',
+            },
+          };
+        }
+        if (u === 'https://signed-download.test/object') {
+          return {
+            status: 200,
+            data: pngBytes,
+            headers: { 'content-type': 'image/png' },
+          };
+        }
+        if (u.endsWith('/photos/qc')) {
+          return {
+            status: 200,
+            data: { qc_status: 'passed', qc: { state: 'done', qc_status: 'passed' } },
+          };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const headers = {
+          'X-Aurora-UID': 'uid_photo_path',
+          'X-Trace-ID': 'trace_photo_path',
+          'X-Brief-ID': 'brief_photo_path',
+          'X-Lang': 'EN',
+        };
+
+        const uploadResp = await request
+          .post('/v1/photos/upload')
+          .set(headers)
+          .field('slot_id', 'daylight')
+          .field('consent', 'true')
+          .attach('photo', pngBytes, { filename: 'face.png', contentType: 'image/png' })
+          .expect(200);
+
+        const uploadCard = Array.isArray(uploadResp.body?.cards)
+          ? uploadResp.body.cards.find((c) => c && c.type === 'photo_confirm')
+          : null;
+        assert.ok(uploadCard);
+        const photoId = uploadCard?.payload?.photo_id;
+        assert.equal(typeof photoId, 'string');
+        assert.ok(photoId.length > 0);
+
+        const analysisResp = await request
+          .post('/v1/analysis/skin')
+          .set(headers)
+          .send({
+            use_photo: true,
+            currentRoutine: 'AM gentle cleanser + SPF; PM gentle cleanser + retinol + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: photoId, qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const analysisCard = Array.isArray(analysisResp.body?.cards)
+          ? analysisResp.body.cards.find((c) => c && c.type === 'analysis_summary')
+          : null;
+        assert.ok(analysisCard);
+        assert.equal(analysisCard?.payload?.used_photos, true);
+        assert.notEqual(analysisCard?.payload?.analysis_source, 'rule_based_with_photo_qc');
+        assert.equal(Boolean(analysisCard?.payload?.photo_notice), false);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      axios.post = originalPost;
+      axios.request = originalRequest;
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/fail-403',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/fail-403') {
+            return { status: 403, data: 'access denied' };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_fail_4xx',
+            'X-Trace-ID': 'trace_4xx',
+            'X-Brief-ID': 'brief_4xx',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'PM retinol + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_4xx', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.used_photos, false);
+        assert.equal(card?.payload?.analysis_source, 'rule_based_with_photo_qc');
+        assert.equal(card?.payload?.photo_notice?.failure_code, 'DOWNLOAD_URL_FETCH_4XX');
+        assert.match(String(card?.payload?.photo_notice?.message || ''), /couldn't analyze your photo/i);
+        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'DOWNLOAD_URL_FETCH_4XX'), true);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      axios.post = originalPost;
+      axios.request = originalRequest;
+
+      axios.get = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/fail-timeout',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+              content_type: 'image/png',
+            },
+          };
+        }
+        if (u === 'https://signed-download.test/fail-timeout') {
+          const err = new Error('timeout of 800ms exceeded');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_fail_timeout',
+            'X-Trace-ID': 'trace_timeout',
+            'X-Brief-ID': 'brief_timeout',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'PM retinol + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_timeout', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.used_photos, false);
+        assert.equal(card?.payload?.analysis_source, 'rule_based_with_photo_qc');
+        assert.equal(card?.payload?.photo_notice?.failure_code, 'DOWNLOAD_URL_TIMEOUT');
+        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'DOWNLOAD_URL_TIMEOUT'), true);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchPhotoBytesFromPivotaBackend: signed URL expired maps to DOWNLOAD_URL_EXPIRED', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { __internal } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const originalGet = axios.get;
+
+      axios.get = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/expired',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+            },
+          };
+        }
+        if (u === 'https://signed-download.test/expired') {
+          return { status: 403, data: 'Request has expired' };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      try {
+        const req = {
+          get(name) {
+            const key = String(name || '').toLowerCase();
+            if (key === 'x-aurora-uid') return 'uid_expired_case';
+            return '';
+          },
+        };
+        const out = await __internal.fetchPhotoBytesFromPivotaBackend({ req, photoId: 'photo_expired_case' });
+        assert.equal(out?.ok, false);
+        assert.equal(out?.failure_code, 'DOWNLOAD_URL_EXPIRED');
+      } finally {
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
 });
