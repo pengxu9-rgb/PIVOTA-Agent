@@ -1094,6 +1094,55 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     photoFailureCode: photoNotice && typeof photoNotice.failure_code === 'string' ? photoNotice.failure_code : '',
     photosProvided: true,
   });
+  const geometrySanitizer =
+    analysis && analysis.__geometry_sanitizer && typeof analysis.__geometry_sanitizer === 'object'
+      ? analysis.__geometry_sanitizer
+      : null;
+  if (analysis && Object.prototype.hasOwnProperty.call(analysis, '__geometry_sanitizer')) {
+    delete analysis.__geometry_sanitizer;
+  }
+
+  const qualityGradeForMetrics = normalizeQualityGradeForMetrics(diagnosisV1?.quality?.grade || photoQuality?.grade);
+  const pipelineVersionForMetrics = normalizePipelineVersionForMetrics(String(process.env.DIAG_PIPELINE_VERSION || 'legacy'));
+  const deviceClassForMetrics = inferDeviceClassForMetrics(req);
+  const sanitizerTotals = geometrySanitizer || { checked_n: 0, dropped_n: 0, clipped_n: 0 };
+  recordAnalyzeRequest({
+    issueType: 'all',
+    qualityGrade: qualityGradeForMetrics,
+    pipelineVersion: pipelineVersionForMetrics,
+    deviceClass: deviceClassForMetrics,
+  });
+  recordGeometrySanitizerTotals({
+    issueType: 'all',
+    qualityGrade: qualityGradeForMetrics,
+    pipelineVersion: pipelineVersionForMetrics,
+    deviceClass: deviceClassForMetrics,
+    dropped: sanitizerTotals.dropped_n,
+    clipped: sanitizerTotals.clipped_n,
+  });
+  const sanitizerByIssue =
+    geometrySanitizer && geometrySanitizer.by_issue && typeof geometrySanitizer.by_issue === 'object'
+      ? geometrySanitizer.by_issue
+      : {};
+  for (const [issueType, issueStatsRaw] of Object.entries(sanitizerByIssue)) {
+    const issueStats = issueStatsRaw && typeof issueStatsRaw === 'object' ? issueStatsRaw : {};
+    const checkedN = Number(issueStats.checked_n || 0);
+    if (checkedN <= 0) continue;
+    recordAnalyzeRequest({
+      issueType,
+      qualityGrade: qualityGradeForMetrics,
+      pipelineVersion: pipelineVersionForMetrics,
+      deviceClass: deviceClassForMetrics,
+    });
+    recordGeometrySanitizerTotals({
+      issueType,
+      qualityGrade: qualityGradeForMetrics,
+      pipelineVersion: pipelineVersionForMetrics,
+      deviceClass: deviceClassForMetrics,
+      dropped: issueStats.dropped_n,
+      clipped: issueStats.clipped_n,
+    });
+  }
 
   const payload = {
     analysis,
@@ -1459,6 +1508,7 @@ function toNullableInt(value) {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
   if (!Number.isFinite(num)) return null;
+  if (num <= 0) return null;
   return Math.trunc(num);
 }
 
@@ -1956,11 +2006,12 @@ function sanitizeFindingGeometry(rawGeometry) {
 function mergeGeometrySanitizerByIssue(target, issueType, stats) {
   const issue = String(issueType || 'unknown').trim().toLowerCase() || 'unknown';
   if (!target[issue]) {
-    target[issue] = { checked_n: 0, dropped_n: 0, clipped_n: 0 };
+    target[issue] = { checked_n: 0, dropped_n: 0, clipped_n: 0, fixed_n: 0 };
   }
   target[issue].checked_n += Number(stats.checked_n || 0);
   target[issue].dropped_n += Number(stats.dropped_n || 0);
   target[issue].clipped_n += Number(stats.clipped_n || 0);
+  target[issue].fixed_n += Number(stats.fixed_n != null ? stats.fixed_n : stats.clipped_n || 0);
 }
 
 function buildExecutablePlanForAnalysis({
@@ -1997,6 +2048,13 @@ function buildExecutablePlanForAnalysis({
         ? base.findings
         : []
     : [];
+  const geometrySanitizer = {
+    checked_n: 0,
+    dropped_n: 0,
+    clipped_n: 0,
+    fixed_n: 0,
+    by_issue: {},
+  };
   const photoFindings = [];
   const issueToFindingIds = new Map();
   for (let i = 0; i < findingsInput.length; i += 1) {
@@ -2005,6 +2063,19 @@ function buildExecutablePlanForAnalysis({
     const issueType = typeof finding.issue_type === 'string' ? finding.issue_type.trim() : '';
     if (!issueType) continue;
     const findingIdRaw = typeof finding.finding_id === 'string' && finding.finding_id.trim() ? finding.finding_id.trim() : `pf_${issueType}_${i + 1}`;
+    const geometryStats = sanitizeFindingGeometry(finding.geometry);
+    geometrySanitizer.checked_n += Number(geometryStats.checked_n || 0);
+    geometrySanitizer.dropped_n += Number(geometryStats.dropped_n || 0);
+    geometrySanitizer.clipped_n += Number(geometryStats.clipped_n || 0);
+    geometrySanitizer.fixed_n += Number(geometryStats.clipped_n || 0);
+    if (Number(geometryStats.checked_n || 0) > 0) {
+      mergeGeometrySanitizerByIssue(geometrySanitizer.by_issue, issueType, {
+        checked_n: geometryStats.checked_n,
+        dropped_n: geometryStats.dropped_n,
+        clipped_n: geometryStats.clipped_n,
+        fixed_n: geometryStats.clipped_n,
+      });
+    }
     const normalizedFinding = {
       finding_id: findingIdRaw,
       issue_type: issueType,
@@ -2013,7 +2084,7 @@ function buildExecutablePlanForAnalysis({
       confidence: Number.isFinite(finding.confidence) ? Math.max(0, Math.min(1, Number(finding.confidence))) : 0,
       evidence: typeof finding.evidence === 'string' ? finding.evidence.trim() : '',
       computed_features: finding.computed_features && typeof finding.computed_features === 'object' ? finding.computed_features : {},
-      geometry: finding.geometry && typeof finding.geometry === 'object' ? finding.geometry : null,
+      geometry: geometryStats.geometry,
       ...(finding.uncertain === true ? { uncertain: true } : {}),
     };
     photoFindings.push(normalizedFinding);
@@ -2415,6 +2486,23 @@ function buildExecutablePlanForAnalysis({
   } else {
     delete base.retake_guide;
   }
+  const geometryByIssue = {};
+  for (const issueType of Object.keys(geometrySanitizer.by_issue).sort((a, b) => a.localeCompare(b))) {
+    const raw = geometrySanitizer.by_issue[issueType] || {};
+    geometryByIssue[issueType] = {
+      checked_n: Number(raw.checked_n || 0),
+      dropped_n: Number(raw.dropped_n || 0),
+      clipped_n: Number(raw.clipped_n || 0),
+      fixed_n: Number(raw.fixed_n || 0),
+    };
+  }
+  base.__geometry_sanitizer = {
+    checked_n: Number(geometrySanitizer.checked_n || 0),
+    dropped_n: Number(geometrySanitizer.dropped_n || 0),
+    clipped_n: Number(geometrySanitizer.clipped_n || 0),
+    fixed_n: Number(geometrySanitizer.fixed_n || 0),
+    by_issue: geometryByIssue,
+  };
   return base;
 }
 
@@ -8376,6 +8464,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         const photoNotUsed = Boolean(userRequestedPhoto && photosProvided && !usedPhotos);
         const photoFailureCode = photoFailureCodes[0] || null;
+        let geometrySanitizer = null;
         let photoNotice = null;
         if (photoNotUsed && photoFailureCode) {
           photoNotice = {
@@ -8400,11 +8489,59 @@ function mountAuroraBffRoutes(app, { logger }) {
             photoFailureCode,
             photosProvided,
           });
+          geometrySanitizer =
+            analysis && analysis.__geometry_sanitizer && typeof analysis.__geometry_sanitizer === 'object'
+              ? analysis.__geometry_sanitizer
+              : null;
+          if (analysis && Object.prototype.hasOwnProperty.call(analysis, '__geometry_sanitizer')) {
+            delete analysis.__geometry_sanitizer;
+          }
         }
 
         let renderedAnalysisSource = analysisSource;
         if (photoNotUsed && analysisSource !== 'retake') {
           renderedAnalysisSource = 'rule_based_with_photo_qc';
+        }
+        const qualityGradeForMetrics = normalizeQualityGradeForMetrics(photoQuality && photoQuality.grade);
+        const pipelineVersionForMetrics = normalizePipelineVersionForMetrics(pipelineVersion || 'unknown');
+        const deviceClassForMetrics = inferDeviceClassForMetrics(req);
+        const sanitizerTotals = geometrySanitizer || { checked_n: 0, dropped_n: 0, clipped_n: 0 };
+        recordAnalyzeRequest({
+          issueType: 'all',
+          qualityGrade: qualityGradeForMetrics,
+          pipelineVersion: pipelineVersionForMetrics,
+          deviceClass: deviceClassForMetrics,
+        });
+        recordGeometrySanitizerTotals({
+          issueType: 'all',
+          qualityGrade: qualityGradeForMetrics,
+          pipelineVersion: pipelineVersionForMetrics,
+          deviceClass: deviceClassForMetrics,
+          dropped: sanitizerTotals.dropped_n,
+          clipped: sanitizerTotals.clipped_n,
+        });
+        const sanitizerByIssue =
+          geometrySanitizer && geometrySanitizer.by_issue && typeof geometrySanitizer.by_issue === 'object'
+            ? geometrySanitizer.by_issue
+            : {};
+        for (const [issueType, issueStatsRaw] of Object.entries(sanitizerByIssue)) {
+          const issueStats = issueStatsRaw && typeof issueStatsRaw === 'object' ? issueStatsRaw : {};
+          const checkedN = Number(issueStats.checked_n || 0);
+          if (checkedN <= 0) continue;
+          recordAnalyzeRequest({
+            issueType,
+            qualityGrade: qualityGradeForMetrics,
+            pipelineVersion: pipelineVersionForMetrics,
+            deviceClass: deviceClassForMetrics,
+          });
+          recordGeometrySanitizerTotals({
+            issueType,
+            qualityGrade: qualityGradeForMetrics,
+            pipelineVersion: pipelineVersionForMetrics,
+            deviceClass: deviceClassForMetrics,
+            dropped: issueStats.dropped_n,
+            clipped: issueStats.clipped_n,
+          });
         }
 
         if (analysis && persistLastAnalysis) {
@@ -8520,6 +8657,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	            diagnosisV1,
 	            analysis,
 	            analysisSource,
+	            geometrySanitizer,
 	            diagnosisPhotoBytes,
 	            diagnosisV1Internal,
 	            logger,
