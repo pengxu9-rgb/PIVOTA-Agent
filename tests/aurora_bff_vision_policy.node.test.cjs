@@ -89,6 +89,9 @@ test('vision failure mapping: timeout / 429 / 4xx / 5xx / schema', () => {
 
   const grpcDeadline = classifyVisionProviderFailure({ code: 'DEADLINE_EXCEEDED', message: 'deadline exceeded' });
   assert.equal(grpcDeadline.reason, VisionUnavailabilityReason.VISION_TIMEOUT);
+
+  const grpcUnauthenticated = classifyVisionProviderFailure({ code: 'UNAUTHENTICATED', message: 'api key invalid' });
+  assert.equal(grpcUnauthenticated.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
 });
 
 test('vision retry policy: only retry retryable reasons', async () => {

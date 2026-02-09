@@ -199,9 +199,8 @@ function classifyVisionProviderFailure(error) {
       };
     }
     if (grpc4xxCodes.has(normalizedErrorCode)) {
-      const missingKeyLike = normalizedErrorCode === 'UNAUTHENTICATED' && /api[_\s-]?key|credential|auth/.test(text);
       return {
-        reason: missingKeyLike ? VisionUnavailabilityReason.VISION_MISSING_KEY : VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+        reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
         status_code: statusCode,
         error_code: errorCode,
       };
@@ -249,9 +248,8 @@ function classifyVisionProviderFailure(error) {
   }
 
   if (/clienterror|invalid argument|permission denied|unauthenticated|forbidden/.test(text)) {
-    const missingKeyLike = /api[_\s-]?key|credential|auth/.test(text);
     return {
-      reason: missingKeyLike ? VisionUnavailabilityReason.VISION_MISSING_KEY : VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+      reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
       status_code: statusCode,
       error_code: errorCode,
     };
