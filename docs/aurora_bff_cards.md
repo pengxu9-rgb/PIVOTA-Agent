@@ -65,6 +65,32 @@ Returned by `POST /v1/profile/update`.
 `payload`:
 - `profile` (profile summary)
 
+### `analysis_summary`
+
+Returned by `POST /v1/analysis/skin`.
+
+`payload`:
+- `analysis` (object)
+- `low_confidence` (boolean)
+- `photos_provided` (boolean): user submitted photo metadata this turn.
+- `photo_qc` (array): photo slot QC snapshot.
+- `used_photos` (boolean): `true` only when photo bytes were actually consumed by diagnosis/vision stages.
+- `analysis_source` (string): may include `retake|rule_based|rule_based_with_photo_qc|diagnosis_v1_template|vision_openai|aurora_text|baseline_low_confidence`.
+- optional `photo_notice` (object; only when `photos_provided=true` and `used_photos=false`):
+  - `failure_code` (string enum): `DOWNLOAD_URL_GENERATE_FAILED|DOWNLOAD_URL_FETCH_4XX|DOWNLOAD_URL_FETCH_5XX|DOWNLOAD_URL_TIMEOUT|DOWNLOAD_URL_EXPIRED|DOWNLOAD_URL_DNS`
+  - `message` (string): explicit user-facing fallback notice ("answers/history only; please re-upload").
+- `quality_report` (object):
+  - `photo_quality` `{ grade, reasons[] }`
+  - `detector_confidence` (object)
+  - optional `detector_policy` (object)
+  - `degraded_mode` (string)
+  - `llm` `{ vision, report }`
+  - `reasons` (string[])
+
+Failure semantics:
+- If photo download fails, `field_missing` includes `{ field: "analysis.used_photos", reason: <failure_code> }`.
+- If `photos_provided=true` and `used_photos=false`, response must not imply photo-derived findings.
+
 ### `routine_simulation`
 
 Returned by `POST /v1/routine/simulate`.

@@ -26,6 +26,29 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 
 - `AURORA_DECISION_BASE_URL` (Aurora decision system base, e.g. `https://...`)
 - `PIVOTA_BACKEND_BASE_URL` (pivota-backend base). If unset, the service falls back to `PIVOTA_API_BASE`.
+- `PIVOTA_BACKEND_AGENT_API_KEY` (or compatible API key env) for photo upload/download-url bridge when checkout token is absent.
+
+### Skin photo diagnosis knobs
+
+- `AURORA_SKIN_VISION_ENABLED` (`true|false`)
+- `AURORA_SKIN_VISION_MODEL`
+- `AURORA_SKIN_VISION_TIMEOUT_MS`
+- `AURORA_PHOTO_UPLOAD_MAX_BYTES`
+- `AURORA_PHOTO_DOWNLOAD_URL_TIMEOUT_MS`
+- `AURORA_PHOTO_FETCH_TIMEOUT_MS`
+- `AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS`
+- `AURORA_PHOTO_FETCH_RETRIES`
+- `AURORA_PHOTO_FETCH_RETRY_BASE_MS`
+- `AURORA_PHOTO_CACHE_MAX_ITEMS`
+- `AURORA_PHOTO_CACHE_TTL_MS`
+
+Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`):
+- `DOWNLOAD_URL_GENERATE_FAILED`
+- `DOWNLOAD_URL_FETCH_4XX`
+- `DOWNLOAD_URL_FETCH_5XX`
+- `DOWNLOAD_URL_TIMEOUT`
+- `DOWNLOAD_URL_EXPIRED`
+- `DOWNLOAD_URL_DNS`
 
 ### CORS
 
