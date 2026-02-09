@@ -27,6 +27,8 @@ const verifierCalls = new Map();
 const verifierFails = new Map();
 let verifierBudgetGuardCount = 0;
 let verifierCircuitOpenCount = 0;
+let verifierRetryCount = 0;
+const verifierTimeoutByStage = new Map();
 const verifierAgreementHistogram = new Map([
   [0.2, 0],
   [0.4, 0],
@@ -112,6 +114,12 @@ function normalizeHttpStatusClass(statusClass, reason) {
   }
   const fromReason = cleanMetricToken(reason, '');
   if (fromReason.includes('timeout')) return 'timeout';
+  return 'unknown';
+}
+
+function normalizeTimeoutStage(stage) {
+  const token = cleanMetricToken(stage, '');
+  if (token === 'connect' || token === 'read' || token === 'total') return token;
   return 'unknown';
 }
 
@@ -265,7 +273,7 @@ function recordVerifyCall({ status } = {}) {
   incCounter(verifierCalls, { status: safeStatus }, 1);
 }
 
-function recordVerifyFail({ reason, provider, httpStatusClass } = {}) {
+function recordVerifyFail({ reason, provider, httpStatusClass, timeoutStage } = {}) {
   const safeReason = normalizeVerifyFailReason(reason);
   const safeProvider = normalizeVerifyProvider(provider);
   const safeStatusClass = normalizeHttpStatusClass(httpStatusClass, safeReason);
@@ -278,6 +286,9 @@ function recordVerifyFail({ reason, provider, httpStatusClass } = {}) {
     },
     1,
   );
+  if (safeReason === 'TIMEOUT') {
+    incCounter(verifierTimeoutByStage, { stage: normalizeTimeoutStage(timeoutStage) }, 1);
+  }
 }
 
 function recordVerifyBudgetGuard() {
@@ -286,6 +297,12 @@ function recordVerifyBudgetGuard() {
 
 function recordVerifyCircuitOpen() {
   verifierCircuitOpenCount += 1;
+}
+
+function recordVerifyRetry({ attempts } = {}) {
+  const attemptCount = Number.isFinite(Number(attempts)) ? Math.max(1, Math.trunc(Number(attempts))) : 1;
+  const retries = Math.max(0, attemptCount - 1);
+  if (retries > 0) verifierRetryCount += retries;
 }
 
 function recordVerifyAgreementScore(score) {
@@ -442,6 +459,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE verify_circuit_open_total counter');
   lines.push(`verify_circuit_open_total ${verifierCircuitOpenCount}`);
 
+  lines.push('# HELP verify_retry_total Total number of verifier retry attempts (attempts-1).');
+  lines.push('# TYPE verify_retry_total counter');
+  lines.push(`verify_retry_total ${verifierRetryCount}`);
+
+  lines.push('# HELP verify_timeout_total Total number of verifier timeout failures by timeout stage.');
+  lines.push('# TYPE verify_timeout_total counter');
+  renderCounter(lines, 'verify_timeout_total', verifierTimeoutByStage);
+
   lines.push('# HELP agreement_histogram Agreement score distribution for Gemini shadow verifier.');
   lines.push('# TYPE agreement_histogram histogram');
   for (const [bucket, value] of verifierAgreementHistogram.entries()) {
@@ -510,6 +535,8 @@ function resetVisionMetrics() {
   verifierHardCaseCount = 0;
   verifierBudgetGuardCount = 0;
   verifierCircuitOpenCount = 0;
+  verifierRetryCount = 0;
+  verifierTimeoutByStage.clear();
   analyzeRequestsCounter.clear();
   geometrySanitizerDropCounter.clear();
   geometrySanitizerClipCounter.clear();
@@ -534,6 +561,8 @@ function snapshotVisionMetrics() {
     verifierHardCaseCount,
     verifierBudgetGuardCount,
     verifierCircuitOpenCount,
+    verifierRetryCount,
+    verifierTimeoutByStage: Array.from(verifierTimeoutByStage.entries()),
     analyzeRequests: Array.from(analyzeRequestsCounter.entries()),
     geometrySanitizerDrops: Array.from(geometrySanitizerDropCounter.entries()),
     geometrySanitizerClips: Array.from(geometrySanitizerClipCounter.entries()),
@@ -549,6 +578,7 @@ module.exports = {
   recordVerifyFail,
   recordVerifyBudgetGuard,
   recordVerifyCircuitOpen,
+  recordVerifyRetry,
   recordVerifyAgreementScore,
   recordVerifyHardCase,
   recordAnalyzeRequest,

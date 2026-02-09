@@ -192,11 +192,13 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function withTimeout(promise, timeoutMs) {
+function withTimeout(promise, timeoutMs, { code = 'ETIMEDOUT', timeoutStage = 'total' } = {}) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       const err = new Error(`timeout after ${timeoutMs}ms`);
-      err.code = 'ETIMEDOUT';
+      err.code = code;
+      err.timeout_stage = timeoutStage;
+      err.timeout_ms = timeoutMs;
       reject(err);
     }, timeoutMs);
     promise
@@ -514,6 +516,12 @@ function inferHttpStatusClass(statusCode, reason) {
   return 'unknown';
 }
 
+function normalizeTimeoutStage(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'connect' || token === 'read' || token === 'total') return token;
+  return null;
+}
+
 function classifyProviderFailureMeta(error) {
   const statusCode =
     (Number.isFinite(Number(error?.status)) && Number(error.status)) ||
@@ -529,6 +537,15 @@ function classifyProviderFailureMeta(error) {
   const message = String(error?.message || '').trim();
   const text = `${message} ${responseBody}`.trim().toLowerCase();
   const upstreamRequestId = extractUpstreamRequestIdFromError(error);
+  const timeoutStage =
+    normalizeTimeoutStage(error?.timeout_stage) ||
+    (String(errorCode || '').toUpperCase().includes('CONNECT')
+      ? 'connect'
+      : String(errorCode || '').toUpperCase().includes('READ')
+        ? 'read'
+        : String(errorCode || '').toUpperCase().includes('TIMEOUT')
+          ? 'total'
+          : null);
 
   const networkCodes = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'EPROTO']);
   const isTimeout =
@@ -570,6 +587,7 @@ function classifyProviderFailureMeta(error) {
     statusClass: inferHttpStatusClass(statusCode, reason),
     errorClass: errorCode || errorName || 'UNKNOWN_ERROR',
     responseBytesLen: responseBody ? Buffer.byteLength(String(responseBody), 'utf8') : 0,
+    ...(timeoutStage ? { timeoutStage } : {}),
     ...(upstreamRequestId ? { upstreamRequestId } : {}),
   };
 }
@@ -1192,6 +1210,8 @@ async function runGeminiProvider({
   photoQuality,
   retries,
   timeoutMs,
+  connectTimeoutMs,
+  readTimeoutMs,
   model,
 } = {}) {
   const startedAt = Date.now();
@@ -1199,6 +1219,12 @@ async function runGeminiProvider({
   const qualityFeatures = buildQualityFeatureSnapshot(photoQuality);
   const imageBytesLen = Buffer.isBuffer(imageBuffer) ? imageBuffer.length : 0;
   const requestPayloadBytesLen = imageBytesLen > 0 ? Math.ceil((imageBytesLen / 3)) * 4 : 0;
+  const safeConnectTimeoutMs = Math.max(500, Math.trunc(Number(connectTimeoutMs || 6000)));
+  const safeReadTimeoutMs = Math.max(500, Math.trunc(Number(readTimeoutMs || 12000)));
+  const safeTotalTimeoutMs = Math.max(
+    1000,
+    Math.trunc(Number(timeoutMs || (safeConnectTimeoutMs + safeReadTimeoutMs))),
+  );
   if (!apiKey) {
     return {
       ok: false,
@@ -1290,7 +1316,11 @@ async function runGeminiProvider({
   const attempts = Math.max(1, retries + 1);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await withTimeout(ai.models.generateContent(request), timeoutMs);
+      const response = await withTimeout(
+        ai.models.generateContent(request),
+        safeTotalTimeoutMs,
+        { code: 'ETIMEDOUT_TOTAL', timeoutStage: 'total' },
+      );
       const upstreamRequestId = extractUpstreamRequestIdFromResult(response);
       const text = extractTextFromGeminiResponse(response);
       const responseBytesLen = Buffer.byteLength(String(text || ''), 'utf8');
@@ -1316,6 +1346,10 @@ async function runGeminiProvider({
           image_bytes_len: imageBytesLen,
           request_payload_bytes_len: requestPayloadBytesLen,
           response_bytes_len: responseBytesLen,
+          timeout_stage: null,
+          timeout_connect_ms: safeConnectTimeoutMs,
+          timeout_read_ms: safeReadTimeoutMs,
+          timeout_total_ms: safeTotalTimeoutMs,
           ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
         };
       }
@@ -1342,6 +1376,10 @@ async function runGeminiProvider({
         image_bytes_len: imageBytesLen,
         request_payload_bytes_len: requestPayloadBytesLen,
         response_bytes_len: responseBytesLen,
+        timeout_stage: null,
+        timeout_connect_ms: safeConnectTimeoutMs,
+        timeout_read_ms: safeReadTimeoutMs,
+        timeout_total_ms: safeTotalTimeoutMs,
         ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
       };
     } catch (err) {
@@ -1365,6 +1403,10 @@ async function runGeminiProvider({
     failure_reason: failureMeta.reason,
     http_status_class: failureMeta.statusClass,
     error_class: failureMeta.errorClass,
+    ...(failureMeta.timeoutStage ? { timeout_stage: failureMeta.timeoutStage } : {}),
+    timeout_connect_ms: safeConnectTimeoutMs,
+    timeout_read_ms: safeReadTimeoutMs,
+    timeout_total_ms: safeTotalTimeoutMs,
     image_bytes_len: imageBytesLen,
     request_payload_bytes_len: requestPayloadBytesLen,
     response_bytes_len: failureMeta.responseBytesLen,

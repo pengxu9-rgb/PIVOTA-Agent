@@ -32,6 +32,7 @@ const {
   recordVerifyFail,
   recordVerifyBudgetGuard,
   recordVerifyCircuitOpen,
+  recordVerifyRetry,
   recordVerifyAgreementScore,
   recordVerifyHardCase,
   recordAnalyzeRequest,
@@ -8756,12 +8757,21 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                  }),
 	                onAgreement: (score) => recordEnsembleAgreementScore(score),
 	                onVerifyCall: ({ status }) => recordVerifyCall({ status }),
-	                onVerifyFail: ({ reason, provider, http_status_class: httpStatusClass }) =>
+	                onVerifyFail: ({
+	                  reason,
+	                  provider,
+	                  http_status_class: httpStatusClass,
+	                  timeout_stage: timeoutStage,
+	                  retry_count: retryCount,
+	                }) =>
 	                  recordVerifyFail({
 	                    reason,
 	                    provider,
 	                    httpStatusClass,
+	                    timeoutStage,
+	                    retryCount,
 	                  }),
+	                onVerifyRetry: ({ attempts }) => recordVerifyRetry({ attempts }),
 	                onVerifyBudgetGuard: () => recordVerifyBudgetGuard(),
 	                onVerifyCircuitOpen: () => recordVerifyCircuitOpen(),
 	                onVerifyAgreement: (score) => recordVerifyAgreementScore(score),
@@ -8781,6 +8791,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 		                    verify_final_reason: verify.final_reason || null,
 		                    verify_raw_final_reason: verify.raw_final_reason || null,
 		                    verify_fail_reason: verify.verify_fail_reason || null,
+		                    verify_timeout_stage: verify.timeout_stage || null,
 		                    verify_upstream_request_id: verify.upstream_request_id || null,
 		                    verify_attempts: Number.isFinite(Number(verify.attempts)) ? Number(verify.attempts) : null,
 		                    verify_latency_ms: Number.isFinite(Number(verify.latency_ms)) ? Number(verify.latency_ms) : null,

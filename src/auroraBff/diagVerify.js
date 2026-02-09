@@ -607,10 +607,30 @@ async function appendHardCaseRecord(record) {
 }
 
 function getVerifierConfig() {
+  const connectTimeoutMs = numEnv(
+    'DIAG_VERIFY_CONNECT_TIMEOUT_MS',
+    numEnv('DIAG_GEMINI_VERIFY_CONNECT_TIMEOUT_MS', 6000, 500, 60000),
+    500,
+    60000,
+  );
+  const readTimeoutMs = numEnv(
+    'DIAG_VERIFY_READ_TIMEOUT_MS',
+    numEnv('DIAG_GEMINI_VERIFY_READ_TIMEOUT_MS', 12000, 500, 90000),
+    500,
+    90000,
+  );
+  const totalTimeoutDefault = Math.max(1000, Math.trunc(connectTimeoutMs + readTimeoutMs));
   return {
     enabled: boolEnv('DIAG_GEMINI_VERIFY', false),
     iouThreshold: numEnv('DIAG_GEMINI_VERIFY_IOU_THRESHOLD', 0.3, 0.05, 0.95),
-    timeoutMs: numEnv('DIAG_VERIFY_TIMEOUT_MS', numEnv('DIAG_GEMINI_VERIFY_TIMEOUT_MS', 12000, 1000, 45000), 1000, 45000),
+    timeoutConnectMs: connectTimeoutMs,
+    timeoutReadMs: readTimeoutMs,
+    timeoutMs: numEnv(
+      'DIAG_VERIFY_TIMEOUT_MS',
+      numEnv('DIAG_GEMINI_VERIFY_TIMEOUT_MS', totalTimeoutDefault, 1000, 120000),
+      1000,
+      120000,
+    ),
     retries: Math.trunc(numEnv('DIAG_GEMINI_VERIFY_RETRIES', 1, 0, 3)),
     hardCaseThreshold: numEnv('DIAG_GEMINI_VERIFY_HARD_CASE_THRESHOLD', 0.55, 0, 1),
     maxCallsPerMin: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_MIN', 60, 0, 1000000))),
@@ -793,6 +813,8 @@ async function runGeminiShadowVerify({
     photoQuality,
     retries: cfg.retries,
     timeoutMs: cfg.timeoutMs,
+    connectTimeoutMs: cfg.timeoutConnectMs,
+    readTimeoutMs: cfg.timeoutReadMs,
     model: cfg.model,
   });
 
@@ -800,6 +822,9 @@ async function runGeminiShadowVerify({
   const verifyAttempts = Math.max(1, toInt(geminiOutput?.attempts, cfg.retries + 1));
   const providerStatusCode = toInt(geminiOutput?.provider_status_code, geminiOutput?.ok ? 200 : 0);
   const statusClass = normalizeHttpStatusClass(geminiOutput?.http_status_class || providerStatusCode, geminiOutput?.failure_reason);
+  const timeoutStage = String(geminiOutput?.timeout_stage || '')
+    .trim()
+    .toLowerCase() || null;
   const rawFinalReason = geminiOutput?.ok ? 'OK' : String(geminiOutput?.failure_reason || VerifyFailReason.UNKNOWN);
   const verifyFailReason = geminiOutput?.ok
     ? null
@@ -832,6 +857,7 @@ async function runGeminiShadowVerify({
     request_payload_bytes_len: requestPayloadBytesLen,
     response_bytes_len: responseBytesLen,
     schema_error_summary: schemaErrorSummary,
+    ...(timeoutStage ? { timeout_stage: timeoutStage } : {}),
     ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
     trace_id: effectiveTraceId,
   };
@@ -935,10 +961,12 @@ async function runGeminiShadowVerify({
       http_status_class: statusClass,
       latency_ms: verifyLatencyMs,
       attempts: verifyAttempts,
+      retry_count: Math.max(0, verifyAttempts - 1),
       final_reason: finalReason,
       raw_final_reason: rawFinalReason,
       trace_id: effectiveTraceId,
       error_class: errorClass,
+      timeout_stage: timeoutStage,
       image_bytes_len: imageBytesLen,
       request_payload_bytes_len: requestPayloadBytesLen,
       response_bytes_len: responseBytesLen,
@@ -992,6 +1020,9 @@ async function runGeminiShadowVerify({
     }
   }
   if (metricsHooks && typeof metricsHooks.onVerifyAgreement === 'function') metricsHooks.onVerifyAgreement(agreementScore);
+  if (metricsHooks && typeof metricsHooks.onVerifyRetry === 'function') {
+    metricsHooks.onVerifyRetry({ attempts: verifyAttempts });
+  }
   if (hardCase && metricsHooks && typeof metricsHooks.onVerifyHardCase === 'function') metricsHooks.onVerifyHardCase();
   if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') {
     metricsHooks.onVerifyCall({
@@ -1011,6 +1042,7 @@ async function runGeminiShadowVerify({
     raw_final_reason: rawFinalReason,
     verify_fail_reason: verifyFailReason,
     skipped_reason: null,
+    ...(timeoutStage ? { timeout_stage: timeoutStage } : {}),
     ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
     circuit_breaker: circuitUpdate.snapshot,
     agreement_score: agreementScore,
