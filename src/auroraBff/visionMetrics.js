@@ -35,10 +35,52 @@ const verifierAgreementHistogram = new Map([
 let verifierAgreementCount = 0;
 let verifierAgreementSum = 0;
 let verifierHardCaseCount = 0;
+const analyzeRequestsCounter = new Map();
+const geometrySanitizerDropCounter = new Map();
+const geometrySanitizerClipCounter = new Map();
 
 function cleanLabel(value, fallback) {
   const raw = String(value == null ? '' : value).trim();
   return raw || fallback;
+}
+
+function cleanMetricToken(value, fallback = 'unknown') {
+  const raw = String(value == null ? '' : value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return raw || fallback;
+}
+
+function normalizeQualityGrade(grade) {
+  const token = cleanMetricToken(grade, 'unknown');
+  if (token === 'pass' || token === 'degraded' || token === 'fail' || token === 'unknown') return token;
+  return 'unknown';
+}
+
+function normalizePipelineVersion(version) {
+  const token = cleanMetricToken(version, 'unknown');
+  if (token === 'a' || token === 'b') return token.toUpperCase();
+  return 'unknown';
+}
+
+function normalizeDeviceClass(deviceClass) {
+  return cleanMetricToken(deviceClass, 'unknown');
+}
+
+function normalizeIssueType(issueType) {
+  return cleanMetricToken(issueType, 'all');
+}
+
+function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
+  return {
+    issue_type: normalizeIssueType(issueType),
+    quality_grade: normalizeQualityGrade(qualityGrade),
+    pipeline_version: normalizePipelineVersion(pipelineVersion),
+    device_class: normalizeDeviceClass(deviceClass),
+  };
 }
 
 function keyFromLabels(labels) {
@@ -204,6 +246,41 @@ function recordVerifyHardCase() {
   verifierHardCaseCount += 1;
 }
 
+function recordAnalyzeRequest({ issueType, qualityGrade, pipelineVersion, deviceClass, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    analyzeRequestsCounter,
+    geometryLabels({
+      issueType,
+      qualityGrade,
+      pipelineVersion,
+      deviceClass,
+    }),
+    amount,
+  );
+}
+
+function recordGeometrySanitizerTotals({
+  issueType,
+  qualityGrade,
+  pipelineVersion,
+  deviceClass,
+  dropped,
+  clipped,
+} = {}) {
+  const labels = geometryLabels({
+    issueType,
+    qualityGrade,
+    pipelineVersion,
+    deviceClass,
+  });
+  const droppedN = Number.isFinite(Number(dropped)) ? Math.max(0, Math.trunc(Number(dropped))) : 0;
+  const clippedN = Number.isFinite(Number(clipped)) ? Math.max(0, Math.trunc(Number(clipped))) : 0;
+  if (droppedN > 0) incCounter(geometrySanitizerDropCounter, labels, droppedN);
+  if (clippedN > 0) incCounter(geometrySanitizerClipCounter, labels, clippedN);
+}
+
 function escapePromValue(value) {
   return String(value == null ? '' : value)
     .replace(/\\/g, '\\\\')
@@ -316,6 +393,33 @@ function renderVisionMetricsPrometheus() {
   const hardCaseRate = verifyAttemptCount > 0 ? verifierHardCaseCount / verifyAttemptCount : 0;
   lines.push(`hard_case_rate ${hardCaseRate}`);
 
+  lines.push('# HELP analyze_requests_total Total diagnosis analysis requests by issue type and quality buckets.');
+  lines.push('# TYPE analyze_requests_total counter');
+  renderCounter(lines, 'analyze_requests_total', analyzeRequestsCounter);
+
+  lines.push('# HELP geometry_sanitizer_drop_total Total dropped geometry artifacts during sanitizer pass.');
+  lines.push('# TYPE geometry_sanitizer_drop_total counter');
+  renderCounter(lines, 'geometry_sanitizer_drop_total', geometrySanitizerDropCounter);
+
+  lines.push('# HELP geometry_sanitizer_clip_total Total clipped geometry artifacts during sanitizer pass.');
+  lines.push('# TYPE geometry_sanitizer_clip_total counter');
+  renderCounter(lines, 'geometry_sanitizer_clip_total', geometrySanitizerClipCounter);
+
+  lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
+  lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
+  const rateKeys = new Set([
+    ...Array.from(analyzeRequestsCounter.keys()),
+    ...Array.from(geometrySanitizerDropCounter.keys()),
+    ...Array.from(geometrySanitizerClipCounter.keys()),
+  ]);
+  for (const key of Array.from(rateKeys).sort((a, b) => a.localeCompare(b))) {
+    const labels = parseLabelsKey(key);
+    const drops = Number(geometrySanitizerDropCounter.get(key) || 0);
+    const requests = Number(analyzeRequestsCounter.get(key) || 0);
+    const rate = requests > 0 ? drops / requests : 0;
+    lines.push(`geometry_sanitizer_drop_rate${labelsToProm(labels)} ${rate}`);
+  }
+
   return `${lines.join('\n')}\n`;
 }
 
@@ -337,6 +441,9 @@ function resetVisionMetrics() {
   verifierAgreementCount = 0;
   verifierAgreementSum = 0;
   verifierHardCaseCount = 0;
+  analyzeRequestsCounter.clear();
+  geometrySanitizerDropCounter.clear();
+  geometrySanitizerClipCounter.clear();
 }
 
 function snapshotVisionMetrics() {
@@ -356,6 +463,9 @@ function snapshotVisionMetrics() {
     verifierAgreementCount,
     verifierAgreementSum,
     verifierHardCaseCount,
+    analyzeRequests: Array.from(analyzeRequestsCounter.entries()),
+    geometrySanitizerDrops: Array.from(geometrySanitizerDropCounter.entries()),
+    geometrySanitizerClips: Array.from(geometrySanitizerClipCounter.entries()),
   };
 }
 
@@ -368,6 +478,8 @@ module.exports = {
   recordVerifyFail,
   recordVerifyAgreementScore,
   recordVerifyHardCase,
+  recordAnalyzeRequest,
+  recordGeometrySanitizerTotals,
   renderVisionMetricsPrometheus,
   resetVisionMetrics,
   snapshotVisionMetrics,

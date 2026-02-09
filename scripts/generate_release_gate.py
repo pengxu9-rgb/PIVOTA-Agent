@@ -302,8 +302,19 @@ def _stability_check(discovery: DiscoveryResult) -> CheckResult:
         )
 
     worst = max(ranges)
+    geometry_summary = data.get("geometry_sanitizer_summary") if isinstance(data.get("geometry_sanitizer_summary"), dict) else {}
+    geometry_drop_rate = float(geometry_summary.get("drop_rate") or 0.0)
+    geometry_drop_rate_max_by_image = float(geometry_summary.get("drop_rate_max_by_image") or 0.0)
     budget = _parse_float_env("RELEASE_STABILITY_MAX_SEVERITY_SCORE_RANGE", 0.2)
-    status = "PASS" if (budget is None or worst <= budget) else "FAIL"
+    geometry_budget = _parse_float_env("RELEASE_STABILITY_GEOMETRY_DROP_RATE_MAX", 0.2)
+    status = "PASS"
+    reasons = []
+    if budget is not None and worst > budget:
+        status = "FAIL"
+        reasons.append(f"worst_severity_score_range {worst:.3f} > budget {budget:.3f}")
+    if geometry_budget is not None and geometry_drop_rate > geometry_budget:
+        status = "FAIL"
+        reasons.append(f"geometry_drop_rate {geometry_drop_rate:.6f} > budget {geometry_budget:.6f}")
 
     md = []
     md.append(f"Source: `{_fmt_path(path)}`")
@@ -313,9 +324,25 @@ def _stability_check(discovery: DiscoveryResult) -> CheckResult:
         if discovery.override_error:
             md.append(f"- Override ignored: `{discovery.override_error}`")
     md.append("")
-    md.append(_render_kv_table([("worst_severity_score_range", f"{worst:.3f}"), ("budget_max_range", f"{(budget or 0.0):.3f}")]))
+    md.append(
+        _render_kv_table(
+            [
+                ("worst_severity_score_range", f"{worst:.3f}"),
+                ("budget_max_range", f"{(budget or 0.0):.3f}"),
+                ("geometry_drop_rate", f"{geometry_drop_rate:.6f}"),
+                ("geometry_drop_rate_max_by_image", f"{geometry_drop_rate_max_by_image:.6f}"),
+                ("geometry_drop_budget", f"{(geometry_budget or 0.0):.6f}"),
+            ]
+        )
+    )
     md.append("")
     md.append("- Budget: `RELEASE_STABILITY_MAX_SEVERITY_SCORE_RANGE` (default: `0.2`)")
+    md.append("- Budget: `RELEASE_STABILITY_GEOMETRY_DROP_RATE_MAX` (default: `0.2`)")
+    if reasons:
+        md.append("")
+        md.append("Reasons:")
+        for item in reasons:
+            md.append(f"- {item}")
     return CheckResult(name="stability", status=status, details_md="\n".join(md), source_path=path)
 
 
@@ -375,6 +402,12 @@ def _loadtest_check(discovery: DiscoveryResult) -> CheckResult:
     err_rate = _md_table_value("error_rate")
     llm_ratio = _md_table_value("llm_called_ratio")
     timeout_degraded = _md_table_value("timeout_degraded_count")
+    geometry_drop_rate_max = _md_table_value("geometry_sanitizer_drop_rate_max")
+    geometry_drop_budget_row = _md_table_value("geometry_drop_rate_budget_max")
+    geometry_drop_verdict_row = None
+    m_geom_verdict = re.search(r"^\|\s*geometry_drop_rate_verdict\s*\|\s*([A-Za-z]+)\s*\|", text, re.MULTILINE)
+    if m_geom_verdict:
+        geometry_drop_verdict_row = m_geom_verdict.group(1)
 
     verdict = None
     budget_ms = None
@@ -402,6 +435,23 @@ def _loadtest_check(discovery: DiscoveryResult) -> CheckResult:
         else:
             status = "FAIL"
             reasons.append("load test budget disabled (set LOADTEST_P95_BUDGET_MS or pass --p95-budget-ms)")
+    geometry_budget = _parse_float_env("RELEASE_LOADTEST_GEOMETRY_DROP_RATE_MAX", 0.2)
+    if geometry_drop_rate_max is not None:
+        try:
+            g_val = float(geometry_drop_rate_max)
+        except Exception:
+            g_val = None
+    else:
+        g_val = None
+    if geometry_drop_verdict_row and geometry_drop_verdict_row.upper() == "FAIL":
+        status = "FAIL"
+        reasons.append("geometry drop-rate sanity check failed in load test report")
+    if geometry_budget is not None and g_val is not None and g_val > geometry_budget:
+        status = "FAIL"
+        reasons.append(f"geometry_drop_rate_max {g_val:.6f} > budget {geometry_budget:.6f}")
+    if geometry_budget is not None and g_val is None:
+        status = "FAIL"
+        reasons.append("missing geometry_sanitizer_drop_rate_max in load test report")
 
     rows = []
     if p50 is not None:
@@ -416,6 +466,13 @@ def _loadtest_check(discovery: DiscoveryResult) -> CheckResult:
         rows.append(("timeout_degraded_count", timeout_degraded))
     if llm_ratio is not None:
         rows.append(("llm_called_ratio", llm_ratio))
+    if geometry_drop_rate_max is not None:
+        rows.append(("geometry_sanitizer_drop_rate_max", geometry_drop_rate_max))
+    if geometry_drop_budget_row is not None:
+        rows.append(("geometry_drop_rate_budget_max(row)", geometry_drop_budget_row))
+    rows.append(("geometry_drop_budget_max(env)", f"{(geometry_budget or 0.0):.6f}" if geometry_budget is not None else "disabled"))
+    if geometry_drop_verdict_row is not None:
+        rows.append(("geometry_drop_rate_verdict(row)", geometry_drop_verdict_row))
     if budget_ms is not None:
         rows.append(("p95_budget_ms", f"{budget_ms:.0f}"))
     if verdict is not None:

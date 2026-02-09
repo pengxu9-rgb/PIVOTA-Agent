@@ -13,11 +13,14 @@ Set environment variables:
 
 - `DIAG_GEMINI_VERIFY=true`
 - `DIAG_GEMINI_VERIFY_MODEL=gemini-2.0-flash` (optional)
-- `DIAG_GEMINI_VERIFY_TIMEOUT_MS=12000` (optional)
+- `DIAG_VERIFY_TIMEOUT_MS=12000` (preferred)
+- `DIAG_GEMINI_VERIFY_TIMEOUT_MS=12000` (legacy fallback)
 - `DIAG_GEMINI_VERIFY_RETRIES=1` (optional)
 - `DIAG_GEMINI_VERIFY_IOU_THRESHOLD=0.3` (optional)
 - `DIAG_GEMINI_VERIFY_HARD_CASE_THRESHOLD=0.55` (optional)
 - `DIAG_GEMINI_VERIFY_HARD_CASE_PATH=tmp/diag_verify/hard_cases.ndjson` (optional)
+- `DIAG_VERIFY_MAX_CALLS_PER_MIN=0` (optional; `0` = unlimited)
+- `DIAG_VERIFY_MAX_CALLS_PER_DAY=0` (optional; `0` = unlimited)
 
 Required for verifier call:
 
@@ -27,6 +30,12 @@ Required for verifier call:
   - `quality.grade in {pass,degraded}`
 
 If those conditions are not met, verifier is skipped.
+
+If budget guardrails are exceeded, verifier is skipped with:
+
+- `decision=skip`
+- `final_reason=VERIFY_BUDGET_GUARD`
+- `skipped_reason=VERIFY_BUDGET_GUARD`
 
 ## 2) What Gets Stored
 

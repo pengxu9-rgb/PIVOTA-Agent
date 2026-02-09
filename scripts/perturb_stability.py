@@ -231,6 +231,10 @@ async function main() {
   const jobs = raw ? JSON.parse(raw) : [];
   const modPath = path.join(process.cwd(), 'src', 'auroraBff', 'skinDiagnosisV1');
   const { runSkinDiagnosisV1 } = require(modPath);
+  const routesModPath = path.join(process.cwd(), 'src', 'auroraBff', 'routes');
+  const routesMod = require(routesModPath);
+  const buildSkinAnalysisFromDiagnosisV1 = routesMod && routesMod.__internal ? routesMod.__internal.buildSkinAnalysisFromDiagnosisV1 : null;
+  const buildExecutablePlanForAnalysis = routesMod && routesMod.__internal ? routesMod.__internal.buildExecutablePlanForAnalysis : null;
 
   const out = [];
   for (const j of jobs) {
@@ -278,6 +282,29 @@ async function main() {
       }))
       .filter((it) => it.issue_type);
 
+    let geometrySanitizer = null;
+    if (typeof buildSkinAnalysisFromDiagnosisV1 === 'function' && typeof buildExecutablePlanForAnalysis === 'function') {
+      try {
+        const analysis0 = buildSkinAnalysisFromDiagnosisV1(diag, {
+          language: job.lang === 'CN' ? 'CN' : 'EN',
+          profileSummary: safeObj(job.profileSummary) || null,
+        });
+        const analysis1 = buildExecutablePlanForAnalysis({
+          analysis: analysis0,
+          language: job.lang === 'CN' ? 'CN' : 'EN',
+          usedPhotos: true,
+          photoQuality: q || { grade: 'unknown', reasons: [] },
+          profileSummary: safeObj(job.profileSummary) || null,
+          photosProvided: true,
+        });
+        if (analysis1 && typeof analysis1.__geometry_sanitizer === 'object') {
+          geometrySanitizer = analysis1.__geometry_sanitizer;
+        }
+      } catch (_) {
+        geometrySanitizer = null;
+      }
+    }
+
     out.push({
       ...job,
       ok: true,
@@ -291,6 +318,7 @@ async function main() {
           : null,
         issues: issuesSlim,
       },
+      geometry_sanitizer: geometrySanitizer && typeof geometrySanitizer === 'object' ? geometrySanitizer : null,
     });
   }
 
@@ -363,12 +391,27 @@ def _build_stability_report(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         by_image.setdefault(str(r.get("image") or "image"), []).append(r)
 
     images_out: List[Dict[str, Any]] = []
+    report_geom_requests = 0
+    report_geom_drop_total = 0
+    report_geom_clip_total = 0
+    report_geom_drop_rate_max = 0.0
+
     for image_name, rows in sorted(by_image.items(), key=lambda x: x[0]):
         variants_out: List[Dict[str, Any]] = []
+        image_geom_requests = 0
+        image_geom_drop_total = 0
+        image_geom_clip_total = 0
         for run_index, r in enumerate(sorted(rows, key=lambda x: str(x.get("variant") or ""))):
             diag = (r.get("diagnosis") or {}) if isinstance(r.get("diagnosis"), dict) else {}
             q = (diag.get("quality") or {}) if isinstance(diag.get("quality"), dict) else {}
             issues = diag.get("issues") if isinstance(diag.get("issues"), list) else []
+            gs_raw = r.get("geometry_sanitizer") if isinstance(r.get("geometry_sanitizer"), dict) else {}
+            gs_checked = int(gs_raw.get("checked_n") or 0)
+            gs_dropped = int(gs_raw.get("dropped_n") or 0)
+            gs_clipped = int(gs_raw.get("clipped_n") or 0)
+            image_geom_requests += 1
+            image_geom_drop_total += max(0, gs_dropped)
+            image_geom_clip_total += max(0, gs_clipped)
             slim_issues: List[Dict[str, Any]] = []
             for it in issues:
                 if not isinstance(it, dict):
@@ -409,6 +452,11 @@ def _build_stability_report(results: List[Dict[str, Any]]) -> Dict[str, Any]:
                         "quality_factor": q.get("quality_factor"),
                         "reasons": q.get("reasons") if isinstance(q.get("reasons"), list) else [],
                         "metrics": q_metrics_slim,
+                    },
+                    "geometry_sanitizer": {
+                        "checked_n": max(0, gs_checked),
+                        "dropped_n": max(0, gs_dropped),
+                        "clipped_n": max(0, gs_clipped),
                     },
                     "issues": slim_issues,
                 }
@@ -633,6 +681,11 @@ def _build_stability_report(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Top-K worst ranges (usually <= number of issue types).
         top_k_worst = sorted([x for x in worst_by_range if isinstance(x.get("range"), (int, float))], key=lambda x: float(x["range"]), reverse=True)[:10]
         worst = top_k_worst[0] if top_k_worst else None
+        image_geom_drop_rate = float(image_geom_drop_total) / float(max(1, image_geom_requests))
+        report_geom_requests += image_geom_requests
+        report_geom_drop_total += image_geom_drop_total
+        report_geom_clip_total += image_geom_clip_total
+        report_geom_drop_rate_max = max(report_geom_drop_rate_max, image_geom_drop_rate)
 
         images_out.append(
             {
@@ -649,12 +702,26 @@ def _build_stability_report(results: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "per_transform_summary": per_transform_summary,
                 "worst_issue_type": (worst or {}).get("issue_type") if isinstance(worst, dict) else None,
                 "worst_severity_score_range": (worst or {}).get("range") if isinstance(worst, dict) else None,
+                "geometry_sanitizer": {
+                    "analyze_requests_n": image_geom_requests,
+                    "drop_total": image_geom_drop_total,
+                    "clip_total": image_geom_clip_total,
+                    "drop_rate": round(image_geom_drop_rate, 6),
+                },
             }
         )
 
+    report_geom_drop_rate = float(report_geom_drop_total) / float(max(1, report_geom_requests))
     return {
         "schema_version": "aurora.stability_report.v1",
         "generated_at": __import__("datetime").datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "geometry_sanitizer_summary": {
+            "analyze_requests_total": report_geom_requests,
+            "drop_total": report_geom_drop_total,
+            "clip_total": report_geom_clip_total,
+            "drop_rate": round(report_geom_drop_rate, 6),
+            "drop_rate_max_by_image": round(report_geom_drop_rate_max, 6),
+        },
         "images": images_out,
     }
 
@@ -664,6 +731,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--lang", default="EN", choices=["EN", "CN"])
     parser.add_argument("--out", default="stability_report.json", help="Output JSON path (default: stability_report.json).")
     parser.add_argument("--n-perturbations", type=int, default=10, help="Number of perturbations (8..12, excluding original).")
+    parser.add_argument(
+        "--geometry-drop-rate-max",
+        type=float,
+        default=float(os.environ.get("STABILITY_GEOMETRY_DROP_RATE_MAX", "0.2")),
+        help="Fail (exit 1) if geometry_sanitizer_summary.drop_rate exceeds this threshold.",
+    )
     parser.add_argument("--keep-temp", action="store_true", help="Keep generated perturbation images on disk.")
     parser.add_argument("images", nargs="*", help="Image file/dir paths. If empty, uses a deterministic synthetic image.")
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -703,6 +776,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             pass
 
     print(str(out_path))
+    summary = report.get("geometry_sanitizer_summary") if isinstance(report, dict) else None
+    drop_rate = float((summary or {}).get("drop_rate") or 0.0)
+    budget = float(args.geometry_drop_rate_max) if args.geometry_drop_rate_max is not None else 0.0
+    if budget > 0 and drop_rate > budget:
+        print(
+            f"geometry_sanitizer_drop_rate exceeded budget: drop_rate={drop_rate:.6f}, budget={budget:.6f}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

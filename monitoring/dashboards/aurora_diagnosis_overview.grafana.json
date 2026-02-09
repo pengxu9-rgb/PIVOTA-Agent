@@ -1,0 +1,146 @@
+{
+  "title": "Aurora Diagnosis Shadow Monitor",
+  "uid": "aurora-diagnosis-shadow",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "pipeline",
+        "type": "custom",
+        "query": "A,B,unknown",
+        "current": {
+          "text": "A",
+          "value": "A"
+        }
+      },
+      {
+        "name": "quality",
+        "type": "custom",
+        "query": "pass,degraded,fail,unknown",
+        "current": {
+          "text": "pass",
+          "value": "pass"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "HTTP 5xx Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(pivota_http_requests_total{status_class=\"5xx\"}[5m])) / clamp_min(sum(rate(pivota_http_requests_total[5m])), 1)",
+          "legendFormat": "5xx rate"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP Timeout Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(pivota_http_timeouts_total[5m])) / clamp_min(sum(rate(pivota_http_requests_total[5m])), 1)",
+          "legendFormat": "timeout rate"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Verifier Calls by Status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(verify_calls_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Verifier Failures by Reason",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(verify_fail_total[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Quality Fail / Degraded Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(analyze_requests_total{quality_grade=\"fail\"}[15m])) / clamp_min(sum(rate(analyze_requests_total[15m])), 1)",
+          "legendFormat": "fail"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(analyze_requests_total{quality_grade=\"degraded\"}[15m])) / clamp_min(sum(rate(analyze_requests_total[15m])), 1)",
+          "legendFormat": "degraded"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Geometry Sanitizer Drop Rate (max)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by () (sum by (issue_type, quality_grade, pipeline_version, device_class) (rate(geometry_sanitizer_drop_total[15m])) / clamp_min(sum by (issue_type, quality_grade, pipeline_version, device_class) (rate(analyze_requests_total[15m])), 1))",
+          "legendFormat": "max drop rate"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Geometry Drop Rate by Slice",
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "expr": "sum by (issue_type, quality_grade, pipeline_version, device_class) (rate(geometry_sanitizer_drop_total[15m])) / clamp_min(sum by (issue_type, quality_grade, pipeline_version, device_class) (rate(analyze_requests_total[15m])), 1)",
+          "legendFormat": "{{issue_type}}/{{quality_grade}}/{{pipeline_version}}/{{device_class}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Verify Budget Guard (15m)",
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(verify_fail_total{reason=\"VERIFY_BUDGET_GUARD\"}[15m])",
+          "legendFormat": "guard hits"
+        }
+      ]
+    }
+  ]
+}

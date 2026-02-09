@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily pseudo-label-job monitoring-validate
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -20,6 +20,26 @@ VERIFY_REPORT_DATE ?=
 PSEUDO_STORE_DIR ?= tmp/diag_pseudo_label_factory
 PSEUDO_OUT_DIR ?= reports/pseudo_label_job
 PSEUDO_JOB_DATE ?=
+GOLD_TASKS_IN ?=
+GOLD_TASKS_OUT ?= out/gold_label_tasks_$(shell date -u +%Y%m%d).jsonl
+GOLD_TASKS_DATE ?=
+GOLD_TOTAL ?= 500
+GOLD_HARD_RATIO ?= 0.6
+GOLD_QUOTA_FILE ?=
+GOLD_ALLOW_ROI ?= false
+GOLD_SEED ?=
+GOLD_IMPORT_IN ?=
+GOLD_IMPORT_OUT ?= tmp/diag_pseudo_label_factory/gold_labels.ndjson
+GOLD_IMPORT_QA_STATUS ?= approved
+GOLD_IMPORT_ANNOTATOR ?=
+CAL_MODEL_OUTPUTS ?= tmp/diag_pseudo_label_factory/model_outputs.ndjson
+CAL_GOLD_LABELS ?= tmp/diag_pseudo_label_factory/gold_labels.ndjson
+CAL_OUT_DIR ?= model_registry
+CAL_ALIAS_PATH ?= model_registry/diag_calibration_v1.json
+CAL_IOU ?= 0.3
+CAL_MIN_GROUP_SAMPLES ?= 24
+CAL_EVAL_MODEL ?=
+CAL_EVAL_OUT ?= reports/calibration_eval.json
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -73,3 +93,15 @@ pseudo-label-job:
 
 monitoring-validate:
 	python3 scripts/monitoring_validate.py
+
+gold-label-sample:
+	node scripts/sample_gold_label_tasks.js $(if $(GOLD_TASKS_IN),--hardCases $(GOLD_TASKS_IN),) --out $(GOLD_TASKS_OUT) --total $(GOLD_TOTAL) --hardRatio $(GOLD_HARD_RATIO) --allowRoi $(GOLD_ALLOW_ROI) $(if $(GOLD_TASKS_DATE),--date $(GOLD_TASKS_DATE),) $(if $(GOLD_QUOTA_FILE),--quotaFile $(GOLD_QUOTA_FILE),) $(if $(GOLD_SEED),--seed $(GOLD_SEED),)
+
+gold-label-import:
+	node scripts/import_gold_labels.js --in $(GOLD_IMPORT_IN) --out $(GOLD_IMPORT_OUT) --qaStatus $(GOLD_IMPORT_QA_STATUS) $(if $(GOLD_IMPORT_ANNOTATOR),--annotatorId $(GOLD_IMPORT_ANNOTATOR),)
+
+train-calibrator:
+	node scripts/train_calibrator.js --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --outDir $(CAL_OUT_DIR) --aliasPath $(CAL_ALIAS_PATH) --iouThreshold $(CAL_IOU) --minGroupSamples $(CAL_MIN_GROUP_SAMPLES)
+
+eval-calibration:
+	node scripts/eval_calibration.js --model $(if $(CAL_EVAL_MODEL),$(CAL_EVAL_MODEL),$(CAL_ALIAS_PATH)) --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --iouThreshold $(CAL_IOU) --outJson $(CAL_EVAL_OUT)

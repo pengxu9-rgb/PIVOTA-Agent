@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const {
   trainCalibrationModel,
   resolveProviderWeight,
+  findLatestCalibratorModel,
+  loadCalibrationRuntime,
 } = require('../src/auroraBff/diagCalibration');
 
 function makeRng(seed = 1) {
@@ -158,4 +160,61 @@ test('provider weights honor type/quality/tone buckets', () => {
 
   assert.ok(geminiDeep > gptDeep, `expected gemini deep weight > gpt deep weight, got ${geminiDeep} <= ${gptDeep}`);
   assert.ok(gptLight > geminiLight, `expected gpt light weight > gemini light weight, got ${gptLight} <= ${geminiLight}`);
+});
+
+test('runtime loader prefers latest calibrator_vYYYYMMDD when enabled', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora_cal_loader_'));
+  const registry = path.join(root, 'model_registry');
+  fs.mkdirSync(registry, { recursive: true });
+
+  const baseModel = {
+    schema_version: 'aurora.diag.calibration_model.v1',
+    model_version: 'diag_calibration_v1_identity',
+    calibration: { global: { kind: 'isotonic_step_v1', x: [0, 1], y: [0, 1] }, by_provider: {}, by_group: {} },
+    provider_weights: { default: 1, by_provider: {}, by_bucket: {} },
+    severity_smoothing: { min_scale: 0.72, max_scale: 1, confidence_gamma: 1 },
+  };
+  fs.writeFileSync(path.join(registry, 'diag_calibration_v1.json'), JSON.stringify(baseModel), 'utf8');
+  fs.writeFileSync(
+    path.join(registry, 'calibrator_v20260208.json'),
+    JSON.stringify({ ...baseModel, model_version: 'calibrator_v20260208' }),
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(registry, 'calibrator_v20260209.json'),
+    JSON.stringify({ ...baseModel, model_version: 'calibrator_v20260209' }),
+    'utf8',
+  );
+
+  const prevEnabled = process.env.DIAG_CALIBRATION_ENABLED;
+  const prevPath = process.env.DIAG_CALIBRATION_MODEL_PATH;
+  const prevLatest = process.env.DIAG_CALIBRATION_USE_LATEST_VERSION;
+  try {
+    process.env.DIAG_CALIBRATION_ENABLED = 'true';
+    delete process.env.DIAG_CALIBRATION_MODEL_PATH;
+    process.env.DIAG_CALIBRATION_USE_LATEST_VERSION = 'true';
+
+    const latestPath = findLatestCalibratorModel(root);
+    assert.ok(latestPath.endsWith('calibrator_v20260209.json'));
+
+    const runtime = loadCalibrationRuntime({
+      forceReload: true,
+      modelPath: latestPath,
+      enabled: true,
+    });
+    assert.equal(runtime.enabled, true);
+    assert.equal(runtime.model.model_version, 'calibrator_v20260209');
+  } finally {
+    if (prevEnabled === undefined) delete process.env.DIAG_CALIBRATION_ENABLED;
+    else process.env.DIAG_CALIBRATION_ENABLED = prevEnabled;
+    if (prevPath === undefined) delete process.env.DIAG_CALIBRATION_MODEL_PATH;
+    else process.env.DIAG_CALIBRATION_MODEL_PATH = prevPath;
+    if (prevLatest === undefined) delete process.env.DIAG_CALIBRATION_USE_LATEST_VERSION;
+    else process.env.DIAG_CALIBRATION_USE_LATEST_VERSION = prevLatest;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

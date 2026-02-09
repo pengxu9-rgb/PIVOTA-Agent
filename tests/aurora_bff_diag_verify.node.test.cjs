@@ -8,7 +8,9 @@ function loadVerifyFresh() {
   const resolved = require.resolve('../src/auroraBff/diagVerify');
   delete require.cache[resolved];
   // eslint-disable-next-line import/no-dynamic-require, global-require
-  return require('../src/auroraBff/diagVerify');
+  const mod = require('../src/auroraBff/diagVerify');
+  if (typeof mod.resetVerifyBudgetGuardState === 'function') mod.resetVerifyBudgetGuardState();
+  return mod;
 }
 
 async function withEnv(patch, fn) {
@@ -131,6 +133,8 @@ test('diag verify: enabled writes model outputs and yields agreement score', asy
               ],
               flags: [],
               latency_ms: 18,
+              attempts: 1,
+              provider_status_code: 200,
             }),
           },
           metricsHooks: {
@@ -152,10 +156,22 @@ test('diag verify: enabled writes model outputs and yields agreement score', asy
         assert.equal(out.agreement_score >= 0.7, true);
         assert.equal(out.hard_case_written, false);
         assert.equal(out.persistence && out.persistence.model_outputs_written >= 2, true);
+        assert.equal(out.provider_status_code, 200);
+        assert.equal(typeof out.latency_ms, 'number');
+        assert.equal(out.attempts, 1);
+        assert.equal(out.final_reason, 'OK');
         assert.equal(counters.verifyAttempt, 1);
         assert.equal(counters.verifyOk, 1);
         assert.equal(counters.verifyFail, 0);
         assert.equal(counters.agreement.length, 1);
+        assert.equal(Array.isArray(out.provider_stats), true);
+        assert.equal(out.provider_stats.length, 2);
+        assert.equal(Number.isFinite(out.provider_stats[0].provider_status_code), true);
+        assert.equal(Number.isFinite(out.provider_stats[1].provider_status_code), true);
+        assert.equal(Number.isFinite(out.provider_stats[0].attempts), true);
+        assert.equal(Number.isFinite(out.provider_stats[1].attempts), true);
+        assert.equal(typeof out.provider_stats[0].final_reason, 'string');
+        assert.equal(typeof out.provider_stats[1].final_reason, 'string');
 
         const modelOutputsPath = path.join(store.root, 'model_outputs.ndjson');
         const raw = await fs.readFile(modelOutputsPath, 'utf8');
@@ -206,6 +222,126 @@ test('diag verify: used_photos=false does not call gemini verifier', async () =>
       assert.equal(out.skipped_reason, 'PHOTO_NOT_USED');
       assert.equal(cvCalls, 0);
       assert.equal(geminiCalls, 0);
+    },
+  );
+});
+
+test('diag verify: budget guard skips verify calls and emits guard reason', async () => {
+  await withEnv(
+    {
+      DIAG_GEMINI_VERIFY: 'true',
+      DIAG_VERIFY_MAX_CALLS_PER_MIN: '1',
+      DIAG_VERIFY_MAX_CALLS_PER_DAY: '1',
+    },
+    async () => {
+      const { runGeminiShadowVerify, VERIFY_GUARD_REASON } = loadVerifyFresh();
+      let cvCalls = 0;
+      let geminiCalls = 0;
+      const metricEvents = [];
+
+      const providerOverrides = {
+        cvProvider: async () => {
+          cvCalls += 1;
+          return {
+            ok: true,
+            provider: 'cv_provider',
+            concerns: [makeConcern('redness', { x0: 0.1, y0: 0.1, x1: 0.2, y1: 0.2 }, 1, 0.7, 'cv_provider')],
+            latency_ms: 5,
+            attempts: 1,
+            provider_status_code: 200,
+          };
+        },
+        geminiProvider: async () => {
+          geminiCalls += 1;
+          return {
+            ok: true,
+            provider: 'gemini_provider',
+            concerns: [makeConcern('redness', { x0: 0.1, y0: 0.1, x1: 0.2, y1: 0.2 }, 1, 0.8, 'gemini_provider')],
+            latency_ms: 7,
+            attempts: 1,
+            provider_status_code: 200,
+          };
+        },
+      };
+
+      const commonInput = {
+        imageBuffer: Buffer.from([1, 2, 3]),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        providerOverrides,
+        metricsHooks: {
+          onVerifyCall: ({ status }) => metricEvents.push(['call', status]),
+          onVerifyFail: ({ reason }) => metricEvents.push(['fail', reason]),
+        },
+      };
+
+      const first = await runGeminiShadowVerify(commonInput);
+      const second = await runGeminiShadowVerify(commonInput);
+
+      assert.equal(first.called, true);
+      assert.equal(first.ok, true);
+      assert.equal(second.called, false);
+      assert.equal(second.decision, 'skip');
+      assert.equal(second.skipped_reason, VERIFY_GUARD_REASON);
+      assert.equal(second.final_reason, VERIFY_GUARD_REASON);
+      assert.equal(second.provider_status_code, 0);
+      assert.equal(cvCalls, 1);
+      assert.equal(geminiCalls, 1);
+
+      const guardCall = metricEvents.find((entry) => entry[0] === 'call' && entry[1] === 'guard');
+      const guardFail = metricEvents.find((entry) => entry[0] === 'fail' && entry[1] === VERIFY_GUARD_REASON);
+      assert.equal(Boolean(guardCall), true);
+      assert.equal(Boolean(guardFail), true);
+    },
+  );
+});
+
+test('diag verify: failure path exposes provider status/latency/attempts/final reason', async () => {
+  await withEnv(
+    {
+      DIAG_GEMINI_VERIFY: 'true',
+    },
+    async () => {
+      const { runGeminiShadowVerify } = loadVerifyFresh();
+      const failEvents = [];
+
+      const out = await runGeminiShadowVerify({
+        imageBuffer: Buffer.from([1, 2, 3]),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        providerOverrides: {
+          cvProvider: async () => ({
+            ok: true,
+            provider: 'cv_provider',
+            concerns: [],
+            latency_ms: 6,
+            attempts: 1,
+            provider_status_code: 200,
+          }),
+          geminiProvider: async () => ({
+            ok: false,
+            provider: 'gemini_provider',
+            concerns: [],
+            failure_reason: 'REQUEST_FAILED',
+            latency_ms: 34,
+            attempts: 2,
+            provider_status_code: 503,
+          }),
+        },
+        metricsHooks: {
+          onVerifyFail: ({ reason }) => failEvents.push(reason),
+        },
+      });
+
+      assert.equal(out.called, true);
+      assert.equal(out.ok, false);
+      assert.equal(out.provider_status_code, 503);
+      assert.equal(out.attempts, 2);
+      assert.equal(out.final_reason, 'REQUEST_FAILED');
+      assert.equal(out.decision, 'verify');
+      assert.equal(typeof out.latency_ms, 'number');
+      assert.equal(out.latency_ms >= 0, true);
+      assert.equal(failEvents.includes('REQUEST_FAILED'), true);
     },
   );
 });

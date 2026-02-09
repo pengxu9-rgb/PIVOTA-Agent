@@ -1,5 +1,11 @@
 # Aurora Skin Analysis — Alerts
 
+Canonical deployable rules now live in:
+
+- `monitoring/alerts/aurora_diagnosis_rules.yml`
+
+This file is explanatory guidance. The alert engine should load rules from the YAML above.
+
 目标：基于**现有日志/metrics**，定义一组可落地的告警规则（阈值可配置），覆盖：
 - `5xx_rate` / `timeout_rate`
 - `llm_timeout_rate`

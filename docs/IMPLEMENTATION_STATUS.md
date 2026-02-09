@@ -129,6 +129,7 @@ Last updated: 2026-02-09
 - `DIAG_ENSEMBLE` (default `false`): `src/auroraBff/diagEnsemble.js:853`
 - `DIAG_GEMINI_VERIFY` (default `false`): `src/auroraBff/diagVerify.js:249`
 - `DIAG_CALIBRATION_ENABLED` (default `false`): `src/auroraBff/diagCalibration.js:922`
+- `DIAG_CALIBRATION_USE_LATEST_VERSION` (default `true`): `src/auroraBff/diagCalibration.js:940`
 - `AURORA_PSEUDO_LABEL_ENABLED` (default `true`): `src/auroraBff/pseudoLabelFactory.js:92`
 
 ### Local reproducibility commands
@@ -136,3 +137,7 @@ Last updated: 2026-02-09
 - Runtime smoke: `make runtime-smoke BASE=https://pivota-agent-production.up.railway.app`
 - Focused tests (contract + stability + gate discovery): `make test`
 - Full unit suite used by privacy check flow: `npm run test:aurora-bff:unit`
+- Gold-label sample generation: `make gold-label-sample GOLD_TOTAL=500 GOLD_HARD_RATIO=0.6`
+- Gold-label import: `make gold-label-import GOLD_IMPORT_IN=/path/to/label_studio_export.json`
+- Train calibrator: `make train-calibrator`
+- Evaluate calibrator: `make eval-calibration`

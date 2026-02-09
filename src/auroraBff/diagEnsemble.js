@@ -379,6 +379,19 @@ function classifyProviderFailure(error) {
   return 'REQUEST_FAILED';
 }
 
+function extractProviderStatusCode(error) {
+  const candidates = [
+    error?.status,
+    error?.statusCode,
+    error?.response?.status,
+  ];
+  for (const value of candidates) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return Math.trunc(numeric);
+  }
+  return null;
+}
+
 function buildQualityFeatureSnapshot(photoQuality) {
   const quality = photoQuality && typeof photoQuality === 'object' ? photoQuality : {};
   const reasons = Array.isArray(quality.reasons)
@@ -879,6 +892,8 @@ async function runCvProvider({
       concerns: [],
       quality_features: qualityFeatures,
       latency_ms: Date.now() - startedAt,
+      attempts: 1,
+      provider_status_code: 204,
       failure_reason: 'NO_FINDINGS',
     };
   }
@@ -895,6 +910,8 @@ async function runCvProvider({
     concerns,
     quality_features: qualityFeatures,
     latency_ms: Date.now() - startedAt,
+    attempts: 1,
+    provider_status_code: concerns.length > 0 ? 200 : 422,
     ...(concerns.length ? {} : { failure_reason: 'NO_VALID_FINDINGS' }),
   };
 }
@@ -990,6 +1007,8 @@ async function runGeminiProvider({
       concerns: [],
       quality_features: qualityFeatures,
       latency_ms: Date.now() - startedAt,
+      attempts: 0,
+      provider_status_code: 401,
       failure_reason: 'MISSING_API_KEY',
     };
   }
@@ -1002,6 +1021,8 @@ async function runGeminiProvider({
       concerns: [],
       quality_features: qualityFeatures,
       latency_ms: Date.now() - startedAt,
+      attempts: 0,
+      provider_status_code: 400,
       failure_reason: 'MISSING_IMAGE',
     };
   }
@@ -1018,6 +1039,8 @@ async function runGeminiProvider({
       concerns: [],
       quality_features: qualityFeatures,
       latency_ms: Date.now() - startedAt,
+      attempts: 0,
+      provider_status_code: 501,
       failure_reason: 'MISSING_DEP',
     };
   }
@@ -1063,6 +1086,8 @@ async function runGeminiProvider({
           concerns: [],
           quality_features: qualityFeatures,
           latency_ms: Date.now() - startedAt,
+          attempts: attempt + 1,
+          provider_status_code: 200,
           failure_reason: parsed.reason,
           schema_failed: true,
         };
@@ -1084,6 +1109,8 @@ async function runGeminiProvider({
         quality_features: qualityFeatures,
         flags: parsed.payload.flags || [],
         latency_ms: Date.now() - startedAt,
+        attempts: attempt + 1,
+        provider_status_code: 200,
       };
     } catch (err) {
       lastError = err;
@@ -1091,6 +1118,7 @@ async function runGeminiProvider({
     }
   }
 
+  const statusCode = extractProviderStatusCode(lastError);
   return {
     ok: false,
     provider: 'gemini_provider',
@@ -1099,6 +1127,8 @@ async function runGeminiProvider({
     concerns: [],
     quality_features: qualityFeatures,
     latency_ms: Date.now() - startedAt,
+    attempts,
+    ...(Number.isFinite(Number(statusCode)) ? { provider_status_code: Math.trunc(Number(statusCode)) } : {}),
     failure_reason: classifyProviderFailure(lastError),
   };
 }

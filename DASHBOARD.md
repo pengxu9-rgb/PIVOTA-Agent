@@ -1,5 +1,11 @@
 # Aurora Skin Analysis — Dashboard
 
+Canonical importable dashboard JSON now lives in:
+
+- `monitoring/dashboards/aurora_diagnosis_overview.grafana.json`
+
+This file remains a query reference; operational dashboards should import the JSON above.
+
 目标：给出推荐的 dashboard 面板清单与查询语句（覆盖必需指标），帮助快速定位：
 - 服务是否健康（5xx / timeout / latency）
 - LLM 是否“该用才用”（calls/request、timeout）

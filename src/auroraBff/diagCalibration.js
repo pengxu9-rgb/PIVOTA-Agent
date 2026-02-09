@@ -52,6 +52,21 @@ function defaultModelPath(baseDir = process.cwd()) {
   return path.join(baseDir, DEFAULT_MODEL_RELATIVE_PATH);
 }
 
+function findLatestCalibratorModel(baseDir = process.cwd()) {
+  const registryDir = path.join(baseDir, 'model_registry');
+  try {
+    const entries = fs.readdirSync(registryDir, { withFileTypes: true });
+    const candidates = entries
+      .filter((entry) => entry.isFile() && /^calibrator_v\d{8}\.json$/i.test(entry.name))
+      .map((entry) => entry.name)
+      .sort((left, right) => right.localeCompare(left));
+    if (!candidates.length) return null;
+    return path.join(registryDir, candidates[0]);
+  } catch (_err) {
+    return null;
+  }
+}
+
 function normalizeBBox(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const x0 = clamp01(raw.x0);
@@ -922,7 +937,9 @@ function loadCalibrationRuntime({ enabled, modelPath, forceReload = false } = {}
   const isEnabled = enabled == null ? parseBool(process.env.DIAG_CALIBRATION_ENABLED, false) : Boolean(enabled);
   if (!isEnabled) return { enabled: false, model: null, source: null, error: null };
 
-  const resolvedPath = String(modelPath || process.env.DIAG_CALIBRATION_MODEL_PATH || '').trim() || defaultModelPath(process.cwd());
+  const explicitPath = String(modelPath || process.env.DIAG_CALIBRATION_MODEL_PATH || '').trim();
+  const useLatestVersion = parseBool(process.env.DIAG_CALIBRATION_USE_LATEST_VERSION, true);
+  const resolvedPath = explicitPath || (useLatestVersion ? findLatestCalibratorModel(process.cwd()) : null) || defaultModelPath(process.cwd());
   if (!forceReload && runtimeCache && runtimeCache.path === resolvedPath) {
     return { enabled: true, model: runtimeCache.model, source: runtimeCache.source, error: runtimeCache.error };
   }
@@ -980,6 +997,7 @@ module.exports = {
   smoothSeverity,
   defaultCalibrationModel,
   defaultModelPath,
+  findLatestCalibratorModel,
   loadCalibrationModelFromPath,
   loadCalibrationRuntime,
 };

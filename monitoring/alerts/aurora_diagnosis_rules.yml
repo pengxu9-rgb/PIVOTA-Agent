@@ -1,0 +1,116 @@
+groups:
+  - name: aurora-diagnosis-recording
+    interval: 1m
+    rules:
+      - record: aurora:quality_fail_rate:15m
+        expr: |
+          sum(rate(analyze_requests_total{quality_grade="fail"}[15m]))
+          /
+          clamp_min(sum(rate(analyze_requests_total[15m])), 1)
+
+      - record: aurora:quality_degraded_rate:15m
+        expr: |
+          sum(rate(analyze_requests_total{quality_grade="degraded"}[15m]))
+          /
+          clamp_min(sum(rate(analyze_requests_total[15m])), 1)
+
+      - record: aurora:geometry_sanitizer_drop_rate:15m
+        expr: |
+          sum by (issue_type, quality_grade, pipeline_version, device_class) (
+            rate(geometry_sanitizer_drop_total[15m])
+          )
+          /
+          clamp_min(
+            sum by (issue_type, quality_grade, pipeline_version, device_class) (
+              rate(analyze_requests_total[15m])
+            ),
+            1
+          )
+
+      - record: aurora:verify_budget_guard_count:15m
+        expr: increase(verify_fail_total{reason="VERIFY_BUDGET_GUARD"}[15m])
+
+  - name: aurora-diagnosis-alerts
+    interval: 1m
+    rules:
+      - alert: AuroraHttp5xxRateHigh
+        expr: |
+          (
+            sum(rate(pivota_http_requests_total{status_class="5xx"}[5m]))
+            /
+            clamp_min(sum(rate(pivota_http_requests_total[5m])), 1)
+          ) > 0.02
+        for: 10m
+        labels:
+          severity: critical
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Aurora backend 5xx rate is high"
+          description: "5xx rate stayed above 2% for 10m. Check upstream and release diff."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraHttpTimeoutRateHigh
+        expr: |
+          (
+            sum(rate(pivota_http_timeouts_total[5m]))
+            /
+            clamp_min(sum(rate(pivota_http_requests_total[5m])), 1)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Aurora backend timeout rate is elevated"
+          description: "HTTP timeout rate exceeded 1% for 10m. Check upstream latency and timeout budgets."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraVerifyFailSpike
+        expr: increase(verify_fail_total[15m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Gemini shadow verifier failures spiked"
+          description: "More than 20 verifier failures in 15m. Inspect reason breakdown in dashboard."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraVerifyBudgetGuardTriggered
+        expr: aurora:verify_budget_guard_count:15m > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Gemini shadow verifier hit budget guard"
+          description: "Verifier calls were skipped by DIAG_VERIFY_MAX_CALLS_PER_MIN or DIAG_VERIFY_MAX_CALLS_PER_DAY."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraQualityFailRateSpike
+        expr: aurora:quality_fail_rate:15m > 0.35
+        for: 30m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Photo quality fail rate spike"
+          description: "quality_fail_rate exceeded 35% over 15m window. Check camera guidance and upload path."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraGeometryDropRateSpike
+        expr: max by () (aurora:geometry_sanitizer_drop_rate:15m) > 0.20
+        for: 30m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Geometry sanitizer drop-rate spike"
+          description: "geometry_sanitizer_drop_rate crossed 20%. Validate sanitizer thresholds and upstream geometry quality."
+          runbook: "docs/MONITORING_RUNBOOK.md"

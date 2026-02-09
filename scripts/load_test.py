@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import socket
 import subprocess
 import tempfile
@@ -100,6 +101,7 @@ class LoadTestConfig:
     qc: str
     out_path: Path
     p95_budget_ms: Optional[float]
+    geometry_drop_rate_max: Optional[float]
 
 
 class _StubPhotoBackend(ThreadingHTTPServer):
@@ -336,12 +338,43 @@ async def _run_load(base_url: str, cfg: LoadTestConfig) -> List[RequestResult]:
     return results
 
 
+def _parse_prometheus_metric_values(metrics_text: str, metric_name: str) -> List[float]:
+    if not metrics_text:
+        return []
+    pattern = re.compile(rf"^{re.escape(metric_name)}(?:\{{[^}}]*\}})?\s+([0-9eE+\\-.]+)\s*$", re.MULTILINE)
+    out: List[float] = []
+    for match in pattern.finditer(metrics_text):
+        try:
+            out.append(float(match.group(1)))
+        except Exception:
+            continue
+    return out
+
+
+async def _fetch_geometry_drop_rate_max(base_url: str, *, timeout_s: float = 5.0) -> Tuple[Optional[float], Optional[str]]:
+    if httpx is None:  # pragma: no cover
+        return (None, "httpx_missing")
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            resp = await client.get(f"{base_url}/metrics")
+    except Exception as err:
+        return (None, f"metrics_fetch_error:{type(err).__name__}")
+    if resp.status_code != 200:
+        return (None, f"metrics_http_{resp.status_code}")
+    values = _parse_prometheus_metric_values(resp.text or "", "geometry_sanitizer_drop_rate")
+    if not values:
+        return (0.0, None)
+    return (max(values), None)
+
+
 def _render_report(
     *,
     cfg: LoadTestConfig,
     target_url: str,
     node_log_path: Path,
     results: List[RequestResult],
+    geometry_drop_rate_max: Optional[float],
+    geometry_metrics_error: Optional[str],
 ) -> str:
     ok_lat = [r.latency_ms for r in results if r.ok]
     p50 = _percentile(ok_lat, 50)
@@ -358,11 +391,22 @@ def _render_report(
     llm_ratio = (0.0 if n == 0 else float(llm_called_n) / float(n))
 
     budget = cfg.p95_budget_ms
+    geometry_budget = cfg.geometry_drop_rate_max
     budget_line = "Budget: (disabled)"
     verdict = "N/A"
     if budget is not None and budget > 0:
         budget_line = f"Budget: p95 <= {budget:.0f} ms"
         verdict = "PASS" if p95 <= budget else "FAIL"
+    geometry_line = "Geometry sanity: (disabled)"
+    geometry_verdict = "N/A"
+    if geometry_budget is not None and geometry_budget > 0:
+        geometry_line = f"Geometry sanity: geometry_sanitizer_drop_rate_max <= {geometry_budget:.3f}"
+        if geometry_drop_rate_max is None:
+            geometry_verdict = "FAIL"
+        else:
+            geometry_verdict = "PASS" if geometry_drop_rate_max <= geometry_budget else "FAIL"
+    if geometry_drop_rate_max is None:
+        geometry_drop_rate_max = 0.0
 
     lines = []
     lines.append("# Load Test Report")
@@ -372,7 +416,10 @@ def _render_report(
     lines.append(f"- Duration: `{cfg.duration_s:.1f}s`, Concurrency: `{cfg.concurrency}`, Request timeout: `{cfg.request_timeout_s:.1f}s`")
     lines.append(f"- Scenario: `qc={cfg.qc}` (synthetic photo served via local stub backend)")
     lines.append(f"- {budget_line} → **{verdict}**")
+    lines.append(f"- {geometry_line} → **{geometry_verdict}**")
     lines.append(f"- Node logs: `{node_log_path}`")
+    if geometry_metrics_error:
+        lines.append(f"- Metrics scrape warning: `{geometry_metrics_error}`")
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -387,6 +434,13 @@ def _render_report(
     lines.append(f"| p99_ms (ok) | {p99:.2f} |")
     lines.append(f"| timeout_degraded_count | {timeout_degraded_n} |")
     lines.append(f"| llm_called_ratio | {llm_ratio:.2%} |")
+    lines.append(f"| geometry_sanitizer_drop_rate_max | {geometry_drop_rate_max:.6f} |")
+    lines.append(
+        f"| geometry_drop_rate_budget_max | {cfg.geometry_drop_rate_max:.6f} |"
+        if cfg.geometry_drop_rate_max is not None and cfg.geometry_drop_rate_max > 0
+        else "| geometry_drop_rate_budget_max | disabled |"
+    )
+    lines.append(f"| geometry_drop_rate_verdict | {geometry_verdict} |")
     lines.append("")
     lines.append("## Notes")
     lines.append("")
@@ -410,6 +464,12 @@ def _parse_args() -> LoadTestConfig:
         default=float(os.environ["LOADTEST_P95_BUDGET_MS"]) if os.environ.get("LOADTEST_P95_BUDGET_MS") else None,
         help="Fail (exit 1) if p95 exceeds this threshold.",
     )
+    p.add_argument(
+        "--geometry-drop-rate-max",
+        type=float,
+        default=float(os.environ.get("LOADTEST_GEOMETRY_DROP_RATE_MAX", "0.2")),
+        help="Fail (exit 1) if geometry_sanitizer_drop_rate max exceeds this threshold.",
+    )
     args = p.parse_args()
     return LoadTestConfig(
         duration_s=float(args.duration),
@@ -418,6 +478,7 @@ def _parse_args() -> LoadTestConfig:
         qc=str(args.qc),
         out_path=Path(args.out),
         p95_budget_ms=float(args.p95_budget_ms) if args.p95_budget_ms is not None else None,
+        geometry_drop_rate_max=float(args.geometry_drop_rate_max) if args.geometry_drop_rate_max is not None else None,
     )
 
 
@@ -442,8 +503,18 @@ def main() -> int:
 
         asyncio.run(_wait_ready(target_url, timeout_s=20.0))
         results = asyncio.run(_run_load(target_url, cfg))
+        geometry_drop_rate_max, geometry_metrics_error = asyncio.run(
+            _fetch_geometry_drop_rate_max(target_url, timeout_s=max(2.0, cfg.request_timeout_s)),
+        )
 
-        report_md = _render_report(cfg=cfg, target_url=target_url, node_log_path=node_log_path, results=results)
+        report_md = _render_report(
+            cfg=cfg,
+            target_url=target_url,
+            node_log_path=node_log_path,
+            results=results,
+            geometry_drop_rate_max=geometry_drop_rate_max,
+            geometry_metrics_error=geometry_metrics_error,
+        )
         cfg.out_path.parent.mkdir(parents=True, exist_ok=True)
         cfg.out_path.write_text(report_md, encoding="utf-8")
         print(report_md)
@@ -451,6 +522,15 @@ def main() -> int:
         ok_lat = [r.latency_ms for r in results if r.ok]
         p95 = _percentile(ok_lat, 95)
         if cfg.p95_budget_ms is not None and cfg.p95_budget_ms > 0 and p95 > cfg.p95_budget_ms:
+            return 1
+        if (
+            cfg.geometry_drop_rate_max is not None
+            and cfg.geometry_drop_rate_max > 0
+            and geometry_drop_rate_max is not None
+            and geometry_drop_rate_max > cfg.geometry_drop_rate_max
+        ):
+            return 1
+        if cfg.geometry_drop_rate_max is not None and cfg.geometry_drop_rate_max > 0 and geometry_drop_rate_max is None:
             return 1
         return 0
     finally:

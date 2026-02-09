@@ -5,6 +5,13 @@ const { persistPseudoLabelArtifacts } = require('./pseudoLabelFactory');
 
 const VERIFY_SCHEMA_VERSION = 'aurora.diag.verify_shadow.v1';
 const HARD_CASE_SCHEMA_VERSION = 'aurora.diag.verify_hard_case.v1';
+const VERIFY_GUARD_REASON = 'VERIFY_BUDGET_GUARD';
+const verifyBudgetState = {
+  minuteWindowMs: 0,
+  minuteCount: 0,
+  dayKey: '',
+  dayCount: 0,
+};
 
 function boolEnv(name, fallback = false) {
   const token = String(process.env[name] == null ? '' : process.env[name])
@@ -41,6 +48,79 @@ function normalizeQualityGrade(grade) {
 function qualityAllowsVerify(grade) {
   const normalized = normalizeQualityGrade(grade);
   return normalized === 'pass' || normalized === 'degraded';
+}
+
+function toInt(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.trunc(numeric));
+}
+
+function utcDayKey(tsMs) {
+  const date = new Date(tsMs);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function resetBudgetWindows(nowMs) {
+  const minuteWindowMs = Math.floor(nowMs / 60000) * 60000;
+  if (verifyBudgetState.minuteWindowMs !== minuteWindowMs) {
+    verifyBudgetState.minuteWindowMs = minuteWindowMs;
+    verifyBudgetState.minuteCount = 0;
+  }
+
+  const dayKey = utcDayKey(nowMs);
+  if (verifyBudgetState.dayKey !== dayKey) {
+    verifyBudgetState.dayKey = dayKey;
+    verifyBudgetState.dayCount = 0;
+  }
+}
+
+function reserveVerifyBudget({ maxCallsPerMin, maxCallsPerDay, nowMs } = {}) {
+  const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  resetBudgetWindows(now);
+  const limitMin = toInt(maxCallsPerMin, 0);
+  const limitDay = toInt(maxCallsPerDay, 0);
+
+  if (limitMin > 0 && verifyBudgetState.minuteCount >= limitMin) {
+    return {
+      allowed: false,
+      reason: VERIFY_GUARD_REASON,
+      usage: {
+        minute_count: verifyBudgetState.minuteCount,
+        minute_limit: limitMin,
+        day_count: verifyBudgetState.dayCount,
+        day_limit: limitDay,
+      },
+    };
+  }
+  if (limitDay > 0 && verifyBudgetState.dayCount >= limitDay) {
+    return {
+      allowed: false,
+      reason: VERIFY_GUARD_REASON,
+      usage: {
+        minute_count: verifyBudgetState.minuteCount,
+        minute_limit: limitMin,
+        day_count: verifyBudgetState.dayCount,
+        day_limit: limitDay,
+      },
+    };
+  }
+
+  verifyBudgetState.minuteCount += 1;
+  verifyBudgetState.dayCount += 1;
+  return {
+    allowed: true,
+    reason: null,
+    usage: {
+      minute_count: verifyBudgetState.minuteCount,
+      minute_limit: limitMin,
+      day_count: verifyBudgetState.dayCount,
+      day_limit: limitDay,
+    },
+  };
 }
 
 function extractPrimaryBBox(concern) {
@@ -221,10 +301,16 @@ function collectDisagreementReasons(rows) {
 
 function buildProviderStat(output) {
   const concerns = Array.isArray(output?.concerns) ? output.concerns : [];
+  const providerStatusCode = toInt(output?.provider_status_code, output?.ok ? 200 : 0);
+  const attempts = Math.max(1, toInt(output?.attempts, 1));
+  const finalReason = output?.ok ? 'OK' : String(output?.failure_reason || 'UNKNOWN');
   return {
     provider: String(output?.provider || 'unknown'),
     ok: Boolean(output?.ok),
     latency_ms: round3(Math.max(0, Number(output?.latency_ms || 0))),
+    provider_status_code: providerStatusCode,
+    attempts,
+    final_reason: finalReason,
     concern_count: concerns.length,
     ...(output?.failure_reason ? { failure_reason: String(output.failure_reason) } : {}),
     ...(output?.schema_failed ? { schema_failed: true } : {}),
@@ -248,9 +334,11 @@ function getVerifierConfig() {
   return {
     enabled: boolEnv('DIAG_GEMINI_VERIFY', false),
     iouThreshold: numEnv('DIAG_GEMINI_VERIFY_IOU_THRESHOLD', 0.3, 0.05, 0.95),
-    timeoutMs: numEnv('DIAG_GEMINI_VERIFY_TIMEOUT_MS', 12000, 1000, 45000),
+    timeoutMs: numEnv('DIAG_VERIFY_TIMEOUT_MS', numEnv('DIAG_GEMINI_VERIFY_TIMEOUT_MS', 12000, 1000, 45000), 1000, 45000),
     retries: Math.trunc(numEnv('DIAG_GEMINI_VERIFY_RETRIES', 1, 0, 3)),
     hardCaseThreshold: numEnv('DIAG_GEMINI_VERIFY_HARD_CASE_THRESHOLD', 0.55, 0, 1),
+    maxCallsPerMin: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_MIN', 0, 0, 1000000))),
+    maxCallsPerDay: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_DAY', 0, 0, 100000000))),
     model: String(process.env.DIAG_GEMINI_VERIFY_MODEL || process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-2.0-flash').trim() || 'gemini-2.0-flash',
   };
 }
@@ -279,6 +367,11 @@ async function runGeminiShadowVerify({
       ok: false,
       enabled: false,
       called: false,
+      decision: 'skip',
+      final_reason: 'DISABLED_BY_FLAG',
+      provider_status_code: 0,
+      latency_ms: 0,
+      attempts: 0,
       skipped_reason: 'DISABLED_BY_FLAG',
     };
   }
@@ -288,6 +381,11 @@ async function runGeminiShadowVerify({
       ok: false,
       enabled: true,
       called: false,
+      decision: 'skip',
+      final_reason: 'PHOTO_NOT_USED',
+      provider_status_code: 0,
+      latency_ms: 0,
+      attempts: 0,
       skipped_reason: 'PHOTO_NOT_USED',
     };
   }
@@ -297,6 +395,11 @@ async function runGeminiShadowVerify({
       ok: false,
       enabled: true,
       called: false,
+      decision: 'skip',
+      final_reason: `QUALITY_${qualityGrade.toUpperCase()}`,
+      provider_status_code: 0,
+      latency_ms: 0,
+      attempts: 0,
       skipped_reason: `QUALITY_${qualityGrade.toUpperCase()}`,
     };
   }
@@ -306,7 +409,36 @@ async function runGeminiShadowVerify({
       ok: false,
       enabled: true,
       called: false,
+      decision: 'skip',
+      final_reason: 'MISSING_IMAGE_BUFFER',
+      provider_status_code: 0,
+      latency_ms: 0,
+      attempts: 0,
       skipped_reason: 'MISSING_IMAGE_BUFFER',
+    };
+  }
+
+  const budget = reserveVerifyBudget({
+    maxCallsPerMin: cfg.maxCallsPerMin,
+    maxCallsPerDay: cfg.maxCallsPerDay,
+    nowMs: Date.now(),
+  });
+  if (!budget.allowed) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'guard' });
+    if (metricsHooks && typeof metricsHooks.onVerifyFail === 'function') metricsHooks.onVerifyFail({ reason: VERIFY_GUARD_REASON });
+    return {
+      ok: false,
+      enabled: true,
+      called: false,
+      decision: 'skip',
+      final_reason: VERIFY_GUARD_REASON,
+      provider_status_code: 0,
+      latency_ms: 0,
+      attempts: 0,
+      skipped_reason: VERIFY_GUARD_REASON,
+      budget_guard: {
+        ...budget.usage,
+      },
     };
   }
 
@@ -335,6 +467,10 @@ async function runGeminiShadowVerify({
   });
 
   const providerStats = [buildProviderStat(cvOutput), buildProviderStat(geminiOutput)];
+  const verifyLatencyMs = round3(Math.max(0, Number(geminiOutput?.latency_ms || 0)));
+  const verifyAttempts = Math.max(1, toInt(geminiOutput?.attempts, cfg.retries + 1));
+  const providerStatusCode = toInt(geminiOutput?.provider_status_code, geminiOutput?.ok ? 200 : 0);
+  const finalReason = geminiOutput?.ok ? 'OK' : String(geminiOutput?.failure_reason || 'UNKNOWN');
   if (metricsHooks && typeof metricsHooks.onProviderResult === 'function') {
     for (const stat of providerStats) metricsHooks.onProviderResult(stat);
   }
@@ -396,6 +532,10 @@ async function runGeminiShadowVerify({
         agreement_score: agreementScore,
         disagreement_reasons: disagreementReasons,
         provider_stats: providerStats,
+        provider_status_code: providerStatusCode,
+        latency_ms: verifyLatencyMs,
+        attempts: verifyAttempts,
+        final_reason: finalReason,
         verifier: verifierVerdict,
       });
     } catch (err) {
@@ -408,7 +548,7 @@ async function runGeminiShadowVerify({
 
   if (!geminiOutput.ok && metricsHooks && typeof metricsHooks.onVerifyFail === 'function') {
     metricsHooks.onVerifyFail({
-      reason: geminiOutput.failure_reason || 'UNKNOWN',
+      reason: finalReason,
     });
   }
   if (metricsHooks && typeof metricsHooks.onVerifyAgreement === 'function') metricsHooks.onVerifyAgreement(agreementScore);
@@ -423,6 +563,11 @@ async function runGeminiShadowVerify({
     ok: geminiOutput.ok,
     enabled: true,
     called: true,
+    decision: 'verify',
+    provider_status_code: providerStatusCode,
+    latency_ms: verifyLatencyMs,
+    attempts: verifyAttempts,
+    final_reason: finalReason,
     skipped_reason: null,
     agreement_score: agreementScore,
     disagreement_reasons: disagreementReasons,
@@ -434,12 +579,21 @@ async function runGeminiShadowVerify({
   };
 }
 
+function resetVerifyBudgetGuardState() {
+  verifyBudgetState.minuteWindowMs = 0;
+  verifyBudgetState.minuteCount = 0;
+  verifyBudgetState.dayKey = '';
+  verifyBudgetState.dayCount = 0;
+}
+
 module.exports = {
   VERIFY_SCHEMA_VERSION,
   HARD_CASE_SCHEMA_VERSION,
+  VERIFY_GUARD_REASON,
   runGeminiShadowVerify,
   buildIssueComparisons,
   computeAgreementScore,
   collectDisagreementReasons,
   qualityAllowsVerify,
+  resetVerifyBudgetGuardState,
 };
