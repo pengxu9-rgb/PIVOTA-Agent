@@ -80,6 +80,20 @@ function normalizeVisionReason(reason) {
   return VisionUnavailabilityReason.VISION_UNKNOWN;
 }
 
+function normalizeVisionFailureReason(reason) {
+  const raw = String(reason == null ? '' : reason).trim();
+  if (!raw) return null;
+  const token = raw.toUpperCase();
+  if (VISION_FAILURE_REASONS.has(token)) return token;
+
+  const legacy = LEGACY_REASON_MAP[raw.toLowerCase()];
+  if (legacy) return legacy;
+
+  if (raw.toLowerCase() === 'vision_unavailable') return VisionUnavailabilityReason.VISION_UNKNOWN;
+  if (token.startsWith('VISION_')) return normalizeVisionReason(token);
+  return null;
+}
+
 function isVisionFailureReason(reason) {
   return VISION_FAILURE_REASONS.has(normalizeVisionReason(reason));
 }
@@ -259,7 +273,8 @@ async function executeVisionWithRetry({
 function pickPrimaryVisionReason(reasons) {
   const list = Array.isArray(reasons) ? reasons : [];
   for (const raw of list) {
-    const normalized = normalizeVisionReason(raw);
+    const normalized = normalizeVisionFailureReason(raw);
+    if (!normalized) continue;
     if (VISION_FAILURE_REASONS.has(normalized)) return normalized;
   }
   return null;
@@ -267,7 +282,8 @@ function pickPrimaryVisionReason(reasons) {
 
 function buildVisionPhotoNotice({ reason, language } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
-  const normalized = normalizeVisionReason(reason);
+  const normalized = normalizeVisionFailureReason(reason);
+  if (!normalized) return null;
 
   if (
     normalized === VisionUnavailabilityReason.VISION_MISSING_KEY ||
@@ -319,6 +335,7 @@ module.exports = {
   VisionUnavailabilityReason,
   VISION_FAILURE_REASONS,
   normalizeVisionReason,
+  normalizeVisionFailureReason,
   isVisionFailureReason,
   shouldRetryVision,
   classifyVisionAvailability,

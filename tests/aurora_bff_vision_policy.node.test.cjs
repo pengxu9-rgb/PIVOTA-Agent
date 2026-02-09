@@ -10,6 +10,8 @@ const {
   classifyVisionProviderFailure,
   shouldRetryVision,
   executeVisionWithRetry,
+  normalizeVisionFailureReason,
+  pickPrimaryVisionReason,
   buildVisionPhotoNotice,
 } = require('../src/auroraBff/visionPolicy');
 const { resetVisionMetrics } = require('../src/auroraBff/visionMetrics');
@@ -128,6 +130,18 @@ test('vision photo notice is safe and user-facing', () => {
 
   const n2 = buildVisionPhotoNotice({ reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX, language: 'EN' });
   assert.match(String(n2 || ''), /re-upload/i);
+
+  const n3 = buildVisionPhotoNotice({ reason: 'photo_quality_fail_retake', language: 'EN' });
+  assert.equal(n3, null);
+});
+
+test('non-vision reasons do not become VISION_UNKNOWN', () => {
+  assert.equal(normalizeVisionFailureReason('photo_quality_fail_retake'), null);
+  assert.equal(pickPrimaryVisionReason(['photo_quality_fail_retake', 'degraded_mode_vision']), null);
+  assert.equal(
+    pickPrimaryVisionReason(['photo_quality_fail_retake', VisionUnavailabilityReason.VISION_TIMEOUT]),
+    VisionUnavailabilityReason.VISION_TIMEOUT,
+  );
 });
 
 test('vision provider selection: auto picks gemini, forced gemini ignores openai key', async () => {
@@ -367,6 +381,57 @@ test('/v1/analysis/skin: forced gemini with missing key reports gemini reason an
         assert.match(body, /vision_fallback_total\{provider="gemini",reason="VISION_MISSING_KEY"\}\s+1/);
       } finally {
         axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN notice', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_SKIN_VISION_ENABLED: 'true',
+      AURORA_SKIN_VISION_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'dummy_openai_key',
+      PIVOTA_BACKEND_BASE_URL: '',
+      PIVOTA_BACKEND_AGENT_API_KEY: '',
+    },
+    async () => {
+      resetVisionMetrics();
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      try {
+        const { mountAuroraBffRoutes } = mod;
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_retake_reason_guard',
+            'X-Trace-ID': 'trace_retake_reason_guard',
+            'X-Brief-ID': 'brief_retake_reason_guard',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'AM cleanser + SPF; PM cleanser + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_retake', qc_status: 'failed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        assert.ok(card);
+        const vision = card?.payload?.quality_report?.llm?.vision || {};
+        const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
+        assert.equal(vision.decision, 'skip');
+        assert.equal(reasons.includes('photo_quality_fail_retake'), true);
+        assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_UNKNOWN), false);
+        assert.equal(String(card?.payload?.analysis?.photo_notice || '').toLowerCase().includes('temporarily unavailable'), false);
+      } finally {
         delete require.cache[moduleId];
       }
     },

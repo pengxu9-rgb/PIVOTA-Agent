@@ -1,6 +1,6 @@
 const {
   VisionUnavailabilityReason,
-  normalizeVisionReason,
+  normalizeVisionFailureReason,
   isVisionFailureReason,
 } = require('./visionPolicy');
 
@@ -102,7 +102,7 @@ function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
   const normalizedReasons = Array.from(
     new Set(
       reasonList
-        .map((reason) => normalizeVisionReason(reason))
+        .map((reason) => normalizeVisionFailureReason(reason))
         .filter(Boolean),
     ),
   );
