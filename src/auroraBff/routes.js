@@ -980,14 +980,6 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
 
   const fieldMissing = [];
   const qualityReasons = [];
-  if (!hasPrimaryInput) {
-    fieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
-    qualityReasons.push(
-      language === 'CN'
-        ? '照片已通过 QC，但缺少“正在用什么/最近打卡”等关键信息；先返回低风险基线。'
-        : 'Photo passed QC, but routine/recent logs are missing; returning a low-risk baseline first.',
-    );
-  }
 
   let usedPhotos = false;
   let analysisSource = hasPrimaryInput ? 'rule_based_with_photo_qc' : 'baseline_low_confidence';
@@ -1009,22 +1001,26 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
       if (diag && diag.ok && diag.diagnosis) {
         diagnosisV1 = diag.diagnosis;
         usedPhotos = true;
-        analysis = buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language, profileSummary });
-        analysisSource = 'diagnosis_v1_template';
         const qGrade = String(diagnosisV1?.quality?.grade || '').trim().toLowerCase();
-        if (qGrade === 'degraded') {
-          qualityReasons.push(
-            language === 'CN'
-              ? '已完成照片分析（质量一般）：结论会更保守。'
-              : 'Photo analysis completed (degraded quality): conclusions are conservative.',
-          );
-        } else if (qGrade === 'fail') {
+        if (qGrade === 'fail') {
+          analysis = buildRetakeSkinAnalysis({ language, photoQuality: diagnosisV1.quality || photoQuality });
+          analysisSource = 'retake';
           qualityReasons.push(
             language === 'CN'
               ? '已读取照片，但像素质量不足；建议重拍并复核。'
               : 'Photo was read, but pixel quality is insufficient; please retake and recheck.',
           );
         } else {
+          analysis = buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language, profileSummary });
+          analysisSource = 'diagnosis_v1_template';
+        }
+        if (qGrade === 'degraded') {
+          qualityReasons.push(
+            language === 'CN'
+              ? '已完成照片分析（质量一般）：结论会更保守。'
+              : 'Photo analysis completed (degraded quality): conclusions are conservative.',
+          );
+        } else if (qGrade !== 'fail') {
           qualityReasons.push(language === 'CN' ? '已基于照片完成自动皮肤分析。' : 'Auto skin analysis completed from your photo.');
         }
       } else {
@@ -1070,6 +1066,12 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
       analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language });
       analysisSource = 'rule_based_with_photo_qc';
     } else {
+      fieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
+      qualityReasons.push(
+        language === 'CN'
+          ? '缺少“正在用什么/最近打卡”等关键信息；先返回低风险基线。'
+          : 'Routine/recent logs are missing; returning a low-risk baseline first.',
+      );
       analysis = buildLowConfidenceBaselineSkinAnalysis({ profile: profileSummary || profile, language });
       analysisSource = 'baseline_low_confidence';
     }
