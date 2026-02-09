@@ -372,6 +372,105 @@ function safeStringify(value) {
   }
 }
 
+function sanitizeUpstreamRequestId(value) {
+  const token = String(value == null ? '' : value).trim();
+  if (!token) return null;
+  return token.slice(0, 200);
+}
+
+function readHeaderValue(headers, key) {
+  if (!headers || !key) return null;
+  const target = String(key).trim().toLowerCase();
+  if (!target) return null;
+
+  if (typeof headers.get === 'function') {
+    const value = headers.get(key) ?? headers.get(target);
+    const normalized = sanitizeUpstreamRequestId(value);
+    if (normalized) return normalized;
+  }
+
+  if (Array.isArray(headers)) {
+    for (const entry of headers) {
+      if (!Array.isArray(entry) || entry.length < 2) continue;
+      const name = String(entry[0] || '').trim().toLowerCase();
+      if (name !== target) continue;
+      const normalized = sanitizeUpstreamRequestId(entry[1]);
+      if (normalized) return normalized;
+    }
+  }
+
+  if (headers && typeof headers === 'object') {
+    for (const [name, value] of Object.entries(headers)) {
+      if (String(name || '').trim().toLowerCase() !== target) continue;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const normalized = sanitizeUpstreamRequestId(item);
+          if (normalized) return normalized;
+        }
+      }
+      const normalized = sanitizeUpstreamRequestId(value);
+      if (normalized) return normalized;
+    }
+  }
+  return null;
+}
+
+function extractUpstreamRequestIdFromHeaders(headers) {
+  const candidates = [
+    'x-request-id',
+    'x-goog-request-id',
+    'x-google-request-id',
+    'request-id',
+    'x-correlation-id',
+    'x-cloud-trace-context',
+  ];
+  for (const key of candidates) {
+    const value = readHeaderValue(headers, key);
+    if (!value) continue;
+    if (key === 'x-cloud-trace-context') {
+      const trace = value.split('/')[0];
+      const normalized = sanitizeUpstreamRequestId(trace);
+      if (normalized) return normalized;
+      continue;
+    }
+    return value;
+  }
+  return null;
+}
+
+function extractUpstreamRequestIdFromResult(result) {
+  if (!result || typeof result !== 'object') return null;
+  const direct = sanitizeUpstreamRequestId(
+    result.upstream_request_id ||
+      result.upstreamRequestId ||
+      result.request_id ||
+      result.requestId ||
+      result.response_id ||
+      result.responseId ||
+      result.id,
+  );
+  if (direct) return direct;
+  return extractUpstreamRequestIdFromHeaders(
+    result.headers || result.response_headers || result.responseHeaders || result.httpResponse?.headers,
+  );
+}
+
+function extractUpstreamRequestIdFromError(error) {
+  if (!error || typeof error !== 'object') return null;
+  const direct = sanitizeUpstreamRequestId(
+    error.upstream_request_id ||
+      error.upstreamRequestId ||
+      error.request_id ||
+      error.requestId ||
+      error.response_id ||
+      error.responseId,
+  );
+  if (direct) return direct;
+  return extractUpstreamRequestIdFromHeaders(
+    error.response?.headers || error.headers || error.response_headers || error.responseHeaders,
+  );
+}
+
 function summarizeSchemaError(detail) {
   const raw = safeStringify(detail || '')
     .replace(/\s+/g, ' ')
@@ -429,6 +528,7 @@ function classifyProviderFailureMeta(error) {
     '';
   const message = String(error?.message || '').trim();
   const text = `${message} ${responseBody}`.trim().toLowerCase();
+  const upstreamRequestId = extractUpstreamRequestIdFromError(error);
 
   const networkCodes = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'EPROTO']);
   const isTimeout =
@@ -470,6 +570,7 @@ function classifyProviderFailureMeta(error) {
     statusClass: inferHttpStatusClass(statusCode, reason),
     errorClass: errorCode || errorName || 'UNKNOWN_ERROR',
     responseBytesLen: responseBody ? Buffer.byteLength(String(responseBody), 'utf8') : 0,
+    ...(upstreamRequestId ? { upstreamRequestId } : {}),
   };
 }
 
@@ -1190,6 +1291,7 @@ async function runGeminiProvider({
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await withTimeout(ai.models.generateContent(request), timeoutMs);
+      const upstreamRequestId = extractUpstreamRequestIdFromResult(response);
       const text = extractTextFromGeminiResponse(response);
       const responseBytesLen = Buffer.byteLength(String(text || ''), 'utf8');
       const parsed = parseProviderPayload(text);
@@ -1214,6 +1316,7 @@ async function runGeminiProvider({
           image_bytes_len: imageBytesLen,
           request_payload_bytes_len: requestPayloadBytesLen,
           response_bytes_len: responseBytesLen,
+          ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
         };
       }
       const concerns = parsed.payload.concerns.map((concern, index) =>
@@ -1239,6 +1342,7 @@ async function runGeminiProvider({
         image_bytes_len: imageBytesLen,
         request_payload_bytes_len: requestPayloadBytesLen,
         response_bytes_len: responseBytesLen,
+        ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
       };
     } catch (err) {
       lastError = err;
@@ -1264,6 +1368,7 @@ async function runGeminiProvider({
     image_bytes_len: imageBytesLen,
     request_payload_bytes_len: requestPayloadBytesLen,
     response_bytes_len: failureMeta.responseBytesLen,
+    ...(failureMeta.upstreamRequestId ? { upstream_request_id: failureMeta.upstreamRequestId } : {}),
   };
 }
 

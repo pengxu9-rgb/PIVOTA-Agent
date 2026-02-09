@@ -297,6 +297,70 @@ test('diag verify: budget guard skips verify calls and emits guard reason', asyn
   );
 });
 
+test('diag verify: 5xx circuit opens and short-circuits subsequent verify calls', async () => {
+  await withEnv(
+    {
+      DIAG_GEMINI_VERIFY: 'true',
+      DIAG_VERIFY_5XX_CIRCUIT_ENABLED: 'true',
+      DIAG_VERIFY_5XX_CONSECUTIVE_THRESHOLD: '2',
+      DIAG_VERIFY_5XX_COOLDOWN_MS: '60000',
+    },
+    async () => {
+      const { runGeminiShadowVerify, VERIFY_CIRCUIT_REASON } = loadVerifyFresh();
+      let geminiCalls = 0;
+      const metricEvents = [];
+
+      const commonInput = {
+        imageBuffer: Buffer.from([1, 2, 3]),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        providerOverrides: {
+          cvProvider: async () => ({
+            ok: true,
+            provider: 'cv_provider',
+            concerns: [],
+            latency_ms: 3,
+            attempts: 1,
+            provider_status_code: 200,
+          }),
+          geminiProvider: async () => {
+            geminiCalls += 1;
+            return {
+              ok: false,
+              provider: 'gemini_provider',
+              concerns: [],
+              failure_reason: 'REQUEST_FAILED',
+              provider_status_code: 503,
+              latency_ms: 10,
+              attempts: 1,
+            };
+          },
+        },
+        metricsHooks: {
+          onVerifyCall: ({ status }) => metricEvents.push(['call', status]),
+          onVerifyCircuitOpen: ({ reason }) => metricEvents.push(['circuit', reason]),
+          onVerifyFail: ({ reason }) => metricEvents.push(['fail', reason]),
+        },
+      };
+
+      const first = await runGeminiShadowVerify(commonInput);
+      const second = await runGeminiShadowVerify(commonInput);
+      const third = await runGeminiShadowVerify(commonInput);
+
+      assert.equal(first.called, true);
+      assert.equal(first.final_reason, 'UPSTREAM_5XX');
+      assert.equal(second.called, true);
+      assert.equal(second.final_reason, 'UPSTREAM_5XX');
+      assert.equal(third.called, false);
+      assert.equal(third.skipped_reason, VERIFY_CIRCUIT_REASON);
+      assert.equal(third.final_reason, VERIFY_CIRCUIT_REASON);
+      assert.equal(third.provider_status_code, 503);
+      assert.equal(geminiCalls, 2);
+      assert.equal(metricEvents.some((entry) => entry[0] === 'circuit' && entry[1] === VERIFY_CIRCUIT_REASON), true);
+    },
+  );
+});
+
 test('diag verify: failure path exposes provider status/latency/attempts/final reason', async () => {
   await withEnv(
     {
@@ -324,6 +388,7 @@ test('diag verify: failure path exposes provider status/latency/attempts/final r
             provider: 'gemini_provider',
             concerns: [],
             failure_reason: 'REQUEST_FAILED',
+            upstream_request_id: 'gem_req_12345',
             latency_ms: 34,
             attempts: 2,
             provider_status_code: 503,
@@ -341,6 +406,7 @@ test('diag verify: failure path exposes provider status/latency/attempts/final r
       assert.equal(out.final_reason, 'UPSTREAM_5XX');
       assert.equal(out.raw_final_reason, 'REQUEST_FAILED');
       assert.equal(out.verify_fail_reason, 'UPSTREAM_5XX');
+      assert.equal(out.upstream_request_id, 'gem_req_12345');
       assert.equal(out.decision, 'verify');
       assert.equal(typeof out.latency_ms, 'number');
       assert.equal(out.latency_ms >= 0, true);
@@ -350,6 +416,7 @@ test('diag verify: failure path exposes provider status/latency/attempts/final r
       assert.equal(fail.http_status_class, '5xx');
       assert.equal(typeof fail.latency_ms, 'number');
       assert.equal(fail.attempts, 2);
+      assert.equal(fail.upstream_request_id, 'gem_req_12345');
     },
   );
 });

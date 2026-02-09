@@ -6,6 +6,7 @@ const {
   renderVisionMetricsPrometheus,
   recordVerifyFail,
   recordVerifyBudgetGuard,
+  recordVerifyCircuitOpen,
 } = require('../src/auroraBff/visionMetrics');
 
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
@@ -20,6 +21,7 @@ test('vision metrics: verify fail reasons are normalized and budget guard is cou
   recordVerifyFail({ reason: 'completely_unclassified', provider: 'gemini_provider', httpStatusClass: 'unknown' });
   recordVerifyBudgetGuard();
   recordVerifyBudgetGuard();
+  recordVerifyCircuitOpen();
 
   const metrics = renderVisionMetricsPrometheus();
 
@@ -31,4 +33,5 @@ test('vision metrics: verify fail reasons are normalized and budget guard is cou
   assert.match(metrics, /verify_fail_total\{reason="NETWORK_ERROR",provider="gemini_provider",http_status_class="unknown"\} 1/);
   assert.match(metrics, /verify_fail_total\{reason="UNKNOWN",provider="gemini_provider",http_status_class="unknown"\} 1/);
   assert.match(metrics, /verify_budget_guard_total 2/);
+  assert.match(metrics, /verify_circuit_open_total 1/);
 });

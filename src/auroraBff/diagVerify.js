@@ -8,6 +8,7 @@ const { shouldUseVerifierInVote, should_use_verifier_in_vote } = require('./diag
 const VERIFY_SCHEMA_VERSION = 'aurora.diag.verify_shadow.v1';
 const HARD_CASE_SCHEMA_VERSION = 'aurora.diag.verify_hard_case.v1';
 const VERIFY_GUARD_REASON = 'VERIFY_BUDGET_GUARD';
+const VERIFY_CIRCUIT_REASON = 'VERIFY_CIRCUIT_OPEN_UPSTREAM_5XX';
 const VerifyFailReason = Object.freeze({
   TIMEOUT: 'TIMEOUT',
   RATE_LIMIT: 'RATE_LIMIT',
@@ -24,6 +25,11 @@ const verifyBudgetState = {
   minuteCount: 0,
   dayKey: '',
   dayCount: 0,
+};
+const verify5xxCircuitState = {
+  consecutive5xx: 0,
+  openUntilMs: 0,
+  lastOpenedAtMs: 0,
 };
 
 function boolEnv(name, fallback = false) {
@@ -181,6 +187,65 @@ function reserveVerifyBudget({ maxCallsPerMin, maxCallsPerDay, nowMs } = {}) {
       day_count: verifyBudgetState.dayCount,
       day_limit: limitDay,
     },
+  };
+}
+
+function resetVerifyCircuitState() {
+  verify5xxCircuitState.consecutive5xx = 0;
+  verify5xxCircuitState.openUntilMs = 0;
+  verify5xxCircuitState.lastOpenedAtMs = 0;
+}
+
+function getCircuitGuardSnapshot({ threshold, cooldownMs, nowMs } = {}) {
+  const now = Number.isFinite(Number(nowMs)) ? Math.trunc(Number(nowMs)) : Date.now();
+  const openUntil = Math.max(0, toInt(verify5xxCircuitState.openUntilMs, 0));
+  const isOpen = openUntil > now;
+  return {
+    is_open: isOpen,
+    open_until_ms: openUntil,
+    remaining_ms: isOpen ? Math.max(0, openUntil - now) : 0,
+    consecutive_5xx: Math.max(0, toInt(verify5xxCircuitState.consecutive5xx, 0)),
+    threshold: Math.max(1, toInt(threshold, 1)),
+    cooldown_ms: Math.max(1000, toInt(cooldownMs, 90000)),
+  };
+}
+
+function updateVerifyCircuitState({
+  enabled,
+  threshold,
+  cooldownMs,
+  verifyFailReason,
+  nowMs,
+} = {}) {
+  if (!enabled) {
+    resetVerifyCircuitState();
+    return { openedNow: false, snapshot: getCircuitGuardSnapshot({ threshold, cooldownMs, nowMs }) };
+  }
+  const safeThreshold = Math.max(1, toInt(threshold, 1));
+  const safeCooldownMs = Math.max(1000, toInt(cooldownMs, 90000));
+  const now = Number.isFinite(Number(nowMs)) ? Math.trunc(Number(nowMs)) : Date.now();
+
+  if (verifyFailReason === VerifyFailReason.UPSTREAM_5XX) {
+    verify5xxCircuitState.consecutive5xx += 1;
+    if (verify5xxCircuitState.consecutive5xx >= safeThreshold) {
+      verify5xxCircuitState.openUntilMs = now + safeCooldownMs;
+      verify5xxCircuitState.lastOpenedAtMs = now;
+      verify5xxCircuitState.consecutive5xx = 0;
+      return {
+        openedNow: true,
+        snapshot: getCircuitGuardSnapshot({ threshold: safeThreshold, cooldownMs: safeCooldownMs, nowMs: now }),
+      };
+    }
+    return {
+      openedNow: false,
+      snapshot: getCircuitGuardSnapshot({ threshold: safeThreshold, cooldownMs: safeCooldownMs, nowMs: now }),
+    };
+  }
+
+  verify5xxCircuitState.consecutive5xx = 0;
+  return {
+    openedNow: false,
+    snapshot: getCircuitGuardSnapshot({ threshold: safeThreshold, cooldownMs: safeCooldownMs, nowMs: now }),
   };
 }
 
@@ -551,6 +616,9 @@ function getVerifierConfig() {
     maxCallsPerMin: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_MIN', 60, 0, 1000000))),
     maxCallsPerDay: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_DAY', 10000, 0, 100000000))),
     model: String(process.env.DIAG_GEMINI_VERIFY_MODEL || process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-2.0-flash').trim() || 'gemini-2.0-flash',
+    circuitEnabled: boolEnv('DIAG_VERIFY_5XX_CIRCUIT_ENABLED', true),
+    circuitConsecutiveThreshold: Math.max(1, Math.trunc(numEnv('DIAG_VERIFY_5XX_CONSECUTIVE_THRESHOLD', 3, 1, 50))),
+    circuitCooldownMs: Math.max(1000, Math.trunc(numEnv('DIAG_VERIFY_5XX_COOLDOWN_MS', 90000, 1000, 900000))),
   };
 }
 
@@ -628,6 +696,41 @@ async function runGeminiShadowVerify({
       latency_ms: 0,
       attempts: 0,
       skipped_reason: 'MISSING_IMAGE_BUFFER',
+    };
+  }
+
+  const preCallCircuit = getCircuitGuardSnapshot({
+    threshold: cfg.circuitConsecutiveThreshold,
+    cooldownMs: cfg.circuitCooldownMs,
+  });
+  if (cfg.circuitEnabled && preCallCircuit.is_open) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'guard' });
+    if (metricsHooks && typeof metricsHooks.onVerifyCircuitOpen === 'function') {
+      metricsHooks.onVerifyCircuitOpen({
+        reason: VERIFY_CIRCUIT_REASON,
+        ...preCallCircuit,
+      });
+    }
+    const persistence = await persistVerifierSkipRecord({
+      inferenceId: inferenceId || null,
+      qualityGrade,
+      skinToneBucket,
+      lightingBucket,
+      finalReason: VERIFY_CIRCUIT_REASON,
+      logger,
+    });
+    return {
+      ok: false,
+      enabled: true,
+      called: false,
+      decision: 'skip',
+      final_reason: VERIFY_CIRCUIT_REASON,
+      provider_status_code: 503,
+      latency_ms: 0,
+      attempts: 0,
+      skipped_reason: VERIFY_CIRCUIT_REASON,
+      circuit_breaker: preCallCircuit,
+      persistence,
     };
   }
 
@@ -712,6 +815,7 @@ async function runGeminiShadowVerify({
   const requestPayloadBytesLen = toInt(geminiOutput?.request_payload_bytes_len, 0);
   const responseBytesLen = toInt(geminiOutput?.response_bytes_len, 0);
   const errorClass = String(geminiOutput?.error_class || '').trim() || null;
+  const upstreamRequestId = String(geminiOutput?.upstream_request_id || '').trim() || null;
   const effectiveTraceId = String(traceId || inferenceId || '').trim() || null;
   const geminiOutputForStore = {
     ...geminiOutput,
@@ -728,6 +832,7 @@ async function runGeminiShadowVerify({
     request_payload_bytes_len: requestPayloadBytesLen,
     response_bytes_len: responseBytesLen,
     schema_error_summary: schemaErrorSummary,
+    ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
     trace_id: effectiveTraceId,
   };
   const providerStats = [buildProviderStat(cvOutput), buildProviderStat(geminiOutputForStore)];
@@ -838,6 +943,7 @@ async function runGeminiShadowVerify({
       request_payload_bytes_len: requestPayloadBytesLen,
       response_bytes_len: responseBytesLen,
       schema_error_summary: schemaErrorSummary,
+      upstream_request_id: upstreamRequestId,
     });
   }
   if (!geminiOutput.ok) {
@@ -856,10 +962,34 @@ async function runGeminiShadowVerify({
         request_payload_bytes_len: requestPayloadBytesLen,
         response_bytes_len: responseBytesLen,
         schema_error_summary: schemaErrorSummary,
+        upstream_request_id: upstreamRequestId,
         error_class: errorClass,
       },
       'diag verify: provider failure',
     );
+  }
+
+  const circuitUpdate = updateVerifyCircuitState({
+    enabled: cfg.circuitEnabled,
+    threshold: cfg.circuitConsecutiveThreshold,
+    cooldownMs: cfg.circuitCooldownMs,
+    verifyFailReason,
+  });
+  if (circuitUpdate.openedNow) {
+    logger?.warn(
+      {
+        trace_id: effectiveTraceId,
+        reason: VERIFY_CIRCUIT_REASON,
+        circuit_breaker: circuitUpdate.snapshot,
+      },
+      'diag verify: 5xx circuit opened',
+    );
+    if (metricsHooks && typeof metricsHooks.onVerifyCircuitOpen === 'function') {
+      metricsHooks.onVerifyCircuitOpen({
+        reason: VERIFY_CIRCUIT_REASON,
+        ...circuitUpdate.snapshot,
+      });
+    }
   }
   if (metricsHooks && typeof metricsHooks.onVerifyAgreement === 'function') metricsHooks.onVerifyAgreement(agreementScore);
   if (hardCase && metricsHooks && typeof metricsHooks.onVerifyHardCase === 'function') metricsHooks.onVerifyHardCase();
@@ -881,6 +1011,8 @@ async function runGeminiShadowVerify({
     raw_final_reason: rawFinalReason,
     verify_fail_reason: verifyFailReason,
     skipped_reason: null,
+    ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
+    circuit_breaker: circuitUpdate.snapshot,
     agreement_score: agreementScore,
     disagreement_reasons: disagreementReasons,
     verifier: verifierVerdict,
@@ -896,12 +1028,14 @@ function resetVerifyBudgetGuardState() {
   verifyBudgetState.minuteCount = 0;
   verifyBudgetState.dayKey = '';
   verifyBudgetState.dayCount = 0;
+  resetVerifyCircuitState();
 }
 
 module.exports = {
   VERIFY_SCHEMA_VERSION,
   HARD_CASE_SCHEMA_VERSION,
   VERIFY_GUARD_REASON,
+  VERIFY_CIRCUIT_REASON,
   VerifyFailReason,
   normalizeVerifyFailReason,
   runGeminiShadowVerify,

@@ -26,6 +26,7 @@ let ensembleAgreementSum = 0;
 const verifierCalls = new Map();
 const verifierFails = new Map();
 let verifierBudgetGuardCount = 0;
+let verifierCircuitOpenCount = 0;
 const verifierAgreementHistogram = new Map([
   [0.2, 0],
   [0.4, 0],
@@ -283,6 +284,10 @@ function recordVerifyBudgetGuard() {
   verifierBudgetGuardCount += 1;
 }
 
+function recordVerifyCircuitOpen() {
+  verifierCircuitOpenCount += 1;
+}
+
 function recordVerifyAgreementScore(score) {
   const value = Number(score);
   if (!Number.isFinite(value)) return;
@@ -433,6 +438,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE verify_budget_guard_total counter');
   lines.push(`verify_budget_guard_total ${verifierBudgetGuardCount}`);
 
+  lines.push('# HELP verify_circuit_open_total Total number of verifier calls skipped by 5xx circuit breaker.');
+  lines.push('# TYPE verify_circuit_open_total counter');
+  lines.push(`verify_circuit_open_total ${verifierCircuitOpenCount}`);
+
   lines.push('# HELP agreement_histogram Agreement score distribution for Gemini shadow verifier.');
   lines.push('# TYPE agreement_histogram histogram');
   for (const [bucket, value] of verifierAgreementHistogram.entries()) {
@@ -500,6 +509,7 @@ function resetVisionMetrics() {
   verifierAgreementSum = 0;
   verifierHardCaseCount = 0;
   verifierBudgetGuardCount = 0;
+  verifierCircuitOpenCount = 0;
   analyzeRequestsCounter.clear();
   geometrySanitizerDropCounter.clear();
   geometrySanitizerClipCounter.clear();
@@ -523,6 +533,7 @@ function snapshotVisionMetrics() {
     verifierAgreementSum,
     verifierHardCaseCount,
     verifierBudgetGuardCount,
+    verifierCircuitOpenCount,
     analyzeRequests: Array.from(analyzeRequestsCounter.entries()),
     geometrySanitizerDrops: Array.from(geometrySanitizerDropCounter.entries()),
     geometrySanitizerClips: Array.from(geometrySanitizerClipCounter.entries()),
@@ -537,6 +548,7 @@ module.exports = {
   recordVerifyCall,
   recordVerifyFail,
   recordVerifyBudgetGuard,
+  recordVerifyCircuitOpen,
   recordVerifyAgreementScore,
   recordVerifyHardCase,
   recordAnalyzeRequest,
