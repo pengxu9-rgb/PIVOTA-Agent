@@ -1,4 +1,5 @@
 const {
+  VisionUnavailabilityReason,
   normalizeVisionReason,
   isVisionFailureReason,
 } = require('./visionPolicy');
@@ -9,6 +10,19 @@ const callsCounter = new Map();
 const failCounter = new Map();
 const fallbackCounter = new Map();
 const latencyByProvider = new Map();
+const ensembleProviderCalls = new Map();
+const ensembleProviderFails = new Map();
+const ensembleProviderSchemaFails = new Map();
+const ensembleLatencyByProvider = new Map();
+const ensembleAgreementHistogram = new Map([
+  [0.2, 0],
+  [0.4, 0],
+  [0.6, 0],
+  [0.8, 0],
+  [1.0, 0],
+]);
+let ensembleAgreementCount = 0;
+let ensembleAgreementSum = 0;
 
 function cleanLabel(value, fallback) {
   const raw = String(value == null ? '' : value).trim();
@@ -48,6 +62,20 @@ function ensureLatencyState(provider) {
   return state;
 }
 
+function ensureEnsembleLatencyState(provider) {
+  const p = cleanLabel(provider, 'unknown');
+  let state = ensembleLatencyByProvider.get(p);
+  if (!state) {
+    state = {
+      count: 0,
+      sum: 0,
+      buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+    };
+    ensembleLatencyByProvider.set(p, state);
+  }
+  return state;
+}
+
 function observeVisionLatency({ provider, latencyMs } = {}) {
   const latency = Number(latencyMs);
   if (!Number.isFinite(latency) || latency < 0) return;
@@ -75,19 +103,64 @@ function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
     new Set(
       reasonList
         .map((reason) => normalizeVisionReason(reason))
-        .filter((reason) => isVisionFailureReason(reason)),
+        .filter(Boolean),
     ),
+  );
+  const failureReasons = normalizedReasons.filter((reason) => isVisionFailureReason(reason));
+  const fallbackReasons = normalizedReasons.filter(
+    (reason) => reason === VisionUnavailabilityReason.VISION_CV_FALLBACK_USED || isVisionFailureReason(reason),
   );
 
   if (safeDecision === 'fallback') {
-    for (const reason of normalizedReasons) {
+    for (const reason of fallbackReasons) {
       incCounter(fallbackCounter, { provider: safeProvider, reason }, 1);
     }
   }
 
-  if (normalizedReasons.length) {
-    for (const reason of normalizedReasons) {
+  if (failureReasons.length) {
+    for (const reason of failureReasons) {
       incCounter(failCounter, { provider: safeProvider, reason }, 1);
+    }
+  }
+}
+
+function observeEnsembleProviderLatency({ provider, latencyMs } = {}) {
+  const latency = Number(latencyMs);
+  if (!Number.isFinite(latency) || latency < 0) return;
+  const state = ensureEnsembleLatencyState(provider);
+  state.count += 1;
+  state.sum += latency;
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    if (latency <= bucket) {
+      state.buckets.set(bucket, (state.buckets.get(bucket) || 0) + 1);
+    }
+  }
+}
+
+function recordEnsembleProviderResult({ provider, ok, latencyMs, failureReason, schemaFailed } = {}) {
+  const safeProvider = cleanLabel(provider, 'unknown');
+  const status = ok ? 'ok' : 'fail';
+  incCounter(ensembleProviderCalls, { provider: safeProvider, status }, 1);
+  if (Number.isFinite(Number(latencyMs))) {
+    observeEnsembleProviderLatency({ provider: safeProvider, latencyMs: Number(latencyMs) });
+  }
+  if (!ok && failureReason) {
+    incCounter(ensembleProviderFails, { provider: safeProvider, reason: cleanLabel(failureReason, 'UNKNOWN') }, 1);
+  }
+  if (schemaFailed) {
+    incCounter(ensembleProviderSchemaFails, { provider: safeProvider }, 1);
+  }
+}
+
+function recordEnsembleAgreementScore(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return;
+  const clamped = Math.max(0, Math.min(1, value));
+  ensembleAgreementCount += 1;
+  ensembleAgreementSum += clamped;
+  for (const bucket of ensembleAgreementHistogram.keys()) {
+    if (clamped <= bucket) {
+      ensembleAgreementHistogram.set(bucket, (ensembleAgreementHistogram.get(bucket) || 0) + 1);
     }
   }
 }
@@ -142,6 +215,42 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE vision_fallback_total counter');
   renderCounter(lines, 'vision_fallback_total', fallbackCounter);
 
+  lines.push('# HELP diag_ensemble_provider_calls_total Total number of ensemble provider calls.');
+  lines.push('# TYPE diag_ensemble_provider_calls_total counter');
+  renderCounter(lines, 'diag_ensemble_provider_calls_total', ensembleProviderCalls);
+
+  lines.push('# HELP diag_ensemble_provider_fail_total Total number of ensemble provider failures grouped by reason.');
+  lines.push('# TYPE diag_ensemble_provider_fail_total counter');
+  renderCounter(lines, 'diag_ensemble_provider_fail_total', ensembleProviderFails);
+
+  lines.push('# HELP diag_ensemble_provider_schema_fail_total Total number of ensemble provider schema failures.');
+  lines.push('# TYPE diag_ensemble_provider_schema_fail_total counter');
+  renderCounter(lines, 'diag_ensemble_provider_schema_fail_total', ensembleProviderSchemaFails);
+
+  lines.push('# HELP diag_ensemble_provider_latency_ms Ensemble provider latency in milliseconds.');
+  lines.push('# TYPE diag_ensemble_provider_latency_ms histogram');
+  const ensembleProviders = Array.from(ensembleLatencyByProvider.keys()).sort((a, b) => a.localeCompare(b));
+  for (const provider of ensembleProviders) {
+    const state = ensembleLatencyByProvider.get(provider);
+    if (!state) continue;
+    for (const bucket of LATENCY_BUCKETS_MS) {
+      const le = bucket === Infinity ? '+Inf' : String(bucket);
+      const value = state.buckets.get(bucket) || 0;
+      lines.push(`diag_ensemble_provider_latency_ms_bucket{provider="${escapePromValue(provider)}",le="${le}"} ${value}`);
+    }
+    lines.push(`diag_ensemble_provider_latency_ms_sum{provider="${escapePromValue(provider)}"} ${state.sum}`);
+    lines.push(`diag_ensemble_provider_latency_ms_count{provider="${escapePromValue(provider)}"} ${state.count}`);
+  }
+
+  lines.push('# HELP diag_ensemble_agreement_score Agreement score distribution for ensemble outputs.');
+  lines.push('# TYPE diag_ensemble_agreement_score histogram');
+  for (const [bucket, value] of ensembleAgreementHistogram.entries()) {
+    lines.push(`diag_ensemble_agreement_score_bucket{le="${bucket.toFixed(1)}"} ${value}`);
+  }
+  lines.push(`diag_ensemble_agreement_score_bucket{le="+Inf"} ${ensembleAgreementCount}`);
+  lines.push(`diag_ensemble_agreement_score_sum ${ensembleAgreementSum}`);
+  lines.push(`diag_ensemble_agreement_score_count ${ensembleAgreementCount}`);
+
   return `${lines.join('\n')}\n`;
 }
 
@@ -150,6 +259,13 @@ function resetVisionMetrics() {
   failCounter.clear();
   fallbackCounter.clear();
   latencyByProvider.clear();
+  ensembleProviderCalls.clear();
+  ensembleProviderFails.clear();
+  ensembleProviderSchemaFails.clear();
+  ensembleLatencyByProvider.clear();
+  for (const key of ensembleAgreementHistogram.keys()) ensembleAgreementHistogram.set(key, 0);
+  ensembleAgreementCount = 0;
+  ensembleAgreementSum = 0;
 }
 
 function snapshotVisionMetrics() {
@@ -158,12 +274,20 @@ function snapshotVisionMetrics() {
     fails: Array.from(failCounter.entries()),
     fallbacks: Array.from(fallbackCounter.entries()),
     latencyProviders: Array.from(latencyByProvider.keys()),
+    ensembleProviderCalls: Array.from(ensembleProviderCalls.entries()),
+    ensembleProviderFails: Array.from(ensembleProviderFails.entries()),
+    ensembleProviderSchemaFails: Array.from(ensembleProviderSchemaFails.entries()),
+    ensembleLatencyProviders: Array.from(ensembleLatencyByProvider.keys()),
+    ensembleAgreementCount,
+    ensembleAgreementSum,
   };
 }
 
 module.exports = {
   recordVisionDecision,
   observeVisionLatency,
+  recordEnsembleProviderResult,
+  recordEnsembleAgreementScore,
   renderVisionMetricsPrometheus,
   resetVisionMetrics,
   snapshotVisionMetrics,

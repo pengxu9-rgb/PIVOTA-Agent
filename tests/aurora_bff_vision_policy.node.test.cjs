@@ -221,6 +221,7 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
         const body = String(metrics.text || '');
         assert.match(body, /vision_calls_total\{provider="openai",decision="fallback"\}\s+1/);
         assert.match(body, /vision_fallback_total\{provider="openai",reason="VISION_MISSING_KEY"\}\s+1/);
+        assert.match(body, /vision_fallback_total\{provider="openai",reason="VISION_CV_FALLBACK_USED"\}\s+1/);
       } finally {
         axios.get = originalGet;
         delete require.cache[moduleId];
