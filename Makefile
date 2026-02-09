@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -52,3 +52,9 @@ runtime-smoke:
 
 entry-smoke:
 	BASE=$(BASE) AURORA_LANG=$(AURORA_LANG) bash scripts/smoke_entry_routes.sh
+
+status:
+	python3 scripts/status_snapshot.py --out $(if $(OUT),$(OUT),status_snapshot.json)
+
+docs: status
+	@echo "Status snapshot generated; docs are in docs/IMPLEMENTATION_STATUS.md and docs/NEXT_STEPS.md"

@@ -1,0 +1,91 @@
+{
+  "generated_at_utc": "2026-02-09T04:33:47Z",
+  "repo_root": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend",
+  "release_gate": {
+    "exists": true,
+    "generated_at": "2026-02-07T17:03:21Z",
+    "verdict": "GO",
+    "checks": {
+      "bench": "PASS",
+      "stability": "PASS",
+      "loadtest": "PASS",
+      "privacy": "PASS"
+    }
+  },
+  "key_files": {
+    "release_gate": true,
+    "stability_report": true,
+    "loadtest_report": true,
+    "bench_report": true,
+    "diag_verify_doc": true,
+    "aurora_cards_contract": true,
+    "aurora_runbook": true,
+    "pseudo_label_store_manifest": false
+  },
+  "storage": {
+    "model_registry_calibration": true,
+    "pseudo_label_model_outputs": false,
+    "pseudo_label_records": false,
+    "pseudo_label_agreement_samples": false,
+    "hard_cases_queue": false
+  },
+  "scripts": {
+    "run_diag_ensemble": false,
+    "report_agreement": true,
+    "eval_calibration": true,
+    "sample_for_labeling": false
+  },
+  "routes": {
+    "metrics_route": true,
+    "ui_events_route": true
+  },
+  "metrics": {
+    "count": 25,
+    "names": [
+      "agreement_histogram",
+      "agreement_histogram_bucket",
+      "agreement_histogram_count",
+      "agreement_histogram_sum",
+      "diag_ensemble_agreement_score",
+      "diag_ensemble_agreement_score_bucket",
+      "diag_ensemble_agreement_score_count",
+      "diag_ensemble_agreement_score_sum",
+      "diag_ensemble_provider_calls_total",
+      "diag_ensemble_provider_fail_total",
+      "diag_ensemble_provider_latency_ms",
+      "diag_ensemble_provider_latency_ms_bucket",
+      "diag_ensemble_provider_latency_ms_count",
+      "diag_ensemble_provider_latency_ms_sum",
+      "diag_ensemble_provider_schema_fail_total",
+      "hard_case_rate",
+      "verify_calls_total",
+      "verify_fail_total",
+      "vision_calls_total",
+      "vision_fail_total",
+      "vision_fallback_total",
+      "vision_latency_ms",
+      "vision_latency_ms_bucket",
+      "vision_latency_ms_count",
+      "vision_latency_ms_sum"
+    ]
+  },
+  "flag_defaults": {
+    "AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM": true,
+    "AURORA_PHOTO_DOWNLOAD_URL_TIMEOUT_MS": 5000,
+    "AURORA_PHOTO_FETCH_TIMEOUT_MS": 3000,
+    "AURORA_PHOTO_FETCH_RETRIES": 2,
+    "DIAG_ENSEMBLE": false,
+    "DIAG_ENSEMBLE_GEMINI_ENABLED": true,
+    "DIAG_ENSEMBLE_GPT_ENABLED": true,
+    "DIAG_GEMINI_VERIFY": false,
+    "DIAG_GEMINI_VERIFY_IOU_THRESHOLD": 0.3,
+    "DIAG_GEMINI_VERIFY_TIMEOUT_MS": 12000,
+    "DIAG_GEMINI_VERIFY_RETRIES": 1,
+    "DIAG_GEMINI_VERIFY_HARD_CASE_THRESHOLD": 0.55,
+    "DIAG_GEMINI_VERIFY_MODEL": "gemini-2.0-flash",
+    "DIAG_CALIBRATION_ENABLED": false,
+    "DIAG_CALIBRATION_MODEL_PATH": "model_registry/diag_calibration_v1.json",
+    "AURORA_PSEUDO_LABEL_ENABLED": true,
+    "AURORA_PSEUDO_LABEL_ALLOW_ROI": false
+  }
+}
