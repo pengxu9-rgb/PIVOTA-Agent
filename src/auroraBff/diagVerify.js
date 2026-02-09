@@ -9,6 +9,9 @@ const VERIFY_SCHEMA_VERSION = 'aurora.diag.verify_shadow.v1';
 const HARD_CASE_SCHEMA_VERSION = 'aurora.diag.verify_hard_case.v1';
 const VERIFY_GUARD_REASON = 'VERIFY_BUDGET_GUARD';
 const VERIFY_CIRCUIT_REASON = 'VERIFY_CIRCUIT_OPEN_UPSTREAM_5XX';
+const VERIFY_AUTH_CIRCUIT_REASON = 'VERIFY_CIRCUIT_OPEN_AUTH_4XX';
+const VERIFY_INFLIGHT_GUARD_REASON = 'VERIFY_INFLIGHT_GUARD';
+const VERIFY_SAMPLE_SKIP_REASON = 'VERIFY_SHADOW_SAMPLE_SKIP';
 const VerifyFailReason = Object.freeze({
   TIMEOUT: 'TIMEOUT',
   RATE_LIMIT: 'RATE_LIMIT',
@@ -31,6 +34,16 @@ const verify5xxCircuitState = {
   openUntilMs: 0,
   lastOpenedAtMs: 0,
 };
+const verifyAuthCircuitState = {
+  windowStartMs: 0,
+  totalAttempts: 0,
+  authFailures: 0,
+  openUntilMs: 0,
+  lastOpenedAtMs: 0,
+};
+const verifyInflightState = {
+  count: 0,
+};
 
 function boolEnv(name, fallback = false) {
   const token = String(process.env[name] == null ? '' : process.env[name])
@@ -44,6 +57,12 @@ function numEnv(name, fallback, min, max) {
   const value = Number(process.env[name] == null ? fallback : process.env[name]);
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
+}
+
+function rateEnv(name, fallback) {
+  const value = Number(process.env[name] == null ? fallback : process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(1, value));
 }
 
 function round3(value) {
@@ -60,6 +79,21 @@ function hashToken(value) {
   const token = String(value || '').trim();
   if (!token) return null;
   return crypto.createHash('sha256').update(token).digest('hex').slice(0, 24);
+}
+
+function stableShadowSampling({
+  sampleRate,
+  traceId,
+  inferenceId,
+  assetId,
+} = {}) {
+  const rate = clamp01(sampleRate);
+  if (rate >= 1) return { selected: true, bucket: 0 };
+  if (rate <= 0) return { selected: false, bucket: 1 };
+  const token = `${String(traceId || '').trim()}|${String(inferenceId || '').trim()}|${String(assetId || '').trim()}`;
+  const digest = crypto.createHash('sha256').update(token || 'shadow-default').digest();
+  const bucket = digest.readUInt32BE(0) / 0xffffffff;
+  return { selected: bucket < rate, bucket: round3(bucket) };
 }
 
 function deriveHardCaseReason({ disagreementReasons, finalReason, verifyFailReason } = {}) {
@@ -194,6 +228,101 @@ function resetVerifyCircuitState() {
   verify5xxCircuitState.consecutive5xx = 0;
   verify5xxCircuitState.openUntilMs = 0;
   verify5xxCircuitState.lastOpenedAtMs = 0;
+}
+
+function resetAuthCircuitWindow(nowMs, windowMs) {
+  const safeWindowMs = Math.max(60000, toInt(windowMs, 600000));
+  const currentWindowStart = Math.floor(nowMs / safeWindowMs) * safeWindowMs;
+  if (verifyAuthCircuitState.windowStartMs !== currentWindowStart) {
+    verifyAuthCircuitState.windowStartMs = currentWindowStart;
+    verifyAuthCircuitState.totalAttempts = 0;
+    verifyAuthCircuitState.authFailures = 0;
+  }
+}
+
+function getAuthCircuitSnapshot({
+  threshold,
+  cooldownMs,
+  nowMs,
+  windowMs,
+  minSamples,
+} = {}) {
+  const now = Number.isFinite(Number(nowMs)) ? Math.trunc(Number(nowMs)) : Date.now();
+  resetAuthCircuitWindow(now, windowMs);
+  const openUntil = Math.max(0, toInt(verifyAuthCircuitState.openUntilMs, 0));
+  const isOpen = openUntil > now;
+  const failRate = verifyAuthCircuitState.totalAttempts > 0
+    ? verifyAuthCircuitState.authFailures / verifyAuthCircuitState.totalAttempts
+    : 0;
+  return {
+    is_open: isOpen,
+    open_until_ms: openUntil,
+    remaining_ms: isOpen ? Math.max(0, openUntil - now) : 0,
+    fail_rate: round3(failRate),
+    total_attempts: verifyAuthCircuitState.totalAttempts,
+    auth_failures: verifyAuthCircuitState.authFailures,
+    threshold: clamp01(threshold),
+    min_samples: Math.max(1, toInt(minSamples, 20)),
+    window_ms: Math.max(60000, toInt(windowMs, 600000)),
+    cooldown_ms: Math.max(10000, toInt(cooldownMs, 600000)),
+  };
+}
+
+function updateVerifyAuthCircuitState({
+  enabled,
+  threshold,
+  cooldownMs,
+  nowMs,
+  windowMs,
+  minSamples,
+  verifyFailReason,
+  providerStatusCode,
+} = {}) {
+  const now = Number.isFinite(Number(nowMs)) ? Math.trunc(Number(nowMs)) : Date.now();
+  if (!enabled) {
+    verifyAuthCircuitState.windowStartMs = 0;
+    verifyAuthCircuitState.totalAttempts = 0;
+    verifyAuthCircuitState.authFailures = 0;
+    verifyAuthCircuitState.openUntilMs = 0;
+    verifyAuthCircuitState.lastOpenedAtMs = 0;
+    return { openedNow: false, snapshot: getAuthCircuitSnapshot({ threshold, cooldownMs, nowMs: now, windowMs, minSamples }) };
+  }
+
+  resetAuthCircuitWindow(now, windowMs);
+  verifyAuthCircuitState.totalAttempts += 1;
+  const statusCode = toInt(providerStatusCode, 0);
+  if (verifyFailReason === VerifyFailReason.UPSTREAM_4XX && (statusCode === 401 || statusCode === 403)) {
+    verifyAuthCircuitState.authFailures += 1;
+  }
+
+  const safeMinSamples = Math.max(1, toInt(minSamples, 20));
+  const failRate = verifyAuthCircuitState.totalAttempts > 0
+    ? verifyAuthCircuitState.authFailures / verifyAuthCircuitState.totalAttempts
+    : 0;
+  if (
+    verifyAuthCircuitState.openUntilMs <= now &&
+    verifyAuthCircuitState.totalAttempts >= safeMinSamples &&
+    failRate > clamp01(threshold)
+  ) {
+    verifyAuthCircuitState.openUntilMs = now + Math.max(10000, toInt(cooldownMs, 600000));
+    verifyAuthCircuitState.lastOpenedAtMs = now;
+    return { openedNow: true, snapshot: getAuthCircuitSnapshot({ threshold, cooldownMs, nowMs: now, windowMs, minSamples }) };
+  }
+
+  return { openedNow: false, snapshot: getAuthCircuitSnapshot({ threshold, cooldownMs, nowMs: now, windowMs, minSamples }) };
+}
+
+function reserveInflightSlot(maxInflight) {
+  const safeMax = Math.max(0, toInt(maxInflight, 0));
+  if (safeMax > 0 && verifyInflightState.count >= safeMax) {
+    return false;
+  }
+  verifyInflightState.count += 1;
+  return true;
+}
+
+function releaseInflightSlot() {
+  verifyInflightState.count = Math.max(0, verifyInflightState.count - 1);
 }
 
 function getCircuitGuardSnapshot({ threshold, cooldownMs, nowMs } = {}) {
@@ -642,8 +771,16 @@ function getVerifierConfig() {
     90000,
   );
   const totalTimeoutDefault = Math.max(1000, Math.trunc(connectTimeoutMs + readTimeoutMs));
+  const shadowEnabled = boolEnv('DIAG_VERIFY_SHADOW_ENABLED', false);
+  const legacyEnabled = boolEnv('DIAG_GEMINI_VERIFY', false);
+  const shadowModeFlag = boolEnv('DIAG_SHADOW_MODE', false);
+  const enabled = shadowEnabled || legacyEnabled;
   return {
-    enabled: boolEnv('DIAG_GEMINI_VERIFY', false),
+    enabled,
+    shadowEnabled,
+    legacyEnabled,
+    shadowMode: shadowEnabled ? true : shadowModeFlag,
+    sampleRate: rateEnv('DIAG_VERIFY_SHADOW_SAMPLE_RATE', shadowEnabled ? 0.01 : 1),
     iouThreshold: numEnv('DIAG_GEMINI_VERIFY_IOU_THRESHOLD', 0.3, 0.05, 0.95),
     timeoutConnectMs: connectTimeoutMs,
     timeoutReadMs: readTimeoutMs,
@@ -661,6 +798,13 @@ function getVerifierConfig() {
     circuitEnabled: boolEnv('DIAG_VERIFY_5XX_CIRCUIT_ENABLED', true),
     circuitConsecutiveThreshold: Math.max(1, Math.trunc(numEnv('DIAG_VERIFY_5XX_CONSECUTIVE_THRESHOLD', 3, 1, 50))),
     circuitCooldownMs: Math.max(1000, Math.trunc(numEnv('DIAG_VERIFY_5XX_COOLDOWN_MS', 90000, 1000, 900000))),
+    authCircuitEnabled: boolEnv('DIAG_VERIFY_AUTH_CIRCUIT_ENABLED', true),
+    authCircuitFailRateThreshold: rateEnv('DIAG_VERIFY_AUTH_FAIL_RATE_THRESHOLD', 0.01),
+    authCircuitCooldownMs: Math.max(10000, Math.trunc(numEnv('DIAG_VERIFY_AUTH_CIRCUIT_COOLDOWN_MS', 600000, 10000, 3600000))),
+    authCircuitWindowMs: Math.max(60000, Math.trunc(numEnv('DIAG_VERIFY_AUTH_FAIL_WINDOW_MS', 600000, 60000, 3600000))),
+    authCircuitMinSamples: Math.max(1, Math.trunc(numEnv('DIAG_VERIFY_AUTH_FAIL_MIN_SAMPLES', 20, 1, 10000))),
+    maxInflight: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_INFLIGHT', 32, 0, 10000))),
+    allowGuardTest: boolEnv('ALLOW_GUARD_TEST', false),
   };
 }
 
@@ -676,6 +820,7 @@ async function runGeminiShadowVerify({
   inferenceId,
   traceId,
   assetId,
+  runtimeLimits,
   skinToneBucket,
   lightingBucket,
   logger,
@@ -686,6 +831,10 @@ async function runGeminiShadowVerify({
   const qualityGrade = normalizeQualityGrade(photoQuality?.grade || diagnosisV1?.quality?.grade || 'unknown');
 
   if (!cfg.enabled) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: 'DISABLED_BY_FLAG' });
+    }
     return {
       ok: false,
       enabled: false,
@@ -700,6 +849,10 @@ async function runGeminiShadowVerify({
   }
 
   if (!usedPhotos) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: 'PHOTO_NOT_USED' });
+    }
     return {
       ok: false,
       enabled: true,
@@ -714,6 +867,10 @@ async function runGeminiShadowVerify({
   }
 
   if (!qualityAllowsVerify(qualityGrade)) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: `QUALITY_${qualityGrade.toUpperCase()}` });
+    }
     return {
       ok: false,
       enabled: true,
@@ -728,6 +885,10 @@ async function runGeminiShadowVerify({
   }
 
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: 'MISSING_IMAGE_BUFFER' });
+    }
     return {
       ok: false,
       enabled: true,
@@ -741,17 +902,53 @@ async function runGeminiShadowVerify({
     };
   }
 
+  if (cfg.shadowMode) {
+    const sample = stableShadowSampling({
+      sampleRate: cfg.sampleRate,
+      traceId,
+      inferenceId,
+      assetId,
+    });
+    if (!sample.selected) {
+      if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
+      if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+        metricsHooks.onVerifySkip({ reason: VERIFY_SAMPLE_SKIP_REASON });
+      }
+      return {
+        ok: false,
+        enabled: true,
+        called: false,
+        decision: 'skip',
+        final_reason: VERIFY_SAMPLE_SKIP_REASON,
+        provider_status_code: 0,
+        latency_ms: 0,
+        attempts: 0,
+        skipped_reason: VERIFY_SAMPLE_SKIP_REASON,
+      };
+    }
+  }
+
+  const effectiveMaxCallsPerMin = cfg.allowGuardTest
+    ? toInt(runtimeLimits?.maxCallsPerMin, cfg.maxCallsPerMin)
+    : cfg.maxCallsPerMin;
+  const effectiveMaxCallsPerDay = cfg.allowGuardTest
+    ? toInt(runtimeLimits?.maxCallsPerDay, cfg.maxCallsPerDay)
+    : cfg.maxCallsPerDay;
+
   const preCallCircuit = getCircuitGuardSnapshot({
     threshold: cfg.circuitConsecutiveThreshold,
     cooldownMs: cfg.circuitCooldownMs,
   });
   if (cfg.circuitEnabled && preCallCircuit.is_open) {
-    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'guard' });
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
     if (metricsHooks && typeof metricsHooks.onVerifyCircuitOpen === 'function') {
       metricsHooks.onVerifyCircuitOpen({
         reason: VERIFY_CIRCUIT_REASON,
         ...preCallCircuit,
       });
+    }
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: VERIFY_CIRCUIT_REASON });
     }
     const persistence = await persistVerifierSkipRecord({
       inferenceId: inferenceId || null,
@@ -776,18 +973,52 @@ async function runGeminiShadowVerify({
     };
   }
 
+  const preAuthCircuit = getAuthCircuitSnapshot({
+    threshold: cfg.authCircuitFailRateThreshold,
+    cooldownMs: cfg.authCircuitCooldownMs,
+    windowMs: cfg.authCircuitWindowMs,
+    minSamples: cfg.authCircuitMinSamples,
+  });
+  if (cfg.authCircuitEnabled && preAuthCircuit.is_open) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: VERIFY_AUTH_CIRCUIT_REASON });
+    }
+    if (metricsHooks && typeof metricsHooks.onVerifyCircuitOpen === 'function') {
+      metricsHooks.onVerifyCircuitOpen({
+        reason: VERIFY_AUTH_CIRCUIT_REASON,
+        ...preAuthCircuit,
+      });
+    }
+    return {
+      ok: false,
+      enabled: true,
+      called: false,
+      decision: 'skip',
+      final_reason: VERIFY_AUTH_CIRCUIT_REASON,
+      provider_status_code: 403,
+      latency_ms: 0,
+      attempts: 0,
+      skipped_reason: VERIFY_AUTH_CIRCUIT_REASON,
+      auth_circuit_breaker: preAuthCircuit,
+    };
+  }
+
   const budget = reserveVerifyBudget({
-    maxCallsPerMin: cfg.maxCallsPerMin,
-    maxCallsPerDay: cfg.maxCallsPerDay,
+    maxCallsPerMin: effectiveMaxCallsPerMin,
+    maxCallsPerDay: effectiveMaxCallsPerDay,
     nowMs: Date.now(),
   });
   if (!budget.allowed) {
-    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'guard' });
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
     if (metricsHooks && typeof metricsHooks.onVerifyBudgetGuard === 'function') {
       metricsHooks.onVerifyBudgetGuard({
         reason: VERIFY_GUARD_REASON,
         ...budget.usage,
       });
+    }
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: VERIFY_GUARD_REASON });
     }
     const persistence = await persistVerifierSkipRecord({
       inferenceId: inferenceId || null,
@@ -814,31 +1045,60 @@ async function runGeminiShadowVerify({
     };
   }
 
+  if (!reserveInflightSlot(cfg.maxInflight)) {
+    if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'skip' });
+    if (metricsHooks && typeof metricsHooks.onVerifySkip === 'function') {
+      metricsHooks.onVerifySkip({ reason: VERIFY_INFLIGHT_GUARD_REASON });
+    }
+    if (metricsHooks && typeof metricsHooks.onVerifyInFlightGuard === 'function') {
+      metricsHooks.onVerifyInFlightGuard({
+        reason: VERIFY_INFLIGHT_GUARD_REASON,
+      });
+    }
+    return {
+      ok: false,
+      enabled: true,
+      called: false,
+      decision: 'skip',
+      final_reason: VERIFY_INFLIGHT_GUARD_REASON,
+      provider_status_code: 0,
+      latency_ms: 0,
+      attempts: 0,
+      skipped_reason: VERIFY_INFLIGHT_GUARD_REASON,
+    };
+  }
+
   const runCv = providerOverrides && typeof providerOverrides.cvProvider === 'function' ? providerOverrides.cvProvider : runCvProvider;
   const runGemini =
     providerOverrides && typeof providerOverrides.geminiProvider === 'function' ? providerOverrides.geminiProvider : runGeminiProvider;
 
   if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'attempt' });
 
-  const cvOutput = await runCv({
-    diagnosisV1,
-    diagnosisInternal,
-    photoQuality,
-    language,
-  });
+  let cvOutput;
+  let geminiOutput;
+  try {
+    cvOutput = await runCv({
+      diagnosisV1,
+      diagnosisInternal,
+      photoQuality,
+      language,
+    });
 
-  const geminiOutput = await runGemini({
-    imageBuffer,
-    language,
-    profileSummary,
-    recentLogsSummary,
-    photoQuality,
-    retries: cfg.retries,
-    timeoutMs: cfg.timeoutMs,
-    connectTimeoutMs: cfg.timeoutConnectMs,
-    readTimeoutMs: cfg.timeoutReadMs,
-    model: cfg.model,
-  });
+    geminiOutput = await runGemini({
+      imageBuffer,
+      language,
+      profileSummary,
+      recentLogsSummary,
+      photoQuality,
+      retries: cfg.retries,
+      timeoutMs: cfg.timeoutMs,
+      connectTimeoutMs: cfg.timeoutConnectMs,
+      readTimeoutMs: cfg.timeoutReadMs,
+      model: cfg.model,
+    });
+  } finally {
+    releaseInflightSlot();
+  }
 
   const verifyLatencyMs = round3(Math.max(0, Number(geminiOutput?.latency_ms || 0)));
   const verifyAttempts = Math.max(1, toInt(geminiOutput?.attempts, cfg.retries + 1));
@@ -1025,6 +1285,16 @@ async function runGeminiShadowVerify({
     cooldownMs: cfg.circuitCooldownMs,
     verifyFailReason,
   });
+  const authCircuitUpdate = updateVerifyAuthCircuitState({
+    enabled: cfg.authCircuitEnabled,
+    threshold: cfg.authCircuitFailRateThreshold,
+    cooldownMs: cfg.authCircuitCooldownMs,
+    windowMs: cfg.authCircuitWindowMs,
+    minSamples: cfg.authCircuitMinSamples,
+    verifyFailReason,
+    providerStatusCode,
+    nowMs: Date.now(),
+  });
   if (circuitUpdate.openedNow) {
     logger?.warn(
       {
@@ -1041,6 +1311,22 @@ async function runGeminiShadowVerify({
       });
     }
   }
+  if (authCircuitUpdate.openedNow) {
+    logger?.warn(
+      {
+        trace_id: effectiveTraceId,
+        reason: VERIFY_AUTH_CIRCUIT_REASON,
+        auth_circuit_breaker: authCircuitUpdate.snapshot,
+      },
+      'diag verify: auth circuit opened',
+    );
+    if (metricsHooks && typeof metricsHooks.onVerifyCircuitOpen === 'function') {
+      metricsHooks.onVerifyCircuitOpen({
+        reason: VERIFY_AUTH_CIRCUIT_REASON,
+        ...authCircuitUpdate.snapshot,
+      });
+    }
+  }
   if (metricsHooks && typeof metricsHooks.onVerifyAgreement === 'function') metricsHooks.onVerifyAgreement(agreementScore);
   if (metricsHooks && typeof metricsHooks.onVerifyRetry === 'function') {
     metricsHooks.onVerifyRetry({ attempts: verifyAttempts });
@@ -1048,7 +1334,13 @@ async function runGeminiShadowVerify({
   if (hardCase && metricsHooks && typeof metricsHooks.onVerifyHardCase === 'function') metricsHooks.onVerifyHardCase();
   if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') {
     metricsHooks.onVerifyCall({
-      status: geminiOutput.ok ? 'ok' : 'fail',
+      status: geminiOutput.ok ? 'success' : 'fail',
+    });
+  }
+  if (metricsHooks && typeof metricsHooks.onVerifyLatency === 'function') {
+    metricsHooks.onVerifyLatency({
+      status: geminiOutput.ok ? 'success' : 'fail',
+      latencyMs: verifyLatencyMs,
     });
   }
 
@@ -1067,6 +1359,7 @@ async function runGeminiShadowVerify({
     ...(timeoutStage ? { timeout_stage: timeoutStage } : {}),
     ...(upstreamRequestId ? { upstream_request_id: upstreamRequestId } : {}),
     circuit_breaker: circuitUpdate.snapshot,
+    auth_circuit_breaker: authCircuitUpdate.snapshot,
     agreement_score: agreementScore,
     disagreement_reasons: disagreementReasons,
     verifier: verifierVerdict,
@@ -1083,6 +1376,12 @@ function resetVerifyBudgetGuardState() {
   verifyBudgetState.dayKey = '';
   verifyBudgetState.dayCount = 0;
   resetVerifyCircuitState();
+  verifyAuthCircuitState.windowStartMs = 0;
+  verifyAuthCircuitState.totalAttempts = 0;
+  verifyAuthCircuitState.authFailures = 0;
+  verifyAuthCircuitState.openUntilMs = 0;
+  verifyAuthCircuitState.lastOpenedAtMs = 0;
+  verifyInflightState.count = 0;
 }
 
 module.exports = {
@@ -1090,6 +1389,9 @@ module.exports = {
   HARD_CASE_SCHEMA_VERSION,
   VERIFY_GUARD_REASON,
   VERIFY_CIRCUIT_REASON,
+  VERIFY_AUTH_CIRCUIT_REASON,
+  VERIFY_INFLIGHT_GUARD_REASON,
+  VERIFY_SAMPLE_SKIP_REASON,
   VerifyFailReason,
   normalizeVerifyFailReason,
   runGeminiShadowVerify,
@@ -1097,6 +1399,7 @@ module.exports = {
   computeAgreementScore,
   collectDisagreementReasons,
   qualityAllowsVerify,
+  stableShadowSampling,
   resetVerifyBudgetGuardState,
   shouldUseVerifierInVote,
   should_use_verifier_in_vote,
