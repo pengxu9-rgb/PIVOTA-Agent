@@ -58,6 +58,10 @@ test('report_verify_daily generates markdown sections from small ndjson sample',
     assert.ok(markdown.includes('| degraded | 1 | 0 | 0 | 0.6 |'));
     assert.ok(markdown.includes('## Verify Fail By Reason'));
     assert.ok(markdown.includes('| TIMEOUT | 1 | 0.333 | 1 |'));
+    assert.ok(markdown.includes('## Verify Fail By Subreason'));
+    assert.ok(markdown.includes('| TIMEOUT | 1 | 0.333 | 1 |'));
+    assert.ok(markdown.includes('## Alert Checks'));
+    assert.ok(markdown.includes('verify_fail_rate'));
     assert.ok(markdown.includes('## Top UNKNOWN Samples'));
     assert.ok(markdown.includes('_No UNKNOWN failures for this date._'));
 
@@ -254,6 +258,78 @@ test('report_verify_daily maps REQUEST_FAILED legacy failures to UPSTREAM_5XX', 
     assert.ok(reasonRow);
     assert.equal(reasonRow.count, 1);
     assert.equal(report.verify_fail_by_reason.find((item) => item.reason === 'UNKNOWN'), undefined);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('report_verify_daily splits UPSTREAM_4XX into subreasons using status code', async () => {
+  const tempRoot = await makeTempDir('aurora_verify_daily_4xx_subreasons_');
+  try {
+    const scriptPath = repoPath('scripts', 'report_verify_daily.js');
+    const inputDir = path.join(tempRoot, 'input');
+    const outputDir = path.join(tempRoot, 'reports');
+
+    await fs.mkdir(inputDir, { recursive: true });
+    await fs.writeFile(
+      path.join(inputDir, 'manifest.json'),
+      JSON.stringify({
+        paths: {
+          model_outputs: 'model_outputs.ndjson',
+          agreement_samples: 'agreement_samples.ndjson',
+          gold_labels: 'gold_labels.ndjson',
+        },
+      }, null, 2),
+      'utf8',
+    );
+    await writeNdjson(path.join(inputDir, 'model_outputs.ndjson'), [
+      {
+        created_at: '2026-02-09T13:10:00.000Z',
+        provider: 'gemini_provider',
+        quality_grade: 'pass',
+        output_json: {
+          ok: false,
+          decision: 'verify',
+          failure_reason: 'VISION_UPSTREAM_4XX',
+          final_reason: 'VISION_UPSTREAM_4XX',
+          provider_status_code: 401,
+          latency_ms: 11,
+        },
+      },
+      {
+        created_at: '2026-02-09T13:11:00.000Z',
+        provider: 'gemini_provider',
+        quality_grade: 'pass',
+        output_json: {
+          ok: false,
+          decision: 'verify',
+          failure_reason: 'VISION_UPSTREAM_4XX',
+          final_reason: 'VISION_UPSTREAM_4XX',
+          provider_status_code: 403,
+          latency_ms: 12,
+        },
+      },
+    ]);
+    await writeNdjson(path.join(inputDir, 'agreement_samples.ndjson'), []);
+    await writeNdjson(path.join(inputDir, 'gold_labels.ndjson'), []);
+
+    const { stdout } = await runExecFile('node', [
+      scriptPath,
+      '--in', inputDir,
+      '--out', outputDir,
+      '--date', '2026-02-09',
+    ]);
+
+    const lines = stdout.trim().split('\n');
+    const jsonPath = lines[0];
+    const report = JSON.parse(await fs.readFile(jsonPath, 'utf8'));
+
+    const sub401 = report.verify_fail_by_subreason.find((item) => item.subreason === 'UPSTREAM_401');
+    const sub403 = report.verify_fail_by_subreason.find((item) => item.subreason === 'UPSTREAM_403');
+    assert.ok(sub401);
+    assert.ok(sub403);
+    assert.equal(sub401.count, 1);
+    assert.equal(sub403.count, 1);
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

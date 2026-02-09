@@ -6,6 +6,15 @@ const path = require('node:path');
 const DEFAULT_INPUT_DIR = path.join('tmp', 'diag_pseudo_label_factory');
 const DEFAULT_HARD_CASES = path.join('tmp', 'diag_verify', 'hard_cases.ndjson');
 const DEFAULT_OUTPUT_DIR = 'reports';
+const ALERT_THRESHOLD_DEFAULTS = Object.freeze({
+  verify_fail_rate_max: 0.45,
+  upstream_5xx_rate_max: 0.12,
+  timeout_rate_max: 0.08,
+  upstream_4xx_rate_max: 0.12,
+  upstream_401_rate_max: 0.08,
+  upstream_403_rate_max: 0.04,
+  upstream_429_rate_max: 0.05,
+});
 
 function parseArgs(argv) {
   const out = {
@@ -50,6 +59,14 @@ function safeToken(value, fallback = 'unknown') {
 function safeNumber(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function envThreshold(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || String(raw).trim() === '') return fallback;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(1, numeric));
 }
 
 function round3(value) {
@@ -149,6 +166,31 @@ function normalizeVerifyFailReason(rawReason, statusCode, statusClass, errorClas
   return 'UNKNOWN';
 }
 
+function classifyUpstream4xxSubreason(statusCode) {
+  const numericStatus = Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : 0;
+  if (numericStatus === 401) return 'UPSTREAM_401';
+  if (numericStatus === 403) return 'UPSTREAM_403';
+  if (numericStatus === 404) return 'UPSTREAM_404';
+  if (numericStatus === 408) return 'UPSTREAM_408';
+  if (numericStatus === 409) return 'UPSTREAM_409';
+  if (numericStatus === 422) return 'UPSTREAM_422';
+  if (numericStatus === 429) return 'UPSTREAM_429';
+  if (numericStatus >= 400 && numericStatus < 500) return `UPSTREAM_${numericStatus}`;
+  return 'UPSTREAM_4XX_OTHER';
+}
+
+function getAlertThresholds() {
+  return {
+    verify_fail_rate_max: envThreshold('VERIFY_ALERT_VERIFY_FAIL_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.verify_fail_rate_max),
+    upstream_5xx_rate_max: envThreshold('VERIFY_ALERT_UPSTREAM_5XX_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_5xx_rate_max),
+    timeout_rate_max: envThreshold('VERIFY_ALERT_TIMEOUT_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.timeout_rate_max),
+    upstream_4xx_rate_max: envThreshold('VERIFY_ALERT_UPSTREAM_4XX_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_4xx_rate_max),
+    upstream_401_rate_max: envThreshold('VERIFY_ALERT_UPSTREAM_401_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_401_rate_max),
+    upstream_403_rate_max: envThreshold('VERIFY_ALERT_UPSTREAM_403_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_403_rate_max),
+    upstream_429_rate_max: envThreshold('VERIFY_ALERT_UPSTREAM_429_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_429_rate_max),
+  };
+}
+
 function byCount(entries) {
   return entries.sort((left, right) => {
     if (right.count !== left.count) return right.count - left.count;
@@ -242,6 +284,7 @@ async function main() {
   const failuresTotal = failures.length;
 
   const reasonCounter = new Map();
+  const subreasonCounter = new Map();
   const statusCounter = new Map();
   const rawReasonCounter = new Map();
   const reasonStatusCounter = new Map();
@@ -249,6 +292,10 @@ async function main() {
   for (const row of failures) {
     const reason = safeToken(row.normalized_reason, 'UNKNOWN');
     reasonCounter.set(reason, (reasonCounter.get(reason) || 0) + 1);
+    const subreason = reason === 'UPSTREAM_4XX'
+      ? classifyUpstream4xxSubreason(row.status_code)
+      : reason;
+    subreasonCounter.set(subreason, (subreasonCounter.get(subreason) || 0) + 1);
 
     const statusKey = Number.isFinite(Number(row.status_code)) ? String(Math.trunc(Number(row.status_code))) : 'none';
     statusCounter.set(statusKey, (statusCounter.get(statusKey) || 0) + 1);
@@ -259,6 +306,59 @@ async function main() {
     const reasonStatusKey = `${reason}|${statusKey}`;
     reasonStatusCounter.set(reasonStatusKey, (reasonStatusCounter.get(reasonStatusKey) || 0) + 1);
   }
+
+  const thresholds = getAlertThresholds();
+  const failRate = formatRate(failuresTotal, attemptsTotal);
+  const reasonRate = (key) => formatRate(reasonCounter.get(key) || 0, attemptsTotal);
+  const subreasonRate = (key) => formatRate(subreasonCounter.get(key) || 0, attemptsTotal);
+  const alertChecks = [
+    {
+      metric: 'verify_fail_rate',
+      value: failRate,
+      threshold: thresholds.verify_fail_rate_max,
+      pass: failRate <= thresholds.verify_fail_rate_max,
+    },
+    {
+      metric: 'upstream_5xx_rate',
+      value: reasonRate('UPSTREAM_5XX'),
+      threshold: thresholds.upstream_5xx_rate_max,
+      pass: reasonRate('UPSTREAM_5XX') <= thresholds.upstream_5xx_rate_max,
+    },
+    {
+      metric: 'timeout_rate',
+      value: reasonRate('TIMEOUT'),
+      threshold: thresholds.timeout_rate_max,
+      pass: reasonRate('TIMEOUT') <= thresholds.timeout_rate_max,
+    },
+    {
+      metric: 'upstream_4xx_rate',
+      value: reasonRate('UPSTREAM_4XX'),
+      threshold: thresholds.upstream_4xx_rate_max,
+      pass: reasonRate('UPSTREAM_4XX') <= thresholds.upstream_4xx_rate_max,
+    },
+    {
+      metric: 'upstream_401_rate',
+      value: subreasonRate('UPSTREAM_401'),
+      threshold: thresholds.upstream_401_rate_max,
+      pass: subreasonRate('UPSTREAM_401') <= thresholds.upstream_401_rate_max,
+    },
+    {
+      metric: 'upstream_403_rate',
+      value: subreasonRate('UPSTREAM_403'),
+      threshold: thresholds.upstream_403_rate_max,
+      pass: subreasonRate('UPSTREAM_403') <= thresholds.upstream_403_rate_max,
+    },
+    {
+      metric: 'upstream_429_rate',
+      value: subreasonRate('UPSTREAM_429'),
+      threshold: thresholds.upstream_429_rate_max,
+      pass: subreasonRate('UPSTREAM_429') <= thresholds.upstream_429_rate_max,
+    },
+  ].map((item) => ({
+    ...item,
+    value: round3(item.value),
+    threshold: round3(item.threshold),
+  }));
 
   const hardCaseMissingIds = hardCases.filter((row) => {
     const requestId = String(row?.request_id_hash || row?.request_id || row?.inference_id || '').trim();
@@ -287,9 +387,13 @@ async function main() {
       hard_cases_missing_id_fields: hardCaseMissingIds,
     },
     failure_reason_breakdown: mapToRankedRows(reasonCounter, failuresTotal),
+    failure_subreason_breakdown: mapToRankedRows(subreasonCounter, failuresTotal),
     status_code_breakdown: mapToRankedRows(statusCounter, failuresTotal),
     raw_reason_breakdown: mapToRankedRows(rawReasonCounter, failuresTotal).slice(0, 20),
     reason_status_breakdown: mapToRankedRows(reasonStatusCounter, failuresTotal).slice(0, 30),
+    alert_thresholds: thresholds,
+    alert_checks: alertChecks,
+    alert_status: alertChecks.every((item) => item.pass) ? 'PASS' : 'FAIL',
     examples: failures.slice(0, 20),
   };
 

@@ -9,6 +9,17 @@ const DEFAULT_INPUT_DIR = path.join('tmp', 'diag_pseudo_label_factory');
 const DEFAULT_HARD_CASES = path.join('tmp', 'diag_verify', 'hard_cases.ndjson');
 const DEFAULT_OUTPUT_DIR = 'reports';
 const VERIFY_BUDGET_GUARD = 'VERIFY_BUDGET_GUARD';
+const ALERT_THRESHOLD_DEFAULTS = Object.freeze({
+  verify_fail_rate_max: 0.45,
+  upstream_5xx_rate_vs_calls_max: 0.12,
+  timeout_rate_vs_calls_max: 0.08,
+  upstream_4xx_rate_vs_calls_max: 0.12,
+  upstream_401_rate_vs_calls_max: 0.08,
+  upstream_403_rate_vs_calls_max: 0.04,
+  upstream_429_rate_vs_calls_max: 0.05,
+  image_fetch_failed_rate_vs_calls_max: 0.08,
+  schema_invalid_rate_vs_calls_max: 0.08,
+});
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -96,6 +107,14 @@ function safeToken(value, fallback = 'unknown') {
 function safeNumber(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function envThreshold(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || String(raw).trim() === '') return fallback;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(1, numeric));
 }
 
 function round3(value) {
@@ -292,6 +311,144 @@ function summarizeVerifyFailByReason(verifyRows) {
       if (b.count !== a.count) return b.count - a.count;
       return a.reason.localeCompare(b.reason);
     });
+}
+
+function classifyUpstream4xxSubreason(statusCode) {
+  const numericStatus = Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : 0;
+  if (numericStatus === 401) return 'UPSTREAM_401';
+  if (numericStatus === 403) return 'UPSTREAM_403';
+  if (numericStatus === 404) return 'UPSTREAM_404';
+  if (numericStatus === 408) return 'UPSTREAM_408';
+  if (numericStatus === 409) return 'UPSTREAM_409';
+  if (numericStatus === 422) return 'UPSTREAM_422';
+  if (numericStatus === 429) return 'UPSTREAM_429';
+  if (numericStatus >= 400 && numericStatus < 500) return `UPSTREAM_${numericStatus}`;
+  return 'UPSTREAM_4XX_OTHER';
+}
+
+function summarizeVerifyFailBySubreason(verifyRows) {
+  const counter = new Map();
+  const totalCalls = Math.max(0, verifyRows.length);
+  const failures = verifyRows.filter((row) => row.is_failure);
+  for (const row of failures) {
+    const reason = safeToken(row.fail_reason, 'UNKNOWN');
+    const subreason = reason === 'UPSTREAM_4XX'
+      ? classifyUpstream4xxSubreason(row.provider_status_code)
+      : reason;
+    counter.set(subreason, (counter.get(subreason) || 0) + 1);
+  }
+  return Array.from(counter.entries())
+    .map(([subreason, count]) => ({
+      subreason,
+      count,
+      rate_vs_calls: formatRate(count, totalCalls),
+      rate_vs_fails: formatRate(count, failures.length),
+    }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.subreason.localeCompare(b.subreason);
+    });
+}
+
+function getAlertThresholds() {
+  return {
+    verify_fail_rate_max: envThreshold('VERIFY_ALERT_VERIFY_FAIL_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.verify_fail_rate_max),
+    upstream_5xx_rate_vs_calls_max: envThreshold('VERIFY_ALERT_UPSTREAM_5XX_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_5xx_rate_vs_calls_max),
+    timeout_rate_vs_calls_max: envThreshold('VERIFY_ALERT_TIMEOUT_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.timeout_rate_vs_calls_max),
+    upstream_4xx_rate_vs_calls_max: envThreshold('VERIFY_ALERT_UPSTREAM_4XX_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_4xx_rate_vs_calls_max),
+    upstream_401_rate_vs_calls_max: envThreshold('VERIFY_ALERT_UPSTREAM_401_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_401_rate_vs_calls_max),
+    upstream_403_rate_vs_calls_max: envThreshold('VERIFY_ALERT_UPSTREAM_403_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_403_rate_vs_calls_max),
+    upstream_429_rate_vs_calls_max: envThreshold('VERIFY_ALERT_UPSTREAM_429_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.upstream_429_rate_vs_calls_max),
+    image_fetch_failed_rate_vs_calls_max: envThreshold('VERIFY_ALERT_IMAGE_FETCH_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.image_fetch_failed_rate_vs_calls_max),
+    schema_invalid_rate_vs_calls_max: envThreshold('VERIFY_ALERT_SCHEMA_INVALID_RATE_MAX', ALERT_THRESHOLD_DEFAULTS.schema_invalid_rate_vs_calls_max),
+  };
+}
+
+function findRateByReason(rows, key) {
+  const row = rows.find((item) => safeToken(item.reason, '') === key);
+  return Number.isFinite(Number(row?.rate_vs_calls)) ? Number(row.rate_vs_calls) : 0;
+}
+
+function findRateBySubreason(rows, key) {
+  const row = rows.find((item) => safeToken(item.subreason, '') === key);
+  return Number.isFinite(Number(row?.rate_vs_calls)) ? Number(row.rate_vs_calls) : 0;
+}
+
+function buildAlertChecks({ summary, failByReason, failBySubreason, thresholds }) {
+  const checks = [];
+  const verifyCalls = Number.isFinite(Number(summary?.verify_calls_total)) ? Number(summary.verify_calls_total) : 0;
+  const verifyFails = Number.isFinite(Number(summary?.verify_fail_total)) ? Number(summary.verify_fail_total) : 0;
+  const verifyFailRate = verifyCalls > 0 ? verifyFails / verifyCalls : 0;
+
+  const metrics = [
+    {
+      metric: 'verify_fail_rate',
+      value: verifyFailRate,
+      threshold: thresholds.verify_fail_rate_max,
+      note: 'verify_fail_total / verify_calls_total',
+    },
+    {
+      metric: 'upstream_5xx_rate_vs_calls',
+      value: findRateByReason(failByReason, 'UPSTREAM_5XX'),
+      threshold: thresholds.upstream_5xx_rate_vs_calls_max,
+      note: 'UPSTREAM_5XX / verify_calls_total',
+    },
+    {
+      metric: 'timeout_rate_vs_calls',
+      value: findRateByReason(failByReason, 'TIMEOUT'),
+      threshold: thresholds.timeout_rate_vs_calls_max,
+      note: 'TIMEOUT / verify_calls_total',
+    },
+    {
+      metric: 'upstream_4xx_rate_vs_calls',
+      value: findRateByReason(failByReason, 'UPSTREAM_4XX'),
+      threshold: thresholds.upstream_4xx_rate_vs_calls_max,
+      note: 'UPSTREAM_4XX / verify_calls_total',
+    },
+    {
+      metric: 'upstream_401_rate_vs_calls',
+      value: findRateBySubreason(failBySubreason, 'UPSTREAM_401'),
+      threshold: thresholds.upstream_401_rate_vs_calls_max,
+      note: 'UPSTREAM_401 / verify_calls_total',
+    },
+    {
+      metric: 'upstream_403_rate_vs_calls',
+      value: findRateBySubreason(failBySubreason, 'UPSTREAM_403'),
+      threshold: thresholds.upstream_403_rate_vs_calls_max,
+      note: 'UPSTREAM_403 / verify_calls_total',
+    },
+    {
+      metric: 'upstream_429_rate_vs_calls',
+      value: findRateBySubreason(failBySubreason, 'UPSTREAM_429'),
+      threshold: thresholds.upstream_429_rate_vs_calls_max,
+      note: 'UPSTREAM_429 / verify_calls_total',
+    },
+    {
+      metric: 'image_fetch_failed_rate_vs_calls',
+      value: findRateByReason(failByReason, 'IMAGE_FETCH_FAILED'),
+      threshold: thresholds.image_fetch_failed_rate_vs_calls_max,
+      note: 'IMAGE_FETCH_FAILED / verify_calls_total',
+    },
+    {
+      metric: 'schema_invalid_rate_vs_calls',
+      value: findRateByReason(failByReason, 'SCHEMA_INVALID'),
+      threshold: thresholds.schema_invalid_rate_vs_calls_max,
+      note: 'SCHEMA_INVALID / verify_calls_total',
+    },
+  ];
+
+  for (const item of metrics) {
+    const value = round3(item.value);
+    const threshold = round3(item.threshold);
+    checks.push({
+      metric: item.metric,
+      value,
+      threshold,
+      pass: value <= threshold,
+      note: item.note,
+    });
+  }
+  return checks;
 }
 
 function extractAgreementRows(samples, dayPrefix) {
@@ -562,6 +719,8 @@ function buildMarkdown({
   byIssueType,
   byQuality,
   failByReason,
+  failBySubreason,
+  alertChecks,
   unknownSamples,
   eligibleBuckets,
   hardCases,
@@ -627,6 +786,30 @@ function buildMarkdown({
     ));
   } else {
     lines.push('_No verifier failures for this date._');
+  }
+  lines.push('');
+
+  lines.push('## Verify Fail By Subreason');
+  lines.push('');
+  if (failBySubreason.length) {
+    lines.push(table(
+      ['subreason', 'count', 'rate_vs_calls', 'rate_vs_fails'],
+      failBySubreason.map((row) => [row.subreason, row.count, row.rate_vs_calls, row.rate_vs_fails]),
+    ));
+  } else {
+    lines.push('_No verifier failures for this date._');
+  }
+  lines.push('');
+
+  lines.push('## Alert Checks');
+  lines.push('');
+  if (alertChecks.length) {
+    lines.push(table(
+      ['metric', 'value', 'threshold_max', 'pass', 'note'],
+      alertChecks.map((row) => [row.metric, row.value, row.threshold, row.pass ? 'yes' : 'no', row.note]),
+    ));
+  } else {
+    lines.push('_No alert checks configured._');
   }
   lines.push('');
 
@@ -717,6 +900,18 @@ async function runDailyReport(options = {}) {
   const byIssueType = summarizeByIssueType(agreementRows, hardCasesAll, dateIso);
   const byQualityGrade = summarizeByQualityGrade(verifyRows, agreementRows);
   const failByReason = summarizeVerifyFailByReason(verifyRows);
+  const failBySubreason = summarizeVerifyFailBySubreason(verifyRows);
+  const alertThresholds = getAlertThresholds();
+  const alertChecks = buildAlertChecks({
+    summary: {
+      verify_calls_total: verifyCalls,
+      verify_fail_total: verifyFails,
+    },
+    failByReason,
+    failBySubreason,
+    thresholds: alertThresholds,
+  });
+  const alertStatus = alertChecks.every((item) => item.pass) ? 'PASS' : 'FAIL';
   const unknownSamples = summarizeUnknownSamples(verifyRows, 20);
   const reliabilityTable = buildReliabilityTable({
     modelOutputs,
@@ -779,6 +974,10 @@ async function runDailyReport(options = {}) {
     by_issue_type: byIssueType,
     by_quality_grade: byQualityGrade,
     verify_fail_by_reason: failByReason,
+    verify_fail_by_subreason: failBySubreason,
+    alert_thresholds: alertThresholds,
+    alert_checks: alertChecks,
+    alert_status: alertStatus,
     top_unknown_samples: unknownSamples,
     eligible_buckets: eligibleBuckets,
     top_hard_cases: hardCases,
@@ -791,6 +990,8 @@ async function runDailyReport(options = {}) {
     byIssueType,
     byQuality: byQualityGrade,
     failByReason,
+    failBySubreason,
+    alertChecks,
     unknownSamples,
     eligibleBuckets,
     hardCases,
