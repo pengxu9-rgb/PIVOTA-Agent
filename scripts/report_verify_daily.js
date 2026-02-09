@@ -729,6 +729,7 @@ function buildMarkdown({
   dateIso,
   generatedAt,
   summary,
+  windowContext,
   byIssueType,
   byQuality,
   failByReason,
@@ -751,6 +752,14 @@ function buildMarkdown({
   lines.push(`- latency_p50_ms: ${summary.latency_p50_ms ?? 'n/a'}`);
   lines.push(`- latency_p95_ms: ${summary.latency_p95_ms ?? 'n/a'}`);
   lines.push(`- calls_skipped_by_budget_guard: ${summary.calls_skipped_by_budget_guard}`);
+  if (windowContext && windowContext.since_utc) {
+    lines.push(`- window_since_utc: ${windowContext.since_utc}`);
+    lines.push(`- full_day_verify_calls_total: ${windowContext.full_day_verify_calls_total}`);
+    lines.push(`- full_day_verify_fail_total: ${windowContext.full_day_verify_fail_total}`);
+    if (summary.verify_calls_total === 0 && Number(windowContext.full_day_verify_calls_total) > 0) {
+      lines.push('- window_note: current --since window has no rows; full-day data exists');
+    }
+  }
   lines.push('');
 
   lines.push('## By Issue Type');
@@ -906,6 +915,8 @@ async function runDailyReport(options = {}) {
   const agreementRows = extractAgreementRows(agreementSamples.filter((row) => inWindow(row?.created_at)));
   const hardCasesWindow = hardCasesAll.filter((row) => inWindow(row?.created_at));
   const verifyRows = extractVerifyRows(modelRows);
+  const modelRowsFullDay = modelOutputs.filter((row) => String(row?.created_at || '').startsWith(dateIso));
+  const verifyRowsFullDay = extractVerifyRows(modelRowsFullDay);
   const hardCases = topHardCases(hardCasesWindow, 20);
 
   const verifyCalls = verifyRows.length;
@@ -919,6 +930,8 @@ async function runDailyReport(options = {}) {
   const latencyP50 = quantile(latencyValues, 0.5);
   const latencyP95 = quantile(latencyValues, 0.95);
   const hardCaseRate = formatRate(hardCases.length, verifyCalls);
+  const fullDayVerifyCalls = verifyRowsFullDay.length;
+  const fullDayVerifyFails = verifyRowsFullDay.filter((row) => row.is_failure).length;
 
   const byIssueType = summarizeByIssueType(agreementRows, hardCasesWindow);
   const byQualityGrade = summarizeByQualityGrade(verifyRows, agreementRows);
@@ -995,6 +1008,11 @@ async function runDailyReport(options = {}) {
       latency_p95_ms: latencyP95,
       calls_skipped_by_budget_guard: callsSkippedByBudgetGuard,
     },
+    window_context: {
+      since_utc: Number.isFinite(sinceTs) ? new Date(sinceTs).toISOString() : null,
+      full_day_verify_calls_total: fullDayVerifyCalls,
+      full_day_verify_fail_total: fullDayVerifyFails,
+    },
     by_issue_type: byIssueType,
     by_quality_grade: byQualityGrade,
     verify_fail_by_reason: failByReason,
@@ -1011,6 +1029,7 @@ async function runDailyReport(options = {}) {
     dateIso,
     generatedAt: report.generated_at_utc,
     summary: report.summary,
+    windowContext: report.window_context,
     byIssueType,
     byQuality: byQualityGrade,
     failByReason,
