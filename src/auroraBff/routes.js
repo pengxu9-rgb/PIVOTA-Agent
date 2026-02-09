@@ -906,8 +906,45 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
 }
 
 function isPassedPhotoQcStatus(qcStatus) {
-  const qc = String(qcStatus || '').trim().toLowerCase();
-  return qc === 'passed' || qc === 'pass' || qc === 'ok';
+  return normalizePhotoQcStatus(qcStatus) === 'passed';
+}
+
+function normalizePhotoQcStatus(rawStatus) {
+  const token = String(rawStatus || '')
+    .trim()
+    .toLowerCase();
+  if (!token) return '';
+  if (token === 'passed' || token === 'pass' || token === 'ok' || token === 'success' || token === 'succeeded') {
+    return 'passed';
+  }
+  if (token === 'degraded' || token === 'warn' || token === 'warning' || token === 'low') {
+    return 'degraded';
+  }
+  if (token === 'fail' || token === 'failed' || token === 'reject' || token === 'rejected' || token === 'bad') {
+    return 'failed';
+  }
+  return '';
+}
+
+function resolvePhotoQcStatus(payload) {
+  const source = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!source) return null;
+  const nestedQc = source.qc && typeof source.qc === 'object' && !Array.isArray(source.qc) ? source.qc : null;
+  const candidates = [
+    source.qc_status,
+    nestedQc && nestedQc.qc_status,
+    source.status,
+    nestedQc && nestedQc.status,
+    source.result,
+    nestedQc && nestedQc.result,
+    source.state,
+    nestedQc && nestedQc.state,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePhotoQcStatus(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 function hasNonEmptyRoutineInput(routineCandidate) {
@@ -7630,8 +7667,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(confirmResp.status >= 400 ? confirmResp.status : 502).json(envelope);
       }
 
-      let qcStatus =
-        typeof confirmResp.data.qc_status === 'string' && confirmResp.data.qc_status ? confirmResp.data.qc_status : null;
+      let qcStatus = resolvePhotoQcStatus(confirmResp.data);
       let qc = confirmResp.data.qc && typeof confirmResp.data.qc === 'object' ? confirmResp.data.qc : null;
       let nextPollMs = typeof confirmResp.data.next_poll_ms === 'number' ? confirmResp.data.next_poll_ms : null;
 
@@ -7650,7 +7686,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         if (qcResp.status !== 200 || !qcResp.data) break;
         lastQcData = qcResp.data;
-        qcStatus = typeof qcResp.data.qc_status === 'string' && qcResp.data.qc_status ? qcResp.data.qc_status : null;
+        const resolvedPollStatus = resolvePhotoQcStatus(qcResp.data);
+        if (resolvedPollStatus) qcStatus = resolvedPollStatus;
         qc = qcResp.data.qc && typeof qcResp.data.qc === 'object' ? qcResp.data.qc : qc;
         nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
       }
@@ -7661,7 +7698,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         qc_status: qcStatus,
         ...(qc ? { qc } : {}),
         ...(typeof nextPollMs === 'number' ? { next_poll_ms: nextPollMs } : {}),
-        ...(lastQcData && lastQcData.qc_status == null ? { qc_pending: true } : {}),
+        ...(!qcStatus && lastQcData ? { qc_pending: true } : {}),
       };
 
       try {
@@ -7833,8 +7870,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(confirmResp.status >= 400 ? confirmResp.status : 502).json(envelope);
       }
 
-      let qcStatus =
-        typeof confirmResp.data.qc_status === 'string' && confirmResp.data.qc_status ? confirmResp.data.qc_status : null;
+      let qcStatus = resolvePhotoQcStatus(confirmResp.data);
       let qc = confirmResp.data.qc && typeof confirmResp.data.qc === 'object' ? confirmResp.data.qc : null;
       let nextPollMs = typeof confirmResp.data.next_poll_ms === 'number' ? confirmResp.data.next_poll_ms : null;
 
@@ -7854,7 +7890,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (qcResp.status !== 200 || !qcResp.data) break;
 
         lastQcData = qcResp.data;
-        qcStatus = typeof qcResp.data.qc_status === 'string' && qcResp.data.qc_status ? qcResp.data.qc_status : null;
+        const resolvedPollStatus = resolvePhotoQcStatus(qcResp.data);
+        if (resolvedPollStatus) qcStatus = resolvedPollStatus;
         qc = qcResp.data.qc && typeof qcResp.data.qc === 'object' ? qcResp.data.qc : qc;
         nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
       }
@@ -7864,7 +7901,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         qc_status: qcStatus,
         ...(qc ? { qc } : {}),
         ...(typeof nextPollMs === 'number' ? { next_poll_ms: nextPollMs } : {}),
-        ...(lastQcData && lastQcData.qc_status == null ? { qc_pending: true } : {}),
+        ...(!qcStatus && lastQcData ? { qc_pending: true } : {}),
       };
 
       const fieldMissing = [];
@@ -8093,7 +8130,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         // Treat missing routine as low-confidence and fall back to a baseline when no other primary signals exist.
         const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0;
 
-        const userRequestedPhoto = parsed.data.use_photo === true;
+        const userRequestedPhoto =
+          parsed.data.use_photo === true || (parsed.data.use_photo == null && photosProvided);
         const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasPrimaryInput);
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
         const selectedVisionProvider = resolveVisionProviderSelection();
@@ -8763,6 +8801,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                  http_status_class: httpStatusClass,
 	                  timeout_stage: timeoutStage,
 	                  retry_count: retryCount,
+	                  error_class: errorClass,
 	                }) =>
 	                  recordVerifyFail({
 	                    reason,
@@ -8770,6 +8809,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                    httpStatusClass,
 	                    timeoutStage,
 	                    retryCount,
+	                    errorClass,
 	                  }),
 	                onVerifyRetry: ({ attempts }) => recordVerifyRetry({ attempts }),
 	                onVerifyBudgetGuard: () => recordVerifyBudgetGuard(),
