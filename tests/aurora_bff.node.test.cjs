@@ -4969,6 +4969,11 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
         const photoId = uploadCard?.payload?.photo_id;
         assert.equal(typeof photoId, 'string');
         assert.ok(photoId.length > 0);
+        const uploadAnalysisCard = Array.isArray(uploadResp.body?.cards)
+          ? uploadResp.body.cards.find((c) => c && c.type === 'analysis_summary')
+          : null;
+        assert.ok(uploadAnalysisCard);
+        assert.equal(uploadAnalysisCard?.payload?.used_photos, true);
 
         const analysisResp = await request
           .post('/v1/analysis/skin')
@@ -5069,6 +5074,116 @@ test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', a
         assert.match(String(card?.payload?.photo_notice?.message || ''), /couldn't analyze your photo/i);
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
         assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'DOWNLOAD_URL_FETCH_4XX'), true);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/photos/confirm: qc passed auto-triggers analysis_summary', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM: 'true',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const pngBytes = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAsSAAALEgHS3X78AAAA' +
+          'B3RJTUUH5AICDgYk4fYQPgAAAB1pVFh0Q29tbWVudAAAAAAAvK6ymQAAAHVJREFUWMPtzsENwCAQ' +
+          'BEG9/5f2QxA6i1xAikQW2L8z8V8YfM+K7QwAAAAAAAAAAAAAAAB4t6x3K2W3fQn2eZ5n4J1wV2k8vT' +
+          '3uQv2bB0hQ7m9t9h9m9M6r8f3A2f0A8Qf8Sg8x9I3hM8AAAAASUVORK5CYII=',
+        'base64',
+      );
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+
+      axios.post = async (url) => {
+        const u = String(url);
+        if (u.endsWith('/photos/confirm')) {
+          return {
+            status: 200,
+            data: {
+              upload_id: 'photo_confirm_auto',
+              qc_status: 'passed',
+              qc: { state: 'done', qc_status: 'passed' },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post url: ${u}`);
+      };
+
+      axios.get = async (url) => {
+        const u = String(url);
+        if (u.endsWith('/photos/download-url')) {
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/confirm-object',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+              content_type: 'image/png',
+            },
+          };
+        }
+        if (u === 'https://signed-download.test/confirm-object') {
+          return {
+            status: 200,
+            data: pngBytes,
+            headers: { 'content-type': 'image/png' },
+          };
+        }
+        if (u.endsWith('/photos/qc')) {
+          return {
+            status: 200,
+            data: { qc_status: 'passed', qc: { state: 'done', qc_status: 'passed' } },
+          };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      axios.request = originalRequest;
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+
+        const resp = await request
+          .post('/v1/photos/confirm')
+          .set({
+            'X-Aurora-UID': 'uid_photo_confirm_auto',
+            'X-Trace-ID': 'trace_photo_confirm_auto',
+            'X-Brief-ID': 'brief_photo_confirm_auto',
+            'X-Lang': 'EN',
+          })
+          .send({ photo_id: 'photo_confirm_auto', slot_id: 'daylight' })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const confirmCard = cards.find((c) => c && c.type === 'photo_confirm');
+        const analysisCard = cards.find((c) => c && c.type === 'analysis_summary');
+        assert.ok(confirmCard);
+        assert.ok(analysisCard);
+        assert.equal(typeof analysisCard?.payload?.used_photos, 'boolean');
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;

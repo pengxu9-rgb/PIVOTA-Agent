@@ -133,9 +133,24 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(
     '',
 ).trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
+const GEMINI_API_KEY = String(
+  process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
+).trim();
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
-const SKIN_VISION_MODEL = String(process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+const SKIN_VISION_PROVIDER = (() => {
+  const raw = String(process.env.AURORA_SKIN_VISION_PROVIDER || 'openai')
+    .trim()
+    .toLowerCase();
+  if (raw === 'gemini' || raw === 'auto') return raw;
+  return 'openai';
+})();
+const SKIN_VISION_MODEL_OPENAI =
+  String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
+  'gpt-4o-mini';
+const SKIN_VISION_MODEL_GEMINI =
+  String(process.env.AURORA_SKIN_VISION_MODEL_GEMINI || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim() ||
+  'gemini-2.0-flash';
 const SKIN_DEGRADED_MODE = (() => {
   const raw = String(process.env.AURORA_SKIN_DEGRADED_MODE || 'report')
     .trim()
@@ -183,6 +198,7 @@ const PHOTO_BYTES_CACHE_TTL_MS = Math.max(
   10 * 1000,
   Math.min(30 * 60 * 1000, Number(process.env.AURORA_PHOTO_CACHE_TTL_MS || 10 * 60 * 1000)),
 );
+const PHOTO_AUTO_ANALYZE_AFTER_CONFIRM = String(process.env.AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM || 'true').toLowerCase() !== 'false';
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -583,6 +599,75 @@ function getOpenAIClient() {
   return openaiClient;
 }
 
+let geminiClient;
+let geminiClientInitFailed = false;
+function getGeminiClient() {
+  if (!GEMINI_API_KEY) return { client: null, init_error: VisionUnavailabilityReason.VISION_MISSING_KEY };
+  if (geminiClient) return { client: geminiClient, init_error: null };
+  if (geminiClientInitFailed) return { client: null, init_error: VisionUnavailabilityReason.VISION_UNKNOWN };
+
+  try {
+    const { GoogleGenAI } = require('@google/genai');
+    geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    return { client: geminiClient, init_error: null };
+  } catch (_err) {
+    geminiClientInitFailed = true;
+    return { client: null, init_error: VisionUnavailabilityReason.VISION_UNKNOWN };
+  }
+}
+
+function resolveVisionProviderSelection() {
+  const requested = SKIN_VISION_PROVIDER;
+  if (requested === 'openai') {
+    return { provider: 'openai', apiKeyConfigured: Boolean(OPENAI_API_KEY), requested };
+  }
+  if (requested === 'gemini') {
+    return { provider: 'gemini', apiKeyConfigured: Boolean(GEMINI_API_KEY), requested };
+  }
+
+  if (OPENAI_API_KEY) return { provider: 'openai', apiKeyConfigured: true, requested };
+  if (GEMINI_API_KEY) return { provider: 'gemini', apiKeyConfigured: true, requested };
+  return { provider: 'openai', apiKeyConfigured: false, requested };
+}
+
+async function withVisionTimeout(promise, timeoutMs) {
+  let timeoutRef = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutRef = setTimeout(() => {
+          const err = new Error(`vision timeout after ${timeoutMs}ms`);
+          err.name = 'AbortError';
+          reject(err);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutRef) clearTimeout(timeoutRef);
+  }
+}
+
+async function extractTextFromGeminiResponse(response) {
+  if (!response) return '';
+  if (typeof response.text === 'function') {
+    const maybe = await response.text();
+    if (typeof maybe === 'string' && maybe.trim()) return maybe;
+  }
+  if (typeof response.text === 'string' && response.text.trim()) return response.text;
+
+  const candidates = Array.isArray(response.candidates) ? response.candidates : [];
+  const parts = [];
+  for (const candidate of candidates) {
+    const contentParts =
+      candidate && candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : [];
+    for (const part of contentParts) {
+      if (part && typeof part.text === 'string' && part.text.trim()) parts.push(part.text);
+    }
+  }
+  return parts.join('\n').trim();
+}
+
 function chooseVisionPhoto(passedPhotos) {
   if (!Array.isArray(passedPhotos) || !passedPhotos.length) return null;
   return (
@@ -803,6 +888,218 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
   };
 }
 
+function isPassedPhotoQcStatus(qcStatus) {
+  const qc = String(qcStatus || '').trim().toLowerCase();
+  return qc === 'passed' || qc === 'pass' || qc === 'ok';
+}
+
+function hasNonEmptyRoutineInput(routineCandidate) {
+  return Boolean(
+    routineCandidate != null &&
+      (typeof routineCandidate === 'string'
+        ? String(routineCandidate).trim().length > 0
+        : Array.isArray(routineCandidate)
+          ? routineCandidate.length > 0
+          : typeof routineCandidate === 'object'
+            ? Object.keys(routineCandidate).length > 0
+            : false),
+  );
+}
+
+function buildPhotoAutoNoticeMessage({ language, failureCode }) {
+  const code = String(failureCode || 'DOWNLOAD_URL_GENERATE_FAILED').trim().toUpperCase();
+  if (language === 'CN') {
+    return `本次未能读取并分析照片（原因：${code}），以下结果仅基于你的问卷/历史信息。请重传后重试。`;
+  }
+  return `We couldn't analyze your photo this time (reason: ${code}). Results below are based on your answers/history only. Please re-upload and retry.`;
+}
+
+async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, qcStatus, logger, identity } = {}) {
+  if (!PHOTO_AUTO_ANALYZE_AFTER_CONFIRM) return null;
+  if (!photoId || !isPassedPhotoQcStatus(qcStatus)) return null;
+
+  const language = ctx && ctx.lang === 'CN' ? 'CN' : 'EN';
+  const slot = String(slotId || 'daylight').trim() || 'daylight';
+  const qc = String(qcStatus || 'passed').trim().toLowerCase() || 'passed';
+
+  let profile = null;
+  let recentLogs = [];
+  let resolvedIdentity = identity || null;
+  try {
+    resolvedIdentity = resolvedIdentity || (await resolveIdentity(req, ctx));
+    profile = await getProfileForIdentity({ auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId });
+    recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: resolvedIdentity.auroraUid, userId: resolvedIdentity.userId }, 7);
+  } catch (err) {
+    logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: auto analysis failed to load memory context');
+  }
+
+  const profileSummary = summarizeProfileForContext(profile);
+  const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
+  const routineCandidate = profileSummary && profileSummary.currentRoutine;
+  const hasPrimaryInput = hasNonEmptyRoutineInput(routineCandidate) || recentLogsSummary.length > 0;
+  const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
+  const photoQuality = classifyPhotoQuality([{ slot_id: slot, photo_id: photoId, qc_status: qc }]);
+
+  const fieldMissing = [];
+  const qualityReasons = [];
+  if (!hasPrimaryInput) {
+    fieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
+    qualityReasons.push(
+      language === 'CN'
+        ? '照片已通过 QC，但缺少“正在用什么/最近打卡”等关键信息；先返回低风险基线。'
+        : 'Photo passed QC, but routine/recent logs are missing; returning a low-risk baseline first.',
+    );
+  }
+
+  let usedPhotos = false;
+  let analysisSource = hasPrimaryInput ? 'rule_based_with_photo_qc' : 'baseline_low_confidence';
+  let diagnosisV1 = null;
+  let analysis = null;
+  let photoNotice = null;
+
+  try {
+    const photoResp = await fetchPhotoBytesFromPivotaBackend({ req, photoId });
+    if (photoResp && photoResp.ok && photoResp.buffer && Buffer.isBuffer(photoResp.buffer) && photoResp.buffer.length > 0) {
+      const profiler = createStageProfiler();
+      const diag = await runSkinDiagnosisV1({
+        imageBuffer: photoResp.buffer,
+        language,
+        profileSummary,
+        recentLogsSummary,
+        profiler,
+      });
+      if (diag && diag.ok && diag.diagnosis) {
+        diagnosisV1 = diag.diagnosis;
+        usedPhotos = true;
+        analysis = buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language, profileSummary });
+        analysisSource = 'diagnosis_v1_template';
+        const qGrade = String(diagnosisV1?.quality?.grade || '').trim().toLowerCase();
+        if (qGrade === 'degraded') {
+          qualityReasons.push(
+            language === 'CN'
+              ? '已完成照片分析（质量一般）：结论会更保守。'
+              : 'Photo analysis completed (degraded quality): conclusions are conservative.',
+          );
+        } else if (qGrade === 'fail') {
+          qualityReasons.push(
+            language === 'CN'
+              ? '已读取照片，但像素质量不足；建议重拍并复核。'
+              : 'Photo was read, but pixel quality is insufficient; please retake and recheck.',
+          );
+        } else {
+          qualityReasons.push(language === 'CN' ? '已基于照片完成自动皮肤分析。' : 'Auto skin analysis completed from your photo.');
+        }
+      } else {
+        const failureCode = 'diagnosis_failed';
+        fieldMissing.push({ field: 'analysis.used_photos', reason: failureCode });
+        photoNotice = {
+          failure_code: failureCode,
+          message: buildPhotoAutoNoticeMessage({ language, failureCode }),
+        };
+        qualityReasons.push(
+          language === 'CN'
+            ? '照片读取成功，但分析模块未稳定完成；已退回问卷/历史基线。'
+            : 'Photo bytes were loaded, but diagnosis did not complete reliably; fell back to answers/history baseline.',
+        );
+      }
+    } else {
+      const failureCode = String(photoResp && (photoResp.failure_code || photoResp.reason) ? photoResp.failure_code || photoResp.reason : 'DOWNLOAD_URL_GENERATE_FAILED')
+        .trim()
+        .toUpperCase();
+      fieldMissing.push({ field: 'analysis.used_photos', reason: failureCode });
+      photoNotice = {
+        failure_code: failureCode,
+        message: buildPhotoAutoNoticeMessage({ language, failureCode }),
+      };
+      qualityReasons.push(language === 'CN' ? `照片读取失败（${failureCode}）。` : `Photo fetch failed (${failureCode}).`);
+    }
+  } catch (err) {
+    const failureCode = 'DOWNLOAD_URL_FETCH_5XX';
+    fieldMissing.push({ field: 'analysis.used_photos', reason: failureCode });
+    photoNotice = {
+      failure_code: failureCode,
+      message: buildPhotoAutoNoticeMessage({ language, failureCode }),
+    };
+    qualityReasons.push(language === 'CN' ? `照片读取异常（${failureCode}）。` : `Photo fetch error (${failureCode}).`);
+    logger?.warn(
+      { err: err && err.message ? err.message : String(err) },
+      'aurora bff: auto analysis photo fetch failed',
+    );
+  }
+
+  if (!analysis) {
+    if (hasPrimaryInput) {
+      analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language });
+      analysisSource = 'rule_based_with_photo_qc';
+    } else {
+      analysis = buildLowConfidenceBaselineSkinAnalysis({ profile: profileSummary || profile, language });
+      analysisSource = 'baseline_low_confidence';
+    }
+  }
+
+  if (analysis && diagnosisV1 && usedPhotos) {
+    analysis = mergePhotoFindingsIntoAnalysis({
+      analysis,
+      diagnosisV1,
+      language,
+      profileSummary,
+    });
+  }
+
+  analysis = buildExecutablePlanForAnalysis({
+    analysis,
+    language,
+    usedPhotos,
+    photoQuality: diagnosisV1 && diagnosisV1.quality ? diagnosisV1.quality : photoQuality,
+    profileSummary,
+    photoNoticeOverride: photoNotice && typeof photoNotice.message === 'string' ? photoNotice.message : '',
+  });
+
+  const payload = {
+    analysis,
+    low_confidence: analysisSource === 'baseline_low_confidence',
+    photos_provided: true,
+    photo_qc: [`${slot}:${qc}`],
+    used_photos: usedPhotos,
+    analysis_source: !usedPhotos && analysisSource !== 'retake' ? 'rule_based_with_photo_qc' : analysisSource,
+    ...(photoNotice ? { photo_notice: photoNotice } : {}),
+    quality_report: {
+      photo_quality: {
+        grade: String(diagnosisV1?.quality?.grade || photoQuality?.grade || 'unknown').toLowerCase(),
+        reasons:
+          Array.isArray(diagnosisV1?.quality?.reasons) && diagnosisV1.quality.reasons.length
+            ? diagnosisV1.quality.reasons
+            : Array.isArray(photoQuality?.reasons)
+              ? photoQuality.reasons
+              : [],
+      },
+      detector_confidence: detectorConfidence,
+      degraded_mode: SKIN_DEGRADED_MODE,
+      llm: {
+        vision: { decision: 'skip', reasons: ['auto_analysis_diagnosis_v1_only'], downgrade_confidence: false },
+        report: { decision: 'skip', reasons: ['auto_analysis_diagnosis_v1_only'], downgrade_confidence: false },
+      },
+      reasons: qualityReasons.slice(0, 8),
+    },
+  };
+
+  return {
+    card: {
+      card_id: `analysis_${ctx.request_id}`,
+      type: 'analysis_summary',
+      payload,
+      ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
+    },
+    session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
+    event: makeEvent(ctx, 'value_moment', {
+      kind: 'skin_analysis',
+      used_photos: usedPhotos,
+      analysis_source: payload.analysis_source,
+      source: 'photo_auto',
+    }),
+  };
+}
+
 async function runOpenAIVisionSkinAnalysis({
   imageBuffer,
   language,
@@ -887,7 +1184,7 @@ async function runOpenAIVisionSkinAnalysis({
         const callOpenAI = async () =>
           client.chat.completions.create(
             {
-              model: SKIN_VISION_MODEL,
+              model: SKIN_VISION_MODEL_OPENAI,
               temperature: 0.2,
               max_tokens: 480,
               response_format: { type: 'json_object' },
@@ -910,7 +1207,7 @@ async function runOpenAIVisionSkinAnalysis({
 
         const resp =
           profiler && typeof profiler.timeLlmCall === 'function'
-            ? await profiler.timeLlmCall({ provider: 'openai', model: SKIN_VISION_MODEL, kind: 'skin_vision' }, callOpenAI)
+            ? await profiler.timeLlmCall({ provider: 'openai', model: SKIN_VISION_MODEL_OPENAI, kind: 'skin_vision' }, callOpenAI)
             : await callOpenAI();
 
         const content = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
@@ -954,6 +1251,170 @@ async function runOpenAIVisionSkinAnalysis({
       (attemptResult && attemptResult.retry) ||
       { attempted: 0, final: 'fail', last_reason: normalizeVisionReason(attemptResult && attemptResult.reason) },
   };
+}
+
+async function runGeminiVisionSkinAnalysis({
+  imageBuffer,
+  language,
+  photoQuality,
+  diagnosisPolicy,
+  diagnosisV1,
+  profileSummary,
+  recentLogsSummary,
+  profiler,
+  promptVersion,
+} = {}) {
+  const startedAt = Date.now();
+  if (!SKIN_VISION_ENABLED) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      reason: VisionUnavailabilityReason.VISION_DISABLED_BY_FLAG,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: { attempted: 0, final: 'fail', last_reason: VisionUnavailabilityReason.VISION_DISABLED_BY_FLAG },
+    };
+  }
+
+  const gemini = getGeminiClient();
+  if (!gemini || !gemini.client) {
+    const reason =
+      gemini && gemini.init_error ? normalizeVisionReason(gemini.init_error) : VisionUnavailabilityReason.VISION_MISSING_KEY;
+    return {
+      ok: false,
+      provider: 'gemini',
+      reason,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: { attempted: 0, final: 'fail', last_reason: reason },
+    };
+  }
+
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      reason: VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: { attempted: 0, final: 'fail', last_reason: VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED },
+    };
+  }
+
+  const optimized =
+    profiler && typeof profiler.time === 'function'
+      ? await profiler.time(
+          'decode',
+          async () =>
+            sharp(imageBuffer)
+              .rotate()
+              .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 82 })
+              .toBuffer(),
+          { kind: 'vision_prepare' },
+        )
+      : await sharp(imageBuffer)
+          .rotate()
+          .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 82 })
+          .toBuffer();
+
+  const promptBase = buildSkinVisionPrompt({
+    language,
+    photoQuality,
+    diagnosisPolicy,
+    diagnosisV1,
+    profileSummary,
+    recentLogsSummary,
+    promptVersion,
+  });
+
+  const attemptResult = await executeVisionWithRetry({
+    maxRetries: SKIN_VISION_RETRY_MAX,
+    baseDelayMs: SKIN_VISION_RETRY_BASE_MS,
+    classifyError: classifyVisionProviderFailure,
+    operation: async () => {
+      const callGemini = async () =>
+        withVisionTimeout(
+          gemini.client.models.generateContent({
+            model: SKIN_VISION_MODEL_GEMINI,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: optimized.toString('base64'),
+                    },
+                  },
+                  {
+                    text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and end strategy with a single direct question mark.\n`,
+                  },
+                ],
+              },
+            ],
+            config: {
+              temperature: 0.2,
+              responseMimeType: 'application/json',
+            },
+          }),
+          SKIN_VISION_TIMEOUT_MS,
+        );
+
+      const resp =
+        profiler && typeof profiler.timeLlmCall === 'function'
+          ? await profiler.timeLlmCall({ provider: 'gemini', model: SKIN_VISION_MODEL_GEMINI, kind: 'skin_vision' }, callGemini)
+          : await callGemini();
+
+      const content = await extractTextFromGeminiResponse(resp);
+      const jsonOnly = unwrapCodeFence(content);
+      const parsedObj = parseJsonOnlyObject(jsonOnly);
+      const analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language });
+      if (!analysis) {
+        const schemaErr = new Error('vision schema invalid');
+        schemaErr.__vision_reason = VisionUnavailabilityReason.VISION_SCHEMA_INVALID;
+        throw schemaErr;
+      }
+      return { analysis };
+    },
+  });
+
+  if (attemptResult && attemptResult.ok && attemptResult.result && attemptResult.result.analysis) {
+    return {
+      ok: true,
+      provider: 'gemini',
+      analysis: attemptResult.result.analysis,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: attemptResult.retry,
+    };
+  }
+
+  return {
+    ok: false,
+    provider: 'gemini',
+    reason: normalizeVisionReason(attemptResult && attemptResult.reason),
+    upstream_status_code:
+      attemptResult && Number.isFinite(Number(attemptResult.upstream_status_code))
+        ? Math.trunc(Number(attemptResult.upstream_status_code))
+        : null,
+    error: attemptResult && attemptResult.error_code ? String(attemptResult.error_code) : null,
+    latency_ms: Date.now() - startedAt,
+    retry:
+      (attemptResult && attemptResult.retry) ||
+      { attempted: 0, final: 'fail', last_reason: normalizeVisionReason(attemptResult && attemptResult.reason) },
+  };
+}
+
+async function runVisionSkinAnalysis({ provider, ...rest } = {}) {
+  const target = String(provider || 'openai')
+    .trim()
+    .toLowerCase();
+  if (target === 'gemini') {
+    return runGeminiVisionSkinAnalysis(rest);
+  }
+  return runOpenAIVisionSkinAnalysis(rest);
 }
 
 function sleep(ms) {
@@ -6635,19 +7096,30 @@ function mountAuroraBffRoutes(app, { logger }) {
       const fieldMissing = [];
       if (!qcStatus) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
 
+      const photoConfirmCard = {
+        card_id: `confirm_${ctx.request_id}`,
+        type: 'photo_confirm',
+        payload,
+        ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
+      };
+      const autoAnalysis = await buildAutoAnalysisFromConfirmedPhoto({
+        req,
+        ctx,
+        photoId: uploadId,
+        slotId,
+        qcStatus,
+        logger,
+      });
+
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
-        cards: [
-          {
-            card_id: `confirm_${ctx.request_id}`,
-            type: 'photo_confirm',
-            payload,
-            ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
-          },
+        cards: [photoConfirmCard, ...(autoAnalysis && autoAnalysis.card ? [autoAnalysis.card] : [])],
+        session_patch: autoAnalysis && autoAnalysis.session_patch ? autoAnalysis.session_patch : {},
+        events: [
+          makeEvent(ctx, 'value_moment', { kind: 'photo_upload', qc_status: qcStatus }),
+          ...(autoAnalysis && autoAnalysis.event ? [autoAnalysis.event] : []),
         ],
-        session_patch: {},
-        events: [makeEvent(ctx, 'value_moment', { kind: 'photo_upload', qc_status: qcStatus })],
       });
       return res.json(envelope);
     } catch (err) {
@@ -6805,19 +7277,30 @@ function mountAuroraBffRoutes(app, { logger }) {
       const fieldMissing = [];
       if (!qcStatus) fieldMissing.push({ field: 'qc_status', reason: 'qc_pending' });
 
+      const photoConfirmCard = {
+        card_id: `confirm_${ctx.request_id}`,
+        type: 'photo_confirm',
+        payload,
+        ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
+      };
+      const autoAnalysis = await buildAutoAnalysisFromConfirmedPhoto({
+        req,
+        ctx,
+        photoId: uploadId,
+        slotId: parsed.data.slot_id || null,
+        qcStatus,
+        logger,
+      });
+
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
-        cards: [
-          {
-            card_id: `confirm_${ctx.request_id}`,
-            type: 'photo_confirm',
-            payload,
-            ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
-          },
+        cards: [photoConfirmCard, ...(autoAnalysis && autoAnalysis.card ? [autoAnalysis.card] : [])],
+        session_patch: autoAnalysis && autoAnalysis.session_patch ? autoAnalysis.session_patch : {},
+        events: [
+          makeEvent(ctx, 'value_moment', { kind: 'photo_confirm', qc_status: qcStatus }),
+          ...(autoAnalysis && autoAnalysis.event ? [autoAnalysis.event] : []),
         ],
-        session_patch: {},
-        events: [makeEvent(ctx, 'value_moment', { kind: 'photo_confirm', qc_status: qcStatus })],
       });
       return res.json(envelope);
     } catch (err) {
@@ -7008,9 +7491,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const userRequestedPhoto = parsed.data.use_photo === true;
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
+        const selectedVisionProvider = resolveVisionProviderSelection();
         const visionAvailability = classifyVisionAvailability({
           enabled: SKIN_VISION_ENABLED,
-          apiKeyConfigured: Boolean(OPENAI_API_KEY),
+          apiKeyConfigured: selectedVisionProvider.apiKeyConfigured,
         });
         const visionAvailable = visionAvailability.available && !rollout.llmKillSwitch;
         const reportAvailable = Boolean(AURORA_DECISION_BASE_URL) && !USE_AURORA_BFF_MOCK && !rollout.llmKillSwitch;
@@ -7210,7 +7694,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
 
             if (photoBytes) {
-              const vision = await runOpenAIVisionSkinAnalysis({
+              const vision = await runVisionSkinAnalysis({
+                provider: selectedVisionProvider.provider,
                 imageBuffer: photoBytes,
                 language: ctx.lang,
                 photoQuality,
@@ -7225,7 +7710,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               if (vision && vision.ok && vision.analysis) {
                 analysis = vision.analysis;
                 usedPhotos = true;
-                analysisSource = 'vision_openai';
+                analysisSource = vision.provider === 'gemini' ? 'vision_gemini' : 'vision_openai';
               } else if (vision && !vision.ok) {
                 const normalizedReason = normalizeVisionReason(vision.reason);
                 analysisFieldMissing.push({
@@ -7333,7 +7818,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         visionDecisionForReport = {
           ...visionDecision,
           reasons: baseVisionReasons,
-          provider: 'openai',
+          provider: selectedVisionProvider.provider || 'openai',
           upstream_status_code: null,
           latency_ms: null,
           retry: visionRetryDefault,
@@ -7344,6 +7829,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...visionDecisionForReport,
             decision: 'call',
             reasons: ['quality_pass'],
+            provider: visionRuntime.provider || visionDecisionForReport.provider,
             retry: visionRuntime.retry || { attempted: 0, final: 'success', last_reason: null },
             upstream_status_code: null,
             latency_ms: Number.isFinite(Number(visionRuntime.latency_ms)) ? Number(visionRuntime.latency_ms) : null,
@@ -7356,6 +7842,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...visionDecisionForReport,
             decision: 'fallback',
             reasons: Array.from(new Set(runtimeReasons)),
+            provider: visionRuntime.provider || visionDecisionForReport.provider,
             retry: visionRuntime.retry || { attempted: 0, final: 'fail', last_reason: runtimeReason },
             upstream_status_code:
               Number.isFinite(Number(visionRuntime.upstream_status_code)) ? Math.trunc(Number(visionRuntime.upstream_status_code)) : null,
@@ -9861,6 +10348,9 @@ function mountAuroraBffRoutes(app, { logger }) {
 
 const __internal = {
   runOpenAIVisionSkinAnalysis,
+  runGeminiVisionSkinAnalysis,
+  runVisionSkinAnalysis,
+  resolveVisionProviderSelection,
   fetchPhotoBytesFromPivotaBackend,
   classifySignedUrlFetchFailure,
   isSignedUrlExpiredSignal,
