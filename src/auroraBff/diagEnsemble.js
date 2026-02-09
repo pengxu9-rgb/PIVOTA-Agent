@@ -362,21 +362,119 @@ function extractTextFromGeminiResponse(response) {
   return '';
 }
 
-function classifyProviderFailure(error) {
+function safeStringify(value) {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  try {
+    return JSON.stringify(value);
+  } catch (_err) {
+    return String(value);
+  }
+}
+
+function summarizeSchemaError(detail) {
+  const raw = safeStringify(detail || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!raw) return null;
+  return raw.slice(0, 120);
+}
+
+function containsQuotaHint(text) {
+  const token = String(text || '').toLowerCase();
+  return (
+    token.includes('quota') ||
+    token.includes('insufficient_quota') ||
+    token.includes('resource_exhausted') ||
+    token.includes('billing') ||
+    token.includes('monthly limit')
+  );
+}
+
+function containsImageInvalidHint(text) {
+  const token = String(text || '').toLowerCase();
+  return (
+    token.includes('image') ||
+    token.includes('unsupported mime') ||
+    token.includes('mime') ||
+    token.includes('invalid argument') ||
+    token.includes('too large') ||
+    token.includes('payload too large') ||
+    token.includes('decode') ||
+    token.includes('corrupt')
+  );
+}
+
+function inferHttpStatusClass(statusCode, reason) {
+  const code = Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : 0;
+  const token = String(reason || '').toUpperCase();
+  if (token.includes('TIMEOUT')) return 'timeout';
+  if (code >= 200 && code < 300) return '2xx';
+  if (code >= 400 && code < 500) return '4xx';
+  if (code >= 500 && code < 600) return '5xx';
+  return 'unknown';
+}
+
+function classifyProviderFailureMeta(error) {
   const statusCode =
     (Number.isFinite(Number(error?.status)) && Number(error.status)) ||
     (Number.isFinite(Number(error?.statusCode)) && Number(error.statusCode)) ||
     (Number.isFinite(Number(error?.response?.status)) && Number(error.response.status)) ||
     null;
-  const text = String(error?.message || error?.code || error || '')
-    .trim()
-    .toLowerCase();
-  if (statusCode === 429) return 'RATE_LIMITED';
-  if (statusCode >= 500) return 'UPSTREAM_5XX';
-  if (statusCode >= 400) return 'UPSTREAM_4XX';
-  if (error?.name === 'AbortError' || /timed out|timeout|econnaborted|etimedout/.test(text)) return 'TIMEOUT';
-  if (error?.code === 'ENOTFOUND' || /enotfound|eai_again|dns/.test(text)) return 'DNS';
-  return 'REQUEST_FAILED';
+  const errorCode = String(error?.code || '').trim();
+  const errorName = String(error?.name || '').trim();
+  const responseBody =
+    (typeof error?.response?.data === 'string' && error.response.data) ||
+    (error?.response?.data != null ? safeStringify(error.response.data) : '') ||
+    '';
+  const message = String(error?.message || '').trim();
+  const text = `${message} ${responseBody}`.trim().toLowerCase();
+
+  const networkCodes = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'EPROTO']);
+  const isTimeout =
+    errorName === 'AbortError' ||
+    errorCode === 'ETIMEDOUT' ||
+    /timed out|timeout|econnaborted|etimedout/.test(text);
+  const isNetwork =
+    networkCodes.has(errorCode) ||
+    /enotfound|eai_again|dns|socket hang up|tls|certificate|self signed/.test(text);
+
+  let reason = 'VISION_UNKNOWN';
+  if (isTimeout || statusCode === 408) {
+    reason = 'VISION_TIMEOUT';
+  } else if (isNetwork) {
+    reason = 'VISION_NETWORK_ERROR';
+  } else if (statusCode === 401) {
+    reason = 'VISION_MISSING_KEY';
+  } else if (statusCode === 403) {
+    reason = /api key|credential|permission|forbidden|auth/.test(text)
+      ? 'VISION_MISSING_KEY'
+      : 'VISION_UPSTREAM_4XX';
+  } else if (statusCode === 429) {
+    reason = containsQuotaHint(text) ? 'VISION_QUOTA_EXCEEDED' : 'VISION_RATE_LIMITED';
+  } else if (Number.isFinite(Number(statusCode)) && statusCode >= 500) {
+    reason = 'VISION_UPSTREAM_5XX';
+  } else if (Number.isFinite(Number(statusCode)) && statusCode >= 400) {
+    reason = containsImageInvalidHint(text) ? 'VISION_IMAGE_INVALID' : 'VISION_UPSTREAM_4XX';
+  } else if (containsQuotaHint(text)) {
+    reason = 'VISION_QUOTA_EXCEEDED';
+  } else if (/rate.?limit/.test(text)) {
+    reason = 'VISION_RATE_LIMITED';
+  } else if (containsImageInvalidHint(text)) {
+    reason = 'VISION_IMAGE_INVALID';
+  }
+
+  return {
+    reason,
+    statusCode: Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : null,
+    statusClass: inferHttpStatusClass(statusCode, reason),
+    errorClass: errorCode || errorName || 'UNKNOWN_ERROR',
+    responseBytesLen: responseBody ? Buffer.byteLength(String(responseBody), 'utf8') : 0,
+  };
+}
+
+function classifyProviderFailure(error) {
+  return classifyProviderFailureMeta(error).reason;
 }
 
 function extractProviderStatusCode(error) {
@@ -998,6 +1096,8 @@ async function runGeminiProvider({
   const startedAt = Date.now();
   const apiKey = String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
   const qualityFeatures = buildQualityFeatureSnapshot(photoQuality);
+  const imageBytesLen = Buffer.isBuffer(imageBuffer) ? imageBuffer.length : 0;
+  const requestPayloadBytesLen = imageBytesLen > 0 ? Math.ceil((imageBytesLen / 3)) * 4 : 0;
   if (!apiKey) {
     return {
       ok: false,
@@ -1009,7 +1109,12 @@ async function runGeminiProvider({
       latency_ms: Date.now() - startedAt,
       attempts: 0,
       provider_status_code: 401,
-      failure_reason: 'MISSING_API_KEY',
+      failure_reason: 'VISION_MISSING_KEY',
+      http_status_class: '4xx',
+      error_class: 'MISSING_API_KEY',
+      image_bytes_len: imageBytesLen,
+      request_payload_bytes_len: 0,
+      response_bytes_len: 0,
     };
   }
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
@@ -1023,7 +1128,12 @@ async function runGeminiProvider({
       latency_ms: Date.now() - startedAt,
       attempts: 0,
       provider_status_code: 400,
-      failure_reason: 'MISSING_IMAGE',
+      failure_reason: 'VISION_IMAGE_INVALID',
+      http_status_class: '4xx',
+      error_class: 'MISSING_IMAGE',
+      image_bytes_len: 0,
+      request_payload_bytes_len: 0,
+      response_bytes_len: 0,
     };
   }
 
@@ -1041,7 +1151,12 @@ async function runGeminiProvider({
       latency_ms: Date.now() - startedAt,
       attempts: 0,
       provider_status_code: 501,
-      failure_reason: 'MISSING_DEP',
+      failure_reason: 'VISION_UNKNOWN',
+      http_status_class: '5xx',
+      error_class: 'MISSING_DEP',
+      image_bytes_len: imageBytesLen,
+      request_payload_bytes_len: requestPayloadBytesLen,
+      response_bytes_len: 0,
     };
   }
 
@@ -1076,8 +1191,10 @@ async function runGeminiProvider({
     try {
       const response = await withTimeout(ai.models.generateContent(request), timeoutMs);
       const text = extractTextFromGeminiResponse(response);
+      const responseBytesLen = Buffer.byteLength(String(text || ''), 'utf8');
       const parsed = parseProviderPayload(text);
       if (!parsed.ok) {
+        const schemaSummary = summarizeSchemaError(parsed.detail);
         return {
           ok: false,
           provider: 'gemini_provider',
@@ -1088,8 +1205,15 @@ async function runGeminiProvider({
           latency_ms: Date.now() - startedAt,
           attempts: attempt + 1,
           provider_status_code: 200,
-          failure_reason: parsed.reason,
+          failure_reason: 'VISION_SCHEMA_INVALID',
+          verify_fail_reason: 'SCHEMA_INVALID',
           schema_failed: true,
+          schema_error_summary: schemaSummary,
+          http_status_class: '2xx',
+          error_class: 'SCHEMA_INVALID',
+          image_bytes_len: imageBytesLen,
+          request_payload_bytes_len: requestPayloadBytesLen,
+          response_bytes_len: responseBytesLen,
         };
       }
       const concerns = parsed.payload.concerns.map((concern, index) =>
@@ -1111,6 +1235,10 @@ async function runGeminiProvider({
         latency_ms: Date.now() - startedAt,
         attempts: attempt + 1,
         provider_status_code: 200,
+        http_status_class: '2xx',
+        image_bytes_len: imageBytesLen,
+        request_payload_bytes_len: requestPayloadBytesLen,
+        response_bytes_len: responseBytesLen,
       };
     } catch (err) {
       lastError = err;
@@ -1119,6 +1247,7 @@ async function runGeminiProvider({
   }
 
   const statusCode = extractProviderStatusCode(lastError);
+  const failureMeta = classifyProviderFailureMeta(lastError);
   return {
     ok: false,
     provider: 'gemini_provider',
@@ -1129,7 +1258,12 @@ async function runGeminiProvider({
     latency_ms: Date.now() - startedAt,
     attempts,
     ...(Number.isFinite(Number(statusCode)) ? { provider_status_code: Math.trunc(Number(statusCode)) } : {}),
-    failure_reason: classifyProviderFailure(lastError),
+    failure_reason: failureMeta.reason,
+    http_status_class: failureMeta.statusClass,
+    error_class: failureMeta.errorClass,
+    image_bytes_len: imageBytesLen,
+    request_payload_bytes_len: requestPayloadBytesLen,
+    response_bytes_len: failureMeta.responseBytesLen,
   };
 }
 

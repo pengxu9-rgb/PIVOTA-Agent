@@ -43,6 +43,14 @@ function round3(value) {
   return Number(Number(value).toFixed(3));
 }
 
+function summarizeSchemaError(value) {
+  const token = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!token) return null;
+  return token.slice(0, 120);
+}
+
 function isoNow() {
   return new Date().toISOString();
 }
@@ -843,6 +851,22 @@ function buildModelOutputRecord({
           ? Math.trunc(Number(output.provider_status_code))
           : null,
       skipped_reason: output?.skipped_reason ? String(output.skipped_reason) : null,
+      http_status_class: output?.http_status_class ? String(output.http_status_class).toLowerCase() : null,
+      error_class: output?.error_class ? String(output.error_class).slice(0, 64) : null,
+      image_bytes_len:
+        Number.isFinite(Number(output?.image_bytes_len)) && Number(output.image_bytes_len) >= 0
+          ? Math.trunc(Number(output.image_bytes_len))
+          : null,
+      request_payload_bytes_len:
+        Number.isFinite(Number(output?.request_payload_bytes_len)) && Number(output.request_payload_bytes_len) >= 0
+          ? Math.trunc(Number(output.request_payload_bytes_len))
+          : null,
+      response_bytes_len:
+        Number.isFinite(Number(output?.response_bytes_len)) && Number(output.response_bytes_len) >= 0
+          ? Math.trunc(Number(output.response_bytes_len))
+          : null,
+      schema_error_summary: summarizeSchemaError(output?.schema_error_summary),
+      trace_id: output?.trace_id ? String(output.trace_id).slice(0, 96) : null,
     },
     derived_features: summarizeDerivedFeatures(concerns),
   };

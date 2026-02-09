@@ -11,22 +11,24 @@ const {
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
   resetVisionMetrics();
 
-  recordVerifyFail({ reason: 'VERIFY_TIMEOUT' });
-  recordVerifyFail({ reason: 'RATE_LIMITED' });
-  recordVerifyFail({ reason: 'quota_exceeded' });
-  recordVerifyFail({ reason: 'SCHEMA_INVALID' });
-  recordVerifyFail({ reason: 'MISSING_IMAGE_BUFFER' });
-  recordVerifyFail({ reason: 'completely_unclassified' });
+  recordVerifyFail({ reason: 'VERIFY_TIMEOUT', provider: 'gemini_provider', httpStatusClass: 'timeout' });
+  recordVerifyFail({ reason: 'RATE_LIMITED', provider: 'gemini_provider', httpStatusClass: '4xx' });
+  recordVerifyFail({ reason: 'quota_exceeded', provider: 'gemini_provider', httpStatusClass: '4xx' });
+  recordVerifyFail({ reason: 'SCHEMA_INVALID', provider: 'gemini_provider', httpStatusClass: '2xx' });
+  recordVerifyFail({ reason: 'MISSING_IMAGE_BUFFER', provider: 'gemini_provider', httpStatusClass: '4xx' });
+  recordVerifyFail({ reason: 'VISION_NETWORK_ERROR', provider: 'gemini_provider', httpStatusClass: 'unknown' });
+  recordVerifyFail({ reason: 'completely_unclassified', provider: 'gemini_provider', httpStatusClass: 'unknown' });
   recordVerifyBudgetGuard();
   recordVerifyBudgetGuard();
 
   const metrics = renderVisionMetricsPrometheus();
 
-  assert.match(metrics, /verify_fail_total\{reason="TIMEOUT"\} 1/);
-  assert.match(metrics, /verify_fail_total\{reason="RATE_LIMIT"\} 1/);
-  assert.match(metrics, /verify_fail_total\{reason="QUOTA"\} 1/);
-  assert.match(metrics, /verify_fail_total\{reason="SCHEMA_INVALID"\} 1/);
-  assert.match(metrics, /verify_fail_total\{reason="IMAGE_FETCH_FAILED"\} 1/);
-  assert.match(metrics, /verify_fail_total\{reason="UNKNOWN"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="TIMEOUT",provider="gemini_provider",http_status_class="timeout"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="RATE_LIMIT",provider="gemini_provider",http_status_class="4xx"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="QUOTA",provider="gemini_provider",http_status_class="4xx"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="SCHEMA_INVALID",provider="gemini_provider",http_status_class="2xx"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="IMAGE_FETCH_FAILED",provider="gemini_provider",http_status_class="4xx"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="NETWORK_ERROR",provider="gemini_provider",http_status_class="unknown"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="UNKNOWN",provider="gemini_provider",http_status_class="unknown"\} 1/);
   assert.match(metrics, /verify_budget_guard_total 2/);
 });

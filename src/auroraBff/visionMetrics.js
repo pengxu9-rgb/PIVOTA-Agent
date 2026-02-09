@@ -47,6 +47,7 @@ const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'UPSTREAM_5XX',
   'SCHEMA_INVALID',
   'IMAGE_FETCH_FAILED',
+  'NETWORK_ERROR',
   'UNKNOWN',
 ]);
 
@@ -93,9 +94,24 @@ function normalizeVerifyFailReason(reason) {
   if (token.includes('QUOTA')) return 'QUOTA';
   if (token.includes('SCHEMA_INVALID')) return 'SCHEMA_INVALID';
   if (token.includes('IMAGE_FETCH') || token.includes('MISSING_IMAGE') || token.includes('PHOTO_DOWNLOAD')) return 'IMAGE_FETCH_FAILED';
+  if (token.includes('NETWORK_ERROR') || token.includes('DNS')) return 'NETWORK_ERROR';
   if (token.includes('UPSTREAM_5XX')) return 'UPSTREAM_5XX';
   if (token.includes('UPSTREAM_4XX')) return 'UPSTREAM_4XX';
   return 'UNKNOWN';
+}
+
+function normalizeVerifyProvider(provider) {
+  return cleanMetricToken(provider, 'unknown');
+}
+
+function normalizeHttpStatusClass(statusClass, reason) {
+  const token = cleanMetricToken(statusClass, '');
+  if (token === '2xx' || token === '4xx' || token === '5xx' || token === 'timeout' || token === 'unknown') {
+    return token;
+  }
+  const fromReason = cleanMetricToken(reason, '');
+  if (fromReason.includes('timeout')) return 'timeout';
+  return 'unknown';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -248,9 +264,19 @@ function recordVerifyCall({ status } = {}) {
   incCounter(verifierCalls, { status: safeStatus }, 1);
 }
 
-function recordVerifyFail({ reason } = {}) {
+function recordVerifyFail({ reason, provider, httpStatusClass } = {}) {
   const safeReason = normalizeVerifyFailReason(reason);
-  incCounter(verifierFails, { reason: safeReason }, 1);
+  const safeProvider = normalizeVerifyProvider(provider);
+  const safeStatusClass = normalizeHttpStatusClass(httpStatusClass, safeReason);
+  incCounter(
+    verifierFails,
+    {
+      reason: safeReason,
+      provider: safeProvider,
+      http_status_class: safeStatusClass,
+    },
+    1,
+  );
 }
 
 function recordVerifyBudgetGuard() {
@@ -399,7 +425,7 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE verify_calls_total counter');
   renderCounter(lines, 'verify_calls_total', verifierCalls);
 
-  lines.push('# HELP verify_fail_total Total number of Gemini shadow verifier failures grouped by reason.');
+  lines.push('# HELP verify_fail_total Total number of Gemini shadow verifier failures grouped by reason/provider/http_status_class.');
   lines.push('# TYPE verify_fail_total counter');
   renderCounter(lines, 'verify_fail_total', verifierFails);
 
