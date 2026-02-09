@@ -1215,7 +1215,9 @@ async function runGeminiProvider({
   model,
 } = {}) {
   const startedAt = Date.now();
-  const apiKey = String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+  const apiKey = String(
+    process.env.AURORA_SKIN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
+  ).trim();
   const qualityFeatures = buildQualityFeatureSnapshot(photoQuality);
   const imageBytesLen = Buffer.isBuffer(imageBuffer) ? imageBuffer.length : 0;
   const requestPayloadBytesLen = imageBytesLen > 0 ? Math.ceil((imageBytesLen / 3)) * 4 : 0;
