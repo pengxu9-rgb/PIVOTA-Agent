@@ -94,6 +94,8 @@ test('diag verify: enabled writes model outputs and yields agreement score', asy
     await withEnv(
       {
         DIAG_GEMINI_VERIFY: 'true',
+        DIAG_VERIFY_SHADOW_ENABLED: 'false',
+        DIAG_SHADOW_MODE: 'false',
         AURORA_PSEUDO_LABEL_ENABLED: 'true',
         AURORA_PSEUDO_LABEL_DIR: store.root,
         DIAG_GEMINI_VERIFY_HARD_CASE_PATH: path.join(store.root, 'hard_cases.ndjson'),
@@ -140,7 +142,7 @@ test('diag verify: enabled writes model outputs and yields agreement score', asy
           metricsHooks: {
             onVerifyCall: ({ status }) => {
               if (status === 'attempt') counters.verifyAttempt += 1;
-              if (status === 'ok') counters.verifyOk += 1;
+              if (status === 'success') counters.verifyOk += 1;
             },
             onVerifyFail: () => {
               counters.verifyFail += 1;
@@ -230,6 +232,8 @@ test('diag verify: budget guard skips verify calls and emits guard reason', asyn
   await withEnv(
     {
       DIAG_GEMINI_VERIFY: 'true',
+      DIAG_VERIFY_SHADOW_ENABLED: 'false',
+      DIAG_SHADOW_MODE: 'false',
       DIAG_VERIFY_MAX_CALLS_PER_MIN: '1',
       DIAG_VERIFY_MAX_CALLS_PER_DAY: '1',
     },
@@ -289,7 +293,7 @@ test('diag verify: budget guard skips verify calls and emits guard reason', asyn
       assert.equal(cvCalls, 1);
       assert.equal(geminiCalls, 1);
 
-      const guardCall = metricEvents.find((entry) => entry[0] === 'call' && entry[1] === 'guard');
+      const guardCall = metricEvents.find((entry) => entry[0] === 'call' && entry[1] === 'skip');
       const guardMetric = metricEvents.find((entry) => entry[0] === 'guard' && entry[1] === VERIFY_GUARD_REASON);
       assert.equal(Boolean(guardCall), true);
       assert.equal(Boolean(guardMetric), true);
