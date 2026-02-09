@@ -1,36 +1,54 @@
 #!/usr/bin/env node
 
+const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const DEFAULT_INPUT_DIR = path.join('tmp', 'diag_pseudo_label_factory');
+const DEFAULT_HARD_CASES = path.join('tmp', 'diag_verify', 'hard_cases.ndjson');
+const DEFAULT_OUTPUT_DIR = 'reports';
+
 function parseArgs(argv) {
   const out = {
-    storeDir: '',
-    hardCasesPath: '',
+    inputPath: '',
     outDir: '',
     date: '',
+    hardCasesPath: '',
+    storeDirLegacy: '',
+    outDirLegacy: '',
   };
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    const next = argv[i + 1];
-    if (token === '--store-dir' && next) {
-      out.storeDir = next;
-      i += 1;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    const next = argv[index + 1];
+    if (!next) continue;
+    if (token === '--in') {
+      out.inputPath = next;
+      index += 1;
       continue;
     }
-    if (token === '--hard-cases' && next) {
-      out.hardCasesPath = next;
-      i += 1;
-      continue;
-    }
-    if (token === '--out-dir' && next) {
+    if (token === '--out') {
       out.outDir = next;
-      i += 1;
+      index += 1;
       continue;
     }
-    if (token === '--date' && next) {
+    if (token === '--date') {
       out.date = next;
-      i += 1;
+      index += 1;
+      continue;
+    }
+    if (token === '--hard-cases') {
+      out.hardCasesPath = next;
+      index += 1;
+      continue;
+    }
+    if (token === '--store-dir') {
+      out.storeDirLegacy = next;
+      index += 1;
+      continue;
+    }
+    if (token === '--out-dir') {
+      out.outDirLegacy = next;
+      index += 1;
       continue;
     }
   }
@@ -57,6 +75,67 @@ function datePrefix(dateKey) {
   return `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`;
 }
 
+function safeToken(value, fallback = 'unknown') {
+  const token = String(value || '').trim();
+  return token || fallback;
+}
+
+function safeNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function round3(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Number(numeric.toFixed(3));
+}
+
+function quantile(values, q) {
+  const numbers = values.map((item) => Number(item)).filter((item) => Number.isFinite(item)).sort((a, b) => a - b);
+  if (!numbers.length) return null;
+  const clampedQ = Math.min(1, Math.max(0, Number(q)));
+  const rank = (numbers.length - 1) * clampedQ;
+  const low = Math.floor(rank);
+  const high = Math.ceil(rank);
+  if (low === high) return round3(numbers[low]);
+  const ratio = rank - low;
+  return round3(numbers[low] * (1 - ratio) + numbers[high] * ratio);
+}
+
+function mean(values) {
+  const numbers = values.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+  if (!numbers.length) return null;
+  const total = numbers.reduce((acc, value) => acc + value, 0);
+  return round3(total / numbers.length);
+}
+
+function hashToken(value) {
+  const token = String(value || '').trim();
+  if (!token) return null;
+  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 24);
+}
+
+async function exists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+async function readJson(filePath, fallback = null) {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return fallback;
+    return parsed;
+  } catch (_err) {
+    return fallback;
+  }
+}
+
 async function readNdjson(filePath) {
   try {
     const raw = await fs.readFile(filePath, 'utf8');
@@ -77,457 +156,379 @@ async function readNdjson(filePath) {
   }
 }
 
-function toNumber(value, fallback = null) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return fallback;
-  return numeric;
+function formatRate(num, den) {
+  if (!den) return 0;
+  return round3(num / den);
 }
 
-function round3(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 0;
-  return Number(numeric.toFixed(3));
+function table(headers, rows) {
+  const head = `| ${headers.join(' | ')} |`;
+  const sep = `| ${headers.map(() => '---').join(' | ')} |`;
+  const body = rows.map((row) => `| ${row.map((value) => (value == null ? '' : String(value))).join(' | ')} |`);
+  return [head, sep, ...body].join('\n');
 }
 
-function mean(values) {
-  const nums = values.map((v) => Number(v)).filter((v) => Number.isFinite(v));
-  if (!nums.length) return null;
-  return round3(nums.reduce((acc, v) => acc + v, 0) / nums.length);
+function normalizeIssueType(raw) {
+  return safeToken(raw, 'other').toLowerCase();
 }
 
-function keyForSlice(slice) {
-  return [
-    slice.issue_type,
-    slice.quality_grade,
-    slice.tone_bucket,
-    slice.lighting_bucket,
-    slice.device_class,
-  ].join('||');
-}
-
-function defaultToken(value, fallback = 'unknown') {
-  const token = String(value || '').trim();
-  return token || fallback;
-}
-
-function resolveDeviceClass(record) {
+function isVerifyFailure(record) {
   const output = record && typeof record.output_json === 'object' ? record.output_json : {};
-  const derived = record && typeof record.derived_features === 'object' ? record.derived_features : {};
-  return defaultToken(output.device_class || derived.device_class || record.device_class, 'unknown');
+  if (output.ok === false) return true;
+  if (output.schema_failed) return true;
+  return Boolean(String(output.failure_reason || '').trim());
 }
 
-function buildModelSlices(modelOutputs, dayPrefix) {
-  const byInference = new Map();
+function extractAgreementRows(samples, dayPrefix) {
   const rows = [];
-
-  for (const row of modelOutputs) {
-    const createdAt = String(row.created_at || '');
-    if (!createdAt.startsWith(dayPrefix)) continue;
-
-    const inferenceId = defaultToken(row.inference_id, 'unknown_inference');
-    const quality = defaultToken(row.quality_grade, 'unknown');
-    const tone = defaultToken(row.skin_tone_bucket, 'unknown');
-    const lighting = defaultToken(row.lighting_bucket, 'unknown');
-    const device = resolveDeviceClass(row);
-
-    if (!byInference.has(inferenceId)) {
-      byInference.set(inferenceId, {
-        quality_grade: quality,
-        tone_bucket: tone,
-        lighting_bucket: lighting,
-        device_class: device,
-      });
-    }
-
-    const concerns = Array.isArray(row?.output_json?.concerns) ? row.output_json.concerns : [];
-    if (!concerns.length) {
-      rows.push({
-        issue_type: 'none',
-        quality_grade: quality,
-        tone_bucket: tone,
-        lighting_bucket: lighting,
-        device_class: device,
-        confidence: null,
-        severity: null,
-      });
-      continue;
-    }
-
-    for (const concern of concerns) {
-      rows.push({
-        issue_type: defaultToken(concern?.type, 'other'),
-        quality_grade: quality,
-        tone_bucket: tone,
-        lighting_bucket: lighting,
-        device_class: device,
-        confidence: toNumber(concern?.confidence),
-        severity: toNumber(concern?.severity),
-      });
-    }
-  }
-
-  const agg = new Map();
-  for (const row of rows) {
-    const key = keyForSlice(row);
-    if (!agg.has(key)) {
-      agg.set(key, {
-        issue_type: row.issue_type,
-        quality_grade: row.quality_grade,
-        tone_bucket: row.tone_bucket,
-        lighting_bucket: row.lighting_bucket,
-        device_class: row.device_class,
-        count: 0,
-        confidences: [],
-        severities: [],
-      });
-    }
-    const entry = agg.get(key);
-    entry.count += 1;
-    if (Number.isFinite(row.confidence)) entry.confidences.push(row.confidence);
-    if (Number.isFinite(row.severity)) entry.severities.push(row.severity);
-  }
-
-  const slices = Array.from(agg.values())
-    .map((entry) => ({
-      issue_type: entry.issue_type,
-      quality_grade: entry.quality_grade,
-      tone_bucket: entry.tone_bucket,
-      lighting_bucket: entry.lighting_bucket,
-      device_class: entry.device_class,
-      count: entry.count,
-      confidence_avg: mean(entry.confidences),
-      severity_avg: mean(entry.severities),
-    }))
-    .sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return keyForSlice(a).localeCompare(keyForSlice(b));
-    });
-
-  return {
-    slices,
-    byInference,
-    raw_rows: rows.length,
-  };
-}
-
-function buildAgreementSlices(agreementSamples, dayPrefix, inferenceMeta) {
-  const rows = [];
-
-  for (const sample of agreementSamples) {
-    const createdAt = String(sample.created_at || '');
-    if (!createdAt.startsWith(dayPrefix)) continue;
-
-    const inferenceId = defaultToken(sample.inference_id, 'unknown_inference');
-    const quality = defaultToken(sample.quality_grade, 'unknown');
-    const tone = defaultToken(sample.skin_tone_bucket, 'unknown');
-    const lighting = defaultToken(sample.lighting_bucket, 'unknown');
-    const inferred = inferenceMeta.get(inferenceId) || {};
-    const device = defaultToken(sample.device_class || inferred.device_class, 'unknown');
-
-    const metrics = sample && typeof sample.metrics === 'object' ? sample.metrics : {};
-    const byType = Array.isArray(metrics.by_type) ? metrics.by_type : [];
-    const overall = toNumber(metrics.overall, null);
+  for (const sample of samples) {
+    if (!String(sample?.created_at || '').startsWith(dayPrefix)) continue;
+    const qualityGrade = safeToken(sample?.quality_grade, 'unknown');
+    const toneBucket = safeToken(sample?.skin_tone_bucket || sample?.tone_bucket, 'unknown');
+    const lightingBucket = safeToken(sample?.lighting_bucket, 'unknown');
+    const deviceClass = safeToken(sample?.device_class, 'unknown');
+    const overall = safeNumber(sample?.metrics?.overall);
+    const byType = Array.isArray(sample?.metrics?.by_type) ? sample.metrics.by_type : [];
 
     if (!byType.length) {
       rows.push({
-        inference_id: inferenceId,
         issue_type: 'none',
-        quality_grade: quality,
-        tone_bucket: tone,
-        lighting_bucket: lighting,
-        device_class: device,
-        agreement_overall: overall,
-        iou: null,
-        severity_mae: null,
-        interval_overlap: null,
+        quality_grade: qualityGrade,
+        tone_bucket: toneBucket,
+        lighting_bucket: lightingBucket,
+        device_class: deviceClass,
+        agreement: overall,
       });
       continue;
     }
 
     for (const item of byType) {
       rows.push({
-        inference_id: inferenceId,
-        issue_type: defaultToken(item?.type, 'other'),
-        quality_grade: quality,
-        tone_bucket: tone,
-        lighting_bucket: lighting,
-        device_class: device,
-        agreement_overall: overall,
-        iou: toNumber(item?.iou),
-        severity_mae: toNumber(item?.severity_mae),
-        interval_overlap: toNumber(item?.interval_overlap),
+        issue_type: normalizeIssueType(item?.type),
+        quality_grade: qualityGrade,
+        tone_bucket: toneBucket,
+        lighting_bucket: lightingBucket,
+        device_class: deviceClass,
+        agreement: overall,
       });
     }
   }
+  return rows;
+}
 
-  const agg = new Map();
-  for (const row of rows) {
-    const key = keyForSlice(row);
-    if (!agg.has(key)) {
-      agg.set(key, {
-        issue_type: row.issue_type,
-        quality_grade: row.quality_grade,
-        tone_bucket: row.tone_bucket,
-        lighting_bucket: row.lighting_bucket,
-        device_class: row.device_class,
-        count: 0,
-        agreement: [],
-        iou: [],
-        severity_mae: [],
-        interval_overlap: [],
+function summarizeByIssueType(agreementRows, hardCases, dayPrefix) {
+  const map = new Map();
+  for (const row of agreementRows) {
+    const issueType = normalizeIssueType(row.issue_type);
+    if (!map.has(issueType)) {
+      map.set(issueType, {
+        issue_type: issueType,
+        agreements: [],
       });
     }
-    const entry = agg.get(key);
-    entry.count += 1;
-    if (Number.isFinite(row.agreement_overall)) entry.agreement.push(row.agreement_overall);
-    if (Number.isFinite(row.iou)) entry.iou.push(row.iou);
-    if (Number.isFinite(row.severity_mae)) entry.severity_mae.push(row.severity_mae);
-    if (Number.isFinite(row.interval_overlap)) entry.interval_overlap.push(row.interval_overlap);
+    const entry = map.get(issueType);
+    if (Number.isFinite(row.agreement)) entry.agreements.push(row.agreement);
   }
 
-  const slices = Array.from(agg.values())
-    .map((entry) => ({
+  const reasonBuckets = new Map();
+  for (const hardCase of hardCases) {
+    if (!String(hardCase?.created_at || '').startsWith(dayPrefix)) continue;
+    const issueType = normalizeIssueType(hardCase?.issue_type);
+    const reason = safeToken(hardCase?.disagreement_reason, 'UNKNOWN');
+    const key = `${issueType}||${reason}`;
+    reasonBuckets.set(key, (reasonBuckets.get(key) || 0) + 1);
+  }
+
+  const summaries = Array.from(map.values()).map((entry) => {
+    const reasons = Array.from(reasonBuckets.entries())
+      .filter(([key]) => key.startsWith(`${entry.issue_type}||`))
+      .map(([key, count]) => ({
+        reason: key.split('||')[1],
+        count,
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.reason.localeCompare(b.reason);
+      })
+      .slice(0, 3);
+
+    return {
       issue_type: entry.issue_type,
-      quality_grade: entry.quality_grade,
-      tone_bucket: entry.tone_bucket,
-      lighting_bucket: entry.lighting_bucket,
-      device_class: entry.device_class,
-      count: entry.count,
-      agreement_overall_avg: mean(entry.agreement),
-      iou_avg: mean(entry.iou),
-      severity_mae_avg: mean(entry.severity_mae),
-      interval_overlap_avg: mean(entry.interval_overlap),
-    }))
-    .sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return keyForSlice(a).localeCompare(keyForSlice(b));
+      count: entry.agreements.length,
+      agreement_mean: mean(entry.agreements),
+      agreement_p50: quantile(entry.agreements, 0.5),
+      agreement_p90: quantile(entry.agreements, 0.9),
+      top_disagreement_reasons: reasons,
+    };
+  });
+
+  summaries.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.issue_type.localeCompare(b.issue_type);
+  });
+
+  return summaries;
+}
+
+function summarizeByQualityGrade(modelRows, agreementRows) {
+  const qualitySet = new Set(['pass', 'degraded']);
+  for (const row of modelRows) qualitySet.add(safeToken(row?.quality_grade, 'unknown').toLowerCase());
+  for (const row of agreementRows) qualitySet.add(safeToken(row?.quality_grade, 'unknown').toLowerCase());
+
+  const summaries = [];
+  for (const quality of Array.from(qualitySet.values()).sort()) {
+    const modelSubset = modelRows.filter((row) => safeToken(row?.quality_grade, 'unknown').toLowerCase() === quality);
+    const agreementSubset = agreementRows.filter((row) => safeToken(row?.quality_grade, 'unknown').toLowerCase() === quality);
+    const failCount = modelSubset.filter((row) => isVerifyFailure(row)).length;
+    summaries.push({
+      quality_grade: quality,
+      verify_calls: modelSubset.length,
+      verify_fails: failCount,
+      fail_rate: formatRate(failCount, modelSubset.length),
+      agreement_mean: mean(agreementSubset.map((row) => row.agreement)),
     });
+  }
+  return summaries;
+}
+
+function topHardCases(hardCases, dayPrefix, limit = 20) {
+  const out = [];
+  for (const item of hardCases) {
+    if (!String(item?.created_at || '').startsWith(dayPrefix)) continue;
+
+    const requestHash = safeToken(item?.request_id_hash || hashToken(item?.request_id) || hashToken(item?.inference_id), 'unknown');
+    const assetHash = safeToken(item?.asset_id_hash || hashToken(item?.asset_id), 'unknown');
+
+    out.push({
+      request_id_hash: requestHash,
+      asset_id_hash: assetHash,
+      issue_type: normalizeIssueType(item?.issue_type),
+      disagreement_reason: safeToken(item?.disagreement_reason, 'UNKNOWN'),
+    });
+  }
+
+  out.sort((a, b) => {
+    const reasonCompare = a.disagreement_reason.localeCompare(b.disagreement_reason);
+    if (reasonCompare !== 0) return reasonCompare;
+    const issueCompare = a.issue_type.localeCompare(b.issue_type);
+    if (issueCompare !== 0) return issueCompare;
+    return a.request_id_hash.localeCompare(b.request_id_hash);
+  });
+
+  return out.slice(0, limit);
+}
+
+async function resolvePaths({ repoRoot, inputArg, storeDirLegacy, hardCasesArg, outArg, outDirLegacy }) {
+  const inputSeed = inputArg || storeDirLegacy || DEFAULT_INPUT_DIR;
+  const resolvedInput = path.resolve(repoRoot, inputSeed);
+
+  let manifestPath = resolvedInput;
+  let inputDir = resolvedInput;
+
+  const stat = await fs.stat(resolvedInput).catch(() => null);
+  if (stat && stat.isDirectory()) {
+    manifestPath = path.join(resolvedInput, 'manifest.json');
+    inputDir = resolvedInput;
+  } else if (stat && stat.isFile()) {
+    inputDir = path.dirname(resolvedInput);
+  } else {
+    manifestPath = path.join(resolvedInput, 'manifest.json');
+    inputDir = resolvedInput;
+  }
+
+  const manifest = await readJson(manifestPath, {});
+  const modelOutputsPath = path.resolve(inputDir, safeToken(manifest?.paths?.model_outputs || manifest?.files?.model_outputs, 'model_outputs.ndjson'));
+  const agreementSamplesPath = path.resolve(inputDir, safeToken(manifest?.paths?.agreement_samples || manifest?.files?.agreement_samples, 'agreement_samples.ndjson'));
+
+  let hardCasesPath = hardCasesArg ? path.resolve(repoRoot, hardCasesArg) : '';
+  if (!hardCasesPath) {
+    const fromManifest = safeToken(manifest?.paths?.hard_cases || manifest?.files?.hard_cases, '');
+    if (fromManifest) {
+      hardCasesPath = path.resolve(inputDir, fromManifest);
+    } else {
+      const localHard = path.join(inputDir, 'hard_cases.ndjson');
+      if (await exists(localHard)) {
+        hardCasesPath = localHard;
+      } else {
+        hardCasesPath = path.resolve(repoRoot, DEFAULT_HARD_CASES);
+      }
+    }
+  }
+
+  const outDir = path.resolve(repoRoot, outArg || outDirLegacy || DEFAULT_OUTPUT_DIR);
 
   return {
-    slices,
-    raw_rows: rows.length,
-    rows,
+    manifestPath,
+    modelOutputsPath,
+    agreementSamplesPath,
+    hardCasesPath,
+    outDir,
   };
 }
 
-function buildTopDisagreements(rows, limit = 12) {
-  const scored = [];
-  for (const row of rows) {
-    const iou = Number.isFinite(row.iou) ? Math.max(0, Math.min(1, row.iou)) : 1;
-    const mae = Number.isFinite(row.severity_mae) ? Math.max(0, Math.min(4, row.severity_mae)) : 0;
-    const overlap = Number.isFinite(row.interval_overlap) ? Math.max(0, Math.min(1, row.interval_overlap)) : 1;
-    const score = round3(((1 - iou) * 0.45) + ((mae / 4) * 0.4) + ((1 - overlap) * 0.15));
-    if (score <= 0) continue;
-    scored.push({
-      inference_id: row.inference_id,
-      issue_type: row.issue_type,
-      quality_grade: row.quality_grade,
-      tone_bucket: row.tone_bucket,
-      lighting_bucket: row.lighting_bucket,
-      device_class: row.device_class,
-      disagreement_score: score,
-      iou: row.iou,
-      severity_mae: row.severity_mae,
-      interval_overlap: row.interval_overlap,
-      agreement_overall: row.agreement_overall,
-    });
-  }
+function buildMarkdown({ dateIso, generatedAt, summary, byIssueType, byQuality, hardCases }) {
+  const lines = [];
+  lines.push(`# Verify Daily Report (${dateIso})`);
+  lines.push('');
+  lines.push(`Generated at (UTC): ${generatedAt}`);
+  lines.push('');
+  lines.push('## Overview');
+  lines.push(`- verify_calls_total: ${summary.verify_calls_total}`);
+  lines.push(`- verify_fail_total: ${summary.verify_fail_total}`);
+  lines.push(`- average_agreement: ${summary.average_agreement ?? 'n/a'}`);
+  lines.push(`- hard_case_rate: ${summary.hard_case_rate}`);
+  lines.push('');
 
-  return scored
-    .sort((a, b) => {
-      if (b.disagreement_score !== a.disagreement_score) return b.disagreement_score - a.disagreement_score;
-      return String(a.inference_id).localeCompare(String(b.inference_id));
-    })
-    .slice(0, limit);
+  lines.push('## By Issue Type');
+  lines.push('');
+  if (byIssueType.length) {
+    lines.push(table(
+      ['issue_type', 'count', 'agreement_mean', 'agreement_p50', 'agreement_p90', 'top_disagreement_reasons'],
+      byIssueType.map((row) => [
+        row.issue_type,
+        row.count,
+        row.agreement_mean,
+        row.agreement_p50,
+        row.agreement_p90,
+        row.top_disagreement_reasons.map((item) => `${item.reason}(${item.count})`).join(', ') || 'n/a',
+      ]),
+    ));
+  } else {
+    lines.push('_No issue_type data for this date._');
+  }
+  lines.push('');
+
+  lines.push('## By Quality Grade');
+  lines.push('');
+  if (byQuality.length) {
+    lines.push(table(
+      ['quality_grade', 'verify_calls', 'verify_fails', 'fail_rate', 'agreement_mean'],
+      byQuality.map((row) => [
+        row.quality_grade,
+        row.verify_calls,
+        row.verify_fails,
+        row.fail_rate,
+        row.agreement_mean ?? 'n/a',
+      ]),
+    ));
+  } else {
+    lines.push('_No quality_grade data for this date._');
+  }
+  lines.push('');
+
+  lines.push('## Top 20 Hard Cases');
+  lines.push('');
+  if (hardCases.length) {
+    lines.push(table(
+      ['request_id_hash', 'asset_id_hash', 'issue_type', 'disagreement_reason'],
+      hardCases.map((row) => [row.request_id_hash, row.asset_id_hash, row.issue_type, row.disagreement_reason]),
+    ));
+  } else {
+    lines.push('_No hard cases for this date._');
+  }
+  lines.push('');
+
+  return `${lines.join('\n')}\n`;
 }
 
-function buildTopHardCaseReasons(hardCases, dayPrefix, limit = 10) {
-  const counts = new Map();
-  let total = 0;
-  for (const item of hardCases) {
-    const createdAt = String(item.created_at || '');
-    if (!createdAt.startsWith(dayPrefix)) continue;
-    total += 1;
-    const reasons = Array.isArray(item.disagreement_reasons) ? item.disagreement_reasons : [];
-    if (!reasons.length) {
-      const fallbackReason = defaultToken(item?.final_reason || item?.verifier?.global_notes?.[0], 'UNKNOWN');
-      counts.set(fallbackReason, (counts.get(fallbackReason) || 0) + 1);
-      continue;
-    }
-    for (const reason of reasons) {
-      const token = defaultToken(reason, 'UNKNOWN');
-      counts.set(token, (counts.get(token) || 0) + 1);
-    }
-  }
+async function runDailyReport(options = {}) {
+  const repoRoot = options.repoRoot || path.resolve(__dirname, '..');
+  const dateKey = normalizeDateKey(options.date);
+  const dateIso = datePrefix(dateKey);
 
-  const top = Array.from(counts.entries())
-    .map(([reason, count]) => ({ reason, count }))
-    .sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.reason.localeCompare(b.reason);
-    })
-    .slice(0, limit);
+  const paths = await resolvePaths({
+    repoRoot,
+    inputArg: options.inputPath,
+    storeDirLegacy: options.storeDirLegacy,
+    hardCasesArg: options.hardCasesPath,
+    outArg: options.outDir,
+    outDirLegacy: options.outDirLegacy,
+  });
 
-  return { total_hard_cases: total, top };
-}
+  const modelOutputs = await readNdjson(paths.modelOutputsPath);
+  const agreementSamples = await readNdjson(paths.agreementSamplesPath);
+  const hardCasesAll = await readNdjson(paths.hardCasesPath);
 
-function toMarkdownTable(rows, headers, getValues) {
-  const head = `| ${headers.join(' | ')} |`;
-  const sep = `| ${headers.map(() => '---').join(' | ')} |`;
-  const body = rows.map((row) => `| ${getValues(row).map((v) => (v == null ? '' : String(v))).join(' | ')} |`);
-  return [head, sep, ...body].join('\n');
+  const modelRows = modelOutputs.filter((row) => String(row?.created_at || '').startsWith(dateIso));
+  const agreementRows = extractAgreementRows(agreementSamples, dateIso);
+  const hardCases = topHardCases(hardCasesAll, dateIso, 20);
+
+  const verifyCalls = modelRows.length;
+  const verifyFails = modelRows.filter((row) => isVerifyFailure(row)).length;
+  const averageAgreement = mean(agreementRows.map((row) => row.agreement));
+  const hardCaseRate = formatRate(hardCases.length, verifyCalls);
+
+  const byIssueType = summarizeByIssueType(agreementRows, hardCasesAll, dateIso);
+  const byQualityGrade = summarizeByQualityGrade(modelRows, agreementRows);
+
+  await fs.mkdir(paths.outDir, { recursive: true });
+  const mdPath = path.join(paths.outDir, `verify_daily_${dateKey}.md`);
+  const jsonPath = path.join(paths.outDir, `verify_daily_${dateKey}.json`);
+
+  const report = {
+    schema_version: 'aurora.diag.verify_daily.v2',
+    generated_at_utc: new Date().toISOString(),
+    date_utc: dateIso,
+    inputs: {
+      manifest_path: paths.manifestPath,
+      model_outputs_path: paths.modelOutputsPath,
+      agreement_samples_path: paths.agreementSamplesPath,
+      hard_cases_path: paths.hardCasesPath,
+      model_outputs_total: modelOutputs.length,
+      agreement_samples_total: agreementSamples.length,
+      hard_cases_total: hardCasesAll.length,
+    },
+    summary: {
+      verify_calls_total: verifyCalls,
+      verify_fail_total: verifyFails,
+      average_agreement: averageAgreement,
+      hard_case_rate: hardCaseRate,
+    },
+    by_issue_type: byIssueType,
+    by_quality_grade: byQualityGrade,
+    top_hard_cases: hardCases,
+  };
+
+  const markdown = buildMarkdown({
+    dateIso,
+    generatedAt: report.generated_at_utc,
+    summary: report.summary,
+    byIssueType,
+    byQuality: byQualityGrade,
+    hardCases,
+  });
+
+  await fs.writeFile(mdPath, markdown, 'utf8');
+  await fs.writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+
+  return {
+    jsonPath,
+    mdPath,
+    report,
+  };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const repoRoot = path.resolve(__dirname, '..');
-  const storeDir = path.resolve(repoRoot, args.storeDir || path.join('tmp', 'diag_pseudo_label_factory'));
-  const hardCasesPath = path.resolve(repoRoot, args.hardCasesPath || path.join('tmp', 'diag_verify', 'hard_cases.ndjson'));
-  const outDir = path.resolve(repoRoot, args.outDir || 'reports');
-
-  const dateKey = normalizeDateKey(args.date);
-  const prefix = datePrefix(dateKey);
-
-  const modelOutputsPath = path.join(storeDir, 'model_outputs.ndjson');
-  const agreementSamplesPath = path.join(storeDir, 'agreement_samples.ndjson');
-
-  const modelOutputs = await readNdjson(modelOutputsPath);
-  const agreementSamples = await readNdjson(agreementSamplesPath);
-  const hardCases = await readNdjson(hardCasesPath);
-
-  const modelPart = buildModelSlices(modelOutputs, prefix);
-  const agreementPart = buildAgreementSlices(agreementSamples, prefix, modelPart.byInference);
-  const topDisagreements = buildTopDisagreements(agreementPart.rows, 12);
-  const hardCaseSummary = buildTopHardCaseReasons(hardCases, prefix, 10);
-
-  const report = {
-    schema_version: 'aurora.diag.verify_daily.v1',
-    generated_at_utc: new Date().toISOString(),
-    date_utc: prefix,
-    inputs: {
-      model_outputs_path: modelOutputsPath,
-      agreement_samples_path: agreementSamplesPath,
-      hard_cases_path: hardCasesPath,
-      model_outputs_total: modelOutputs.length,
-      agreement_samples_total: agreementSamples.length,
-      hard_cases_total: hardCases.length,
-      model_rows_for_date: modelPart.raw_rows,
-      agreement_rows_for_date: agreementPart.raw_rows,
-      hard_cases_for_date: hardCaseSummary.total_hard_cases,
-    },
-    slices: {
-      model_outputs: modelPart.slices,
-      agreement: agreementPart.slices,
-    },
-    top_disagreements: topDisagreements,
-    top_hard_case_reasons: hardCaseSummary.top,
-  };
-
-  await fs.mkdir(outDir, { recursive: true });
-  const jsonPath = path.join(outDir, `verify_daily_${dateKey}.json`);
-  const mdPath = path.join(outDir, `verify_daily_${dateKey}.md`);
-
-  await fs.writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-
-  const mdLines = [];
-  mdLines.push(`# Verify Daily Report (${prefix})`);
-  mdLines.push('');
-  mdLines.push(`Generated at: ${report.generated_at_utc}`);
-  mdLines.push('');
-  mdLines.push('## Summary');
-  mdLines.push(`- model rows (date): ${modelPart.raw_rows}`);
-  mdLines.push(`- agreement rows (date): ${agreementPart.raw_rows}`);
-  mdLines.push(`- hard cases (date): ${hardCaseSummary.total_hard_cases}`);
-  mdLines.push('');
-
-  mdLines.push('## Slice: model_outputs (issue_type × quality_grade × tone_bucket × lighting_bucket × device_class)');
-  mdLines.push('');
-  if (modelPart.slices.length) {
-    mdLines.push(
-      toMarkdownTable(
-        modelPart.slices.slice(0, 100),
-        ['issue_type', 'quality_grade', 'tone_bucket', 'lighting_bucket', 'device_class', 'count', 'confidence_avg', 'severity_avg'],
-        (row) => [row.issue_type, row.quality_grade, row.tone_bucket, row.lighting_bucket, row.device_class, row.count, row.confidence_avg, row.severity_avg],
-      ),
-    );
-  } else {
-    mdLines.push('_No rows for this date._');
-  }
-  mdLines.push('');
-
-  mdLines.push('## Slice: agreement_samples (issue_type × quality_grade × tone_bucket × lighting_bucket × device_class)');
-  mdLines.push('');
-  if (agreementPart.slices.length) {
-    mdLines.push(
-      toMarkdownTable(
-        agreementPart.slices.slice(0, 100),
-        ['issue_type', 'quality_grade', 'tone_bucket', 'lighting_bucket', 'device_class', 'count', 'agreement_overall_avg', 'iou_avg', 'severity_mae_avg', 'interval_overlap_avg'],
-        (row) => [
-          row.issue_type,
-          row.quality_grade,
-          row.tone_bucket,
-          row.lighting_bucket,
-          row.device_class,
-          row.count,
-          row.agreement_overall_avg,
-          row.iou_avg,
-          row.severity_mae_avg,
-          row.interval_overlap_avg,
-        ],
-      ),
-    );
-  } else {
-    mdLines.push('_No rows for this date._');
-  }
-  mdLines.push('');
-
-  mdLines.push('## Top disagreements');
-  mdLines.push('');
-  if (topDisagreements.length) {
-    mdLines.push(
-      toMarkdownTable(
-        topDisagreements,
-        ['inference_id', 'issue_type', 'quality_grade', 'tone_bucket', 'lighting_bucket', 'device_class', 'disagreement_score', 'iou', 'severity_mae', 'interval_overlap'],
-        (row) => [
-          row.inference_id,
-          row.issue_type,
-          row.quality_grade,
-          row.tone_bucket,
-          row.lighting_bucket,
-          row.device_class,
-          row.disagreement_score,
-          row.iou,
-          row.severity_mae,
-          row.interval_overlap,
-        ],
-      ),
-    );
-  } else {
-    mdLines.push('_No disagreements for this date._');
-  }
-  mdLines.push('');
-
-  mdLines.push('## Top hard-case reasons');
-  mdLines.push('');
-  if (hardCaseSummary.top.length) {
-    mdLines.push(
-      toMarkdownTable(
-        hardCaseSummary.top,
-        ['reason', 'count'],
-        (row) => [row.reason, row.count],
-      ),
-    );
-  } else {
-    mdLines.push('_No hard-case reasons for this date._');
-  }
-  mdLines.push('');
-
-  await fs.writeFile(mdPath, `${mdLines.join('\n')}\n`, 'utf8');
-
-  process.stdout.write(`${jsonPath}\n${mdPath}\n`);
+  const result = await runDailyReport({
+    inputPath: args.inputPath,
+    outDir: args.outDir,
+    date: args.date,
+    hardCasesPath: args.hardCasesPath,
+    storeDirLegacy: args.storeDirLegacy,
+    outDirLegacy: args.outDirLegacy,
+  });
+  process.stdout.write(`${result.jsonPath}\n${result.mdPath}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  runDailyReport,
+  normalizeDateKey,
+};

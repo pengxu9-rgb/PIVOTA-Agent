@@ -1,0 +1,8 @@
+{
+  "schema_version": "aurora.diag.pseudo_label_manifest.v1",
+  "paths": {
+    "model_outputs": "model_outputs.ndjson",
+    "agreement_samples": "agreement_samples.ndjson",
+    "hard_cases": "hard_cases.ndjson"
+  }
+}

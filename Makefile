@@ -14,9 +14,11 @@ LOADTEST_REQUEST_TIMEOUT_S ?= 8
 LOADTEST_QC ?= pass
 LOADTEST_P95_BUDGET_MS ?= 2000
 BASE ?= https://pivota-agent-production.up.railway.app
-VERIFY_STORE_DIR ?= tmp/diag_pseudo_label_factory
-VERIFY_HARD_CASES ?= tmp/diag_verify/hard_cases.ndjson
+VERIFY_IN ?= tmp/diag_pseudo_label_factory
+VERIFY_STORE_DIR ?= $(VERIFY_IN)
+VERIFY_HARD_CASES ?=
 VERIFY_REPORT_DATE ?=
+VERIFY_OUT ?= reports
 PSEUDO_STORE_DIR ?= tmp/diag_pseudo_label_factory
 PSEUDO_OUT_DIR ?= reports/pseudo_label_job
 PSEUDO_JOB_DATE ?=
@@ -86,7 +88,7 @@ docs: status
 	@echo "Status snapshot generated; docs are in docs/IMPLEMENTATION_STATUS.md and docs/NEXT_STEPS.md"
 
 verify-daily:
-	node scripts/report_verify_daily.js --store-dir $(VERIFY_STORE_DIR) --hard-cases $(VERIFY_HARD_CASES) $(if $(VERIFY_REPORT_DATE),--date $(VERIFY_REPORT_DATE),)
+	node scripts/report_verify_daily.js --in $(VERIFY_IN) --out $(VERIFY_OUT) $(if $(VERIFY_HARD_CASES),--hard-cases $(VERIFY_HARD_CASES),) $(if $(VERIFY_REPORT_DATE),--date $(VERIFY_REPORT_DATE),)
 
 pseudo-label-job:
 	node scripts/run_pseudo_label_job.js --store-dir $(PSEUDO_STORE_DIR) --out-dir $(PSEUDO_OUT_DIR) $(if $(PSEUDO_JOB_DATE),--date $(PSEUDO_JOB_DATE),)
