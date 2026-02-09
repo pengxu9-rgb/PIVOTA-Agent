@@ -426,21 +426,24 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox,
   const failGate = gate.fail;
   const degradedGate = gate.degraded;
 
+  // Keep FAIL reserved for hard failure conditions (coverage / blur / exposure).
+  // Composite quality_factor is still used for DEGRADED, but not for FAIL to
+  // avoid over-failing clear photos with warm/cool cast.
   let grade = 'pass';
   if (
     coverage < failGate.min_coverage ||
     blurFactor < failGate.min_blur_factor ||
-    exposureFactor < failGate.min_exposure_factor ||
-    qualityFactor < failGate.min_quality_factor
-  )
+    exposureFactor < failGate.min_exposure_factor
+  ) {
     grade = 'fail';
-  else if (
+  } else if (
     blurFactor < degradedGate.min_blur_factor ||
     exposureFactor < degradedGate.min_exposure_factor ||
     wbFactor < degradedGate.min_wb_factor ||
     qualityFactor < degradedGate.min_quality_factor
-  )
+  ) {
     grade = 'degraded';
+  }
 
   return {
     grade,
