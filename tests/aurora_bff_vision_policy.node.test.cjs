@@ -40,6 +40,13 @@ function withEnv(patch, fn) {
   }
 }
 
+function loadAuroraRoutesModule() {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const mod = require('../src/auroraBff/routes');
+  return { moduleId, mod };
+}
+
 test('vision availability classification: missing key and disabled flag', () => {
   const disabled = classifyVisionAvailability({ enabled: false, apiKeyConfigured: true });
   assert.equal(disabled.available, false);
@@ -123,6 +130,44 @@ test('vision photo notice is safe and user-facing', () => {
   assert.match(String(n2 || ''), /re-upload/i);
 });
 
+test('vision provider selection: auto picks gemini, forced gemini ignores openai key', async () => {
+  await withEnv(
+    {
+      AURORA_SKIN_VISION_PROVIDER: 'auto',
+      OPENAI_API_KEY: undefined,
+      GEMINI_API_KEY: 'gemini_test_key',
+    },
+    async () => {
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      try {
+        const selected = mod.__internal.resolveVisionProviderSelection();
+        assert.equal(selected.provider, 'gemini');
+        assert.equal(selected.apiKeyConfigured, true);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+
+  await withEnv(
+    {
+      AURORA_SKIN_VISION_PROVIDER: 'gemini',
+      OPENAI_API_KEY: 'openai_key_present',
+      GEMINI_API_KEY: undefined,
+    },
+    async () => {
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      try {
+        const selected = mod.__internal.resolveVisionProviderSelection();
+        assert.equal(selected.provider, 'gemini');
+        assert.equal(selected.apiKeyConfigured, false);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: missing vision key falls back to CV findings with metrics', async () => {
   await withEnv(
     {
@@ -137,11 +182,10 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
       AURORA_PHOTO_FETCH_TIMEOUT_MS: '1000',
     },
     async () => {
-      const moduleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[moduleId];
       resetVisionMetrics();
 
-      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      const { mountAuroraBffRoutes } = mod;
       const axios = require('axios');
       const originalGet = axios.get;
 
@@ -222,6 +266,105 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
         assert.match(body, /vision_calls_total\{provider="openai",decision="fallback"\}\s+1/);
         assert.match(body, /vision_fallback_total\{provider="openai",reason="VISION_MISSING_KEY"\}\s+1/);
         assert.match(body, /vision_fallback_total\{provider="openai",reason="VISION_CV_FALLBACK_USED"\}\s+1/);
+      } finally {
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: forced gemini with missing key reports gemini reason and metrics', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'true',
+      AURORA_SKIN_VISION_PROVIDER: 'gemini',
+      OPENAI_API_KEY: 'openai_present_but_should_not_be_used',
+      GEMINI_API_KEY: undefined,
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '3000',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '1000',
+    },
+    async () => {
+      resetVisionMetrics();
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      const { mountAuroraBffRoutes } = mod;
+      const axios = require('axios');
+      const originalGet = axios.get;
+
+      const pngBytes = await sharp({
+        create: {
+          width: 320,
+          height: 320,
+          channels: 3,
+          background: { r: 218, g: 190, b: 170 },
+        },
+      })
+        .png()
+        .toBuffer();
+
+      axios.get = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/open',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+              content_type: 'image/png',
+            },
+          };
+        }
+        if (u === 'https://signed-download.test/open') {
+          return {
+            status: 200,
+            data: pngBytes,
+            headers: { 'content-type': 'image/png' },
+          };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_vision_missing_key_gemini',
+            'X-Trace-ID': 'trace_vision_missing_key_gemini',
+            'X-Brief-ID': 'brief_vision_missing_key_gemini',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'AM cleanser + SPF; PM cleanser + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_missing_key_gemini', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.quality_report?.llm?.vision?.provider, 'gemini');
+        assert.equal(
+          Array.isArray(card?.payload?.quality_report?.llm?.vision?.reasons) &&
+            card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
+          true,
+        );
+
+        const metrics = await request.get('/metrics').expect(200);
+        const body = String(metrics.text || '');
+        assert.match(body, /vision_calls_total\{provider="gemini",decision="fallback"\}\s+1/);
+        assert.match(body, /vision_fallback_total\{provider="gemini",reason="VISION_MISSING_KEY"\}\s+1/);
       } finally {
         axios.get = originalGet;
         delete require.cache[moduleId];
