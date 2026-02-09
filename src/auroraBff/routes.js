@@ -1038,6 +1038,114 @@ async function resolveIdentity(req, ctx) {
   return { auroraUid: ctx.aurora_uid, userId: session.userId, userEmail: session.email, token, auth_invalid: false };
 }
 
+function parseClarificationIdFromActionId(actionId) {
+  const id = String(actionId || '').trim();
+  if (!id) return '';
+  const parts = id.split('.');
+  if (parts.length < 4) return '';
+  if (parts[0] !== 'chip' || parts[1] !== 'clarify') return '';
+  return String(parts[2] || '').trim();
+}
+
+function parseClarificationReplyFromActionId(actionId) {
+  const id = String(actionId || '').trim();
+  if (!id) return '';
+  const parts = id.split('.');
+  if (parts.length < 4) return '';
+  if (parts[0] !== 'chip' || parts[1] !== 'clarify') return '';
+  return String(parts.slice(3).join(' ') || '')
+    .replace(/_/g, ' ')
+    .trim();
+}
+
+function normalizeClarificationField(raw) {
+  const field = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_');
+
+  if (!field) return '';
+  if (field.includes('budget') || field.includes('price') || field.includes('spend')) return 'budgetTier';
+  if (field.includes('goal') || field.includes('concern') || field.includes('target') || field.includes('focus')) return 'goals';
+  if (field.includes('barrier') || field.includes('sting') || field.includes('red') || field.includes('irrit') || field.includes('reactive')) return 'barrierStatus';
+  if (field.includes('sensit')) return 'sensitivity';
+  if (field.includes('skin') || field.includes('oily') || field.includes('dry') || field.includes('combo') || field.includes('mixed')) return 'skinType';
+  return '';
+}
+
+function isUnsureToken(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return false;
+  return (
+    text === 'unknown' ||
+    text === 'unsure' ||
+    text === 'not sure' ||
+    text === 'n/a' ||
+    text === 'na' ||
+    /不确定|不知道|不清楚/.test(text)
+  );
+}
+
+function inferGoalFromClarificationText(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  if (/(acne|breakout|pore|oil|控痘|痘|闭口|粉刺|毛孔|出油)/.test(text)) return 'acne';
+  if (/(redness|sensitive|reactive|泛红|敏感|刺痛|修护屏障|屏障)/.test(text)) return 'redness';
+  if (/(dark spot|pigment|bright|tone|淡斑|美白|提亮|暗沉|色沉|痘印)/.test(text)) return 'dark_spots';
+  if (/(dry|hydrate|moist|保湿|补水|干燥|紧绷)/.test(text)) return 'dehydration';
+  if (/(wrinkle|fine line|firm|anti[- ]?aging|抗老|抗衰|细纹|紧致|提拉)/.test(text)) return 'wrinkles';
+  return '';
+}
+
+function inferProfilePatchFromClarification({ clarificationId, replyText }) {
+  const field = normalizeClarificationField(clarificationId);
+  const raw = String(replyText || '').trim();
+  const text = raw.toLowerCase();
+  if (!field || !raw) return null;
+
+  if (field === 'skinType') {
+    if (/(oily|油)/.test(text)) return { skinType: 'oily' };
+    if (/(dry|干)/.test(text)) return { skinType: 'dry' };
+    if (/(combo|combination|mixed|混合)/.test(text)) return { skinType: 'combination' };
+    if (/(normal|中性)/.test(text)) return { skinType: 'normal' };
+    if (/(sensitive|敏感)/.test(text)) return { skinType: 'sensitive' };
+    if (isUnsureToken(text)) return { skinType: 'unknown' };
+    return null;
+  }
+
+  if (field === 'barrierStatus') {
+    if (/(stable|healthy|normal|ok|good|稳定|健康)/.test(text)) return { barrierStatus: 'healthy' };
+    if (/(sting|stinging|red|irrit|burn|reactive|impaired|damaged|刺痛|泛红|发红|刺激|不稳定|受损)/.test(text)) return { barrierStatus: 'impaired' };
+    if (isUnsureToken(text)) return { barrierStatus: 'unknown' };
+    return null;
+  }
+
+  if (field === 'sensitivity') {
+    if (/(^|\b)(low|mild)\b|低|轻/.test(text)) return { sensitivity: 'low' };
+    if (/(^|\b)(medium|mid|moderate)\b|中/.test(text)) return { sensitivity: 'medium' };
+    if (/(^|\b)(high|severe|very)\b|高|重/.test(text)) return { sensitivity: 'high' };
+    if (/(^|\b)yes(\b|$)|有|容易刺痛/.test(text)) return { sensitivity: 'high' };
+    if (/(^|\b)no(\b|$)|无|不敏感/.test(text)) return { sensitivity: 'low' };
+    if (isUnsureToken(text)) return { sensitivity: 'unknown' };
+    return null;
+  }
+
+  if (field === 'goals') {
+    if (isUnsureToken(text)) return { goals: ['unknown'] };
+    const goal = inferGoalFromClarificationText(text);
+    if (goal) return { goals: [goal] };
+    const normalized = raw.replace(/\s+/g, ' ').trim().slice(0, 80);
+    return normalized ? { goals: [normalized] } : null;
+  }
+
+  if (field === 'budgetTier') {
+    const budget = normalizeBudgetHint(raw);
+    return { budgetTier: budget || raw.slice(0, 40) };
+  }
+
+  return null;
+}
+
 function parseProfilePatchFromAction(action) {
   if (!action) return null;
   if (typeof action === 'object' && action.data && typeof action.data === 'object') {
@@ -1045,8 +1153,19 @@ function parseProfilePatchFromAction(action) {
     if (patch && typeof patch === 'object') return patch;
   }
 
-  // Fallback: parse chip ids like "profile.skinType.oily".
   const id = typeof action === 'string' ? action : action && action.action_id;
+  if (typeof action === 'object' && action && typeof action.data === 'object' && action.data) {
+    const clarificationIdRaw =
+      action.data.clarification_id || action.data.clarificationId || parseClarificationIdFromActionId(id);
+    const replyText = extractReplyTextFromAction(action) || parseClarificationReplyFromActionId(id);
+    const patchFromClarification = inferProfilePatchFromClarification({
+      clarificationId: clarificationIdRaw,
+      replyText,
+    });
+    if (patchFromClarification) return patchFromClarification;
+  }
+
+  // Fallback: parse chip ids like "profile.skinType.oily".
   if (!id || typeof id !== 'string') return null;
   const parts = id.split('.');
   if (parts.length < 3 || parts[0] !== 'profile') return null;
@@ -7706,6 +7825,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       const budgetChipCanContinueReco =
         budgetClarificationAction &&
         ctx.state === 'S6_BUDGET';
+      const profileClarificationAction =
+        Boolean(appliedProfilePatch && Object.keys(appliedProfilePatch).length > 0) &&
+        (String(actionId || '').trim().toLowerCase().startsWith('chip.clarify.') || Boolean(clarificationId));
       const budgetChipOutOfFlow =
         budgetClarificationAction &&
         !budgetChipCanContinueReco &&
@@ -7774,6 +7896,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           actionId === 'chip.start.reco_products' ||
           actionId === 'chip_get_recos' ||
           budgetChipCanContinueReco ||
+          profileClarificationAction ||
           looksLikeRecommendationRequest(message)
         );
 
@@ -7898,11 +8021,13 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
-      if (appliedProfilePatch && !message) {
+      // Clarification chips usually carry reply_text (for UX), so we must not require empty message here.
+      if (appliedProfilePatch && (!message || profileClarificationAction)) {
         const inDiagnosisFlow =
           String(agentState || '').startsWith('DIAG_') ||
           String(ctx.state || '').startsWith('S2_') ||
-          String(ctx.state || '').startsWith('S3_');
+          String(ctx.state || '').startsWith('S3_') ||
+          profileClarificationAction;
 
         const { score, missing } = profileCompleteness(profile);
 

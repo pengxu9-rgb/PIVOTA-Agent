@@ -203,6 +203,18 @@ test('State machine: PRODUCT_LINK_EVAL allows explicit recommendation transition
   if (validation.ok) assert.equal(validation.next_state, 'RECO_GATE');
 });
 
+test('Recommendation gate: clarification chips continue recommendation flow in RECO state', async () => {
+  const allowed = recommendationsAllowed({
+    triggerSource: 'chip',
+    actionId: 'chip.clarify.skin_type.Oily',
+    clarificationId: 'skin_type',
+    message: 'Oily',
+    state: 'S7_PRODUCT_RECO',
+    agentState: 'RECO_GATE',
+  });
+  assert.equal(allowed, true);
+});
+
 test('Routine simulate: detects retinoid x acids conflict', async () => {
   const sim = simulateConflicts({
     routine: { pm: [{ key_actives: ['retinol'] }] },

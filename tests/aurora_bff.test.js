@@ -152,6 +152,26 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.cards.some((c) => c.type === 'aurora_structured')).toBe(false);
   });
 
+  test('Diagnosis: clarification chip reply maps to profile patch and progresses', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_clarification_patch_1')
+      .send({
+        action: {
+          action_id: 'chip.clarify.skin_type.Oily',
+          kind: 'chip',
+          data: { reply_text: 'Oily', clarification_id: 'skin_type' },
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
+    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.'))).toBe(false);
+    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.barrierStatus.'))).toBe(true);
+  });
+
   test('Routine: budget gate prompts and sets state S6_BUDGET', async () => {
     const app = require('../src/server');
     const res = await request(app)

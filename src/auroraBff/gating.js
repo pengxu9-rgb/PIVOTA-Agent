@@ -81,7 +81,9 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
   const text = String(opts.message || '').trim();
   const clarificationId = String(opts.clarificationId || opts.clarification_id || '').trim().toLowerCase();
   const state = String(opts.state || opts.sessionState || '').trim().toUpperCase();
+  const agentState = String(opts.agentState || opts.agent_state || '').trim().toUpperCase();
   const inBudgetFlow = state === 'S6_BUDGET';
+  const inRecoFlow = state === 'S7_PRODUCT_RECO' || agentState === 'RECO_GATE' || agentState === 'RECO_CONSTRAINTS' || agentState === 'RECO_RESULTS';
 
   // Chips/actions are "explicit" interactions, but NOT all chips should unlock recommendations/commerce.
   // Only unlock when the user explicitly asked for product outputs (recommendations/routine/dupes/analysis).
@@ -97,6 +99,19 @@ function recommendationsAllowed(triggerSourceOrOpts, actionId, message) {
     if (id === 'chip.action.reco_routine') return true;
     if (id === 'chip.action.analyze_product') return true;
     if (id === 'chip.action.dupe_compare') return true;
+
+    if (id.startsWith('chip.clarify.')) {
+      const clarifyKey = `${clarificationId}|${id}`.toLowerCase();
+      const isProfileClarification =
+        /skin|barrier|sensit|goal|concern|target|focus/.test(clarifyKey);
+      if (isProfileClarification) {
+        // In recommendation flow, clarification chips are explicit continuation turns.
+        if (inRecoFlow || inBudgetFlow) return true;
+        if (looksLikeRecommendationRequest(text) || looksLikeSuitabilityRequest(text)) return true;
+        return false;
+      }
+    }
+
     if (id.startsWith('chip.clarify.budget') || id.startsWith('chip.budget.') || clarificationId === 'budget') {
       // Budget chips can be stale (copied from previous turn by some clients).
       // Only treat them as recommendation-unlocking when we are already in the budget flow,
