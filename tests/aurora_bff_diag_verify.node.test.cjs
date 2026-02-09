@@ -330,7 +330,7 @@ test('diag verify: failure path exposes provider status/latency/attempts/final r
           }),
         },
         metricsHooks: {
-          onVerifyFail: ({ reason }) => failEvents.push(reason),
+          onVerifyFail: (event) => failEvents.push(event),
         },
       });
 
@@ -344,7 +344,12 @@ test('diag verify: failure path exposes provider status/latency/attempts/final r
       assert.equal(out.decision, 'verify');
       assert.equal(typeof out.latency_ms, 'number');
       assert.equal(out.latency_ms >= 0, true);
-      assert.equal(failEvents.includes('UPSTREAM_5XX'), true);
+      assert.equal(failEvents.some((event) => event.reason === 'UPSTREAM_5XX'), true);
+      const fail = failEvents.find((event) => event.reason === 'UPSTREAM_5XX');
+      assert.equal(fail.provider, 'gemini_provider');
+      assert.equal(fail.http_status_class, '5xx');
+      assert.equal(typeof fail.latency_ms, 'number');
+      assert.equal(fail.attempts, 2);
     },
   );
 });
@@ -358,9 +363,20 @@ test('diag verify: maps provider failures into canonical verify fail reasons', a
       const { runGeminiShadowVerify } = loadVerifyFresh();
       const cases = [
         { reason: 'VERIFY_TIMEOUT', statusCode: 504, expected: 'TIMEOUT' },
-        { reason: 'QUOTA_EXCEEDED', statusCode: 402, expected: 'QUOTA' },
+        { reason: 'VISION_TIMEOUT', statusCode: 408, expected: 'TIMEOUT' },
+        { reason: 'VISION_RATE_LIMITED', statusCode: 429, expected: 'RATE_LIMIT' },
+        { reason: 'VISION_QUOTA_EXCEEDED', statusCode: 429, expected: 'QUOTA' },
+        { reason: 'VISION_SCHEMA_INVALID', statusCode: 200, expected: 'SCHEMA_INVALID' },
         { reason: 'SCHEMA_INVALID', statusCode: 200, expected: 'SCHEMA_INVALID' },
+        { reason: 'VISION_IMAGE_INVALID', statusCode: 400, expected: 'IMAGE_FETCH_FAILED' },
         { reason: 'MISSING_IMAGE', statusCode: 400, expected: 'IMAGE_FETCH_FAILED' },
+        { reason: 'VISION_MISSING_KEY', statusCode: 401, expected: 'UPSTREAM_4XX' },
+        { reason: 'VISION_UPSTREAM_4XX', statusCode: 403, expected: 'UPSTREAM_4XX' },
+        { reason: 'VISION_UPSTREAM_5XX', statusCode: 503, expected: 'UPSTREAM_5XX' },
+        { reason: 'VISION_NETWORK_ERROR', statusCode: 0, expected: 'NETWORK_ERROR' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'MISSING_DEP', expected: 'UPSTREAM_5XX' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'ECONNRESET', expected: 'NETWORK_ERROR' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, statusClass: '5xx', expected: 'UPSTREAM_5XX' },
       ];
 
       for (const item of cases) {
@@ -382,9 +398,11 @@ test('diag verify: maps provider failures into canonical verify fail reasons', a
               provider: 'gemini_provider',
               concerns: [],
               failure_reason: item.reason,
+              ...(item.errorClass ? { error_class: item.errorClass } : {}),
               latency_ms: 11,
               attempts: 1,
               provider_status_code: item.statusCode,
+              ...(item.statusClass ? { http_status_class: item.statusClass } : {}),
             }),
           },
         });

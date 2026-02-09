@@ -387,8 +387,14 @@ function buildProviderStat(output) {
   };
 }
 
-function normalizeVerifyFailReason({ reason, providerStatusCode } = {}) {
+function normalizeVerifyFailReason({ reason, providerStatusCode, httpStatusClass, errorClass } = {}) {
   const statusCode = Number.isFinite(Number(providerStatusCode)) ? Math.trunc(Number(providerStatusCode)) : 0;
+  const statusClass = String(httpStatusClass || '')
+    .trim()
+    .toLowerCase();
+  const errorToken = String(errorClass || '')
+    .trim()
+    .toUpperCase();
   const token = String(reason || '')
     .trim()
     .toUpperCase();
@@ -409,20 +415,20 @@ function normalizeVerifyFailReason({ reason, providerStatusCode } = {}) {
     return VerifyFailReason.TIMEOUT;
   }
   if (
-    token === VerifyFailReason.RATE_LIMIT ||
-    token.includes('RATE_LIMIT') ||
-    token.includes('VISION_RATE_LIMITED') ||
-    statusCode === 429
-  ) {
-    return VerifyFailReason.RATE_LIMIT;
-  }
-  if (
     token === VerifyFailReason.QUOTA ||
     token.includes('QUOTA') ||
     token.includes('INSUFFICIENT_QUOTA') ||
     token.includes('VISION_QUOTA_EXCEEDED')
   ) {
     return VerifyFailReason.QUOTA;
+  }
+  if (
+    token === VerifyFailReason.RATE_LIMIT ||
+    token.includes('RATE_LIMIT') ||
+    token.includes('VISION_RATE_LIMITED') ||
+    statusCode === 429
+  ) {
+    return VerifyFailReason.RATE_LIMIT;
   }
   if (
     token === VerifyFailReason.SCHEMA_INVALID ||
@@ -455,6 +461,30 @@ function normalizeVerifyFailReason({ reason, providerStatusCode } = {}) {
     statusCode >= 400
   ) {
     return VerifyFailReason.UPSTREAM_4XX;
+  }
+  if (statusClass === '5xx') return VerifyFailReason.UPSTREAM_5XX;
+  if (statusClass === '4xx') return VerifyFailReason.UPSTREAM_4XX;
+  if (
+    errorToken.includes('TIMEOUT') ||
+    errorToken.includes('ETIMEDOUT') ||
+    errorToken.includes('ECONNABORTED') ||
+    errorToken.includes('DEADLINE_EXCEEDED')
+  ) {
+    return VerifyFailReason.TIMEOUT;
+  }
+  if (
+    errorToken.includes('NETWORK') ||
+    errorToken.includes('ENOTFOUND') ||
+    errorToken.includes('EAI_AGAIN') ||
+    errorToken.includes('ECONNRESET') ||
+    errorToken.includes('ECONNREFUSED') ||
+    errorToken.includes('FETCH_FAILED') ||
+    errorToken.includes('DNS')
+  ) {
+    return VerifyFailReason.NETWORK_ERROR;
+  }
+  if (token.includes('REQUEST_FAILED') || token.includes('SERVICE_UNAVAILABLE') || errorToken.includes('MISSING_DEP')) {
+    return VerifyFailReason.UPSTREAM_5XX;
   }
   return VerifyFailReason.UNKNOWN;
 }
@@ -670,7 +700,12 @@ async function runGeminiShadowVerify({
   const rawFinalReason = geminiOutput?.ok ? 'OK' : String(geminiOutput?.failure_reason || VerifyFailReason.UNKNOWN);
   const verifyFailReason = geminiOutput?.ok
     ? null
-    : normalizeVerifyFailReason({ reason: rawFinalReason, providerStatusCode });
+    : normalizeVerifyFailReason({
+        reason: rawFinalReason,
+        providerStatusCode,
+        httpStatusClass: geminiOutput?.http_status_class,
+        errorClass: geminiOutput?.error_class,
+      });
   const finalReason = geminiOutput?.ok ? 'OK' : verifyFailReason || VerifyFailReason.UNKNOWN;
   const schemaErrorSummary = summarizeSchemaError(geminiOutput?.schema_error_summary);
   const imageBytesLen = toInt(geminiOutput?.image_bytes_len, Buffer.isBuffer(imageBuffer) ? imageBuffer.length : 0);
