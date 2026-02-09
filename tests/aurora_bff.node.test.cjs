@@ -102,6 +102,25 @@ test('Emotional preamble: has deterministic multi-variant choices for CN and EN'
   }
 });
 
+test('Emotional preamble: does not double-prefix existing known preamble', async () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal: auroraRouteInternals } = require('../src/auroraBff/routes');
+
+  const base = 'Got it — I’ll keep it clear and practical.';
+  const input = `${base}\n\nHere is your plan.`;
+  const out = auroraRouteInternals.addEmotionalPreambleToAssistantText(input, {
+    language: 'EN',
+    profile: { region: 'US' },
+    seed: 'seed-en-no-double',
+  });
+  delete require.cache[moduleId];
+
+  const occurrences = String(out || '').split(base).length - 1;
+  assert.equal(occurrences, 1);
+  assert.match(String(out || ''), /^Got it — I’ll keep it clear and practical\./);
+});
+
 test('Phase0 gate: no recos when profile is missing', async () => {
   const gate = shouldDiagnosisGate({
     message: 'Please recommend a moisturizer',

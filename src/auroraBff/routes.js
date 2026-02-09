@@ -1473,6 +1473,42 @@ const EMOTIONAL_PREAMBLE_OPTIONS = {
   },
 };
 
+function normalizePreambleLine(text) {
+  return String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function buildKnownPreambleSetByLang() {
+  const out = { CN: new Set(), EN: new Set() };
+  for (const lang of ['CN', 'EN']) {
+    const choices = EMOTIONAL_PREAMBLE_OPTIONS[lang] || {};
+    for (const key of Object.keys(choices)) {
+      const arr = Array.isArray(choices[key]) ? choices[key] : [];
+      for (const line of arr) {
+        const normalized = normalizePreambleLine(line);
+        if (normalized) out[lang].add(normalized);
+      }
+    }
+  }
+  return out;
+}
+
+const KNOWN_EMOTIONAL_PREAMBLE_SET = buildKnownPreambleSetByLang();
+
+function hasKnownEmotionalPreamble(text, lang) {
+  const lines = String(text || '').split(/\r?\n/);
+  for (const line of lines) {
+    const normalized = normalizePreambleLine(line);
+    if (!normalized) continue;
+    const set = KNOWN_EMOTIONAL_PREAMBLE_SET[lang === 'CN' ? 'CN' : 'EN'];
+    if (set && set.has(normalized)) return true;
+    break;
+  }
+  return false;
+}
+
 function pickPreambleVariant(options, { seed, language, bucket }) {
   const list = Array.isArray(options) ? options.filter((s) => typeof s === 'string' && s.trim()) : [];
   if (!list.length) return '';
@@ -1500,7 +1536,12 @@ function addEmotionalPreambleToAssistantText(text, { language, profile, seed } =
   if (!raw.trim()) return raw;
   const lang = language === 'CN' ? 'CN' : 'EN';
   const normalized = stripMismatchedLeadingGreeting(raw, { language: lang });
-  if (looksLikeGreetingAlready(normalized, { language: lang })) return normalized;
+  if (
+    looksLikeGreetingAlready(normalized, { language: lang }) ||
+    hasKnownEmotionalPreamble(normalized, lang)
+  ) {
+    return normalized;
+  }
 
   const pre = buildEmotionalPreamble({ language: lang, profile, now: new Date(), seed });
   if (!pre || !String(pre).trim()) return raw;
