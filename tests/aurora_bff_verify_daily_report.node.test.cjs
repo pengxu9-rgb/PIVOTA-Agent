@@ -42,12 +42,17 @@ test('report_verify_daily generates markdown sections from small ndjson sample',
     assert.ok(markdown.includes('verify_fail_total: 1'));
     assert.ok(markdown.includes('average_agreement: 0.6'));
     assert.ok(markdown.includes('hard_case_rate: 0.667'));
+    assert.ok(markdown.includes('latency_p50_ms: 760'));
+    assert.ok(markdown.includes('latency_p95_ms: 1336'));
+    assert.ok(markdown.includes('calls_skipped_by_budget_guard: 1'));
 
     assert.ok(markdown.includes('## By Issue Type'));
     assert.ok(markdown.includes('LOW_AGREEMENT(1)'));
     assert.ok(markdown.includes('## By Quality Grade'));
     assert.ok(markdown.includes('| pass | 2 | 1 | 0.5 | 0.6 |'));
     assert.ok(markdown.includes('| degraded | 1 | 0 | 0 | 0.6 |'));
+    assert.ok(markdown.includes('## Verify Fail By Reason'));
+    assert.ok(markdown.includes('| TIMEOUT | 1 | 0.333 | 1 |'));
 
     assert.ok(markdown.includes('## Top 20 Hard Cases'));
     assert.ok(markdown.includes('reqhash001'));

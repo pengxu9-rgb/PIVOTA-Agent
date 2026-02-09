@@ -272,6 +272,7 @@ test('diag verify: budget guard skips verify calls and emits guard reason', asyn
         metricsHooks: {
           onVerifyCall: ({ status }) => metricEvents.push(['call', status]),
           onVerifyFail: ({ reason }) => metricEvents.push(['fail', reason]),
+          onVerifyBudgetGuard: ({ reason }) => metricEvents.push(['guard', reason]),
         },
       };
 
@@ -289,9 +290,9 @@ test('diag verify: budget guard skips verify calls and emits guard reason', asyn
       assert.equal(geminiCalls, 1);
 
       const guardCall = metricEvents.find((entry) => entry[0] === 'call' && entry[1] === 'guard');
-      const guardFail = metricEvents.find((entry) => entry[0] === 'fail' && entry[1] === VERIFY_GUARD_REASON);
+      const guardMetric = metricEvents.find((entry) => entry[0] === 'guard' && entry[1] === VERIFY_GUARD_REASON);
       assert.equal(Boolean(guardCall), true);
-      assert.equal(Boolean(guardFail), true);
+      assert.equal(Boolean(guardMetric), true);
     },
   );
 });
@@ -337,11 +338,59 @@ test('diag verify: failure path exposes provider status/latency/attempts/final r
       assert.equal(out.ok, false);
       assert.equal(out.provider_status_code, 503);
       assert.equal(out.attempts, 2);
-      assert.equal(out.final_reason, 'REQUEST_FAILED');
+      assert.equal(out.final_reason, 'UPSTREAM_5XX');
+      assert.equal(out.raw_final_reason, 'REQUEST_FAILED');
+      assert.equal(out.verify_fail_reason, 'UPSTREAM_5XX');
       assert.equal(out.decision, 'verify');
       assert.equal(typeof out.latency_ms, 'number');
       assert.equal(out.latency_ms >= 0, true);
-      assert.equal(failEvents.includes('REQUEST_FAILED'), true);
+      assert.equal(failEvents.includes('UPSTREAM_5XX'), true);
+    },
+  );
+});
+
+test('diag verify: maps provider failures into canonical verify fail reasons', async () => {
+  await withEnv(
+    {
+      DIAG_GEMINI_VERIFY: 'true',
+    },
+    async () => {
+      const { runGeminiShadowVerify } = loadVerifyFresh();
+      const cases = [
+        { reason: 'VERIFY_TIMEOUT', statusCode: 504, expected: 'TIMEOUT' },
+        { reason: 'QUOTA_EXCEEDED', statusCode: 402, expected: 'QUOTA' },
+        { reason: 'SCHEMA_INVALID', statusCode: 200, expected: 'SCHEMA_INVALID' },
+        { reason: 'MISSING_IMAGE', statusCode: 400, expected: 'IMAGE_FETCH_FAILED' },
+      ];
+
+      for (const item of cases) {
+        const out = await runGeminiShadowVerify({
+          imageBuffer: Buffer.from([1, 2, 3]),
+          usedPhotos: true,
+          photoQuality: { grade: 'pass', reasons: [] },
+          providerOverrides: {
+            cvProvider: async () => ({
+              ok: true,
+              provider: 'cv_provider',
+              concerns: [],
+              latency_ms: 3,
+              attempts: 1,
+              provider_status_code: 200,
+            }),
+            geminiProvider: async () => ({
+              ok: false,
+              provider: 'gemini_provider',
+              concerns: [],
+              failure_reason: item.reason,
+              latency_ms: 11,
+              attempts: 1,
+              provider_status_code: item.statusCode,
+            }),
+          },
+        });
+        assert.equal(out.verify_fail_reason, item.expected);
+        assert.equal(out.final_reason, item.expected);
+      }
     },
   );
 });

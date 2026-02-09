@@ -3,10 +3,22 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { buildReliabilityTable, resolveVoteGateConfig } = require('../src/auroraBff/diagReliability');
 
 const DEFAULT_INPUT_DIR = path.join('tmp', 'diag_pseudo_label_factory');
 const DEFAULT_HARD_CASES = path.join('tmp', 'diag_verify', 'hard_cases.ndjson');
 const DEFAULT_OUTPUT_DIR = 'reports';
+const VERIFY_BUDGET_GUARD = 'VERIFY_BUDGET_GUARD';
+const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
+  'TIMEOUT',
+  'RATE_LIMIT',
+  'QUOTA',
+  'UPSTREAM_4XX',
+  'UPSTREAM_5XX',
+  'SCHEMA_INVALID',
+  'IMAGE_FETCH_FAILED',
+  'UNKNOWN',
+]);
 
 function parseArgs(argv) {
   const out = {
@@ -172,11 +184,77 @@ function normalizeIssueType(raw) {
   return safeToken(raw, 'other').toLowerCase();
 }
 
-function isVerifyFailure(record) {
-  const output = record && typeof record.output_json === 'object' ? record.output_json : {};
-  if (output.ok === false) return true;
-  if (output.schema_failed) return true;
-  return Boolean(String(output.failure_reason || '').trim());
+function normalizeVerifyFailReason(rawReason, statusCode) {
+  const token = safeToken(rawReason, 'UNKNOWN').toUpperCase();
+  const numericStatus = Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : 0;
+
+  if (token === VERIFY_BUDGET_GUARD) return VERIFY_BUDGET_GUARD;
+  if (VERIFY_FAIL_REASON_ALLOWLIST.has(token)) return token;
+  if (token.includes('TIMEOUT')) return 'TIMEOUT';
+  if (token.includes('RATE_LIMIT')) return 'RATE_LIMIT';
+  if (token.includes('QUOTA')) return 'QUOTA';
+  if (token.includes('SCHEMA_INVALID') || token.includes('CANONICAL_SCHEMA_INVALID')) return 'SCHEMA_INVALID';
+  if (token.includes('IMAGE_FETCH') || token.includes('MISSING_IMAGE') || token.includes('PHOTO_DOWNLOAD')) return 'IMAGE_FETCH_FAILED';
+  if (token.includes('UPSTREAM_5XX') || numericStatus >= 500) return 'UPSTREAM_5XX';
+  if (token.includes('UPSTREAM_4XX') || numericStatus >= 400) return 'UPSTREAM_4XX';
+  return 'UNKNOWN';
+}
+
+function extractVerifyRows(modelRows) {
+  const rows = [];
+  for (const record of modelRows) {
+    const provider = safeToken(record?.provider, 'unknown').toLowerCase();
+    if (provider !== 'gemini_provider') continue;
+    const output = record && typeof record.output_json === 'object' ? record.output_json : {};
+    const statusCode = safeNumber(output.provider_status_code, null);
+    const decision = safeToken(output.decision, output.ok === false ? 'verify' : 'verify').toLowerCase();
+    const normalizedReason = normalizeVerifyFailReason(
+      output.verify_fail_reason || output.final_reason || output.failure_reason,
+      statusCode,
+    );
+    const isGuard = decision === 'skip' && normalizedReason === VERIFY_BUDGET_GUARD;
+    const finalReasonToken = safeToken(output.final_reason, '').toUpperCase();
+    const failureReasonToken = safeToken(output.failure_reason, '');
+    const hasFailureSignal =
+      output.ok === false ||
+      output.schema_failed === true ||
+      Boolean(failureReasonToken) ||
+      (Boolean(finalReasonToken) && finalReasonToken !== 'OK');
+    const isFailure = !isGuard && (
+      hasFailureSignal
+    );
+    rows.push({
+      created_at: String(record?.created_at || ''),
+      quality_grade: safeToken(record?.quality_grade, 'unknown').toLowerCase(),
+      decision,
+      latency_ms: safeNumber(output.latency_ms, null),
+      fail_reason: isFailure ? normalizedReason : null,
+      is_failure: isFailure,
+      is_guard: isGuard,
+    });
+  }
+  return rows;
+}
+
+function summarizeVerifyFailByReason(verifyRows) {
+  const counter = new Map();
+  const totalCalls = Math.max(0, verifyRows.length);
+  const failures = verifyRows.filter((row) => row.is_failure);
+  for (const row of failures) {
+    const reason = safeToken(row.fail_reason, 'UNKNOWN');
+    counter.set(reason, (counter.get(reason) || 0) + 1);
+  }
+  return Array.from(counter.entries())
+    .map(([reason, count]) => ({
+      reason,
+      count,
+      rate_vs_calls: formatRate(count, totalCalls),
+      rate_vs_fails: formatRate(count, failures.length),
+    }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.reason.localeCompare(b.reason);
+    });
 }
 
 function extractAgreementRows(samples, dayPrefix) {
@@ -270,21 +348,21 @@ function summarizeByIssueType(agreementRows, hardCases, dayPrefix) {
   return summaries;
 }
 
-function summarizeByQualityGrade(modelRows, agreementRows) {
+function summarizeByQualityGrade(verifyRows, agreementRows) {
   const qualitySet = new Set(['pass', 'degraded']);
-  for (const row of modelRows) qualitySet.add(safeToken(row?.quality_grade, 'unknown').toLowerCase());
+  for (const row of verifyRows) qualitySet.add(safeToken(row?.quality_grade, 'unknown').toLowerCase());
   for (const row of agreementRows) qualitySet.add(safeToken(row?.quality_grade, 'unknown').toLowerCase());
 
   const summaries = [];
   for (const quality of Array.from(qualitySet.values()).sort()) {
-    const modelSubset = modelRows.filter((row) => safeToken(row?.quality_grade, 'unknown').toLowerCase() === quality);
+    const verifySubset = verifyRows.filter((row) => safeToken(row?.quality_grade, 'unknown').toLowerCase() === quality);
     const agreementSubset = agreementRows.filter((row) => safeToken(row?.quality_grade, 'unknown').toLowerCase() === quality);
-    const failCount = modelSubset.filter((row) => isVerifyFailure(row)).length;
+    const failCount = verifySubset.filter((row) => row.is_failure).length;
     summaries.push({
       quality_grade: quality,
-      verify_calls: modelSubset.length,
+      verify_calls: verifySubset.length,
       verify_fails: failCount,
-      fail_rate: formatRate(failCount, modelSubset.length),
+      fail_rate: formatRate(failCount, verifySubset.length),
       agreement_mean: mean(agreementSubset.map((row) => row.agreement)),
     });
   }
@@ -339,6 +417,7 @@ async function resolvePaths({ repoRoot, inputArg, storeDirLegacy, hardCasesArg, 
   const manifest = await readJson(manifestPath, {});
   const modelOutputsPath = path.resolve(inputDir, safeToken(manifest?.paths?.model_outputs || manifest?.files?.model_outputs, 'model_outputs.ndjson'));
   const agreementSamplesPath = path.resolve(inputDir, safeToken(manifest?.paths?.agreement_samples || manifest?.files?.agreement_samples, 'agreement_samples.ndjson'));
+  const goldLabelsPath = path.resolve(inputDir, safeToken(manifest?.paths?.gold_labels || manifest?.files?.gold_labels, 'gold_labels.ndjson'));
 
   let hardCasesPath = hardCasesArg ? path.resolve(repoRoot, hardCasesArg) : '';
   if (!hardCasesPath) {
@@ -361,12 +440,13 @@ async function resolvePaths({ repoRoot, inputArg, storeDirLegacy, hardCasesArg, 
     manifestPath,
     modelOutputsPath,
     agreementSamplesPath,
+    goldLabelsPath,
     hardCasesPath,
     outDir,
   };
 }
 
-function buildMarkdown({ dateIso, generatedAt, summary, byIssueType, byQuality, hardCases }) {
+function buildMarkdown({ dateIso, generatedAt, summary, byIssueType, byQuality, failByReason, eligibleBuckets, hardCases }) {
   const lines = [];
   lines.push(`# Verify Daily Report (${dateIso})`);
   lines.push('');
@@ -377,6 +457,9 @@ function buildMarkdown({ dateIso, generatedAt, summary, byIssueType, byQuality, 
   lines.push(`- verify_fail_total: ${summary.verify_fail_total}`);
   lines.push(`- average_agreement: ${summary.average_agreement ?? 'n/a'}`);
   lines.push(`- hard_case_rate: ${summary.hard_case_rate}`);
+  lines.push(`- latency_p50_ms: ${summary.latency_p50_ms ?? 'n/a'}`);
+  lines.push(`- latency_p95_ms: ${summary.latency_p95_ms ?? 'n/a'}`);
+  lines.push(`- calls_skipped_by_budget_guard: ${summary.calls_skipped_by_budget_guard}`);
   lines.push('');
 
   lines.push('## By Issue Type');
@@ -416,6 +499,39 @@ function buildMarkdown({ dateIso, generatedAt, summary, byIssueType, byQuality, 
   }
   lines.push('');
 
+  lines.push('## Verify Fail By Reason');
+  lines.push('');
+  if (failByReason.length) {
+    lines.push(table(
+      ['reason', 'count', 'rate_vs_calls', 'rate_vs_fails'],
+      failByReason.map((row) => [row.reason, row.count, row.rate_vs_calls, row.rate_vs_fails]),
+    ));
+  } else {
+    lines.push('_No verifier failures for this date._');
+  }
+  lines.push('');
+
+  lines.push('## Eligible Buckets (Observation)');
+  lines.push('');
+  if (eligibleBuckets.length) {
+    lines.push(table(
+      ['issue_type', 'quality_grade', 'lighting_bucket', 'tone_bucket', 'verify_fail_rate', 'agreement_mean', 'agreement_samples', 'gold_samples'],
+      eligibleBuckets.map((row) => [
+        row.issue_type,
+        row.quality_grade,
+        row.lighting_bucket,
+        row.tone_bucket,
+        row.verify_fail_rate,
+        row.agreement_mean ?? 'n/a',
+        row.agreement_samples,
+        row.gold_samples,
+      ]),
+    ));
+  } else {
+    lines.push('_No eligible buckets under current thresholds._');
+  }
+  lines.push('');
+
   lines.push('## Top 20 Hard Cases');
   lines.push('');
   if (hardCases.length) {
@@ -447,19 +563,58 @@ async function runDailyReport(options = {}) {
 
   const modelOutputs = await readNdjson(paths.modelOutputsPath);
   const agreementSamples = await readNdjson(paths.agreementSamplesPath);
+  const goldLabels = await readNdjson(paths.goldLabelsPath);
   const hardCasesAll = await readNdjson(paths.hardCasesPath);
 
   const modelRows = modelOutputs.filter((row) => String(row?.created_at || '').startsWith(dateIso));
+  const verifyRows = extractVerifyRows(modelRows);
   const agreementRows = extractAgreementRows(agreementSamples, dateIso);
   const hardCases = topHardCases(hardCasesAll, dateIso, 20);
 
-  const verifyCalls = modelRows.length;
-  const verifyFails = modelRows.filter((row) => isVerifyFailure(row)).length;
+  const verifyCalls = verifyRows.length;
+  const verifyFails = verifyRows.filter((row) => row.is_failure).length;
+  const callsSkippedByBudgetGuard = verifyRows.filter((row) => row.is_guard).length;
   const averageAgreement = mean(agreementRows.map((row) => row.agreement));
+  const latencyValues = verifyRows
+    .filter((row) => !row.is_guard)
+    .map((row) => safeNumber(row.latency_ms, null))
+    .filter((value) => Number.isFinite(value));
+  const latencyP50 = quantile(latencyValues, 0.5);
+  const latencyP95 = quantile(latencyValues, 0.95);
   const hardCaseRate = formatRate(hardCases.length, verifyCalls);
 
   const byIssueType = summarizeByIssueType(agreementRows, hardCasesAll, dateIso);
-  const byQualityGrade = summarizeByQualityGrade(modelRows, agreementRows);
+  const byQualityGrade = summarizeByQualityGrade(verifyRows, agreementRows);
+  const failByReason = summarizeVerifyFailByReason(verifyRows);
+  const reliabilityTable = buildReliabilityTable({
+    modelOutputs,
+    agreementSamples,
+    goldLabels,
+    datePrefix: dateIso,
+    gateConfig: {
+      ...resolveVoteGateConfig(),
+      voteEnabled: true,
+    },
+  });
+  const eligibleBuckets = reliabilityTable.buckets
+    .filter((bucket) => bucket.eligible_for_vote)
+    .sort((left, right) => {
+      const leftAgreement = Number.isFinite(Number(left.agreement_mean)) ? Number(left.agreement_mean) : -1;
+      const rightAgreement = Number.isFinite(Number(right.agreement_mean)) ? Number(right.agreement_mean) : -1;
+      if (rightAgreement !== leftAgreement) return rightAgreement - leftAgreement;
+      return String(left.bucket_key || '').localeCompare(String(right.bucket_key || ''));
+    })
+    .slice(0, 30)
+    .map((bucket) => ({
+      issue_type: bucket.issue_type,
+      quality_grade: bucket.quality_grade,
+      lighting_bucket: bucket.lighting_bucket,
+      tone_bucket: bucket.tone_bucket,
+      verify_fail_rate: bucket.verify_fail_rate,
+      agreement_mean: bucket.agreement_mean,
+      agreement_samples: bucket.agreement_samples,
+      gold_samples: bucket.gold_samples,
+    }));
 
   await fs.mkdir(paths.outDir, { recursive: true });
   const mdPath = path.join(paths.outDir, `verify_daily_${dateKey}.md`);
@@ -473,9 +628,11 @@ async function runDailyReport(options = {}) {
       manifest_path: paths.manifestPath,
       model_outputs_path: paths.modelOutputsPath,
       agreement_samples_path: paths.agreementSamplesPath,
+      gold_labels_path: paths.goldLabelsPath,
       hard_cases_path: paths.hardCasesPath,
       model_outputs_total: modelOutputs.length,
       agreement_samples_total: agreementSamples.length,
+      gold_labels_total: goldLabels.length,
       hard_cases_total: hardCasesAll.length,
     },
     summary: {
@@ -483,9 +640,14 @@ async function runDailyReport(options = {}) {
       verify_fail_total: verifyFails,
       average_agreement: averageAgreement,
       hard_case_rate: hardCaseRate,
+      latency_p50_ms: latencyP50,
+      latency_p95_ms: latencyP95,
+      calls_skipped_by_budget_guard: callsSkippedByBudgetGuard,
     },
     by_issue_type: byIssueType,
     by_quality_grade: byQualityGrade,
+    verify_fail_by_reason: failByReason,
+    eligible_buckets: eligibleBuckets,
     top_hard_cases: hardCases,
   };
 
@@ -495,6 +657,8 @@ async function runDailyReport(options = {}) {
     summary: report.summary,
     byIssueType,
     byQuality: byQualityGrade,
+    failByReason,
+    eligibleBuckets,
     hardCases,
   });
 

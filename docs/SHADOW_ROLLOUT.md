@@ -18,16 +18,18 @@ Set in staging:
 - `DIAG_GEMINI_VERIFY=true`
 - `DIAG_VERIFY_TIMEOUT_MS=12000`
 - `DIAG_GEMINI_VERIFY_RETRIES=1`
-- `DIAG_VERIFY_MAX_CALLS_PER_MIN=<small cap>` (example: `30`)
-- `DIAG_VERIFY_MAX_CALLS_PER_DAY=<daily cap>` (example: `10000`)
+- `DIAG_VERIFY_MAX_CALLS_PER_MIN=<small cap>` (recommended start: `60`)
+- `DIAG_VERIFY_MAX_CALLS_PER_DAY=<daily cap>` (recommended start: `10000`)
 
 Validation checklist:
 
 1. `verify_calls_total{status="attempt"}` increments.
 2. `verify_calls_total{status="ok"}` and/or `verify_calls_total{status="fail"}` increments.
 3. `verify_calls_total{status="guard"}` stays near zero with expected budget.
-4. `verify_fail_total{reason="VERIFY_BUDGET_GUARD"}` appears only when cap is intentionally tight.
-5. User payload fields (`analysis.photo_findings`, `analysis.plan`, `analysis.takeaways`) remain unchanged by verifier status.
+4. `verify_budget_guard_total` only rises when cap is intentionally tight.
+5. `verify_fail_total{reason=...}` stays in enum:
+   - `TIMEOUT`, `RATE_LIMIT`, `QUOTA`, `UPSTREAM_4XX`, `UPSTREAM_5XX`, `SCHEMA_INVALID`, `IMAGE_FETCH_FAILED`, `UNKNOWN`
+6. User payload fields (`analysis.photo_findings`, `analysis.plan`, `analysis.takeaways`) remain unchanged by verifier status.
 
 ## 3) Production Gradual Rollout
 
@@ -63,6 +65,7 @@ Primary metrics:
 
 - `verify_calls_total` (labels: `status=attempt|ok|fail|guard`)
 - `verify_fail_total` (by reason)
+- `verify_budget_guard_total`
 - `agreement_histogram`
 - `hard_case_rate`
 - `diag_ensemble_provider_latency_ms` (provider latency guardrail)

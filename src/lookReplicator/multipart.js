@@ -16,7 +16,7 @@ function rmrf(p) {
   }
 }
 
-function parseMultipart(req, { maxBytes, allowedContentTypes, requiredFields = [] }) {
+function parseMultipart(req, { maxBytes, allowedContentTypes, requiredFields = [], parseTimeoutMs = 30000 }) {
   return new Promise((resolve, reject) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lookrep-'));
     const fields = {};
@@ -25,10 +25,32 @@ function parseMultipart(req, { maxBytes, allowedContentTypes, requiredFields = [
     let finished = false;
     let busboyFinished = false;
     let pendingFileWrites = 0;
+    const normalizedParseTimeoutMs = Math.max(100, Math.min(120000, Number(parseTimeoutMs) || 30000));
+    let parseTimeout = null;
+
+    function cleanup() {
+      if (parseTimeout) {
+        clearTimeout(parseTimeout);
+        parseTimeout = null;
+      }
+      req.off('aborted', onReqAborted);
+      req.off('error', onReqError);
+    }
 
     function fail(err, statusCode = 400, code = 'INVALID_MULTIPART') {
       if (finished) return;
       finished = true;
+      cleanup();
+      try {
+        req.unpipe(busboy);
+      } catch {
+        // ignore
+      }
+      try {
+        busboy.destroy();
+      } catch {
+        // ignore
+      }
       rmrf(tmpDir);
       const e = new Error(err?.message || String(err));
       e.statusCode = statusCode;
@@ -41,6 +63,7 @@ function parseMultipart(req, { maxBytes, allowedContentTypes, requiredFields = [
       if (pendingFileWrites > 0) return;
 
       finished = true;
+      cleanup();
 
       for (const f of requiredFields) {
         if (!fields[f]) {
@@ -56,6 +79,20 @@ function parseMultipart(req, { maxBytes, allowedContentTypes, requiredFields = [
     }
 
     const busboy = Busboy({ headers: req.headers, limits: { fileSize: maxBytes } });
+    parseTimeout = setTimeout(() => {
+      fail(new Error('MULTIPART_PARSE_TIMEOUT'), 408, 'MULTIPART_PARSE_TIMEOUT');
+    }, normalizedParseTimeoutMs);
+
+    function onReqAborted() {
+      fail(new Error('REQUEST_ABORTED'), 499, 'REQUEST_ABORTED');
+    }
+
+    function onReqError(err) {
+      fail(err || new Error('REQUEST_STREAM_ERROR'), 400, 'INVALID_MULTIPART');
+    }
+
+    req.on('aborted', onReqAborted);
+    req.on('error', onReqError);
 
     busboy.on('field', (name, val) => {
       fields[String(name)] = String(val);
@@ -76,6 +113,14 @@ function parseMultipart(req, { maxBytes, allowedContentTypes, requiredFields = [
       ensureDir(tmpDir);
       const out = fs.createWriteStream(outPath);
       pendingFileWrites += 1;
+      let writeSettled = false;
+
+      function settleWriteState() {
+        if (writeSettled) return false;
+        writeSettled = true;
+        pendingFileWrites = Math.max(0, pendingFileWrites - 1);
+        return true;
+      }
 
       stream.on('data', (chunk) => {
         totalBytes += chunk.length;
@@ -91,11 +136,19 @@ function parseMultipart(req, { maxBytes, allowedContentTypes, requiredFields = [
         fail(new Error('UPLOAD_TOO_LARGE'), 400, 'UPLOAD_TOO_LARGE');
       });
 
+      const onWriteError = (err) => {
+        settleWriteState();
+        fail(err || new Error('FILE_WRITE_FAILED'), 400, 'INVALID_MULTIPART');
+      };
+
+      stream.on('error', onWriteError);
+      out.on('error', onWriteError);
+
       stream.pipe(out);
 
       out.on('close', () => {
+        if (!settleWriteState()) return;
         files[field] = { path: outPath, filename, contentType: mimeType };
-        pendingFileWrites -= 1;
         maybeResolve();
       });
     });

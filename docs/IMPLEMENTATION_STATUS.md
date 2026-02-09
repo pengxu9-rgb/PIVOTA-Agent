@@ -128,6 +128,8 @@ Last updated: 2026-02-09
 ### Ensemble / verifier / calibration
 - `DIAG_ENSEMBLE` (default `false`): `src/auroraBff/diagEnsemble.js:853`
 - `DIAG_GEMINI_VERIFY` (default `false`): `src/auroraBff/diagVerify.js:249`
+- `DIAG_VERIFY_MAX_CALLS_PER_MIN` (default `60`): `src/auroraBff/diagVerify.js:463`
+- `DIAG_VERIFY_MAX_CALLS_PER_DAY` (default `10000`): `src/auroraBff/diagVerify.js:464`
 - `DIAG_CALIBRATION_ENABLED` (default `false`): `src/auroraBff/diagCalibration.js:922`
 - `DIAG_CALIBRATION_USE_LATEST_VERSION` (default `true`): `src/auroraBff/diagCalibration.js:940`
 - `AURORA_PSEUDO_LABEL_ENABLED` (default `true`): `src/auroraBff/pseudoLabelFactory.js:92`

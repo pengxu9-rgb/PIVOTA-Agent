@@ -30,6 +30,7 @@ const {
   recordEnsembleAgreementScore,
   recordVerifyCall,
   recordVerifyFail,
+  recordVerifyBudgetGuard,
   recordVerifyAgreementScore,
   recordVerifyHardCase,
   recordAnalyzeRequest,
@@ -182,6 +183,10 @@ const SKIN_VISION_FORCE_CALL = String(process.env.AURORA_SKIN_FORCE_VISION_CALL 
 const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
   1024 * 1024,
   Math.min(25 * 1024 * 1024, Number(process.env.AURORA_PHOTO_UPLOAD_MAX_BYTES || 10 * 1024 * 1024)),
+);
+const PHOTO_UPLOAD_PARSE_TIMEOUT_MS = Math.max(
+  1000,
+  Math.min(120000, Number(process.env.AURORA_PHOTO_UPLOAD_PARSE_TIMEOUT_MS || 30000)),
 );
 const PHOTO_DOWNLOAD_URL_TIMEOUT_MS = Math.max(
   1000,
@@ -7444,6 +7449,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const { fields, files, tmpDir: parsedTmpDir } = await parseMultipart(req, {
         maxBytes: PHOTO_UPLOAD_PROXY_MAX_BYTES,
+        parseTimeoutMs: PHOTO_UPLOAD_PARSE_TIMEOUT_MS,
         allowedContentTypes: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']),
         requiredFields: ['slot_id', 'consent'],
       });
@@ -8748,6 +8754,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                onAgreement: (score) => recordEnsembleAgreementScore(score),
 	                onVerifyCall: ({ status }) => recordVerifyCall({ status }),
 	                onVerifyFail: ({ reason }) => recordVerifyFail({ reason }),
+	                onVerifyBudgetGuard: () => recordVerifyBudgetGuard(),
 	                onVerifyAgreement: (score) => recordVerifyAgreementScore(score),
 	                onVerifyHardCase: () => recordVerifyHardCase(),
 	              },

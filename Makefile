@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -42,6 +42,9 @@ CAL_IOU ?= 0.3
 CAL_MIN_GROUP_SAMPLES ?= 24
 CAL_EVAL_MODEL ?=
 CAL_EVAL_OUT ?= reports/calibration_eval.json
+RELIABILITY_IN ?= tmp/diag_pseudo_label_factory
+RELIABILITY_OUT ?= reports/reliability/reliability.json
+RELIABILITY_DATE ?=
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -107,3 +110,6 @@ train-calibrator:
 
 eval-calibration:
 	node scripts/eval_calibration.js --model $(if $(CAL_EVAL_MODEL),$(CAL_EVAL_MODEL),$(CAL_ALIAS_PATH)) --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --iouThreshold $(CAL_IOU) --outJson $(CAL_EVAL_OUT)
+
+reliability-table:
+	node scripts/build_reliability_table.js --in $(RELIABILITY_IN) --out $(RELIABILITY_OUT) $(if $(RELIABILITY_DATE),--date $(RELIABILITY_DATE),)

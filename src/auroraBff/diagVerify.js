@@ -2,10 +2,21 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { runCvProvider, runGeminiProvider, iou } = require('./diagEnsemble');
 const { persistPseudoLabelArtifacts } = require('./pseudoLabelFactory');
+const { shouldUseVerifierInVote, should_use_verifier_in_vote } = require('./diagReliability');
 
 const VERIFY_SCHEMA_VERSION = 'aurora.diag.verify_shadow.v1';
 const HARD_CASE_SCHEMA_VERSION = 'aurora.diag.verify_hard_case.v1';
 const VERIFY_GUARD_REASON = 'VERIFY_BUDGET_GUARD';
+const VerifyFailReason = Object.freeze({
+  TIMEOUT: 'TIMEOUT',
+  RATE_LIMIT: 'RATE_LIMIT',
+  QUOTA: 'QUOTA',
+  UPSTREAM_4XX: 'UPSTREAM_4XX',
+  UPSTREAM_5XX: 'UPSTREAM_5XX',
+  SCHEMA_INVALID: 'SCHEMA_INVALID',
+  IMAGE_FETCH_FAILED: 'IMAGE_FETCH_FAILED',
+  UNKNOWN: 'UNKNOWN',
+});
 const verifyBudgetState = {
   minuteWindowMs: 0,
   minuteCount: 0,
@@ -303,7 +314,7 @@ function buildProviderStat(output) {
   const concerns = Array.isArray(output?.concerns) ? output.concerns : [];
   const providerStatusCode = toInt(output?.provider_status_code, output?.ok ? 200 : 0);
   const attempts = Math.max(1, toInt(output?.attempts, 1));
-  const finalReason = output?.ok ? 'OK' : String(output?.failure_reason || 'UNKNOWN');
+  const finalReason = output?.ok ? 'OK' : String(output?.final_reason || output?.failure_reason || VerifyFailReason.UNKNOWN);
   return {
     provider: String(output?.provider || 'unknown'),
     ok: Boolean(output?.ok),
@@ -313,8 +324,90 @@ function buildProviderStat(output) {
     final_reason: finalReason,
     concern_count: concerns.length,
     ...(output?.failure_reason ? { failure_reason: String(output.failure_reason) } : {}),
+    ...(output?.verify_fail_reason ? { verify_fail_reason: String(output.verify_fail_reason) } : {}),
     ...(output?.schema_failed ? { schema_failed: true } : {}),
   };
+}
+
+function normalizeVerifyFailReason({ reason, providerStatusCode } = {}) {
+  const statusCode = Number.isFinite(Number(providerStatusCode)) ? Math.trunc(Number(providerStatusCode)) : 0;
+  const token = String(reason || '')
+    .trim()
+    .toUpperCase();
+
+  if (!token) {
+    if (statusCode === 429) return VerifyFailReason.RATE_LIMIT;
+    if (statusCode >= 500) return VerifyFailReason.UPSTREAM_5XX;
+    if (statusCode >= 400) return VerifyFailReason.UPSTREAM_4XX;
+    return VerifyFailReason.UNKNOWN;
+  }
+
+  if (token === VerifyFailReason.TIMEOUT || token.includes('TIMEOUT') || token === 'ETIMEDOUT') {
+    return VerifyFailReason.TIMEOUT;
+  }
+  if (token === VerifyFailReason.RATE_LIMIT || token.includes('RATE_LIMIT') || statusCode === 429) {
+    return VerifyFailReason.RATE_LIMIT;
+  }
+  if (token === VerifyFailReason.QUOTA || token.includes('QUOTA') || token.includes('INSUFFICIENT_QUOTA')) {
+    return VerifyFailReason.QUOTA;
+  }
+  if (token === VerifyFailReason.SCHEMA_INVALID || token.includes('SCHEMA_INVALID') || token.includes('CANONICAL_SCHEMA_INVALID')) {
+    return VerifyFailReason.SCHEMA_INVALID;
+  }
+  if (
+    token === VerifyFailReason.IMAGE_FETCH_FAILED ||
+    token.includes('MISSING_IMAGE') ||
+    token.includes('IMAGE_FETCH') ||
+    token.includes('PHOTO_DOWNLOAD')
+  ) {
+    return VerifyFailReason.IMAGE_FETCH_FAILED;
+  }
+  if (token === VerifyFailReason.UPSTREAM_5XX || token.includes('UPSTREAM_5XX') || statusCode >= 500) {
+    return VerifyFailReason.UPSTREAM_5XX;
+  }
+  if (token === VerifyFailReason.UPSTREAM_4XX || token.includes('UPSTREAM_4XX') || statusCode >= 400) {
+    return VerifyFailReason.UPSTREAM_4XX;
+  }
+  return VerifyFailReason.UNKNOWN;
+}
+
+async function persistVerifierSkipRecord({
+  inferenceId,
+  qualityGrade,
+  skinToneBucket,
+  lightingBucket,
+  finalReason,
+  logger,
+} = {}) {
+  try {
+    return await persistPseudoLabelArtifacts({
+      inferenceId: inferenceId || null,
+      qualityGrade,
+      providerOutputs: [
+        {
+          ok: false,
+          provider: 'gemini_provider',
+          concerns: [],
+          decision: 'skip',
+          attempts: 0,
+          latency_ms: 0,
+          provider_status_code: 0,
+          failure_reason: finalReason,
+          final_reason: finalReason,
+          verify_fail_reason: null,
+        },
+      ],
+      skinToneBucket: String(skinToneBucket || 'unknown').trim() || 'unknown',
+      lightingBucket: String(lightingBucket || 'unknown').trim() || 'unknown',
+      logger,
+    });
+  } catch (err) {
+    logger?.warn(
+      { err: err && err.message ? err.message : String(err) },
+      'diag verify: failed to persist skip output',
+    );
+    return null;
+  }
 }
 
 function getHardCaseFilePath() {
@@ -337,8 +430,8 @@ function getVerifierConfig() {
     timeoutMs: numEnv('DIAG_VERIFY_TIMEOUT_MS', numEnv('DIAG_GEMINI_VERIFY_TIMEOUT_MS', 12000, 1000, 45000), 1000, 45000),
     retries: Math.trunc(numEnv('DIAG_GEMINI_VERIFY_RETRIES', 1, 0, 3)),
     hardCaseThreshold: numEnv('DIAG_GEMINI_VERIFY_HARD_CASE_THRESHOLD', 0.55, 0, 1),
-    maxCallsPerMin: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_MIN', 0, 0, 1000000))),
-    maxCallsPerDay: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_DAY', 0, 0, 100000000))),
+    maxCallsPerMin: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_MIN', 60, 0, 1000000))),
+    maxCallsPerDay: Math.max(0, Math.trunc(numEnv('DIAG_VERIFY_MAX_CALLS_PER_DAY', 10000, 0, 100000000))),
     model: String(process.env.DIAG_GEMINI_VERIFY_MODEL || process.env.DIAG_ENSEMBLE_GEMINI_MODEL || 'gemini-2.0-flash').trim() || 'gemini-2.0-flash',
   };
 }
@@ -425,7 +518,20 @@ async function runGeminiShadowVerify({
   });
   if (!budget.allowed) {
     if (metricsHooks && typeof metricsHooks.onVerifyCall === 'function') metricsHooks.onVerifyCall({ status: 'guard' });
-    if (metricsHooks && typeof metricsHooks.onVerifyFail === 'function') metricsHooks.onVerifyFail({ reason: VERIFY_GUARD_REASON });
+    if (metricsHooks && typeof metricsHooks.onVerifyBudgetGuard === 'function') {
+      metricsHooks.onVerifyBudgetGuard({
+        reason: VERIFY_GUARD_REASON,
+        ...budget.usage,
+      });
+    }
+    const persistence = await persistVerifierSkipRecord({
+      inferenceId: inferenceId || null,
+      qualityGrade,
+      skinToneBucket,
+      lightingBucket,
+      finalReason: VERIFY_GUARD_REASON,
+      logger,
+    });
     return {
       ok: false,
       enabled: true,
@@ -439,6 +545,7 @@ async function runGeminiShadowVerify({
       budget_guard: {
         ...budget.usage,
       },
+      persistence,
     };
   }
 
@@ -466,11 +573,25 @@ async function runGeminiShadowVerify({
     model: cfg.model,
   });
 
-  const providerStats = [buildProviderStat(cvOutput), buildProviderStat(geminiOutput)];
   const verifyLatencyMs = round3(Math.max(0, Number(geminiOutput?.latency_ms || 0)));
   const verifyAttempts = Math.max(1, toInt(geminiOutput?.attempts, cfg.retries + 1));
   const providerStatusCode = toInt(geminiOutput?.provider_status_code, geminiOutput?.ok ? 200 : 0);
-  const finalReason = geminiOutput?.ok ? 'OK' : String(geminiOutput?.failure_reason || 'UNKNOWN');
+  const rawFinalReason = geminiOutput?.ok ? 'OK' : String(geminiOutput?.failure_reason || VerifyFailReason.UNKNOWN);
+  const verifyFailReason = geminiOutput?.ok
+    ? null
+    : normalizeVerifyFailReason({ reason: rawFinalReason, providerStatusCode });
+  const finalReason = geminiOutput?.ok ? 'OK' : verifyFailReason || VerifyFailReason.UNKNOWN;
+  const geminiOutputForStore = {
+    ...geminiOutput,
+    final_reason: finalReason,
+    raw_final_reason: rawFinalReason,
+    verify_fail_reason: verifyFailReason,
+    decision: 'verify',
+    attempts: verifyAttempts,
+    provider_status_code: providerStatusCode,
+    latency_ms: verifyLatencyMs,
+  };
+  const providerStats = [buildProviderStat(cvOutput), buildProviderStat(geminiOutputForStore)];
   if (metricsHooks && typeof metricsHooks.onProviderResult === 'function') {
     for (const stat of providerStats) metricsHooks.onProviderResult(stat);
   }
@@ -508,7 +629,7 @@ async function runGeminiShadowVerify({
     persistence = await persistPseudoLabelArtifacts({
       inferenceId: inferenceId || null,
       qualityGrade,
-      providerOutputs: [cvOutput, geminiOutput],
+      providerOutputs: [cvOutput, geminiOutputForStore],
       skinToneBucket: String(skinToneBucket || 'unknown').trim() || 'unknown',
       lightingBucket: String(lightingBucket || 'unknown').trim() || 'unknown',
       logger,
@@ -536,6 +657,7 @@ async function runGeminiShadowVerify({
         latency_ms: verifyLatencyMs,
         attempts: verifyAttempts,
         final_reason: finalReason,
+        raw_final_reason: rawFinalReason,
         verifier: verifierVerdict,
       });
     } catch (err) {
@@ -548,7 +670,7 @@ async function runGeminiShadowVerify({
 
   if (!geminiOutput.ok && metricsHooks && typeof metricsHooks.onVerifyFail === 'function') {
     metricsHooks.onVerifyFail({
-      reason: finalReason,
+      reason: verifyFailReason || VerifyFailReason.UNKNOWN,
     });
   }
   if (metricsHooks && typeof metricsHooks.onVerifyAgreement === 'function') metricsHooks.onVerifyAgreement(agreementScore);
@@ -568,6 +690,8 @@ async function runGeminiShadowVerify({
     latency_ms: verifyLatencyMs,
     attempts: verifyAttempts,
     final_reason: finalReason,
+    raw_final_reason: rawFinalReason,
+    verify_fail_reason: verifyFailReason,
     skipped_reason: null,
     agreement_score: agreementScore,
     disagreement_reasons: disagreementReasons,
@@ -590,10 +714,14 @@ module.exports = {
   VERIFY_SCHEMA_VERSION,
   HARD_CASE_SCHEMA_VERSION,
   VERIFY_GUARD_REASON,
+  VerifyFailReason,
+  normalizeVerifyFailReason,
   runGeminiShadowVerify,
   buildIssueComparisons,
   computeAgreementScore,
   collectDisagreementReasons,
   qualityAllowsVerify,
   resetVerifyBudgetGuardState,
+  shouldUseVerifierInVote,
+  should_use_verifier_in_vote,
 };

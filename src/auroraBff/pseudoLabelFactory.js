@@ -827,11 +827,22 @@ function buildModelOutputRecord({
     lighting_bucket: String(lightingBucket || 'unknown').trim() || 'unknown',
     output_json: {
       ok: Boolean(output?.ok),
+      decision: output?.decision ? String(output.decision).slice(0, 32) : output?.ok ? 'verify' : 'unknown',
       concerns: sanitizedConcerns,
       flags: Array.isArray(output?.flags) ? output.flags.slice(0, 20) : [],
       review: output?.review ? String(output.review).slice(0, 120) : null,
       failure_reason: output?.failure_reason ? String(output.failure_reason) : null,
+      final_reason: output?.final_reason ? String(output.final_reason) : output?.failure_reason ? String(output.failure_reason) : null,
+      raw_final_reason: output?.raw_final_reason ? String(output.raw_final_reason) : null,
+      verify_fail_reason: output?.verify_fail_reason ? String(output.verify_fail_reason) : null,
       schema_failed: Boolean(output?.schema_failed),
+      latency_ms: Number.isFinite(Number(output?.latency_ms)) ? round3(Number(output.latency_ms)) : null,
+      attempts: Number.isFinite(Number(output?.attempts)) ? Math.max(0, Math.trunc(Number(output.attempts))) : null,
+      provider_status_code:
+        Number.isFinite(Number(output?.provider_status_code)) && Number(output.provider_status_code) > 0
+          ? Math.trunc(Number(output.provider_status_code))
+          : null,
+      skipped_reason: output?.skipped_reason ? String(output.skipped_reason) : null,
     },
     derived_features: summarizeDerivedFeatures(concerns),
   };

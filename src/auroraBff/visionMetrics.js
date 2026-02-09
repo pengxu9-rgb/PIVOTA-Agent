@@ -25,6 +25,7 @@ let ensembleAgreementCount = 0;
 let ensembleAgreementSum = 0;
 const verifierCalls = new Map();
 const verifierFails = new Map();
+let verifierBudgetGuardCount = 0;
 const verifierAgreementHistogram = new Map([
   [0.2, 0],
   [0.4, 0],
@@ -38,6 +39,16 @@ let verifierHardCaseCount = 0;
 const analyzeRequestsCounter = new Map();
 const geometrySanitizerDropCounter = new Map();
 const geometrySanitizerClipCounter = new Map();
+const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
+  'TIMEOUT',
+  'RATE_LIMIT',
+  'QUOTA',
+  'UPSTREAM_4XX',
+  'UPSTREAM_5XX',
+  'SCHEMA_INVALID',
+  'IMAGE_FETCH_FAILED',
+  'UNKNOWN',
+]);
 
 function cleanLabel(value, fallback) {
   const raw = String(value == null ? '' : value).trim();
@@ -72,6 +83,19 @@ function normalizeDeviceClass(deviceClass) {
 
 function normalizeIssueType(issueType) {
   return cleanMetricToken(issueType, 'all');
+}
+
+function normalizeVerifyFailReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown').toUpperCase();
+  if (VERIFY_FAIL_REASON_ALLOWLIST.has(token)) return token;
+  if (token.includes('TIMEOUT')) return 'TIMEOUT';
+  if (token.includes('RATE_LIMIT')) return 'RATE_LIMIT';
+  if (token.includes('QUOTA')) return 'QUOTA';
+  if (token.includes('SCHEMA_INVALID')) return 'SCHEMA_INVALID';
+  if (token.includes('IMAGE_FETCH') || token.includes('MISSING_IMAGE') || token.includes('PHOTO_DOWNLOAD')) return 'IMAGE_FETCH_FAILED';
+  if (token.includes('UPSTREAM_5XX')) return 'UPSTREAM_5XX';
+  if (token.includes('UPSTREAM_4XX')) return 'UPSTREAM_4XX';
+  return 'UNKNOWN';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -225,8 +249,12 @@ function recordVerifyCall({ status } = {}) {
 }
 
 function recordVerifyFail({ reason } = {}) {
-  const safeReason = cleanLabel(reason, 'UNKNOWN');
+  const safeReason = normalizeVerifyFailReason(reason);
   incCounter(verifierFails, { reason: safeReason }, 1);
+}
+
+function recordVerifyBudgetGuard() {
+  verifierBudgetGuardCount += 1;
 }
 
 function recordVerifyAgreementScore(score) {
@@ -375,6 +403,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE verify_fail_total counter');
   renderCounter(lines, 'verify_fail_total', verifierFails);
 
+  lines.push('# HELP verify_budget_guard_total Total number of verifier calls skipped by budget guard.');
+  lines.push('# TYPE verify_budget_guard_total counter');
+  lines.push(`verify_budget_guard_total ${verifierBudgetGuardCount}`);
+
   lines.push('# HELP agreement_histogram Agreement score distribution for Gemini shadow verifier.');
   lines.push('# TYPE agreement_histogram histogram');
   for (const [bucket, value] of verifierAgreementHistogram.entries()) {
@@ -441,6 +473,7 @@ function resetVisionMetrics() {
   verifierAgreementCount = 0;
   verifierAgreementSum = 0;
   verifierHardCaseCount = 0;
+  verifierBudgetGuardCount = 0;
   analyzeRequestsCounter.clear();
   geometrySanitizerDropCounter.clear();
   geometrySanitizerClipCounter.clear();
@@ -463,6 +496,7 @@ function snapshotVisionMetrics() {
     verifierAgreementCount,
     verifierAgreementSum,
     verifierHardCaseCount,
+    verifierBudgetGuardCount,
     analyzeRequests: Array.from(analyzeRequestsCounter.entries()),
     geometrySanitizerDrops: Array.from(geometrySanitizerDropCounter.entries()),
     geometrySanitizerClips: Array.from(geometrySanitizerClipCounter.entries()),
@@ -476,6 +510,7 @@ module.exports = {
   recordEnsembleAgreementScore,
   recordVerifyCall,
   recordVerifyFail,
+  recordVerifyBudgetGuard,
   recordVerifyAgreementScore,
   recordVerifyHardCase,
   recordAnalyzeRequest,
