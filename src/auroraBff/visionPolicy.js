@@ -170,6 +170,50 @@ function classifyVisionProviderFailure(error) {
   const statusCode = toStatusCode(error);
   const errorCode = toErrorCode(error);
   const text = collectErrorText(error);
+  const normalizedErrorCode = String(errorCode || '').trim().toUpperCase();
+  const grpc4xxCodes = new Set([
+    'INVALID_ARGUMENT',
+    'FAILED_PRECONDITION',
+    'OUT_OF_RANGE',
+    'UNAUTHENTICATED',
+    'PERMISSION_DENIED',
+    'NOT_FOUND',
+    'ALREADY_EXISTS',
+  ]);
+  const grpc5xxCodes = new Set(['UNAVAILABLE', 'INTERNAL', 'ABORTED', 'DATA_LOSS']);
+
+  if (normalizedErrorCode) {
+    if (normalizedErrorCode === 'DEADLINE_EXCEEDED') {
+      return {
+        reason: VisionUnavailabilityReason.VISION_TIMEOUT,
+        status_code: statusCode,
+        error_code: errorCode,
+      };
+    }
+    if (normalizedErrorCode === 'RESOURCE_EXHAUSTED') {
+      const quotaLike = /quota|insufficient[_\s-]?quota|billing|credit/.test(text);
+      return {
+        reason: quotaLike ? VisionUnavailabilityReason.VISION_QUOTA_EXCEEDED : VisionUnavailabilityReason.VISION_RATE_LIMITED,
+        status_code: statusCode || 429,
+        error_code: errorCode,
+      };
+    }
+    if (grpc4xxCodes.has(normalizedErrorCode)) {
+      const missingKeyLike = normalizedErrorCode === 'UNAUTHENTICATED' && /api[_\s-]?key|credential|auth/.test(text);
+      return {
+        reason: missingKeyLike ? VisionUnavailabilityReason.VISION_MISSING_KEY : VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+        status_code: statusCode,
+        error_code: errorCode,
+      };
+    }
+    if (grpc5xxCodes.has(normalizedErrorCode)) {
+      return {
+        reason: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
+        status_code: statusCode,
+        error_code: errorCode,
+      };
+    }
+  }
 
   if ((error && error.name === 'AbortError') || /timeout|timed out|econnaborted|etimedout/.test(text)) {
     return {
@@ -199,6 +243,22 @@ function classifyVisionProviderFailure(error) {
   if (statusCode != null && statusCode >= 400) {
     return {
       reason: VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+      status_code: statusCode,
+      error_code: errorCode,
+    };
+  }
+
+  if (/clienterror|invalid argument|permission denied|unauthenticated|forbidden/.test(text)) {
+    const missingKeyLike = /api[_\s-]?key|credential|auth/.test(text);
+    return {
+      reason: missingKeyLike ? VisionUnavailabilityReason.VISION_MISSING_KEY : VisionUnavailabilityReason.VISION_UPSTREAM_4XX,
+      status_code: statusCode,
+      error_code: errorCode,
+    };
+  }
+  if (/servererror|backend error|service unavailable|upstream unavailable/.test(text)) {
+    return {
+      reason: VisionUnavailabilityReason.VISION_UPSTREAM_5XX,
       status_code: statusCode,
       error_code: errorCode,
     };

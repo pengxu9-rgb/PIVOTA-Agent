@@ -80,6 +80,15 @@ test('vision failure mapping: timeout / 429 / 4xx / 5xx / schema', () => {
 
   const schemaInvalid = classifyVisionProviderFailure({ __vision_reason: VisionUnavailabilityReason.VISION_SCHEMA_INVALID });
   assert.equal(schemaInvalid.reason, VisionUnavailabilityReason.VISION_SCHEMA_INVALID);
+
+  const geminiClientError = classifyVisionProviderFailure({ name: 'ClientError', message: 'gemini client request rejected' });
+  assert.equal(geminiClientError.reason, VisionUnavailabilityReason.VISION_UPSTREAM_4XX);
+
+  const grpcRateLimited = classifyVisionProviderFailure({ code: 'RESOURCE_EXHAUSTED', message: 'request rate exceeded' });
+  assert.equal(grpcRateLimited.reason, VisionUnavailabilityReason.VISION_RATE_LIMITED);
+
+  const grpcDeadline = classifyVisionProviderFailure({ code: 'DEADLINE_EXCEEDED', message: 'deadline exceeded' });
+  assert.equal(grpcDeadline.reason, VisionUnavailabilityReason.VISION_TIMEOUT);
 });
 
 test('vision retry policy: only retry retryable reasons', async () => {
