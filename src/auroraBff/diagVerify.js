@@ -537,6 +537,28 @@ function normalizeVerifyFailReason({ reason, providerStatusCode, httpStatusClass
   ) {
     return VerifyFailReason.TIMEOUT;
   }
+  if (errorToken.includes('RATE_LIMIT') || errorToken.includes('TOO_MANY_REQUESTS')) {
+    return VerifyFailReason.RATE_LIMIT;
+  }
+  if (errorToken.includes('QUOTA') || errorToken.includes('RESOURCE_EXHAUSTED')) {
+    return VerifyFailReason.QUOTA;
+  }
+  if (
+    errorToken.includes('PERMISSION_DENIED') ||
+    errorToken.includes('UNAUTHENTICATED') ||
+    errorToken.includes('INVALID_ARGUMENT') ||
+    errorToken.includes('FAILED_PRECONDITION') ||
+    errorToken.includes('FORBIDDEN')
+  ) {
+    return VerifyFailReason.UPSTREAM_4XX;
+  }
+  if (
+    errorToken.includes('UNAVAILABLE') ||
+    errorToken.includes('SERVICE_UNAVAILABLE') ||
+    errorToken.includes('INTERNAL')
+  ) {
+    return VerifyFailReason.UPSTREAM_5XX;
+  }
   if (
     errorToken.includes('NETWORK') ||
     errorToken.includes('ENOTFOUND') ||

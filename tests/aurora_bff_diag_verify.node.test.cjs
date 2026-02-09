@@ -443,6 +443,11 @@ test('diag verify: maps provider failures into canonical verify fail reasons', a
         { reason: 'VISION_NETWORK_ERROR', statusCode: 0, expected: 'NETWORK_ERROR' },
         { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'MISSING_DEP', expected: 'UPSTREAM_5XX' },
         { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'ECONNRESET', expected: 'NETWORK_ERROR' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'PERMISSION_DENIED', expected: 'UPSTREAM_4XX' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'RESOURCE_EXHAUSTED', expected: 'QUOTA' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'TOO_MANY_REQUESTS', expected: 'RATE_LIMIT' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'DEADLINE_EXCEEDED', expected: 'TIMEOUT' },
+        { reason: 'VISION_UNKNOWN', statusCode: 0, errorClass: 'UNAVAILABLE', expected: 'UPSTREAM_5XX' },
         { reason: 'VISION_UNKNOWN', statusCode: 0, statusClass: '5xx', expected: 'UPSTREAM_5XX' },
       ];
 

@@ -522,20 +522,64 @@ function normalizeTimeoutStage(value) {
   return null;
 }
 
+function normalizeNumericStatus(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const status = Math.trunc(numeric);
+  if (status <= 0) return null;
+  return status;
+}
+
+function extractStatusTextHints(error) {
+  const hints = new Set();
+  const rawValues = [
+    error?.statusText,
+    error?.status_text,
+    error?.error?.status,
+    error?.cause?.statusText,
+    error?.cause?.status_text,
+    error?.cause?.error?.status,
+  ];
+  for (const value of rawValues) {
+    const token = String(value || '').trim().toUpperCase();
+    if (!token) continue;
+    hints.add(token);
+  }
+  return hints;
+}
+
+function extractStatusCodeFromError(error) {
+  const candidates = [
+    error?.status,
+    error?.statusCode,
+    error?.response?.status,
+    error?.error?.code,
+    error?.error?.statusCode,
+    error?.cause?.status,
+    error?.cause?.statusCode,
+    error?.cause?.response?.status,
+    error?.cause?.error?.code,
+  ];
+  for (const value of candidates) {
+    const status = normalizeNumericStatus(value);
+    if (status != null) return status;
+  }
+  return null;
+}
+
 function classifyProviderFailureMeta(error) {
-  const statusCode =
-    (Number.isFinite(Number(error?.status)) && Number(error.status)) ||
-    (Number.isFinite(Number(error?.statusCode)) && Number(error.statusCode)) ||
-    (Number.isFinite(Number(error?.response?.status)) && Number(error.response.status)) ||
-    null;
+  const statusCode = extractStatusCodeFromError(error);
   const errorCode = String(error?.code || '').trim();
   const errorName = String(error?.name || '').trim();
+  const statusHints = extractStatusTextHints(error);
+  const nestedErrorText =
+    error?.error != null ? safeStringify(error.error) : error?.cause?.error != null ? safeStringify(error.cause.error) : '';
   const responseBody =
     (typeof error?.response?.data === 'string' && error.response.data) ||
     (error?.response?.data != null ? safeStringify(error.response.data) : '') ||
     '';
-  const message = String(error?.message || '').trim();
-  const text = `${message} ${responseBody}`.trim().toLowerCase();
+  const message = String(error?.message || error?.cause?.message || '').trim();
+  const text = `${message} ${responseBody} ${nestedErrorText} ${Array.from(statusHints).join(' ')}`.trim().toLowerCase();
   const upstreamRequestId = extractUpstreamRequestIdFromError(error);
   const timeoutStage =
     normalizeTimeoutStage(error?.timeout_stage) ||
@@ -551,10 +595,11 @@ function classifyProviderFailureMeta(error) {
   const isTimeout =
     errorName === 'AbortError' ||
     errorCode === 'ETIMEDOUT' ||
-    /timed out|timeout|econnaborted|etimedout/.test(text);
+    /timed out|timeout|econnaborted|etimedout|deadline exceeded/.test(text) ||
+    statusHints.has('DEADLINE_EXCEEDED');
   const isNetwork =
     networkCodes.has(errorCode) ||
-    /enotfound|eai_again|dns|socket hang up|tls|certificate|self signed/.test(text);
+    /enotfound|eai_again|dns|socket hang up|tls|certificate|self signed|fetch failed|network error/.test(text);
 
   let reason = 'VISION_UNKNOWN';
   if (isTimeout || statusCode === 408) {
@@ -569,6 +614,18 @@ function classifyProviderFailureMeta(error) {
       : 'VISION_UPSTREAM_4XX';
   } else if (statusCode === 429) {
     reason = containsQuotaHint(text) ? 'VISION_QUOTA_EXCEEDED' : 'VISION_RATE_LIMITED';
+  } else if (statusHints.has('RESOURCE_EXHAUSTED')) {
+    reason = containsQuotaHint(text) ? 'VISION_QUOTA_EXCEEDED' : 'VISION_RATE_LIMITED';
+  } else if (statusHints.has('UNAUTHENTICATED')) {
+    reason = 'VISION_MISSING_KEY';
+  } else if (statusHints.has('PERMISSION_DENIED')) {
+    reason = /api key|credential|permission|forbidden|auth/.test(text)
+      ? 'VISION_MISSING_KEY'
+      : 'VISION_UPSTREAM_4XX';
+  } else if (statusHints.has('INVALID_ARGUMENT') || statusHints.has('FAILED_PRECONDITION')) {
+    reason = containsImageInvalidHint(text) ? 'VISION_IMAGE_INVALID' : 'VISION_UPSTREAM_4XX';
+  } else if (statusHints.has('UNAVAILABLE') || statusHints.has('INTERNAL')) {
+    reason = 'VISION_UPSTREAM_5XX';
   } else if (Number.isFinite(Number(statusCode)) && statusCode >= 500) {
     reason = 'VISION_UPSTREAM_5XX';
   } else if (Number.isFinite(Number(statusCode)) && statusCode >= 400) {
@@ -585,7 +642,7 @@ function classifyProviderFailureMeta(error) {
     reason,
     statusCode: Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : null,
     statusClass: inferHttpStatusClass(statusCode, reason),
-    errorClass: errorCode || errorName || 'UNKNOWN_ERROR',
+    errorClass: errorCode || errorName || Array.from(statusHints)[0] || 'UNKNOWN_ERROR',
     responseBytesLen: responseBody ? Buffer.byteLength(String(responseBody), 'utf8') : 0,
     ...(timeoutStage ? { timeoutStage } : {}),
     ...(upstreamRequestId ? { upstreamRequestId } : {}),
@@ -597,16 +654,7 @@ function classifyProviderFailure(error) {
 }
 
 function extractProviderStatusCode(error) {
-  const candidates = [
-    error?.status,
-    error?.statusCode,
-    error?.response?.status,
-  ];
-  for (const value of candidates) {
-    const numeric = Number(value);
-    if (Number.isFinite(numeric) && numeric > 0) return Math.trunc(numeric);
-  }
-  return null;
+  return extractStatusCodeFromError(error);
 }
 
 function buildQualityFeatureSnapshot(photoQuality) {
@@ -1824,6 +1872,8 @@ module.exports = {
   CanonicalSchema,
   ConcernSchema,
   RegionSchema,
+  classifyProviderFailureMeta,
+  extractProviderStatusCode,
   runCvProvider,
   runGeminiProvider,
   runGptProvider,
