@@ -506,6 +506,7 @@ test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade',
         const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
         assert.equal(vision.decision, 'fallback');
         assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED), true);
+        assert.equal(vision.upstream_status_code, null);
         assert.notEqual(card?.payload?.analysis_source, 'retake');
       } finally {
         delete require.cache[moduleId];

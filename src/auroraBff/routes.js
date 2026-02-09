@@ -32,6 +32,8 @@ const {
   recordVerifyFail,
   recordVerifyAgreementScore,
   recordVerifyHardCase,
+  recordAnalyzeRequest,
+  recordGeometrySanitizerTotals,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
 const { runGeminiShadowVerify } = require('./diagVerify');
@@ -914,6 +916,34 @@ function hasNonEmptyRoutineInput(routineCandidate) {
   );
 }
 
+function normalizeQualityGradeForMetrics(grade) {
+  const token = String(grade || '')
+    .trim()
+    .toLowerCase();
+  if (token === 'pass' || token === 'degraded' || token === 'fail') return token;
+  return 'unknown';
+}
+
+function normalizePipelineVersionForMetrics(version) {
+  const token = String(version || '')
+    .trim()
+    .toLowerCase();
+  if (token === 'a' || token === 'legacy' || token === 'v1') return 'A';
+  if (token === 'b' || token === 'v2') return 'B';
+  return 'unknown';
+}
+
+function inferDeviceClassForMetrics(req) {
+  const explicit = req && typeof req.get === 'function' ? req.get('X-Device-Class') : null;
+  if (explicit && String(explicit).trim()) return String(explicit).trim().slice(0, 64);
+  const ua = req && typeof req.get === 'function' ? String(req.get('User-Agent') || '') : '';
+  const lowered = ua.toLowerCase();
+  if (!lowered) return 'unknown';
+  if (/(iphone|android|ipad|mobile)/.test(lowered)) return 'mobile';
+  if (/(macintosh|windows|linux|x11)/.test(lowered)) return 'desktop';
+  return 'unknown';
+}
+
 function buildPhotoAutoNoticeMessage({ language, failureCode }) {
   const code = String(failureCode || 'DOWNLOAD_URL_GENERATE_FAILED').trim().toUpperCase();
   if (language === 'CN') {
@@ -1251,10 +1281,7 @@ async function runOpenAIVisionSkinAnalysis({
     ok: false,
     provider: 'openai',
     reason: normalizeVisionReason(attemptResult && attemptResult.reason),
-    upstream_status_code:
-      attemptResult && Number.isFinite(Number(attemptResult.upstream_status_code))
-        ? Math.trunc(Number(attemptResult.upstream_status_code))
-        : null,
+    upstream_status_code: toNullableInt(attemptResult && attemptResult.upstream_status_code),
     error: attemptResult && attemptResult.error_code ? String(attemptResult.error_code) : null,
     latency_ms: Date.now() - startedAt,
     retry:
@@ -1405,10 +1432,7 @@ async function runGeminiVisionSkinAnalysis({
     ok: false,
     provider: 'gemini',
     reason: normalizeVisionReason(attemptResult && attemptResult.reason),
-    upstream_status_code:
-      attemptResult && Number.isFinite(Number(attemptResult.upstream_status_code))
-        ? Math.trunc(Number(attemptResult.upstream_status_code))
-        : null,
+    upstream_status_code: toNullableInt(attemptResult && attemptResult.upstream_status_code),
     error: attemptResult && attemptResult.error_code ? String(attemptResult.error_code) : null,
     latency_ms: Date.now() - startedAt,
     retry:
@@ -1429,6 +1453,20 @@ async function runVisionSkinAnalysis({ provider, ...rest } = {}) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toNullableInt(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return Math.trunc(num);
+}
+
+function toNullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return num;
 }
 
 function secondsUntilIso(iso) {
@@ -1777,6 +1815,152 @@ function renderPhotoFallbackStrategy({ language, photoNotice, actionCard } = {})
   lines.push(lang === 'CN' ? '补充 3 个问题' : 'Ask-3 questions');
   for (const item of Array.isArray(card.ask_3_questions) ? card.ask_3_questions.slice(0, 3) : []) lines.push(`- ${item}`);
   return lines.join('\n').slice(0, 1200);
+}
+
+function clampGeometry01(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  if (numeric <= 0) return 0;
+  if (numeric >= 1) return 1;
+  return numeric;
+}
+
+function sanitizeBBoxNorm(rawBBox) {
+  if (!rawBBox || typeof rawBBox !== 'object') return { ok: false, clipped: false, bbox: null };
+  const raw = {
+    x0: Number(rawBBox.x0),
+    y0: Number(rawBBox.y0),
+    x1: Number(rawBBox.x1),
+    y1: Number(rawBBox.y1),
+  };
+  if (!Number.isFinite(raw.x0) || !Number.isFinite(raw.y0) || !Number.isFinite(raw.x1) || !Number.isFinite(raw.y1)) {
+    return { ok: false, clipped: false, bbox: null };
+  }
+
+  const clamped = {
+    x0: clampGeometry01(raw.x0),
+    y0: clampGeometry01(raw.y0),
+    x1: clampGeometry01(raw.x1),
+    y1: clampGeometry01(raw.y1),
+  };
+  let clipped =
+    clamped.x0 !== raw.x0 ||
+    clamped.y0 !== raw.y0 ||
+    clamped.x1 !== raw.x1 ||
+    clamped.y1 !== raw.y1;
+
+  const ordered = {
+    x0: Math.min(clamped.x0, clamped.x1),
+    y0: Math.min(clamped.y0, clamped.y1),
+    x1: Math.max(clamped.x0, clamped.x1),
+    y1: Math.max(clamped.y0, clamped.y1),
+  };
+  if (ordered.x0 !== clamped.x0 || ordered.y0 !== clamped.y0 || ordered.x1 !== clamped.x1 || ordered.y1 !== clamped.y1) {
+    clipped = true;
+  }
+
+  if (ordered.x1 - ordered.x0 <= 0.001 || ordered.y1 - ordered.y0 <= 0.001) {
+    return { ok: false, clipped: true, bbox: null };
+  }
+  return { ok: true, clipped, bbox: ordered };
+}
+
+function sanitizeGridGeometry(rawGeometry) {
+  if (!rawGeometry || typeof rawGeometry !== 'object') return { ok: false, clipped: false, grid: null };
+  const rawRows = Number(rawGeometry.rows);
+  const rawCols = Number(rawGeometry.cols);
+  const rawValues = Array.isArray(rawGeometry.values) ? rawGeometry.values : null;
+  if (!Number.isFinite(rawRows) || !Number.isFinite(rawCols) || !rawValues) {
+    return { ok: false, clipped: false, grid: null };
+  }
+
+  const rows = Math.max(1, Math.min(64, Math.trunc(rawRows)));
+  const cols = Math.max(1, Math.min(64, Math.trunc(rawCols)));
+  const expected = rows * cols;
+  let clipped = rows !== rawRows || cols !== rawCols;
+  if (rawValues.length < expected) {
+    return { ok: false, clipped: true, grid: null };
+  }
+
+  const values = rawValues.slice(0, expected).map((item) => {
+    const numeric = Number(item);
+    if (!Number.isFinite(numeric)) {
+      clipped = true;
+      return 0;
+    }
+    const normalized = clampGeometry01(numeric);
+    if (normalized !== numeric) clipped = true;
+    return normalized;
+  });
+  return {
+    ok: true,
+    clipped,
+    grid: {
+      type: 'grid',
+      rows,
+      cols,
+      values,
+    },
+  };
+}
+
+function sanitizeFindingGeometry(rawGeometry) {
+  if (!rawGeometry || typeof rawGeometry !== 'object') {
+    return { geometry: null, checked_n: 0, dropped_n: 0, clipped_n: 0 };
+  }
+
+  let checked = 0;
+  let dropped = 0;
+  let clipped = 0;
+  const geometry = {};
+  let hasGeometry = false;
+
+  if (rawGeometry.bbox_norm && typeof rawGeometry.bbox_norm === 'object') {
+    checked += 1;
+    const bbox = sanitizeBBoxNorm(rawGeometry.bbox_norm);
+    if (bbox.ok && bbox.bbox) {
+      geometry.bbox_norm = bbox.bbox;
+      hasGeometry = true;
+    } else {
+      dropped += 1;
+    }
+    if (bbox.clipped) clipped += 1;
+  }
+
+  if (
+    rawGeometry.type === 'grid' ||
+    (Number.isFinite(Number(rawGeometry.rows)) && Number.isFinite(Number(rawGeometry.cols)) && Array.isArray(rawGeometry.values))
+  ) {
+    checked += 1;
+    const grid = sanitizeGridGeometry(rawGeometry);
+    if (grid.ok && grid.grid) {
+      geometry.type = 'grid';
+      geometry.rows = grid.grid.rows;
+      geometry.cols = grid.grid.cols;
+      geometry.values = grid.grid.values;
+      hasGeometry = true;
+    } else {
+      dropped += 1;
+    }
+    if (grid.clipped) clipped += 1;
+  }
+
+  return {
+    geometry: hasGeometry ? geometry : null,
+    checked_n: checked,
+    dropped_n: dropped,
+    clipped_n: clipped,
+  };
+}
+
+function mergeGeometrySanitizerByIssue(target, issueType, stats) {
+  const issue = String(issueType || 'unknown').trim().toLowerCase() || 'unknown';
+  if (!target[issue]) {
+    target[issue] = { checked_n: 0, dropped_n: 0, clipped_n: 0 };
+  }
+  target[issue].checked_n += Number(stats.checked_n || 0);
+  target[issue].dropped_n += Number(stats.dropped_n || 0);
+  target[issue].clipped_n += Number(stats.clipped_n || 0);
 }
 
 function buildExecutablePlanForAnalysis({
@@ -8010,7 +8194,15 @@ function mountAuroraBffRoutes(app, { logger }) {
                 });
                 if (ctx.lang === 'CN') qualityReportReasons.push(`照片解析失败（${normalizedReason || 'VISION_UNKNOWN'}）；我会退回到确定性基线。`);
                 else qualityReportReasons.push(`Photo analysis failed (${normalizedReason || 'VISION_UNKNOWN'}); falling back to deterministic baseline.`);
-                if (vision.error) logger?.warn({ err: vision.error }, 'aurora bff: vision skin analysis failed');
+                logger?.warn(
+                  {
+                    reason: normalizedReason || 'VISION_UNKNOWN',
+                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    upstream_status_code: toNullableInt(vision.upstream_status_code),
+                    error_code: vision.error || null,
+                  },
+                  'aurora bff: vision skin analysis failed',
+                );
               }
             }
           }
@@ -8123,7 +8315,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             provider: visionRuntime.provider || visionDecisionForReport.provider,
             retry: visionRuntime.retry || { attempted: 0, final: 'success', last_reason: null },
             upstream_status_code: null,
-            latency_ms: Number.isFinite(Number(visionRuntime.latency_ms)) ? Number(visionRuntime.latency_ms) : null,
+            latency_ms: toNullableNumber(visionRuntime.latency_ms),
           };
         } else if (visionRuntime && !visionRuntime.ok) {
           const runtimeReason = normalizeVisionReason(visionRuntime.reason);
@@ -8135,9 +8327,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             reasons: Array.from(new Set(runtimeReasons)),
             provider: visionRuntime.provider || visionDecisionForReport.provider,
             retry: visionRuntime.retry || { attempted: 0, final: 'fail', last_reason: runtimeReason },
-            upstream_status_code:
-              Number.isFinite(Number(visionRuntime.upstream_status_code)) ? Math.trunc(Number(visionRuntime.upstream_status_code)) : null,
-            latency_ms: Number.isFinite(Number(visionRuntime.latency_ms)) ? Number(visionRuntime.latency_ms) : null,
+            upstream_status_code: toNullableInt(visionRuntime.upstream_status_code),
+            latency_ms: toNullableNumber(visionRuntime.latency_ms),
           };
         } else if (visionDecision.decision === 'call' && photoFailureCodes.length) {
           const reasons = [VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED];
