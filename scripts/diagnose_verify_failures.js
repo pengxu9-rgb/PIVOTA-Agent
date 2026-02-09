@@ -22,6 +22,7 @@ function parseArgs(argv) {
     hardCasesPath: '',
     outDir: '',
     date: '',
+    since: '',
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -44,6 +45,11 @@ function parseArgs(argv) {
     }
     if (token === '--date') {
       out.date = next;
+      index += 1;
+      continue;
+    }
+    if (token === '--since') {
+      out.since = next;
       index += 1;
       continue;
     }
@@ -92,6 +98,14 @@ function dateToPrefix(input) {
   if (/^\d{8}$/.test(raw)) return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   throw new Error(`invalid --date value: ${input}`);
+}
+
+function parseSinceIso(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) throw new Error(`invalid --since value: ${input}`);
+  return timestamp;
 }
 
 async function readNdjson(filePath) {
@@ -234,13 +248,22 @@ async function main() {
   const outDir = path.resolve(repoRoot, args.outDir || DEFAULT_OUTPUT_DIR);
   const datePrefix = dateToPrefix(args.date);
   const dateKey = datePrefix.replace(/-/g, '');
+  const sinceTs = parseSinceIso(args.since);
   const paths = await resolveInputPaths(repoRoot, args.inputPath, args.hardCasesPath);
 
   const modelOutputsAll = await readNdjson(paths.modelOutputsPath);
   const hardCasesAll = await readNdjson(paths.hardCasesPath);
 
-  const modelOutputs = modelOutputsAll.filter((row) => String(row?.created_at || '').startsWith(datePrefix));
-  const hardCases = hardCasesAll.filter((row) => String(row?.created_at || '').startsWith(datePrefix));
+  const inWindow = (createdAt) => {
+    const token = String(createdAt || '');
+    if (!token.startsWith(datePrefix)) return false;
+    if (!Number.isFinite(sinceTs)) return true;
+    const rowTs = Date.parse(token);
+    return Number.isFinite(rowTs) && rowTs >= sinceTs;
+  };
+
+  const modelOutputs = modelOutputsAll.filter((row) => inWindow(row?.created_at));
+  const hardCases = hardCasesAll.filter((row) => inWindow(row?.created_at));
 
   const verifyRows = modelOutputs
     .filter((row) => safeToken(row?.provider, '').toLowerCase() === 'gemini_provider')
@@ -374,6 +397,7 @@ async function main() {
       manifest_path: paths.manifestPath,
       model_outputs_path: paths.modelOutputsPath,
       hard_cases_path: paths.hardCasesPath,
+      since_utc: Number.isFinite(sinceTs) ? new Date(sinceTs).toISOString() : null,
       model_outputs_total: modelOutputsAll.length,
       hard_cases_total: hardCasesAll.length,
       model_outputs_on_date: modelOutputs.length,

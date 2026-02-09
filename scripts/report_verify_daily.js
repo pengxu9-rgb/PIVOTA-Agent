@@ -37,6 +37,7 @@ function parseArgs(argv) {
     inputPath: '',
     outDir: '',
     date: '',
+    since: '',
     hardCasesPath: '',
     storeDirLegacy: '',
     outDirLegacy: '',
@@ -57,6 +58,11 @@ function parseArgs(argv) {
     }
     if (token === '--date') {
       out.date = next;
+      index += 1;
+      continue;
+    }
+    if (token === '--since') {
+      out.since = next;
       index += 1;
       continue;
     }
@@ -97,6 +103,16 @@ function normalizeDateKey(input) {
 
 function datePrefix(dateKey) {
   return `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`;
+}
+
+function parseSinceIso(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`invalid --since value: ${input}`);
+  }
+  return timestamp;
 }
 
 function safeToken(value, fallback = 'unknown') {
@@ -451,10 +467,9 @@ function buildAlertChecks({ summary, failByReason, failBySubreason, thresholds }
   return checks;
 }
 
-function extractAgreementRows(samples, dayPrefix) {
+function extractAgreementRows(samples) {
   const rows = [];
   for (const sample of samples) {
-    if (!String(sample?.created_at || '').startsWith(dayPrefix)) continue;
     const qualityGrade = safeToken(sample?.quality_grade, 'unknown');
     const toneBucket = safeToken(sample?.skin_tone_bucket || sample?.tone_bucket, 'unknown');
     const lightingBucket = safeToken(sample?.lighting_bucket, 'unknown');
@@ -546,7 +561,7 @@ function normalizeHardCaseRecord(item) {
   };
 }
 
-function summarizeByIssueType(agreementRows, hardCases, dayPrefix) {
+function summarizeByIssueType(agreementRows, hardCases) {
   const map = new Map();
   for (const row of agreementRows) {
     const issueType = normalizeIssueType(row.issue_type);
@@ -562,7 +577,6 @@ function summarizeByIssueType(agreementRows, hardCases, dayPrefix) {
 
   const reasonBuckets = new Map();
   for (const hardCase of hardCases) {
-    if (!String(hardCase?.created_at || '').startsWith(dayPrefix)) continue;
     const normalized = normalizeHardCaseRecord(hardCase);
     const issueType = normalized.issue_type;
     const reason = normalized.disagreement_reason;
@@ -622,10 +636,9 @@ function summarizeByQualityGrade(verifyRows, agreementRows) {
   return summaries;
 }
 
-function topHardCases(hardCases, dayPrefix, limit = 20) {
+function topHardCases(hardCases, limit = 20) {
   const out = [];
   for (const item of hardCases) {
-    if (!String(item?.created_at || '').startsWith(dayPrefix)) continue;
     out.push(normalizeHardCaseRecord(item));
   }
 
@@ -865,6 +878,7 @@ async function runDailyReport(options = {}) {
   const repoRoot = options.repoRoot || path.resolve(__dirname, '..');
   const dateKey = normalizeDateKey(options.date);
   const dateIso = datePrefix(dateKey);
+  const sinceTs = parseSinceIso(options.since);
 
   const paths = await resolvePaths({
     repoRoot,
@@ -880,10 +894,19 @@ async function runDailyReport(options = {}) {
   const goldLabels = await readNdjson(paths.goldLabelsPath);
   const hardCasesAll = await readNdjson(paths.hardCasesPath);
 
-  const modelRows = modelOutputs.filter((row) => String(row?.created_at || '').startsWith(dateIso));
+  const inWindow = (createdAt) => {
+    const token = String(createdAt || '');
+    if (!token.startsWith(dateIso)) return false;
+    if (!Number.isFinite(sinceTs)) return true;
+    const rowTs = Date.parse(token);
+    return Number.isFinite(rowTs) && rowTs >= sinceTs;
+  };
+
+  const modelRows = modelOutputs.filter((row) => inWindow(row?.created_at));
+  const agreementRows = extractAgreementRows(agreementSamples.filter((row) => inWindow(row?.created_at)));
+  const hardCasesWindow = hardCasesAll.filter((row) => inWindow(row?.created_at));
   const verifyRows = extractVerifyRows(modelRows);
-  const agreementRows = extractAgreementRows(agreementSamples, dateIso);
-  const hardCases = topHardCases(hardCasesAll, dateIso, 20);
+  const hardCases = topHardCases(hardCasesWindow, 20);
 
   const verifyCalls = verifyRows.length;
   const verifyFails = verifyRows.filter((row) => row.is_failure).length;
@@ -897,7 +920,7 @@ async function runDailyReport(options = {}) {
   const latencyP95 = quantile(latencyValues, 0.95);
   const hardCaseRate = formatRate(hardCases.length, verifyCalls);
 
-  const byIssueType = summarizeByIssueType(agreementRows, hardCasesAll, dateIso);
+  const byIssueType = summarizeByIssueType(agreementRows, hardCasesWindow);
   const byQualityGrade = summarizeByQualityGrade(verifyRows, agreementRows);
   const failByReason = summarizeVerifyFailByReason(verifyRows);
   const failBySubreason = summarizeVerifyFailBySubreason(verifyRows);
@@ -957,6 +980,7 @@ async function runDailyReport(options = {}) {
       agreement_samples_path: paths.agreementSamplesPath,
       gold_labels_path: paths.goldLabelsPath,
       hard_cases_path: paths.hardCasesPath,
+      since_utc: Number.isFinite(sinceTs) ? new Date(sinceTs).toISOString() : null,
       model_outputs_total: modelOutputs.length,
       agreement_samples_total: agreementSamples.length,
       gold_labels_total: goldLabels.length,
@@ -1013,6 +1037,7 @@ async function main() {
     inputPath: args.inputPath,
     outDir: args.outDir,
     date: args.date,
+    since: args.since,
     hardCasesPath: args.hardCasesPath,
     storeDirLegacy: args.storeDirLegacy,
     outDirLegacy: args.outDirLegacy,
