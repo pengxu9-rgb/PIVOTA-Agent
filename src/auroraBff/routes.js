@@ -169,6 +169,7 @@ const SKIN_VISION_RETRY_BASE_MS = Math.max(
   50,
   Math.min(2000, Number(process.env.AURORA_SKIN_VISION_RETRY_BASE_MS || 250)),
 );
+const SKIN_VISION_FORCE_CALL = String(process.env.AURORA_SKIN_FORCE_VISION_CALL || '').toLowerCase() === 'true';
 const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
   1024 * 1024,
   Math.min(25 * 1024 * 1024, Number(process.env.AURORA_PHOTO_UPLOAD_MAX_BYTES || 10 * 1024 * 1024)),
@@ -1053,6 +1054,8 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     photoQuality: diagnosisV1 && diagnosisV1.quality ? diagnosisV1.quality : photoQuality,
     profileSummary,
     photoNoticeOverride: photoNotice && typeof photoNotice.message === 'string' ? photoNotice.message : '',
+    photoFailureCode: photoNotice && typeof photoNotice.failure_code === 'string' ? photoNotice.failure_code : '',
+    photosProvided: true,
   });
 
   const payload = {
@@ -1642,18 +1645,161 @@ function renderPlanAsStrategy({ plan, language, photoNotice } = {}) {
   return lines.join('\n').slice(0, 1200);
 }
 
-function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQuality, profileSummary, photoNoticeOverride } = {}) {
+function normalizePhotoFailureCodeForFallback(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (!normalized) return '';
+  if (
+    normalized === 'DOWNLOAD_URL_GENERATE_FAILED' ||
+    normalized === 'DOWNLOAD_URL_FETCH_4XX' ||
+    normalized === 'DOWNLOAD_URL_FETCH_5XX' ||
+    normalized === 'DOWNLOAD_URL_TIMEOUT' ||
+    normalized === 'DOWNLOAD_URL_EXPIRED' ||
+    normalized === 'DOWNLOAD_URL_DNS'
+  ) {
+    return normalized;
+  }
+  return '';
+}
+
+function buildPhotoFallbackActionCard({
+  language,
+  qualityFail,
+  failureCode,
+  photosProvided,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const normalizedFailure = normalizePhotoFailureCodeForFallback(failureCode);
+  const reasonByCodeEn = {
+    DOWNLOAD_URL_GENERATE_FAILED: "We couldn't generate a secure photo download link.",
+    DOWNLOAD_URL_FETCH_4XX: "Photo access was rejected while fetching bytes (4xx).",
+    DOWNLOAD_URL_FETCH_5XX: 'Photo storage returned a server error while fetching bytes (5xx).',
+    DOWNLOAD_URL_TIMEOUT: 'Photo download timed out before bytes were received.',
+    DOWNLOAD_URL_EXPIRED: 'The signed photo link expired before analysis could start.',
+    DOWNLOAD_URL_DNS: 'Photo storage host lookup failed (DNS/network resolution).',
+  };
+  const reasonByCodeZh = {
+    DOWNLOAD_URL_GENERATE_FAILED: '系统未能生成可用的照片下载链接。',
+    DOWNLOAD_URL_FETCH_4XX: '下载照片时访问被拒绝（4xx）。',
+    DOWNLOAD_URL_FETCH_5XX: '下载照片时存储服务返回服务器错误（5xx）。',
+    DOWNLOAD_URL_TIMEOUT: '下载照片超时，未能及时拿到图像字节。',
+    DOWNLOAD_URL_EXPIRED: '签名照片链接已过期，分析前无法继续读取。',
+    DOWNLOAD_URL_DNS: '照片存储域名解析失败（DNS/网络异常）。',
+  };
+
+  let primaryReason = '';
+  if (qualityFail) {
+    primaryReason =
+      lang === 'CN'
+        ? '照片质量未通过（光线/清晰度/覆盖不足），本次无法做可靠的图像分析。'
+        : 'Photo quality failed (lighting/focus/coverage), so image-based analysis is unavailable for this run.';
+  } else if (normalizedFailure) {
+    primaryReason = lang === 'CN' ? reasonByCodeZh[normalizedFailure] || '' : reasonByCodeEn[normalizedFailure] || '';
+  } else if (photosProvided === false) {
+    primaryReason = lang === 'CN' ? '本次没有可用照片，因此无法进行图像分析。' : 'No photo was provided in this run, so image-based analysis is unavailable.';
+  } else {
+    primaryReason =
+      lang === 'CN'
+        ? '本次未能成功读取照片字节，因此无法进行图像分析。'
+        : "We couldn't read photo bytes for this run, so image-based analysis is unavailable.";
+  }
+
+  const guardrailReason =
+    lang === 'CN'
+      ? '为避免误导，本次结果仅基于问卷/历史信息，不会输出照片结论。'
+      : 'To avoid misleading conclusions, this run is questionnaire/history-only.';
+
+  const retakeGuide =
+    lang === 'CN'
+      ? [
+          '自然光拍摄：正对窗户，避免背光与强阴影。',
+          '距离 30–50cm，正脸平视，脸部占画面约 70%。',
+          '关闭美颜/滤镜，确保对焦清晰且无遮挡（头发/口罩/手）。',
+        ]
+      : [
+          'Use daylight facing a window; avoid backlight and strong shadows.',
+          'Keep 30–50cm distance, straight-on angle, and face fills about 70% of frame.',
+          'Turn off beauty filters, keep sharp focus, and remove obstructions (hair/mask/hand).',
+        ];
+
+  const meanwhilePlan =
+    lang === 'CN'
+      ? [
+          '如果有刺痛或泛红：暂停潜在刺激活性 5–7 天，仅保留温和洁面 + 保湿 + 白天防晒。',
+          '如果出油但同时紧绷：减少清洁强度/次数，补一层轻薄保湿。',
+          '如果连续 3 天稳定：仅恢复 1 个产品，每周 1–2 次，出现不适立即停用。',
+        ]
+      : [
+          'If stinging or redness appears: pause potentially irritating actives for 5–7 days; keep gentle cleanser + moisturizer + daytime SPF only.',
+          'If skin feels oily but tight: reduce cleansing intensity/frequency and add a light moisturizer layer.',
+          'If stable for 3 straight days: re-introduce only one product at 1–2 nights/week; stop immediately if irritation returns.',
+        ];
+
+  const ask3 =
+    lang === 'CN'
+      ? [
+          '最近 72 小时是否有刺痛/灼热？通常发生在第几步之后？',
+          '你当前 AM/PM 每一步具体用了什么产品？各自频率是多少？',
+          '最近是否有环境变化（出差/气候/作息/压力）影响皮肤状态？',
+        ]
+      : [
+          'Any stinging or burning in the last 72 hours, and after which routine step?',
+          'What exact products are you using in AM/PM, and how often for each?',
+          'Any recent environment/lifestyle shift (travel, climate, sleep, stress) affecting your skin?',
+        ];
+
+  return {
+    why_i_cant_analyze: [primaryReason, guardrailReason].filter(Boolean).slice(0, 2),
+    retake_guide: retakeGuide.slice(0, 3),
+    meanwhile_plan: meanwhilePlan.slice(0, 3),
+    ask_3_questions: ask3.slice(0, 3),
+  };
+}
+
+function renderPhotoFallbackStrategy({ language, photoNotice, actionCard } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const card = actionCard && typeof actionCard === 'object' ? actionCard : null;
+  if (!card) return '';
+  const lines = [];
+  if (photoNotice) lines.push(photoNotice);
+  lines.push(lang === 'CN' ? '为何暂时无法分析' : "Why I can't analyze");
+  for (const item of Array.isArray(card.why_i_cant_analyze) ? card.why_i_cant_analyze.slice(0, 2) : []) lines.push(`- ${item}`);
+  lines.push(lang === 'CN' ? '重拍指引' : 'Retake guide');
+  for (const item of Array.isArray(card.retake_guide) ? card.retake_guide.slice(0, 3) : []) lines.push(`- ${item}`);
+  lines.push(lang === 'CN' ? '7 天临时方案' : 'Meanwhile plan (7 days)');
+  for (const item of Array.isArray(card.meanwhile_plan) ? card.meanwhile_plan.slice(0, 3) : []) lines.push(`- ${item}`);
+  lines.push(lang === 'CN' ? '补充 3 个问题' : 'Ask-3 questions');
+  for (const item of Array.isArray(card.ask_3_questions) ? card.ask_3_questions.slice(0, 3) : []) lines.push(`- ${item}`);
+  return lines.join('\n').slice(0, 1200);
+}
+
+function buildExecutablePlanForAnalysis({
+  analysis,
+  language,
+  usedPhotos,
+  photoQuality,
+  profileSummary,
+  photoNoticeOverride,
+  photoFailureCode,
+  photosProvided,
+} = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const base = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? { ...analysis } : null;
   if (!base) return analysis;
 
   const quality = photoQuality && typeof photoQuality === 'object' ? photoQuality : { grade: 'unknown', reasons: [] };
   const qualityFail = String(quality.grade || '').trim().toLowerCase() === 'fail';
-  const defaultPhotoNotice = usedPhotos ? null : 'Based on your answers only (photo not analyzed).';
+  const fallbackMode = qualityFail || !usedPhotos;
+  const defaultPhotoNotice = qualityFail
+    ? lang === 'CN'
+      ? '照片质量未通过，本次仅基于问卷/历史信息给出临时建议。'
+      : 'Photo quality failed, so this run uses questionnaire/history only.'
+    : usedPhotos
+      ? null
+      : 'Based on your answers only (photo not analyzed).';
   const overrideNotice = typeof photoNoticeOverride === 'string' ? photoNoticeOverride.trim() : '';
   const photoNotice = overrideNotice ? [overrideNotice, defaultPhotoNotice].filter(Boolean).join(' ') : defaultPhotoNotice;
 
-  const findingsInput = usedPhotos
+  const findingsInput = usedPhotos && !qualityFail
     ? Array.isArray(base.photo_findings)
       ? base.photo_findings
       : Array.isArray(base.findings)
@@ -1693,7 +1839,7 @@ function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQ
   for (const item of takeawaysInput) {
     const normalized = normalizePlanTakeaway(item, { language: lang });
     if (!normalized) continue;
-    if (!usedPhotos && normalized.source === 'photo') continue;
+    if (fallbackMode && normalized.source === 'photo') continue;
     if (normalized.source === 'photo' && normalized.linked_finding_ids.length === 0 && normalized.issue_type) {
       normalized.linked_finding_ids = (issueToFindingIds.get(normalized.issue_type) || []).slice(0, 8);
     }
@@ -1706,41 +1852,43 @@ function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQ
     takeaways.push(normalized);
   }
 
-  const goals = profileSummary && Array.isArray(profileSummary.goals) ? profileSummary.goals.filter((item) => typeof item === 'string' && item.trim()) : [];
-  if (goals.length) {
-    const text = `You mentioned your goals: ${goals.slice(0, 3).join(', ')}.`;
-    const key = `user:${text.toLowerCase()}`;
-    if (!seenTakeawayText.has(key)) {
-      takeaways.push({
-        takeaway_id: 'tw_user_goals_plan',
-        source: 'user',
-        issue_type: 'goal',
-        text,
-        confidence: 1,
-        linked_finding_ids: [],
-        linked_issue_types: ['goal'],
-      });
-      seenTakeawayText.add(key);
+  if (!fallbackMode) {
+    const goals = profileSummary && Array.isArray(profileSummary.goals) ? profileSummary.goals.filter((item) => typeof item === 'string' && item.trim()) : [];
+    if (goals.length) {
+      const text = `You mentioned your goals: ${goals.slice(0, 3).join(', ')}.`;
+      const key = `user:${text.toLowerCase()}`;
+      if (!seenTakeawayText.has(key)) {
+        takeaways.push({
+          takeaway_id: 'tw_user_goals_plan',
+          source: 'user',
+          issue_type: 'goal',
+          text,
+          confidence: 1,
+          linked_finding_ids: [],
+          linked_issue_types: ['goal'],
+        });
+        seenTakeawayText.add(key);
+      }
     }
-  }
-  if (profileSummary && profileSummary.barrierStatus === 'impaired') {
-    const text = 'You mentioned stinging/redness and barrier stress recently.';
-    const key = `user:${text.toLowerCase()}`;
-    if (!seenTakeawayText.has(key)) {
-      takeaways.push({
-        takeaway_id: 'tw_user_barrier_stress',
-        source: 'user',
-        issue_type: 'barrier',
-        text,
-        confidence: 0.9,
-        linked_finding_ids: [],
-        linked_issue_types: ['barrier'],
-      });
-      seenTakeawayText.add(key);
+    if (profileSummary && profileSummary.barrierStatus === 'impaired') {
+      const text = 'You mentioned stinging/redness and barrier stress recently.';
+      const key = `user:${text.toLowerCase()}`;
+      if (!seenTakeawayText.has(key)) {
+        takeaways.push({
+          takeaway_id: 'tw_user_barrier_stress',
+          source: 'user',
+          issue_type: 'barrier',
+          text,
+          confidence: 0.9,
+          linked_finding_ids: [],
+          linked_issue_types: ['barrier'],
+        });
+        seenTakeawayText.add(key);
+      }
     }
   }
 
-  if (usedPhotos && photoFindings.length) {
+  if (usedPhotos && !qualityFail && photoFindings.length) {
     for (const finding of photoFindings) {
       const alreadyLinked = takeaways.some((item) => item.source === 'photo' && item.linked_finding_ids.includes(finding.finding_id));
       if (alreadyLinked) continue;
@@ -1783,16 +1931,29 @@ function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQ
   ];
 
   let plan = null;
-  if (qualityFail) {
+  let fallbackActionCard = null;
+  if (fallbackMode) {
+    fallbackActionCard = buildPhotoFallbackActionCard({
+      language: lang,
+      qualityFail,
+      failureCode: photoFailureCode,
+      photosProvided,
+    });
     plan = {
       today: {
         am_steps: [],
         pm_steps: [],
         pause_now: [
           makeStep({
-            what: 'Retake photo under daylight with no filter and clear focus.',
-            why: 'Current photo quality failed, so reliable finding extraction is unavailable.',
-            whenToStop: 'Stop and ask support if QC keeps failing after 2 attempts.',
+            what:
+              lang === 'CN'
+                ? '按重拍指引补拍一张照片（自然光、无遮挡、无滤镜）。'
+                : 'Retake one photo using the retake guide (daylight, unobstructed, no filter).',
+            why: (fallbackActionCard.why_i_cant_analyze && fallbackActionCard.why_i_cant_analyze[0]) || '',
+            whenToStop:
+              lang === 'CN'
+                ? '连续 2 次仍不通过时，先继续问卷流程并稍后再拍。'
+                : 'If QC still fails after 2 attempts, continue with questionnaire flow and retry later.',
             priority: 'P0',
             linkedIssueTypes: ['quality'],
             linkedFindingIds: [],
@@ -1800,25 +1961,68 @@ function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQ
         ],
       },
       next_7_days: {
-        rules: ['Do not change routine based on failed-photo output.', 'Keep routine stable until a pass/degraded retake is available.'],
+        rules:
+          lang === 'CN'
+            ? ['在照片不可用期间，先执行保守的 7 天临时方案。', '尽快重拍并通过 QC 后再恢复照片分析。']
+            : ['Use a conservative 7-day temporary plan while photo evidence is unavailable.', 'Retake as soon as possible and resume photo analysis after QC passes.'],
         steps: [
           makeStep({
-            what: 'Retake once every 1-2 days until QC passes.',
-            why: 'A comparable photo is required for progress tracking.',
-            whenToStop: 'Stop retaking after a pass/degraded image is obtained.',
+            what: fallbackActionCard.meanwhile_plan[0] || '',
+            why:
+              lang === 'CN'
+                ? '先控制刺激风险，避免在证据不足时过度调整。'
+                : 'Control irritation risk first while evidence is incomplete.',
+            whenToStop:
+              lang === 'CN'
+                ? '若刺痛/泛红连续减轻 3 天可进入下一步。'
+                : 'Move to next step after 3 consecutive days of stable or improved comfort.',
             priority: 'P0',
-            linkedIssueTypes: ['quality'],
+            linkedIssueTypes: ['fallback'],
+            linkedFindingIds: [],
+          }),
+          makeStep({
+            what: fallbackActionCard.meanwhile_plan[1] || '',
+            why:
+              lang === 'CN'
+                ? '先修正清洁和保湿平衡，降低“外油内干”波动。'
+                : 'Re-balance cleansing and hydration to reduce rebound fluctuations.',
+            whenToStop:
+              lang === 'CN'
+                ? '若紧绷/泛红加重，继续简化并暂停新增产品。'
+                : 'If tightness/redness worsens, simplify further and pause new products.',
+            priority: 'P1',
+            linkedIssueTypes: ['fallback'],
+            linkedFindingIds: [],
+          }),
+          makeStep({
+            what: fallbackActionCard.meanwhile_plan[2] || '',
+            why:
+              lang === 'CN'
+                ? '通过低频恢复来确认耐受，避免一次叠加多个变化。'
+                : 'Low-frequency reintroduction helps verify tolerance without stacking changes.',
+            whenToStop:
+              lang === 'CN'
+                ? '出现持续不适时，回到“仅基础三步”并等待复拍结果。'
+                : 'If persistent discomfort returns, revert to basic 3-step care and wait for retake results.',
+            priority: 'P1',
+            linkedIssueTypes: ['fallback'],
             linkedFindingIds: [],
           }),
         ],
       },
       after_calm: {
-        entry_criteria: ['Photo QC returns pass or degraded.', 'Same lighting angle can be reproduced.'],
+        entry_criteria:
+          lang === 'CN'
+            ? ['照片 QC 至少达到 pass/degraded。', '可重复同一光线与角度。']
+            : ['Photo QC reaches pass/degraded.', 'Same lighting and angle are reproducible.'],
         steps: [],
       },
       tracking: {
         checkboxes: requiredCheckboxes,
-        retake_prompt: 'Retake in 7 days using the same lighting/background and follow QC guidance.',
+        retake_prompt:
+          lang === 'CN'
+            ? '7 天内按同一光线/角度重拍，并遵循重拍指引。'
+            : 'Retake within 7 days with the same lighting/angle and follow the retake guide.',
         retake_after_days: 7,
       },
     };
@@ -1952,10 +2156,33 @@ function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQ
   }
 
   base.plan = plan;
-  base.takeaways = takeaways.slice(0, 14);
+  if (fallbackMode) {
+    base.photo_findings = [];
+    base.findings = [];
+    base.takeaways = [];
+    base.features = (fallbackActionCard.why_i_cant_analyze || []).map((text, index) => ({
+      observation: text,
+      confidence: index === 0 ? 'pretty_sure' : 'somewhat_sure',
+    }));
+    base.next_action_card = fallbackActionCard;
+    base.strategy = renderPhotoFallbackStrategy({ language: lang, photoNotice, actionCard: fallbackActionCard });
+  } else {
+    base.takeaways = takeaways.slice(0, 14);
+    delete base.next_action_card;
+    base.strategy = renderPlanAsStrategy({ plan, language: lang, photoNotice });
+  }
   if (photoNotice) base.photo_notice = photoNotice;
   else delete base.photo_notice;
-  base.strategy = renderPlanAsStrategy({ plan, language: lang, photoNotice });
+  if (fallbackMode && Array.isArray(fallbackActionCard.ask_3_questions)) {
+    base.ask_3_questions = fallbackActionCard.ask_3_questions.slice(0, 3);
+  } else {
+    delete base.ask_3_questions;
+  }
+  if (fallbackMode && Array.isArray(fallbackActionCard.retake_guide)) {
+    base.retake_guide = fallbackActionCard.retake_guide.slice(0, 3);
+  } else {
+    delete base.retake_guide;
+  }
   return base;
 }
 
@@ -7490,6 +7717,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0;
 
         const userRequestedPhoto = parsed.data.use_photo === true;
+        const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasPrimaryInput);
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
         const selectedVisionProvider = resolveVisionProviderSelection();
         const visionAvailability = classifyVisionAvailability({
@@ -7618,18 +7846,20 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const visionDecision = rollout.llmKillSwitch
           ? { decision: 'skip', reasons: ['llm_kill_switch'], downgrade_confidence: true }
-          : shouldCallLlm({
-              kind: 'vision',
-              quality: photoQuality,
-              hasPrimaryInput,
-              userRequestedPhoto,
-              detectorConfidenceLevel: policyDetectorConfidenceLevel,
-              uncertainty: policyUncertainty,
-              visionAvailable,
-              visionUnavailabilityReason: visionAvailability.reason,
-              reportAvailable,
-              degradedMode: SKIN_DEGRADED_MODE,
-            });
+          : forceVisionCall
+            ? { decision: 'call', reasons: ['force_vision_call'], downgrade_confidence: true }
+            : shouldCallLlm({
+                kind: 'vision',
+                quality: photoQuality,
+                hasPrimaryInput,
+                userRequestedPhoto,
+                detectorConfidenceLevel: policyDetectorConfidenceLevel,
+                uncertainty: policyUncertainty,
+                visionAvailable,
+                visionUnavailabilityReason: visionAvailability.reason,
+                reportAvailable,
+                degradedMode: SKIN_DEGRADED_MODE,
+              });
         const reportDecision = rollout.llmKillSwitch
           ? { decision: 'skip', reasons: ['llm_kill_switch'], downgrade_confidence: true }
           : shouldCallLlm({
@@ -7651,17 +7881,26 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push('You provided a photo, but I’m missing routine/recent logs; returning a low-risk baseline first.');
         }
 
-        if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail') {
+        if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && !forceVisionCall) {
           analysis = profiler.timeSync('detector', () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality }), {
             kind: 'retake',
           });
           analysisSource = 'retake';
           if (ctx.lang === 'CN') qualityReportReasons.push('照片质量未通过：我不会调用 AI 做皮肤结论，避免误判；建议按提示重拍。');
           else qualityReportReasons.push('Photo quality failed: skipping all AI analysis to avoid guessy results; please retake.');
+        } else if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && forceVisionCall) {
+          if (ctx.lang === 'CN') qualityReportReasons.push('已开启调试强制：即使质量判定失败也会尝试继续调用照片模型。');
+          else qualityReportReasons.push('Force-vision debug enabled: attempting photo model call despite fail-grade quality.');
         }
 
         if (!analysis && visionDecision.decision === 'call') {
-          const candidates = photoQuality.grade === 'pass' ? passedPhotos : degradedPhotos.length ? degradedPhotos : passedPhotos;
+          const candidates = photoQuality.grade === 'pass'
+            ? passedPhotos
+            : degradedPhotos.length
+              ? degradedPhotos
+              : forceVisionCall
+                ? [...passedPhotos, ...degradedPhotos, ...failedPhotos]
+                : passedPhotos;
           const chosen = chooseVisionPhoto(candidates);
           if (!chosen) {
             analysisFieldMissing.push({ field: 'photos', reason: photosProvided ? 'no_usable_photo' : 'no_photo_uploaded' });
@@ -7892,17 +8131,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
           });
         }
-        if (analysis) {
-          analysis = buildExecutablePlanForAnalysis({
-            analysis,
-            language: ctx.lang,
-            usedPhotos,
-            photoQuality,
-            profileSummary,
-            photoNoticeOverride: visionPhotoNoticeMessage,
-          });
-        }
-
         const photoNotUsed = Boolean(userRequestedPhoto && photosProvided && !usedPhotos);
         const photoFailureCode = photoFailureCodes[0] || null;
         let photoNotice = null;
@@ -7914,6 +8142,21 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? `本次未能读取并分析照片（原因：${photoFailureCode}），以下结果仅基于你的问卷/历史信息。请重传后重试。`
                 : `We couldn't analyze your photo this time (reason: ${photoFailureCode}). Results below are based on your answers/history only. Please re-upload and retry.`,
           };
+        }
+        if (analysis) {
+          analysis = buildExecutablePlanForAnalysis({
+            analysis,
+            language: ctx.lang,
+            usedPhotos,
+            photoQuality,
+            profileSummary,
+            photoNoticeOverride:
+              photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
+                ? photoNotice.message
+                : visionPhotoNoticeMessage,
+            photoFailureCode,
+            photosProvided,
+          });
         }
 
         let renderedAnalysisSource = analysisSource;

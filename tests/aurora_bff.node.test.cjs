@@ -178,8 +178,15 @@ test('buildExecutablePlanForAnalysis: used_photos=false keeps non-photo takeaway
   assert.ok(enriched.plan);
   assert.equal(typeof enriched.photo_notice, 'string');
   assert.match(enriched.photo_notice, /Based on your answers only \(photo not analyzed\)/);
+  assert.ok(enriched.next_action_card && typeof enriched.next_action_card === 'object');
+  assert.equal(Array.isArray(enriched.next_action_card.retake_guide), true);
+  assert.equal(enriched.next_action_card.retake_guide.length, 3);
+  assert.equal(Array.isArray(enriched.next_action_card.ask_3_questions), true);
+  assert.equal(enriched.next_action_card.ask_3_questions.length, 3);
   assert.ok(Array.isArray(enriched.takeaways));
   assert.equal(enriched.takeaways.some((item) => item && item.source === 'photo'), false);
+  const serialized = JSON.stringify(enriched).toLowerCase();
+  assert.equal(/acne|pigmentation/.test(serialized), false);
 });
 
 test('buildExecutablePlanForAnalysis: used_photos=true links step why to photo finding ids', async () => {
@@ -247,6 +254,9 @@ test('buildExecutablePlanForAnalysis: quality fail returns retake-only plan (no 
   assert.equal(enriched.plan.today.am_steps.length, 0);
   assert.equal(Array.isArray(enriched.plan.today?.pm_steps), true);
   assert.equal(enriched.plan.today.pm_steps.length, 0);
+  assert.ok(enriched.next_action_card && typeof enriched.next_action_card === 'object');
+  assert.equal(Array.isArray(enriched.next_action_card.retake_guide), true);
+  assert.equal(Array.isArray(enriched.next_action_card.ask_3_questions), true);
   const nextRules = Array.isArray(enriched.plan.next_7_days?.rules) ? enriched.plan.next_7_days.rules.join(' ') : '';
   assert.match(nextRules, /retake/i);
   const allSteps = [
@@ -257,6 +267,8 @@ test('buildExecutablePlanForAnalysis: quality fail returns retake-only plan (no 
     .map((step) => `${step?.what || ''} ${step?.why || ''}`.toLowerCase())
     .join(' ');
   assert.equal(/retinoid|acid|vitamin c|niacinamide|exfoliat/.test(allSteps), false);
+  const serialized = JSON.stringify(enriched).toLowerCase();
+  assert.equal(/acne|pigmentation/.test(serialized), false);
 });
 
 test('Phase0 gate: no recos when profile is missing', async () => {
@@ -5072,6 +5084,14 @@ test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', a
         assert.equal(card?.payload?.analysis_source, 'rule_based_with_photo_qc');
         assert.equal(card?.payload?.photo_notice?.failure_code, 'DOWNLOAD_URL_FETCH_4XX');
         assert.match(String(card?.payload?.photo_notice?.message || ''), /couldn't analyze your photo/i);
+        const actionCard = card?.payload?.analysis?.next_action_card;
+        assert.ok(actionCard && typeof actionCard === 'object');
+        assert.equal(Array.isArray(actionCard.retake_guide), true);
+        assert.equal(actionCard.retake_guide.length, 3);
+        assert.equal(Array.isArray(actionCard.ask_3_questions), true);
+        assert.equal(actionCard.ask_3_questions.length, 3);
+        const serializedAnalysis = JSON.stringify(card?.payload?.analysis || {}).toLowerCase();
+        assert.equal(/acne|pigmentation/.test(serializedAnalysis), false);
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
         assert.equal(missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'DOWNLOAD_URL_FETCH_4XX'), true);
       } finally {

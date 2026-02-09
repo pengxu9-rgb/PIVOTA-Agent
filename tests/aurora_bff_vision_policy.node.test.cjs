@@ -267,12 +267,25 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
             card.payload.quality_report.llm.vision.reasons.includes(VisionUnavailabilityReason.VISION_MISSING_KEY),
           true,
         );
-        assert.equal(
-          Array.isArray(card?.payload?.analysis?.takeaways)
-            ? card.payload.analysis.takeaways.some((item) => item && item.source === 'photo')
-            : false,
-          true,
-        );
+        const qualityGrade = String(card?.payload?.quality_report?.photo_quality?.grade || '').toLowerCase();
+        if (qualityGrade === 'fail') {
+          assert.equal(
+            Array.isArray(card?.payload?.analysis?.takeaways)
+              ? card.payload.analysis.takeaways.some((item) => item && item.source === 'photo')
+              : false,
+            false,
+          );
+          assert.ok(card?.payload?.analysis?.next_action_card);
+          assert.equal(Array.isArray(card?.payload?.analysis?.next_action_card?.retake_guide), true);
+          assert.equal(Array.isArray(card?.payload?.analysis?.next_action_card?.ask_3_questions), true);
+        } else {
+          assert.equal(
+            Array.isArray(card?.payload?.analysis?.takeaways)
+              ? card.payload.analysis.takeaways.some((item) => item && item.source === 'photo')
+              : false,
+            true,
+          );
+        }
         assert.match(String(card?.payload?.analysis?.photo_notice || ''), /temporarily unavailable/i);
 
         const metrics = await request.get('/metrics').expect(200);
@@ -431,6 +444,57 @@ test('/v1/analysis/skin: photo_quality_fail_retake does not emit VISION_UNKNOWN 
         assert.equal(reasons.includes('photo_quality_fail_retake'), true);
         assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_UNKNOWN), false);
         assert.equal(String(card?.payload?.analysis?.photo_notice || '').toLowerCase().includes('temporarily unavailable'), false);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: force vision debug bypasses retake gate on fail-grade', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_SKIN_VISION_ENABLED: 'true',
+      AURORA_SKIN_FORCE_VISION_CALL: 'true',
+      AURORA_SKIN_VISION_PROVIDER: 'openai',
+      OPENAI_API_KEY: undefined,
+      PIVOTA_BACKEND_BASE_URL: '',
+      PIVOTA_BACKEND_AGENT_API_KEY: '',
+    },
+    async () => {
+      resetVisionMetrics();
+      const { moduleId, mod } = loadAuroraRoutesModule();
+      try {
+        const { mountAuroraBffRoutes } = mod;
+        const app = express();
+        app.use(express.json({ limit: '2mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_force_vision_debug',
+            'X-Trace-ID': 'trace_force_vision_debug',
+            'X-Brief-ID': 'brief_force_vision_debug',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'AM cleanser + SPF; PM cleanser + moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_force_vision_debug', qc_status: 'failed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((item) => item && item.type === 'analysis_summary') : null;
+        assert.ok(card);
+        const vision = card?.payload?.quality_report?.llm?.vision || {};
+        const reasons = Array.isArray(vision.reasons) ? vision.reasons : [];
+        assert.equal(vision.decision, 'fallback');
+        assert.equal(reasons.includes(VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED), true);
+        assert.notEqual(card?.payload?.analysis_source, 'retake');
       } finally {
         delete require.cache[moduleId];
       }
