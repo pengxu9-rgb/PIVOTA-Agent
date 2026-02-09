@@ -14,6 +14,20 @@ const {
   downgradeSkinAnalysisConfidence,
   humanizeLlmReasons,
 } = require('./skinLlmPolicy');
+const {
+  VisionUnavailabilityReason,
+  classifyVisionAvailability,
+  classifyVisionProviderFailure,
+  executeVisionWithRetry,
+  normalizeVisionReason,
+  isVisionFailureReason,
+  pickPrimaryVisionReason,
+  buildVisionPhotoNotice,
+} = require('./visionPolicy');
+const {
+  recordVisionDecision,
+  renderVisionMetricsPrometheus,
+} = require('./visionMetrics');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
 const { sampleHardCase, deleteHardCasesForIdentity } = require('./hardCaseSampler');
@@ -131,6 +145,14 @@ const SKIN_DEGRADED_MODE = (() => {
 const SKIN_VISION_TIMEOUT_MS = Math.max(
   2000,
   Math.min(30000, Number(process.env.AURORA_SKIN_VISION_TIMEOUT_MS || 12000)),
+);
+const SKIN_VISION_RETRY_MAX = Math.max(
+  0,
+  Math.min(2, Number(process.env.AURORA_SKIN_VISION_RETRY_MAX || 2)),
+);
+const SKIN_VISION_RETRY_BASE_MS = Math.max(
+  50,
+  Math.min(2000, Number(process.env.AURORA_SKIN_VISION_RETRY_BASE_MS || 250)),
 );
 const PHOTO_UPLOAD_PROXY_MAX_BYTES = Math.max(
   1024 * 1024,
@@ -792,10 +814,38 @@ async function runOpenAIVisionSkinAnalysis({
   profiler,
   promptVersion,
 } = {}) {
-  if (!SKIN_VISION_ENABLED) return { ok: false, reason: 'vision_disabled' };
+  const startedAt = Date.now();
+  if (!SKIN_VISION_ENABLED) {
+    return {
+      ok: false,
+      provider: 'openai',
+      reason: VisionUnavailabilityReason.VISION_DISABLED_BY_FLAG,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: { attempted: 0, final: 'fail', last_reason: VisionUnavailabilityReason.VISION_DISABLED_BY_FLAG },
+    };
+  }
   const client = getOpenAIClient();
-  if (!client) return { ok: false, reason: 'openai_not_configured' };
-  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) return { ok: false, reason: 'image_missing' };
+  if (!client) {
+    return {
+      ok: false,
+      provider: 'openai',
+      reason: VisionUnavailabilityReason.VISION_MISSING_KEY,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: { attempted: 0, final: 'fail', last_reason: VisionUnavailabilityReason.VISION_MISSING_KEY },
+    };
+  }
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+    return {
+      ok: false,
+      provider: 'openai',
+      reason: VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: { attempted: 0, final: 'fail', last_reason: VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED },
+    };
+  }
 
   const optimized =
     profiler && typeof profiler.time === 'function'
@@ -826,56 +876,84 @@ async function runOpenAIVisionSkinAnalysis({
     promptVersion,
   });
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SKIN_VISION_TIMEOUT_MS);
-  try {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const prompt =
-        attempt === 0
-          ? promptBase
-          : `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and end strategy with a single direct question mark.\n`;
+  const attemptResult = await executeVisionWithRetry({
+    maxRetries: SKIN_VISION_RETRY_MAX,
+    baseDelayMs: SKIN_VISION_RETRY_BASE_MS,
+    classifyError: classifyVisionProviderFailure,
+    operation: async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), SKIN_VISION_TIMEOUT_MS);
+      try {
+        const callOpenAI = async () =>
+          client.chat.completions.create(
+            {
+              model: SKIN_VISION_MODEL,
+              temperature: 0.2,
+              max_tokens: 480,
+              response_format: { type: 'json_object' },
+              messages: [
+                { role: 'system', content: 'You produce ONLY JSON.' },
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'text',
+                      text: `${promptBase}\nSELF-CHECK before responding: output MUST be strict JSON (no markdown/text), match the exact keys, and end strategy with a single direct question mark.\n`,
+                    },
+                    { type: 'image_url', image_url: { url: dataUrl } },
+                  ],
+                },
+              ],
+            },
+            { signal: controller.signal },
+          );
 
-      const temperature = attempt === 0 ? 0.2 : 0.0;
-      const callOpenAI = async () =>
-        client.chat.completions.create(
-          {
-            model: SKIN_VISION_MODEL,
-            temperature,
-            max_tokens: 480,
-            response_format: { type: 'json_object' },
-            messages: [
-              { role: 'system', content: 'You produce ONLY JSON.' },
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: prompt },
-                  { type: 'image_url', image_url: { url: dataUrl } },
-                ],
-              },
-            ],
-          },
-          { signal: controller.signal },
-        );
+        const resp =
+          profiler && typeof profiler.timeLlmCall === 'function'
+            ? await profiler.timeLlmCall({ provider: 'openai', model: SKIN_VISION_MODEL, kind: 'skin_vision' }, callOpenAI)
+            : await callOpenAI();
 
-      const resp =
-        profiler && typeof profiler.timeLlmCall === 'function'
-          ? await profiler.timeLlmCall({ provider: 'openai', model: SKIN_VISION_MODEL, kind: 'skin_vision' }, callOpenAI)
-          : await callOpenAI();
+        const content = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
+        const jsonOnly = unwrapCodeFence(content);
+        const parsedObj = parseJsonOnlyObject(jsonOnly);
+        const analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language });
+        if (!analysis) {
+          const schemaErr = new Error('vision schema invalid');
+          schemaErr.__vision_reason = VisionUnavailabilityReason.VISION_SCHEMA_INVALID;
+          throw schemaErr;
+        }
+        return { analysis };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  });
 
-      const content = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
-      const jsonOnly = unwrapCodeFence(content);
-      const parsedObj = parseJsonOnlyObject(jsonOnly);
-      const analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language });
-      if (analysis) return { ok: true, analysis };
-    }
-
-    return { ok: false, reason: 'vision_output_invalid' };
-  } catch (err) {
-    if (err && err.name === 'AbortError') return { ok: false, reason: 'vision_timeout' };
-    return { ok: false, reason: 'vision_failed', error: err && (err.code || err.message) ? String(err.code || err.message) : null };
-  } finally {
-    clearTimeout(timer);
+  if (attemptResult && attemptResult.ok && attemptResult.result && attemptResult.result.analysis) {
+    return {
+      ok: true,
+      provider: 'openai',
+      analysis: attemptResult.result.analysis,
+      upstream_status_code: null,
+      latency_ms: Date.now() - startedAt,
+      retry: attemptResult.retry,
+    };
   }
+
+  return {
+    ok: false,
+    provider: 'openai',
+    reason: normalizeVisionReason(attemptResult && attemptResult.reason),
+    upstream_status_code:
+      attemptResult && Number.isFinite(Number(attemptResult.upstream_status_code))
+        ? Math.trunc(Number(attemptResult.upstream_status_code))
+        : null,
+    error: attemptResult && attemptResult.error_code ? String(attemptResult.error_code) : null,
+    latency_ms: Date.now() - startedAt,
+    retry:
+      (attemptResult && attemptResult.retry) ||
+      { attempted: 0, final: 'fail', last_reason: normalizeVisionReason(attemptResult && attemptResult.reason) },
+  };
 }
 
 function sleep(ms) {
@@ -1103,14 +1181,16 @@ function renderPlanAsStrategy({ plan, language, photoNotice } = {}) {
   return lines.join('\n').slice(0, 1200);
 }
 
-function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQuality, profileSummary } = {}) {
+function buildExecutablePlanForAnalysis({ analysis, language, usedPhotos, photoQuality, profileSummary, photoNoticeOverride } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const base = analysis && typeof analysis === 'object' && !Array.isArray(analysis) ? { ...analysis } : null;
   if (!base) return analysis;
 
   const quality = photoQuality && typeof photoQuality === 'object' ? photoQuality : { grade: 'unknown', reasons: [] };
   const qualityFail = String(quality.grade || '').trim().toLowerCase() === 'fail';
-  const photoNotice = usedPhotos ? null : 'Based on your answers only (photo not analyzed).';
+  const defaultPhotoNotice = usedPhotos ? null : 'Based on your answers only (photo not analyzed).';
+  const overrideNotice = typeof photoNoticeOverride === 'string' ? photoNoticeOverride.trim() : '';
+  const photoNotice = overrideNotice ? [overrideNotice, defaultPhotoNotice].filter(Boolean).join(' ') : defaultPhotoNotice;
 
   const findingsInput = usedPhotos
     ? Array.isArray(base.photo_findings)
@@ -4040,6 +4120,11 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
+  app.get('/metrics', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    return res.status(200).send(renderVisionMetricsPrometheus());
+  });
+
   app.post('/v1/auth/start', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -6923,7 +7008,11 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const userRequestedPhoto = parsed.data.use_photo === true;
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
-        const visionAvailable = SKIN_VISION_ENABLED && Boolean(OPENAI_API_KEY) && !rollout.llmKillSwitch;
+        const visionAvailability = classifyVisionAvailability({
+          enabled: SKIN_VISION_ENABLED,
+          apiKeyConfigured: Boolean(OPENAI_API_KEY),
+        });
+        const visionAvailable = visionAvailability.available && !rollout.llmKillSwitch;
         const reportAvailable = Boolean(AURORA_DECISION_BASE_URL) && !USE_AURORA_BFF_MOCK && !rollout.llmKillSwitch;
 
         const analysisFieldMissing = [];
@@ -6931,6 +7020,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         const photoFailureCodes = [];
         let usedPhotos = false;
         let analysisSource = 'rule_based';
+        let visionRuntime = null;
+        let visionDecisionForReport = null;
 
 	        let diagnosisPhoto = null;
 	        let diagnosisPhotoBytes = null;
@@ -7051,6 +7142,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               detectorConfidenceLevel: policyDetectorConfidenceLevel,
               uncertainty: policyUncertainty,
               visionAvailable,
+              visionUnavailabilityReason: visionAvailability.reason,
               reportAvailable,
               degradedMode: SKIN_DEGRADED_MODE,
             });
@@ -7129,17 +7221,19 @@ function mountAuroraBffRoutes(app, { logger }) {
                 profiler,
                 promptVersion,
               });
+              visionRuntime = vision;
               if (vision && vision.ok && vision.analysis) {
                 analysis = vision.analysis;
                 usedPhotos = true;
                 analysisSource = 'vision_openai';
               } else if (vision && !vision.ok) {
+                const normalizedReason = normalizeVisionReason(vision.reason);
                 analysisFieldMissing.push({
                   field: 'analysis.used_photos',
-                  reason: vision.reason || 'vision_failed',
+                  reason: normalizedReason || 'VISION_UNKNOWN',
                 });
-                if (ctx.lang === 'CN') qualityReportReasons.push(`照片解析失败（${vision.reason || 'unknown'}）；我会退回到确定性基线。`);
-                else qualityReportReasons.push(`Photo analysis failed (${vision.reason || 'unknown'}); falling back to deterministic baseline.`);
+                if (ctx.lang === 'CN') qualityReportReasons.push(`照片解析失败（${normalizedReason || 'VISION_UNKNOWN'}）；我会退回到确定性基线。`);
+                else qualityReportReasons.push(`Photo analysis failed (${normalizedReason || 'VISION_UNKNOWN'}); falling back to deterministic baseline.`);
                 if (vision.error) logger?.warn({ err: vision.error }, 'aurora bff: vision skin analysis failed');
               }
             }
@@ -7228,6 +7322,75 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
+        const baseVisionReasons = Array.isArray(visionDecision.reasons) ? visionDecision.reasons.filter(Boolean) : [];
+        const firstVisionFailureReason = pickPrimaryVisionReason(baseVisionReasons);
+        const unavailabilityOnSkip = Boolean(visionDecision.decision === 'skip' && firstVisionFailureReason);
+        const visionRetryDefault = {
+          attempted: 0,
+          final: 'fail',
+          last_reason: firstVisionFailureReason || null,
+        };
+        visionDecisionForReport = {
+          ...visionDecision,
+          reasons: baseVisionReasons,
+          provider: 'openai',
+          upstream_status_code: null,
+          latency_ms: null,
+          retry: visionRetryDefault,
+        };
+
+        if (visionRuntime && visionRuntime.ok) {
+          visionDecisionForReport = {
+            ...visionDecisionForReport,
+            decision: 'call',
+            reasons: ['quality_pass'],
+            retry: visionRuntime.retry || { attempted: 0, final: 'success', last_reason: null },
+            upstream_status_code: null,
+            latency_ms: Number.isFinite(Number(visionRuntime.latency_ms)) ? Number(visionRuntime.latency_ms) : null,
+          };
+        } else if (visionRuntime && !visionRuntime.ok) {
+          const runtimeReason = normalizeVisionReason(visionRuntime.reason);
+          const runtimeReasons = [runtimeReason];
+          if (usedPhotos) runtimeReasons.push(VisionUnavailabilityReason.VISION_CV_FALLBACK_USED);
+          visionDecisionForReport = {
+            ...visionDecisionForReport,
+            decision: 'fallback',
+            reasons: Array.from(new Set(runtimeReasons)),
+            retry: visionRuntime.retry || { attempted: 0, final: 'fail', last_reason: runtimeReason },
+            upstream_status_code:
+              Number.isFinite(Number(visionRuntime.upstream_status_code)) ? Math.trunc(Number(visionRuntime.upstream_status_code)) : null,
+            latency_ms: Number.isFinite(Number(visionRuntime.latency_ms)) ? Number(visionRuntime.latency_ms) : null,
+          };
+        } else if (visionDecision.decision === 'call' && photoFailureCodes.length) {
+          const reasons = [VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED];
+          if (usedPhotos) reasons.push(VisionUnavailabilityReason.VISION_CV_FALLBACK_USED);
+          visionDecisionForReport = {
+            ...visionDecisionForReport,
+            decision: 'fallback',
+            reasons,
+            retry: { attempted: 0, final: 'fail', last_reason: VisionUnavailabilityReason.VISION_IMAGE_FETCH_FAILED },
+          };
+        } else if (unavailabilityOnSkip && userRequestedPhoto && photosProvided && usedPhotos) {
+          visionDecisionForReport = {
+            ...visionDecisionForReport,
+            decision: 'fallback',
+            reasons: Array.from(new Set([...baseVisionReasons, VisionUnavailabilityReason.VISION_CV_FALLBACK_USED])),
+          };
+        }
+
+        const visionNoticeReason = pickPrimaryVisionReason(visionDecisionForReport.reasons);
+        const visionPhotoNoticeMessage = buildVisionPhotoNotice({
+          reason: visionNoticeReason,
+          language: ctx.lang,
+        });
+
+        recordVisionDecision({
+          provider: visionDecisionForReport.provider || 'openai',
+          decision: visionDecisionForReport.decision,
+          reasons: visionDecisionForReport.reasons,
+          latencyMs: visionDecisionForReport.latency_ms,
+        });
+
         const mustDowngrade =
           userRequestedPhoto &&
           photosProvided &&
@@ -7249,6 +7412,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             usedPhotos,
             photoQuality,
             profileSummary,
+            photoNoticeOverride: visionPhotoNoticeMessage,
           });
         }
 
@@ -7302,7 +7466,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   detector_confidence: detectorConfidence,
                   ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
                   degraded_mode: SKIN_DEGRADED_MODE,
-                  llm: { vision: visionDecision, report: reportDecision },
+                  llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
                   reasons: qualityReportReasons.slice(0, 8),
                 },
               },

@@ -99,6 +99,7 @@ function shouldCallLlm({
   detectorConfidenceLevel,
   uncertainty,
   visionAvailable,
+  visionUnavailabilityReason,
   reportAvailable,
   degradedMode,
 } = {}) {
@@ -117,7 +118,11 @@ function shouldCallLlm({
 
   if (k === 'vision') {
     if (!userRequestedPhoto) return { decision: 'skip', reasons: ['photo_not_requested'], downgrade_confidence: false };
-    if (!visionAvailable) return { decision: 'skip', reasons: ['vision_unavailable'], downgrade_confidence: false };
+    if (!visionAvailable) {
+      const rawReason = String(visionUnavailabilityReason || '').trim();
+      const normalizedReason = rawReason && /^VISION_[A-Z0-9_]+$/.test(rawReason) ? rawReason : 'vision_unavailable';
+      return { decision: 'skip', reasons: [normalizedReason], downgrade_confidence: false };
+    }
 
     if (q === 'fail') return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
 
@@ -216,6 +221,17 @@ const REASON_TEXT = Object.freeze({
     detector_confident_template: 'Signals are strong enough; using a deterministic template instead of calling an LLM.',
     detector_uncertain: 'Signals are uncertain; calling an LLM to explain / arbitrate.',
     quality_pass: 'Photo quality passed.',
+    vision_missing_key: 'Photo model key is missing.',
+    vision_disabled_by_flag: 'Photo model is disabled by feature flag.',
+    vision_rate_limited: 'Photo model is temporarily rate-limited.',
+    vision_quota_exceeded: 'Photo model quota is exhausted.',
+    vision_timeout: 'Photo model timed out.',
+    vision_upstream_4xx: 'Photo model request was rejected (4xx).',
+    vision_upstream_5xx: 'Photo model upstream failed (5xx).',
+    vision_schema_invalid: 'Photo model output schema is invalid.',
+    vision_image_fetch_failed: 'Photo image download or decode failed.',
+    vision_unknown: 'Photo model failed for an unknown reason.',
+    vision_cv_fallback_used: 'Photo model unavailable; CV fallback was used.',
     unknown_kind: 'Unknown LLM kind.',
   }),
   CN: Object.freeze({
@@ -232,6 +248,17 @@ const REASON_TEXT = Object.freeze({
     detector_confident_template: '已有足够确定的信号：用确定性模板生成更稳的报告（不再调用模型）。',
     detector_uncertain: '信号不确定：调用模型做解释/仲裁。',
     quality_pass: '照片质量通过。',
+    vision_missing_key: '照片模型密钥缺失。',
+    vision_disabled_by_flag: '照片模型被开关禁用。',
+    vision_rate_limited: '照片模型触发限流。',
+    vision_quota_exceeded: '照片模型配额已耗尽。',
+    vision_timeout: '照片模型调用超时。',
+    vision_upstream_4xx: '照片模型请求被拒绝（4xx）。',
+    vision_upstream_5xx: '照片模型上游故障（5xx）。',
+    vision_schema_invalid: '照片模型输出不符合结构化格式。',
+    vision_image_fetch_failed: '照片下载或解码失败。',
+    vision_unknown: '照片模型失败（未知原因）。',
+    vision_cv_fallback_used: '照片模型不可用，已使用 CV 兜底。',
     unknown_kind: '未知模型类型。',
   }),
 });
