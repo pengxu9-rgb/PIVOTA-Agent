@@ -3,6 +3,11 @@ const { withClient } = require('../db');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
+function sleep(ms) {
+  const delay = Math.max(0, Number(ms) || 0);
+  return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
 function clampInt(value, { min, max, fallback }) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -310,6 +315,8 @@ async function fetchCandidatesViaAgentSearch({
   searchAllMerchants,
   limit,
   timeoutMs,
+  maxRetries,
+  retryBackoffMs,
 }) {
   const baseUrl = String(pivotaApiBase || '').replace(/\/$/, '');
   if (!baseUrl) return { ok: false, products: [], reason: 'pivota_api_base_missing' };
@@ -319,6 +326,8 @@ async function fetchCandidatesViaAgentSearch({
 
   const safeLimit = clampInt(limit, { min: 1, max: 50, fallback: 20 });
   const safeTimeout = clampInt(timeoutMs, { min: 50, max: 15000, fallback: 1500 });
+  const safeMaxRetries = clampInt(maxRetries, { min: 0, max: 3, fallback: 1 });
+  const safeRetryBackoff = clampInt(retryBackoffMs, { min: 25, max: 1000, fallback: 90 });
 
   const params = {
     query: q,
@@ -329,29 +338,56 @@ async function fetchCandidatesViaAgentSearch({
     ...(Array.isArray(merchantIds) && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
   };
 
-  try {
-    const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
-      params,
-      headers: buildUpstreamHeaders({ pivotaApiKey, checkoutToken }),
-      timeout: safeTimeout,
-      validateStatus: () => true,
-    });
+  let attempts = 0;
+  while (attempts <= safeMaxRetries) {
+    attempts += 1;
+    try {
+      const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
+        params,
+        headers: buildUpstreamHeaders({ pivotaApiKey, checkoutToken }),
+        timeout: safeTimeout,
+        validateStatus: () => true,
+      });
 
-    if (resp.status !== 200) {
-      return { ok: false, products: [], reason: `upstream_status_${resp.status}` };
+      if (resp.status === 200) {
+        const products = extractProductsFromAgentSearchResponse(resp.data);
+        return { ok: true, products, attempts };
+      }
+
+      const reason = `upstream_status_${resp.status}`;
+      const retryable = resp.status === 429 || resp.status >= 500;
+      if (retryable && attempts <= safeMaxRetries) {
+        await sleep(safeRetryBackoff * attempts);
+        continue;
+      }
+      return { ok: false, products: [], reason, status: resp.status, attempts };
+    } catch (err) {
+      const msg = String(err?.message || err || '');
+      const isTimeout = /timeout|aborted|ECONNABORTED/i.test(msg);
+      const reason = isTimeout ? 'upstream_timeout' : 'upstream_error';
+      if (attempts <= safeMaxRetries) {
+        await sleep(safeRetryBackoff * attempts);
+        continue;
+      }
+      return { ok: false, products: [], reason, attempts };
     }
-    const products = extractProductsFromAgentSearchResponse(resp.data);
-    return { ok: true, products };
-  } catch (err) {
-    const msg = String(err?.message || err || '');
-    const isTimeout = /timeout|aborted|ECONNABORTED/i.test(msg);
-    return { ok: false, products: [], reason: isTimeout ? 'upstream_timeout' : 'upstream_error' };
   }
+
+  return { ok: false, products: [], reason: 'upstream_error', attempts };
 }
 
-async function fetchCandidatesViaProductsCache({ merchantIds, query, limit, timeoutMs }) {
-  const mids = Array.isArray(merchantIds) ? merchantIds.map((m) => String(m || '').trim()).filter(Boolean) : [];
-  if (mids.length === 0) return { ok: false, products: [], reason: 'merchant_ids_missing' };
+async function fetchCandidatesViaProductsCache({
+  merchantIds,
+  query,
+  limit,
+  timeoutMs,
+  searchAllMerchants = false,
+}) {
+  const mids = Array.isArray(merchantIds)
+    ? merchantIds.map((m) => String(m || '').trim()).filter(Boolean)
+    : [];
+  const useMerchantScope = !searchAllMerchants;
+  if (useMerchantScope && mids.length === 0) return { ok: false, products: [], reason: 'merchant_ids_missing' };
   if (!process.env.DATABASE_URL) return { ok: false, products: [], reason: 'db_not_configured' };
 
   const normalizedQuery = normalizeTextForResolver(query);
@@ -359,7 +395,7 @@ async function fetchCandidatesViaProductsCache({ merchantIds, query, limit, time
   if (tokens.length === 0) return { ok: true, products: [] };
 
   const safeLimit = clampInt(limit, { min: 1, max: 100, fallback: 40 });
-  const fetchLimit = Math.min(250, Math.max(safeLimit * 6, 80));
+  const fetchLimit = Math.min(350, Math.max(safeLimit * 8, 120));
   const safeTimeout = clampInt(timeoutMs, { min: 50, max: 15000, fallback: 1500 });
 
   const matchFields = [
@@ -373,8 +409,8 @@ async function fetchCandidatesViaProductsCache({ merchantIds, query, limit, time
   ];
 
   const whereParts = [];
-  const params = [mids];
-  let idx = 2;
+  const params = [];
+  let idx = 1;
 
   for (const t of tokens.slice(0, 10)) {
     params.push(`%${t}%`);
@@ -384,6 +420,13 @@ async function fetchCandidatesViaProductsCache({ merchantIds, query, limit, time
   }
 
   const tokenWhere = whereParts.length ? `(${whereParts.join(' OR ')})` : 'TRUE';
+  const merchantScopeWhere = useMerchantScope ? `merchant_id = ANY($${idx})` : 'TRUE';
+  if (useMerchantScope) {
+    params.push(mids);
+    idx += 1;
+  }
+  const limitParam = idx;
+  params.push(fetchLimit);
 
   const sql = `
     WITH latest AS (
@@ -404,7 +447,7 @@ async function fetchCandidatesViaProductsCache({ merchantIds, query, limit, time
           product_data,
           cached_at
         FROM products_cache
-        WHERE merchant_id = ANY($1)
+        WHERE ${merchantScopeWhere}
           AND (expires_at IS NULL OR expires_at > now())
           AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
           AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
@@ -416,9 +459,8 @@ async function fetchCandidatesViaProductsCache({ merchantIds, query, limit, time
     SELECT merchant_id, cache_product_id, product_data
     FROM latest
     ORDER BY cached_at DESC
-    LIMIT $${idx}
+    LIMIT $${limitParam}
   `;
-  params.push(fetchLimit);
 
   try {
     const res = await withClient(async (client) => {
@@ -484,7 +526,7 @@ async function resolveProductRef({
   checkoutToken,
 }) {
   const startMs = Date.now();
-  const timeoutMs = clampInt(options?.timeout_ms, { min: 100, max: 15000, fallback: 800 });
+  const timeoutMs = clampInt(options?.timeout_ms, { min: 100, max: 15000, fallback: 1600 });
   const deadlineMs = startMs + timeoutMs;
 
   const q = String(query || '').trim();
@@ -519,6 +561,8 @@ async function resolveProductRef({
   const searchAllMerchants =
     options?.search_all_merchants === true || options?.searchAllMerchants === true || (!preferMerchants.length && options?.search_all_merchants !== false);
   const limit = clampInt(options?.limit, { min: 1, max: 50, fallback: 20 });
+  const upstreamRetries = clampInt(options?.upstream_retries, { min: 0, max: 3, fallback: 1 });
+  const upstreamRetryBackoffMs = clampInt(options?.upstream_retry_backoff_ms, { min: 25, max: 1000, fallback: 90 });
 
   const products = [];
   const sources = [];
@@ -527,13 +571,24 @@ async function resolveProductRef({
     return Math.max(0, deadlineMs - Date.now());
   }
 
+  function stageTimeout({ capMs, reserveMs = 0, floorMs = 50 }) {
+    const remaining = remainingMs();
+    if (remaining <= floorMs) return 0;
+    const keep = Math.max(0, Number(reserveMs) || 0);
+    const cap = Math.max(floorMs, Number(capMs) || floorMs);
+    const budgeted = Math.max(floorMs, remaining - keep);
+    return Math.max(floorMs, Math.min(cap, budgeted));
+  }
+
   // 1) Prefer: products_cache (merchant inventory) for prefer_merchants.
-  if (preferMerchants.length > 0 && remainingMs() >= 60) {
+  const scopedCacheTimeout = stageTimeout({ capMs: 650, reserveMs: 900, floorMs: 60 });
+  if (preferMerchants.length > 0 && scopedCacheTimeout >= 60) {
     const cacheResp = await fetchCandidatesViaProductsCache({
       merchantIds: preferMerchants,
       query: q,
       limit,
-      timeoutMs: Math.max(50, remainingMs()),
+      timeoutMs: scopedCacheTimeout,
+      searchAllMerchants: false,
     });
     if (cacheResp.ok && Array.isArray(cacheResp.products) && cacheResp.products.length) {
       products.push(...cacheResp.products);
@@ -544,7 +599,9 @@ async function resolveProductRef({
   }
 
   // 2) Fallback: agent search scoped to prefer_merchants (fast).
-  if (products.length === 0 && preferMerchants.length > 0 && remainingMs() >= 80) {
+  const scopedUpstreamTimeout = stageTimeout({ capMs: 900, reserveMs: 850, floorMs: 80 });
+  if (products.length === 0 && preferMerchants.length > 0 && scopedUpstreamTimeout >= 80) {
+    const scopedRetries = scopedUpstreamTimeout >= 700 ? upstreamRetries : 0;
     const upstreamScoped = await fetchCandidatesViaAgentSearch({
       pivotaApiBase,
       pivotaApiKey,
@@ -553,23 +610,59 @@ async function resolveProductRef({
       merchantIds: preferMerchants,
       searchAllMerchants: false,
       limit,
-      timeoutMs: Math.max(50, remainingMs()),
+      timeoutMs: scopedUpstreamTimeout,
+      maxRetries: scopedRetries,
+      retryBackoffMs: upstreamRetryBackoffMs,
     });
     if (upstreamScoped.ok && Array.isArray(upstreamScoped.products) && upstreamScoped.products.length) {
       products.push(...upstreamScoped.products);
-      sources.push({ source: 'agent_search_scoped', ok: true, count: upstreamScoped.products.length });
+      sources.push({
+        source: 'agent_search_scoped',
+        ok: true,
+        count: upstreamScoped.products.length,
+        attempts: upstreamScoped.attempts || 1,
+      });
     } else {
-      sources.push({ source: 'agent_search_scoped', ok: false, reason: upstreamScoped.reason || 'no_results' });
+      sources.push({
+        source: 'agent_search_scoped',
+        ok: false,
+        reason: upstreamScoped.reason || 'no_results',
+        ...(upstreamScoped.status ? { status: upstreamScoped.status } : {}),
+        attempts: upstreamScoped.attempts || 1,
+      });
     }
   }
 
-  // 3) Optional: global agent search (no external_seed by default).
+  // 3) Optional: global products_cache fallback (avoids network timeouts).
+  const globalCacheTimeout = stageTimeout({ capMs: 850, reserveMs: 300, floorMs: 60 });
+  const shouldTryGlobalCache =
+    globalCacheTimeout >= 60 &&
+    (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
+    products.length < Math.max(6, Math.min(14, limit));
+  if (shouldTryGlobalCache) {
+    const cacheGlobal = await fetchCandidatesViaProductsCache({
+      query: q,
+      limit: Math.max(limit, 24),
+      timeoutMs: globalCacheTimeout,
+      searchAllMerchants: true,
+    });
+    if (cacheGlobal.ok && Array.isArray(cacheGlobal.products) && cacheGlobal.products.length) {
+      products.push(...cacheGlobal.products);
+      sources.push({ source: 'products_cache_global', ok: true, count: cacheGlobal.products.length });
+    } else {
+      sources.push({ source: 'products_cache_global', ok: false, reason: cacheGlobal.reason || 'no_results' });
+    }
+  }
+
+  // 4) Optional: global agent search (no external_seed by default).
+  const globalUpstreamTimeout = stageTimeout({ capMs: 1400, reserveMs: 0, floorMs: 120 });
   const shouldTryGlobal =
-    remainingMs() >= 120 &&
+    globalUpstreamTimeout >= 120 &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     // Avoid a second network call when we already have plenty of candidates.
     products.length < Math.max(6, Math.min(14, limit));
   if (shouldTryGlobal) {
+    const globalRetries = globalUpstreamTimeout >= 900 ? upstreamRetries : 0;
     const upstreamGlobal = await fetchCandidatesViaAgentSearch({
       pivotaApiBase,
       pivotaApiKey,
@@ -578,13 +671,26 @@ async function resolveProductRef({
       merchantIds: undefined,
       searchAllMerchants: true,
       limit: Math.max(limit, 18),
-      timeoutMs: Math.max(50, remainingMs()),
+      timeoutMs: globalUpstreamTimeout,
+      maxRetries: globalRetries,
+      retryBackoffMs: upstreamRetryBackoffMs,
     });
     if (upstreamGlobal.ok && Array.isArray(upstreamGlobal.products) && upstreamGlobal.products.length) {
       products.push(...upstreamGlobal.products);
-      sources.push({ source: 'agent_search_global', ok: true, count: upstreamGlobal.products.length });
+      sources.push({
+        source: 'agent_search_global',
+        ok: true,
+        count: upstreamGlobal.products.length,
+        attempts: upstreamGlobal.attempts || 1,
+      });
     } else {
-      sources.push({ source: 'agent_search_global', ok: false, reason: upstreamGlobal.reason || 'no_results' });
+      sources.push({
+        source: 'agent_search_global',
+        ok: false,
+        reason: upstreamGlobal.reason || 'no_results',
+        ...(upstreamGlobal.status ? { status: upstreamGlobal.status } : {}),
+        attempts: upstreamGlobal.attempts || 1,
+      });
     }
   }
 

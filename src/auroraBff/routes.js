@@ -37,8 +37,14 @@ const {
   recordVerifyHardCase,
   recordAnalyzeRequest,
   recordGeometrySanitizerTotals,
+  recordPhotoModulesCardEmitted,
+  recordRegionsEmitted,
+  recordModulesIssueCountHistogram,
+  recordIngredientActionsEmitted,
+  recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
+const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
@@ -216,6 +222,15 @@ const PHOTO_BYTES_CACHE_TTL_MS = Math.max(
   Math.min(30 * 60 * 1000, Number(process.env.AURORA_PHOTO_CACHE_TTL_MS || 10 * 60 * 1000)),
 );
 const PHOTO_AUTO_ANALYZE_AFTER_CONFIRM = String(process.env.AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM || 'true').toLowerCase() !== 'false';
+const DIAG_PHOTO_MODULES_CARD = String(process.env.DIAG_PHOTO_MODULES_CARD || '').toLowerCase() === 'true';
+const DIAG_OVERLAY_MODE = (() => {
+  const raw = String(process.env.DIAG_OVERLAY_MODE || 'client')
+    .trim()
+    .toLowerCase();
+  return raw === 'client' ? 'client' : 'client';
+})();
+const DIAG_INGREDIENT_REC = String(process.env.DIAG_INGREDIENT_REC || 'true').toLowerCase() !== 'false';
+const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || '').toLowerCase() === 'true';
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -996,6 +1011,92 @@ function buildPhotoAutoNoticeMessage({ language, failureCode }) {
   return `We couldn't analyze your photo this time (reason: ${code}). Results below are based on your answers/history only. Please re-upload and retry.`;
 }
 
+function maybeBuildPhotoModulesCardForAnalysis({
+  requestId,
+  analysis,
+  usedPhotos,
+  photoQuality,
+  photoNotice,
+  diagnosisInternal,
+  profileSummary,
+  language,
+} = {}) {
+  if (!DIAG_PHOTO_MODULES_CARD) return null;
+  if (DIAG_OVERLAY_MODE !== 'client') return null;
+
+  const photoNoticeText =
+    typeof photoNotice === 'string'
+      ? photoNotice
+      : photoNotice && typeof photoNotice.message === 'string'
+        ? photoNotice.message
+        : null;
+
+  const built = buildPhotoModulesCard({
+    requestId,
+    analysis,
+    usedPhotos: Boolean(usedPhotos),
+    photoQuality,
+    photoNotice: photoNoticeText,
+    diagnosisInternal,
+    profileSummary,
+    language,
+    ingredientRecEnabled: DIAG_INGREDIENT_REC,
+    productRecEnabled: DIAG_PRODUCT_REC,
+  });
+  if (!built || !built.card) return null;
+
+  const metrics = built.metrics && typeof built.metrics === 'object' ? built.metrics : {};
+  recordPhotoModulesCardEmitted({
+    qualityGrade: metrics.quality_grade || (photoQuality && photoQuality.grade),
+  });
+
+  const regionCounts = Array.isArray(metrics.regionCounts) ? metrics.regionCounts : [];
+  for (const row of regionCounts) {
+    const delta = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (delta <= 0) continue;
+    recordRegionsEmitted({
+      regionType: row.region_type,
+      issueType: row.issue_type,
+      delta,
+    });
+  }
+
+  const moduleIssueCounts = Array.isArray(metrics.moduleIssueCounts) ? metrics.moduleIssueCounts : [];
+  for (const row of moduleIssueCounts) {
+    const count = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (count <= 0) continue;
+    recordModulesIssueCountHistogram({
+      moduleId: row.module_id,
+      issueType: row.issue_type,
+      count,
+    });
+  }
+
+  const ingredientActionCounts = Array.isArray(metrics.ingredientActionCounts) ? metrics.ingredientActionCounts : [];
+  for (const row of ingredientActionCounts) {
+    const delta = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (delta <= 0) continue;
+    recordIngredientActionsEmitted({
+      moduleId: row.module_id,
+      issueType: row.issue_type,
+      delta,
+    });
+  }
+
+  const geometryDropCounts = Array.isArray(metrics.geometryDropCounts) ? metrics.geometryDropCounts : [];
+  for (const row of geometryDropCounts) {
+    const delta = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (delta <= 0) continue;
+    recordGeometrySanitizerDropReason({
+      reason: row.reason,
+      regionType: row.region_type,
+      delta,
+    });
+  }
+
+  return built.card;
+}
+
 async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, qcStatus, logger, identity } = {}) {
   if (!PHOTO_AUTO_ANALYZE_AFTER_CONFIRM) return null;
   if (!photoId || !isPassedPhotoQcStatus(qcStatus)) return null;
@@ -1028,6 +1129,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
   let usedPhotos = false;
   let analysisSource = hasPrimaryInput ? 'rule_based_with_photo_qc' : 'baseline_low_confidence';
   let diagnosisV1 = null;
+  let diagnosisV1Internal = null;
   let analysis = null;
   let photoNotice = null;
 
@@ -1044,6 +1146,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
       });
       if (diag && diag.ok && diag.diagnosis) {
         diagnosisV1 = diag.diagnosis;
+        diagnosisV1Internal = diag.internal || null;
         usedPhotos = true;
         const qGrade = String(diagnosisV1?.quality?.grade || '').trim().toLowerCase();
         if (qGrade === 'fail') {
@@ -1218,13 +1321,29 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     },
   };
 
-  return {
-    card: {
+  const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
+    requestId: ctx.request_id,
+    analysis,
+    usedPhotos,
+    photoQuality: diagnosisV1 && diagnosisV1.quality ? diagnosisV1.quality : photoQuality,
+    photoNotice,
+    diagnosisInternal: diagnosisV1Internal,
+    profileSummary,
+    language,
+  });
+
+  const cards = [
+    {
       card_id: `analysis_${ctx.request_id}`,
       type: 'analysis_summary',
       payload,
       ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
     },
+    ...(photoModulesCard ? [photoModulesCard] : []),
+  ];
+
+  return {
+    cards,
     session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
     event: makeEvent(ctx, 'value_moment', {
       kind: 'skin_analysis',
@@ -1254,7 +1373,7 @@ async function safeBuildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slot
       'aurora bff: auto analysis failed unexpectedly; returning photo_confirm only',
     );
     return {
-      card: null,
+      cards: [],
       session_patch: {},
       event: makeEvent(ctx, 'error', { code }),
     };
@@ -4537,7 +4656,8 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
   const barrierStatus = mapBarrierStatus(profile && profile.barrierStatus);
   const concerns = mapConcerns(profile && profile.goals);
   const region = profile && typeof profile.region === 'string' && profile.region.trim() ? profile.region.trim() : 'US';
-  const budget = normalizeBudgetHint(profile && profile.budgetTier) || normalizeBudgetHint(constraints && constraints.budget) || '不确定';
+  const budgetKnown = normalizeBudgetHint(profile && profile.budgetTier) || normalizeBudgetHint(constraints && constraints.budget) || '';
+  const budget = budgetKnown || 'unknown';
   const goal = typeof focus === 'string' && focus.trim()
     ? focus.trim()
     : constraints && typeof constraints.goal === 'string' && constraints.goal.trim()
@@ -4549,6 +4669,9 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
 
   const concernsStr = concerns.length ? concerns.join(', ') : 'none';
   const reply = lang === 'CN' ? 'Chinese' : 'English';
+  const budgetRule = budgetKnown
+    ? 'Budget is provided; keep product picks close to this budget band.'
+    : 'Budget is unknown; provide a balanced-value baseline first and do not ask budget in the first response unless user explicitly asks to optimize by budget.';
 
   const productsNote = profile && profile.currentRoutine ? `Current routine: ${JSON.stringify(profile.currentRoutine).slice(0, 1000)}\n` : '';
 
@@ -4557,7 +4680,8 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
     `Goal: ${goal}.\n` +
     `${productsNote}` +
     `Preference: ${preference}.\n` +
-    `Please recommend a simple AM/PM skincare routine within my budget. Reply in ${reply}.`
+    `${budgetRule}\n` +
+    `Please recommend a simple AM/PM skincare routine. Reply in ${reply}.`
   );
 }
 
@@ -4566,10 +4690,14 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
   const barrierStatus = mapBarrierStatus(profile && profile.barrierStatus);
   const concerns = mapConcerns(profile && profile.goals);
   const region = profile && typeof profile.region === 'string' && profile.region.trim() ? profile.region.trim() : 'US';
-  const budget = normalizeBudgetHint(profile && profile.budgetTier) || 'unknown';
+  const budgetKnown = normalizeBudgetHint(profile && profile.budgetTier) || '';
+  const budget = budgetKnown || 'unknown';
   const concernsStr = concerns.length ? concerns.join(', ') : 'none';
   const replyLang = lang === 'CN' ? 'Chinese' : 'English';
   const req = typeof requestText === 'string' ? requestText.trim() : '';
+  const budgetReasonRule = budgetKnown
+    ? 'If budget is known, include one reason that references budget fit.'
+    : 'If budget is unknown, do not ask budget in the first response; focus on efficacy/tolerance and balanced value.';
 
   return (
     `User profile: skin type ${skinType}; barrier status: ${barrierStatus}; concerns: ${concernsStr}; region: ${region}; budget: ${budget}.\n` +
@@ -4583,7 +4711,8 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang }) 
     `- score: integer 0..100 (fit score)\n` +
     `- sku: {brand,name,display_name,sku_id,product_id,category,availability(string[]),price{usd,cny,unknown}}\n` +
     `- reasons: string[] (max 4). Reasons must be end-user readable and user-specific.\n` +
-    `  - Include at least one reason that explicitly references the user's profile (skin type / sensitivity / barrier / goals / budget).\n` +
+    `  - Include at least one reason that explicitly references the user's profile (skin type / sensitivity / barrier / goals).\n` +
+    `  - ${budgetReasonRule}\n` +
     `  - If recent_logs were provided, include one reason that references the last 7 days trend; otherwise add warnings: "recent_logs_missing".\n` +
     `  - If profile.itinerary (upcoming plan/travel context) is available, include one reason that references it.\n` +
     `  - If upcoming plan/travel context is not available, add warnings: "itinerary_unknown" (do NOT guess).\n` +
@@ -4624,6 +4753,137 @@ function looksLikeRoutineRequest(message, action) {
   return routineByMessage;
 }
 
+function looksLikeIngredientScienceIntent(message, action) {
+  const raw = String(message || '').trim();
+  const text = raw.toLowerCase();
+  const id =
+    typeof action === 'string'
+      ? action
+      : action && typeof action === 'object'
+        ? action.action_id
+        : '';
+  const idText = String(id || '').trim().toLowerCase();
+
+  if (idText === 'chip.start.ingredients' || idText === 'chip_start_ingredients') return true;
+
+  const en =
+    /\b(ingredient|ingredients|active|actives)\b.{0,28}\b(science|evidence|mechanism|clinical|study|paper|citation|citations)\b/i.test(raw) ||
+    /\b(science|evidence|mechanism|clinical|study|paper|citation|citations)\b.{0,28}\b(ingredient|ingredients|active|actives)\b/i.test(raw);
+  const cn = /(成分(机理|机制|科学|证据|原理)|证据链|循证|临床证据|论文证据|问成分)/.test(raw);
+  return en || cn;
+}
+
+function messageContainsSpecificIngredientScienceTarget(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  if (extractKnownActivesFromText(raw).length > 0) return true;
+
+  const specificIngredient =
+    /\b(niacinamide|retinol|retinoid|adapalene|tretinoin|vitamin\s*c|ascorbic|azelaic|salicylic|glycolic|mandelic|pha|ceramide|peptide|tranexamic|arbutin)\b/i
+      .test(lower) ||
+    /(烟酰胺|a醇|维a|阿达帕林|维c|维生素c|壬二酸|水杨酸|果酸|杏仁酸|神经酰胺|多肽|胜肽|传明酸|熊果苷)/.test(raw);
+  if (specificIngredient) return true;
+
+  const specificEffect =
+    /\b(acne|breakout|redness|sensitive|dark spots?|hyperpigmentation|brightening|pores?|anti[-\s]?aging|wrinkles?|barrier|irritation)\b/i.test(lower) ||
+    /(痘|闭口|泛红|敏感|淡斑|色沉|提亮|毛孔|抗老|细纹|屏障|刺激|刺痛|修护)/.test(raw);
+  return specificEffect;
+}
+
+function buildIngredientScienceKickoff({ language } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (lang === 'CN') {
+    return {
+      prompt:
+        '这个问题很好，我会用“证据 + 机制 + 风险”给你讲清楚。\n' +
+        '先确认一个最关键点：你更想先看哪一类？',
+      chips: [
+        {
+          chip_id: 'chip.science.target.niacinamide',
+          label: '烟酰胺（证据）',
+          kind: 'quick_reply',
+          data: { reply_text: '问成分科学：烟酰胺。请讲证据强度、适用人群和常见风险。' },
+        },
+        {
+          chip_id: 'chip.science.target.retinoid',
+          label: 'A醇/维A类（证据）',
+          kind: 'quick_reply',
+          data: { reply_text: '问成分科学：A醇/维A类。请讲机制、证据等级和使用风险。' },
+        },
+        {
+          chip_id: 'chip.science.target.vitc',
+          label: '维C（证据）',
+          kind: 'quick_reply',
+          data: { reply_text: '问成分科学：维C。请讲证据、稳定性和刺激风险。' },
+        },
+        {
+          chip_id: 'chip.science.goal.brightening',
+          label: '目标：提亮/淡斑',
+          kind: 'quick_reply',
+          data: { reply_text: '我想看“提亮/淡斑”方向的成分机制与证据，不先做产品推荐。' },
+        },
+        {
+          chip_id: 'chip.science.goal.acne',
+          label: '目标：痘痘/闭口',
+          kind: 'quick_reply',
+          data: { reply_text: '我想看“痘痘/闭口”方向的成分机制与证据，不先做产品推荐。' },
+        },
+        {
+          chip_id: 'chip.science.goal.redness',
+          label: '目标：泛红敏感',
+          kind: 'quick_reply',
+          data: { reply_text: '我想看“泛红敏感”方向的成分机制与证据，不先做产品推荐。' },
+        },
+      ],
+    };
+  }
+
+  return {
+    prompt:
+      "Great question. I’ll keep this evidence-based and practical.\n" +
+      "Before I answer, which direction should we focus on first?",
+    chips: [
+      {
+        chip_id: 'chip.science.target.niacinamide',
+        label: 'Niacinamide (evidence)',
+        kind: 'quick_reply',
+        data: { reply_text: 'Ingredient science: niacinamide — explain evidence strength, who it fits, and key risks.' },
+      },
+      {
+        chip_id: 'chip.science.target.retinoid',
+        label: 'Retinoids (evidence)',
+        kind: 'quick_reply',
+        data: { reply_text: 'Ingredient science: retinoids — explain mechanism, evidence quality, and risk controls.' },
+      },
+      {
+        chip_id: 'chip.science.target.vitc',
+        label: 'Vitamin C (evidence)',
+        kind: 'quick_reply',
+        data: { reply_text: 'Ingredient science: vitamin C — explain evidence, stability concerns, and irritation risk.' },
+      },
+      {
+        chip_id: 'chip.science.goal.brightening',
+        label: 'Goal: dark spots',
+        kind: 'quick_reply',
+        data: { reply_text: 'Science-only: explain ingredient mechanisms/evidence for dark spots and brightening (no product picks yet).' },
+      },
+      {
+        chip_id: 'chip.science.goal.acne',
+        label: 'Goal: acne/texture',
+        kind: 'quick_reply',
+        data: { reply_text: 'Science-only: explain ingredient mechanisms/evidence for acne and texture (no product picks yet).' },
+      },
+      {
+        chip_id: 'chip.science.goal.redness',
+        label: 'Goal: redness',
+        kind: 'quick_reply',
+        data: { reply_text: 'Science-only: explain ingredient mechanisms/evidence for redness-sensitive skin (no product picks yet).' },
+      },
+    ],
+  };
+}
+
 function isBudgetClarificationAction(actionId, clarificationId) {
   const id = String(actionId || '').trim().toLowerCase();
   const cid = String(clarificationId || '').trim().toLowerCase();
@@ -4640,12 +4900,9 @@ function isBareBudgetSelectionMessage(message) {
 function buildBudgetGatePrompt(language) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   if (lang === 'CN') {
-    return (
-      '为了继续生成你的 AM/PM routine，我需要先确认 1 个信息：\n' +
-      '你的月预算大概是多少？（点选即可）'
-    );
+    return '如果你愿意，我可以按预算再优化一版。你的月预算大概是多少？（可选）';
   }
-  return 'To continue building your AM/PM routine, what is your monthly budget? (tap one)';
+  return 'If you want, I can optimize this by budget. What monthly budget feels comfortable? (optional)';
 }
 
 function buildBudgetGateChips(language) {
@@ -4660,8 +4917,40 @@ function buildBudgetGateChips(language) {
     chip_id: `chip.budget.${tier.replace(/[^\w]+/g, '_')}`,
     label,
     kind: 'quick_reply',
-    data: { profile_patch: { budgetTier: tier }, include_alternatives: true },
+    data: {
+      profile_patch: { budgetTier: tier },
+      include_alternatives: true,
+      reply_text:
+        lang === 'CN'
+          ? tier === '不确定'
+            ? '先不设预算，继续当前方案。'
+            : `把当前 AM/PM 方案按 ${tier} 预算优化（保留核心功效）。`
+          : tier === '不确定'
+            ? 'Skip budget for now and continue.'
+            : `Optimize the current AM/PM routine around ${tier} budget while keeping core efficacy.`,
+    },
   }));
+}
+
+function isBudgetOptimizationEntryAction(actionId) {
+  const id = String(actionId || '').trim().toLowerCase();
+  return id === 'chip.budget.optimize.entry' || id === 'chip.action.budget_optimize';
+}
+
+function buildBudgetOptimizationEntryChip(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return {
+    chip_id: 'chip.budget.optimize.entry',
+    label: lang === 'CN' ? '按预算优化（可选）' : 'Optimize by budget (optional)',
+    kind: 'quick_reply',
+    data: {
+      include_alternatives: true,
+      reply_text:
+        lang === 'CN'
+          ? '我想在当前方案基础上做预算优化。'
+          : 'I want to optimize the current routine by budget.',
+    },
+  };
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -7734,7 +8023,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
-        cards: [photoConfirmCard, ...(autoAnalysis && autoAnalysis.card ? [autoAnalysis.card] : [])],
+        cards: [photoConfirmCard, ...(autoAnalysis && Array.isArray(autoAnalysis.cards) ? autoAnalysis.cards : [])],
         session_patch: autoAnalysis && autoAnalysis.session_patch ? autoAnalysis.session_patch : {},
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'photo_upload', qc_status: qcStatus }),
@@ -7925,7 +8214,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
-        cards: [photoConfirmCard, ...(autoAnalysis && autoAnalysis.card ? [autoAnalysis.card] : [])],
+        cards: [photoConfirmCard, ...(autoAnalysis && Array.isArray(autoAnalysis.cards) ? autoAnalysis.cards : [])],
         session_patch: autoAnalysis && autoAnalysis.session_patch ? autoAnalysis.session_patch : {},
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'photo_confirm', qc_status: qcStatus }),
@@ -8639,6 +8928,20 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
 
+        const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
+          requestId: ctx.request_id,
+          analysis,
+          usedPhotos,
+          photoQuality,
+          photoNotice:
+            photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
+              ? photoNotice.message
+              : visionPhotoNoticeMessage,
+          diagnosisInternal: diagnosisV1Internal,
+          profileSummary,
+          language: ctx.lang,
+        });
+
         if (analysis && persistLastAnalysis) {
           try {
             await saveLastAnalysisForIdentity(
@@ -8677,6 +8980,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
               ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
             },
+            ...(photoModulesCard ? [photoModulesCard] : []),
           ],
           session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
           events: [
@@ -9638,13 +9942,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (ctx.state === 'S6_BUDGET') {
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
+        const wantsScience = looksLikeIngredientScienceIntent(message, parsed.data.action);
         const wantsRecoNoRoutine =
           looksLikeRecommendationRequest(message) &&
           !looksLikeRoutineRequest(message, parsed.data.action);
         const wantsEnvStress =
           looksLikeWeatherOrEnvironmentQuestion(message) &&
           (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
-        if (wantsFitCheck || wantsCompat || wantsEnvStress || wantsRecoNoRoutine) {
+        if (wantsFitCheck || wantsCompat || wantsScience || wantsEnvStress || wantsRecoNoRoutine) {
           if (stateChangeAllowed(ctx.trigger_source)) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
           }
@@ -9868,6 +10173,45 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
+      const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, parsed.data.action);
+      const shouldKickoffIngredientScience =
+        ingredientScienceIntent &&
+        !looksLikeRoutineRequest(message, parsed.data.action) &&
+        !looksLikeSuitabilityRequest(message) &&
+        !looksLikeCompatibilityOrConflictQuestion(message) &&
+        !looksLikeWeatherOrEnvironmentQuestion(message) &&
+        !messageContainsSpecificIngredientScienceTarget(message);
+
+      if (shouldKickoffIngredientScience) {
+        const kickoff = buildIngredientScienceKickoff({ language: ctx.lang });
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(kickoff.prompt),
+          suggested_chips: kickoff.chips,
+          cards: [],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_science_clarify' })],
+        });
+        return res.json(envelope);
+      }
+
+      if (isBudgetOptimizationEntryAction(actionId) && allowRecoCards) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
+          suggested_chips: buildBudgetGateChips(ctx.lang),
+          cards: [
+            {
+              card_id: `budget_${ctx.request_id}`,
+              type: 'budget_gate',
+              payload: { reason: 'budget_optimization_optional', profile: summarizeProfileForContext(profile) },
+            },
+          ],
+          session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_optimization_optional' })],
+        });
+        return res.json(envelope);
+      }
+
       // Phase 0 gate: Diagnosis-first (no recos/offers before minimal profile).
       // NOTE: In chat, avoid forcing users into "diagnosis-first" unless they explicitly asked to start diagnosis.
       // For recommendation/fit-check intents, proceed with best-effort and ask optional refinement questions later.
@@ -9883,6 +10227,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         // Example: "Is this product suitable for me?" should go to fit-check/product analysis (budget is irrelevant).
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
+        const wantsScience = looksLikeIngredientScienceIntent(message, parsed.data.action);
         const wantsRecoNoRoutine =
           looksLikeRecommendationRequest(message) &&
           !looksLikeRoutineRequest(message, parsed.data.action);
@@ -9890,7 +10235,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           looksLikeWeatherOrEnvironmentQuestion(message) &&
           (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
 
-        if (wantsFitCheck || wantsCompat || wantsEnvStress || wantsRecoNoRoutine) {
+        if (wantsFitCheck || wantsCompat || wantsScience || wantsEnvStress || wantsRecoNoRoutine) {
           // Clear the budget-gate state so the client doesn't get stuck in a loop.
           if (stateChangeAllowed(ctx.trigger_source)) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
@@ -9936,11 +10281,11 @@ function mountAuroraBffRoutes(app, { logger }) {
                 {
                   card_id: `budget_${ctx.request_id}`,
                   type: 'budget_gate',
-                  payload: { reason: 'budget_required_for_routine', profile: summarizeProfileForContext(profile) },
+                  payload: { reason: 'budget_optimization_optional', profile: summarizeProfileForContext(profile) },
                 },
               ],
               session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
-              events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_required_for_routine' })],
+              events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_optimization_optional' })],
             });
             return res.json(envelope);
           }
@@ -9993,29 +10338,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      // If user explicitly asks to build an AM/PM routine, route to the routine generator (budget-gated).
+      // If user explicitly asks to build an AM/PM routine, generate it first.
+      // Budget refinement is optional and can be done after showing a usable plan.
       if (
         allowRecoCards &&
         looksLikeRoutineRequest(message, parsed.data.action) &&
         recoInteractionAllowed
       ) {
         const budget = normalizeBudgetHint(profile && profile.budgetTier);
-        if (!budget) {
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
-            suggested_chips: buildBudgetGateChips(ctx.lang),
-            cards: [
-              {
-                card_id: `budget_${ctx.request_id}`,
-                type: 'budget_gate',
-                payload: { reason: 'budget_required_for_routine', profile: summarizeProfileForContext(profile) },
-              },
-            ],
-            session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
-            events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_required_for_routine' })],
-          });
-          return res.json(envelope);
-        }
 
         const { norm, suggestedChips } = await generateRoutineReco({
           ctx,
@@ -10030,14 +10360,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+        const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
+        if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(
-            ctx.lang === 'CN'
-              ? '我生成了一个简洁 AM/PM routine（见下方卡片）。'
-              : 'I generated a simple AM/PM routine (see the card below).',
+            !budget
+              ? ctx.lang === 'CN'
+                ? '我先按“功效与耐受优先”生成了一个简洁 AM/PM routine（见下方卡片）。如果你愿意，我可以再按预算优化一版。'
+                : 'I generated a simple AM/PM routine first (efficacy + tolerance prioritized). If you want, I can optimize it by budget next.'
+              : ctx.lang === 'CN'
+                ? '我生成了一个简洁 AM/PM routine（见下方卡片）。'
+                : 'I generated a simple AM/PM routine (see the card below).',
           ),
-          suggested_chips: suggestedChips,
+          suggested_chips: nextChips,
           cards: [
             {
               card_id: `reco_${ctx.request_id}`,
@@ -10123,6 +10459,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // (some upstream chat flows only return clarifying chips without a recommendations card).
       const wantsProductRecommendations =
         allowRecoCards &&
+        !looksLikeIngredientScienceIntent(message, parsed.data.action) &&
         !looksLikeRoutineRequest(message, parsed.data.action) &&
         !looksLikeSuitabilityRequest(message) &&
         recoInteractionAllowed &&
@@ -11167,6 +11504,7 @@ const __internal = {
   normalizeSkinAnalysisFromLLM,
   mergePhotoFindingsIntoAnalysis,
   buildExecutablePlanForAnalysis,
+  maybeBuildPhotoModulesCardForAnalysis,
   buildEmotionalPreamble,
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,

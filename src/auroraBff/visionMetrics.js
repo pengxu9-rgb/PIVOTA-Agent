@@ -43,6 +43,11 @@ let verifierHardCaseCount = 0;
 const analyzeRequestsCounter = new Map();
 const geometrySanitizerDropCounter = new Map();
 const geometrySanitizerClipCounter = new Map();
+const photoModulesCardEmittedCounter = new Map();
+const regionsEmittedCounter = new Map();
+const modulesIssueCountHistogramCounter = new Map();
+const ingredientActionsEmittedCounter = new Map();
+const geometrySanitizerDropReasonCounter = new Map();
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -88,6 +93,20 @@ function normalizeDeviceClass(deviceClass) {
 
 function normalizeIssueType(issueType) {
   return cleanMetricToken(issueType, 'all');
+}
+
+function normalizeRegionType(regionType) {
+  const token = cleanMetricToken(regionType, 'unknown');
+  if (token === 'bbox' || token === 'polygon' || token === 'heatmap') return token;
+  return 'unknown';
+}
+
+function normalizeModuleId(moduleId) {
+  return cleanMetricToken(moduleId, 'unknown');
+}
+
+function normalizeSanitizerReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
 }
 
 function normalizeVerifyFailReason(reason) {
@@ -373,6 +392,70 @@ function recordGeometrySanitizerTotals({
   if (clippedN > 0) incCounter(geometrySanitizerClipCounter, labels, clippedN);
 }
 
+function recordPhotoModulesCardEmitted({ qualityGrade, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    photoModulesCardEmittedCounter,
+    {
+      quality_grade: normalizeQualityGrade(qualityGrade),
+    },
+    amount,
+  );
+}
+
+function recordRegionsEmitted({ regionType, issueType, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    regionsEmittedCounter,
+    {
+      region_type: normalizeRegionType(regionType),
+      issue_type: normalizeIssueType(issueType),
+    },
+    amount,
+  );
+}
+
+function recordModulesIssueCountHistogram({ moduleId, issueType, count } = {}) {
+  const amount = Number.isFinite(Number(count)) ? Math.max(0, Math.trunc(Number(count))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    modulesIssueCountHistogramCounter,
+    {
+      module_id: normalizeModuleId(moduleId),
+      issue_type: normalizeIssueType(issueType),
+    },
+    amount,
+  );
+}
+
+function recordIngredientActionsEmitted({ moduleId, issueType, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    ingredientActionsEmittedCounter,
+    {
+      module_id: normalizeModuleId(moduleId),
+      issue_type: normalizeIssueType(issueType),
+    },
+    amount,
+  );
+}
+
+function recordGeometrySanitizerDropReason({ reason, regionType, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    geometrySanitizerDropReasonCounter,
+    {
+      reason: normalizeSanitizerReason(reason),
+      region_type: normalizeRegionType(regionType),
+    },
+    amount,
+  );
+}
+
 function escapePromValue(value) {
   return String(value == null ? '' : value)
     .replace(/\\/g, '\\\\')
@@ -512,10 +595,27 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP geometry_sanitizer_drop_total Total dropped geometry artifacts during sanitizer pass.');
   lines.push('# TYPE geometry_sanitizer_drop_total counter');
   renderCounter(lines, 'geometry_sanitizer_drop_total', geometrySanitizerDropCounter);
+  renderCounter(lines, 'geometry_sanitizer_drop_total', geometrySanitizerDropReasonCounter);
 
   lines.push('# HELP geometry_sanitizer_clip_total Total clipped geometry artifacts during sanitizer pass.');
   lines.push('# TYPE geometry_sanitizer_clip_total counter');
   renderCounter(lines, 'geometry_sanitizer_clip_total', geometrySanitizerClipCounter);
+
+  lines.push('# HELP photo_modules_card_emitted_total Total emitted photo_modules_v1 cards by quality grade.');
+  lines.push('# TYPE photo_modules_card_emitted_total counter');
+  renderCounter(lines, 'photo_modules_card_emitted_total', photoModulesCardEmittedCounter);
+
+  lines.push('# HELP regions_emitted_total Total emitted regions grouped by type and issue.');
+  lines.push('# TYPE regions_emitted_total counter');
+  renderCounter(lines, 'regions_emitted_total', regionsEmittedCounter);
+
+  lines.push('# HELP modules_issue_count_histogram Aggregated module issue counts grouped by module and issue.');
+  lines.push('# TYPE modules_issue_count_histogram counter');
+  renderCounter(lines, 'modules_issue_count_histogram', modulesIssueCountHistogramCounter);
+
+  lines.push('# HELP ingredient_actions_emitted_total Total emitted ingredient actions grouped by module and issue.');
+  lines.push('# TYPE ingredient_actions_emitted_total counter');
+  renderCounter(lines, 'ingredient_actions_emitted_total', ingredientActionsEmittedCounter);
 
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
@@ -561,6 +661,11 @@ function resetVisionMetrics() {
   analyzeRequestsCounter.clear();
   geometrySanitizerDropCounter.clear();
   geometrySanitizerClipCounter.clear();
+  photoModulesCardEmittedCounter.clear();
+  regionsEmittedCounter.clear();
+  modulesIssueCountHistogramCounter.clear();
+  ingredientActionsEmittedCounter.clear();
+  geometrySanitizerDropReasonCounter.clear();
 }
 
 function snapshotVisionMetrics() {
@@ -588,6 +693,11 @@ function snapshotVisionMetrics() {
     analyzeRequests: Array.from(analyzeRequestsCounter.entries()),
     geometrySanitizerDrops: Array.from(geometrySanitizerDropCounter.entries()),
     geometrySanitizerClips: Array.from(geometrySanitizerClipCounter.entries()),
+    photoModulesCardEmitted: Array.from(photoModulesCardEmittedCounter.entries()),
+    regionsEmitted: Array.from(regionsEmittedCounter.entries()),
+    modulesIssueCountHistogram: Array.from(modulesIssueCountHistogramCounter.entries()),
+    ingredientActionsEmitted: Array.from(ingredientActionsEmittedCounter.entries()),
+    geometrySanitizerDropReasons: Array.from(geometrySanitizerDropReasonCounter.entries()),
   };
 }
 
@@ -605,6 +715,11 @@ module.exports = {
   recordVerifyHardCase,
   recordAnalyzeRequest,
   recordGeometrySanitizerTotals,
+  recordPhotoModulesCardEmitted,
+  recordRegionsEmitted,
+  recordModulesIssueCountHistogram,
+  recordIngredientActionsEmitted,
+  recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
   resetVisionMetrics,
   snapshotVisionMetrics,

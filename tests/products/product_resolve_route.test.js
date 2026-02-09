@@ -93,6 +93,133 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.body.candidates.length).toBeGreaterThan(0);
   });
 
+  test('retries upstream search on transient 5xx and resolves', async () => {
+    const preferMerchant = 'merch_efbc46b4619cfbdf';
+    const queryText = 'CeraVe Hydrating Cleanser';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(502, { error: 'bad gateway' })
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        products: [
+          {
+            merchant_id: preferMerchant,
+            product_id: 'prod_retry_ok_1',
+            title: queryText,
+            vendor: 'CeraVe',
+          },
+        ],
+      });
+
+    const app = require('../../src/server');
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: queryText,
+        lang: 'en',
+        options: {
+          prefer_merchants: [preferMerchant],
+          search_all_merchants: false,
+          timeout_ms: 2000,
+          upstream_retries: 1,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        product_ref: { product_id: 'prod_retry_ok_1', merchant_id: preferMerchant },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'agent_search_scoped',
+            ok: true,
+            attempts: 2,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  test('keeps budget for global fallback after scoped timeout', async () => {
+    const preferMerchant = 'merch_efbc46b4619cfbdf';
+    const queryText = 'Bioderma Sensibio H2O Micellar';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const mid = q && q.merchant_ids;
+        return Boolean(mid) && String(mid).includes(preferMerchant);
+      })
+      .replyWithError({
+        code: 'ECONNABORTED',
+        message: 'timeout of 900ms exceeded',
+      })
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const hasMerchantScope = q && q.merchant_ids != null;
+        const globalFlag = String((q && q.search_all_merchants) || '').toLowerCase();
+        return !hasMerchantScope && globalFlag === 'true';
+      })
+      .reply(200, {
+        status: 'success',
+        products: [
+          {
+            merchant_id: 'merch_global_1',
+            product_id: 'prod_global_1',
+            title: queryText,
+            vendor: 'Bioderma',
+          },
+        ],
+      });
+
+    const app = require('../../src/server');
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: queryText,
+        lang: 'en',
+        options: {
+          prefer_merchants: [preferMerchant],
+          search_all_merchants: true,
+          timeout_ms: 2200,
+          upstream_retries: 0,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.resolved).toBe(true);
+    expect(resp.body.product_ref).toEqual({
+      product_id: 'prod_global_1',
+      merchant_id: 'merch_global_1',
+    });
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'agent_search_scoped',
+            ok: false,
+          }),
+          expect.objectContaining({
+            source: 'agent_search_global',
+            ok: true,
+            count: 1,
+          }),
+        ]),
+      }),
+    );
+  });
+
   test('filters external_seed by default', async () => {
     const queryText = 'Winona Soothing Repair Serum';
 

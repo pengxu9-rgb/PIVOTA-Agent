@@ -4232,6 +4232,10 @@ function pickResolveOptions(raw) {
     ...(o.candidatesLimit !== undefined ? { candidates_limit: o.candidatesLimit } : {}),
     ...(o.min_confidence !== undefined ? { min_confidence: o.min_confidence } : {}),
     ...(o.minConfidence !== undefined ? { min_confidence: o.minConfidence } : {}),
+    ...(o.upstream_retries !== undefined ? { upstream_retries: o.upstream_retries } : {}),
+    ...(o.upstreamRetries !== undefined ? { upstream_retries: o.upstreamRetries } : {}),
+    ...(o.upstream_retry_backoff_ms !== undefined ? { upstream_retry_backoff_ms: o.upstream_retry_backoff_ms } : {}),
+    ...(o.upstreamRetryBackoffMs !== undefined ? { upstream_retry_backoff_ms: o.upstreamRetryBackoffMs } : {}),
   };
 }
 
