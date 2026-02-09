@@ -172,6 +172,35 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.barrierStatus.'))).toBe(true);
   });
 
+  test('Diagnosis: DIAG_PROFILE with complete profile returns photo opt-in chips (no diagnosis_gate loop)', async () => {
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_diag_profile_complete_1')
+      .set('X-Lang', 'EN')
+      .send({
+        client_state: 'DIAG_PROFILE',
+        action: {
+          action_id: 'profile.patch',
+          kind: 'action',
+          data: {
+            profile_patch: {
+              skinType: 'oily',
+              barrierStatus: 'healthy',
+              sensitivity: 'low',
+              goals: ['acne'],
+            },
+          },
+        },
+        session: { state: 'S2_DIAGNOSIS' },
+      })
+      .expect(200);
+
+    expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(false);
+    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.intake.upload_photos')).toBe(true);
+    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.intake.skip_analysis')).toBe(true);
+  });
+
   test('Routine: budget gate prompts and sets state S6_BUDGET', async () => {
     const app = require('../src/server');
     const res = await request(app)

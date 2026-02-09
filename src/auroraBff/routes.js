@@ -7607,29 +7607,68 @@ function mountAuroraBffRoutes(app, { logger }) {
       // otherwise users can get stuck in an upstream "what next?" loop.
       if (String(agentState || '') === 'DIAG_PROFILE' || String(agentState || '').startsWith('DIAG_')) {
         const { score, missing } = profileCompleteness(profile);
-        const required = score >= 4 ? ['skinType', 'sensitivity', 'barrierStatus', 'goals'] : missing;
-        const prompt = buildDiagnosisPrompt(ctx.lang, required);
-        const chips = buildDiagnosisChips(ctx.lang, required);
-        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
 
+        if (missingCore.length) {
+          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
+          const chips = buildDiagnosisChips(ctx.lang, missingCore);
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(prompt),
+            suggested_chips: chips,
+            cards: [
+              {
+                card_id: `diag_${ctx.request_id}`,
+                type: 'diagnosis_gate',
+                payload: {
+                  reason: 'diagnosis_start',
+                  missing_fields: missingCore,
+                  wants: 'diagnosis',
+                  profile: summarizeProfileForContext(profile),
+                  recent_logs: recentLogs,
+                },
+              },
+            ],
+            session_patch: nextState ? { next_state: nextState } : {},
+            events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_start' })],
+          });
+          return res.json(envelope);
+        }
+
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const prompt =
+          lang === 'CN'
+            ? '已收到你的肤况信息。要不要再上传一张照片让我更准？你也可以先跳过照片，我会给一份低置信度的安全基线。'
+            : "Got it — I saved your skin profile. Want to upload a photo for a more accurate analysis? You can also skip photos and I’ll give a low-confidence, safe baseline first.";
+
+        const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(prompt),
-          suggested_chips: chips,
-          cards: [
+          suggested_chips: [
             {
-              card_id: `diag_${ctx.request_id}`,
-              type: 'diagnosis_gate',
-              payload: {
-                reason: 'diagnosis_start',
-                missing_fields: required,
-                wants: 'diagnosis',
-                profile: summarizeProfileForContext(profile),
-                recent_logs: recentLogs,
-              },
+              chip_id: 'chip.intake.upload_photos',
+              label: lang === 'CN' ? '上传照片（更准）' : 'Upload a photo (more accurate)',
+              kind: 'quick_reply',
+              data: {},
+            },
+            {
+              chip_id: 'chip.intake.skip_analysis',
+              label: lang === 'CN' ? '跳过照片（低置信度）' : 'Skip photo (low confidence)',
+              kind: 'quick_reply',
+              data: {},
+            },
+            {
+              chip_id: 'chip_keep_chatting',
+              label: lang === 'CN' ? '继续聊聊' : 'Just keep chatting',
+              kind: 'quick_reply',
+              data: {},
             },
           ],
-          session_patch: nextState ? { next_state: nextState } : {},
-          events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_start' })],
+          cards: [],
+          session_patch: nextState ? { next_state: nextState, profile: summarizeProfileForContext(profile) } : { profile: summarizeProfileForContext(profile) },
+          events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_profile_complete' })],
         });
         return res.json(envelope);
       }
