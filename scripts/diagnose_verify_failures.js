@@ -108,9 +108,11 @@ async function readJson(filePath, fallback = {}) {
   }
 }
 
-function normalizeVerifyFailReason(rawReason, statusCode) {
+function normalizeVerifyFailReason(rawReason, statusCode, statusClass, errorClass) {
   const token = String(rawReason || '').trim().toUpperCase();
   const numericStatus = Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : 0;
+  const statusClassToken = String(statusClass || '').trim().toLowerCase();
+  const errorToken = String(errorClass || '').trim().toUpperCase();
 
   if (token === 'VERIFY_BUDGET_GUARD') return 'VERIFY_BUDGET_GUARD';
   if (!token) {
@@ -123,6 +125,25 @@ function normalizeVerifyFailReason(rawReason, statusCode) {
   if (token.includes('QUOTA')) return 'QUOTA';
   if (token.includes('SCHEMA_INVALID') || token.includes('CANONICAL_SCHEMA_INVALID')) return 'SCHEMA_INVALID';
   if (token.includes('IMAGE_FETCH') || token.includes('MISSING_IMAGE') || token.includes('PHOTO_DOWNLOAD')) return 'IMAGE_FETCH_FAILED';
+  if (token.includes('NETWORK_ERROR') || token.includes('DNS')) return 'NETWORK_ERROR';
+  if (token.includes('REQUEST_FAILED') || token.includes('SERVICE_UNAVAILABLE') || errorToken.includes('MISSING_DEP')) return 'UPSTREAM_5XX';
+  if (statusClassToken === '5xx') return 'UPSTREAM_5XX';
+  if (statusClassToken === '4xx') return 'UPSTREAM_4XX';
+  if (
+    errorToken.includes('TIMEOUT') ||
+    errorToken.includes('ETIMEDOUT') ||
+    errorToken.includes('ECONNABORTED') ||
+    errorToken.includes('DEADLINE_EXCEEDED')
+  ) return 'TIMEOUT';
+  if (
+    errorToken.includes('NETWORK') ||
+    errorToken.includes('ENOTFOUND') ||
+    errorToken.includes('EAI_AGAIN') ||
+    errorToken.includes('ECONNRESET') ||
+    errorToken.includes('ECONNREFUSED') ||
+    errorToken.includes('FETCH_FAILED') ||
+    errorToken.includes('DNS')
+  ) return 'NETWORK_ERROR';
   if (token.includes('UPSTREAM_5XX') || numericStatus >= 500) return 'UPSTREAM_5XX';
   if (token.includes('UPSTREAM_4XX') || numericStatus >= 400) return 'UPSTREAM_4XX';
   return 'UNKNOWN';
@@ -189,7 +210,9 @@ async function main() {
         output.verify_fail_reason || output.final_reason || output.failure_reason || '',
         '',
       );
-      const normalizedReason = normalizeVerifyFailReason(rawReason, statusCode);
+      const statusClass = safeToken(output.http_status_class, '');
+      const errorClass = safeToken(output.error_class, '');
+      const normalizedReason = normalizeVerifyFailReason(rawReason, statusCode, statusClass, errorClass);
       const hasFailureSignal =
         output.ok === false ||
         output.schema_failed === true ||
@@ -207,6 +230,8 @@ async function main() {
         raw_reason: rawReason || null,
         final_reason: safeToken(output.final_reason, ''),
         verify_fail_reason: safeToken(output.verify_fail_reason, ''),
+        http_status_class: statusClass,
+        error_class: errorClass,
         attempts: safeNumber(output.attempts, null),
         latency_ms: safeNumber(output.latency_ms, null),
       };

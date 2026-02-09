@@ -185,9 +185,11 @@ function normalizeIssueType(raw) {
   return safeToken(raw, 'other').toLowerCase();
 }
 
-function normalizeVerifyFailReason(rawReason, statusCode) {
+function normalizeVerifyFailReason(rawReason, statusCode, statusClass, errorClass) {
   const token = safeToken(rawReason, 'UNKNOWN').toUpperCase();
   const numericStatus = Number.isFinite(Number(statusCode)) ? Math.trunc(Number(statusCode)) : 0;
+  const statusClassToken = safeToken(statusClass, '').toLowerCase();
+  const errorToken = safeToken(errorClass, '').toUpperCase();
 
   if (token === VERIFY_BUDGET_GUARD) return VERIFY_BUDGET_GUARD;
   if (VERIFY_FAIL_REASON_ALLOWLIST.has(token)) return token;
@@ -205,6 +207,24 @@ function normalizeVerifyFailReason(rawReason, statusCode) {
   if (token.includes('SCHEMA_INVALID') || token.includes('CANONICAL_SCHEMA_INVALID')) return 'SCHEMA_INVALID';
   if (token.includes('IMAGE_FETCH') || token.includes('MISSING_IMAGE') || token.includes('PHOTO_DOWNLOAD')) return 'IMAGE_FETCH_FAILED';
   if (token.includes('NETWORK_ERROR') || token.includes('DNS')) return 'NETWORK_ERROR';
+  if (token.includes('REQUEST_FAILED') || token.includes('SERVICE_UNAVAILABLE') || errorToken.includes('MISSING_DEP')) return 'UPSTREAM_5XX';
+  if (statusClassToken === '5xx') return 'UPSTREAM_5XX';
+  if (statusClassToken === '4xx') return 'UPSTREAM_4XX';
+  if (
+    errorToken.includes('TIMEOUT') ||
+    errorToken.includes('ETIMEDOUT') ||
+    errorToken.includes('ECONNABORTED') ||
+    errorToken.includes('DEADLINE_EXCEEDED')
+  ) return 'TIMEOUT';
+  if (
+    errorToken.includes('NETWORK') ||
+    errorToken.includes('ENOTFOUND') ||
+    errorToken.includes('EAI_AGAIN') ||
+    errorToken.includes('ECONNRESET') ||
+    errorToken.includes('ECONNREFUSED') ||
+    errorToken.includes('FETCH_FAILED') ||
+    errorToken.includes('DNS')
+  ) return 'NETWORK_ERROR';
   if (token.includes('UPSTREAM_5XX') || numericStatus >= 500) return 'UPSTREAM_5XX';
   if (token.includes('UPSTREAM_4XX') || numericStatus >= 400) return 'UPSTREAM_4XX';
   return 'UNKNOWN';
@@ -221,6 +241,8 @@ function extractVerifyRows(modelRows) {
     const normalizedReason = normalizeVerifyFailReason(
       output.verify_fail_reason || output.final_reason || output.failure_reason,
       statusCode,
+      output.http_status_class,
+      output.error_class,
     );
     const isGuard = decision === 'skip' && normalizedReason === VERIFY_BUDGET_GUARD;
     const finalReasonToken = safeToken(output.final_reason, '').toUpperCase();
