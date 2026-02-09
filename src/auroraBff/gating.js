@@ -16,6 +16,19 @@ function profileCompleteness(profile) {
 function looksLikeRecommendationRequest(message) {
   const text = String(message || '').trim().toLowerCase();
   if (!text) return false;
+  const scienceOnlyIntent =
+    /\b(ingredient|ingredients|active|actives)\b.{0,24}\b(science|evidence|mechanism|clinical|study|paper)\b/.test(text) ||
+    /\b(science|evidence|mechanism|clinical|study|paper)\b.{0,24}\b(ingredient|ingredients|active|actives)\b/.test(text) ||
+    /(成分(机理|机制|科学|证据|原理)|证据链|循证|临床证据|论文证据)/.test(text);
+  const stillAskingProducts =
+    /\brecommend\b/.test(text) ||
+    /\brecommendation\b/.test(text) ||
+    /\bproducts?\b/.test(text) ||
+    /\bwhat should i (buy|use)\b/.test(text) ||
+    /\bbuy\b/.test(text) ||
+    /推荐/.test(text) ||
+    /(产品|清单|购买|下单|链接|护肤方案|早晚)/.test(text);
+  if (scienceOnlyIntent && !stillAskingProducts) return false;
   return (
     /\brecommend\b/.test(text) ||
     /\brecommendation\b/.test(text) ||
