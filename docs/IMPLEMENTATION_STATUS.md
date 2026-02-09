@@ -141,3 +141,37 @@ Last updated: 2026-02-09
 - Gold-label import: `make gold-label-import GOLD_IMPORT_IN=/path/to/label_studio_export.json`
 - Train calibrator: `make train-calibrator`
 - Evaluate calibrator: `make eval-calibration`
+
+## 5) Ingredient KB Production Validation (Aurora)
+
+### A. API acceptance checklist
+
+1. Contract check (`raw_ingredient.original_text` and candidate original content exist):
+   - `BASE="https://aurora-beauty-decision-system.vercel.app"`
+   - `curl -sS "$BASE/v1/kb/products/ac1d67be62/ingredients?source_system=harvester&source_type=candidate_id" | jq '{ok,schema_version,raw_ingredient:(.raw_ingredient|{text,original_text,source_sheet,source_ref}),candidate0:(.raw_ingredient_candidates[0]|{content,original_content})}'`
+2. Cleaning effect check:
+   - `curl -sS "$BASE/v1/kb/products/ac1d67be62/ingredients?source_system=harvester&source_type=candidate_id" | jq '{clean_len:(.raw_ingredient.text|length),orig_len:(.raw_ingredient.original_text|length),same:(.raw_ingredient.text==.raw_ingredient.original_text)}'`
+3. Crosswalk resolution check:
+   - `curl -sS "$BASE/v1/kb/products/ac1d67be62/ingredients?source_system=harvester&source_type=candidate_id" | jq '{matched_by:.resolved.matched_by,source_system:.resolved.source_system,source_type:.resolved.source_type,count:.ingredients.count}'`
+4. UUID direct lookup check:
+   - `curl -sS "$BASE/v1/kb/products/62881b3b-6cfa-4572-b911-282165cc4e88/ingredients" | jq '{ok,product_id,has_original:(.raw_ingredient.original_text!=null)}'`
+
+Pass criteria:
+- `ok=true` and schema is `aurora.product_ingredients.v1`
+- `raw_ingredient.original_text` is present
+- for noisy samples, `clean_len < orig_len` and `same=false`
+- crosswalk query resolves to `matched_by=crosswalk` with `harvester/candidate_id`
+- UUID lookup also returns `has_original=true`
+
+### B. Latest spotcheck (2026-02-09 UTC)
+
+- Sample size: 20 candidate ids (first 20 rows from `/Users/pengchydan/Desktop/product_candidates_master_v0_i18n__人工检测完毕.csv`)
+- API `ok=true`: 20/20
+- `raw_ingredient.original_text` present: 20/20
+- cleaned text shorter than original: 18/20
+- clean equals original: 1/20
+- request errors: 0/20
+
+Generated artifacts:
+- `reports/ingredient_kb_spotcheck_20260209_064827.md`
+- `reports/ingredient_kb_spotcheck_20260209_064827.csv`
