@@ -62,6 +62,45 @@ function makeOutput(provider, concern, modelName = 'unit-model') {
   };
 }
 
+test('store config agreement threshold honors new env key with legacy fallback', async () => {
+  await withEnv(
+    {
+      AURORA_PSEUDO_LABEL_MIN_AGREEMENT: undefined,
+      AURORA_PSEUDO_LABEL_AGREEMENT_THRESHOLD: undefined,
+    },
+    async () => {
+      const { getStoreConfig, DEFAULT_AGREEMENT_THRESHOLD } = loadFactoryFresh();
+      const cfg = getStoreConfig();
+      assert.equal(cfg.agreementThreshold, DEFAULT_AGREEMENT_THRESHOLD);
+      assert.equal(cfg.agreementThreshold, 0.75);
+    },
+  );
+
+  await withEnv(
+    {
+      AURORA_PSEUDO_LABEL_MIN_AGREEMENT: undefined,
+      AURORA_PSEUDO_LABEL_AGREEMENT_THRESHOLD: '0.61',
+    },
+    async () => {
+      const { getStoreConfig } = loadFactoryFresh();
+      const cfg = getStoreConfig();
+      assert.equal(cfg.agreementThreshold, 0.61);
+    },
+  );
+
+  await withEnv(
+    {
+      AURORA_PSEUDO_LABEL_MIN_AGREEMENT: '0.82',
+      AURORA_PSEUDO_LABEL_AGREEMENT_THRESHOLD: '0.61',
+    },
+    async () => {
+      const { getStoreConfig } = loadFactoryFresh();
+      const cfg = getStoreConfig();
+      assert.equal(cfg.agreementThreshold, 0.82);
+    },
+  );
+});
+
 test('agreement metrics: type/region/severity behave as expected', () => {
   const { computeAgreementForPair } = loadFactoryFresh();
   const left = makeOutput(
@@ -155,7 +194,7 @@ test('persistPseudoLabelArtifacts writes model outputs and gated pseudo labels',
         AURORA_PSEUDO_LABEL_ENABLED: 'true',
         AURORA_PSEUDO_LABEL_DIR: store.root,
         AURORA_PSEUDO_LABEL_REGION_IOU_THRESHOLD: '0.3',
-        AURORA_PSEUDO_LABEL_AGREEMENT_THRESHOLD: '0.55',
+        AURORA_PSEUDO_LABEL_MIN_AGREEMENT: '0.55',
         AURORA_PSEUDO_LABEL_ALLOW_ROI: 'false',
       },
       async () => {

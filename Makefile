@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily pseudo-label-job monitoring-validate
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -14,6 +14,12 @@ LOADTEST_REQUEST_TIMEOUT_S ?= 8
 LOADTEST_QC ?= pass
 LOADTEST_P95_BUDGET_MS ?= 2000
 BASE ?= https://pivota-agent-production.up.railway.app
+VERIFY_STORE_DIR ?= tmp/diag_pseudo_label_factory
+VERIFY_HARD_CASES ?= tmp/diag_verify/hard_cases.ndjson
+VERIFY_REPORT_DATE ?=
+PSEUDO_STORE_DIR ?= tmp/diag_pseudo_label_factory
+PSEUDO_OUT_DIR ?= reports/pseudo_label_job
+PSEUDO_JOB_DATE ?=
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -58,3 +64,12 @@ status:
 
 docs: status
 	@echo "Status snapshot generated; docs are in docs/IMPLEMENTATION_STATUS.md and docs/NEXT_STEPS.md"
+
+verify-daily:
+	node scripts/report_verify_daily.js --store-dir $(VERIFY_STORE_DIR) --hard-cases $(VERIFY_HARD_CASES) $(if $(VERIFY_REPORT_DATE),--date $(VERIFY_REPORT_DATE),)
+
+pseudo-label-job:
+	node scripts/run_pseudo_label_job.js --store-dir $(PSEUDO_STORE_DIR) --out-dir $(PSEUDO_OUT_DIR) $(if $(PSEUDO_JOB_DATE),--date $(PSEUDO_JOB_DATE),)
+
+monitoring-validate:
+	python3 scripts/monitoring_validate.py

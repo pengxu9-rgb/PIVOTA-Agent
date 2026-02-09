@@ -9,7 +9,7 @@ const MANIFEST_SCHEMA_VERSION = 'aurora.diag.pseudo_label_manifest.v1';
 
 const DEFAULT_STORE_SUBDIR = path.join('tmp', 'diag_pseudo_label_factory');
 const DEFAULT_REGION_IOU_THRESHOLD = 0.3;
-const DEFAULT_AGREEMENT_THRESHOLD = 0.55;
+const DEFAULT_AGREEMENT_THRESHOLD = 0.75;
 
 function normalizeToken(value) {
   return String(value == null ? '' : value)
@@ -58,6 +58,12 @@ function envNumber(name, fallback, min, max) {
   return clamp(value, min, max);
 }
 
+function envNumberFromValue(rawValue, fallback, min, max) {
+  const value = Number(rawValue == null ? fallback : rawValue);
+  if (!Number.isFinite(value)) return fallback;
+  return clamp(value, min, max);
+}
+
 function normalizeType(rawType) {
   const token = normalizeToken(rawType);
   if (!token) return 'other';
@@ -88,12 +94,15 @@ function normalizeType(rawType) {
 
 function getStoreConfig() {
   const dir = String(process.env.AURORA_PSEUDO_LABEL_DIR || '').trim() || path.join(process.cwd(), DEFAULT_STORE_SUBDIR);
+  const agreementRawValue = process.env.AURORA_PSEUDO_LABEL_MIN_AGREEMENT == null
+    ? process.env.AURORA_PSEUDO_LABEL_AGREEMENT_THRESHOLD
+    : process.env.AURORA_PSEUDO_LABEL_MIN_AGREEMENT;
   return {
     enabled: parseBool(process.env.AURORA_PSEUDO_LABEL_ENABLED, true),
     baseDir: dir,
     allowRoi: parseBool(process.env.AURORA_PSEUDO_LABEL_ALLOW_ROI, false),
     regionIouThreshold: envNumber('AURORA_PSEUDO_LABEL_REGION_IOU_THRESHOLD', DEFAULT_REGION_IOU_THRESHOLD, 0.05, 0.95),
-    agreementThreshold: envNumber('AURORA_PSEUDO_LABEL_AGREEMENT_THRESHOLD', DEFAULT_AGREEMENT_THRESHOLD, 0.05, 1),
+    agreementThreshold: envNumberFromValue(agreementRawValue, DEFAULT_AGREEMENT_THRESHOLD, 0.05, 1),
   };
 }
 
@@ -1026,4 +1035,5 @@ module.exports = {
   generatePseudoLabelsForPair,
   persistPseudoLabelArtifacts,
   readNdjsonFile,
+  DEFAULT_AGREEMENT_THRESHOLD,
 };
