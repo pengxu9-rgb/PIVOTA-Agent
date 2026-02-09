@@ -8758,22 +8758,29 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                onVerifyAgreement: (score) => recordVerifyAgreementScore(score),
 	                onVerifyHardCase: () => recordVerifyHardCase(),
 	              },
-	            })
-	              .then((verify) => {
-	                if (!verify || !verify.called) return;
-	                logger?.info(
-	                  {
-	                    request_id: ctx.request_id,
-	                    trace_id: ctx.trace_id,
-	                    used_photos: usedPhotos,
-	                    verify_ok: Boolean(verify.ok),
-	                    agreement_score: verify.agreement_score,
-	                    disagreement_reasons: verify.disagreement_reasons,
-	                    hard_case_written: Boolean(verify.hard_case_written),
-	                  },
-	                  'diag verify: shadow run recorded',
-	                );
-	              })
+		            })
+		              .then((verify) => {
+		                if (!verify || !verify.called) return;
+		                logger?.info(
+		                  {
+		                    request_id: ctx.request_id,
+		                    trace_id: ctx.trace_id,
+		                    used_photos: usedPhotos,
+		                    verify_ok: Boolean(verify.ok),
+		                    verify_provider_status_code:
+		                      Number.isFinite(Number(verify.provider_status_code)) ? Number(verify.provider_status_code) : null,
+		                    verify_final_reason: verify.final_reason || null,
+		                    verify_raw_final_reason: verify.raw_final_reason || null,
+		                    verify_fail_reason: verify.verify_fail_reason || null,
+		                    verify_attempts: Number.isFinite(Number(verify.attempts)) ? Number(verify.attempts) : null,
+		                    verify_latency_ms: Number.isFinite(Number(verify.latency_ms)) ? Number(verify.latency_ms) : null,
+		                    agreement_score: verify.agreement_score,
+		                    disagreement_reasons: verify.disagreement_reasons,
+		                    hard_case_written: Boolean(verify.hard_case_written),
+		                  },
+		                  'diag verify: shadow run recorded',
+		                );
+		              })
 	              .catch((err) => {
 	                logger?.warn({ err: err && err.message ? err.message : String(err) }, 'diag verify: shadow run failed');
 	              });
