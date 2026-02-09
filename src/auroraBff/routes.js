@@ -1588,7 +1588,12 @@ function extractProductInputFromFitCheckText(message) {
   if (!raw) return '';
 
   // Remove internal test markers if they leaked into user input.
-  let t = raw.replace(/STRUCTURED_STUB_ONLY_TEST/gi, '').trim();
+  let t = raw
+    .replace(/STRUCTURED_STUB_ONLY_TEST/gi, '')
+    .replace(/SHORT_CARDS_BELOW_STUB_TEST/gi, '')
+    .replace(/SHORT_CARDS_BELOW_STRIPPED_RECO_TEST/gi, '')
+    .replace(/NON_GENERIC_STUB_TEST/gi, '')
+    .trim();
 
   // Prefer suffix after the last ":" / "：" (common pattern: "Evaluate: <name>").
   const m = t.match(/[:：]\s*([^:：]{2,400})\s*$/);
@@ -1717,6 +1722,20 @@ function inferRouteFromMessageIntent(message, { allowRecoCards } = {}) {
   if (looksLikeSuitabilityRequest(message)) return { route: 'fit-check', payload: {} };
   if (allowRecoCards && looksLikeRecommendationRequest(message)) return { route: 'reco', payload: {} };
   return null;
+}
+
+function resolveRouteHint(fromCards, fromMessage) {
+  const cardRoute = String(fromCards?.route || '').trim();
+  const messageRoute = String(fromMessage?.route || '').trim();
+  if (!cardRoute) return fromMessage || null;
+  if (!messageRoute) return fromCards || null;
+
+  const explicitMessageRoutes = new Set(['fit-check', 'conflict', 'env']);
+  if (explicitMessageRoutes.has(messageRoute)) {
+    if (cardRoute === 'reco') return fromMessage;
+    if (cardRoute === messageRoute) return fromCards;
+  }
+  return fromCards;
 }
 
 function summarizeProfileForAnswer(profile, lang) {
@@ -8435,27 +8454,22 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
       }
 
-      // Fit-check fallback: some upstream flows return only a parse/conflicts stub (no recommendations or analysis cards).
-      // If the user explicitly asked whether a specific product is suitable, run a dedicated deep-scan and emit a
-      // renderable `product_analysis` card so the UI has something actionable to display.
+      // Fit-check fallback: if user asks suitability but upstream did not provide a renderable
+      // `product_analysis` card, run a dedicated deep-scan to guarantee actionable output.
       const wantsSuitabilityFallback =
         looksLikeSuitabilityRequest(message);
 
-      const hasProductOutputCard = (arr) =>
+      const hasProductAnalysisCard = (arr) =>
         Array.isArray(arr) &&
         arr.some((c) => {
           const t = String(c && c.type ? c.type : '').trim().toLowerCase();
-          return t === 'recommendations' || t === 'product_analysis';
+          return t === 'product_analysis';
         });
-
-      const structuredRawForFallback = getUpstreamStructuredOrJson(upstream);
-      const structuredIsParseOnlyStub = structuredLooksLikeParseOnlyStub(structuredRawForFallback);
 
       if (
         wantsSuitabilityFallback &&
-        structuredIsParseOnlyStub &&
-        !hasProductOutputCard(cards) &&
-        !hasProductOutputCard(derivedCards)
+        !hasProductAnalysisCard(cards) &&
+        !hasProductAnalysisCard(derivedCards)
       ) {
         const productInput =
           anchorProductUrl ||
@@ -8705,7 +8719,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         !routeHintFromCards
           ? inferRouteFromMessageIntent(message, { allowRecoCards: allowRecs })
           : null;
-      const routeHint = routeHintFromCards || routeHintFromMessage;
+      const routeHint = resolveRouteHint(routeHintFromCards, routeHintFromMessage);
       if (routeHint && routeHint.route) {
         const routeStructured = buildRouteAwareAssistantText({
           route: routeHint.route,

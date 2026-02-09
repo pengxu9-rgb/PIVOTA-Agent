@@ -2699,6 +2699,194 @@ test('/v1/chat: fit-check ignores stale budget-clarify action_id (no reco hijack
   });
 });
 
+test('/v1/chat: fit-check parse stub with reco card still emits fit-check analysis', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
+      headers: { 'X-Aurora-UID': 'test_uid_fitcheck_reco_stub', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['brightening'],
+        region: 'CN',
+      },
+    });
+    assert.equal(seed.status, 200);
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_fitcheck_reco_stub', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        message: '这款适不适合我：The Ordinary Niacinamide 10% + Zinc 1% SHORT_CARDS_BELOW_STRIPPED_RECO_TEST',
+        session: { state: 'idle' },
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('product_analysis'), true);
+
+    const assistant = String(resp.body?.assistant_message?.content || '');
+    assert.equal(/cards\s+below/i.test(assistant), false);
+    assert.equal(assistant.includes('结论：'), true);
+    assert.equal(assistant.includes('风险点：'), true);
+  });
+});
+
+test('/v1/chat: fit-check without upstream analysis still backfills product_analysis', async () => {
+  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
+      headers: { 'X-Aurora-UID': 'test_uid_fitcheck_backfill', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'healthy',
+        goals: ['acne'],
+      },
+    });
+    assert.equal(seed.status, 200);
+
+    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: { 'X-Aurora-UID': 'test_uid_fitcheck_backfill', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+      body: {
+        message: '这款适不适合我：The Ordinary Niacinamide 10% + Zinc 1%',
+        session: { state: 'idle' },
+        language: 'CN',
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+    assert.equal(cardTypes.includes('product_analysis'), true);
+    const assistant = String(resp.body?.assistant_message?.content || '');
+    assert.equal(assistant.includes('结论：'), true);
+  });
+});
+
 test('/v1/chat: anchor-derived product_analysis personalizes reasons using profile', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const express = require('express');
