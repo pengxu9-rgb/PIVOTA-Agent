@@ -26,6 +26,12 @@ test('vision metrics: verify fail reasons are normalized and budget guard is cou
   recordVerifyFail({ reason: 'MISSING_IMAGE_BUFFER', provider: 'gemini_provider', httpStatusClass: '4xx' });
   recordVerifyFail({ reason: 'VISION_NETWORK_ERROR', provider: 'gemini_provider', httpStatusClass: 'unknown' });
   recordVerifyFail({ reason: 'completely_unclassified', provider: 'gemini_provider', httpStatusClass: 'unknown' });
+  recordVerifyFail({
+    reason: 'VISION_UNKNOWN',
+    provider: 'gemini_provider',
+    httpStatusClass: '5xx',
+    errorClass: 'MISSING_DEP',
+  });
   recordVerifyBudgetGuard();
   recordVerifyBudgetGuard();
   recordVerifyCircuitOpen();
@@ -40,6 +46,15 @@ test('vision metrics: verify fail reasons are normalized and budget guard is cou
   assert.match(metrics, /verify_fail_total\{reason="IMAGE_FETCH_FAILED",provider="gemini_provider",http_status_class="4xx"\} 1/);
   assert.match(metrics, /verify_fail_total\{reason="NETWORK_ERROR",provider="gemini_provider",http_status_class="unknown"\} 1/);
   assert.match(metrics, /verify_fail_total\{reason="UNKNOWN",provider="gemini_provider",http_status_class="unknown"\} 1/);
+  assert.match(metrics, /verify_fail_total\{reason="UNKNOWN",provider="gemini_provider",http_status_class="5xx"\} 1/);
+  assert.match(
+    metrics,
+    /verify_fail_unknown_error_class_total\{provider="gemini_provider",http_status_class="unknown",error_class="unknown"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /verify_fail_unknown_error_class_total\{provider="gemini_provider",http_status_class="5xx",error_class="missing_dep"\} 1/,
+  );
   assert.match(metrics, /verify_budget_guard_total 2/);
   assert.match(metrics, /verify_circuit_open_total 1/);
   assert.match(metrics, /verify_retry_total 2/);

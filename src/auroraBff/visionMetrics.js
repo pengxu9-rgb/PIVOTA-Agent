@@ -25,6 +25,7 @@ let ensembleAgreementCount = 0;
 let ensembleAgreementSum = 0;
 const verifierCalls = new Map();
 const verifierFails = new Map();
+const verifierUnknownErrorClassFails = new Map();
 let verifierBudgetGuardCount = 0;
 let verifierCircuitOpenCount = 0;
 let verifierRetryCount = 0;
@@ -121,6 +122,10 @@ function normalizeTimeoutStage(stage) {
   const token = cleanMetricToken(stage, '');
   if (token === 'connect' || token === 'read' || token === 'total') return token;
   return 'unknown';
+}
+
+function normalizeVerifyErrorClass(errorClass) {
+  return cleanMetricToken(errorClass, 'unknown');
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -273,7 +278,7 @@ function recordVerifyCall({ status } = {}) {
   incCounter(verifierCalls, { status: safeStatus }, 1);
 }
 
-function recordVerifyFail({ reason, provider, httpStatusClass, timeoutStage } = {}) {
+function recordVerifyFail({ reason, provider, httpStatusClass, timeoutStage, errorClass } = {}) {
   const safeReason = normalizeVerifyFailReason(reason);
   const safeProvider = normalizeVerifyProvider(provider);
   const safeStatusClass = normalizeHttpStatusClass(httpStatusClass, safeReason);
@@ -286,6 +291,17 @@ function recordVerifyFail({ reason, provider, httpStatusClass, timeoutStage } = 
     },
     1,
   );
+  if (safeReason === 'UNKNOWN') {
+    incCounter(
+      verifierUnknownErrorClassFails,
+      {
+        provider: safeProvider,
+        http_status_class: safeStatusClass,
+        error_class: normalizeVerifyErrorClass(errorClass),
+      },
+      1,
+    );
+  }
   if (safeReason === 'TIMEOUT') {
     incCounter(verifierTimeoutByStage, { stage: normalizeTimeoutStage(timeoutStage) }, 1);
   }
@@ -451,6 +467,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE verify_fail_total counter');
   renderCounter(lines, 'verify_fail_total', verifierFails);
 
+  lines.push('# HELP verify_fail_unknown_error_class_total Total UNKNOWN verifier failures grouped by provider/http_status_class/error_class.');
+  lines.push('# TYPE verify_fail_unknown_error_class_total counter');
+  renderCounter(lines, 'verify_fail_unknown_error_class_total', verifierUnknownErrorClassFails);
+
   lines.push('# HELP verify_budget_guard_total Total number of verifier calls skipped by budget guard.');
   lines.push('# TYPE verify_budget_guard_total counter');
   lines.push(`verify_budget_guard_total ${verifierBudgetGuardCount}`);
@@ -529,6 +549,7 @@ function resetVisionMetrics() {
   ensembleAgreementSum = 0;
   verifierCalls.clear();
   verifierFails.clear();
+  verifierUnknownErrorClassFails.clear();
   for (const key of verifierAgreementHistogram.keys()) verifierAgreementHistogram.set(key, 0);
   verifierAgreementCount = 0;
   verifierAgreementSum = 0;
@@ -556,6 +577,7 @@ function snapshotVisionMetrics() {
     ensembleAgreementSum,
     verifierCalls: Array.from(verifierCalls.entries()),
     verifierFails: Array.from(verifierFails.entries()),
+    verifierUnknownErrorClassFails: Array.from(verifierUnknownErrorClassFails.entries()),
     verifierAgreementCount,
     verifierAgreementSum,
     verifierHardCaseCount,
