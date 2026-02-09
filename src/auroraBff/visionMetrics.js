@@ -23,6 +23,18 @@ const ensembleAgreementHistogram = new Map([
 ]);
 let ensembleAgreementCount = 0;
 let ensembleAgreementSum = 0;
+const verifierCalls = new Map();
+const verifierFails = new Map();
+const verifierAgreementHistogram = new Map([
+  [0.2, 0],
+  [0.4, 0],
+  [0.6, 0],
+  [0.8, 0],
+  [1.0, 0],
+]);
+let verifierAgreementCount = 0;
+let verifierAgreementSum = 0;
+let verifierHardCaseCount = 0;
 
 function cleanLabel(value, fallback) {
   const raw = String(value == null ? '' : value).trim();
@@ -165,6 +177,33 @@ function recordEnsembleAgreementScore(score) {
   }
 }
 
+function recordVerifyCall({ status } = {}) {
+  const safeStatus = cleanLabel(status, 'attempt').toLowerCase();
+  incCounter(verifierCalls, { status: safeStatus }, 1);
+}
+
+function recordVerifyFail({ reason } = {}) {
+  const safeReason = cleanLabel(reason, 'UNKNOWN');
+  incCounter(verifierFails, { reason: safeReason }, 1);
+}
+
+function recordVerifyAgreementScore(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return;
+  const clamped = Math.max(0, Math.min(1, value));
+  verifierAgreementCount += 1;
+  verifierAgreementSum += clamped;
+  for (const bucket of verifierAgreementHistogram.keys()) {
+    if (clamped <= bucket) {
+      verifierAgreementHistogram.set(bucket, (verifierAgreementHistogram.get(bucket) || 0) + 1);
+    }
+  }
+}
+
+function recordVerifyHardCase() {
+  verifierHardCaseCount += 1;
+}
+
 function escapePromValue(value) {
   return String(value == null ? '' : value)
     .replace(/\\/g, '\\\\')
@@ -251,6 +290,32 @@ function renderVisionMetricsPrometheus() {
   lines.push(`diag_ensemble_agreement_score_sum ${ensembleAgreementSum}`);
   lines.push(`diag_ensemble_agreement_score_count ${ensembleAgreementCount}`);
 
+  lines.push('# HELP verify_calls_total Total number of Gemini shadow verifier calls.');
+  lines.push('# TYPE verify_calls_total counter');
+  renderCounter(lines, 'verify_calls_total', verifierCalls);
+
+  lines.push('# HELP verify_fail_total Total number of Gemini shadow verifier failures grouped by reason.');
+  lines.push('# TYPE verify_fail_total counter');
+  renderCounter(lines, 'verify_fail_total', verifierFails);
+
+  lines.push('# HELP agreement_histogram Agreement score distribution for Gemini shadow verifier.');
+  lines.push('# TYPE agreement_histogram histogram');
+  for (const [bucket, value] of verifierAgreementHistogram.entries()) {
+    lines.push(`agreement_histogram_bucket{le="${bucket.toFixed(1)}"} ${value}`);
+  }
+  lines.push(`agreement_histogram_bucket{le="+Inf"} ${verifierAgreementCount}`);
+  lines.push(`agreement_histogram_sum ${verifierAgreementSum}`);
+  lines.push(`agreement_histogram_count ${verifierAgreementCount}`);
+
+  lines.push('# HELP hard_case_rate Hard case ratio observed in Gemini shadow verifier.');
+  lines.push('# TYPE hard_case_rate gauge');
+  const verifyAttemptCount = Array.from(verifierCalls.entries())
+    .map(([key, value]) => ({ labels: parseLabelsKey(key), value }))
+    .filter((entry) => entry.labels.status === 'ok' || entry.labels.status === 'fail')
+    .reduce((acc, entry) => acc + Number(entry.value || 0), 0);
+  const hardCaseRate = verifyAttemptCount > 0 ? verifierHardCaseCount / verifyAttemptCount : 0;
+  lines.push(`hard_case_rate ${hardCaseRate}`);
+
   return `${lines.join('\n')}\n`;
 }
 
@@ -266,6 +331,12 @@ function resetVisionMetrics() {
   for (const key of ensembleAgreementHistogram.keys()) ensembleAgreementHistogram.set(key, 0);
   ensembleAgreementCount = 0;
   ensembleAgreementSum = 0;
+  verifierCalls.clear();
+  verifierFails.clear();
+  for (const key of verifierAgreementHistogram.keys()) verifierAgreementHistogram.set(key, 0);
+  verifierAgreementCount = 0;
+  verifierAgreementSum = 0;
+  verifierHardCaseCount = 0;
 }
 
 function snapshotVisionMetrics() {
@@ -280,6 +351,11 @@ function snapshotVisionMetrics() {
     ensembleLatencyProviders: Array.from(ensembleLatencyByProvider.keys()),
     ensembleAgreementCount,
     ensembleAgreementSum,
+    verifierCalls: Array.from(verifierCalls.entries()),
+    verifierFails: Array.from(verifierFails.entries()),
+    verifierAgreementCount,
+    verifierAgreementSum,
+    verifierHardCaseCount,
   };
 }
 
@@ -288,6 +364,10 @@ module.exports = {
   observeVisionLatency,
   recordEnsembleProviderResult,
   recordEnsembleAgreementScore,
+  recordVerifyCall,
+  recordVerifyFail,
+  recordVerifyAgreementScore,
+  recordVerifyHardCase,
   renderVisionMetricsPrometheus,
   resetVisionMetrics,
   snapshotVisionMetrics,

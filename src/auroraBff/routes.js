@@ -26,8 +26,15 @@ const {
 } = require('./visionPolicy');
 const {
   recordVisionDecision,
+  recordEnsembleProviderResult,
+  recordEnsembleAgreementScore,
+  recordVerifyCall,
+  recordVerifyFail,
+  recordVerifyAgreementScore,
+  recordVerifyHardCase,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
+const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
 const { sampleHardCase, deleteHardCasesForIdentity } = require('./hardCaseSampler');
@@ -1832,6 +1839,47 @@ function buildExecutablePlanForAnalysis({
   }
   base.photo_findings = photoFindings;
   base.findings = photoFindings;
+  if (usedPhotos && !qualityFail && photoFindings.length) {
+    const evidenceRegions = [];
+    for (const finding of photoFindings) {
+      const geometry = finding && finding.geometry && typeof finding.geometry === 'object' ? finding.geometry : null;
+      if (!geometry) continue;
+      if (geometry.bbox_norm && typeof geometry.bbox_norm === 'object') {
+        evidenceRegions.push({
+          concern_type: finding.issue_type,
+          severity: finding.severity,
+          confidence: finding.confidence,
+          region: { kind: 'bbox', bbox_norm: geometry.bbox_norm },
+          evidence_text: finding.evidence || '',
+        });
+      }
+      if (
+        geometry.type === 'grid' &&
+        Number.isFinite(Number(geometry.rows)) &&
+        Number.isFinite(Number(geometry.cols)) &&
+        Array.isArray(geometry.values)
+      ) {
+        const rows = Math.max(1, Math.min(64, Math.trunc(Number(geometry.rows))));
+        const cols = Math.max(1, Math.min(64, Math.trunc(Number(geometry.cols))));
+        const values = geometry.values
+          .slice(0, rows * cols)
+          .map((value) => (Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : 0));
+        if (values.length === rows * cols) {
+          evidenceRegions.push({
+            concern_type: finding.issue_type,
+            severity: finding.severity,
+            confidence: finding.confidence,
+            region: { kind: 'heatmap', rows, cols, values },
+            evidence_text: finding.evidence || '',
+          });
+        }
+      }
+    }
+    if (evidenceRegions.length) base.evidence_regions = evidenceRegions.slice(0, 48);
+    else delete base.evidence_regions;
+  } else {
+    delete base.evidence_regions;
+  }
 
   const takeawaysInput = Array.isArray(base.takeaways) ? base.takeaways : [];
   const takeaways = [];
@@ -7737,6 +7785,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
 	        let diagnosisPhoto = null;
 	        let diagnosisPhotoBytes = null;
+	        let shadowVerifyPhotoBytes = null;
         let diagnosisV1 = null;
         let diagnosisV1Internal = null;
         let diagnosisPolicy = null;
@@ -7784,6 +7833,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: diagnosisPhoto.photo_id });
               if (resp && resp.ok) {
                 diagnosisPhotoBytes = resp.buffer;
+                shadowVerifyPhotoBytes = diagnosisPhotoBytes;
               } else {
                 recordPhotoFailure(resp && (resp.failure_code || resp.reason), resp && resp.detail);
               }
@@ -7815,6 +7865,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	                diagnosisV1Internal = diag.internal || null;
 	                diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
 	                usedPhotos = true;
+	                shadowVerifyPhotoBytes = diagnosisPhotoBytes;
 	                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
 	                if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
                 if (dq && dq.grade === 'fail') {
@@ -7949,6 +8000,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               if (vision && vision.ok && vision.analysis) {
                 analysis = vision.analysis;
                 usedPhotos = true;
+                shadowVerifyPhotoBytes = photoBytes;
                 analysisSource = vision.provider === 'gemini' ? 'vision_gemini' : 'vision_openai';
               } else if (vision && !vision.ok) {
                 const normalizedReason = normalizeVisionReason(vision.reason);
@@ -8284,6 +8336,64 @@ function mountAuroraBffRoutes(app, { logger }) {
 	            logger?.warn({ err: err && err.message ? err.message : String(err) }, 'hard case sampler: failed');
 	          });
 	        });
+
+	        if (!shadowRun) {
+	          setImmediate(() => {
+	            runGeminiShadowVerify({
+	              imageBuffer: shadowVerifyPhotoBytes || diagnosisPhotoBytes || null,
+	              language: ctx.lang,
+	              photoQuality,
+	              usedPhotos,
+	              diagnosisV1,
+	              diagnosisInternal: diagnosisV1Internal,
+	              profileSummary,
+	              recentLogsSummary,
+	              inferenceId: ctx.request_id,
+	              skinToneBucket:
+	                diagnosisV1Internal && typeof diagnosisV1Internal.skin_tone_bucket === 'string'
+	                  ? diagnosisV1Internal.skin_tone_bucket
+	                  : 'unknown',
+	              lightingBucket:
+	                diagnosisV1Internal && typeof diagnosisV1Internal.lighting_bucket === 'string'
+	                  ? diagnosisV1Internal.lighting_bucket
+	                  : 'unknown',
+	              logger,
+	              metricsHooks: {
+	                onProviderResult: (stat) =>
+	                  recordEnsembleProviderResult({
+	                    provider: stat.provider,
+	                    ok: stat.ok,
+	                    latencyMs: stat.latency_ms,
+	                    failureReason: stat.failure_reason,
+	                    schemaFailed: stat.schema_failed,
+	                  }),
+	                onAgreement: (score) => recordEnsembleAgreementScore(score),
+	                onVerifyCall: ({ status }) => recordVerifyCall({ status }),
+	                onVerifyFail: ({ reason }) => recordVerifyFail({ reason }),
+	                onVerifyAgreement: (score) => recordVerifyAgreementScore(score),
+	                onVerifyHardCase: () => recordVerifyHardCase(),
+	              },
+	            })
+	              .then((verify) => {
+	                if (!verify || !verify.called) return;
+	                logger?.info(
+	                  {
+	                    request_id: ctx.request_id,
+	                    trace_id: ctx.trace_id,
+	                    used_photos: usedPhotos,
+	                    verify_ok: Boolean(verify.ok),
+	                    agreement_score: verify.agreement_score,
+	                    disagreement_reasons: verify.disagreement_reasons,
+	                    hard_case_written: Boolean(verify.hard_case_written),
+	                  },
+	                  'diag verify: shadow run recorded',
+	                );
+	              })
+	              .catch((err) => {
+	                logger?.warn({ err: err && err.message ? err.message : String(err) }, 'diag verify: shadow run failed');
+	              });
+	          });
+	        }
 
 	        return { envelope, report };
 	      };

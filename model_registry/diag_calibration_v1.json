@@ -1,0 +1,68 @@
+{
+  "schema_version": "aurora.diag.calibration_model.v1",
+  "model_version": "diag_calibration_v1_identity",
+  "created_at": "1970-01-01T00:00:00.000Z",
+  "training": {
+    "samples_total": 0,
+    "iou_threshold": 0.3,
+    "min_group_samples": 24,
+    "baseline_metrics": {
+      "ece": 0,
+      "brier": 0
+    },
+    "calibrated_metrics": {
+      "ece": 0,
+      "brier": 0
+    },
+    "feature_fields": [
+      "raw_confidence",
+      "exposure_score",
+      "reflection_score",
+      "filter_score",
+      "tone_bucket",
+      "lighting_bucket",
+      "makeup_detected",
+      "filter_detected"
+    ]
+  },
+  "calibration": {
+    "global": {
+      "kind": "isotonic_step_v1",
+      "x": [
+        0,
+        1
+      ],
+      "y": [
+        0,
+        1
+      ],
+      "samples": 0
+    },
+    "by_provider": {},
+    "by_group": {},
+    "hierarchy": [
+      "provider_quality_tone_lighting_flags",
+      "provider_quality_tone_lighting",
+      "provider_quality_tone",
+      "provider_quality",
+      "provider",
+      "global"
+    ]
+  },
+  "provider_weights": {
+    "default": 1,
+    "by_provider": {},
+    "by_bucket": {}
+  },
+  "severity_smoothing": {
+    "min_scale": 0.72,
+    "max_scale": 1,
+    "confidence_gamma": 1
+  },
+  "feature_defaults": {
+    "tone_bucket": "unknown",
+    "lighting_bucket": "unknown",
+    "region_bucket": "unknown",
+    "quality_grade": "unknown"
+  }
+}
