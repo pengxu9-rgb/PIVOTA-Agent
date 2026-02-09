@@ -1,6 +1,6 @@
 # Implementation Status (Aurora Diagnosis Pipeline)
 
-Last updated: 2026-02-09
+Last updated: 2026-02-09 (post-prod verify mapping patch)
 
 ## 1) Current Pipeline (text flow)
 
@@ -139,6 +139,7 @@ Last updated: 2026-02-09
 - Runtime smoke: `make runtime-smoke BASE=https://pivota-agent-production.up.railway.app`
 - Verify guard probe (single run): `BASE=https://pivota-agent-production.up.railway.app CALLS=1 WAIT_AFTER_SEC=10 EXPECT_GUARD=0 scripts/probe_verify_budget_guard.sh`
 - Verify guard probe (DNS/network jitter hardened): `BASE=https://pivota-agent-production.up.railway.app CALLS=1 WAIT_AFTER_SEC=10 EXPECT_GUARD=0 CURL_RETRY_MAX=6 CURL_RETRY_DELAY_SEC=2 scripts/probe_verify_budget_guard.sh`
+- Verify reason-delta quick check (UNKNOWN/4XX/5XX/TIMEOUT): capture `/metrics` before/after one probe and diff `verify_fail_total{reason=*}` counters
 - Focused tests (contract + stability + gate discovery): `make test`
 - Full unit suite used by privacy check flow: `npm run test:aurora-bff:unit`
 - Gold-label sample generation: `make gold-label-sample GOLD_TOTAL=500 GOLD_HARD_RATIO=0.6`
@@ -179,3 +180,34 @@ Pass criteria:
 Generated artifacts:
 - `reports/ingredient_kb_spotcheck_20260209_064827.md`
 - `reports/ingredient_kb_spotcheck_20260209_064827.csv`
+
+## 6) Latest Production Verification (Verifier Failure Mapping)
+
+Validation window:
+- Service: `https://pivota-agent-production.up.railway.app`
+- Deployed commit: `21d282440b57`
+- Started at: `2026-02-09T13:04:51.950Z`
+
+Probe run (post-deploy):
+- Command family: `scripts/probe_verify_budget_guard.sh` (`CALLS=2`, `WAIT_AFTER_SEC=12`, `EXPECT_GUARD=0`)
+- Result:
+  - `used_photos=true`
+  - `analysis_source=vision_gemini`
+  - `verify_calls_total` delta: `+7`
+  - `verify_fail_total` delta: `+0`
+  - `verify_budget_guard_total` delta: `+0`
+  - `verify_calls_total{status="guard"}` delta: `+0`
+- Reason deltas (before/after metrics snapshot):
+  - `UNKNOWN=0`
+  - `UPSTREAM_4XX=0`
+  - `UPSTREAM_5XX=0`
+  - `TIMEOUT=0`
+  - `RATE_LIMIT=0`
+  - `QUOTA=0`
+  - `NETWORK_ERROR=0`
+  - `IMAGE_FETCH_FAILED=0`
+  - `SCHEMA_INVALID=0`
+
+Interpretation:
+- Mapping patch is active in production and no verifier failure regression was observed during this run.
+- `UNKNOWN` bucket did not increase, which is the main acceptance signal for this patch.
