@@ -137,6 +137,8 @@ Last updated: 2026-02-09
 ### Local reproducibility commands
 - Release gate: `make release-gate`
 - Runtime smoke: `make runtime-smoke BASE=https://pivota-agent-production.up.railway.app`
+- Verify guard probe (single run): `BASE=https://pivota-agent-production.up.railway.app CALLS=1 WAIT_AFTER_SEC=10 EXPECT_GUARD=0 scripts/probe_verify_budget_guard.sh`
+- Verify guard probe (DNS/network jitter hardened): `BASE=https://pivota-agent-production.up.railway.app CALLS=1 WAIT_AFTER_SEC=10 EXPECT_GUARD=0 CURL_RETRY_MAX=6 CURL_RETRY_DELAY_SEC=2 scripts/probe_verify_budget_guard.sh`
 - Focused tests (contract + stability + gate discovery): `make test`
 - Full unit suite used by privacy check flow: `npm run test:aurora-bff:unit`
 - Gold-label sample generation: `make gold-label-sample GOLD_TOTAL=500 GOLD_HARD_RATIO=0.6`
