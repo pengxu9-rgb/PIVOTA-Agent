@@ -302,6 +302,38 @@ describe('POST /agent/v1/products/resolve', () => {
     );
   });
 
+  test('accepts hints.product_ref with product_id only', async () => {
+    const app = require('../../src/server');
+    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: hintedProductId,
+        lang: 'en',
+        hints: {
+          product_ref: {
+            product_id: hintedProductId,
+          },
+          aliases: ['Paula Choice 2 percent BHA Liquid'],
+        },
+        options: {
+          search_all_merchants: false,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        product_ref: {
+          product_id: hintedProductId,
+        },
+      }),
+    );
+  });
+
   test('normalizes uuid query from hint alias when provided', async () => {
     const hintedAlias = 'The Ordinary Niacinamide 10% + Zinc 1%';
     const app = require('../../src/server');

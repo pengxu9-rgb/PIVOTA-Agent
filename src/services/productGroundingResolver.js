@@ -58,13 +58,12 @@ function extractResolverHints(hints) {
     hintObj.merchantId,
     hintObj.merchant && typeof hintObj.merchant === 'object' ? hintObj.merchant.merchant_id : null,
   );
-  const productRef =
-    hintProductId && hintMerchantId
-      ? {
-          product_id: hintProductId,
-          merchant_id: hintMerchantId,
-        }
-      : null;
+  const productRef = hintProductId
+    ? {
+        product_id: hintProductId,
+        ...(hintMerchantId ? { merchant_id: hintMerchantId } : {}),
+      }
+    : null;
 
   const brand = firstNonEmptyString(hintObj.brand, hintObj.vendor) || null;
   const name = firstNonEmptyString(
@@ -220,8 +219,11 @@ function getCandidateBrand(product) {
 function extractProductRef(product) {
   const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
   const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
-  if (!productId || !merchantId) return null;
-  return { product_id: productId, merchant_id: merchantId };
+  if (!productId) return null;
+  return {
+    product_id: productId,
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+  };
 }
 
 function computeTokenOverlapScore(queryTokens, candidateText) {
@@ -596,7 +598,9 @@ function dedupeByProductRef(candidates) {
   const seen = new Set();
   for (const item of candidates || []) {
     const ref = item && item.product_ref ? item.product_ref : null;
-    const key = ref ? `${ref.merchant_id}::${ref.product_id}` : null;
+    const merchantKey = ref?.merchant_id ? String(ref.merchant_id).trim() : '_';
+    const productKey = ref?.product_id ? String(ref.product_id).trim() : '';
+    const key = productKey ? `${merchantKey}::${productKey}` : null;
     if (!key) continue;
     if (seen.has(key)) continue;
     seen.add(key);
