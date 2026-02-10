@@ -76,6 +76,11 @@ function mockAuroraChat(input) {
   const q = String(norm.query || '');
   const anchorId = String(norm.anchor_product_id || '').trim();
 
+  // Test helper: allow asserting what the BFF sent upstream (prefix includes profile/recent logs/meta).
+  if (/CHAT_PROFILE_PREFIX_ECHO_TEST/i.test(q)) {
+    return { answer: q, intent: 'chat', cards: [] };
+  }
+
   if (/DUPE_SUGGEST_TEST/i.test(q)) {
     return {
       answer: 'Mock: dupe suggest alternatives.',

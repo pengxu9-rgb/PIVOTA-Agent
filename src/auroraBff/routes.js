@@ -3138,11 +3138,11 @@ function inferProfilePatchFromClarification({ clarificationId, replyText }) {
   if (!field || !raw) return null;
 
   if (field === 'skinType') {
-    if (/(oily|油)/.test(text)) return { skinType: 'oily' };
-    if (/(dry|干)/.test(text)) return { skinType: 'dry' };
-    if (/(combo|combination|mixed|混合)/.test(text)) return { skinType: 'combination' };
-    if (/(normal|中性)/.test(text)) return { skinType: 'normal' };
-    if (/(sensitive|敏感)/.test(text)) return { skinType: 'sensitive' };
+    if (/\boily\b/.test(text) || /(油皮|油性|出油)/.test(text)) return { skinType: 'oily' };
+    if (/\bdry\b/.test(text) || /(干皮|干性|干燥|紧绷)/.test(text)) return { skinType: 'dry' };
+    if (/\b(combo|combination|mixed)\b/.test(text) || /混合/.test(text)) return { skinType: 'combination' };
+    if (/\bnormal\b/.test(text) || /中性/.test(text)) return { skinType: 'normal' };
+    if (/\bsensitive\b/.test(text) || /敏感/.test(text)) return { skinType: 'sensitive' };
     if (isUnsureToken(text)) return { skinType: 'unknown' };
     return null;
   }
@@ -3211,6 +3211,93 @@ function parseProfilePatchFromAction(action) {
   if (key === 'sensitivity') return { sensitivity: value };
   if (key === 'barrierStatus') return { barrierStatus: value };
   return null;
+}
+
+function extractProfilePatchFromSession(session) {
+  const s = session && typeof session === 'object' ? session : null;
+  if (!s) return null;
+
+  const rawProfile =
+    (s.profile_patch && typeof s.profile_patch === 'object' ? s.profile_patch : null) ||
+    (s.profilePatch && typeof s.profilePatch === 'object' ? s.profilePatch : null) ||
+    (s.profile && typeof s.profile === 'object' ? s.profile : null) ||
+    null;
+  if (!rawProfile) return null;
+
+  const patch = {};
+
+  // Strings
+  const copyString = (toKey, ...fromKeys) => {
+    for (const k of fromKeys) {
+      const v = rawProfile[k];
+      if (typeof v !== 'string') continue;
+      const t = v.trim();
+      if (!t) continue;
+      patch[toKey] = t;
+      return;
+    }
+  };
+  copyString('skinType', 'skinType', 'skin_type');
+  copyString('sensitivity', 'sensitivity');
+  copyString('barrierStatus', 'barrierStatus', 'barrier_status');
+  copyString('region', 'region');
+  copyString('budgetTier', 'budgetTier', 'budget_tier');
+
+  // Arrays
+  if (Array.isArray(rawProfile.goals)) {
+    const goals = rawProfile.goals
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 12);
+    if (goals.length) patch.goals = goals;
+  }
+  if (Array.isArray(rawProfile.contraindications)) {
+    const contraindications = rawProfile.contraindications
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 24);
+    if (contraindications.length) patch.contraindications = contraindications;
+  }
+
+  // Mixed types
+  if (rawProfile.currentRoutine != null) patch.currentRoutine = rawProfile.currentRoutine;
+  if (rawProfile.current_routine != null) patch.currentRoutine = rawProfile.current_routine;
+  if (rawProfile.itinerary != null) patch.itinerary = rawProfile.itinerary;
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
+function shouldPersistProfilePatch(baseProfile, patch) {
+  if (!patch || typeof patch !== 'object') return false;
+  const keys = Object.keys(patch);
+  if (keys.length === 0) return false;
+  if (!baseProfile) return true;
+
+  for (const k of keys) {
+    const next = patch[k];
+    if (next == null) continue;
+
+    const prev = baseProfile[k];
+    if (k === 'goals' || k === 'contraindications') {
+      const prevArr = Array.isArray(prev) ? prev : [];
+      const nextArr = Array.isArray(next) ? next : [];
+      if (nextArr.length && prevArr.length === 0) return true;
+      continue;
+    }
+
+    if (typeof next === 'string') {
+      const prevText = typeof prev === 'string' ? prev.trim() : '';
+      if (!prevText) return true;
+      continue;
+    }
+
+    if (prev == null) return true;
+  }
+
+  return false;
 }
 
 function extractReplyTextFromAction(action) {
@@ -9875,6 +9962,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
       } catch (err) {
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
+      }
+
+      // If the client already has a profile snapshot (for example, cached from bootstrap or a local quick-profile flow),
+      // use it as an additional best-effort context source so we don't re-ask for already-known fields when DB reads fail.
+      const profilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
+      if (profilePatchFromSession) {
+        profile = { ...(profile || {}), ...profilePatchFromSession };
       }
 
       // Allow chips/actions to patch profile inline (so chat can progress without an extra API call).

@@ -1581,6 +1581,28 @@ test('/v1/chat: profile patch chips do not force diagnosis flow', async () => {
   assert.ok(cards.some((c) => c && c.type === 'profile'));
 });
 
+test('/v1/chat: session.profile snapshot is included in upstream prefix (prevents re-asking known fields)', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await supertest(app)
+    .post('/v1/chat')
+    .set({ 'X-Aurora-UID': 'test_uid_session_profile_prefix', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+    .send({
+      message: 'CHAT_PROFILE_PREFIX_ECHO_TEST',
+      session: { state: 'idle', profile: { skinType: 'oily' } },
+      language: 'EN',
+    })
+    .expect(200);
+
+  const content = String(resp.body?.assistant_message?.content || '');
+  assert.ok(content.includes('"skinType":"oily"'));
+});
+
 test('/v1/chat: Routine alternatives cover AM + PM', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
