@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -69,6 +69,18 @@ INGREDIENT_KB_SOURCES_REPORT ?= reports/ingredient_kb_sources_report.md
 INGREDIENT_KB_CLAIMS_AUDIT ?= reports/ingredient_kb_claims_audit.md
 INGREDIENT_KB_FETCH_LIVE ?= false
 CLAIMS_AUDIT_REPORT ?= reports/claims_audit.md
+PHOTOS_DIR ?=
+MARKET ?= US
+LANG ?= en
+MODE ?= direct
+CONCURRENCY ?= 4
+LIMIT ?=
+TIMEOUT_MS ?= 30000
+RETRY ?= 2
+SHUFFLE ?= false
+SANITIZE ?= true
+MAX_EDGE ?= 2048
+FAIL_FAST_ON_CLAIM_VIOLATION ?= false
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -170,3 +182,6 @@ photo-modules-acceptance:
 
 photo-modules-prod-smoke:
 	bash scripts/smoke_photo_modules_production.sh
+
+internal-batch:
+	@TOKEN="$(TOKEN)" node scripts/internal_batch_run_photos.mjs --photos-dir "$(PHOTOS_DIR)" --base "$(BASE)" --market "$(MARKET)" --lang "$(LANG)" --mode "$(MODE)" --concurrency "$(CONCURRENCY)" --timeout_ms "$(TIMEOUT_MS)" --retry "$(RETRY)" --max-edge "$(MAX_EDGE)" $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(filter true,$(SHUFFLE)),--shuffle,) $(if $(filter false,$(SANITIZE)),--no-sanitize,) $(if $(filter true,$(FAIL_FAST_ON_CLAIM_VIOLATION)),--fail_fast_on_claim_violation,)

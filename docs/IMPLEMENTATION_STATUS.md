@@ -1,6 +1,6 @@
 # Implementation Status (Aurora Diagnosis Pipeline)
 
-Last updated: 2026-02-10 (photo-modules acceptance + production smoke)
+Last updated: 2026-02-10 (internal batch EU/zh verification + production smoke)
 
 ## 1) Current Pipeline (text flow)
 
@@ -209,6 +209,37 @@ Photo modules local acceptance (2026-02-10 UTC):
   - `reports/photo_modules_frontend_acceptance.md`
 - Analytics privacy audit PASS (no image bytes/base64/url, no bbox_px, no region geometry in events):
   - `reports/analytics_audit.md`
+
+Internal batch verification (ordered run `1->2`, 2026-02-10 UTC):
+- Input compatibility note:
+  - Original set had 13 files with MIME `image/heic` even when extension was `.jpg`, which caused local decode failures in `sharp`.
+  - Mitigation for this run: converted source set to temporary JPEG-only input (gitignored): `tmp/internal_batch_input_jpeg_20260210_111136` (27/27 converted).
+- Step 1 (`MARKET=EU`, `LANG=en`, full 27 photos, `MODE=confirm`):
+  - Command family: `make internal-batch PHOTOS_DIR=tmp/internal_batch_input_jpeg_20260210_111136 BASE=https://pivota-agent-production.up.railway.app MARKET=EU LANG=en MODE=confirm CONCURRENCY=4`
+  - Result (`run_id=internal_batch_20260210_0318`):
+    - `success_rate=1.0` (`27/27`)
+    - `used_photos_rate=1.0` (`27/27`)
+    - `photo_modules_card_ratio=0.8519` (`23/27`)
+    - `claims_violation_detected=true`: `0`
+    - `hard_gate_pass=true`
+    - soft warning: `degraded_or_fail_ratio=0.963 > 0.3`
+  - Artifacts:
+    - `reports/internal_batch_20260210_0318.md`
+    - `reports/internal_batch_20260210_0318.csv`
+    - `reports/internal_batch_20260210_0318.jsonl`
+- Step 2 (`MARKET=US`, `LANG=zh`, sampled 10 photos, `SHUFFLE=true`, `MODE=confirm`):
+  - Command family: `make internal-batch PHOTOS_DIR=tmp/internal_batch_input_jpeg_20260210_111136 BASE=https://pivota-agent-production.up.railway.app MARKET=US LANG=zh MODE=confirm CONCURRENCY=4 LIMIT=10 SHUFFLE=true`
+  - Result (`run_id=internal_batch_20260210_0321`):
+    - `success_rate=1.0` (`10/10`)
+    - `used_photos_rate=1.0` (`10/10`)
+    - `photo_modules_card_ratio=1.0` (`10/10`)
+    - `claims_violation_detected=true`: `0`
+    - `hard_gate_pass=true`
+    - soft warning: `degraded_or_fail_ratio=0.9 > 0.3`
+  - Artifacts:
+    - `reports/internal_batch_20260210_0321.md`
+    - `reports/internal_batch_20260210_0321.csv`
+    - `reports/internal_batch_20260210_0321.jsonl`
 
 Historical verifier guard probes (2026-02-09 UTC):
 
