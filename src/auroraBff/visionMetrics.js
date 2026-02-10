@@ -48,10 +48,17 @@ const regionsEmittedCounter = new Map();
 const modulesIssueCountHistogramCounter = new Map();
 const ingredientActionsEmittedCounter = new Map();
 const geometrySanitizerDropReasonCounter = new Map();
+const skinmaskFallbackCounter = new Map();
 const productRecEmittedCounter = new Map();
 const productRecSuppressedCounter = new Map();
 const claimsTemplateFallbackCounter = new Map();
 const claimsViolationCounter = new Map();
+let skinmaskEnabledCount = 0;
+const skinmaskInferLatency = {
+  count: 0,
+  sum: 0,
+  buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+};
 let clarificationIdNormalizedEmptyCount = 0;
 const catalogAvailabilityShortCircuitCounter = new Map();
 const repeatedClarifyFieldCounter = new Map();
@@ -133,6 +140,12 @@ function normalizeSuppressedReason(reason) {
     return token;
   }
   return 'UNKNOWN';
+}
+
+function normalizeSkinmaskFallbackReason(reason) {
+  const token = cleanMetricToken(reason, 'onnx_fail').toUpperCase();
+  if (token === 'MODEL_MISSING' || token === 'TIMEOUT' || token === 'ONNX_FAIL') return token;
+  return 'ONNX_FAIL';
 }
 
 function normalizeSanitizerReason(reason) {
@@ -660,6 +673,36 @@ function recordGeometrySanitizerDropReason({ reason, regionType, delta } = {}) {
   );
 }
 
+function recordSkinmaskEnabled({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  skinmaskEnabledCount += amount;
+}
+
+function recordSkinmaskFallback({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    skinmaskFallbackCounter,
+    {
+      reason: normalizeSkinmaskFallbackReason(reason),
+    },
+    amount,
+  );
+}
+
+function observeSkinmaskInferLatency({ latencyMs } = {}) {
+  const latency = Number(latencyMs);
+  if (!Number.isFinite(latency) || latency < 0) return;
+  skinmaskInferLatency.count += 1;
+  skinmaskInferLatency.sum += latency;
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    if (latency <= bucket) {
+      skinmaskInferLatency.buckets.set(bucket, (skinmaskInferLatency.buckets.get(bucket) || 0) + 1);
+    }
+  }
+}
+
 function escapePromValue(value) {
   return String(value == null ? '' : value)
     .replace(/\\/g, '\\\\')
@@ -809,6 +852,24 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE photo_modules_card_emitted_total counter');
   renderCounter(lines, 'photo_modules_card_emitted_total', photoModulesCardEmittedCounter);
 
+  lines.push('# HELP skinmask_enabled_total Total number of skinmask inference attempts on photo diagnosis path.');
+  lines.push('# TYPE skinmask_enabled_total counter');
+  lines.push(`skinmask_enabled_total ${skinmaskEnabledCount}`);
+
+  lines.push('# HELP skinmask_fallback_total Total number of skinmask inference fallbacks by reason.');
+  lines.push('# TYPE skinmask_fallback_total counter');
+  renderCounter(lines, 'skinmask_fallback_total', skinmaskFallbackCounter);
+
+  lines.push('# HELP skinmask_infer_ms Skinmask ONNX inference latency in milliseconds.');
+  lines.push('# TYPE skinmask_infer_ms histogram');
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    const le = bucket === Infinity ? '+Inf' : String(bucket);
+    const value = skinmaskInferLatency.buckets.get(bucket) || 0;
+    lines.push(`skinmask_infer_ms_bucket{le="${le}"} ${value}`);
+  }
+  lines.push(`skinmask_infer_ms_sum ${skinmaskInferLatency.sum}`);
+  lines.push(`skinmask_infer_ms_count ${skinmaskInferLatency.count}`);
+
   lines.push('# HELP regions_emitted_total Total emitted regions grouped by type and issue.');
   lines.push('# TYPE regions_emitted_total counter');
   renderCounter(lines, 'regions_emitted_total', regionsEmittedCounter);
@@ -953,10 +1014,15 @@ function resetVisionMetrics() {
   modulesIssueCountHistogramCounter.clear();
   ingredientActionsEmittedCounter.clear();
   geometrySanitizerDropReasonCounter.clear();
+  skinmaskFallbackCounter.clear();
   productRecEmittedCounter.clear();
   productRecSuppressedCounter.clear();
   claimsTemplateFallbackCounter.clear();
   claimsViolationCounter.clear();
+  skinmaskEnabledCount = 0;
+  skinmaskInferLatency.count = 0;
+  skinmaskInferLatency.sum = 0;
+  for (const key of skinmaskInferLatency.buckets.keys()) skinmaskInferLatency.buckets.set(key, 0);
   clarificationIdNormalizedEmptyCount = 0;
   catalogAvailabilityShortCircuitCounter.clear();
   repeatedClarifyFieldCounter.clear();
@@ -1000,6 +1066,13 @@ function snapshotVisionMetrics() {
     modulesIssueCountHistogram: Array.from(modulesIssueCountHistogramCounter.entries()),
     ingredientActionsEmitted: Array.from(ingredientActionsEmittedCounter.entries()),
     geometrySanitizerDropReasons: Array.from(geometrySanitizerDropReasonCounter.entries()),
+    skinmaskEnabledCount,
+    skinmaskFallbacks: Array.from(skinmaskFallbackCounter.entries()),
+    skinmaskInferLatency: {
+      count: skinmaskInferLatency.count,
+      sum: skinmaskInferLatency.sum,
+      buckets: Array.from(skinmaskInferLatency.buckets.entries()),
+    },
     productRecEmitted: Array.from(productRecEmittedCounter.entries()),
     productRecSuppressed: Array.from(productRecSuppressedCounter.entries()),
     claimsTemplateFallbacks: Array.from(claimsTemplateFallbackCounter.entries()),
@@ -1047,6 +1120,9 @@ module.exports = {
   recordProductRecSuppressed,
   recordClaimsTemplateFallback,
   recordClaimsViolation,
+  recordSkinmaskEnabled,
+  recordSkinmaskFallback,
+  observeSkinmaskInferLatency,
   recordUiBehaviorEvent,
   recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,

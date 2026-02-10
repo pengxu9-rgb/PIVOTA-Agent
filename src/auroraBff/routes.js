@@ -53,6 +53,9 @@ const {
   recordProductRecSuppressed,
   recordClaimsTemplateFallback,
   recordClaimsViolation,
+  recordSkinmaskEnabled,
+  recordSkinmaskFallback,
+  observeSkinmaskInferLatency,
   recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
@@ -247,6 +250,11 @@ const DIAG_INGREDIENT_REC = String(process.env.DIAG_INGREDIENT_REC || 'true').to
 const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || '').toLowerCase() === 'true';
 const DIAG_SKINMASK_ENABLED = String(process.env.DIAG_SKINMASK_ENABLED || '').toLowerCase() === 'true';
 const DIAG_SKINMASK_MODEL_PATH = String(process.env.DIAG_SKINMASK_MODEL_PATH || 'artifacts/skinmask_v1.onnx').trim();
+const DIAG_SKINMASK_TIMEOUT_MS = (() => {
+  const n = Number(process.env.DIAG_SKINMASK_TIMEOUT_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(100, Math.min(15000, v));
+})();
 const DIAG_PRODUCT_REC_MIN_CITATIONS = Math.max(
   0,
   Math.min(5, Math.trunc(Number(process.env.DIAG_PRODUCT_REC_MIN_CITATIONS || 1) || 1)),
@@ -1043,6 +1051,47 @@ function buildPhotoAutoNoticeMessage({ language, failureCode }) {
   return `We couldn't analyze your photo this time (reason: ${code}). Results below are based on your answers/history only. Please re-upload and retry.`;
 }
 
+let inferSkinMaskOnFaceCropImpl = inferSkinMaskOnFaceCrop;
+
+function computeElapsedMs(startHrTime) {
+  if (typeof startHrTime !== 'bigint') return 0;
+  return Number(process.hrtime.bigint() - startHrTime) / 1e6;
+}
+
+function withTimeout(promise, timeoutMs, timeoutCode) {
+  const ms = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 0;
+  if (!ms) return promise;
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(timeoutCode || 'timeout');
+      err.code = timeoutCode || 'TIMEOUT';
+      reject(err);
+    }, ms);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function normalizeSkinmaskFallbackReason(rawReason, detail) {
+  const reason = String(rawReason || '').trim().toUpperCase();
+  const info = String(detail || '').trim().toUpperCase();
+  if (reason.includes('TIMEOUT') || info.includes('TIMEOUT')) return 'TIMEOUT';
+  if (
+    reason === 'MODEL_PATH_MISSING' ||
+    reason === 'ONNXRUNTIME_MISSING' ||
+    reason === 'SESSION_UNAVAILABLE' ||
+    reason === 'SESSION_LOAD_FAILED' ||
+    info.includes('ENOENT') ||
+    info.includes('NO SUCH FILE')
+  ) {
+    return 'MODEL_MISSING';
+  }
+  return 'ONNX_FAIL';
+}
+
 function maybeBuildPhotoModulesCardForAnalysis({
   requestId,
   analysis,
@@ -1181,18 +1230,40 @@ function maybeBuildPhotoModulesCardForAnalysis({
 async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInternal, logger, requestId } = {}) {
   if (!DIAG_SKINMASK_ENABLED) return null;
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) return null;
-  if (!DIAG_SKINMASK_MODEL_PATH) return null;
+  recordSkinmaskEnabled();
+  if (!DIAG_SKINMASK_MODEL_PATH) {
+    recordSkinmaskFallback({ reason: 'MODEL_MISSING' });
+    logger?.warn(
+      {
+        request_id: requestId || null,
+        reason: 'MODEL_MISSING',
+      },
+      'aurora bff: skinmask onnx inference skipped',
+    );
+    return null;
+  }
 
+  const inferStartedAt = process.hrtime.bigint();
   try {
-    const inferred = await inferSkinMaskOnFaceCrop({
-      imageBuffer,
-      diagnosisInternal,
-      modelPath: DIAG_SKINMASK_MODEL_PATH,
-    });
+    const inferred = await withTimeout(
+      Promise.resolve(
+        inferSkinMaskOnFaceCropImpl({
+          imageBuffer,
+          diagnosisInternal,
+          modelPath: DIAG_SKINMASK_MODEL_PATH,
+        }),
+      ),
+      DIAG_SKINMASK_TIMEOUT_MS,
+      'SKINMASK_TIMEOUT',
+    );
+    observeSkinmaskInferLatency({ latencyMs: computeElapsedMs(inferStartedAt) });
     if (!inferred || !inferred.ok) {
+      const fallbackReason = normalizeSkinmaskFallbackReason(inferred && inferred.reason, inferred && inferred.detail);
+      recordSkinmaskFallback({ reason: fallbackReason });
       logger?.warn(
         {
           request_id: requestId || null,
+          fallback_reason: fallbackReason,
           reason: inferred && inferred.reason ? inferred.reason : 'unknown',
           detail: inferred && inferred.detail ? inferred.detail : null,
         },
@@ -1202,9 +1273,14 @@ async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInterna
     }
     return inferred;
   } catch (error) {
+    observeSkinmaskInferLatency({ latencyMs: computeElapsedMs(inferStartedAt) });
+    const fallbackReason = normalizeSkinmaskFallbackReason(error && error.code ? error.code : null, error && error.message);
+    recordSkinmaskFallback({ reason: fallbackReason });
     logger?.warn(
       {
         request_id: requestId || null,
+        fallback_reason: fallbackReason,
+        reason: error && error.code ? String(error.code) : 'unknown',
         err: error && error.message ? error.message : String(error),
       },
       'aurora bff: skinmask onnx inference failed',
@@ -11790,6 +11866,13 @@ const __internal = {
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,
   looksLikeGreetingAlready,
+  maybeInferSkinMaskForPhotoModules,
+  __setInferSkinMaskOnFaceCropForTest(fn) {
+    inferSkinMaskOnFaceCropImpl = typeof fn === 'function' ? fn : inferSkinMaskOnFaceCrop;
+  },
+  __resetInferSkinMaskOnFaceCropForTest() {
+    inferSkinMaskOnFaceCropImpl = inferSkinMaskOnFaceCrop;
+  },
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

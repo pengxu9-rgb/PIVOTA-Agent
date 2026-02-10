@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit train-circle-prior eval-circle eval-datasets train-skinmask export-skinmask eval-skinmask eval-circle-ab
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit train-circle-prior eval-circle eval-datasets train-skinmask export-skinmask eval-skinmask eval-circle-ab bench-skinmask
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -113,6 +113,11 @@ SKINMASK_OUT_DIR ?= outputs/skinmask_train
 SKINMASK_IMAGE_SIZE ?= 512
 SKINMASK_NUM_WORKERS ?= 4
 SKINMASK_BACKBONE ?= nvidia/segformer-b0-finetuned-ade-512-512
+BENCH_ITERS ?= 200
+BENCH_WARMUP ?= 8
+BENCH_TIMEOUT_MS ?= 5000
+BENCH_IMAGE ?=
+BENCH_STRICT ?= false
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -244,5 +249,8 @@ eval-skinmask:
 
 eval-circle-ab:
 	CACHE_DIR="$(CACHE_DIR)" TOKEN="$(EVAL_TOKEN)" CIRCLE_MODEL_CALIBRATION="$(CIRCLE_MODEL_CALIBRATION)" CIRCLE_MODEL_MIN_PIXELS="$(CIRCLE_MODEL_MIN_PIXELS)" node scripts/eval_circle_ab_compare.mjs --onnx "$(ONNX)" --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)" --concurrency "$(EVAL_CONCURRENCY)" --timeout_ms "$(EVAL_TIMEOUT_MS)" --market "$(MARKET)" --lang "$(LANG)" --grid_size "$(EVAL_GRID_SIZE)" --report_dir "$(EVAL_REPORT_DIR)" --circle_model_path "$(EVAL_CIRCLE_MODEL_PATH)" --circle_model_min_pixels "$(CIRCLE_MODEL_MIN_PIXELS)" $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(filter true,$(EVAL_SHUFFLE)),--shuffle,) $(if $(EVAL_BASE_URL),--base_url "$(EVAL_BASE_URL)",) $(if $(EVAL_TOKEN),--token "$(EVAL_TOKEN)",) $(if $(filter true,$(EVAL_EMIT_DEBUG)),--emit_debug_overlays,) $(if $(filter false,$(CIRCLE_MODEL_CALIBRATION)),--disable_circle_model_calibration,)
+
+bench-skinmask:
+	node scripts/bench_skinmask.mjs --onnx "$(ONNX)" --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)" --iterations "$(BENCH_ITERS)" --warmup "$(BENCH_WARMUP)" --timeout_ms "$(BENCH_TIMEOUT_MS)" --report_dir "$(EVAL_REPORT_DIR)" $(if $(BENCH_IMAGE),--input_image "$(BENCH_IMAGE)",) $(if $(filter true,$(BENCH_STRICT)),--strict,)
 
 eval-datasets: datasets-prepare datasets-audit eval-circle

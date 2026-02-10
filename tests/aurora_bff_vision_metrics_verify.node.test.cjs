@@ -9,6 +9,9 @@ const {
   recordVerifyCircuitOpen,
   recordVerifyRetry,
   recordProductRecSuppressed,
+  recordSkinmaskEnabled,
+  recordSkinmaskFallback,
+  observeSkinmaskInferLatency,
   recordUiBehaviorEvent,
 } = require('../src/auroraBff/visionMetrics');
 
@@ -86,4 +89,26 @@ test('vision metrics: ui behavior rates are exported for internal tracking', () 
   assert.match(metrics, /action_click_rate 0\.5\b/);
   assert.match(metrics, /action_copy_rate 0\.5\b/);
   assert.match(metrics, /retake_rate_after_modules 0\.25\b/);
+});
+
+test('vision metrics: skinmask counters and latency histogram are exported', () => {
+  resetVisionMetrics();
+  recordSkinmaskEnabled();
+  recordSkinmaskEnabled({ delta: 2 });
+  recordSkinmaskFallback({ reason: 'MODEL_MISSING' });
+  recordSkinmaskFallback({ reason: 'timeout' });
+  recordSkinmaskFallback({ reason: 'runtime_crash' });
+  observeSkinmaskInferLatency({ latencyMs: 40 });
+  observeSkinmaskInferLatency({ latencyMs: 240 });
+  observeSkinmaskInferLatency({ latencyMs: 1400 });
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /skinmask_enabled_total 3/);
+  assert.match(metrics, /skinmask_fallback_total\{reason="MODEL_MISSING"\} 1/);
+  assert.match(metrics, /skinmask_fallback_total\{reason="TIMEOUT"\} 1/);
+  assert.match(metrics, /skinmask_fallback_total\{reason="ONNX_FAIL"\} 1/);
+  assert.match(metrics, /skinmask_infer_ms_bucket\{le="100"\} 1/);
+  assert.match(metrics, /skinmask_infer_ms_bucket\{le="250"\} 2/);
+  assert.match(metrics, /skinmask_infer_ms_bucket\{le="2000"\} 3/);
+  assert.match(metrics, /skinmask_infer_ms_count 3/);
 });
