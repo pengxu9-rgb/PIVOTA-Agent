@@ -13,6 +13,7 @@ const sharp = require('sharp');
 const { getAdapter, listAdapters, normalizeDatasetName } = require('../src/auroraBff/evalAdapters/index');
 const {
   normalizeCacheDirs,
+  readJson,
   toPosix,
   writeJsonl,
   writeText,
@@ -32,6 +33,10 @@ const {
   moduleMaskFromBox,
 } = require('../src/auroraBff/evalAdapters/common/metrics');
 const {
+  validateModuleBoxes,
+  applyModelBoxCalibration,
+} = require('../src/auroraBff/evalAdapters/common/circlePriorModel');
+const {
   faceCropFromSkinBBoxNorm,
   deriveGtModulesFromSkinMask,
   saveDerivedGt,
@@ -47,6 +52,8 @@ const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MARKET = 'EU';
 const DEFAULT_LANG = 'en';
+const DEFAULT_CIRCLE_MODEL_PATH = path.join('model_registry', 'circle_prior_latest.json');
+const DEFAULT_CIRCLE_MODEL_MIN_PIXELS = Number(process.env.CIRCLE_MODEL_MIN_PIXELS || 24);
 
 const DEFAULT_MIN_MIOU = Number(process.env.EVAL_MIN_MIOU || 0.65);
 const DEFAULT_MAX_FAIL_RATE = Number(process.env.EVAL_MAX_FAIL_RATE || 0.05);
@@ -110,6 +117,9 @@ function parseArgs(argv) {
     eval_min_miou: parseNumber(process.env.EVAL_MIN_MIOU, DEFAULT_MIN_MIOU, 0, 1),
     eval_max_fail_rate: parseNumber(process.env.EVAL_MAX_FAIL_RATE, DEFAULT_MAX_FAIL_RATE, 0, 1),
     eval_max_leakage: parseNumber(process.env.EVAL_MAX_LEAKAGE, DEFAULT_MAX_LEAKAGE, 0, 1),
+    circle_model_path: process.env.CIRCLE_MODEL_PATH || DEFAULT_CIRCLE_MODEL_PATH,
+    circle_model_calibration: parseBoolean(process.env.CIRCLE_MODEL_CALIBRATION, true),
+    circle_model_min_pixels: parseNumber(process.env.CIRCLE_MODEL_MIN_PIXELS, DEFAULT_CIRCLE_MODEL_MIN_PIXELS, 1, 1024),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -178,6 +188,20 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--circle_model_path' && next) {
+      out.circle_model_path = String(next);
+      i += 1;
+      continue;
+    }
+    if (token === '--circle_model_min_pixels' && next) {
+      out.circle_model_min_pixels = parseNumber(next, out.circle_model_min_pixels, 1, 1024);
+      i += 1;
+      continue;
+    }
+    if (token === '--disable_circle_model_calibration') {
+      out.circle_model_calibration = false;
+      continue;
+    }
   }
 
   out.base_url = String(out.base_url || '').replace(/\/+$/, '');
@@ -188,6 +212,9 @@ function parseArgs(argv) {
   out.grid_size = Math.max(64, Math.trunc(out.grid_size));
   out.lang = String(out.lang || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
   out.market = String(out.market || 'EU').toUpperCase();
+  out.circle_model_min_pixels = Math.max(1, Math.trunc(out.circle_model_min_pixels));
+  const circleModelToken = String(out.circle_model_path || '').trim();
+  out.circle_model_path = ['none', 'off', 'false'].includes(circleModelToken.toLowerCase()) ? '' : circleModelToken;
   return out;
 }
 
@@ -261,8 +288,9 @@ function parseLooseJson(text) {
   }
 }
 
-function moduleIds() {
-  return Object.keys(MODULE_BOXES);
+function moduleIds(activeModuleBoxes) {
+  const source = activeModuleBoxes && typeof activeModuleBoxes === 'object' ? activeModuleBoxes : MODULE_BOXES;
+  return Object.keys(source);
 }
 
 function validateBBox(box) {
@@ -332,7 +360,7 @@ function regionMaskFromRegion(region, gridSize) {
   return { mask, legal };
 }
 
-function moduleMasksFromCardPayload(payload, gridSize) {
+function moduleMasksFromCardPayload(payload, gridSize, activeModuleBoxes) {
   const regions = Array.isArray(payload && payload.regions) ? payload.regions : [];
   const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
   const regionMap = new Map();
@@ -346,7 +374,8 @@ function moduleMasksFromCardPayload(payload, gridSize) {
   }
 
   const moduleMasks = {};
-  for (const moduleId of moduleIds()) {
+  const allModuleIds = moduleIds(activeModuleBoxes);
+  for (const moduleId of allModuleIds) {
     moduleMasks[moduleId] = createMask(gridSize, gridSize, 0);
   }
 
@@ -371,7 +400,7 @@ function moduleMasksFromCardPayload(payload, gridSize) {
       orMaskInto(target, bboxNormToMask(moduleRow.box, gridSize, gridSize));
     }
     if (!countOnes(target)) {
-      orMaskInto(target, moduleMaskFromBox(moduleId, gridSize, gridSize));
+      orMaskInto(target, moduleMaskFromBox(moduleId, gridSize, gridSize, activeModuleBoxes));
     }
   }
 
@@ -382,18 +411,68 @@ function moduleMasksFromCardPayload(payload, gridSize) {
   };
 }
 
-function decodeGtModuleMasks(derivedGt, gridSize) {
+function decodeGtModuleMasks(derivedGt, gridSize, activeModuleBoxes) {
   const out = {};
   const moduleRows = Array.isArray(derivedGt && derivedGt.module_masks) ? derivedGt.module_masks : [];
-  for (const moduleId of moduleIds()) {
+  for (const moduleId of moduleIds(activeModuleBoxes)) {
     const row = moduleRows.find((item) => String(item && item.module_id) === moduleId);
     if (!row || typeof row.mask_rle_norm !== 'string') {
-      out[moduleId] = moduleMaskFromBox(moduleId, gridSize, gridSize);
+      out[moduleId] = moduleMaskFromBox(moduleId, gridSize, gridSize, activeModuleBoxes);
       continue;
     }
     out[moduleId] = decodeRleBinary(row.mask_rle_norm, gridSize * gridSize);
   }
   return out;
+}
+
+async function resolveCircleModelBoxes(modelPathInput) {
+  const fallback = validateModuleBoxes(MODULE_BOXES);
+  const modelPath = String(modelPathInput || '').trim();
+  if (!modelPath) {
+    return {
+      moduleBoxes: fallback,
+      meta: {
+        enabled: false,
+        path: '',
+        reason: 'disabled',
+      },
+    };
+  }
+  const resolvedPath = path.resolve(modelPath);
+  const stat = await fsp.stat(resolvedPath).catch(() => null);
+  if (!stat || !stat.isFile()) {
+    return {
+      moduleBoxes: fallback,
+      meta: {
+        enabled: false,
+        path: toPosix(path.relative(process.cwd(), resolvedPath)),
+        reason: 'not_found',
+      },
+    };
+  }
+  let payload = null;
+  try {
+    payload = await readJson(resolvedPath);
+  } catch (_error) {
+    return {
+      moduleBoxes: fallback,
+      meta: {
+        enabled: false,
+        path: toPosix(path.relative(process.cwd(), resolvedPath)),
+        reason: 'invalid_json',
+      },
+    };
+  }
+  const moduleBoxes = validateModuleBoxes(payload && payload.module_boxes);
+  return {
+    moduleBoxes,
+    meta: {
+      enabled: true,
+      path: toPosix(path.relative(process.cwd(), resolvedPath)),
+      schema_version: payload && payload.schema_version ? String(payload.schema_version) : '',
+      generated_at: payload && payload.generated_at ? String(payload.generated_at) : '',
+    },
+  };
 }
 
 function skinMaskBoundingNorm(mask, width, height) {
@@ -650,6 +729,7 @@ function makeCsv(rows) {
 function renderMarkdown({
   args,
   runKey,
+  circleModelMeta,
   sampleRows,
   summaryRows,
   jsonlPath,
@@ -684,6 +764,9 @@ function renderMarkdown({
   lines.push(`- generated_at: ${new Date().toISOString()}`);
   lines.push(`- mode: ${args.base_url ? 'api' : 'local'}`);
   lines.push(`- datasets: ${args.datasets.join(', ')}`);
+  lines.push(`- circle_model_enabled: ${circleModelMeta.enabled ? 'true' : 'false'}`);
+  lines.push(`- circle_model_path: ${circleModelMeta.path || 'n/a'}`);
+  lines.push(`- circle_model_calibration: ${args.circle_model_calibration ? 'true' : 'false'}`);
   lines.push(`- samples_total: ${total}`);
   lines.push(`- samples_ok: ${okRows.length}`);
   lines.push(`- samples_failed: ${failedRows.length}`);
@@ -746,6 +829,9 @@ async function main() {
   const repoRoot = process.cwd();
   const cache = normalizeCacheDirs(args.cache_dir);
   const runKey = nowRunKey();
+  const circleModel = await resolveCircleModelBoxes(args.circle_model_path);
+  const activeModuleBoxes = circleModel.moduleBoxes;
+  const resolvedModuleIds = moduleIds(activeModuleBoxes);
   const reportDir = path.resolve(args.report_dir || DEFAULT_REPORT_DIR);
   await ensureDir(reportDir);
   await ensureDir(cache.derivedGtDir);
@@ -852,7 +938,8 @@ async function main() {
       imageHeight: gtSkin.height,
       faceCropBox: resolvedFaceCrop,
       gridSize: args.grid_size,
-      moduleIds: moduleIds(),
+      moduleIds: resolvedModuleIds,
+      moduleBoxes: activeModuleBoxes,
     });
     const derivedPayload = {
       schema_version: 'aurora.eval.derived_gt.v1',
@@ -864,13 +951,22 @@ async function main() {
     };
     const derivedPath = saveDerivedGt(cache.cacheRootDir, entry.dataset, evalSample.sample_id, derivedPayload);
 
-    const gtModuleMasks = decodeGtModuleMasks(derivedGt, args.grid_size);
+    const gtModuleMasks = decodeGtModuleMasks(derivedGt, args.grid_size, activeModuleBoxes);
     const gtSkinMaskNorm = decodeRleBinary(derivedGt.skin_mask_rle_norm, args.grid_size * args.grid_size);
-    const predicted = moduleMasksFromCardPayload(payload, args.grid_size);
+    const predicted = moduleMasksFromCardPayload(payload, args.grid_size, activeModuleBoxes);
 
     const moduleScores = [];
-    for (const moduleId of moduleIds()) {
-      const predMask = predicted.moduleMasks[moduleId];
+    for (const moduleId of resolvedModuleIds) {
+      const predMaskRaw = predicted.moduleMasks[moduleId];
+      const predMask = circleModel.meta.enabled && args.circle_model_calibration
+        ? applyModelBoxCalibration({
+            moduleId,
+            predMask: predMaskRaw,
+            gridSize: args.grid_size,
+            modelBoxes: activeModuleBoxes,
+            minPixels: args.circle_model_min_pixels,
+          })
+        : predMaskRaw;
       const gtMask = gtModuleMasks[moduleId];
       const gtPixels = countOnes(gtMask);
       if (!gtPixels) continue;
@@ -983,6 +1079,7 @@ async function main() {
   const markdown = renderMarkdown({
     args,
     runKey,
+    circleModelMeta: circleModel.meta,
     sampleRows,
     summaryRows,
     jsonlPath,
@@ -1001,6 +1098,9 @@ async function main() {
     samples_ok: sampleRows.filter((row) => row && row.ok).length,
     samples_failed: sampleRows.filter((row) => !row || !row.ok).length,
     weak_label_samples: sampleRows.filter((row) => row && row.weak_label_only).length,
+    circle_model_enabled: circleModel.meta.enabled,
+    circle_model_path: circleModel.meta.path || '',
+    circle_model_calibration: args.circle_model_calibration,
     module_miou_mean: round3(miouMean),
     leakage_mean: round3(leakageMean),
     face_detect_fail_rate: round3(faceDetectFailRate),

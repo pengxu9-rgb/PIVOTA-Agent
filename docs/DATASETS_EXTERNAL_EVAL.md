@@ -29,7 +29,13 @@ make datasets-prepare RAW_DIR="$HOME/Desktop/datasets_raw" CACHE_DIR="datasets_c
 make datasets-audit CACHE_DIR="datasets_cache/external" DATASETS="lapa,celebamaskhq,fasseg,acne04"
 ```
 
-3) Run circle evaluation:
+3) Train circle-prior module model:
+
+```bash
+make train-circle-prior CACHE_DIR="datasets_cache/external" DATASETS="lapa,celebamaskhq,fasseg" LIMIT=200
+```
+
+4) Run circle evaluation:
 
 ```bash
 make eval-circle CACHE_DIR="datasets_cache/external" DATASETS="lapa,celebamaskhq,fasseg" LIMIT=200
@@ -58,6 +64,10 @@ make eval-circle \
 
 Each run writes:
 
+- `reports/circle_prior_train_<timestamp>.md`
+- `reports/circle_prior_train_<timestamp>.csv`
+- `model_registry/circle_prior_v1.json`
+- `model_registry/circle_prior_latest.json`
 - `reports/eval_circle_<timestamp>.jsonl` (per-sample rows, hashed sample IDs)
 - `reports/eval_circle_summary_<timestamp>.csv`
 - `reports/eval_circle_summary_<timestamp>.md`
@@ -75,6 +85,12 @@ Soft-gate thresholds:
 - `EVAL_MIN_MIOU` (default `0.65`)
 - `EVAL_MAX_FAIL_RATE` (default `0.05`)
 - `EVAL_MAX_LEAKAGE` (default `0.10`)
+
+Circle-prior calibration options:
+
+- `EVAL_CIRCLE_MODEL_PATH` (default `model_registry/circle_prior_latest.json`)
+- `CIRCLE_MODEL_CALIBRATION` (default `true`)
+- `CIRCLE_MODEL_MIN_PIXELS` (default `24`)
 
 ## Troubleshooting
 

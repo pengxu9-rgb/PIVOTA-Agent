@@ -219,8 +219,9 @@ function decodeRleBinary(rle, expectedLength) {
   return out;
 }
 
-function moduleMaskFromBox(moduleId, width, height) {
-  const box = MODULE_BOXES[moduleId];
+function moduleMaskFromBox(moduleId, width, height, moduleBoxes) {
+  const lookup = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
+  const box = lookup[moduleId];
   if (!box) return createMask(width, height, 0);
   return bboxNormToMask(box, width, height);
 }

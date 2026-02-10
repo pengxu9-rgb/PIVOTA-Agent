@@ -89,6 +89,7 @@ function deriveGtModulesFromSkinMask({
   faceCropBox,
   gridSize = 128,
   moduleIds,
+  moduleBoxes,
 }) {
   if (!skinMaskImage || !(skinMaskImage.mask instanceof Uint8Array)) {
     return {
@@ -108,9 +109,10 @@ function deriveGtModulesFromSkinMask({
 
   const skinMaskNorm = cropMaskToNorm(skinMaskImage.mask, sourceW, sourceH, crop, targetW, targetH);
   const modules = [];
-  const ids = Array.isArray(moduleIds) && moduleIds.length ? moduleIds : Object.keys(MODULE_BOXES);
+  const boxLookup = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
+  const ids = Array.isArray(moduleIds) && moduleIds.length ? moduleIds : Object.keys(boxLookup);
   for (const moduleId of ids) {
-    const moduleMask = moduleMaskFromBox(moduleId, targetW, targetH);
+    const moduleMask = moduleMaskFromBox(moduleId, targetW, targetH, boxLookup);
     const gtMask = andMasks(skinMaskNorm, moduleMask);
     modules.push({
       module_id: moduleId,
