@@ -28,7 +28,7 @@ groups:
           )
 
       - record: aurora:verify_budget_guard_count:15m
-        expr: increase(verify_fail_total{reason="VERIFY_BUDGET_GUARD"}[15m])
+        expr: increase(verify_budget_guard_total[15m])
 
   - name: aurora-diagnosis-alerts
     interval: 1m

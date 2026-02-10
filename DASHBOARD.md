@@ -131,20 +131,25 @@ analysis_source_rps =
   topk(8, sum(rate(aurora_skin_analysis_requests_total[30m])) by (analysis_source))
 ```
 
+### P-108 verify_budget_guard_count_15m（shadow verifier 容量护栏）
+```text
+verify_budget_guard_count_15m = increase(verify_budget_guard_total[15m])
+```
+
 ---
 
-## 4) Geometry（若 sanitizer 已接入）
+## 4) Geometry（已接入）
 
 ### P-201 geometry_sanitizer_drop_rate
 ```text
 geometry_sanitizer_drop_rate =
-  sum(rate(aurora_skin_analysis_geometry_sanitizer_drops_total[30m]))
+  sum(rate(geometry_sanitizer_drop_total[30m]))
   /
-  clamp_min(sum(rate(aurora_skin_analysis_geometry_sanitizer_checked_total[30m])), 1)
+  clamp_min(sum(rate(analyze_requests_total[30m])), 1)
 ```
 建议同时展示绝对量（drops/min）：
 ```text
-geometry_drops_rps = sum(rate(aurora_skin_analysis_geometry_sanitizer_drops_total[30m]))
+geometry_drops_rps = sum(rate(geometry_sanitizer_drop_total[30m]))
 ```
 
 ---
@@ -154,8 +159,8 @@ geometry_drops_rps = sum(rate(aurora_skin_analysis_geometry_sanitizer_drops_tota
 1. **Service health**：P-001 ~ P-004
 2. **Skin analysis core**：P-101 ~ P-103
 3. **Input quality & retake**：P-104 ~ P-106
-4. **Explainability**：P-107（analysis_source）
-5. **Geometry stability（可选）**：P-201
+4. **Explainability**：P-107（analysis_source）+ P-108（verify guard）
+5. **Geometry stability**：P-201
 
 ---
 

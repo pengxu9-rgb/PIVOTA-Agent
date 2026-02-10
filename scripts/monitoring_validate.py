@@ -36,6 +36,7 @@ REQUIRED_METRICS = (
     "geometry_sanitizer_drop_rate",
     "verify_calls_total",
     "verify_fail_total",
+    "verify_budget_guard_total",
 )
 
 REQUIRED_DASHBOARD_EXPR_TOKENS = (
@@ -43,6 +44,7 @@ REQUIRED_DASHBOARD_EXPR_TOKENS = (
     "pivota_http_timeouts_total",
     "verify_calls_total",
     "verify_fail_total",
+    "verify_budget_guard_total",
     "analyze_requests_total",
     "geometry_sanitizer_drop_total",
 )
@@ -141,6 +143,16 @@ def validate(repo_root: Path) -> tuple[list[ValidationError], dict]:
             "alerts",
             "geometry drop-rate rule must use geometry_sanitizer_drop_total and analyze_requests_total",
         )
+        v.expect(
+            "increase(verify_budget_guard_total[15m])" in alerts_content,
+            "alerts",
+            "verify budget guard recording rule must use verify_budget_guard_total",
+        )
+        v.expect(
+            'verify_fail_total{reason="VERIFY_BUDGET_GUARD"}' not in alerts_content,
+            "alerts",
+            "legacy verify_fail_total{reason=\"VERIFY_BUDGET_GUARD\"} rule should not be used",
+        )
 
     if dashboard_path.exists():
         try:
@@ -152,6 +164,11 @@ def validate(repo_root: Path) -> tuple[list[ValidationError], dict]:
             expr_blob = _collect_dashboard_expr_tokens(dashboard_obj)
             for token in REQUIRED_DASHBOARD_EXPR_TOKENS:
                 v.expect(token in expr_blob, "dashboard", f"missing token in panel queries: {token}")
+            v.expect(
+                'verify_fail_total{reason="VERIFY_BUDGET_GUARD"}' not in expr_blob,
+                "dashboard",
+                "budget guard panel must use verify_budget_guard_total instead of verify_fail_total reason",
+            )
 
     metrics_text = ""
     try:

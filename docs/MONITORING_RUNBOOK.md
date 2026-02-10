@@ -38,7 +38,7 @@ Contract definition:
 - Severity: `warning`
 
 4. `AuroraVerifyBudgetGuardTriggered`
-- Trigger: `increase(verify_fail_total{reason="VERIFY_BUDGET_GUARD"}[15m]) > 0`
+- Trigger: `increase(verify_budget_guard_total[15m]) > 0`
 - Severity: `warning`
 
 5. `AuroraQualityFailRateSpike`
@@ -57,7 +57,7 @@ Contract definition:
 
 2. Check verifier channel.
 - Inspect `Verifier Calls by Status` and `Verifier Failures by Reason`.
-- If `VERIFY_BUDGET_GUARD` spikes, verify:
+- If `verify_budget_guard_total` spikes, verify:
   - `DIAG_VERIFY_MAX_CALLS_PER_MIN`
   - `DIAG_VERIFY_MAX_CALLS_PER_DAY`
 

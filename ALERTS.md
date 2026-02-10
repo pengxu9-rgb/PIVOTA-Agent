@@ -74,11 +74,12 @@ This file is explanatory guidance. The alert engine should load rules from the Y
 - `aurora_skin_analysis_llm_timeouts_total{pipeline_version}`：对 `llm_summary.timeouts` 求和
 - `aurora_skin_analysis_total_ms{pipeline_version}`：来自 `kind:"metric"` 的 `name="aurora.skin_analysis.total_ms"` / `aurora.skin_analysis.<pipeline>.total_ms`（建议做成 distribution 以支持 p95/p99）
 
-### Geometry sanitizer（待接入）
-- `aurora_skin_analysis_geometry_sanitizer_checked_total`
-- `aurora_skin_analysis_geometry_sanitizer_drops_total`
+### Geometry sanitizer（已接入）
+- `geometry_sanitizer_drop_total`
+- `geometry_sanitizer_clip_total`
+- `geometry_sanitizer_drop_rate`
 
-> 现状：仓库内暂未看到稳定的 “geometry sanitizer drop” 指标输出；当 sanitizer 落地后，请在后处理阶段补充上述两个计数器或等价指标。
+> 现状：仓库已输出稳定的 geometry sanitizer 指标；告警优先使用 Prometheus 原生指标（见 `monitoring/alerts/aurora_diagnosis_rules.yml`）。
 
 ---
 
@@ -198,18 +199,27 @@ quality_degraded_rate > ALERT_QUALITY_DEGRADED_RATE_WARN for 60m
 
 > 备注：fail/degraded 偏高不一定是 bug（可能是用户输入质量问题），但应与 `retake_rate_proxy`、`LLM calls`、以及转化漏斗联动观察。
 
-### A-006 Geometry sanitizer drop rate（待接入）
+### A-006 Geometry sanitizer drop rate
 ```text
 geometry_sanitizer_drop_rate =
-  sum(rate(aurora_skin_analysis_geometry_sanitizer_drops_total[30m]))
+  sum(rate(geometry_sanitizer_drop_total[30m]))
   /
-  clamp_min(sum(rate(aurora_skin_analysis_geometry_sanitizer_checked_total[30m])), 1)
+  clamp_min(sum(rate(analyze_requests_total[30m])), 1)
 ```
 **建议默认值（起步）**
 - warn: 1%
 - crit: 5%
 
-### A-007 Retake rate proxy（“请重拍”触发占比）
+### A-007 Verify budget guard trigger（shadow verifier 容量护栏）
+```text
+verify_budget_guard_count_15m = increase(verify_budget_guard_total[15m])
+```
+**告警**
+```text
+verify_budget_guard_count_15m > 0 for 2m
+```
+
+### A-008 Retake rate proxy（“请重拍”触发占比）
 优先建议用 `analysis_source="retake"`：
 ```text
 retake_rate_proxy =
