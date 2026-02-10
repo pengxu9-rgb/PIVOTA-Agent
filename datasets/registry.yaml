@@ -1,0 +1,37 @@
+version: 1
+datasets:
+  - name: lapa
+    source_url: https://github.com/JDAI-CV/FaceX-Zoo/tree/main/face_parsing/LaPa
+    retrieved_at: 2026-02-10T00:00:00Z
+    license_summary: Non-commercial research license; follow upstream terms.
+    legal_approved: true
+    allowed_usages: ["eval", "train", "prod_eval"]
+    storage_policy: no_redistribution_artifacts
+    notes: Do not publish derived overlays; numeric-only by default.
+
+  - name: celebamaskhq
+    source_url: https://mmlab.ie.cuhk.edu.hk/projects/CelebA/CelebAMask_HQ.html
+    retrieved_at: 2026-02-10T00:00:00Z
+    license_summary: Dataset-specific academic/research terms from CUHK project page.
+    legal_approved: true
+    allowed_usages: ["eval", "train", "prod_eval"]
+    storage_policy: no_redistribution_artifacts
+    notes: Do not publish derived overlays; numeric-only by default.
+
+  - name: fasseg
+    source_url: https://github.com/multimedia-eurecat/FASSEG-repository
+    retrieved_at: 2026-02-10T00:00:00Z
+    license_summary: Research dataset terms; reuse restricted by upstream license.
+    legal_approved: true
+    allowed_usages: ["eval", "train", "prod_eval"]
+    storage_policy: no_redistribution_artifacts
+    notes: Do not publish derived overlays; numeric-only by default.
+
+  - name: acne04
+    source_url: https://acne04.github.io/
+    retrieved_at: 2026-02-10T00:00:00Z
+    license_summary: Medical-image benchmark terms; internal evaluation only.
+    legal_approved: true
+    allowed_usages: ["eval", "train", "prod_eval"]
+    storage_policy: no_redistribution_artifacts
+    notes: Do not publish derived overlays; numeric-only by default.

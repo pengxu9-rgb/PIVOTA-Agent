@@ -61,6 +61,8 @@ local-test/
 internal-test-photos/
 internal_test_photos/
 local-internal-photos/
+datasets_cache/**
+outputs/datasets_debug/**
 
 # Backup files
 *.backup

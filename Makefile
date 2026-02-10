@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit eval-circle eval-datasets
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -59,6 +59,14 @@ CAL_IOU ?= 0.3
 CAL_MIN_GROUP_SAMPLES ?= 24
 CAL_EVAL_MODEL ?=
 CAL_EVAL_OUT ?= reports/calibration_eval.json
+REGION_ACC_MODEL_OUTPUTS ?= $(CAL_MODEL_OUTPUTS)
+REGION_ACC_GOLD_LABELS ?= $(CAL_GOLD_LABELS)
+REGION_ACC_IOU ?= 0.3
+REGION_ACC_OUT_JSON ?= reports/region_accuracy_eval.json
+REGION_ACC_OUT_CSV ?= reports/region_accuracy_eval.csv
+REGION_ACC_OUT_MD ?= reports/region_accuracy_eval.md
+REGION_ACC_PROVIDERS ?=
+REGION_ACC_ALLOW_EMPTY_GOLD ?= false
 RELIABILITY_IN ?= tmp/diag_pseudo_label_factory
 RELIABILITY_OUT ?= reports/reliability/reliability.json
 RELIABILITY_DATE ?=
@@ -81,6 +89,17 @@ SHUFFLE ?= false
 SANITIZE ?= true
 MAX_EDGE ?= 2048
 FAIL_FAST_ON_CLAIM_VIOLATION ?= false
+RAW_DIR ?= $(HOME)/Desktop/datasets_raw
+CACHE_DIR ?= datasets_cache/external
+DATASETS ?= lapa,celebamaskhq,fasseg
+EVAL_TIMEOUT_MS ?= 30000
+EVAL_CONCURRENCY ?= 4
+EVAL_SHUFFLE ?= false
+EVAL_EMIT_DEBUG ?= false
+EVAL_GRID_SIZE ?= 128
+EVAL_REPORT_DIR ?= reports
+EVAL_BASE_URL ?=
+EVAL_TOKEN ?=
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -150,6 +169,9 @@ train-calibrator:
 eval-calibration:
 	node scripts/eval_calibration.js --model $(if $(CAL_EVAL_MODEL),$(CAL_EVAL_MODEL),$(CAL_ALIAS_PATH)) --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --iouThreshold $(CAL_IOU) --outJson $(CAL_EVAL_OUT)
 
+eval-region-accuracy:
+	node scripts/eval_region_accuracy.js --modelOutputs $(REGION_ACC_MODEL_OUTPUTS) --goldLabels $(REGION_ACC_GOLD_LABELS) --iouThreshold $(REGION_ACC_IOU) --outJson $(REGION_ACC_OUT_JSON) --outCsv $(REGION_ACC_OUT_CSV) --outMd $(REGION_ACC_OUT_MD) $(if $(REGION_ACC_PROVIDERS),--providers $(REGION_ACC_PROVIDERS),) $(if $(filter true,$(REGION_ACC_ALLOW_EMPTY_GOLD)),--allowEmptyGold true,)
+
 reliability-table:
 	node scripts/build_reliability_table.js --in $(RELIABILITY_IN) --out $(RELIABILITY_OUT) $(if $(RELIABILITY_DATE),--date $(RELIABILITY_DATE),)
 
@@ -185,3 +207,14 @@ photo-modules-prod-smoke:
 
 internal-batch:
 	@TOKEN="$(TOKEN)" node scripts/internal_batch_run_photos.mjs --photos-dir "$(PHOTOS_DIR)" --base "$(BASE)" --market "$(MARKET)" --lang "$(LANG)" --mode "$(MODE)" --concurrency "$(CONCURRENCY)" --timeout_ms "$(TIMEOUT_MS)" --retry "$(RETRY)" --max-edge "$(MAX_EDGE)" $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(filter true,$(SHUFFLE)),--shuffle,) $(if $(filter false,$(SANITIZE)),--no-sanitize,) $(if $(filter true,$(FAIL_FAST_ON_CLAIM_VIOLATION)),--fail_fast_on_claim_violation,)
+
+datasets-prepare:
+	node scripts/datasets_prepare.mjs --raw_dir "$(RAW_DIR)" --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)"
+
+datasets-audit:
+	node scripts/datasets_audit.mjs --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)"
+
+eval-circle:
+	CACHE_DIR="$(CACHE_DIR)" TOKEN="$(EVAL_TOKEN)" node scripts/eval_circle_accuracy.mjs --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)" --concurrency "$(EVAL_CONCURRENCY)" --timeout_ms "$(EVAL_TIMEOUT_MS)" --market "$(MARKET)" --lang "$(LANG)" --grid_size "$(EVAL_GRID_SIZE)" --report_dir "$(EVAL_REPORT_DIR)" $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(filter true,$(EVAL_SHUFFLE)),--shuffle,) $(if $(EVAL_BASE_URL),--base_url "$(EVAL_BASE_URL)",) $(if $(filter true,$(EVAL_EMIT_DEBUG)),--emit_debug_overlays,)
+
+eval-datasets: datasets-prepare datasets-audit eval-circle
