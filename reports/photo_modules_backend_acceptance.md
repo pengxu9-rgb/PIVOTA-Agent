@@ -1,6 +1,6 @@
 # Photo Modules Backend Acceptance
 
-- started_at_utc: 2026-02-10T02:36:15Z
+- started_at_utc: 2026-02-10T03:11:24Z
 - command: `node --test tests/aurora_bff_photo_modules_acceptance.node.test.cjs`
 - result: **PASS**
 
@@ -16,7 +16,7 @@
 ## Test Output
 
 ```text
-✔ /v1/analysis/skin acceptance: emits valid photo_modules_v1 payload without server overlay fields (265.10475ms)
+✔ /v1/analysis/skin acceptance: emits valid photo_modules_v1 payload without server overlay fields (228.549625ms)
 ℹ tests 1
 ℹ suites 0
 ℹ pass 1
@@ -24,5 +24,5 @@
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 685.014584
+ℹ duration_ms 571.149
 ```
