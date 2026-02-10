@@ -303,6 +303,28 @@ function buildProductRecommendations({
     : evidenceMapBase;
   const eligibleEvidence = Array.from(evidenceMap.values()).filter((item) => item.pass);
   const useRepairFallback = shouldForceRepairOnly;
+  const repairEligibleIngredientIds = useRepairFallback
+    ? REPAIR_INGREDIENT_IDS.filter((ingredientId) => {
+        const evidence = evidenceMap.get(ingredientId);
+        return Boolean(evidence && evidence.pass);
+      })
+    : [];
+
+  if (useRepairFallback && !repairEligibleIngredientIds.length) {
+    return {
+      products: [],
+      suppressed_reason: 'LOW_EVIDENCE',
+      debug: {
+        module_id: moduleId,
+        market: normalizedMarket,
+        risk_tier: normalizedRiskTier,
+        issue_type: issueType,
+        ingredient_ids: actionIngredientIds,
+        repair_fallback: true,
+        repair_eligible_ingredients: [],
+      },
+    };
+  }
 
   if (!eligibleEvidence.length && !useRepairFallback) {
     return {
@@ -334,7 +356,7 @@ function buildProductRecommendations({
 
     const productIngredients = asArray(product.ingredient_ids);
     const overlap = useRepairFallback
-      ? productIngredients.filter((id) => REPAIR_INGREDIENT_IDS.includes(id) && evidenceMap.has(id))
+      ? productIngredients.filter((id) => repairEligibleIngredientIds.includes(id))
       : productIngredients.filter((id) => evidenceMap.has(id) && evidenceMap.get(id).pass);
     if (!overlap.length) {
       filteredByNoOverlap += 1;

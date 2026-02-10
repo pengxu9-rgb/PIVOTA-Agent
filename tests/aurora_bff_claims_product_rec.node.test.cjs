@@ -430,6 +430,61 @@ test('degraded quality emits repair-only products when repair-only mode is enabl
   });
 });
 
+test('degraded quality suppresses when repair evidence is below threshold', async () => {
+  const dataset = buildDataset([
+    {
+      ingredient_id: 'panthenol',
+      inci_name: 'Panthenol',
+      zh_name: '泛醇',
+      aliases: [],
+      identifiers: {},
+      functions: [],
+      restrictions: [],
+      evidence_grade: 'C',
+      market_scope: ['EU', 'US'],
+      claims: [],
+      safety_notes: [],
+      do_not_mix: [],
+      manifest_refs: ['test_snapshot'],
+    },
+  ]);
+  const catalog = [
+    {
+      product_id: 'prod_repair_panthenol',
+      name: 'Repair Panthenol Cream',
+      brand: 'Test Brand',
+      market_scope: ['EU', 'US'],
+      ingredient_ids: ['panthenol'],
+      risk_tags: ['repair'],
+      usage_note_en: 'Use in gentle routines.',
+      usage_note_zh: '可用于温和修护。',
+      cautions_en: [],
+      cautions_zh: [],
+    },
+  ];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    const result = buildProductRecommendations({
+      moduleId: 'forehead',
+      issues: [{ issue_type: 'redness', severity_0_4: 2.3 }],
+      actions: [{ ingredient_id: 'panthenol', evidence_issue_types: ['redness'] }],
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'degraded',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: true,
+      artifactPath,
+      catalogPath,
+    });
+
+    assert.equal(Array.isArray(result.products), true);
+    assert.equal(result.products.length, 0);
+    assert.equal(result.suppressed_reason, 'LOW_EVIDENCE');
+  });
+});
+
 test('product rec suppression reason uses NO_MATCH when no catalog overlap is available', async () => {
   const dataset = buildDataset([
     {
