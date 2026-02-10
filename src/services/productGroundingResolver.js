@@ -17,6 +17,95 @@ function clampInt(value, { min, max, fallback }) {
   return v;
 }
 
+function firstNonEmptyString(...values) {
+  for (const raw of values) {
+    const s = String(raw || '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+function isUuidLike(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+function extractResolverHints(hints) {
+  if (!hints || typeof hints !== 'object' || Array.isArray(hints)) {
+    return {
+      product_ref: null,
+      aliases: [],
+      brand: null,
+    };
+  }
+
+  const hintObj = hints;
+  const hintRefRaw =
+    (hintObj.product_ref && typeof hintObj.product_ref === 'object' ? hintObj.product_ref : null) ||
+    (hintObj.productRef && typeof hintObj.productRef === 'object' ? hintObj.productRef : null) ||
+    (hintObj.target && typeof hintObj.target === 'object' ? hintObj.target : null);
+
+  const hintProductId = firstNonEmptyString(
+    hintRefRaw?.product_id,
+    hintRefRaw?.productId,
+    hintObj.product_id,
+    hintObj.productId,
+    hintObj.id,
+  );
+  const hintMerchantId = firstNonEmptyString(
+    hintRefRaw?.merchant_id,
+    hintRefRaw?.merchantId,
+    hintObj.merchant_id,
+    hintObj.merchantId,
+    hintObj.merchant && typeof hintObj.merchant === 'object' ? hintObj.merchant.merchant_id : null,
+  );
+  const productRef =
+    hintProductId && hintMerchantId
+      ? {
+          product_id: hintProductId,
+          merchant_id: hintMerchantId,
+        }
+      : null;
+
+  const brand = firstNonEmptyString(hintObj.brand, hintObj.vendor) || null;
+  const name = firstNonEmptyString(
+    hintObj.name,
+    hintObj.title,
+    hintObj.display_name,
+    hintObj.displayName,
+    hintObj.product_name,
+    hintObj.productName,
+  );
+  const explicitQuery = firstNonEmptyString(hintObj.query);
+
+  const aliases = [];
+  const seen = new Set();
+  const pushAlias = (value) => {
+    const s = String(value || '').trim();
+    if (!s) return;
+    const key = s.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    aliases.push(s);
+  };
+
+  pushAlias(name);
+  if (brand && name) pushAlias(`${brand} ${name}`);
+  pushAlias(explicitQuery);
+
+  if (Array.isArray(hintObj.aliases)) {
+    for (const alias of hintObj.aliases) {
+      pushAlias(alias);
+      if (aliases.length >= 8) break;
+    }
+  }
+
+  return {
+    product_ref: productRef,
+    aliases: aliases.slice(0, 8),
+    brand,
+  };
+}
+
 function normalizeTextForResolver(input) {
   const raw = String(input || '').trim();
   if (!raw) return '';
@@ -529,7 +618,13 @@ async function resolveProductRef({
   const timeoutMs = clampInt(options?.timeout_ms, { min: 100, max: 15000, fallback: 1600 });
   const deadlineMs = startMs + timeoutMs;
 
-  const q = String(query || '').trim();
+  const rawQuery = String(query || '').trim();
+  const hintData = extractResolverHints(hints);
+  const hintedQuery = hintData.aliases[0] || '';
+  const q =
+    isUuidLike(rawQuery) && hintedQuery
+      ? hintedQuery
+      : rawQuery;
   const normalizedQuery = normalizeTextForResolver(q);
   const queryTokens = tokenizeNormalizedResolverQuery(normalizedQuery);
   if (!normalizedQuery || queryTokens.length === 0) {
@@ -567,6 +662,17 @@ async function resolveProductRef({
   const products = [];
   const sources = [];
   let scopedCacheFailedInfra = false;
+
+  if (hintData.product_ref && (hintedQuery || isUuidLike(rawQuery))) {
+    products.push({
+      product_id: hintData.product_ref.product_id,
+      merchant_id: hintData.product_ref.merchant_id,
+      title: hintedQuery || rawQuery,
+      ...(hintData.brand ? { brand: hintData.brand } : {}),
+      source: 'hint_product_ref',
+    });
+    sources.push({ source: 'hints_product_ref', ok: true, count: 1 });
+  }
 
   function remainingMs() {
     return Math.max(0, deadlineMs - Date.now());
@@ -734,6 +840,7 @@ async function resolveProductRef({
       timeout_ms: timeoutMs,
       latency_ms: latencyMs,
       sources,
+      ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
       ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
       ...(allowExternalSeed ? { allow_external_seed: true } : {}),
     },
@@ -748,6 +855,8 @@ module.exports = {
     scoreAndRankCandidates,
     resolveFromRankedCandidates,
     isExternalProduct,
+    isUuidLike,
+    extractResolverHints,
     fetchCandidatesViaProductsCache,
     fetchCandidatesViaAgentSearch,
   },

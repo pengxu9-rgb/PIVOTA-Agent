@@ -259,6 +259,79 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.body.candidates).toEqual([]);
   });
 
+  test('uses hints.product_ref for uuid query without external fallback', async () => {
+    const app = require('../../src/server');
+    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+    const hintedMerchantId = 'merch_efbc46b4619cfbdf';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'e7c90e06-8673-4c97-835d-074a26ab2162',
+        lang: 'en',
+        hints: {
+          product_ref: {
+            product_id: hintedProductId,
+            merchant_id: hintedMerchantId,
+          },
+          aliases: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+          brand: 'The Ordinary',
+          title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        },
+        options: {
+          search_all_merchants: false,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        product_ref: {
+          product_id: hintedProductId,
+          merchant_id: hintedMerchantId,
+        },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_from_hints: true,
+        original_query: 'e7c90e06-8673-4c97-835d-074a26ab2162',
+      }),
+    );
+  });
+
+  test('normalizes uuid query from hint alias when provided', async () => {
+    const hintedAlias = 'The Ordinary Niacinamide 10% + Zinc 1%';
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'e7c90e06-8673-4c97-835d-074a26ab2162',
+        lang: 'en',
+        hints: {
+          aliases: [hintedAlias],
+          brand: 'The Ordinary',
+          title: hintedAlias,
+        },
+        options: {
+          search_all_merchants: false,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.resolved).toBe(false);
+    expect(resp.body.reason).toBe('no_candidates');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_from_hints: true,
+        effective_query: hintedAlias,
+      }),
+    );
+  });
+
   test('rejects missing query', async () => {
     const app = require('../../src/server');
     const resp = await request(app).post('/agent/v1/products/resolve').send({ lang: 'en' });
