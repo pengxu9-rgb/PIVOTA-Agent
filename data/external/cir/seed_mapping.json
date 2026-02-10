@@ -1,0 +1,32 @@
+{
+  "niacinamide": [
+    {
+      "doc_title": "Safety Assessment of Niacinamide and Niacin",
+      "source_url": "https://www.cir-safety.org",
+      "publisher": "Cosmetic Ingredient Review",
+      "published_at": "2020-01-01T00:00:00Z",
+      "excerpt": "Niacinamide and related compounds were considered safe as used in cosmetic formulations.",
+      "license_hint": "Public summary page"
+    }
+  ],
+  "retinol": [
+    {
+      "doc_title": "Safety Assessment of Retinoids Used in Cosmetics",
+      "source_url": "https://www.cir-safety.org",
+      "publisher": "Cosmetic Ingredient Review",
+      "published_at": "2019-01-01T00:00:00Z",
+      "excerpt": "Retinoid usage in cosmetic products requires careful concentration and irritation control.",
+      "license_hint": "Public summary page"
+    }
+  ],
+  "panthenol": [
+    {
+      "doc_title": "Safety Assessment of Panthenol and Pantothenic Acid Derivatives",
+      "source_url": "https://www.cir-safety.org",
+      "publisher": "Cosmetic Ingredient Review",
+      "published_at": "2017-01-01T00:00:00Z",
+      "excerpt": "Panthenol is generally well tolerated in rinse-off and leave-on cosmetic use contexts.",
+      "license_hint": "Public summary page"
+    }
+  ]
+}

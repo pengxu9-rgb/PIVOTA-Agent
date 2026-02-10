@@ -1,0 +1,32 @@
+{
+  "niacinamide": [
+    {
+      "doc_title": "SCCS Notes of Guidance for the Testing of Cosmetic Ingredients",
+      "source_url": "https://health.ec.europa.eu/scientific-committees/scientific-committee-consumer-safety-sccs_en",
+      "publisher": "European Commission SCCS",
+      "published_at": "2023-01-01T00:00:00Z",
+      "excerpt": "Niacinamide is widely used in cosmetic products and should be assessed under cosmetic safety principles.",
+      "license_hint": "Public institutional guidance"
+    }
+  ],
+  "salicylic_acid": [
+    {
+      "doc_title": "SCCS Opinion on Salicylic Acid",
+      "source_url": "https://health.ec.europa.eu/scientific-committees/scientific-committee-consumer-safety-sccs_en",
+      "publisher": "European Commission SCCS",
+      "published_at": "2023-01-01T00:00:00Z",
+      "excerpt": "Use-level and population restrictions are considered in SCCS evaluations for salicylic acid.",
+      "license_hint": "Public institutional guidance"
+    }
+  ],
+  "retinol": [
+    {
+      "doc_title": "SCCS Opinion on Vitamin A in cosmetic products",
+      "source_url": "https://health.ec.europa.eu/scientific-committees/scientific-committee-consumer-safety-sccs_en",
+      "publisher": "European Commission SCCS",
+      "published_at": "2022-01-01T00:00:00Z",
+      "excerpt": "Vitamin A derivatives in cosmetics are reviewed for safe consumer use levels.",
+      "license_hint": "Public institutional guidance"
+    }
+  ]
+}

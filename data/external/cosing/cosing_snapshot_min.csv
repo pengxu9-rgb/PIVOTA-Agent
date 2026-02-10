@@ -1,0 +1,7 @@
+ingredient_id,inci_name,cosing_id,cas_no,ec_no,functions,restrictions,market_scope
+niacinamide,Niacinamide,COSING:8835,98-92-0,202-713-4,skin conditioning|sebum balance|tone-evening,,EU|US|JP|CN
+salicylic_acid,Salicylic Acid,COSING:7119,69-72-7,200-712-3,keratolytic|skin conditioning,Use concentration and pH controls for sensitive skin,EU|US|JP|CN
+retinol,Retinol,COSING:7494,68-26-8,200-683-7,skin conditioning|anti-wrinkle,Use with photoprotection and irritation monitoring,EU|US|JP|CN
+panthenol,Panthenol,COSING:5552,81-13-0,201-327-3,skin conditioning|humectant,,EU|US|JP|CN
+ceramide_np,Ceramide NP,COSING:11902,100403-19-8,,skin conditioning|barrier support,,EU|US|JP|CN
+zinc_pca,Zinc PCA,COSING:13016,15454-75-8,239-436-2,skin conditioning|sebum balance,,EU|US|JP|CN
