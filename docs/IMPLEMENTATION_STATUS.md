@@ -1,6 +1,6 @@
 # Implementation Status (Aurora Diagnosis Pipeline)
 
-Last updated: 2026-02-09 (post-prod verify mapping patch)
+Last updated: 2026-02-10 (photo-modules acceptance + production smoke)
 
 ## 1) Current Pipeline (text flow)
 
@@ -183,11 +183,34 @@ Generated artifacts:
 - `reports/ingredient_kb_spotcheck_20260209_064827.md`
 - `reports/ingredient_kb_spotcheck_20260209_064827.csv`
 
-## 6) Latest Production Verification (Verifier Failure Mapping)
+## 6) Latest Production Verification (Verifier + Photo Modules)
 
 Validation window:
 - Service: `https://pivota-agent-production.up.railway.app`
-- Deployed commit: `5ea7bbcc67fa`
+- Deployed commit: `dd83eada4434`
+- Started at: `2026-02-10T02:41:22.057Z`
+
+Photo modules production smoke (2026-02-10 UTC):
+- Command family: `make photo-modules-prod-smoke BASE=https://pivota-agent-production.up.railway.app`
+- Result:
+  - `analysis_source=vision_gemini`
+  - `used_photos=true`
+  - `quality_grade=degraded`
+  - `regions_count=8`
+  - `modules_count=7`
+  - `has_photo_modules_v1=true`
+- Artifact:
+  - `reports/photo_modules_production_smoke.md`
+
+Photo modules local acceptance (2026-02-10 UTC):
+- Backend acceptance PASS:
+  - `reports/photo_modules_backend_acceptance.md`
+- Frontend acceptance PASS:
+  - `reports/photo_modules_frontend_acceptance.md`
+- Analytics privacy audit PASS (no image bytes/base64/url, no bbox_px, no region geometry in events):
+  - `reports/analytics_audit.md`
+
+Historical verifier guard probes (2026-02-09 UTC):
 
 Probe run A (smoke):
 - Command family: `scripts/probe_verify_budget_guard.sh` (`CALLS=2`, `WAIT_AFTER_SEC=15`, `EXPECT_GUARD=0`)
@@ -223,6 +246,6 @@ Probe run B (stress):
   - this indicates the current production guard thresholds are above this traffic level (or guard is configured permissive for this environment).
 
 Interpretation:
-- Mapping patch is active in production and no verifier failure regression was observed during this run.
-- `UNKNOWN` bucket did not increase, which is the main acceptance signal for this patch.
-- Gemini invocation path is healthy (`agreement_histogram_count` increased; success ratio high), with only a single quota-limited failure during high-pressure probing.
+- Verifier failure-reason mapping remains stable: `UNKNOWN` bucket did not increase during guard probes.
+- Photo modules card path is live and healthy in production (`photo_modules_v1` emitted under `used_photos=true` with valid overlay geometry payload).
+- Local backend/frontend acceptance and analytics privacy audit all pass.
