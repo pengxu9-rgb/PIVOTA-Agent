@@ -1,0 +1,2 @@
+"""Aurora skinmask training package."""
+

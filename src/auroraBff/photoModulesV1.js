@@ -3,9 +3,21 @@ const { mapIngredientActions } = require('./ingredientActionsV1');
 const { renderAllowedTemplate } = require('./claimsTemplates/render');
 const { buildProductRecommendations } = require('./productRecV1');
 const { inferRiskTier } = require('./ingredientKbV2/resolve');
+const {
+  createMask,
+  bboxNormToMask,
+  polygonNormToMask,
+  resizeHeatmapToMask,
+  orMaskInto,
+  andMasks,
+  countOnes,
+  encodeRleBinary,
+  decodeRleBinary,
+} = require('./evalAdapters/common/metrics');
 
 const FACE_COORD_SPACE = 'face_crop_norm_v1';
 const HEATMAP_GRID_DEFAULT = Object.freeze({ w: 64, h: 64 });
+const MODULE_MASK_GRID_SIZE = 64;
 const MODULE_BOXES = Object.freeze({
   forehead: { x: 0.2, y: 0.03, w: 0.6, h: 0.22 },
   left_cheek: { x: 0.08, y: 0.34, w: 0.34, h: 0.3 },
@@ -17,6 +29,22 @@ const MODULE_BOXES = Object.freeze({
 });
 
 const SUPPORTED_ISSUES = new Set(['redness', 'shine', 'texture', 'tone', 'acne']);
+const MODULE_SKIN_INTERSECTION_MIN_PIXELS = Math.max(
+  1,
+  Math.min(512, Math.trunc(Number(process.env.DIAG_SKINMASK_MIN_PIXELS || 8) || 8)),
+);
+const MODULE_SKIN_INTERSECTION_MIN_RATIO = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_SKINMASK_MIN_KEEP_RATIO || 0.6)),
+);
+const MODULE_SKIN_POSITIVE_RATIO_MIN = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_SKINMASK_POSITIVE_RATIO_MIN || 0.04)),
+);
+const MODULE_SKIN_POSITIVE_RATIO_MAX = Math.max(
+  MODULE_SKIN_POSITIVE_RATIO_MIN,
+  Math.min(1, Number(process.env.DIAG_SKINMASK_POSITIVE_RATIO_MAX || 0.95)),
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -1031,6 +1059,209 @@ function normalizeFaceCropFromInternal(diagnosisInternal) {
   });
 }
 
+function normalizeMaskGridSize(value, fallback = MODULE_MASK_GRID_SIZE) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(32, Math.min(256, Math.trunc(n)));
+}
+
+function buildRegionMask(region, gridSize) {
+  const empty = createMask(gridSize, gridSize, 0);
+  if (!region || typeof region !== 'object') return empty;
+  if (region.bbox && typeof region.bbox === 'object') {
+    const bboxMask = bboxNormToMask(region.bbox, gridSize, gridSize);
+    orMaskInto(empty, bboxMask);
+  }
+  if (region.polygon && typeof region.polygon === 'object') {
+    const polygonMask = polygonNormToMask(region.polygon, gridSize, gridSize);
+    orMaskInto(empty, polygonMask);
+  }
+  if (region.heatmap && typeof region.heatmap === 'object') {
+    const grid = region.heatmap.grid && typeof region.heatmap.grid === 'object' ? region.heatmap.grid : {};
+    const heatMask = resizeHeatmapToMask(
+      Array.isArray(region.heatmap.values) ? region.heatmap.values : [],
+      Number(grid.w || 64),
+      Number(grid.h || 64),
+      gridSize,
+      gridSize,
+      0.35,
+      clamp01(region.style && Number(region.style.intensity)) || 1,
+    );
+    orMaskInto(empty, heatMask);
+  }
+  return empty;
+}
+
+function decodeSkinMaskToGrid(skinMask, gridSize) {
+  if (!skinMask || typeof skinMask !== 'object') return null;
+  const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
+  const maskGrid = normalizeMaskGridSize(skinMask.mask_grid, targetGrid);
+  if (typeof skinMask.mask_rle_norm === 'string' && skinMask.mask_rle_norm.trim()) {
+    const decoded = decodeRleBinary(skinMask.mask_rle_norm, maskGrid * maskGrid);
+    if (maskGrid === targetGrid) return decoded;
+    const resized = resizeHeatmapToMask(Array.from(decoded), maskGrid, maskGrid, targetGrid, targetGrid, 0.5, 1);
+    return resized;
+  }
+  if (skinMask.heatmap && typeof skinMask.heatmap === 'object') {
+    const heatmap = skinMask.heatmap;
+    const grid = heatmap.grid && typeof heatmap.grid === 'object' ? heatmap.grid : {};
+    return resizeHeatmapToMask(
+      Array.isArray(heatmap.values) ? heatmap.values : [],
+      Number(grid.w || maskGrid),
+      Number(grid.h || maskGrid),
+      targetGrid,
+      targetGrid,
+      clamp01(heatmap.threshold || 0.5),
+      1,
+    );
+  }
+  if (skinMask.bbox && typeof skinMask.bbox === 'object') {
+    return bboxNormToMask(skinMask.bbox, targetGrid, targetGrid);
+  }
+  return null;
+}
+
+function collectEvidenceRegionIds(moduleRow) {
+  const ids = new Set();
+  if (!moduleRow || typeof moduleRow !== 'object') return ids;
+  const issueRows = Array.isArray(moduleRow.issues) ? moduleRow.issues : [];
+  for (const issue of issueRows) {
+    const evidenceIds = Array.isArray(issue && issue.evidence_region_ids) ? issue.evidence_region_ids : [];
+    for (const evidenceId of evidenceIds) {
+      const token = String(evidenceId || '').trim();
+      if (token) ids.add(token);
+    }
+  }
+  const moduleEvidenceIds = Array.isArray(moduleRow.evidence_region_ids) ? moduleRow.evidence_region_ids : [];
+  for (const evidenceId of moduleEvidenceIds) {
+    const token = String(evidenceId || '').trim();
+    if (token) ids.add(token);
+  }
+  return ids;
+}
+
+function maskBoundingBox(mask, gridSize) {
+  if (!(mask instanceof Uint8Array) || !mask.length) return null;
+  let minX = gridSize;
+  let minY = gridSize;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < gridSize; y += 1) {
+    for (let x = 0; x < gridSize; x += 1) {
+      if (!mask[y * gridSize + x]) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0 || maxY < 0) return null;
+  const raw = {
+    x: minX / gridSize,
+    y: minY / gridSize,
+    w: (maxX + 1 - minX) / gridSize,
+    h: (maxY + 1 - minY) / gridSize,
+  };
+  const sanitized = sanitizeBBox(raw);
+  return sanitized.ok ? sanitized.bbox : null;
+}
+
+function attachModuleMasks({
+  modules,
+  regions,
+  skinMask,
+  moduleBoxes,
+  gridSize,
+} = {}) {
+  const safeModules = Array.isArray(modules) ? modules : [];
+  const safeRegions = Array.isArray(regions) ? regions : [];
+  const activeModuleBoxes = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
+  const moduleIds = Object.keys(activeModuleBoxes);
+  const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
+
+  const regionMaskMap = new Map();
+  for (const region of safeRegions) {
+    const regionId = String(region && region.region_id ? region.region_id : '').trim();
+    if (!regionId) continue;
+    regionMaskMap.set(regionId, buildRegionMask(region, targetGrid));
+  }
+
+  const skinMaskNorm = decodeSkinMaskToGrid(skinMask, targetGrid);
+  const skinMaskPositiveRatio = skinMask && Number.isFinite(Number(skinMask.positive_ratio))
+    ? Number(skinMask.positive_ratio)
+    : skinMaskNorm
+      ? countOnes(skinMaskNorm) / Math.max(1, targetGrid * targetGrid)
+      : 0;
+  const skinMaskReliable =
+    Boolean(skinMaskNorm) &&
+    skinMaskPositiveRatio >= MODULE_SKIN_POSITIVE_RATIO_MIN &&
+    skinMaskPositiveRatio <= MODULE_SKIN_POSITIVE_RATIO_MAX;
+  let refinedModules = 0;
+  let fallbackSkippedModules = 0;
+
+  const modulesOut = safeModules.map((moduleRow) => {
+    const modulePayload = moduleRow && typeof moduleRow === 'object' ? { ...moduleRow } : {};
+    const moduleId = String(modulePayload.module_id || '').trim();
+    if (!moduleId || !moduleIds.includes(moduleId)) return modulePayload;
+
+    const moduleMask = createMask(targetGrid, targetGrid, 0);
+    const evidenceIds = collectEvidenceRegionIds(modulePayload);
+    for (const evidenceId of evidenceIds) {
+      const regionMask = regionMaskMap.get(evidenceId);
+      if (regionMask) orMaskInto(moduleMask, regionMask);
+    }
+
+    if (!countOnes(moduleMask) && modulePayload.box && typeof modulePayload.box === 'object') {
+      const fallbackMask = bboxNormToMask(modulePayload.box, targetGrid, targetGrid);
+      orMaskInto(moduleMask, fallbackMask);
+    }
+
+    if (!countOnes(moduleMask)) {
+      const fallbackBox = activeModuleBoxes[moduleId] || MODULE_BOXES[moduleId];
+      if (fallbackBox) {
+        const fallbackMask = bboxNormToMask(fallbackBox, targetGrid, targetGrid);
+        orMaskInto(moduleMask, fallbackMask);
+      }
+    }
+
+    let finalMask = moduleMask;
+    if (skinMaskNorm && skinMaskReliable) {
+      const intersected = andMasks(moduleMask, skinMaskNorm);
+      const modulePixels = countOnes(moduleMask);
+      const intersectedPixels = countOnes(intersected);
+      const keepThreshold = Math.max(
+        MODULE_SKIN_INTERSECTION_MIN_PIXELS,
+        Math.trunc(modulePixels * MODULE_SKIN_INTERSECTION_MIN_RATIO),
+      );
+      if (intersectedPixels >= keepThreshold) {
+        finalMask = intersected;
+        refinedModules += 1;
+      } else {
+        fallbackSkippedModules += 1;
+      }
+    }
+
+    const box = maskBoundingBox(finalMask, targetGrid) || modulePayload.box || activeModuleBoxes[moduleId] || null;
+    return {
+      ...modulePayload,
+      ...(box ? { box } : {}),
+      ...(evidenceIds.size ? { evidence_region_ids: Array.from(evidenceIds) } : {}),
+      mask_grid: targetGrid,
+      mask_rle_norm: encodeRleBinary(finalMask),
+    };
+  });
+
+  return {
+    modules: modulesOut,
+    skinmask_refined_modules: refinedModules,
+    skinmask_skipped_modules: fallbackSkippedModules,
+    skinmask_grid: targetGrid,
+    skinmask_available: Boolean(skinMaskNorm),
+    skinmask_reliable: Boolean(skinMaskReliable),
+    skinmask_positive_ratio: Number.isFinite(skinMaskPositiveRatio) ? round3(skinMaskPositiveRatio) : null,
+  };
+}
+
 function buildPhotoModulesCard({
   requestId,
   analysis,
@@ -1048,6 +1279,7 @@ function buildPhotoModulesCard({
   internalTestMode,
   ingredientKbArtifactPath,
   productCatalogPath,
+  skinMask,
 } = {}) {
   const qualityGrade = normalizeQualityGrade(photoQuality && photoQuality.grade);
   if (!usedPhotos) return null;
@@ -1086,13 +1318,21 @@ function buildPhotoModulesCard({
     productCatalogPath,
   });
 
+  const moduleMaskBuild = attachModuleMasks({
+    modules: modulesBuild.modules,
+    regions,
+    skinMask,
+    moduleBoxes: MODULE_BOXES,
+    gridSize: MODULE_MASK_GRID_SIZE,
+  });
+
   const payload = {
     used_photos: true,
     quality_grade: qualityGrade,
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
     face_crop: faceCrop,
     regions,
-    modules: modulesBuild.modules,
+    modules: moduleMaskBuild.modules,
     disclaimers: {
       non_medical: true,
       seek_care_triggers: [
@@ -1108,7 +1348,13 @@ function buildPhotoModulesCard({
       risk_tier: modulesBuild.riskTier,
       ingredient_rec_enabled: Boolean(ingredientRecEnabled),
       product_rec_enabled: Boolean(productRecEnabled),
-      module_count: Array.isArray(modulesBuild.modules) ? modulesBuild.modules.length : 0,
+      module_count: Array.isArray(moduleMaskBuild.modules) ? moduleMaskBuild.modules.length : 0,
+      skinmask_available: moduleMaskBuild.skinmask_available,
+      skinmask_refined_modules: moduleMaskBuild.skinmask_refined_modules,
+      skinmask_skipped_modules: moduleMaskBuild.skinmask_skipped_modules,
+      skinmask_grid: moduleMaskBuild.skinmask_grid,
+      skinmask_reliable: moduleMaskBuild.skinmask_reliable,
+      skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
     };
   }
 

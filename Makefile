@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit train-circle-prior eval-circle eval-datasets
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit train-circle-prior eval-circle eval-datasets train-skinmask export-skinmask eval-skinmask
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -105,6 +105,14 @@ CIRCLE_MODEL_ALIAS ?= model_registry/circle_prior_latest.json
 EVAL_CIRCLE_MODEL_PATH ?= $(CIRCLE_MODEL_ALIAS)
 CIRCLE_MODEL_MIN_PIXELS ?= 24
 CIRCLE_MODEL_CALIBRATION ?= true
+EPOCHS ?= 8
+BATCH ?= 8
+ONNX ?= artifacts/skinmask_v1.onnx
+CKPT ?=
+SKINMASK_OUT_DIR ?= outputs/skinmask_train
+SKINMASK_IMAGE_SIZE ?= 512
+SKINMASK_NUM_WORKERS ?= 4
+SKINMASK_BACKBONE ?= nvidia/segformer-b0-finetuned-ade-512-512
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -225,4 +233,13 @@ train-circle-prior:
 eval-circle:
 	CACHE_DIR="$(CACHE_DIR)" TOKEN="$(EVAL_TOKEN)" CIRCLE_MODEL_CALIBRATION="$(CIRCLE_MODEL_CALIBRATION)" CIRCLE_MODEL_MIN_PIXELS="$(CIRCLE_MODEL_MIN_PIXELS)" node scripts/eval_circle_accuracy.mjs --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)" --concurrency "$(EVAL_CONCURRENCY)" --timeout_ms "$(EVAL_TIMEOUT_MS)" --market "$(MARKET)" --lang "$(LANG)" --grid_size "$(EVAL_GRID_SIZE)" --report_dir "$(EVAL_REPORT_DIR)" --circle_model_path "$(EVAL_CIRCLE_MODEL_PATH)" --circle_model_min_pixels "$(CIRCLE_MODEL_MIN_PIXELS)" $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(filter true,$(EVAL_SHUFFLE)),--shuffle,) $(if $(EVAL_BASE_URL),--base_url "$(EVAL_BASE_URL)",) $(if $(filter true,$(EVAL_EMIT_DEBUG)),--emit_debug_overlays,) $(if $(filter false,$(CIRCLE_MODEL_CALIBRATION)),--disable_circle_model_calibration,)
 
-eval-datasets: datasets-prepare datasets-audit train-circle-prior eval-circle
+train-skinmask:
+	python3 -m ml.skinmask_train.train --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)" --epochs "$(EPOCHS)" --batch_size "$(BATCH)" --num_workers "$(SKINMASK_NUM_WORKERS)" --image_size "$(SKINMASK_IMAGE_SIZE)" --out_dir "$(SKINMASK_OUT_DIR)" --backbone_name "$(SKINMASK_BACKBONE)" $(if $(LIMIT),--limit_per_dataset "$(LIMIT)",)
+
+export-skinmask:
+	python3 -m ml.skinmask_train.export_onnx --ckpt "$(CKPT)" --out "$(if $(OUT),$(OUT),$(ONNX))" --image_size "$(SKINMASK_IMAGE_SIZE)"
+
+eval-skinmask:
+	node scripts/skinmask_ablation_report.mjs --onnx "$(ONNX)" --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)" --concurrency "$(EVAL_CONCURRENCY)" --timeout_ms "$(EVAL_TIMEOUT_MS)" --market "$(MARKET)" --lang "$(LANG)" --grid_size "$(EVAL_GRID_SIZE)" --report_dir "$(EVAL_REPORT_DIR)" $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(filter true,$(EVAL_SHUFFLE)),--shuffle,) $(if $(filter true,$(EVAL_EMIT_DEBUG)),--emit_debug_overlays,)
+
+eval-datasets: datasets-prepare datasets-audit eval-circle

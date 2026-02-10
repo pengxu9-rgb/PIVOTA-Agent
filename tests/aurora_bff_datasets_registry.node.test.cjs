@@ -35,6 +35,7 @@ test('.gitignore protects dataset cache and debug outputs', () => {
   );
 
   assert.equal(lines.has('datasets_cache/**'), true);
+  assert.equal(lines.has('outputs/**'), true);
   assert.equal(lines.has('outputs/datasets_debug/**'), true);
 });
 

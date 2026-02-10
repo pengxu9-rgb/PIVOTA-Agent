@@ -299,6 +299,21 @@ function buildDatasetIndex(dataset, relFiles) {
   return rows;
 }
 
+function attachSourceRootMeta(rows, sourceRootPath) {
+  const sourceRoot = String(sourceRootPath || '').trim();
+  if (!sourceRoot) return rows;
+  return rows.map((row) => {
+    const baseMeta = row && row.meta && typeof row.meta === 'object' ? row.meta : {};
+    return {
+      ...row,
+      meta: {
+        ...baseMeta,
+        source_root: sourceRoot,
+      },
+    };
+  });
+}
+
 function summarizeSplits(rows) {
   const out = {};
   for (const row of rows) {
@@ -445,6 +460,7 @@ async function main() {
     }
 
     let sourceLabel = '';
+    let sourceRootAbs = '';
     let sourceSha256 = '';
     let sourceSizeBytes = 0;
     let sourceMtimeMs = 0;
@@ -455,6 +471,7 @@ async function main() {
 
     if (sourceDir) {
       datasetRootDir = sourceDir;
+      sourceRootAbs = sourceDir;
       sourceLabel = path.basename(sourceDir);
       const sourceFiles = await walkFiles(sourceDir);
       relFiles = sourceFiles
@@ -477,6 +494,7 @@ async function main() {
       const indexCandidate = path.join(extractDir, 'dataset_index.jsonl');
       await ensureDir(extractDir);
       sourceLabel = path.basename(zipPath);
+      sourceRootAbs = '';
       sourceSha256 = zipSha256;
       sourceSizeBytes = Number(zipStat.size || 0);
       sourceMtimeMs = Number(zipStat.mtimeMs || 0);
@@ -501,7 +519,10 @@ async function main() {
         .sort((a, b) => a.localeCompare(b));
     }
 
-    const rows = buildDatasetIndex(dataset, relFiles);
+    let rows = buildDatasetIndex(dataset, relFiles);
+    if (sourceRootAbs) {
+      rows = attachSourceRootMeta(rows, sourceRootAbs);
+    }
     await writeJsonl(indexFile, rows);
 
     const spec = datasetSpec(dataset);

@@ -76,6 +76,7 @@ Each run writes:
 ## Report Fields
 
 - `module_iou` / `module_coverage` / `module_leakage`
+- `skin_roi_too_small_rate` (`pred_pixels < EVAL_SKIN_ROI_MIN_PIXELS`)
 - `face_detect_fail_rate`
 - `landmark_fail_rate` (currently mirrors face-crop availability)
 - `geometry_sanitize_drop_rate` (available in local mode from card builder metrics)
@@ -85,6 +86,8 @@ Soft-gate thresholds:
 - `EVAL_MIN_MIOU` (default `0.65`)
 - `EVAL_MAX_FAIL_RATE` (default `0.05`)
 - `EVAL_MAX_LEAKAGE` (default `0.10`)
+- `EVAL_MAX_SKIN_ROI_TOO_SMALL` (default `0.20`)
+- `EVAL_SKIN_ROI_MIN_PIXELS` (default `8`)
 
 Circle-prior calibration options:
 

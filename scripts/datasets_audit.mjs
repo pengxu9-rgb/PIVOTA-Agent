@@ -126,6 +126,7 @@ async function main() {
   const gitignoreText = await fs.readFile(gitignorePath, 'utf8');
   const gitignoreChecks = [
     'datasets_cache/**',
+    'outputs/**',
     'outputs/datasets_debug/**',
   ];
   for (const pattern of gitignoreChecks) {

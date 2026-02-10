@@ -52,6 +52,13 @@ const productRecEmittedCounter = new Map();
 const productRecSuppressedCounter = new Map();
 const claimsTemplateFallbackCounter = new Map();
 const claimsViolationCounter = new Map();
+let clarificationIdNormalizedEmptyCount = 0;
+const catalogAvailabilityShortCircuitCounter = new Map();
+const repeatedClarifyFieldCounter = new Map();
+const profileContextMissingCounter = new Map();
+const sessionPatchProfileEmittedCounter = new Map();
+const upstreamCallsCounter = new Map();
+const upstreamLatencyByPath = new Map();
 let modulesInteractionCount = 0;
 let actionClickCount = 0;
 let actionCopyCount = 0;
@@ -174,6 +181,36 @@ function normalizeVerifyErrorClass(errorClass) {
   return cleanMetricToken(errorClass, 'unknown');
 }
 
+function normalizeCatalogBrandId(brandId) {
+  return cleanMetricToken(brandId, 'unknown');
+}
+
+function normalizeCatalogAvailabilityReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizeClarifyField(field) {
+  return cleanMetricToken(field, 'unknown');
+}
+
+function normalizeProfileContextSide(side) {
+  const token = cleanMetricToken(side, 'unknown');
+  if (token === 'frontend' || token === 'backend') return token;
+  return 'unknown';
+}
+
+function normalizeSessionPatchChangedFlag(changed) {
+  return changed ? 'true' : 'false';
+}
+
+function normalizeUpstreamPath(path) {
+  return cleanMetricToken(path, 'unknown');
+}
+
+function normalizeUpstreamStatus(status) {
+  return cleanMetricToken(status, 'unknown');
+}
+
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
   return {
     issue_type: normalizeIssueType(issueType),
@@ -230,6 +267,20 @@ function ensureEnsembleLatencyState(provider) {
   return state;
 }
 
+function ensureUpstreamLatencyState(path) {
+  const p = cleanLabel(path, 'unknown');
+  let state = upstreamLatencyByPath.get(p);
+  if (!state) {
+    state = {
+      count: 0,
+      sum: 0,
+      buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+    };
+    upstreamLatencyByPath.set(p, state);
+  }
+  return state;
+}
+
 function observeVisionLatency({ provider, latencyMs } = {}) {
   const latency = Number(latencyMs);
   if (!Number.isFinite(latency) || latency < 0) return;
@@ -241,6 +292,54 @@ function observeVisionLatency({ provider, latencyMs } = {}) {
       state.buckets.set(bucket, (state.buckets.get(bucket) || 0) + 1);
     }
   }
+}
+
+function observeUpstreamLatency({ path, latencyMs } = {}) {
+  const latency = Number(latencyMs);
+  if (!Number.isFinite(latency) || latency < 0) return;
+  const state = ensureUpstreamLatencyState(path);
+  state.count += 1;
+  state.sum += latency;
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    if (latency <= bucket) {
+      state.buckets.set(bucket, (state.buckets.get(bucket) || 0) + 1);
+    }
+  }
+}
+
+function recordClarificationIdNormalizedEmpty() {
+  clarificationIdNormalizedEmptyCount += 1;
+}
+
+function recordCatalogAvailabilityShortCircuit({ brandId, reason } = {}) {
+  incCounter(
+    catalogAvailabilityShortCircuitCounter,
+    {
+      brand_id: normalizeCatalogBrandId(brandId),
+      reason: normalizeCatalogAvailabilityReason(reason),
+    },
+    1,
+  );
+}
+
+function recordRepeatedClarifyField({ field } = {}) {
+  incCounter(repeatedClarifyFieldCounter, { field: normalizeClarifyField(field) }, 1);
+}
+
+function recordProfileContextMissing({ side } = {}) {
+  incCounter(profileContextMissingCounter, { side: normalizeProfileContextSide(side) }, 1);
+}
+
+function recordSessionPatchProfileEmitted({ changed } = {}) {
+  incCounter(sessionPatchProfileEmittedCounter, { changed: normalizeSessionPatchChangedFlag(Boolean(changed)) }, 1);
+}
+
+function recordUpstreamCall({ path, status } = {}) {
+  incCounter(
+    upstreamCallsCounter,
+    { path: normalizeUpstreamPath(path), status: normalizeUpstreamStatus(status) },
+    1,
+  );
 }
 
 function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
@@ -738,6 +837,45 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE claims_violation_total counter');
   renderCounter(lines, 'claims_violation_total', claimsViolationCounter);
 
+  lines.push('# HELP clarification_id_normalized_empty_total Total number of clarification_id normalizations that required an empty/hash fallback.');
+  lines.push('# TYPE clarification_id_normalized_empty_total counter');
+  lines.push(`clarification_id_normalized_empty_total ${clarificationIdNormalizedEmptyCount}`);
+
+  lines.push('# HELP catalog_availability_shortcircuit_total Total number of brand availability queries short-circuited to catalog lookup.');
+  lines.push('# TYPE catalog_availability_shortcircuit_total counter');
+  renderCounter(lines, 'catalog_availability_shortcircuit_total', catalogAvailabilityShortCircuitCounter);
+
+  lines.push('# HELP repeated_clarify_field_total Total number of repeated clarification questions detected for known profile fields.');
+  lines.push('# TYPE repeated_clarify_field_total counter');
+  renderCounter(lines, 'repeated_clarify_field_total', repeatedClarifyFieldCounter);
+
+  lines.push('# HELP profile_context_missing_total Total number of requests missing profile context from frontend session or backend storage.');
+  lines.push('# TYPE profile_context_missing_total counter');
+  renderCounter(lines, 'profile_context_missing_total', profileContextMissingCounter);
+
+  lines.push('# HELP session_patch_profile_emitted_total Total number of responses that emitted env.session_patch.profile (changed=true|false).');
+  lines.push('# TYPE session_patch_profile_emitted_total counter');
+  renderCounter(lines, 'session_patch_profile_emitted_total', sessionPatchProfileEmittedCounter);
+
+  lines.push('# HELP upstream_call_total Total number of upstream calls by path and status.');
+  lines.push('# TYPE upstream_call_total counter');
+  renderCounter(lines, 'upstream_call_total', upstreamCallsCounter);
+
+  lines.push('# HELP upstream_latency_ms Upstream latency in milliseconds by path.');
+  lines.push('# TYPE upstream_latency_ms histogram');
+  const upstreamPaths = Array.from(upstreamLatencyByPath.keys()).sort((a, b) => a.localeCompare(b));
+  for (const path of upstreamPaths) {
+    const state = upstreamLatencyByPath.get(path);
+    if (!state) continue;
+    for (const bucket of LATENCY_BUCKETS_MS) {
+      const le = bucket === Infinity ? '+Inf' : String(bucket);
+      const value = state.buckets.get(bucket) || 0;
+      lines.push(`upstream_latency_ms_bucket{path="${escapePromValue(path)}",le="${le}"} ${value}`);
+    }
+    lines.push(`upstream_latency_ms_sum{path="${escapePromValue(path)}"} ${state.sum}`);
+    lines.push(`upstream_latency_ms_count{path="${escapePromValue(path)}"} ${state.count}`);
+  }
+
   lines.push('# HELP modules_interaction_total Total UI interactions related to photo modules.');
   lines.push('# TYPE modules_interaction_total counter');
   lines.push(`modules_interaction_total ${modulesInteractionCount}`);
@@ -819,6 +957,13 @@ function resetVisionMetrics() {
   productRecSuppressedCounter.clear();
   claimsTemplateFallbackCounter.clear();
   claimsViolationCounter.clear();
+  clarificationIdNormalizedEmptyCount = 0;
+  catalogAvailabilityShortCircuitCounter.clear();
+  repeatedClarifyFieldCounter.clear();
+  profileContextMissingCounter.clear();
+  sessionPatchProfileEmittedCounter.clear();
+  upstreamCallsCounter.clear();
+  upstreamLatencyByPath.clear();
   modulesInteractionCount = 0;
   actionClickCount = 0;
   actionCopyCount = 0;
@@ -859,6 +1004,13 @@ function snapshotVisionMetrics() {
     productRecSuppressed: Array.from(productRecSuppressedCounter.entries()),
     claimsTemplateFallbacks: Array.from(claimsTemplateFallbackCounter.entries()),
     claimsViolations: Array.from(claimsViolationCounter.entries()),
+    clarificationIdNormalizedEmptyCount,
+    catalogAvailabilityShortCircuits: Array.from(catalogAvailabilityShortCircuitCounter.entries()),
+    repeatedClarifyFields: Array.from(repeatedClarifyFieldCounter.entries()),
+    profileContextMissing: Array.from(profileContextMissingCounter.entries()),
+    sessionPatchProfileEmitted: Array.from(sessionPatchProfileEmittedCounter.entries()),
+    upstreamCalls: Array.from(upstreamCallsCounter.entries()),
+    upstreamLatencyPaths: Array.from(upstreamLatencyByPath.keys()),
     modulesInteractionCount,
     actionClickCount,
     actionCopyCount,
@@ -867,6 +1019,13 @@ function snapshotVisionMetrics() {
 }
 
 module.exports = {
+  recordClarificationIdNormalizedEmpty,
+  recordCatalogAvailabilityShortCircuit,
+  recordRepeatedClarifyField,
+  recordProfileContextMissing,
+  recordSessionPatchProfileEmitted,
+  recordUpstreamCall,
+  observeUpstreamLatency,
   recordVisionDecision,
   observeVisionLatency,
   recordEnsembleProviderResult,

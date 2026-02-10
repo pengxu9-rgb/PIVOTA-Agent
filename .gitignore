@@ -61,6 +61,7 @@ local-test/
 internal-test-photos/
 internal_test_photos/
 local-internal-photos/
+outputs/**
 datasets_cache/**
 outputs/datasets_debug/**
 

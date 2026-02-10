@@ -2,6 +2,7 @@ const axios = require('axios');
 const OpenAI = require('openai');
 const sharp = require('sharp');
 const fs = require('fs');
+const crypto = require('crypto');
 const { buildRequestContext } = require('./requestContext');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
@@ -25,6 +26,13 @@ const {
   buildVisionPhotoNotice,
 } = require('./visionPolicy');
 const {
+  recordClarificationIdNormalizedEmpty,
+  recordCatalogAvailabilityShortCircuit,
+  recordRepeatedClarifyField,
+  recordProfileContextMissing,
+  recordSessionPatchProfileEmitted,
+  recordUpstreamCall,
+  observeUpstreamLatency,
   recordVisionDecision,
   recordEnsembleProviderResult,
   recordEnsembleAgreementScore,
@@ -49,6 +57,7 @@ const {
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
+const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
@@ -236,6 +245,8 @@ const DIAG_OVERLAY_MODE = (() => {
 })();
 const DIAG_INGREDIENT_REC = String(process.env.DIAG_INGREDIENT_REC || 'true').toLowerCase() !== 'false';
 const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || '').toLowerCase() === 'true';
+const DIAG_SKINMASK_ENABLED = String(process.env.DIAG_SKINMASK_ENABLED || '').toLowerCase() === 'true';
+const DIAG_SKINMASK_MODEL_PATH = String(process.env.DIAG_SKINMASK_MODEL_PATH || 'artifacts/skinmask_v1.onnx').trim();
 const DIAG_PRODUCT_REC_MIN_CITATIONS = Math.max(
   0,
   Math.min(5, Math.trunc(Number(process.env.DIAG_PRODUCT_REC_MIN_CITATIONS || 1) || 1)),
@@ -1041,6 +1052,7 @@ function maybeBuildPhotoModulesCardForAnalysis({
   diagnosisInternal,
   profileSummary,
   language,
+  skinMask,
 } = {}) {
   if (!DIAG_PHOTO_MODULES_CARD) return null;
   if (DIAG_OVERLAY_MODE !== 'client') return null;
@@ -1069,6 +1081,7 @@ function maybeBuildPhotoModulesCardForAnalysis({
     internalTestMode: INTERNAL_TEST_MODE,
     ingredientKbArtifactPath: DIAG_INGREDIENT_KB_V2_PATH,
     productCatalogPath: DIAG_PRODUCT_CATALOG_PATH,
+    skinMask,
   });
   if (!built || !built.card) return null;
 
@@ -1165,6 +1178,41 @@ function maybeBuildPhotoModulesCardForAnalysis({
   return built.card;
 }
 
+async function maybeInferSkinMaskForPhotoModules({ imageBuffer, diagnosisInternal, logger, requestId } = {}) {
+  if (!DIAG_SKINMASK_ENABLED) return null;
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) return null;
+  if (!DIAG_SKINMASK_MODEL_PATH) return null;
+
+  try {
+    const inferred = await inferSkinMaskOnFaceCrop({
+      imageBuffer,
+      diagnosisInternal,
+      modelPath: DIAG_SKINMASK_MODEL_PATH,
+    });
+    if (!inferred || !inferred.ok) {
+      logger?.warn(
+        {
+          request_id: requestId || null,
+          reason: inferred && inferred.reason ? inferred.reason : 'unknown',
+          detail: inferred && inferred.detail ? inferred.detail : null,
+        },
+        'aurora bff: skinmask onnx inference skipped',
+      );
+      return null;
+    }
+    return inferred;
+  } catch (error) {
+    logger?.warn(
+      {
+        request_id: requestId || null,
+        err: error && error.message ? error.message : String(error),
+      },
+      'aurora bff: skinmask onnx inference failed',
+    );
+    return null;
+  }
+}
+
 async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, qcStatus, logger, identity } = {}) {
   if (!PHOTO_AUTO_ANALYZE_AFTER_CONFIRM) return null;
   if (!photoId || !isPassedPhotoQcStatus(qcStatus)) return null;
@@ -1198,15 +1246,17 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
   let analysisSource = hasPrimaryInput ? 'rule_based_with_photo_qc' : 'baseline_low_confidence';
   let diagnosisV1 = null;
   let diagnosisV1Internal = null;
+  let diagnosisPhotoBytes = null;
   let analysis = null;
   let photoNotice = null;
 
   try {
     const photoResp = await fetchPhotoBytesFromPivotaBackend({ req, photoId });
     if (photoResp && photoResp.ok && photoResp.buffer && Buffer.isBuffer(photoResp.buffer) && photoResp.buffer.length > 0) {
+      diagnosisPhotoBytes = photoResp.buffer;
       const profiler = createStageProfiler();
       const diag = await runSkinDiagnosisV1({
-        imageBuffer: photoResp.buffer,
+        imageBuffer: diagnosisPhotoBytes,
         language,
         profileSummary,
         recentLogsSummary,
@@ -1389,6 +1439,13 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     },
   };
 
+  const photoModulesSkinMask = await maybeInferSkinMaskForPhotoModules({
+    imageBuffer: diagnosisPhotoBytes,
+    diagnosisInternal: diagnosisV1Internal,
+    logger,
+    requestId: ctx.request_id,
+  });
+
   const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
     requestId: ctx.request_id,
     analysis,
@@ -1398,6 +1455,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     diagnosisInternal: diagnosisV1Internal,
     profileSummary,
     language,
+    skinMask: photoModulesSkinMask,
   });
 
   const cards = [
@@ -3092,19 +3150,33 @@ function parseClarificationReplyFromActionId(actionId) {
     .trim();
 }
 
-function normalizeClarificationField(raw) {
-  const field = String(raw || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_');
+function stableHashBase36(raw) {
+  const input = String(raw == null ? '' : raw);
+  const hex = crypto.createHash('sha1').update(input).digest('hex');
+  return BigInt(`0x${hex}`).toString(36);
+}
 
-  if (!field) return '';
-  if (field.includes('budget') || field.includes('price') || field.includes('spend')) return 'budgetTier';
-  if (field.includes('goal') || field.includes('concern') || field.includes('target') || field.includes('focus')) return 'goals';
-  if (field.includes('barrier') || field.includes('sting') || field.includes('red') || field.includes('irrit') || field.includes('reactive')) return 'barrierStatus';
-  if (field.includes('sensit')) return 'sensitivity';
-  if (field.includes('skin') || field.includes('oily') || field.includes('dry') || field.includes('combo') || field.includes('mixed')) return 'skinType';
-  return '';
+function normalizeClarificationField(raw) {
+  const rawText = String(raw == null ? '' : raw).trim();
+  const lowered = rawText.toLowerCase();
+  let norm = lowered
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}_:]+/gu, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (!norm) {
+    recordClarificationIdNormalizedEmpty();
+    norm = `cid_${stableHashBase36(rawText).slice(0, 12)}`;
+  }
+
+  const haystack = `${lowered} ${norm}`;
+  if (/(budget|price|spend|预算|价位|预算档)/.test(haystack)) return 'budgetTier';
+  if (/(goal|concern|target|focus|目标|诉求|优先|最想|想解决)/.test(haystack)) return 'goals';
+  if (/(barrier|sting|red|irrit|reactive|屏障|耐受|刺痛|泛红|发红|刺激)/.test(haystack)) return 'barrierStatus';
+  if (/(sensit|敏感程度|敏感性)/.test(haystack)) return 'sensitivity';
+  if (/(skin|肤质|皮肤类型|油皮|干皮|混合|中性|oily|dry|combo|combination|mixed|normal)/.test(haystack)) return 'skinType';
+  return norm;
 }
 
 function isUnsureToken(raw) {
@@ -9083,6 +9155,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
 
+        const photoModulesSkinMask = await maybeInferSkinMaskForPhotoModules({
+          imageBuffer: diagnosisPhotoBytes,
+          diagnosisInternal: diagnosisV1Internal,
+          logger,
+          requestId: ctx.request_id,
+        });
+
         const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
           requestId: ctx.request_id,
           analysis,
@@ -9095,6 +9174,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           diagnosisInternal: diagnosisV1Internal,
           profileSummary,
           language: ctx.lang,
+          skinMask: photoModulesSkinMask,
         });
 
         if (analysis && persistLastAnalysis) {
