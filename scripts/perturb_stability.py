@@ -146,7 +146,7 @@ def _variant_specs(n_perturbations: int) -> List[VariantSpec]:
         VariantSpec("crop_jitter_b", "crop", {"crop_frac": 0.98, "offset_xy": (-0.02, 0.02)}),
         VariantSpec("noise_sigma1_5", "noise", {"sigma": 1.5, "seed_offset": 10}),
         VariantSpec("jpeg_q90", "jpeg", {"quality": 90}),
-        VariantSpec("jpeg_q82", "jpeg", {"quality": 82}),
+        VariantSpec("jpeg_q88", "jpeg", {"quality": 88}),
         VariantSpec("temp_warm", "temp", {"warm": True}),
         VariantSpec("temp_cool", "temp", {"warm": False}),
         VariantSpec("noise_sigma2_5", "noise", {"sigma": 2.5, "seed_offset": 20}),
