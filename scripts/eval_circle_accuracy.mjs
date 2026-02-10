@@ -8,6 +8,7 @@ import { Blob } from 'node:buffer';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const sharp = require('sharp');
 
 const { getAdapter, listAdapters, normalizeDatasetName } = require('../src/auroraBff/evalAdapters/index');
 const {
@@ -206,6 +207,17 @@ function parseDatasets(raw) {
 
 function hashId(input) {
   return crypto.createHash('sha256').update(String(input || '')).digest('hex').slice(0, 20);
+}
+
+async function normalizeImageForPrediction(imageBuffer) {
+  try {
+    return await sharp(imageBuffer, { failOn: 'none' })
+      .rotate()
+      .jpeg({ quality: 92 })
+      .toBuffer();
+  } catch {
+    return imageBuffer;
+  }
 }
 
 function mean(values) {
@@ -772,12 +784,13 @@ async function main() {
   const sampleRows = await runWithConcurrency(allSamples, args.concurrency, async (entry, index) => {
     const evalSample = entry.adapter.toEvalSample(entry.sample);
     const imageBuffer = await fsp.readFile(evalSample.image_bytes_path);
+    const normalizedImageBuffer = await normalizeImageForPrediction(imageBuffer);
     const sampleHash = hashId(`${entry.dataset}:${evalSample.sample_id}:${index}`);
 
     const prediction = args.base_url
       ? await callApiPrediction({
           baseUrl: args.base_url,
-          imageBuffer,
+          imageBuffer: normalizedImageBuffer,
           sampleToken: sampleHash,
           timeoutMs: args.timeout_ms,
           market: args.market,
@@ -785,7 +798,7 @@ async function main() {
           token: args.token,
         })
       : await callLocalPrediction({
-          imageBuffer,
+          imageBuffer: normalizedImageBuffer,
           sampleToken: sampleHash,
           lang: args.lang,
         });
@@ -815,7 +828,6 @@ async function main() {
     }
 
     const payload = prediction.payload;
-    const faceCrop = payload && payload.face_crop && typeof payload.face_crop === 'object' ? payload.face_crop : null;
     const fallbackSkinBbox = skinMaskBoundingNorm(gtSkin.mask, gtSkin.width, gtSkin.height);
     const fallbackFaceCrop = faceCropFromSkinBBoxNorm({
       skinBboxNorm: fallbackSkinBbox,
@@ -823,7 +835,7 @@ async function main() {
       imageHeight: gtSkin.height,
       marginScale: 1.2,
     });
-    const resolvedFaceCrop = faceCrop || {
+    const resolvedFaceCrop = {
       coord_space: 'orig_px_v1',
       bbox_px: fallbackFaceCrop,
       orig_size_px: { w: gtSkin.width, h: gtSkin.height },

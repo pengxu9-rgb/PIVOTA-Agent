@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { normalizeDatasetName, SUPPORTED_DATASETS } from './datasets_registry.js';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.heic', '.heif', '.tif', '.tiff']);
+const EVAL_FRIENDLY_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const ZIP_EXTENSIONS = new Set(['.zip']);
 const ANNO_EXTENSIONS = new Set(['.json', '.txt', '.xml', '.csv']);
 
@@ -21,18 +22,22 @@ const REPORTS_DIR = 'reports';
 const DATASET_SPECS = Object.freeze({
   lapa: {
     aliases: [/lapa/i],
+    source_dir_aliases: [/^LaPa DB$/i, /^lapa(?:\s*db)?$/i, /lapa/i],
     class_list: ['background', 'skin', 'left_eyebrow', 'right_eyebrow', 'left_eye', 'right_eye', 'nose', 'upper_lip', 'inner_mouth', 'lower_lip', 'hair'],
   },
   celebamaskhq: {
     aliases: [/celeb.*mask.*hq/i, /celebamaskhq/i],
+    source_dir_aliases: [/^CelebAMask-HQ\(1\)$/i, /^CelebAMask-HQ$/i, /celeb.*mask.*hq/i],
     class_list: ['skin', 'nose', 'eye_g', 'l_eye', 'r_eye', 'l_brow', 'r_brow', 'l_ear', 'r_ear', 'mouth', 'u_lip', 'l_lip', 'hair', 'hat', 'ear_r', 'neck_l', 'neck', 'cloth'],
   },
   fasseg: {
     aliases: [/fasseg/i],
+    source_dir_aliases: [/^FASSEG-DB-v2019$/i, /^Fasseg-DB-v2019$/i, /fasseg.*db/i, /fasseg/i],
     class_list: ['background', 'skin', 'hair', 'beard', 'sunglasses', 'other'],
   },
   acne04: {
     aliases: [/acne[-_ ]?0?4/i, /acne04/i],
+    source_dir_aliases: [/^ACNE DB$/i, /acne.*db/i, /acne[-_ ]?0?4/i],
     class_list: ['lesion_bbox', 'lesion_points'],
   },
 });
@@ -204,6 +209,16 @@ function mapByKey(paths) {
   return out;
 }
 
+function hasMaskLikeToken(relPath) {
+  const low = toPosix(relPath).toLowerCase();
+  return /(^|[\/._-])(mask|label|labels|labeled|seg|segmentation|parsing|anno|annotation|gt)([\/._-]|$)/.test(low);
+}
+
+function hasAnnotationToken(relPath) {
+  const low = toPosix(relPath).toLowerCase();
+  return /(^|[\/._-])(anno|annotation|label|labels|labeled|bbox|acne|lesion|xml)([\/._-]|$)/.test(low);
+}
+
 function buildCelebAMaskPartMap(maskPaths) {
   const partMap = new Map();
   for (const rel of maskPaths) {
@@ -223,12 +238,15 @@ function buildDatasetIndex(dataset, relFiles) {
   const maskLikePaths = relFiles.filter((rel) => {
     const ext = path.extname(rel).toLowerCase();
     if (!IMAGE_EXTENSIONS.has(ext)) return false;
-    const low = rel.toLowerCase();
-    return /mask|label|seg|parsing|anno/.test(low);
+    return hasMaskLikeToken(rel);
   });
-  const annoPaths = relFiles.filter((rel) => ANNO_EXTENSIONS.has(path.extname(rel).toLowerCase()) && /anno|label|bbox|acne|lesion/i.test(rel));
+  const annoPaths = relFiles.filter((rel) => ANNO_EXTENSIONS.has(path.extname(rel).toLowerCase()) && hasAnnotationToken(rel));
 
-  const imageCandidates = imagePaths.filter((rel) => !maskLikePaths.includes(rel));
+  const maskLikeSet = new Set(maskLikePaths);
+  const imageCandidates = imagePaths.filter((rel) => !maskLikeSet.has(rel));
+  const selectedImageCandidates = dataset === 'fasseg'
+    ? imageCandidates.filter((rel) => EVAL_FRIENDLY_IMAGE_EXTENSIONS.has(path.extname(rel).toLowerCase()))
+    : imageCandidates;
   const rows = [];
 
   if (dataset === 'celebamaskhq') {
@@ -254,9 +272,15 @@ function buildDatasetIndex(dataset, relFiles) {
 
   const maskMap = mapByKey(maskLikePaths);
   const annoMap = mapByKey(annoPaths);
-  for (const imageRel of imageCandidates) {
+  for (const imageRel of selectedImageCandidates) {
     const key = stemKey(imageRel);
-    const masks = maskMap.get(key) || [];
+    const masksRaw = maskMap.get(key) || [];
+    const masks = dataset === 'fasseg'
+      ? (() => {
+          const preferred = masksRaw.filter((rel) => EVAL_FRIENDLY_IMAGE_EXTENSIONS.has(path.extname(rel).toLowerCase()));
+          return preferred.length ? preferred : masksRaw;
+        })()
+      : masksRaw;
     const annos = annoMap.get(key) || [];
     rows.push({
       dataset,
@@ -321,6 +345,56 @@ function findZipForDataset(dataset, zipFiles) {
   return hits[hits.length - 1];
 }
 
+function findSourceDirForDataset(dataset, rawDirEntries, rawDir) {
+  const spec = datasetSpec(dataset);
+  const dirEntries = (Array.isArray(rawDirEntries) ? rawDirEntries : [])
+    .filter((entry) => entry && entry.isDirectory && entry.isDirectory());
+  let best = null;
+  for (const entry of dirEntries) {
+    const name = String(entry.name || '');
+    let score = 0;
+    const explicitPatterns = Array.isArray(spec.source_dir_aliases) ? spec.source_dir_aliases : [];
+    for (let idx = 0; idx < explicitPatterns.length; idx += 1) {
+      if (explicitPatterns[idx].test(name)) {
+        score = Math.max(score, 100 - idx);
+      }
+    }
+    if (!score && Array.isArray(spec.aliases) && spec.aliases.some((pattern) => pattern.test(name))) {
+      score = 10;
+    }
+    if (!score) continue;
+    if (!best || score > best.score || (score === best.score && name.length < best.name.length)) {
+      best = {
+        score,
+        name,
+        dirPath: path.join(rawDir, name),
+      };
+    }
+  }
+  return best ? best.dirPath : null;
+}
+
+async function summarizeRelFiles(rootDir, relFiles) {
+  const hash = crypto.createHash('sha256');
+  let totalBytes = 0;
+  let latestMtimeMs = 0;
+  for (const rel of relFiles) {
+    const relPosix = toPosix(rel);
+    hash.update(relPosix);
+    hash.update('\n');
+    const abs = path.join(rootDir, rel);
+    const st = await fsp.stat(abs).catch(() => null);
+    if (!st) continue;
+    totalBytes += Number(st.size || 0);
+    latestMtimeMs = Math.max(latestMtimeMs, Number(st.mtimeMs || 0));
+  }
+  return {
+    sha256: hash.digest('hex'),
+    totalBytes,
+    latestMtimeMs,
+  };
+}
+
 function relPathForReport(rootDir, targetPath) {
   const rel = path.relative(rootDir, targetPath);
   return toPosix(rel.startsWith('..') ? targetPath : rel);
@@ -350,6 +424,7 @@ async function main() {
     throw new Error(`raw_dir_not_found:${rawDir}`);
   }
 
+  const rawDirEntries = await fsp.readdir(rawDir, { withFileTypes: true });
   const rawFiles = await walkFiles(rawDir);
   const zipFiles = rawFiles.filter((filePath) => ZIP_EXTENSIONS.has(path.extname(filePath).toLowerCase()));
 
@@ -357,42 +432,74 @@ async function main() {
   let hasFailure = false;
 
   for (const dataset of datasets) {
+    const sourceDir = findSourceDirForDataset(dataset, rawDirEntries, rawDir);
     const zipPath = findZipForDataset(dataset, zipFiles);
-    if (!zipPath) {
+    if (!sourceDir && !zipPath) {
       hasFailure = true;
       reportRows.push({
         dataset,
         status: 'FAIL',
-        message: 'zip_not_found',
+        message: 'source_not_found',
       });
       continue;
     }
 
-    const zipStat = await fsp.stat(zipPath);
-    const zipSha256 = await hashFileSha256(zipPath);
-    const versionKey = `${path.basename(zipPath, '.zip').replace(/[^a-zA-Z0-9._-]+/g, '_')}_${zipSha256.slice(0, 8)}`;
-    const extractDir = path.join(cacheExternalDir, dataset, versionKey);
-    const indexFile = path.join(extractDir, 'dataset_index.jsonl');
+    let sourceLabel = '';
+    let sourceSha256 = '';
+    let sourceSizeBytes = 0;
+    let sourceMtimeMs = 0;
+    let unzipMode = 'n/a';
+    let datasetRootDir = '';
+    let relFiles = [];
+    let indexFile = '';
 
-    await ensureDir(extractDir);
+    if (sourceDir) {
+      datasetRootDir = sourceDir;
+      sourceLabel = path.basename(sourceDir);
+      const sourceFiles = await walkFiles(sourceDir);
+      relFiles = sourceFiles
+        .map((filePath) => relFromRoot(sourceDir, filePath))
+        .sort((a, b) => a.localeCompare(b));
+      const sourceSummary = await summarizeRelFiles(sourceDir, relFiles);
+      sourceSha256 = sourceSummary.sha256;
+      sourceSizeBytes = sourceSummary.totalBytes;
+      sourceMtimeMs = sourceSummary.latestMtimeMs;
+      const versionKey = `${sourceLabel.replace(/[^a-zA-Z0-9._-]+/g, '_')}_${sourceSha256.slice(0, 8)}`;
+      const datasetCacheDir = path.join(cacheExternalDir, dataset, versionKey);
+      await ensureDir(datasetCacheDir);
+      indexFile = path.join(datasetCacheDir, 'dataset_index.jsonl');
+      unzipMode = 'source_directory';
+    } else {
+      const zipStat = await fsp.stat(zipPath);
+      const zipSha256 = await hashFileSha256(zipPath);
+      const versionKey = `${path.basename(zipPath, '.zip').replace(/[^a-zA-Z0-9._-]+/g, '_')}_${zipSha256.slice(0, 8)}`;
+      const extractDir = path.join(cacheExternalDir, dataset, versionKey);
+      const indexCandidate = path.join(extractDir, 'dataset_index.jsonl');
+      await ensureDir(extractDir);
+      sourceLabel = path.basename(zipPath);
+      sourceSha256 = zipSha256;
+      sourceSizeBytes = Number(zipStat.size || 0);
+      sourceMtimeMs = Number(zipStat.mtimeMs || 0);
+      datasetRootDir = extractDir;
+      indexFile = indexCandidate;
 
-    let unzipMode = 'skip_existing';
-    const indexExists = await fsp.stat(indexFile).then(() => true).catch(() => false);
-    if (!indexExists) {
-      try {
-        await unzipWithLibrary(zipPath, extractDir);
-        unzipMode = 'node_unzipper';
-      } catch (err) {
-        await unzipWithFallback(zipPath, extractDir);
-        unzipMode = `fallback_unzip:${String(err && err.message ? err.message : err).slice(0, 160)}`;
+      const indexExists = await fsp.stat(indexFile).then(() => true).catch(() => false);
+      unzipMode = 'skip_existing';
+      if (!indexExists) {
+        try {
+          await unzipWithLibrary(zipPath, extractDir);
+          unzipMode = 'node_unzipper';
+        } catch (err) {
+          await unzipWithFallback(zipPath, extractDir);
+          unzipMode = `fallback_unzip:${String(err && err.message ? err.message : err).slice(0, 160)}`;
+        }
       }
+      const extractedFiles = await walkFiles(extractDir);
+      relFiles = extractedFiles
+        .map((filePath) => relFromRoot(extractDir, filePath))
+        .filter((rel) => rel !== 'dataset_index.jsonl')
+        .sort((a, b) => a.localeCompare(b));
     }
-
-    const extractedFiles = await walkFiles(extractDir);
-    const relFiles = extractedFiles
-      .map((filePath) => relFromRoot(extractDir, filePath))
-      .filter((rel) => rel !== 'dataset_index.jsonl')
-      .sort((a, b) => a.localeCompare(b));
 
     const rows = buildDatasetIndex(dataset, relFiles);
     await writeJsonl(indexFile, rows);
@@ -403,18 +510,19 @@ async function main() {
       dataset,
       prepared_at: preparedAt,
       raw_zip: {
-        file_name: path.basename(zipPath),
-        size_bytes: Number(zipStat.size || 0),
-        sha256: zipSha256,
-        mtime_ms: Number(zipStat.mtimeMs || 0),
+        file_name: sourceLabel,
+        size_bytes: Number(sourceSizeBytes || 0),
+        sha256: sourceSha256,
+        mtime_ms: Number(sourceMtimeMs || 0),
       },
-      extract_rel_path: toPosix(path.relative(repoRoot, extractDir)),
+      extract_rel_path: toPosix(path.relative(repoRoot, datasetRootDir)),
       index_rel_path: toPosix(path.relative(repoRoot, indexFile)),
       record_count: rows.length,
       splits: summarizeSplits(rows),
       class_list: spec.class_list,
       structure: summarizeStructure(rows),
       unzip_mode: unzipMode,
+      source_type: sourceDir ? 'directory' : 'zip',
     };
 
     const manifestPath = path.join(manifestsDir, `${dataset}.manifest.json`);
@@ -423,8 +531,8 @@ async function main() {
     reportRows.push({
       dataset,
       status: rows.length > 0 ? 'PASS' : 'WARN',
-      zip_file: path.basename(zipPath),
-      zip_sha256_12: zipSha256.slice(0, 12),
+      source_file: sourceLabel,
+      source_sha256_12: sourceSha256.slice(0, 12),
       records: rows.length,
       structure: manifest.structure,
       splits: manifest.splits,
@@ -443,7 +551,7 @@ async function main() {
   lines.push(`- cache_root: ${toPosix(path.relative(repoRoot, cacheRootDir))}`);
   lines.push(`- datasets: ${datasets.join(', ')}`);
   lines.push('');
-  lines.push('| dataset | status | zip | sha256(12) | records | images/masks/annos | class_count | split_summary | unzip_mode |');
+  lines.push('| dataset | status | source | sha256(12) | records | images/masks/annos | class_count | split_summary | unzip_mode |');
   lines.push('|---|---:|---|---|---:|---|---:|---|---|');
   for (const row of reportRows) {
     if (row.status === 'FAIL') {
@@ -453,7 +561,7 @@ async function main() {
     const struct = row.structure || {};
     const splits = Object.entries(row.splits || {}).map(([k, v]) => `${k}:${v}`).join(', ');
     lines.push(
-      `| ${row.dataset} | ${row.status} | ${row.zip_file} | ${row.zip_sha256_12} | ${row.records} | ${struct.images || 0}/${struct.masks || 0}/${struct.annotations || 0} | ${row.class_count} | ${splits || '-'} | ${row.unzip_mode} |`,
+      `| ${row.dataset} | ${row.status} | ${row.source_file} | ${row.source_sha256_12} | ${row.records} | ${struct.images || 0}/${struct.masks || 0}/${struct.annotations || 0} | ${row.class_count} | ${splits || '-'} | ${row.unzip_mode} |`,
     );
   }
   lines.push('');
