@@ -273,7 +273,7 @@ function buildProductRecommendations({
 
   const catalog = loadCatalog(catalogPath);
   if (!catalog.length) {
-    return { products: [], suppressed_reason: 'NO_CATALOG_MATCH', debug: { module_id: moduleId, catalog_items: 0 } };
+    return { products: [], suppressed_reason: 'NO_MATCH', debug: { module_id: moduleId, catalog_items: 0 } };
   }
 
   const issueType = getTopIssueType(issues);
@@ -374,7 +374,7 @@ function buildProductRecommendations({
       ? 'DEGRADED'
       : filteredByRisk > 0 && filteredByNoOverlap === 0
         ? 'RISK_TIER'
-        : 'NO_CATALOG_MATCH';
+        : 'NO_MATCH';
     return {
       products: [],
       suppressed_reason: suppressedReason,

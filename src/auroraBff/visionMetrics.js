@@ -52,6 +52,10 @@ const productRecEmittedCounter = new Map();
 const productRecSuppressedCounter = new Map();
 const claimsTemplateFallbackCounter = new Map();
 const claimsViolationCounter = new Map();
+let modulesInteractionCount = 0;
+let actionClickCount = 0;
+let actionCopyCount = 0;
+let retakeAfterModulesCount = 0;
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -117,7 +121,8 @@ function normalizeMarketScope(market) {
 
 function normalizeSuppressedReason(reason) {
   const token = cleanMetricToken(reason, 'unknown').toUpperCase();
-  if (token === 'LOW_EVIDENCE' || token === 'RISK_TIER' || token === 'DEGRADED' || token === 'NO_CATALOG_MATCH') {
+  if (token === 'NO_CATALOG_MATCH') return 'NO_MATCH';
+  if (token === 'LOW_EVIDENCE' || token === 'RISK_TIER' || token === 'DEGRADED' || token === 'NO_MATCH') {
     return token;
   }
   return 'UNKNOWN';
@@ -125,6 +130,10 @@ function normalizeSuppressedReason(reason) {
 
 function normalizeSanitizerReason(reason) {
   return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizeUiEventName(eventName) {
+  return cleanMetricToken(eventName, 'unknown');
 }
 
 function normalizeVerifyFailReason(reason) {
@@ -510,6 +519,35 @@ function recordClaimsViolation({ reason, delta } = {}) {
   );
 }
 
+function recordUiBehaviorEvent({ eventName, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  const name = normalizeUiEventName(eventName);
+
+  if (name.startsWith('aurora_photo_modules_')) {
+    modulesInteractionCount += amount;
+  }
+  if (name === 'aurora_photo_modules_action_tap' || name === 'aurora_action_click' || name === 'action_click') {
+    actionClickCount += amount;
+  }
+  if (
+    name === 'aurora_photo_modules_action_copy' ||
+    name === 'aurora_photo_modules_routine_copy' ||
+    name === 'aurora_action_copy' ||
+    name === 'action_copy'
+  ) {
+    actionCopyCount += amount;
+  }
+  if (
+    name === 'aurora_photo_modules_retake_tap' ||
+    name === 'aurora_retake_after_modules' ||
+    name === 'aurora_photo_retake_after_modules' ||
+    name === 'retake_after_modules'
+  ) {
+    retakeAfterModulesCount += amount;
+  }
+}
+
 function recordGeometrySanitizerDropReason({ reason, regionType, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -700,6 +738,34 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE claims_violation_total counter');
   renderCounter(lines, 'claims_violation_total', claimsViolationCounter);
 
+  lines.push('# HELP modules_interaction_total Total UI interactions related to photo modules.');
+  lines.push('# TYPE modules_interaction_total counter');
+  lines.push(`modules_interaction_total ${modulesInteractionCount}`);
+
+  lines.push('# HELP action_click_total Total action click events from photo modules UI.');
+  lines.push('# TYPE action_click_total counter');
+  lines.push(`action_click_total ${actionClickCount}`);
+
+  lines.push('# HELP action_copy_total Total action copy events from photo modules UI.');
+  lines.push('# TYPE action_copy_total counter');
+  lines.push(`action_copy_total ${actionCopyCount}`);
+
+  lines.push('# HELP retake_after_modules_total Total retake events triggered after photo modules interaction.');
+  lines.push('# TYPE retake_after_modules_total counter');
+  lines.push(`retake_after_modules_total ${retakeAfterModulesCount}`);
+
+  lines.push('# HELP action_click_rate action_click_total / modules_interaction_total.');
+  lines.push('# TYPE action_click_rate gauge');
+  lines.push(`action_click_rate ${modulesInteractionCount > 0 ? actionClickCount / modulesInteractionCount : 0}`);
+
+  lines.push('# HELP action_copy_rate action_copy_total / action_click_total.');
+  lines.push('# TYPE action_copy_rate gauge');
+  lines.push(`action_copy_rate ${actionClickCount > 0 ? actionCopyCount / actionClickCount : 0}`);
+
+  lines.push('# HELP retake_rate_after_modules retake_after_modules_total / modules_interaction_total.');
+  lines.push('# TYPE retake_rate_after_modules gauge');
+  lines.push(`retake_rate_after_modules ${modulesInteractionCount > 0 ? retakeAfterModulesCount / modulesInteractionCount : 0}`);
+
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
   const rateKeys = new Set([
@@ -753,6 +819,10 @@ function resetVisionMetrics() {
   productRecSuppressedCounter.clear();
   claimsTemplateFallbackCounter.clear();
   claimsViolationCounter.clear();
+  modulesInteractionCount = 0;
+  actionClickCount = 0;
+  actionCopyCount = 0;
+  retakeAfterModulesCount = 0;
 }
 
 function snapshotVisionMetrics() {
@@ -789,6 +859,10 @@ function snapshotVisionMetrics() {
     productRecSuppressed: Array.from(productRecSuppressedCounter.entries()),
     claimsTemplateFallbacks: Array.from(claimsTemplateFallbackCounter.entries()),
     claimsViolations: Array.from(claimsViolationCounter.entries()),
+    modulesInteractionCount,
+    actionClickCount,
+    actionCopyCount,
+    retakeAfterModulesCount,
   };
 }
 
@@ -814,6 +888,7 @@ module.exports = {
   recordProductRecSuppressed,
   recordClaimsTemplateFallback,
   recordClaimsViolation,
+  recordUiBehaviorEvent,
   recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
   resetVisionMetrics,

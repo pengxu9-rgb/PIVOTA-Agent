@@ -45,6 +45,14 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: P0 compliance gates (fail-fast)
+        shell: bash
+        run: |
+          set -euo pipefail
+          make ingredient-kb-dry-run
+          make ingredient-kb-audit
+          make claims-audit
+
       - name: Aurora BFF unit tests (offline)
         run: npm run test:aurora-bff:unit
 

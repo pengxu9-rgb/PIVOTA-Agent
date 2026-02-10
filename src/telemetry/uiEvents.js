@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { UiEventIngestV0Schema } = require('./schemas/uiEventIngestV0');
+const { recordUiBehaviorEvent } = require('../auroraBff/visionMetrics');
 
 function isoDateKey(d = new Date()) {
   const yyyy = String(d.getUTCFullYear());
@@ -85,6 +86,7 @@ function mountUiEventRoutes(app, { logger } = {}) {
     setImmediate(() => {
       try {
         for (const evt of parsed.data.events) {
+          recordUiBehaviorEvent({ eventName: evt.event_name });
           const props = { ...(evt.data || {}) };
           const auroraUid = props.aurora_uid ?? props.auroraUid ?? null;
           const sessionId = props.session_id ?? props.sessionId ?? null;
@@ -139,4 +141,3 @@ function mountUiEventRoutes(app, { logger } = {}) {
 module.exports = {
   mountUiEventRoutes,
 };
-

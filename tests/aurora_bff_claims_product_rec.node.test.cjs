@@ -319,3 +319,176 @@ test('barrier-irritated risk filters strong-active products and keeps repair opt
     assert.equal(productIds.includes('prod_repair_panthenol'), true);
   });
 });
+
+test('degraded quality emits repair-only products when repair-only mode is enabled', async () => {
+  const dataset = buildDataset([
+    {
+      ingredient_id: 'retinol',
+      inci_name: 'Retinol',
+      zh_name: '视黄醇',
+      aliases: [],
+      identifiers: {},
+      functions: [],
+      restrictions: [],
+      evidence_grade: 'A',
+      market_scope: ['EU', 'US'],
+      claims: [
+        {
+          claim_id: 'retinol_claim_1',
+          claim_text: 'Supports the appearance of smoother texture.',
+          evidence_grade: 'A',
+          market_scope: ['EU', 'US'],
+          citations: [baseCitation({ source_url: 'https://example.org/retinol' })],
+          risk_flags: [],
+        },
+      ],
+      safety_notes: [],
+      do_not_mix: ['Strong acids'],
+      manifest_refs: ['test_snapshot'],
+    },
+    {
+      ingredient_id: 'panthenol',
+      inci_name: 'Panthenol',
+      zh_name: '泛醇',
+      aliases: [],
+      identifiers: {},
+      functions: [],
+      restrictions: [],
+      evidence_grade: 'B',
+      market_scope: ['EU', 'US'],
+      claims: [
+        {
+          claim_id: 'panthenol_claim_1',
+          claim_text: 'Supports visible comfort and smoother appearance.',
+          evidence_grade: 'B',
+          market_scope: ['EU', 'US'],
+          citations: [baseCitation({ source_url: 'https://example.org/panthenol-repair' })],
+          risk_flags: [],
+        },
+      ],
+      safety_notes: [],
+      do_not_mix: [],
+      manifest_refs: ['test_snapshot'],
+    },
+  ]);
+  const catalog = [
+    {
+      product_id: 'prod_repair_panthenol',
+      name: 'Repair Panthenol Cream',
+      brand: 'Test Brand',
+      market_scope: ['EU', 'US'],
+      ingredient_ids: ['panthenol'],
+      risk_tags: ['repair'],
+      usage_note_en: 'Use in gentle routines.',
+      usage_note_zh: '可用于温和修护。',
+      cautions_en: [],
+      cautions_zh: [],
+    },
+    {
+      product_id: 'prod_active_retinol',
+      name: 'Night Retinol Serum',
+      brand: 'Test Brand',
+      market_scope: ['EU', 'US'],
+      ingredient_ids: ['retinol'],
+      risk_tags: ['retinoid', 'active'],
+      usage_note_en: 'Use at night only.',
+      usage_note_zh: '仅夜间使用。',
+      cautions_en: [],
+      cautions_zh: [],
+    },
+  ];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    const result = buildProductRecommendations({
+      moduleId: 'forehead',
+      issues: [{ issue_type: 'texture', severity_0_4: 2.7 }],
+      actions: [
+        { ingredient_id: 'retinol', evidence_issue_types: ['texture'] },
+        { ingredient_id: 'panthenol', evidence_issue_types: ['redness'] },
+      ],
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'degraded',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: true,
+      artifactPath,
+      catalogPath,
+    });
+
+    assert.ok(Array.isArray(result.products));
+    assert.ok(result.products.length >= 1);
+    const productIds = result.products.map((item) => item.product_id);
+    assert.equal(productIds.includes('prod_repair_panthenol'), true);
+    assert.equal(productIds.includes('prod_active_retinol'), false);
+    for (const item of result.products) {
+      assert.ok(item.evidence && Array.isArray(item.evidence.citation_ids));
+      assert.ok(item.evidence.citation_ids.length >= 1);
+      assert.equal(detectBannedClaimTerms(item.why_match).length, 0);
+    }
+  });
+});
+
+test('product rec suppression reason uses NO_MATCH when no catalog overlap is available', async () => {
+  const dataset = buildDataset([
+    {
+      ingredient_id: 'niacinamide',
+      inci_name: 'Niacinamide',
+      zh_name: '烟酰胺',
+      aliases: [],
+      identifiers: {},
+      functions: [],
+      restrictions: [],
+      evidence_grade: 'B',
+      market_scope: ['EU', 'US'],
+      claims: [
+        {
+          claim_id: 'niacinamide_claim_1',
+          claim_text: 'Supports visible tone-evening in cosmetic routines.',
+          evidence_grade: 'B',
+          market_scope: ['EU', 'US'],
+          citations: [baseCitation({ source_url: 'https://example.org/niacinamide-no-match' })],
+          risk_flags: [],
+        },
+      ],
+      safety_notes: [],
+      do_not_mix: [],
+      manifest_refs: ['test_snapshot'],
+    },
+  ]);
+  const catalog = [
+    {
+      product_id: 'prod_unrelated',
+      name: 'Unrelated Product',
+      brand: 'Test Brand',
+      market_scope: ['EU', 'US'],
+      ingredient_ids: ['hyaluronic_acid'],
+      risk_tags: ['lightweight'],
+      usage_note_en: 'Use as needed.',
+      usage_note_zh: '按需使用。',
+      cautions_en: [],
+      cautions_zh: [],
+    },
+  ];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    const result = buildProductRecommendations({
+      moduleId: 'left_cheek',
+      issues: [{ issue_type: 'tone', severity_0_4: 2.8 }],
+      actions: [{ ingredient_id: 'niacinamide', evidence_issue_types: ['tone'] }],
+      market: 'EU',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: true,
+      artifactPath,
+      catalogPath,
+    });
+    assert.equal(Array.isArray(result.products), true);
+    assert.equal(result.products.length, 0);
+    assert.equal(result.suppressed_reason, 'NO_MATCH');
+  });
+});

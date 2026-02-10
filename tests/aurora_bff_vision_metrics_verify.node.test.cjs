@@ -8,6 +8,8 @@ const {
   recordVerifyBudgetGuard,
   recordVerifyCircuitOpen,
   recordVerifyRetry,
+  recordProductRecSuppressed,
+  recordUiBehaviorEvent,
 } = require('../src/auroraBff/visionMetrics');
 
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
@@ -59,4 +61,29 @@ test('vision metrics: verify fail reasons are normalized and budget guard is cou
   assert.match(metrics, /verify_circuit_open_total 1/);
   assert.match(metrics, /verify_retry_total 2/);
   assert.match(metrics, /verify_timeout_total\{stage="total"\} 1/);
+});
+
+test('vision metrics: product rec suppression reason normalizes to NO_MATCH', () => {
+  resetVisionMetrics();
+  recordProductRecSuppressed({ reason: 'NO_CATALOG_MATCH', delta: 2 });
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /product_rec_suppressed_total\{reason="NO_MATCH"\} 2/);
+});
+
+test('vision metrics: ui behavior rates are exported for internal tracking', () => {
+  resetVisionMetrics();
+  recordUiBehaviorEvent({ eventName: 'aurora_photo_modules_module_tap' });
+  recordUiBehaviorEvent({ eventName: 'aurora_photo_modules_action_tap' });
+  recordUiBehaviorEvent({ eventName: 'aurora_photo_modules_action_tap' });
+  recordUiBehaviorEvent({ eventName: 'aurora_photo_modules_action_copy' });
+  recordUiBehaviorEvent({ eventName: 'aurora_retake_after_modules' });
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /modules_interaction_total 4/);
+  assert.match(metrics, /action_click_total 2/);
+  assert.match(metrics, /action_copy_total 1/);
+  assert.match(metrics, /retake_after_modules_total 1/);
+  assert.match(metrics, /action_click_rate 0\.5\b/);
+  assert.match(metrics, /action_copy_rate 0\.5\b/);
+  assert.match(metrics, /retake_rate_after_modules 0\.25\b/);
 });
