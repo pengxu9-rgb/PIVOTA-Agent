@@ -155,6 +155,12 @@ const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || pr
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
 const CONFLICT_HEATMAP_V1_ENABLED = String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
+const AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_FAST_PATH || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
@@ -494,6 +500,117 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
     logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: reco catalog search failed');
     return { ok: false, products: [], reason: 'upstream_error' };
   }
+}
+
+const CATALOG_BRANDS = {
+  brand_winona: {
+    brand_id: 'brand_winona',
+    aliases: ['薇诺娜', 'winona', 'wei nuo na'],
+    name: { CN: '薇诺娜', EN: 'Winona' },
+  },
+};
+
+function escapeRegExp(text) {
+  return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildLooseAsciiAliasRegex(alias) {
+  const tokens = String(alias || '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (!tokens.length) return null;
+  const sep = '(?:[\\s\\p{P}_-])*';
+  const body = tokens.map((t) => escapeRegExp(t)).join(sep);
+  return new RegExp(`(?<![a-z0-9])${body}(?![a-z0-9])`, 'iu');
+}
+
+function detectBrandAvailabilityIntent(message, lang) {
+  const raw = String(message || '').trim();
+  if (!raw) return null;
+
+  // Exclude obvious non-commerce asks.
+  if (looksLikeDiagnosisStart(raw)) return null;
+  if (looksLikeSuitabilityRequest(raw)) return null;
+
+  const text = raw.normalize('NFKC');
+  const lowered = text.toLowerCase();
+
+  const availabilityHint =
+    /(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|能买|购买|下单|链接|渠道|旗舰|自营|店|请问|\?)/.test(text) ||
+    /\b(in stock|available|availability|where (can i|to) buy|do you have|have any|buy|purchase|link)\b/i.test(lowered);
+
+  for (const brand of Object.values(CATALOG_BRANDS)) {
+    const aliases = Array.isArray(brand.aliases) ? brand.aliases : [];
+    let matchedAlias = '';
+    for (const alias of aliases) {
+      const a = String(alias || '').trim();
+      if (!a) continue;
+      if (/[\u4e00-\u9fff]/.test(a)) {
+        if (text.includes(a)) {
+          matchedAlias = a;
+          break;
+        }
+        continue;
+      }
+
+      const re = buildLooseAsciiAliasRegex(a);
+      if (re && re.test(lowered)) {
+        matchedAlias = a;
+        break;
+      }
+    }
+
+    if (!matchedAlias) continue;
+
+    const bareBrandQuery = lowered.replace(/[\s\p{P}_-]+/gu, '').length <= 18;
+    if (!availabilityHint && !bareBrandQuery) continue;
+
+    const brandName = lang === 'CN' ? brand?.name?.CN || '' : brand?.name?.EN || '';
+    return {
+      intent: 'availability',
+      brand_id: brand.brand_id,
+      brand_name: brandName || String(matchedAlias || '').trim(),
+      matched_alias: matchedAlias,
+      reason: availabilityHint ? 'availability_hint' : 'bare_brand_query',
+    };
+  }
+
+  return null;
+}
+
+function buildBrandPlaceholderProduct({ brandId, brandName, lang } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const brand = String(brandName || '').trim() || (isCn ? '未知品牌' : 'Unknown brand');
+  const skuId = String(brandId || '').trim() || `brand_${stableHashBase36(brand).slice(0, 10)}`;
+  const name = isCn ? `${brand}（品牌）` : `${brand} (brand)`;
+  return {
+    product_id: `brand:${skuId}`,
+    sku_id: skuId,
+    brand,
+    name,
+    display_name: name,
+    image_url: '',
+    category: isCn ? '品牌' : 'Brand',
+  };
+}
+
+function applyCommerceMedicalClaimGuard(text, lang) {
+  const input = String(text || '');
+  if (!input.trim()) return input;
+  const lowered = input.toLowerCase();
+  const hit =
+    /(治愈|疗效|治疗|药用|处方|皮炎|湿疹|激素)/.test(input) ||
+    /\b(cure|treat|heals?|prescription|steroid|dermatitis|eczema)\b/i.test(lowered);
+  if (!hit) return input;
+
+  recordClaimsViolation({ reason: 'commerce_medical_blacklist' });
+  return lang === 'CN'
+    ? '我可以帮你查商品信息/成分/购买渠道，但不提供医疗诊断或治疗建议；如果你有皮炎、湿疹等情况，建议线下就医。你想查哪个品牌/单品？'
+    : "I can help with product info/ingredients/where to buy, but I can't provide medical diagnosis or treatment advice. If you suspect dermatitis/eczema, please see a clinician. Which brand or product are you looking for?";
 }
 
 function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
@@ -10113,16 +10230,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Best-effort context injection.
       let profile = null;
       let recentLogs = [];
+      let storageContextLoadFailed = false;
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
       } catch (err) {
+        storageContextLoadFailed = true;
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
+      }
+      if (storageContextLoadFailed) {
+        recordProfileContextMissing({ side: 'backend' });
       }
 
       // If the client already has a profile snapshot (for example, cached from bootstrap or a local quick-profile flow),
       // use it as an additional best-effort context source so we don't re-ask for already-known fields when DB reads fail.
       const profilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
+      if (!profilePatchFromSession) {
+        recordProfileContextMissing({ side: 'frontend' });
+      }
       if (profilePatchFromSession) {
         profile = { ...(profile || {}), ...profilePatchFromSession };
       }
@@ -10311,6 +10436,104 @@ function mountAuroraBffRoutes(app, { logger }) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
           }
           ctx.state = nextStateOverride || 'idle';
+        }
+      }
+
+      // Brand availability short-circuit: route "有没有某品牌的产品/有货吗/哪里买" to catalog lookup (no diagnosis intake).
+      if (
+        AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED &&
+        message &&
+        (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
+      ) {
+        const availabilityIntent = detectBrandAvailabilityIntent(message, ctx.lang);
+        if (availabilityIntent) {
+          recordCatalogAvailabilityShortCircuit({ brandId: availabilityIntent.brand_id, reason: availabilityIntent.reason });
+
+          const brandProduct = buildBrandPlaceholderProduct({
+            brandId: availabilityIntent.brand_id,
+            brandName: availabilityIntent.brand_name,
+            lang: ctx.lang,
+          });
+
+          let catalogResult = { ok: false, products: [], reason: 'unknown' };
+          if (PIVOTA_BACKEND_BASE_URL) {
+            catalogResult = await searchPivotaBackendProducts({
+              query: availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
+              limit: 8,
+              logger,
+            });
+          } else {
+            catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
+          }
+
+          const products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
+          const offersItems = (products.length ? products : [brandProduct])
+            .slice(0, 8)
+            .map((product) => ({ product, offer: null }));
+
+          const marketRaw = profile && typeof profile.region === 'string' ? profile.region.trim() : '';
+          const market = marketRaw ? marketRaw.slice(0, 8).toUpperCase() : 'US';
+
+          const hasResults = products.length > 0;
+          const assistantRaw =
+            ctx.lang === 'CN'
+              ? hasResults
+                ? `我在商品库里找到了「${availabilityIntent.brand_name || '该品牌'}」的相关商品（见下方卡片）。你想查官方旗舰/自营，还是某个具体单品名？`
+                : `我可以帮你查商品库，但当前没能拉到「${availabilityIntent.brand_name || '该品牌'}」的商品列表。你想查的是官方旗舰/自营，还是某个具体单品名？`
+              : hasResults
+                ? `I found ${products.length} items for "${availabilityIntent.brand_name || 'this brand'}" (see the cards below). Are you looking for an official store, major retailers, or a specific product name?`
+                : `I can help check our catalog, but I couldn't fetch items for "${availabilityIntent.brand_name || 'this brand'}" right now. Are you looking for an official store, major retailers, or a specific product name?`;
+
+          const assistantText = applyCommerceMedicalClaimGuard(assistantRaw, ctx.lang);
+
+          const profileSummary = summarizeProfileForContext(profile);
+          const sessionPatch = {
+            ...(nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {}),
+            ...(profileSummary ? { profile: profileSummary } : {}),
+          };
+          if (profileSummary) {
+            recordSessionPatchProfileEmitted({ changed: Boolean(appliedProfilePatch) });
+          }
+
+          const fieldMissing = [];
+          if (!hasResults && catalogResult.reason) {
+            fieldMissing.push({ field: 'catalog.products', reason: String(catalogResult.reason).slice(0, 60) });
+          }
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `parse_${ctx.request_id}`,
+                type: 'product_parse',
+                payload: {
+                  product: brandProduct,
+                  confidence: 1,
+                  missing_info: [],
+                  intent: 'availability',
+                  brand_id: availabilityIntent.brand_id,
+                  brand_name: availabilityIntent.brand_name,
+                },
+              },
+              {
+                card_id: `offers_${ctx.request_id}`,
+                type: 'offers_resolved',
+                payload: { items: offersItems, market },
+                ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
+              },
+            ],
+            session_patch: sessionPatch,
+            events: [
+              makeEvent(ctx, 'catalog_availability_shortcircuit', {
+                brand_id: availabilityIntent.brand_id,
+                reason: availabilityIntent.reason,
+                ok: Boolean(hasResults),
+                count: products.length,
+              }),
+            ],
+          });
+          return res.json(envelope);
         }
       }
 
@@ -10956,27 +11179,31 @@ function mountAuroraBffRoutes(app, { logger }) {
         looksLikeWeatherOrEnvironmentQuestion(message) ||
         looksLikeRecommendationRequest(message);
 
-      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
-        const inDiagnosisFlow =
-          String(agentState || '').startsWith('DIAG_') ||
-          String(ctx.state || '').startsWith('S2_') ||
-          String(ctx.state || '').startsWith('S3_') ||
-          profileClarificationAction;
+	      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
+	        const inDiagnosisFlow =
+	          String(agentState || '').startsWith('DIAG_') ||
+	          String(ctx.state || '').startsWith('S2_') ||
+	          String(ctx.state || '').startsWith('S3_') ||
+	          profileClarificationAction;
 
-        const { score, missing } = profileCompleteness(profile);
+	        const { score, missing } = profileCompleteness(profile);
 
-        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
-        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
+	        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+	        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
+	        const profileSummaryForPatch = summarizeProfileForContext(profile);
+	        if (profileSummaryForPatch) {
+	          recordSessionPatchProfileEmitted({ changed: true });
+	        }
 
-        if (inDiagnosisFlow && missingCore.length) {
-          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
-          const chips = buildDiagnosisChips(ctx.lang, missingCore);
-          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+	        if (inDiagnosisFlow && missingCore.length) {
+	          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
+	          const chips = buildDiagnosisChips(ctx.lang, missingCore);
+	          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(prompt),
-            suggested_chips: chips,
-            cards: [
+	          const envelope = buildEnvelope(ctx, {
+	            assistant_message: makeChatAssistantMessage(prompt),
+	            suggested_chips: chips,
+	            cards: [
               {
                 card_id: `diag_${ctx.request_id}`,
                 type: 'diagnosis_gate',
@@ -10989,7 +11216,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             ],
-            session_patch: nextState ? { next_state: nextState, profile: summarizeProfileForContext(profile) } : { profile: summarizeProfileForContext(profile) },
+            session_patch: nextState
+              ? { next_state: nextState, profile: profileSummaryForPatch }
+              : { profile: profileSummaryForPatch },
             events: [
               makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) }),
               makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_progress' }),
@@ -11034,7 +11263,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: { profile: summarizeProfileForContext(profile) },
             },
           ],
-          session_patch: { profile: summarizeProfileForContext(profile) },
+          session_patch: { profile: profileSummaryForPatch },
           events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) })],
         });
         return res.json(envelope);
@@ -11053,6 +11282,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         clarification_id: clarificationId,
       });
       const query = `${prefix}${message || '(no message)'}`;
+      const upstreamStartedAt = Date.now();
       try {
         upstream = await auroraChat({
           baseUrl: AURORA_DECISION_BASE_URL,
@@ -11064,10 +11294,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
           ...(upstreamMessages && upstreamMessages.length ? { messages: upstreamMessages } : {}),
         });
+        recordUpstreamCall({ path: 'aurora_chat', status: 'ok' });
       } catch (err) {
+        recordUpstreamCall({ path: 'aurora_chat', status: 'error' });
         if (err.code !== 'AURORA_NOT_CONFIGURED') {
           logger?.warn({ err: err.message }, 'aurora bff: aurora upstream failed');
         }
+      } finally {
+        observeUpstreamLatency({ path: 'aurora_chat', latencyMs: Date.now() - upstreamStartedAt });
       }
 
       const answer = upstream && typeof upstream.answer === 'string'
@@ -11116,21 +11350,49 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? upstream.clarification
         : null;
 
-      const suggestedChips = [];
-      if (clarification && Array.isArray(clarification.questions) && clarification.questions[0]) {
-        const q0 = clarification.questions[0];
-        const qid = q0 && typeof q0.id === 'string' ? q0.id : 'clarify';
-        const options = q0 && Array.isArray(q0.options) ? q0.options : [];
-        for (const opt of options.slice(0, 8)) {
-          if (typeof opt !== 'string' || !opt.trim()) continue;
-          suggestedChips.push({
-            chip_id: `chip.clarify.${qid}.${opt.trim().slice(0, 40).replace(/\s+/g, '_')}`,
-            label: opt.trim(),
-            kind: 'quick_reply',
-            data: { reply_text: opt.trim(), clarification_id: qid },
-          });
-        }
-      }
+	      const suggestedChips = [];
+	      if (clarification && Array.isArray(clarification.questions) && clarification.questions[0]) {
+	        const q0 = clarification.questions[0];
+	        const qidRaw = q0 && typeof q0.id === 'string' ? q0.id : 'clarify';
+	        const qid = qidRaw || 'clarify';
+	        const repeatedField = (() => {
+	          const field = normalizeClarificationField(qid);
+	          if (!field || !profileSummary || typeof profileSummary !== 'object') return null;
+	          const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+	          if (field === 'skinType') {
+	            const v = norm(profileSummary.skinType);
+	            return v && v !== 'unknown' ? field : null;
+	          }
+	          if (field === 'sensitivity') {
+	            const v = norm(profileSummary.sensitivity);
+	            return v && v !== 'unknown' ? field : null;
+	          }
+	          if (field === 'barrierStatus') {
+	            const v = norm(profileSummary.barrierStatus);
+	            return v && v !== 'unknown' ? field : null;
+	          }
+	          if (field === 'goals') {
+	            const goals = Array.isArray(profileSummary.goals) ? profileSummary.goals : [];
+	            return goals.some((g) => norm(g)) ? field : null;
+	          }
+	          if (field === 'budgetTier') {
+	            const v = norm(profileSummary.budgetTier);
+	            return v && v !== 'unknown' ? field : null;
+	          }
+	          return null;
+	        })();
+	        if (repeatedField) recordRepeatedClarifyField({ field: repeatedField });
+	        const options = q0 && Array.isArray(q0.options) ? q0.options : [];
+	        for (const opt of options.slice(0, 8)) {
+	          if (typeof opt !== 'string' || !opt.trim()) continue;
+	          suggestedChips.push({
+	            chip_id: `chip.clarify.${qid}.${opt.trim().slice(0, 40).replace(/\s+/g, '_')}`,
+	            label: opt.trim(),
+	            kind: 'quick_reply',
+	            data: { reply_text: opt.trim(), clarification_id: qid },
+	          });
+	        }
+	      }
 
       const contextRaw = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
       const derivedCards = [];
@@ -11798,6 +12060,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
 
       const cardsForEnvelope = !debugUpstream ? stripInternalRefsDeep(cards) : cards;
+      const shouldEchoProfile =
+        Boolean(profileSummary) &&
+        (Boolean(appliedProfilePatch) || !profilePatchFromSession);
+      const sessionPatch = {};
+      if (nextStateOverride && stateChangeAllowed(ctx.trigger_source)) {
+        sessionPatch.next_state = nextStateOverride;
+      }
+      if (shouldEchoProfile) {
+        sessionPatch.profile = profileSummary;
+        recordSessionPatchProfileEmitted({ changed: Boolean(appliedProfilePatch) });
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeChatAssistantMessage(safeAnswer, 'markdown'),
@@ -11823,7 +12096,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? [{ card_id: `gate_${ctx.request_id}`, type: 'gate_notice', payload: {}, field_missing: fieldMissing }]
             : []),
         ],
-        session_patch: nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+        session_patch: sessionPatch,
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'chat_reply' }),
           ...(allowRecs ? [makeEvent(ctx, 'recos_requested', { explicit: true })] : []),
@@ -11847,6 +12120,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 }
 
 const __internal = {
+  normalizeClarificationField,
+  detectBrandAvailabilityIntent,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,

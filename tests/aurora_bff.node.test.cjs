@@ -17,6 +17,7 @@ const { normalizeRecoGenerate } = require('../src/auroraBff/normalize');
 const { simulateConflicts } = require('../src/auroraBff/routineRules');
 const { buildConflictHeatmapV1 } = require('../src/auroraBff/conflictHeatmapV1');
 const { auroraChat } = require('../src/auroraBff/auroraDecisionClient');
+const { resetVisionMetrics, snapshotVisionMetrics } = require('../src/auroraBff/visionMetrics');
 const { createStageProfiler } = require('../src/auroraBff/skinAnalysisProfiling');
 const { should_call_llm: shouldCallLlm } = require('../src/auroraBff/skinLlmPolicy');
 const { getDiagRolloutDecision, hashToBucket0to99 } = require('../src/auroraBff/diagRollout');
@@ -49,6 +50,112 @@ function withEnv(patch, fn) {
     throw err;
   }
 }
+
+function loadRouteInternals() {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal } = require('../src/auroraBff/routes');
+  return { moduleId, __internal };
+}
+
+test('normalizeClarificationField: maps common skinType ids (ASCII/CN) to canonical field', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    assert.equal(__internal.normalizeClarificationField('skin_type'), 'skinType');
+    assert.equal(__internal.normalizeClarificationField('皮肤类型'), 'skinType');
+    assert.equal(__internal.normalizeClarificationField('肤质:油皮'), 'skinType');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('normalizeClarificationField: never returns empty; falls back to stable hash + emits metric', () => {
+  resetVisionMetrics();
+
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out1 = __internal.normalizeClarificationField('!!!');
+    const out2 = __internal.normalizeClarificationField('');
+    const out3 = __internal.normalizeClarificationField(null);
+
+    for (const out of [out1, out2, out3]) {
+      assert.equal(typeof out, 'string');
+      assert.ok(out.length > 0);
+      assert.match(out, /^cid_[a-z0-9]+$/);
+    }
+  } finally {
+    delete require.cache[moduleId];
+  }
+
+  const snap = snapshotVisionMetrics();
+  assert.ok(Number(snap.clarificationIdNormalizedEmptyCount) >= 3);
+});
+
+test('detectBrandAvailabilityIntent: detects Winona availability intent (CN/EN/mixed) and rejects generic diagnosis', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const cn = __internal.detectBrandAvailabilityIntent('有没有薇诺娜的产品', 'CN');
+    assert.ok(cn);
+    assert.equal(cn.intent, 'availability');
+    assert.equal(cn.brand_id, 'brand_winona');
+
+    const en = __internal.detectBrandAvailabilityIntent('Winona 有货吗？', 'CN');
+    assert.ok(en);
+    assert.equal(en.intent, 'availability');
+    assert.equal(en.brand_id, 'brand_winona');
+
+    const mixed = __internal.detectBrandAvailabilityIntent('请问薇诺娜/Winona', 'CN');
+    assert.ok(mixed);
+    assert.equal(mixed.intent, 'availability');
+    assert.equal(mixed.brand_id, 'brand_winona');
+
+    assert.equal(__internal.detectBrandAvailabilityIntent('我脸很红怎么办', 'CN'), null);
+    assert.equal(__internal.detectBrandAvailabilityIntent('我皮肤很干怎么办', 'CN'), null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('/v1/chat: brand availability query short-circuits to commerce cards (no auroraChat, no diagnosis intake)', async () => {
+  resetVisionMetrics();
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await supertest(app)
+    .post('/v1/chat')
+    .set({ 'X-Aurora-UID': 'test_uid_brand_availability', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' })
+    .send({
+      message: '有没有薇诺娜的产品',
+      session: { state: 'idle', profile: { skinType: 'oily' } },
+      language: 'CN',
+    })
+    .expect(200);
+
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+  assert.ok(types.includes('product_parse'));
+  assert.ok(types.includes('offers_resolved'));
+  assert.equal(types.includes('diagnosis_gate'), false);
+
+  const assistant = String(resp.body?.assistant_message?.content || '');
+  assert.equal(/油皮|干皮|混合|皮肤类型|肤质|skin type|barrier|屏障|目标|goal/i.test(assistant), false);
+
+  const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+  assert.ok(events.some((e) => e && e.event_name === 'catalog_availability_shortcircuit'));
+
+  const snap = snapshotVisionMetrics();
+  const auroraChatCalls = (Array.isArray(snap.upstreamCalls) ? snap.upstreamCalls : []).filter(([key]) => {
+    try {
+      return JSON.parse(key).path === 'aurora_chat';
+    } catch (_err) {
+      return false;
+    }
+  });
+  assert.equal(auroraChatCalls.length, 0);
+});
 
 test('Emotional preamble: strips mismatched CN greeting when language is EN', async () => {
   const moduleId = require.resolve('../src/auroraBff/routes');
