@@ -1,0 +1,124 @@
+{
+  "schema_version": "aurora.circle_prior_model.v1",
+  "generated_at": "2026-02-10T12:21:17.275Z",
+  "datasets": [
+    "lapa",
+    "celebamaskhq",
+    "fasseg"
+  ],
+  "seed": "20260210_121615",
+  "grid_size": 192,
+  "min_part_pixels": 24,
+  "min_skin_overlap": 0.2,
+  "training_stats": {
+    "samples_total": 10150,
+    "samples_used": 10150,
+    "samples_skipped": 0,
+    "by_dataset": {
+      "lapa": {
+        "loaded": 5000,
+        "used": 5000,
+        "skipped": 0
+      },
+      "celebamaskhq": {
+        "loaded": 5000,
+        "used": 5000,
+        "skipped": 0
+      },
+      "fasseg": {
+        "loaded": 150,
+        "used": 150,
+        "skipped": 0
+      }
+    },
+    "candidate_rows_total": 71057
+  },
+  "module_boxes": {
+    "forehead": {
+      "x": 0.0006,
+      "y": 0,
+      "w": 0.9099,
+      "h": 0.3573
+    },
+    "left_cheek": {
+      "x": 0.04,
+      "y": 0.426,
+      "w": 0.44,
+      "h": 0.3417
+    },
+    "right_cheek": {
+      "x": 0.5174,
+      "y": 0.426,
+      "w": 0.4426,
+      "h": 0.3417
+    },
+    "nose": {
+      "x": 0.367,
+      "y": 0.3932,
+      "w": 0.2516,
+      "h": 0.2643
+    },
+    "chin": {
+      "x": 0.2565,
+      "y": 0.7542,
+      "w": 0.4531,
+      "h": 0.2458
+    },
+    "under_eye_left": {
+      "x": 0.4,
+      "y": 0.4278,
+      "w": 0.2995,
+      "h": 0.0563
+    },
+    "under_eye_right": {
+      "x": 0.2867,
+      "y": 0.4259,
+      "w": 0.2995,
+      "h": 0.0563
+    }
+  },
+  "module_stats": {
+    "forehead": {
+      "samples": 10151,
+      "strong_samples": 9291,
+      "weak_samples": 860,
+      "fallback_default": false
+    },
+    "left_cheek": {
+      "samples": 10151,
+      "strong_samples": 9904,
+      "weak_samples": 247,
+      "fallback_default": false
+    },
+    "right_cheek": {
+      "samples": 10151,
+      "strong_samples": 9852,
+      "weak_samples": 299,
+      "fallback_default": false
+    },
+    "nose": {
+      "samples": 10151,
+      "strong_samples": 9979,
+      "weak_samples": 172,
+      "fallback_default": false
+    },
+    "chin": {
+      "samples": 10151,
+      "strong_samples": 9928,
+      "weak_samples": 223,
+      "fallback_default": false
+    },
+    "under_eye_left": {
+      "samples": 10151,
+      "strong_samples": 9623,
+      "weak_samples": 528,
+      "fallback_default": false
+    },
+    "under_eye_right": {
+      "samples": 10151,
+      "strong_samples": 9580,
+      "weak_samples": 571,
+      "fallback_default": false
+    }
+  }
+}
