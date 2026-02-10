@@ -223,6 +223,7 @@ const PHOTO_BYTES_CACHE_TTL_MS = Math.max(
 );
 const PHOTO_AUTO_ANALYZE_AFTER_CONFIRM = String(process.env.AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM || 'true').toLowerCase() !== 'false';
 const DIAG_PHOTO_MODULES_CARD = String(process.env.DIAG_PHOTO_MODULES_CARD || '').toLowerCase() === 'true';
+const DIAG_VERIFY_ALLOW_GUARD_TEST = String(process.env.ALLOW_GUARD_TEST || '').toLowerCase() === 'true';
 const DIAG_OVERLAY_MODE = (() => {
   const raw = String(process.env.DIAG_OVERLAY_MODE || 'client')
     .trim()
@@ -9066,6 +9067,44 @@ function mountAuroraBffRoutes(app, { logger }) {
 	        });
 
 	        if (!shadowRun) {
+	          const verifyRuntimeLimits = (() => {
+	            if (!DIAG_VERIFY_ALLOW_GUARD_TEST) return null;
+
+	            const headerPerMin = Number(req.get('x-diag-verify-max-calls-per-min'));
+	            const headerPerDay = Number(req.get('x-diag-verify-max-calls-per-day'));
+	            const queryPerMin = Number(req.query && req.query.diag_verify_max_calls_per_min);
+	            const queryPerDay = Number(req.query && req.query.diag_verify_max_calls_per_day);
+	            const bodyLimits =
+	              (isPlainObject(req.body) && isPlainObject(req.body.diag_verify_runtime_limits) && req.body.diag_verify_runtime_limits) ||
+	              (isPlainObject(req.body) &&
+	                isPlainObject(req.body.debug) &&
+	                isPlainObject(req.body.debug.diag_verify_runtime_limits) &&
+	                req.body.debug.diag_verify_runtime_limits) ||
+	              null;
+	            const bodyPerMin = Number(
+	              bodyLimits &&
+	                (bodyLimits.maxCallsPerMin != null ? bodyLimits.maxCallsPerMin : bodyLimits.max_calls_per_min),
+	            );
+	            const bodyPerDay = Number(
+	              bodyLimits &&
+	                (bodyLimits.maxCallsPerDay != null ? bodyLimits.maxCallsPerDay : bodyLimits.max_calls_per_day),
+	            );
+
+	            const pickFirstFinite = (...values) => {
+	              for (const value of values) {
+	                if (Number.isFinite(value) && value >= 0) return Math.trunc(value);
+	              }
+	              return null;
+	            };
+
+	            const maxCallsPerMin = pickFirstFinite(headerPerMin, bodyPerMin, queryPerMin);
+	            const maxCallsPerDay = pickFirstFinite(headerPerDay, bodyPerDay, queryPerDay);
+	            if (maxCallsPerMin == null && maxCallsPerDay == null) return null;
+	            return {
+	              ...(maxCallsPerMin != null ? { maxCallsPerMin } : {}),
+	              ...(maxCallsPerDay != null ? { maxCallsPerDay } : {}),
+	            };
+	          })();
 	          setImmediate(() => {
 	            runGeminiShadowVerify({
 	              imageBuffer: shadowVerifyPhotoBytes || diagnosisPhotoBytes || null,
@@ -9079,6 +9118,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	              inferenceId: ctx.request_id || ctx.trace_id || null,
 	              traceId: ctx.trace_id || null,
 	              assetId: diagnosisPhoto && typeof diagnosisPhoto.photo_id === 'string' ? diagnosisPhoto.photo_id : null,
+	              runtimeLimits: verifyRuntimeLimits || undefined,
 	              skinToneBucket:
 	                diagnosisV1Internal && typeof diagnosisV1Internal.skin_tone_bucket === 'string'
 	                  ? diagnosisV1Internal.skin_tone_bucket

@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run photo-modules-acceptance
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -20,6 +20,22 @@ VERIFY_HARD_CASES ?=
 VERIFY_REPORT_DATE ?=
 VERIFY_OUT ?= reports
 VERIFY_FAIL_OUT ?= reports
+SHADOW_DAILY_DATE ?=
+SHADOW_DAILY_SINCE ?=
+SHADOW_REPORTS_OUT ?= reports
+SHADOW_OUTPUTS_OUT ?= outputs
+SHADOW_VERIFY_IN ?= tmp/diag_pseudo_label_factory
+SHADOW_HARD_CASES ?= tmp/diag_verify/hard_cases.ndjson
+SHADOW_PSEUDO_MIN_AGREEMENT ?=
+SHADOW_BASE ?= $(BASE)
+SHADOW_CALLS ?= 20
+SHADOW_GUARD_CALLS ?= 20
+SHADOW_WAIT_AFTER_SEC ?= 12
+SHADOW_ALLOW_GUARD_TEST ?= false
+SHADOW_MIN_USED_PHOTOS_RATIO ?= 0.95
+SHADOW_MAX_PASS_FAIL_RATE ?= 0.05
+SHADOW_MAX_TIMEOUT_RATE ?= 0.02
+SHADOW_MAX_UPSTREAM_5XX_RATE ?= 0.02
 PSEUDO_STORE_DIR ?= tmp/diag_pseudo_label_factory
 PSEUDO_OUT_DIR ?= reports/pseudo_label_job
 PSEUDO_JOB_DATE ?=
@@ -46,6 +62,12 @@ CAL_EVAL_OUT ?= reports/calibration_eval.json
 RELIABILITY_IN ?= tmp/diag_pseudo_label_factory
 RELIABILITY_OUT ?= reports/reliability/reliability.json
 RELIABILITY_DATE ?=
+INGREDIENT_KB_DATA_DIR ?= data/external
+INGREDIENT_KB_ARTIFACT ?= artifacts/ingredient_kb_v2.json
+INGREDIENT_KB_MANIFEST ?= artifacts/manifest.json
+INGREDIENT_KB_SOURCES_REPORT ?= reports/ingredient_kb_sources_report.md
+INGREDIENT_KB_CLAIMS_AUDIT ?= reports/ingredient_kb_claims_audit.md
+INGREDIENT_KB_FETCH_LIVE ?= false
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -117,3 +139,27 @@ eval-calibration:
 
 reliability-table:
 	node scripts/build_reliability_table.js --in $(RELIABILITY_IN) --out $(RELIABILITY_OUT) $(if $(RELIABILITY_DATE),--date $(RELIABILITY_DATE),)
+
+shadow-daily:
+	node scripts/run_shadow_daily.js --in $(SHADOW_VERIFY_IN) --hard-cases $(SHADOW_HARD_CASES) --reports-out $(SHADOW_REPORTS_OUT) --outputs-out $(SHADOW_OUTPUTS_OUT) $(if $(SHADOW_DAILY_DATE),--date $(SHADOW_DAILY_DATE),) $(if $(SHADOW_DAILY_SINCE),--since $(SHADOW_DAILY_SINCE),) $(if $(SHADOW_PSEUDO_MIN_AGREEMENT),--pseudo-min-agreement $(SHADOW_PSEUDO_MIN_AGREEMENT),)
+
+shadow-smoke:
+	BASE=$(SHADOW_BASE) CALLS=$(SHADOW_CALLS) WAIT_AFTER_SEC=$(SHADOW_WAIT_AFTER_SEC) EXPECT_GUARD=0 scripts/probe_verify_budget_guard.sh
+	node scripts/run_shadow_daily.js --in $(SHADOW_VERIFY_IN) --hard-cases $(SHADOW_HARD_CASES) --reports-out $(SHADOW_REPORTS_OUT) --outputs-out $(SHADOW_OUTPUTS_OUT) $(if $(SHADOW_DAILY_DATE),--date $(SHADOW_DAILY_DATE),)
+
+shadow-acceptance:
+	node scripts/shadow_acceptance.js --base $(SHADOW_BASE) --calls $(SHADOW_CALLS) --guard-calls $(SHADOW_GUARD_CALLS) --wait-after-sec $(SHADOW_WAIT_AFTER_SEC) --allow-guard-test $(SHADOW_ALLOW_GUARD_TEST) --in $(SHADOW_VERIFY_IN) --hard-cases $(SHADOW_HARD_CASES) --reports-out $(SHADOW_REPORTS_OUT) --outputs-out $(SHADOW_OUTPUTS_OUT) --min-used-photos-ratio $(SHADOW_MIN_USED_PHOTOS_RATIO) --max-pass-fail-rate $(SHADOW_MAX_PASS_FAIL_RATE) --max-timeout-rate $(SHADOW_MAX_TIMEOUT_RATE) --max-upstream-5xx-rate $(SHADOW_MAX_UPSTREAM_5XX_RATE) $(if $(SHADOW_DAILY_DATE),--date $(SHADOW_DAILY_DATE),) $(if $(SHADOW_DAILY_SINCE),--since $(SHADOW_DAILY_SINCE),)
+
+ingest-ingredient-sources:
+	node scripts/ingest_ingredient_sources.js --data-dir $(INGREDIENT_KB_DATA_DIR) --artifact-path $(INGREDIENT_KB_ARTIFACT) --manifest-path $(INGREDIENT_KB_MANIFEST) --sources-report $(INGREDIENT_KB_SOURCES_REPORT) --claims-audit-report $(INGREDIENT_KB_CLAIMS_AUDIT) $(if $(filter true,$(INGREDIENT_KB_FETCH_LIVE)),--fetch-live,)
+
+ingredient-kb-audit:
+	node scripts/ingest_ingredient_sources.js --audit-only --artifact-path $(INGREDIENT_KB_ARTIFACT) --claims-audit-report $(INGREDIENT_KB_CLAIMS_AUDIT) --fail-on-audit
+
+ingredient-kb-dry-run:
+	node scripts/ingest_ingredient_sources.js --dry-run --fail-on-audit --data-dir $(INGREDIENT_KB_DATA_DIR) --artifact-path $(INGREDIENT_KB_ARTIFACT) --manifest-path $(INGREDIENT_KB_MANIFEST) --sources-report $(INGREDIENT_KB_SOURCES_REPORT) --claims-audit-report $(INGREDIENT_KB_CLAIMS_AUDIT) $(if $(filter true,$(INGREDIENT_KB_FETCH_LIVE)),--fetch-live,)
+
+photo-modules-acceptance:
+	bash scripts/accept_photo_modules_backend.sh
+	node scripts/accept_photo_modules_frontend.mjs
+	node scripts/audit_analytics_payloads.js

@@ -727,6 +727,8 @@ function buildModuleIssues({ moduleId, moduleBox, regions, regionMeta, qualityGr
         language,
         barrierStatus: profileSummary && profileSummary.barrierStatus,
         sensitivity: profileSummary && profileSummary.sensitivity,
+        market: profileSummary && profileSummary.region,
+        contraindications: profileSummary && profileSummary.contraindications,
       });
       for (const action of ingredientActions) actions.push(action);
     }

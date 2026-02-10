@@ -185,15 +185,14 @@ Generated artifacts:
 
 Validation window:
 - Service: `https://pivota-agent-production.up.railway.app`
-- Deployed commit: `21d282440b57`
-- Started at: `2026-02-09T13:04:51.950Z`
+- Deployed commit: `5ea7bbcc67fa`
 
-Probe run (post-deploy):
-- Command family: `scripts/probe_verify_budget_guard.sh` (`CALLS=2`, `WAIT_AFTER_SEC=12`, `EXPECT_GUARD=0`)
+Probe run A (smoke):
+- Command family: `scripts/probe_verify_budget_guard.sh` (`CALLS=2`, `WAIT_AFTER_SEC=15`, `EXPECT_GUARD=0`)
 - Result:
   - `used_photos=true`
   - `analysis_source=vision_gemini`
-  - `verify_calls_total` delta: `+7`
+  - `verify_calls_total` delta: `+4`
   - `verify_fail_total` delta: `+0`
   - `verify_budget_guard_total` delta: `+0`
   - `verify_calls_total{status="guard"}` delta: `+0`
@@ -208,6 +207,20 @@ Probe run (post-deploy):
   - `IMAGE_FETCH_FAILED=0`
   - `SCHEMA_INVALID=0`
 
+Probe run B (stress):
+- Command family: `scripts/probe_verify_budget_guard.sh` (`CALLS=75`, `WAIT_AFTER_SEC=30`, `SLEEP_BETWEEN_SEC=0`, `EXPECT_GUARD=1`)
+- Result:
+  - `used_photos=true` for all 75 calls
+  - dominant `analysis_source=vision_gemini` (one fallback sample observed as `diagnosis_v1_template`)
+  - `verify_calls_total` delta: `+150` (`attempt=+75`, `success=+74`, `fail=+1`)
+  - `verify_fail_total` delta: `+1` (reason: `QUOTA`)
+  - `verify_budget_guard_total` delta: `+0`
+  - `verify_calls_total{status="guard"}` delta: `+0`
+- Note:
+  - stress probe exited with code `3` only because `EXPECT_GUARD=1` was not met.
+  - this indicates the current production guard thresholds are above this traffic level (or guard is configured permissive for this environment).
+
 Interpretation:
 - Mapping patch is active in production and no verifier failure regression was observed during this run.
 - `UNKNOWN` bucket did not increase, which is the main acceptance signal for this patch.
+- Gemini invocation path is healthy (`agreement_histogram_count` increased; success ratio high), with only a single quota-limited failure during high-pressure probing.

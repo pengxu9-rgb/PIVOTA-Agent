@@ -1,3 +1,6 @@
+const { inferRiskTier, resolveIngredientRecommendation } = require('./ingredientKbV2/resolve');
+const { mergeIngredientActionWithEvidence } = require('./ingredientKbV2/merge');
+
 function normalizeLang(language) {
   return String(language || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
 }
@@ -220,11 +223,52 @@ const ISSUE_INGREDIENT_MAP = Object.freeze({
   ],
 });
 
-function mapIngredientActions({ issueType, evidenceRegionIds, language, barrierStatus, sensitivity } = {}) {
+const TEMPLATE_TO_INGREDIENT_ID = Object.freeze({
+  panthenol: 'panthenol',
+  ceramides: 'ceramide_np',
+  niacinamide_low_pct: 'niacinamide',
+  niacinamide: 'niacinamide',
+  zinc_pca: 'zinc_pca',
+  bha_gentle: 'salicylic_acid',
+  bha_lha: 'salicylic_acid',
+  bha: 'salicylic_acid',
+  azelaic_acid: 'azelaic_acid',
+  retinoid_later: 'retinol',
+  vitamin_c_gentle: 'ascorbic_acid',
+  benzoyl_peroxide_spot: 'benzoyl_peroxide',
+  sulfur: 'sulfur',
+});
+
+function normalizeMarket(input, language) {
+  const token = String(input || '').trim().toUpperCase();
+  if (token === 'EU' || token === 'CN' || token === 'JP' || token === 'US') return token;
+  return normalizeLang(language) === 'CN' ? 'CN' : 'US';
+}
+
+function resolveIngredientId(templateId) {
+  const key = String(templateId || '').trim();
+  if (!key) return '';
+  if (Object.prototype.hasOwnProperty.call(TEMPLATE_TO_INGREDIENT_ID, key)) {
+    return TEMPLATE_TO_INGREDIENT_ID[key];
+  }
+  return key;
+}
+
+function mapIngredientActions({
+  issueType,
+  evidenceRegionIds,
+  language,
+  barrierStatus,
+  sensitivity,
+  market,
+  contraindications,
+} = {}) {
   const key = String(issueType || '').trim().toLowerCase();
   const templates = ISSUE_INGREDIENT_MAP[key];
   if (!Array.isArray(templates) || templates.length === 0) return [];
 
+  const resolvedMarket = normalizeMarket(market, language);
+  const riskTier = inferRiskTier({ barrierStatus, sensitivity, contraindications });
   const sensitiveHigh = String(sensitivity || '').trim().toLowerCase() === 'high';
   const barrierImpaired = String(barrierStatus || '').trim().toLowerCase() === 'impaired';
   const isFragile = sensitiveHigh || barrierImpaired;
@@ -237,9 +281,20 @@ function mapIngredientActions({ issueType, evidenceRegionIds, language, barrierS
     if (selected.length >= 3) break;
   }
 
-  return selected.map((ingredient) =>
-    toAction({ issueType: key, ingredient, evidenceRegionIds, language, isFragile }),
-  );
+  return selected.map((ingredient) => {
+    const action = toAction({ issueType: key, ingredient, evidenceRegionIds, language, isFragile });
+    const ingredientId = resolveIngredientId(ingredient.id);
+    const evidence = resolveIngredientRecommendation({
+      ingredientId,
+      market: resolvedMarket,
+      riskTier,
+    });
+    return mergeIngredientActionWithEvidence({
+      action,
+      evidence,
+      market: resolvedMarket,
+    });
+  });
 }
 
 module.exports = {

@@ -156,3 +156,50 @@ geometry_drops_rps = sum(rate(aurora_skin_analysis_geometry_sanitizer_drops_tota
 3. **Input quality & retake**：P-104 ~ P-106
 4. **Explainability**：P-107（analysis_source）
 5. **Geometry stability（可选）**：P-201
+
+---
+
+## 6) Photo Modules KPI（运营最小集）
+
+> 目标：监控 `photo_modules_v1` 是否被看到、是否有交互、是否驱动后续动作。
+
+### P-301 `photo_modules_viewed / skin_analysis_viewed`
+
+```text
+photo_modules_view_rate =
+  sum(rate(aurora_ui_events_total{event_name="aurora_photo_modules_viewed"}[30m]))
+  /
+  clamp_min(sum(rate(aurora_ui_events_total{event_name="skin_analysis_viewed"}[30m])), 1)
+```
+
+### P-302 module_click_rate
+
+```text
+module_click_rate =
+  sum(rate(aurora_ui_events_total{event_name="aurora_photo_modules_module_tap"}[30m]))
+  /
+  clamp_min(sum(rate(aurora_ui_events_total{event_name="aurora_photo_modules_viewed"}[30m])), 1)
+```
+
+### P-303 action_click_rate
+
+```text
+action_click_rate =
+  sum(rate(aurora_ui_events_total{event_name="aurora_photo_modules_action_tap"}[30m]))
+  /
+  clamp_min(sum(rate(aurora_ui_events_total{event_name="aurora_photo_modules_viewed"}[30m])), 1)
+```
+
+### P-304 retake_rate_after_modules
+
+```text
+retake_rate_after_modules =
+  sum(rate(aurora_ui_events_total{event_name="photo_retry_clicked",from_card="photo_modules_v1"}[30m]))
+  /
+  clamp_min(sum(rate(aurora_ui_events_total{event_name="aurora_photo_modules_viewed"}[30m])), 1)
+```
+
+备注：
+
+- 若当前尚未发 `aurora_photo_modules_viewed` 或 `from_card` 标签，先保留查询并在事件侧补充字段。
+- `retake_rate_after_modules` 也可暂时用漏斗近似：`photo_retry_clicked` 在 `photo_modules_viewed` 会话后的比例。
