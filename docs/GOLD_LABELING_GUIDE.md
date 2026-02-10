@@ -35,7 +35,16 @@ make train-calibrator
 ```bash
 make eval-calibration
 ```
-7. Enable runtime calibration:
+7. Evaluate region-selection accuracy against internal gold labels:
+```bash
+make eval-region-accuracy \
+  REGION_ACC_MODEL_OUTPUTS=tmp/diag_pseudo_label_factory/model_outputs.ndjson \
+  REGION_ACC_GOLD_LABELS=tmp/diag_pseudo_label_factory/gold_labels.ndjson \
+  REGION_ACC_IOU=0.3
+```
+   - Default is strict: if `gold_labels` file is missing/empty, command exits non-zero with explicit error.
+   - Optional dry-run override: add `REGION_ACC_ALLOW_EMPTY_GOLD=true`.
+8. Enable runtime calibration:
 ```bash
 export DIAG_CALIBRATION_ENABLED=true
 export DIAG_CALIBRATION_USE_LATEST_VERSION=true
@@ -67,4 +76,3 @@ export DIAG_CALIBRATION_USE_LATEST_VERSION=true
 - Runtime loader prefers latest version file when:
   - `DIAG_CALIBRATION_ENABLED=true`
   - `DIAG_CALIBRATION_USE_LATEST_VERSION=true`
-
