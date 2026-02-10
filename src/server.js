@@ -4274,7 +4274,8 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
       options = {
         ...options,
         prefer_merchants: defaultMerchants,
-        ...(options.search_all_merchants === undefined ? { search_all_merchants: false } : {}),
+        ...(options.search_all_merchants === undefined ? { search_all_merchants: true } : {}),
+        ...(options.upstream_retries === undefined ? { upstream_retries: 0 } : {}),
       };
     }
   }

@@ -566,6 +566,7 @@ async function resolveProductRef({
 
   const products = [];
   const sources = [];
+  let scopedCacheFailedInfra = false;
 
   function remainingMs() {
     return Math.max(0, deadlineMs - Date.now());
@@ -594,6 +595,10 @@ async function resolveProductRef({
       products.push(...cacheResp.products);
       sources.push({ source: 'products_cache', ok: true, count: cacheResp.products.length });
     } else {
+      const reason = String(cacheResp.reason || 'no_results');
+      if (reason === 'db_error' || reason === 'db_not_configured' || reason === 'products_cache_missing') {
+        scopedCacheFailedInfra = true;
+      }
       sources.push({ source: 'products_cache', ok: false, reason: cacheResp.reason || 'no_results' });
     }
   }
@@ -637,6 +642,7 @@ async function resolveProductRef({
   const globalCacheTimeout = stageTimeout({ capMs: 850, reserveMs: 300, floorMs: 60 });
   const shouldTryGlobalCache =
     globalCacheTimeout >= 60 &&
+    !scopedCacheFailedInfra &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     products.length < Math.max(6, Math.min(14, limit));
   if (shouldTryGlobalCache) {
