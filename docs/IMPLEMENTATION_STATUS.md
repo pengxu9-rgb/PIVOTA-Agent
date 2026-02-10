@@ -1,6 +1,6 @@
 # Implementation Status (Aurora Diagnosis Pipeline)
 
-Last updated: 2026-02-10 (internal batch EU/zh verification + production smoke)
+Last updated: 2026-02-10 (product-rec enabled verification + env rollback checklist + monitoring guard-metric alignment)
 
 ## 1) Current Pipeline (text flow)
 
@@ -94,11 +94,12 @@ Last updated: 2026-02-10 (internal batch EU/zh verification + production smoke)
   - Agreement metrics exposed in metrics renderer: `src/auroraBff/visionMetrics.js:284`, `src/auroraBff/visionMetrics.js:301`
 
 ### j) metrics / alerts / dashboard 完整度
-- [ ] Partially implemented.
+- [x] Implemented for repo scope (rules + dashboard + runbook + validator).
 - Evidence:
-  - Metrics endpoint and counters/histograms exist: `src/auroraBff/routes.js:4859`, `src/auroraBff/visionMetrics.js:293`, `src/auroraBff/visionMetrics.js:310`
-  - Alert/dashboard specs exist: `ALERTS.md:1`, `DASHBOARD.md:3`
-  - Remaining gap noted in alerts doc (geometry sanitizer drop metric not fully stable): `ALERTS.md:71`
+  - Metrics endpoint and counters/histograms exist: `src/auroraBff/routes.js:4859`, `src/auroraBff/visionMetrics.js:650`, `src/auroraBff/visionMetrics.js:769`
+  - Canonical alert rules + recording rules are committed: `monitoring/alerts/aurora_diagnosis_rules.yml:1`, `monitoring/alerts/aurora_diagnosis_rules.yml:30`, `monitoring/alerts/aurora_diagnosis_rules.yml:83`
+  - Canonical dashboard JSON includes verify/geometry/guard panels: `monitoring/dashboards/aurora_diagnosis_overview.grafana.json:2`, `monitoring/dashboards/aurora_diagnosis_overview.grafana.json:108`, `monitoring/dashboards/aurora_diagnosis_overview.grafana.json:135`
+  - Monitoring validation is automated and wired via Make target: `scripts/monitoring_validate.py:16`, `scripts/monitoring_validate.py:146`, `Makefile:157`
 
 ### k) RELEASE_GATE 阈值与最新结果（GO/NO-GO）
 - [x] Latest gate is GO.
@@ -112,8 +113,8 @@ Last updated: 2026-02-10 (internal batch EU/zh verification + production smoke)
    - Reference: `src/auroraBff/diagVerify.js:41`, `src/auroraBff/diagVerify.js:367`
 2. Shadow verifier is off by default; without enabling `DIAG_GEMINI_VERIFY`, disagreement telemetry/hard-case loop is absent in production traffic.
    - Reference: `src/auroraBff/diagVerify.js:249`
-3. Metrics/alerts are documented but operational dashboard wiring and some alert signals are still partially manual.
-   - Reference: `ALERTS.md:71`, `DASHBOARD.md:3`
+3. Monitoring assets are complete in-repo, but production Alertmanager/Grafana provisioning and on-call routing remain environment-ops responsibilities.
+   - Reference: `docs/MONITORING_RUNBOOK.md:3`, `monitoring/alerts/aurora_diagnosis_rules.yml:1`, `monitoring/dashboards/aurora_diagnosis_overview.grafana.json:1`
 4. Pseudo-label pipeline stores structured outputs only by default (good for privacy), but optional ROI persistence remains opt-in and should be controlled carefully.
    - Reference: `src/auroraBff/pseudoLabelFactory.js:94`
 
@@ -146,6 +147,7 @@ Last updated: 2026-02-10 (internal batch EU/zh verification + production smoke)
 - Full unit suite used by privacy check flow: `npm run test:aurora-bff:unit`
 - Gold-label sample generation: `make gold-label-sample GOLD_TOTAL=500 GOLD_HARD_RATIO=0.6`
 - Gold-label import: `make gold-label-import GOLD_IMPORT_IN=/path/to/label_studio_export.json`
+- Region accuracy eval (internal gold labels): `make eval-region-accuracy REGION_ACC_MODEL_OUTPUTS=tmp/diag_pseudo_label_factory/model_outputs.ndjson REGION_ACC_GOLD_LABELS=tmp/diag_pseudo_label_factory/gold_labels.ndjson REGION_ACC_IOU=0.3`
 - Train calibrator: `make train-calibrator`
 - Evaluate calibrator: `make eval-calibration`
 
@@ -280,3 +282,98 @@ Interpretation:
 - Verifier failure-reason mapping remains stable: `UNKNOWN` bucket did not increase during guard probes.
 - Photo modules card path is live and healthy in production (`photo_modules_v1` emitted under `used_photos=true` with valid overlay geometry payload).
 - Local backend/frontend acceptance and analytics privacy audit all pass.
+
+## 7) Product Rec Enabled Verification (2026-02-10 UTC)
+
+Validation window:
+- Service: `https://pivota-agent-production.up.railway.app`
+- Deployed commit observed during this run: `a9295f90c7b4` (`x-service-commit` header)
+
+Gate checks re-run (local):
+- `make ingredient-kb-dry-run` PASS
+- `make ingredient-kb-audit` PASS
+- `make claims-audit` PASS
+- `node --test tests/aurora_bff_claims_product_rec.node.test.cjs tests/aurora_bff_ingredient_kb_v2.node.test.cjs tests/aurora_bff_photo_modules_v1.node.test.cjs` PASS (`12/12`)
+
+Production batch runs after `DIAG_PRODUCT_REC=true`:
+- EU/en sample run (`run_id=internal_batch_20260210_050024310`, `limit=10`):
+  - `success_rate=1.0` (`10/10`)
+  - `used_photos_rate=1.0` (`10/10`)
+  - `photo_modules_card_ratio=0.8` (`8/10`)
+  - `products_count` mean: `0`
+  - Artifact: `reports/internal_batch_manual/internal_batch_20260210_050024310.md`
+- US/zh sample run (`run_id=internal_batch_20260210_050223344`, `limit=10`):
+  - `success_rate=1.0` (`10/10`)
+  - `used_photos_rate=1.0` (`10/10`)
+  - `photo_modules_card_ratio=0.8` (`8/10`)
+  - `products_count` mean: `0`
+- EU/en probe run (`run_id=internal_batch_20260210_050612854`, `limit=5`, local parser flag `DIAG_PRODUCT_REC=true`):
+  - `product_rec_enabled(推断)=true`
+  - `products_count` mean: `0`
+  - hard gate did not pass in this random 5-photo probe due `NO_CARD` ratio, but no claim violations were observed.
+  - Artifact: `reports/internal_batch_manual/internal_batch_20260210_050612854.md`
+
+Observed metrics delta during validation window:
+- Metrics snapshot (`2026-02-10T05:00:23Z -> 2026-02-10T05:04:16Z`):
+  - `product_rec_suppressed_total{reason="LOW_EVIDENCE"}`: `0 -> 336` (`+336`)
+  - `claims_template_fallback_total{reason="ok"}`: `0 -> 3069` (`+3069`)
+  - `claims_violation_total`: `0 -> 0`
+- Current live metrics after additional probe:
+  - `product_rec_suppressed_total{reason="LOW_EVIDENCE"} = 378`
+  - `claims_template_fallback_total{reason="ok"} = 3438`
+  - `claims_violation_total = 0`
+
+Conclusion:
+- Product-rec path is active in production (suppression metrics increase under `LOW_EVIDENCE`), and no medical-claim violations were emitted.
+- Current behavior is intentionally conservative: suppress recommendations when evidence threshold is not met.
+
+## 8) Production ENV Rollback Checklist (post internal testing)
+
+### Keep enabled for controlled production rollout
+- `DIAG_INGREDIENT_REC=true` (default on): `src/auroraBff/routes.js:237`
+- `DIAG_PHOTO_MODULES_CARD=true` (photo modules card enabled): `src/auroraBff/routes.js:229`
+- `DIAG_PRODUCT_REC=true`: `src/auroraBff/routes.js:238`
+- `DIAG_PRODUCT_REC_MIN_CITATIONS=1` (current default): `src/auroraBff/routes.js:239`
+- `DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE=B` (current default): `src/auroraBff/routes.js:243`
+- `DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED=true` (recommended rollout setting): `src/auroraBff/routes.js:250`
+
+### Revert / ensure OFF before broader external traffic
+- `INTERNAL_TEST_MODE=false`: `src/auroraBff/routes.js:252`
+- `ALLOW_GUARD_TEST=false`: `src/auroraBff/routes.js:230`, `src/auroraBff/diagVerify.js:807`
+- `DIAG_GEMINI_VERIFY=false` unless explicitly running shadow verification: `src/auroraBff/diagVerify.js:249`
+
+### Immediate follow-up (to move from suppress-only to useful product rec)
+1. Increase A/B evidence and citation coverage for top recommended ingredients in EU/US product catalog overlap.
+2. Track suppression mix via:
+   - `product_rec_suppressed_total{reason=*}`
+   - `product_rec_emitted_total{market,quality_grade}`
+   - `claims_violation_total`
+3. Keep `claims_violation_total == 0` as hard release gate; allow suppression until evidence improves.
+
+### Final ENV matrix (production rollout)
+
+| ENV | Current (inferred) | Target | Action | Requires redeploy |
+| --- | --- | --- | --- | --- |
+| `DIAG_INGREDIENT_REC` | on | `true` | keep | yes (if changed) |
+| `DIAG_PHOTO_MODULES_CARD` | on (`photo_modules_v1` present) | `true` | keep | yes (if changed) |
+| `DIAG_PRODUCT_REC` | on (`LOW_EVIDENCE` suppress counter increasing) | `true` | keep | yes (if changed) |
+| `DIAG_PRODUCT_REC_MIN_CITATIONS` | unknown (likely default) | `1` | set explicit | yes |
+| `DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE` | unknown (likely default) | `B` | set explicit | yes |
+| `DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED` | unknown | `true` | set explicit | yes |
+| `INTERNAL_TEST_MODE` | off (`internal_debug` not exposed) | `false` | keep off | yes (if changed) |
+| `ALLOW_GUARD_TEST` | unknown | `false` | set/keep off | yes |
+| `DIAG_GEMINI_VERIFY` | unknown | `false` (unless running shadow window) | set/keep off | yes |
+| `AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM` | likely on | `true` | keep | yes (if changed) |
+| `DIAG_VERIFY_MAX_CALLS_PER_MIN` | unknown | `60` | keep/set | yes |
+| `DIAG_VERIFY_MAX_CALLS_PER_DAY` | unknown | `10000` | keep/set | yes |
+
+### Rollout order (safe)
+1. Apply/confirm all target env values above.
+2. Redeploy once (single config rollout).
+3. Run smoke + batch sample:
+   - `make photo-modules-prod-smoke BASE=https://pivota-agent-production.up.railway.app PHOTO_PATH=/absolute/path/to/photo.jpg`
+   - `DIAG_PRODUCT_REC=true make internal-batch PHOTOS_DIR=tmp/internal_batch_input_jpeg_20260210_111136 BASE=https://pivota-agent-production.up.railway.app MARKET=EU LANG=en MODE=confirm CONCURRENCY=2 LIMIT=10 SHUFFLE=true OUT_DIR=reports/internal_batch_manual`
+4. Verify metrics hard gate:
+   - `claims_violation_total == 0`
+   - `product_rec_suppressed_total{reason="LOW_EVIDENCE"}` may increase
+   - `product_rec_emitted_total` can remain `0` at this stage
