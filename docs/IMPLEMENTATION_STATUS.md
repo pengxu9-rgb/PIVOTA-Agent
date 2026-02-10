@@ -130,6 +130,7 @@ Last updated: 2026-02-09 (post-prod verify mapping patch)
 - `DIAG_GEMINI_VERIFY` (default `false`): `src/auroraBff/diagVerify.js:249`
 - `DIAG_VERIFY_MAX_CALLS_PER_MIN` (default `60`): `src/auroraBff/diagVerify.js:463`
 - `DIAG_VERIFY_MAX_CALLS_PER_DAY` (default `10000`): `src/auroraBff/diagVerify.js:464`
+- `ALLOW_GUARD_TEST` (default `false`, enables runtime header/query/body override for guard acceptance tests): `src/auroraBff/routes.js:226`, `src/auroraBff/diagVerify.js:807`
 - `DIAG_CALIBRATION_ENABLED` (default `false`): `src/auroraBff/diagCalibration.js:922`
 - `DIAG_CALIBRATION_USE_LATEST_VERSION` (default `true`): `src/auroraBff/diagCalibration.js:940`
 - `AURORA_PSEUDO_LABEL_ENABLED` (default `true`): `src/auroraBff/pseudoLabelFactory.js:92`
@@ -137,6 +138,7 @@ Last updated: 2026-02-09 (post-prod verify mapping patch)
 ### Local reproducibility commands
 - Release gate: `make release-gate`
 - Runtime smoke: `make runtime-smoke BASE=https://pivota-agent-production.up.railway.app`
+- Photo modules production smoke (robust JSON parse): `make photo-modules-prod-smoke BASE=https://pivota-agent-production.up.railway.app PHOTO_PATH=/absolute/path/to/photo.jpg`
 - Verify guard probe (single run): `BASE=https://pivota-agent-production.up.railway.app CALLS=1 WAIT_AFTER_SEC=10 EXPECT_GUARD=0 scripts/probe_verify_budget_guard.sh`
 - Verify guard probe (DNS/network jitter hardened): `BASE=https://pivota-agent-production.up.railway.app CALLS=1 WAIT_AFTER_SEC=10 EXPECT_GUARD=0 CURL_RETRY_MAX=6 CURL_RETRY_DELAY_SEC=2 scripts/probe_verify_budget_guard.sh`
 - Verify reason-delta quick check (UNKNOWN/4XX/5XX/TIMEOUT): capture `/metrics` before/after one probe and diff `verify_fail_total{reason=*}` counters

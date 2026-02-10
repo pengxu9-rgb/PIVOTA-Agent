@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run photo-modules-acceptance
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -68,6 +68,7 @@ INGREDIENT_KB_MANIFEST ?= artifacts/manifest.json
 INGREDIENT_KB_SOURCES_REPORT ?= reports/ingredient_kb_sources_report.md
 INGREDIENT_KB_CLAIMS_AUDIT ?= reports/ingredient_kb_claims_audit.md
 INGREDIENT_KB_FETCH_LIVE ?= false
+CLAIMS_AUDIT_REPORT ?= reports/claims_audit.md
 
 bench:
 	python3 scripts/bench_analyze.py --lang $(AURORA_LANG) --repeat $(REPEAT) --qc $(QC) --primary $(PRIMARY) --detector $(DETECTOR) $(if $(DEGRADED_MODE),--degraded-mode $(DEGRADED_MODE),) $(if $(OUT),--out $(OUT),) $(IMAGES)
@@ -159,7 +160,13 @@ ingredient-kb-audit:
 ingredient-kb-dry-run:
 	node scripts/ingest_ingredient_sources.js --dry-run --fail-on-audit --data-dir $(INGREDIENT_KB_DATA_DIR) --artifact-path $(INGREDIENT_KB_ARTIFACT) --manifest-path $(INGREDIENT_KB_MANIFEST) --sources-report $(INGREDIENT_KB_SOURCES_REPORT) --claims-audit-report $(INGREDIENT_KB_CLAIMS_AUDIT) $(if $(filter true,$(INGREDIENT_KB_FETCH_LIVE)),--fetch-live,)
 
+claims-audit:
+	node scripts/claims_audit.js --out $(CLAIMS_AUDIT_REPORT)
+
 photo-modules-acceptance:
 	bash scripts/accept_photo_modules_backend.sh
 	node scripts/accept_photo_modules_frontend.mjs
 	node scripts/audit_analytics_payloads.js
+
+photo-modules-prod-smoke:
+	bash scripts/smoke_photo_modules_production.sh

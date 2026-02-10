@@ -48,6 +48,10 @@ const regionsEmittedCounter = new Map();
 const modulesIssueCountHistogramCounter = new Map();
 const ingredientActionsEmittedCounter = new Map();
 const geometrySanitizerDropReasonCounter = new Map();
+const productRecEmittedCounter = new Map();
+const productRecSuppressedCounter = new Map();
+const claimsTemplateFallbackCounter = new Map();
+const claimsViolationCounter = new Map();
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -103,6 +107,20 @@ function normalizeRegionType(regionType) {
 
 function normalizeModuleId(moduleId) {
   return cleanMetricToken(moduleId, 'unknown');
+}
+
+function normalizeMarketScope(market) {
+  const token = String(market || '').trim().toUpperCase();
+  if (token === 'EU' || token === 'US' || token === 'CN' || token === 'JP') return token;
+  return 'UNKNOWN';
+}
+
+function normalizeSuppressedReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown').toUpperCase();
+  if (token === 'LOW_EVIDENCE' || token === 'RISK_TIER' || token === 'DEGRADED' || token === 'NO_CATALOG_MATCH') {
+    return token;
+  }
+  return 'UNKNOWN';
 }
 
 function normalizeSanitizerReason(reason) {
@@ -443,6 +461,55 @@ function recordIngredientActionsEmitted({ moduleId, issueType, delta } = {}) {
   );
 }
 
+function recordProductRecEmitted({ market, qualityGrade, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    productRecEmittedCounter,
+    {
+      market: normalizeMarketScope(market),
+      quality_grade: normalizeQualityGrade(qualityGrade),
+    },
+    amount,
+  );
+}
+
+function recordProductRecSuppressed({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    productRecSuppressedCounter,
+    {
+      reason: normalizeSuppressedReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordClaimsTemplateFallback({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    claimsTemplateFallbackCounter,
+    {
+      reason: normalizeSanitizerReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordClaimsViolation({ reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    claimsViolationCounter,
+    {
+      reason: normalizeSanitizerReason(reason),
+    },
+    amount,
+  );
+}
+
 function recordGeometrySanitizerDropReason({ reason, regionType, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -617,6 +684,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE ingredient_actions_emitted_total counter');
   renderCounter(lines, 'ingredient_actions_emitted_total', ingredientActionsEmittedCounter);
 
+  lines.push('# HELP product_rec_emitted_total Total emitted product recommendations grouped by market and quality grade.');
+  lines.push('# TYPE product_rec_emitted_total counter');
+  renderCounter(lines, 'product_rec_emitted_total', productRecEmittedCounter);
+
+  lines.push('# HELP product_rec_suppressed_total Total suppressed product recommendation decisions grouped by reason.');
+  lines.push('# TYPE product_rec_suppressed_total counter');
+  renderCounter(lines, 'product_rec_suppressed_total', productRecSuppressedCounter);
+
+  lines.push('# HELP claims_template_fallback_total Total claims template fallback events grouped by reason.');
+  lines.push('# TYPE claims_template_fallback_total counter');
+  renderCounter(lines, 'claims_template_fallback_total', claimsTemplateFallbackCounter);
+
+  lines.push('# HELP claims_violation_total Total claims policy violations caught before response output.');
+  lines.push('# TYPE claims_violation_total counter');
+  renderCounter(lines, 'claims_violation_total', claimsViolationCounter);
+
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
   const rateKeys = new Set([
@@ -666,6 +749,10 @@ function resetVisionMetrics() {
   modulesIssueCountHistogramCounter.clear();
   ingredientActionsEmittedCounter.clear();
   geometrySanitizerDropReasonCounter.clear();
+  productRecEmittedCounter.clear();
+  productRecSuppressedCounter.clear();
+  claimsTemplateFallbackCounter.clear();
+  claimsViolationCounter.clear();
 }
 
 function snapshotVisionMetrics() {
@@ -698,6 +785,10 @@ function snapshotVisionMetrics() {
     modulesIssueCountHistogram: Array.from(modulesIssueCountHistogramCounter.entries()),
     ingredientActionsEmitted: Array.from(ingredientActionsEmittedCounter.entries()),
     geometrySanitizerDropReasons: Array.from(geometrySanitizerDropReasonCounter.entries()),
+    productRecEmitted: Array.from(productRecEmittedCounter.entries()),
+    productRecSuppressed: Array.from(productRecSuppressedCounter.entries()),
+    claimsTemplateFallbacks: Array.from(claimsTemplateFallbackCounter.entries()),
+    claimsViolations: Array.from(claimsViolationCounter.entries()),
   };
 }
 
@@ -719,6 +810,10 @@ module.exports = {
   recordRegionsEmitted,
   recordModulesIssueCountHistogram,
   recordIngredientActionsEmitted,
+  recordProductRecEmitted,
+  recordProductRecSuppressed,
+  recordClaimsTemplateFallback,
+  recordClaimsViolation,
   recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
   resetVisionMetrics,

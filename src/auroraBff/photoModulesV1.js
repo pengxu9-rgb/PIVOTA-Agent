@@ -1,5 +1,8 @@
 const crypto = require('crypto');
 const { mapIngredientActions } = require('./ingredientActionsV1');
+const { renderAllowedTemplate } = require('./claimsTemplates/render');
+const { buildProductRecommendations } = require('./productRecV1');
+const { inferRiskTier } = require('./ingredientKbV2/resolve');
 
 const FACE_COORD_SPACE = 'face_crop_norm_v1';
 const HEATMAP_GRID_DEFAULT = Object.freeze({ w: 64, h: 64 });
@@ -468,18 +471,25 @@ function moduleIdToLabel(moduleId, language) {
   return map[moduleId] ? map[moduleId][lang] : moduleId;
 }
 
-function buildIssueExplanation({ moduleId, issueType, evidenceRegionIds, language } = {}) {
+function buildIssueExplanation({ moduleId, issueType, evidenceRegionIds, language, market } = {}) {
   const lang = normalizeLanguage(language);
+  const templateLang = lang === 'CN' ? 'zh' : 'en';
   const moduleLabel = moduleIdToLabel(moduleId, lang);
-  const evidenceText = Array.isArray(evidenceRegionIds) && evidenceRegionIds.length
-    ? evidenceRegionIds.join(', ')
-    : lang === 'CN'
-      ? '高亮区域'
-      : 'highlighted regions';
-  if (lang === 'CN') {
-    return `基于照片高亮证据（${evidenceText}），${moduleLabel}存在 ${issueType} 相关信号。`;
-  }
-  return `Based on highlighted photo evidence (${evidenceText}), ${issueType} signals are visible in the ${moduleLabel}.`;
+  const normalizedMarket = String(market || '').trim().toUpperCase() || (lang === 'CN' ? 'CN' : 'US');
+  const rendered = renderAllowedTemplate({
+    templateType: 'module_explanation_short',
+    issueType,
+    moduleLabel,
+    lang: templateLang,
+    market: normalizedMarket,
+  });
+  return {
+    text: rendered.text,
+    templateKey: rendered.template_key,
+    fallback: Boolean(rendered.fallback),
+    reason: rendered.reason || 'ok',
+    violations: Array.isArray(rendered.violations) ? rendered.violations : [],
+  };
 }
 
 function computeRegionStyle({ severity0to4, confidence0to1, issueType } = {}) {
@@ -668,7 +678,25 @@ function moduleContribution({ moduleBox, region, meta } = {}) {
   };
 }
 
-function buildModuleIssues({ moduleId, moduleBox, regions, regionMeta, qualityGrade, language, profileSummary, ingredientRecEnabled } = {}) {
+function buildModuleIssues({
+  moduleId,
+  moduleBox,
+  regions,
+  regionMeta,
+  qualityGrade,
+  language,
+  profileSummary,
+  market,
+  riskTier,
+  ingredientRecEnabled,
+  productRecEnabled,
+  productRecMinCitations,
+  productRecMinEvidenceGrade,
+  productRecRepairOnlyWhenDegraded,
+  internalTestMode,
+  ingredientKbArtifactPath,
+  productCatalogPath,
+} = {}) {
   const issueBucket = new Map();
 
   for (const region of regions) {
@@ -691,6 +719,8 @@ function buildModuleIssues({ moduleId, moduleBox, regions, regionMeta, qualityGr
 
   const moduleIssues = [];
   const actions = [];
+  const templateFallbackRows = [];
+  const claimsViolationRows = [];
   const qualityFactor = qualityFactorForModule(qualityGrade);
 
   for (const [issueType, list] of issueBucket.entries()) {
@@ -711,13 +741,25 @@ function buildModuleIssues({ moduleId, moduleBox, regions, regionMeta, qualityGr
       .sort((a, b) => b.overlap - a.overlap)
       .slice(0, 3)
       .map((item) => item.region_id);
+    const explanation = buildIssueExplanation({ moduleId, issueType, evidenceRegionIds, language, market });
+    if (explanation.fallback) {
+      templateFallbackRows.push({
+        reason: String(explanation.reason || 'unknown'),
+      });
+    }
+    if (String(explanation.reason || '').toLowerCase() === 'banned_terms') {
+      claimsViolationRows.push({ reason: 'banned_terms' });
+    }
 
     moduleIssues.push({
       issue_type: issueType,
       severity_0_4: severity0to4,
       confidence_0_1: confidence0to1,
       evidence_region_ids: evidenceRegionIds,
-      explanation_short: buildIssueExplanation({ moduleId, issueType, evidenceRegionIds, language }),
+      explanation_short: explanation.text,
+      explanation_template_key: explanation.templateKey,
+      explanation_template_fallback: explanation.fallback,
+      explanation_template_reason: explanation.reason,
     });
 
     if (ingredientRecEnabled) {
@@ -727,23 +769,100 @@ function buildModuleIssues({ moduleId, moduleBox, regions, regionMeta, qualityGr
         language,
         barrierStatus: profileSummary && profileSummary.barrierStatus,
         sensitivity: profileSummary && profileSummary.sensitivity,
-        market: profileSummary && profileSummary.region,
+        market,
         contraindications: profileSummary && profileSummary.contraindications,
+        internalTestMode,
       });
-      for (const action of ingredientActions) actions.push(action);
+      for (const action of ingredientActions) {
+        actions.push(action);
+        if (action && action.why_template_fallback) {
+          templateFallbackRows.push({
+            reason: String(action.why_template_reason || 'unknown'),
+          });
+        }
+        if (String(action && action.why_template_reason ? action.why_template_reason : '').toLowerCase() === 'banned_terms') {
+          claimsViolationRows.push({ reason: 'banned_terms' });
+        }
+      }
+    }
+  }
+
+  let products = [];
+  let productSuppressedReason = null;
+  let productRecDebug = null;
+  if (productRecEnabled) {
+    const productRecResult = buildProductRecommendations({
+      moduleId,
+      issues: moduleIssues,
+      actions,
+      market,
+      lang: normalizeLanguage(language) === 'CN' ? 'zh' : 'en',
+      riskTier,
+      qualityGrade,
+      minCitations: productRecMinCitations,
+      minEvidenceGrade: productRecMinEvidenceGrade,
+      repairOnlyWhenDegraded: productRecRepairOnlyWhenDegraded,
+      internalTestMode,
+      artifactPath: ingredientKbArtifactPath,
+      catalogPath: productCatalogPath,
+    });
+    products = Array.isArray(productRecResult.products) ? productRecResult.products.slice(0, 3) : [];
+    productSuppressedReason = productRecResult.suppressed_reason || null;
+    productRecDebug = productRecResult.debug || null;
+    for (const product of products) {
+      if (product && product.why_match_template_fallback) {
+        templateFallbackRows.push({
+          reason: String(product.why_match_template_reason || 'unknown'),
+        });
+      }
+      if (String(product && product.why_match_template_reason ? product.why_match_template_reason : '').toLowerCase() === 'banned_terms') {
+        claimsViolationRows.push({ reason: 'banned_terms' });
+      }
     }
   }
 
   return {
     issues: moduleIssues.sort((a, b) => b.severity_0_4 - a.severity_0_4).slice(0, 4),
     actions,
+    products,
+    productSuppressedReason,
+    productRecDebug,
+    templateFallbackRows,
+    claimsViolationRows,
   };
 }
 
-function buildModules({ regions, regionMeta, qualityGrade, language, profileSummary, ingredientRecEnabled } = {}) {
+function buildModules({
+  regions,
+  regionMeta,
+  qualityGrade,
+  language,
+  profileSummary,
+  ingredientRecEnabled,
+  productRecEnabled,
+  productRecMinCitations,
+  productRecMinEvidenceGrade,
+  productRecRepairOnlyWhenDegraded,
+  internalTestMode,
+  ingredientKbArtifactPath,
+  productCatalogPath,
+} = {}) {
   const modules = [];
   const moduleIssueRows = [];
   const ingredientRows = [];
+  const productRecEmittedRows = [];
+  const productRecSuppressedRows = [];
+  const claimsTemplateFallbackRows = [];
+  const claimsViolationRows = [];
+  const lang = normalizeLanguage(language);
+  const market = String((profileSummary && profileSummary.region) || (lang === 'CN' ? 'CN' : 'US'))
+    .trim()
+    .toUpperCase();
+  const riskTier = inferRiskTier({
+    barrierStatus: profileSummary && profileSummary.barrierStatus,
+    sensitivity: profileSummary && profileSummary.sensitivity,
+    contraindications: profileSummary && profileSummary.contraindications,
+  });
 
   for (const [moduleId, moduleBoxRaw] of Object.entries(MODULE_BOXES)) {
     const moduleBoxSanitized = sanitizeBBox(moduleBoxRaw);
@@ -758,11 +877,21 @@ function buildModules({ regions, regionMeta, qualityGrade, language, profileSumm
       qualityGrade,
       language,
       profileSummary,
+      market,
+      riskTier,
       ingredientRecEnabled,
+      productRecEnabled,
+      productRecMinCitations,
+      productRecMinEvidenceGrade,
+      productRecRepairOnlyWhenDegraded,
+      internalTestMode,
+      ingredientKbArtifactPath,
+      productCatalogPath,
     });
 
     const issues = Array.isArray(result.issues) ? result.issues : [];
     const actions = Array.isArray(result.actions) ? result.actions : [];
+    const products = Array.isArray(result.products) ? result.products : [];
     for (const issue of issues) {
       moduleIssueRows.push({ module_id: moduleId, issue_type: issue.issue_type });
     }
@@ -772,18 +901,54 @@ function buildModules({ regions, regionMeta, qualityGrade, language, profileSumm
         : 'unknown';
       ingredientRows.push({ module_id: moduleId, issue_type: issueType });
     }
+    for (const row of Array.isArray(result.templateFallbackRows) ? result.templateFallbackRows : []) {
+      claimsTemplateFallbackRows.push({ reason: String(row && row.reason ? row.reason : 'unknown') });
+    }
+    for (const row of Array.isArray(result.claimsViolationRows) ? result.claimsViolationRows : []) {
+      claimsViolationRows.push({ reason: String(row && row.reason ? row.reason : 'unknown') });
+    }
+    if (productRecEnabled) {
+      for (const _product of products) {
+        productRecEmittedRows.push({
+          market,
+          quality_grade: normalizeQualityGrade(qualityGrade),
+        });
+      }
+      if (result.productSuppressedReason) {
+        productRecSuppressedRows.push({
+          reason: String(result.productSuppressedReason || 'unknown'),
+        });
+      }
+    }
 
-    modules.push({
+    const modulePayload = {
       module_id: moduleId,
       issues,
       actions,
-    });
+      ...(productRecEnabled ? { products } : {}),
+    };
+    if (internalTestMode) {
+      modulePayload.internal_debug = {
+        market,
+        risk_tier: riskTier,
+        product_suppressed_reason: result.productSuppressedReason,
+        product_rec: result.productRecDebug,
+      };
+    }
+
+    modules.push(modulePayload);
   }
 
   return {
     modules,
     moduleIssueCounts: countBy(moduleIssueRows, ['module_id', 'issue_type']),
     ingredientActionCounts: countBy(ingredientRows, ['module_id', 'issue_type']),
+    productRecEmittedCounts: countBy(productRecEmittedRows, ['market', 'quality_grade']),
+    productRecSuppressedCounts: countBy(productRecSuppressedRows, ['reason']),
+    claimsTemplateFallbackCounts: countBy(claimsTemplateFallbackRows, ['reason']),
+    claimsViolationCounts: countBy(claimsViolationRows, ['reason']),
+    market,
+    riskTier,
   };
 }
 
@@ -877,6 +1042,12 @@ function buildPhotoModulesCard({
   language,
   ingredientRecEnabled,
   productRecEnabled,
+  productRecMinCitations,
+  productRecMinEvidenceGrade,
+  productRecRepairOnlyWhenDegraded,
+  internalTestMode,
+  ingredientKbArtifactPath,
+  productCatalogPath,
 } = {}) {
   const qualityGrade = normalizeQualityGrade(photoQuality && photoQuality.grade);
   if (!usedPhotos) return null;
@@ -906,6 +1077,13 @@ function buildPhotoModulesCard({
     language,
     profileSummary,
     ingredientRecEnabled: Boolean(ingredientRecEnabled),
+    productRecEnabled: Boolean(productRecEnabled),
+    productRecMinCitations,
+    productRecMinEvidenceGrade,
+    productRecRepairOnlyWhenDegraded,
+    internalTestMode: Boolean(internalTestMode),
+    ingredientKbArtifactPath,
+    productCatalogPath,
   });
 
   const payload = {
@@ -923,8 +1101,16 @@ function buildPhotoModulesCard({
         'Persistent worsening after stopping all new actives for 72 hours.',
       ],
     },
-    ...(productRecEnabled ? { products: [] } : {}),
   };
+  if (internalTestMode) {
+    payload.internal_debug = {
+      market: modulesBuild.market,
+      risk_tier: modulesBuild.riskTier,
+      ingredient_rec_enabled: Boolean(ingredientRecEnabled),
+      product_rec_enabled: Boolean(productRecEnabled),
+      module_count: Array.isArray(modulesBuild.modules) ? modulesBuild.modules.length : 0,
+    };
+  }
 
   const regionCountRows = countBy(
     regions.map((region) => ({
@@ -946,6 +1132,10 @@ function buildPhotoModulesCard({
       moduleIssueCounts: modulesBuild.moduleIssueCounts,
       ingredientActionCounts: modulesBuild.ingredientActionCounts,
       geometryDropCounts: regionBuild.geometryCounts,
+      productRecEmittedCounts: modulesBuild.productRecEmittedCounts,
+      productRecSuppressedCounts: modulesBuild.productRecSuppressedCounts,
+      claimsTemplateFallbackCounts: modulesBuild.claimsTemplateFallbackCounts,
+      claimsViolationCounts: modulesBuild.claimsViolationCounts,
     },
   };
 }

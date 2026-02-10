@@ -1,5 +1,6 @@
 const { inferRiskTier, resolveIngredientRecommendation } = require('./ingredientKbV2/resolve');
 const { mergeIngredientActionWithEvidence } = require('./ingredientKbV2/merge');
+const { renderAllowedTemplate } = require('./claimsTemplates/render');
 
 function normalizeLang(language) {
   return String(language || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
@@ -11,12 +12,27 @@ function clampToAllowedFrequency(frequency, isFragile) {
   return frequency;
 }
 
-function toAction({ issueType, ingredient, evidenceRegionIds, language, isFragile } = {}) {
+function toAction({ issueType, ingredient, evidenceRegionIds, language, isFragile, market } = {}) {
   const lang = normalizeLang(language);
+  const templateLang = lang === 'CN' ? 'zh' : 'en';
   const evidenceIds = Array.isArray(evidenceRegionIds)
     ? evidenceRegionIds.filter((item) => typeof item === 'string' && item.trim()).slice(0, 3)
     : [];
-  const whySuffix = evidenceIds.length ? ` (${evidenceIds.join(', ')})` : '';
+  const ingredientName = lang === 'CN' && ingredient.name_cn ? ingredient.name_cn : ingredient.name;
+  const whyRendered = renderAllowedTemplate({
+    templateType: 'ingredient_why',
+    issueType,
+    ingredientName,
+    market,
+    lang: templateLang,
+  });
+  const howRendered = renderAllowedTemplate({
+    templateType: 'how_to_use',
+    issueType,
+    ingredientName,
+    market,
+    lang: templateLang,
+  });
 
   const cautions = Array.isArray(ingredient.cautions) ? ingredient.cautions.slice() : [];
   if (isFragile && ingredient.strong) {
@@ -30,18 +46,22 @@ function toAction({ issueType, ingredient, evidenceRegionIds, language, isFragil
   return {
     action_type: 'ingredient',
     ingredient_id: ingredient.id,
-    ingredient_name: lang === 'CN' && ingredient.name_cn ? ingredient.name_cn : ingredient.name,
-    why:
-      lang === 'CN'
-        ? `针对 ${issueType} 信号（来自高亮照片区域）${whySuffix}`
-        : `Targets ${issueType} based on highlighted photo evidence${whySuffix}`,
+    ingredient_name: ingredientName,
+    why: whyRendered.text,
+    why_template_key: whyRendered.template_key,
+    why_template_fallback: Boolean(whyRendered.fallback),
+    why_template_reason: whyRendered.reason || 'ok',
     how_to_use: {
       time: ingredient.time,
       frequency: clampToAllowedFrequency(ingredient.frequency, isFragile),
-      notes: lang === 'CN' && ingredient.notes_cn ? ingredient.notes_cn : ingredient.notes,
+      notes: [howRendered.text, lang === 'CN' && ingredient.notes_cn ? ingredient.notes_cn : ingredient.notes]
+        .filter(Boolean)
+        .join(' ')
+        .slice(0, 240),
     },
     cautions,
     evidence_issue_types: [issueType],
+    evidence_region_ids: evidenceIds,
   };
 }
 
@@ -262,11 +282,13 @@ function mapIngredientActions({
   sensitivity,
   market,
   contraindications,
+  internalTestMode,
 } = {}) {
   const key = String(issueType || '').trim().toLowerCase();
   const templates = ISSUE_INGREDIENT_MAP[key];
   if (!Array.isArray(templates) || templates.length === 0) return [];
 
+  const lang = normalizeLang(language);
   const resolvedMarket = normalizeMarket(market, language);
   const riskTier = inferRiskTier({ barrierStatus, sensitivity, contraindications });
   const sensitiveHigh = String(sensitivity || '').trim().toLowerCase() === 'high';
@@ -282,18 +304,50 @@ function mapIngredientActions({
   }
 
   return selected.map((ingredient) => {
-    const action = toAction({ issueType: key, ingredient, evidenceRegionIds, language, isFragile });
+    const action = toAction({
+      issueType: key,
+      ingredient,
+      evidenceRegionIds,
+      language,
+      isFragile,
+      market: resolvedMarket,
+    });
     const ingredientId = resolveIngredientId(ingredient.id);
     const evidence = resolveIngredientRecommendation({
       ingredientId,
       market: resolvedMarket,
       riskTier,
     });
-    return mergeIngredientActionWithEvidence({
+    const merged = mergeIngredientActionWithEvidence({
       action,
       evidence,
       market: resolvedMarket,
     });
+    if (merged.evidence_limited) {
+      const safeWhy = renderAllowedTemplate({
+        templateType: 'generic_safe',
+        issueType: key,
+        ingredientName: merged.ingredient_name,
+        market: resolvedMarket,
+        lang: lang === 'CN' ? 'zh' : 'en',
+      });
+      merged.why = safeWhy.text;
+      merged.why_template_key = safeWhy.template_key;
+      merged.why_template_fallback = true;
+      merged.why_template_reason = safeWhy.reason || 'generic_safe';
+    }
+    merged.evidence_badge = merged.evidence_limited ? 'limited' : 'supported';
+    if (internalTestMode) {
+      merged.internal_debug = {
+        ingredient_id: merged.ingredient_id,
+        market: resolvedMarket,
+        evidence_grade: String(merged.evidence_grade || 'C'),
+        citations_count: Array.isArray(merged.citations) ? merged.citations.length : 0,
+        evidence_limited: Boolean(merged.evidence_limited),
+        risk_tier: merged.risk_tier || riskTier,
+      };
+    }
+    return merged;
   });
 }
 

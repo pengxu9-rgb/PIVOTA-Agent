@@ -41,6 +41,10 @@ const {
   recordRegionsEmitted,
   recordModulesIssueCountHistogram,
   recordIngredientActionsEmitted,
+  recordProductRecEmitted,
+  recordProductRecSuppressed,
+  recordClaimsTemplateFallback,
+  recordClaimsViolation,
   recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
@@ -232,6 +236,22 @@ const DIAG_OVERLAY_MODE = (() => {
 })();
 const DIAG_INGREDIENT_REC = String(process.env.DIAG_INGREDIENT_REC || 'true').toLowerCase() !== 'false';
 const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || '').toLowerCase() === 'true';
+const DIAG_PRODUCT_REC_MIN_CITATIONS = Math.max(
+  0,
+  Math.min(5, Math.trunc(Number(process.env.DIAG_PRODUCT_REC_MIN_CITATIONS || 1) || 1)),
+);
+const DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE = (() => {
+  const token = String(process.env.DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE || 'B')
+    .trim()
+    .toUpperCase();
+  if (token === 'A' || token === 'B' || token === 'C') return token;
+  return 'B';
+})();
+const DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED =
+  String(process.env.DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED || '').toLowerCase() === 'true';
+const INTERNAL_TEST_MODE = String(process.env.INTERNAL_TEST_MODE || '').toLowerCase() === 'true';
+const DIAG_INGREDIENT_KB_V2_PATH = String(process.env.INGREDIENT_KB_V2_PATH || '').trim() || null;
+const DIAG_PRODUCT_CATALOG_PATH = String(process.env.AURORA_PRODUCT_REC_CATALOG_PATH || '').trim() || null;
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -1043,6 +1063,12 @@ function maybeBuildPhotoModulesCardForAnalysis({
     language,
     ingredientRecEnabled: DIAG_INGREDIENT_REC,
     productRecEnabled: DIAG_PRODUCT_REC,
+    productRecMinCitations: DIAG_PRODUCT_REC_MIN_CITATIONS,
+    productRecMinEvidenceGrade: DIAG_PRODUCT_REC_MIN_EVIDENCE_GRADE,
+    productRecRepairOnlyWhenDegraded: DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED,
+    internalTestMode: INTERNAL_TEST_MODE,
+    ingredientKbArtifactPath: DIAG_INGREDIENT_KB_V2_PATH,
+    productCatalogPath: DIAG_PRODUCT_CATALOG_PATH,
   });
   if (!built || !built.card) return null;
 
@@ -1080,6 +1106,47 @@ function maybeBuildPhotoModulesCardForAnalysis({
     recordIngredientActionsEmitted({
       moduleId: row.module_id,
       issueType: row.issue_type,
+      delta,
+    });
+  }
+
+  const productRecEmittedCounts = Array.isArray(metrics.productRecEmittedCounts) ? metrics.productRecEmittedCounts : [];
+  for (const row of productRecEmittedCounts) {
+    const delta = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (delta <= 0) continue;
+    recordProductRecEmitted({
+      market: row.market,
+      qualityGrade: row.quality_grade,
+      delta,
+    });
+  }
+
+  const productRecSuppressedCounts = Array.isArray(metrics.productRecSuppressedCounts) ? metrics.productRecSuppressedCounts : [];
+  for (const row of productRecSuppressedCounts) {
+    const delta = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (delta <= 0) continue;
+    recordProductRecSuppressed({
+      reason: row.reason,
+      delta,
+    });
+  }
+
+  const claimsTemplateFallbackCounts = Array.isArray(metrics.claimsTemplateFallbackCounts) ? metrics.claimsTemplateFallbackCounts : [];
+  for (const row of claimsTemplateFallbackCounts) {
+    const delta = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (delta <= 0) continue;
+    recordClaimsTemplateFallback({
+      reason: row.reason,
+      delta,
+    });
+  }
+
+  const claimsViolationCounts = Array.isArray(metrics.claimsViolationCounts) ? metrics.claimsViolationCounts : [];
+  for (const row of claimsViolationCounts) {
+    const delta = Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0;
+    if (delta <= 0) continue;
+    recordClaimsViolation({
+      reason: row.reason,
       delta,
     });
   }

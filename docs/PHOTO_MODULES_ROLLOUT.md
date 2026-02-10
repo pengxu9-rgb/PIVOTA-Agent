@@ -77,6 +77,7 @@ Fastest rollback options:
 ## Operational checks
 
 - Run `make photo-modules-acceptance` before each rollout stage.
+- Run `make photo-modules-prod-smoke BASE=https://pivota-agent-production.up.railway.app PHOTO_PATH=/absolute/path/to/photo.jpg` for end-to-end production validation.
 - Confirm no privacy regression in `reports/analytics_audit.md`.
 - Confirm acceptance reports:
   - `reports/photo_modules_backend_acceptance.md`

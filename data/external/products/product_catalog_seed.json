@@ -1,0 +1,98 @@
+[
+  {
+    "product_id": "prod_repair_ceramide_001",
+    "name": "Barrier Relief Moisturizer",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["ceramide_np", "panthenol", "niacinamide"],
+    "risk_tags": ["repair"],
+    "usage_note_en": "Apply after cleansing, then seal with moisturizer.",
+    "usage_note_zh": "洁面后使用，再叠加面霜。",
+    "cautions_en": ["Patch test when skin is highly reactive."],
+    "cautions_zh": ["敏感期建议先做局部测试。"]
+  },
+  {
+    "product_id": "prod_repair_panthenol_001",
+    "name": "Calm Recovery Serum",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["panthenol", "zinc_pca"],
+    "risk_tags": ["repair"],
+    "usage_note_en": "Use once nightly at first, then increase as tolerated.",
+    "usage_note_zh": "先每晚一次，耐受后再调整。",
+    "cautions_en": ["Reduce frequency if persistent tingling appears."],
+    "cautions_zh": ["如持续刺痛，请降低频率。"]
+  },
+  {
+    "product_id": "prod_shine_niacinamide_001",
+    "name": "Balance Niacinamide Gel",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["niacinamide", "zinc_pca"],
+    "risk_tags": ["lightweight"],
+    "usage_note_en": "Apply a thin layer in AM/PM routines.",
+    "usage_note_zh": "早晚薄涂使用。",
+    "cautions_en": ["Avoid combining with too many actives in one step."],
+    "cautions_zh": ["避免单次叠加过多功效成分。"]
+  },
+  {
+    "product_id": "prod_tone_vitc_001",
+    "name": "Daily Bright C Serum",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["ascorbic_acid", "niacinamide"],
+    "risk_tags": ["vitamin_c", "active"],
+    "usage_note_en": "Use in the morning with sunscreen.",
+    "usage_note_zh": "建议白天使用并配合防晒。",
+    "cautions_en": ["Pause if irritation persists."],
+    "cautions_zh": ["若持续刺激请暂停。"]
+  },
+  {
+    "product_id": "prod_texture_bha_001",
+    "name": "Refine BHA Lotion",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["salicylic_acid"],
+    "risk_tags": ["acid", "active"],
+    "usage_note_en": "Start 2 times weekly on non-consecutive nights.",
+    "usage_note_zh": "建议每周 2 次，间隔夜间使用。",
+    "cautions_en": ["Do not combine with retinoid on same night."],
+    "cautions_zh": ["同晚避免与维A类同用。"]
+  },
+  {
+    "product_id": "prod_acne_bpo_001",
+    "name": "Target Blemish Spot Gel",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["benzoyl_peroxide"],
+    "risk_tags": ["active", "strong"],
+    "usage_note_en": "Use as spot treatment only.",
+    "usage_note_zh": "仅用于局部点涂。",
+    "cautions_en": ["May cause dryness; reduce frequency if needed."],
+    "cautions_zh": ["可能偏干，必要时降低频率。"]
+  },
+  {
+    "product_id": "prod_retinol_pm_001",
+    "name": "Night Retinol Emulsion",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["retinol", "ceramide_np"],
+    "risk_tags": ["retinoid", "active"],
+    "usage_note_en": "Use at night and increase slowly.",
+    "usage_note_zh": "建议夜间低频起步。",
+    "cautions_en": ["Not recommended during pregnancy uncertainty."],
+    "cautions_zh": ["孕期不确定时不建议使用。"]
+  },
+  {
+    "product_id": "prod_azelaic_001",
+    "name": "Azelaic Support Cream",
+    "brand": "Aurora Lab",
+    "market_scope": ["EU", "US"],
+    "ingredient_ids": ["azelaic_acid", "panthenol"],
+    "risk_tags": ["active"],
+    "usage_note_en": "Apply at night on clean, dry skin.",
+    "usage_note_zh": "夜间洁面后在干燥皮肤上使用。",
+    "cautions_en": ["Avoid over-exfoliation in the same routine."],
+    "cautions_zh": ["同套流程避免过度去角质。"]
+  }
+]
