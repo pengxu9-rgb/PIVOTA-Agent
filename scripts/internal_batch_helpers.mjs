@@ -44,7 +44,9 @@ export function runTimestampKey(date = new Date()) {
   const d = String(date.getUTCDate()).padStart(2, '0');
   const hh = String(date.getUTCHours()).padStart(2, '0');
   const mm = String(date.getUTCMinutes()).padStart(2, '0');
-  return `${y}${m}${d}_${hh}${mm}`;
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  const ms = String(date.getUTCMilliseconds()).padStart(3, '0');
+  return `${y}${m}${d}_${hh}${mm}${ss}${ms}`;
 }
 
 export function normalizeMarket(input) {

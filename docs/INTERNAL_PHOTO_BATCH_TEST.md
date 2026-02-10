@@ -5,9 +5,9 @@
 `internal_batch_run_photos` is an internal-only bulk photo validation toolchain for Aurora Diagnosis Pipeline.
 It runs a local photo set against `/v1/analysis/skin`, then produces three artifacts:
 
-- `reports/internal_batch_YYYYMMDD_HHMM.jsonl`
-- `reports/internal_batch_YYYYMMDD_HHMM.csv`
-- `reports/internal_batch_YYYYMMDD_HHMM.md`
+- `reports/internal_batch_YYYYMMDD_HHMMSSmmm.jsonl`
+- `reports/internal_batch_YYYYMMDD_HHMMSSmmm.csv`
+- `reports/internal_batch_YYYYMMDD_HHMMSSmmm.md`
 
 No original filename/path is written into artifacts. Samples are identified only by `photo_hash`.
 
