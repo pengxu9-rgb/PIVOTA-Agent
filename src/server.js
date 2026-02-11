@@ -1238,6 +1238,313 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
   };
 }
 
+function withProxySearchFallbackMetadata(body, patch) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : {};
+  metadata.proxy_search_fallback = {
+    ...(metadata.proxy_search_fallback &&
+    typeof metadata.proxy_search_fallback === 'object' &&
+    !Array.isArray(metadata.proxy_search_fallback)
+      ? metadata.proxy_search_fallback
+      : {}),
+    ...patch,
+  };
+  return { ...body, metadata };
+}
+
+function firstQueryParamValue(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item != null && String(item).trim()) return item;
+    }
+    return value.length > 0 ? value[0] : undefined;
+  }
+  return value;
+}
+
+function parseQueryBoolean(value) {
+  const raw = firstQueryParamValue(value);
+  if (raw == null) return undefined;
+  const normalized = String(raw).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
+}
+
+function parseQueryNumber(value) {
+  const raw = firstQueryParamValue(value);
+  if (raw == null || String(raw).trim() === '') return undefined;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+function parseQueryStringArray(value) {
+  if (value == null) return [];
+  const arr = Array.isArray(value) ? value : [value];
+  return arr
+    .flatMap((item) => String(item || '').split(','))
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+}
+
+function extractSearchProductId(product) {
+  if (!product || typeof product !== 'object') return '';
+  const raw =
+    product.product_id ||
+    product.productId ||
+    product.platform_product_id ||
+    product.platformProductId ||
+    product.sku_id ||
+    product.skuId ||
+    product.id;
+  return String(raw || '').trim();
+}
+
+function hasUsableSearchProduct(product) {
+  if (!product || typeof product !== 'object') return false;
+  const merchantId = String(product.merchant_id || product.merchantId || '').trim();
+  if (!merchantId) return false;
+  return Boolean(extractSearchProductId(product));
+}
+
+function countUsableSearchProducts(products) {
+  if (!Array.isArray(products)) return 0;
+  return products.filter((product) => hasUsableSearchProduct(product)).length;
+}
+
+function shouldFallbackProxySearch(normalized, statusCode) {
+  if (Number(statusCode) >= 500) return true;
+  if (Number(statusCode) < 200 || Number(statusCode) >= 300) return false;
+  const products = Array.isArray(normalized?.products) ? normalized.products : [];
+  const usableCount = countUsableSearchProducts(products);
+  const total = Number(normalized?.total);
+  if (products.length > 0 && usableCount === 0) return true;
+  if (Number.isFinite(total) && total > 0 && usableCount === 0) return true;
+  if (products.length === 0 && Number.isFinite(total) && total === 0) return true;
+  return false;
+}
+
+function buildFindProductsMultiPayloadFromQuery(rawQuery) {
+  const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
+  const search = {};
+
+  const textQuery = String(firstQueryParamValue(query.query) || '').trim();
+  if (!textQuery) return null;
+  search.query = textQuery;
+
+  const merchantId = String(firstQueryParamValue(query.merchant_id || query.merchantId) || '').trim();
+  if (merchantId) search.merchant_id = merchantId;
+
+  const merchantIds = parseQueryStringArray(query.merchant_ids || query.merchantIds);
+  if (merchantIds.length > 0) search.merchant_ids = merchantIds;
+
+  const searchAllMerchants = parseQueryBoolean(query.search_all_merchants || query.searchAllMerchants);
+  if (searchAllMerchants !== undefined) search.search_all_merchants = searchAllMerchants;
+
+  const inStockOnly = parseQueryBoolean(query.in_stock_only || query.inStockOnly);
+  if (inStockOnly !== undefined) search.in_stock_only = inStockOnly;
+
+  const lang = String(firstQueryParamValue(query.lang) || '').trim();
+  if (lang) search.lang = lang;
+
+  const category = String(firstQueryParamValue(query.category) || '').trim();
+  if (category) search.category = category;
+
+  const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
+  if (minPrice !== undefined) search.min_price = minPrice;
+
+  const maxPrice = parseQueryNumber(query.max_price ?? query.price_max);
+  if (maxPrice !== undefined) search.max_price = maxPrice;
+
+  const limit = parseQueryNumber(query.limit ?? query.page_size);
+  if (limit !== undefined) search.limit = Math.max(1, Math.min(100, Math.floor(limit)));
+
+  const offset = parseQueryNumber(query.offset);
+  if (offset !== undefined) {
+    const normalizedOffset = Math.max(0, Math.floor(offset));
+    if (search.limit) {
+      search.page = Math.floor(normalizedOffset / search.limit) + 1;
+    } else {
+      search.offset = normalizedOffset;
+    }
+  }
+
+  return { search };
+}
+
+async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason }) {
+  const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
+  if (!payload) return null;
+
+  const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const requestBody = {
+    operation: 'find_products_multi',
+    payload,
+    metadata: {
+      source: 'agent_search_proxy_fallback',
+      trigger_reason: reason || 'unknown',
+    },
+  };
+
+  const resp = await axios({
+    method: 'POST',
+    url,
+    data: requestBody,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: getUpstreamTimeoutMs('find_products_multi'),
+    validateStatus: () => true,
+  });
+
+  const normalized = normalizeAgentProductsListResponse(resp.data, {
+    limit: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size),
+    offset: parseQueryNumber(queryParams?.offset),
+  });
+
+  return {
+    status: resp.status,
+    usableCount: countUsableSearchProducts(normalized?.products),
+    data: withProxySearchFallbackMetadata(normalized, {
+      applied: true,
+      reason: reason || 'unknown',
+    }),
+  };
+}
+
+async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }) {
+  const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
+  const queryText = String(firstQueryParamValue(query.query) || '').trim();
+  if (!queryText) return null;
+
+  const lang = String(firstQueryParamValue(query.lang) || 'en').trim().toLowerCase() || 'en';
+  const merchantId = String(firstQueryParamValue(query.merchant_id || query.merchantId) || '').trim();
+  const merchantIds = parseQueryStringArray(query.merchant_ids || query.merchantIds);
+  const preferMerchants = uniqueStrings([
+    merchantId,
+    ...merchantIds,
+    ...getCreatorCatalogMerchantIds(),
+  ]);
+
+  const timeoutMs = Math.max(
+    800,
+    Math.min(getUpstreamTimeoutMs('find_products_multi'), Number(process.env.PROXY_SEARCH_RESOLVE_TIMEOUT_MS || 2200)),
+  );
+
+  let resolved = null;
+  try {
+    resolved = await resolveProductRef({
+      query: queryText,
+      lang,
+      hints: { title: queryText, aliases: [queryText] },
+      options: {
+        ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+        search_all_merchants: true,
+        upstream_retries: 0,
+        timeout_ms: timeoutMs,
+      },
+      pivotaApiBase: PIVOTA_API_BASE,
+      pivotaApiKey: PIVOTA_API_KEY,
+      checkoutToken,
+    });
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), query: queryText },
+      'proxy agent search resolver fallback failed',
+    );
+    return null;
+  }
+
+  const resolvedRef = resolved && resolved.resolved ? resolved.product_ref : null;
+  const resolvedProductId = String(resolvedRef?.product_id || '').trim();
+  const resolvedMerchantId = String(resolvedRef?.merchant_id || '').trim();
+  if (!resolvedProductId || !resolvedMerchantId) return null;
+
+  let detail = null;
+  try {
+    detail = await fetchProductDetailFromUpstream({
+      merchantId: resolvedMerchantId,
+      productId: resolvedProductId,
+      checkoutToken,
+    });
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        merchant_id: resolvedMerchantId,
+        product_id: resolvedProductId,
+      },
+      'proxy agent search resolver fallback detail fetch failed; returning minimal row',
+    );
+  }
+
+  const title = String(
+    detail?.title ||
+      detail?.name ||
+      detail?.display_name ||
+      queryText,
+  ).trim();
+
+  const productRow = {
+    ...(detail && typeof detail === 'object' ? detail : {}),
+    id: String(detail?.id || detail?.product_id || resolvedProductId),
+    product_id: String(detail?.product_id || detail?.id || resolvedProductId),
+    merchant_id: String(detail?.merchant_id || resolvedMerchantId),
+    platform_product_id: String(
+      detail?.platform_product_id ||
+        detail?.platformProductId ||
+        detail?.product_id ||
+        resolvedProductId,
+    ),
+    ...(title ? { title } : {}),
+    ...(title && !detail?.name ? { name: title } : {}),
+    canonical_product_ref: {
+      merchant_id: resolvedMerchantId,
+      product_id: resolvedProductId,
+    },
+  };
+
+  const normalized = normalizeAgentProductsListResponse({
+    status: 'success',
+    success: true,
+    products: [productRow],
+    total: 1,
+    page: 1,
+    page_size: 1,
+    metadata: {
+      query_source: 'agent_products_resolver_fallback',
+      resolve_reason: resolved?.reason || null,
+      resolve_reason_code:
+        resolved?.reason_code ||
+        resolved?.metadata?.resolve_reason_code ||
+        null,
+      resolve_confidence:
+        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
+      resolve_latency_ms:
+        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+    },
+  });
+
+  return {
+    status: 200,
+    usableCount: countUsableSearchProducts(normalized?.products),
+    data: withProxySearchFallbackMetadata(normalized, {
+      applied: true,
+      reason: reason || 'resolver_fallback',
+    }),
+  };
+}
+
 function normalizeAgentProductDetailResponse(raw) {
   if (!raw) return raw;
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
@@ -4237,8 +4544,105 @@ async function proxyAgentSearchToBackend(req, res) {
       validateStatus: () => true,
     });
 
-    return res.status(resp.status).json(resp.data);
+    const normalized = normalizeAgentProductsListResponse(resp.data, {
+      limit: parseQueryNumber(req.query?.limit ?? req.query?.page_size),
+      offset: parseQueryNumber(req.query?.offset),
+    });
+    const queryText = String(firstQueryParamValue(req.query?.query) || '').trim();
+    const primaryUsableCount = countUsableSearchProducts(normalized?.products);
+    const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
+
+    if (shouldFallback) {
+      try {
+        const fallback = await queryFindProductsMultiFallback({
+          queryParams: req.query,
+          checkoutToken,
+          reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
+        });
+        if (
+          fallback &&
+          fallback.status >= 200 &&
+          fallback.status < 300 &&
+          fallback.usableCount >= Math.max(1, primaryUsableCount)
+        ) {
+          return res.status(fallback.status).json(fallback.data);
+        }
+      } catch (fallbackErr) {
+        logger.warn(
+          { err: fallbackErr?.message || String(fallbackErr) },
+          'proxy agent search fallback invoke failed; keeping primary response',
+        );
+      }
+
+      try {
+        const resolverFallback = await queryResolveSearchFallback({
+          queryParams: req.query,
+          checkoutToken,
+          reason: 'resolver_after_primary',
+        });
+        if (
+          resolverFallback &&
+          resolverFallback.status >= 200 &&
+          resolverFallback.status < 300 &&
+          resolverFallback.usableCount > 0
+        ) {
+          return res.status(resolverFallback.status).json(resolverFallback.data);
+        }
+      } catch (resolverErr) {
+        logger.warn(
+          { err: resolverErr?.message || String(resolverErr) },
+          'proxy agent search resolver fallback failed; keeping primary response',
+        );
+      }
+    }
+
+    return res.status(resp.status).json(
+      withProxySearchFallbackMetadata(normalized, {
+        applied: false,
+        reason: shouldFallback ? 'fallback_not_better' : 'not_needed',
+      }),
+    );
   } catch (err) {
+    const queryText = String(firstQueryParamValue(req.query?.query) || '').trim();
+    if (queryText) {
+      try {
+        const fallback = await queryFindProductsMultiFallback({
+          queryParams: req.query,
+          checkoutToken,
+          reason: 'primary_request_failed',
+        });
+        if (fallback && fallback.status >= 200 && fallback.status < 300 && fallback.usableCount > 0) {
+          return res.status(fallback.status).json(fallback.data);
+        }
+      } catch (fallbackErr) {
+        logger.warn(
+          { err: fallbackErr?.message || String(fallbackErr) },
+          'proxy agent search fallback invoke failed after primary exception',
+        );
+      }
+
+      try {
+        const resolverFallback = await queryResolveSearchFallback({
+          queryParams: req.query,
+          checkoutToken,
+          reason: 'resolver_after_exception',
+        });
+        if (
+          resolverFallback &&
+          resolverFallback.status >= 200 &&
+          resolverFallback.status < 300 &&
+          resolverFallback.usableCount > 0
+        ) {
+          return res.status(resolverFallback.status).json(resolverFallback.data);
+        }
+      } catch (resolverErr) {
+        logger.warn(
+          { err: resolverErr?.message || String(resolverErr) },
+          'proxy agent search resolver fallback failed after primary exception',
+        );
+      }
+    }
+
     const { code, message, data } = extractUpstreamErrorCode(err);
     const statusCode = err?.response?.status || err?.status || 500;
     return res.status(statusCode).json({
