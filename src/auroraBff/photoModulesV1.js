@@ -68,6 +68,8 @@ const FACE_OVAL_CLIP_ENABLED = parseEnvBoolean(process.env.DIAG_FACE_OVAL_CLIP, 
 const MODULE_SHRINK_CHIN = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHIN, 0.8, 0.5, 1);
 const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOREHEAD, 0.88, 0.5, 1);
 const MODULE_SHRINK_CHEEK = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHEEK, 0.9, 0.5, 1);
+const MODULE_SHRINK_UNDER_EYE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_UNDER_EYE, 0.95, 0.5, 1);
+const MODULE_SHRINK_NOSE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_NOSE, 0.95, 0.5, 1);
 const FACE_OVAL_CLIP_MIN_PIXELS = Math.max(
   1,
   Math.min(512, Math.trunc(Number(process.env.DIAG_FACE_OVAL_CLIP_MIN_PIXELS || 8) || 8)),
@@ -1220,6 +1222,8 @@ function moduleShrinkScale(moduleId) {
   if (token === 'chin') return MODULE_SHRINK_CHIN;
   if (token === 'forehead') return MODULE_SHRINK_FOREHEAD;
   if (token === 'left_cheek' || token === 'right_cheek') return MODULE_SHRINK_CHEEK;
+  if (token === 'under_eye_left' || token === 'under_eye_right') return MODULE_SHRINK_UNDER_EYE;
+  if (token === 'nose') return MODULE_SHRINK_NOSE;
   return 1;
 }
 
@@ -1254,9 +1258,11 @@ function attachModuleMasks({
   const activeModuleBoxes = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
   const moduleIds = Object.keys(activeModuleBoxes);
   const effectiveModuleBoxes = {};
+  const shrinkFactorsUsed = {};
   for (const moduleId of moduleIds) {
     const baseBox = activeModuleBoxes[moduleId];
     const scale = moduleShrinkScale(moduleId);
+    shrinkFactorsUsed[moduleId] = round3(scale);
     const adjusted = shrinkModuleBox(baseBox, scale);
     if (adjusted) effectiveModuleBoxes[moduleId] = adjusted;
   }
@@ -1373,6 +1379,7 @@ function attachModuleMasks({
     skinmask_positive_ratio: Number.isFinite(skinMaskPositiveRatio) ? round3(skinMaskPositiveRatio) : null,
     face_oval_clip_enabled: Boolean(faceOvalMask),
     face_oval_clip_fallback_modules: faceOvalClipFallbackModules,
+    shrink_factors_used: shrinkFactorsUsed,
     degraded_reasons: Array.from(degradedReasons),
   };
 }
@@ -1484,6 +1491,7 @@ function buildPhotoModulesCard({
       skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
       face_oval_clip_enabled: moduleMaskBuild.face_oval_clip_enabled,
       face_oval_clip_fallback_modules: moduleMaskBuild.face_oval_clip_fallback_modules,
+      shrink_factors_used: moduleMaskBuild.shrink_factors_used,
       degraded_reasons: moduleMaskBuild.degraded_reasons,
     };
   }
