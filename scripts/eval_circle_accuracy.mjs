@@ -33,6 +33,9 @@ const {
   moduleMaskFromBox,
 } = require('../src/auroraBff/evalAdapters/common/metrics');
 const {
+  cropMaskToNorm,
+} = require('../src/auroraBff/evalAdapters/common/maskUtils');
+const {
   validateModuleBoxes,
 } = require('../src/auroraBff/evalAdapters/common/circlePriorModel');
 const {
@@ -68,6 +71,7 @@ const DEFAULT_SKINMASK_MODEL_PATH = process.env.DIAG_SKINMASK_MODEL_PATH || path
 const DEFAULT_MIN_MIOU = Number(process.env.EVAL_MIN_MIOU || 0.65);
 const DEFAULT_MAX_FAIL_RATE = Number(process.env.EVAL_MAX_FAIL_RATE || 0.05);
 const DEFAULT_MAX_LEAKAGE = Number(process.env.EVAL_MAX_LEAKAGE || 0.1);
+const DEFAULT_MAX_LEAKAGE_BG = Number(process.env.EVAL_MAX_LEAKAGE_BG || process.env.EVAL_MAX_LEAKAGE || 0.1);
 const DEFAULT_MAX_SKIN_ROI_TOO_SMALL = Number(process.env.EVAL_MAX_SKIN_ROI_TOO_SMALL || 0.2);
 const DEFAULT_SKIN_ROI_MIN_PIXELS = Number(process.env.EVAL_SKIN_ROI_MIN_PIXELS || process.env.DIAG_SKINMASK_MIN_PIXELS || 8);
 const DEFAULT_SKINMASK_NO_EFFECT_STREAK = Number(process.env.EVAL_SKINMASK_NO_EFFECT_STREAK || 10);
@@ -134,6 +138,8 @@ function defaultMetricStats() {
     modules_scored: 0,
     miou_mean: 0,
     coverage_mean: 0,
+    leakage_non_skin_mean: 0,
+    leakage_bg_mean: 0,
     leakage_mean: 0,
   };
 }
@@ -171,7 +177,15 @@ function finalizeEvalRow(inputRow) {
   metricStats.modules_scored = Number.isFinite(modulesScored) ? Math.max(0, Math.trunc(modulesScored)) : 0;
   metricStats.miou_mean = round3(metricStats.miou_mean || 0);
   metricStats.coverage_mean = round3(metricStats.coverage_mean || 0);
-  metricStats.leakage_mean = round3(metricStats.leakage_mean || 0);
+  const leakageNonSkinRaw = Number.isFinite(Number(metricStats.leakage_non_skin_mean))
+    ? Number(metricStats.leakage_non_skin_mean)
+    : Number(metricStats.leakage_mean || 0);
+  const leakageBgRaw = Number.isFinite(Number(metricStats.leakage_bg_mean))
+    ? Number(metricStats.leakage_bg_mean)
+    : Number(metricStats.leakage_mean || 0);
+  metricStats.leakage_non_skin_mean = round3(leakageNonSkinRaw);
+  metricStats.leakage_bg_mean = round3(leakageBgRaw);
+  metricStats.leakage_mean = metricStats.leakage_non_skin_mean;
   gtStats.skin_pixels = Number.isFinite(Number(gtStats.skin_pixels)) ? Math.max(0, Number(gtStats.skin_pixels)) : 0;
   predStats.module_count = Number.isFinite(Number(predStats.module_count)) ? Math.max(0, Number(predStats.module_count)) : 0;
   predStats.pred_skin_pixels_est = Number.isFinite(Number(predStats.pred_skin_pixels_est))
@@ -314,6 +328,7 @@ function parseArgs(argv) {
     eval_min_miou: parseNumber(process.env.EVAL_MIN_MIOU, DEFAULT_MIN_MIOU, 0, 1),
     eval_max_fail_rate: parseNumber(process.env.EVAL_MAX_FAIL_RATE, DEFAULT_MAX_FAIL_RATE, 0, 1),
     eval_max_leakage: parseNumber(process.env.EVAL_MAX_LEAKAGE, DEFAULT_MAX_LEAKAGE, 0, 1),
+    eval_max_leakage_bg: parseNumber(process.env.EVAL_MAX_LEAKAGE_BG, DEFAULT_MAX_LEAKAGE_BG, 0, 1),
     eval_max_skin_roi_too_small: parseNumber(process.env.EVAL_MAX_SKIN_ROI_TOO_SMALL, DEFAULT_MAX_SKIN_ROI_TOO_SMALL, 0, 1),
     skin_roi_min_pixels: parseNumber(process.env.EVAL_SKIN_ROI_MIN_PIXELS, DEFAULT_SKIN_ROI_MIN_PIXELS, 1, 4096),
     circle_model_path: process.env.CIRCLE_MODEL_PATH || DEFAULT_CIRCLE_MODEL_PATH,
@@ -438,6 +453,11 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--eval_max_leakage_bg' && next) {
+      out.eval_max_leakage_bg = parseNumber(next, out.eval_max_leakage_bg, 0, 1);
+      i += 1;
+      continue;
+    }
     if (token === '--skin_roi_min_pixels' && next) {
       out.skin_roi_min_pixels = parseNumber(next, out.skin_roi_min_pixels, 1, 4096);
       i += 1;
@@ -505,6 +525,28 @@ function percentile(values, p) {
   const sorted = values.slice().sort((a, b) => a - b);
   const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * p)));
   return sorted[idx];
+}
+
+function leakageAgainstMask(predMask, targetMask) {
+  if (!(predMask instanceof Uint8Array) || !(targetMask instanceof Uint8Array)) return 0;
+  const len = Math.min(predMask.length, targetMask.length);
+  let predCount = 0;
+  let overlapCount = 0;
+  for (let i = 0; i < len; i += 1) {
+    if (!predMask[i]) continue;
+    predCount += 1;
+    if (targetMask[i]) overlapCount += 1;
+  }
+  return predCount > 0 ? overlapCount / predCount : 0;
+}
+
+function invertBinaryMask(mask) {
+  if (!(mask instanceof Uint8Array)) return new Uint8Array(0);
+  const out = new Uint8Array(mask.length);
+  for (let i = 0; i < mask.length; i += 1) {
+    out[i] = mask[i] ? 0 : 1;
+  }
+  return out;
 }
 
 function sanitizeJsonText(text) {
@@ -1031,7 +1073,8 @@ function makeSummaryRows(sampleRows) {
     const [dataset, moduleId] = key.split('::');
     const ious = rows.map((row) => Number(row.iou || 0));
     const coverages = rows.map((row) => Number(row.coverage || 0));
-    const leakages = rows.map((row) => Number(row.leakage || 0));
+    const leakagesNonSkin = rows.map((row) => Number(row.leakage_non_skin ?? row.leakage ?? 0));
+    const leakagesBg = rows.map((row) => Number(row.leakage_bg ?? row.leakage_non_skin ?? row.leakage ?? 0));
     const tooSmall = rows.map((row) => (row && row.roi_too_small ? 1 : 0));
     out.push({
       dataset,
@@ -1041,7 +1084,9 @@ function makeSummaryRows(sampleRows) {
       miou_p50: round3(percentile(ious, 0.5)),
       miou_p90: round3(percentile(ious, 0.9)),
       coverage_mean: round3(mean(coverages)),
-      leakage_mean: round3(mean(leakages)),
+      leakage_non_skin_mean: round3(mean(leakagesNonSkin)),
+      leakage_bg_mean: round3(mean(leakagesBg)),
+      leakage_mean: round3(mean(leakagesNonSkin)),
       roi_too_small_rate: round3(mean(tooSmall)),
     });
   }
@@ -1061,6 +1106,8 @@ function makeCsv(rows) {
     'miou_p50',
     'miou_p90',
     'coverage_mean',
+    'leakage_non_skin_mean',
+    'leakage_bg_mean',
     'leakage_mean',
     'roi_too_small_rate',
   ];
@@ -1090,7 +1137,8 @@ function renderMarkdown({
   const failedRows = sampleRows.filter((row) => !row || !row.ok);
   const faceDetectFails = okRows.filter((row) => row.face_detect_ok === false).length;
   const landmarkFails = okRows.filter((row) => row.landmark_ok === false).length;
-  const leakageValues = [];
+  const leakageNonSkinValues = [];
+  const leakageBgValues = [];
   const miouValues = [];
   const dropRates = [];
   let roiTooSmallCount = 0;
@@ -1098,7 +1146,8 @@ function renderMarkdown({
   for (const row of okRows) {
     if (Array.isArray(row.module_scores)) {
       for (const moduleScore of row.module_scores) {
-        leakageValues.push(Number(moduleScore.leakage || 0));
+        leakageNonSkinValues.push(Number(moduleScore.leakage_non_skin ?? moduleScore.leakage ?? 0));
+        leakageBgValues.push(Number(moduleScore.leakage_bg ?? moduleScore.leakage_non_skin ?? moduleScore.leakage ?? 0));
         miouValues.push(Number(moduleScore.iou || 0));
       }
     }
@@ -1132,7 +1181,8 @@ function renderMarkdown({
   lines.push(`- face_detect_fail_rate: ${round3(total ? faceDetectFails / total : 0)}`);
   lines.push(`- landmark_fail_rate: ${round3(total ? landmarkFails / total : 0)}`);
   lines.push(`- module_mIoU_mean: ${round3(mean(miouValues))}`);
-  lines.push(`- leakage_mean: ${round3(mean(leakageValues))}`);
+  lines.push(`- leakage_non_skin_mean: ${round3(mean(leakageNonSkinValues))}`);
+  lines.push(`- leakage_bg_mean: ${round3(mean(leakageBgValues))}`);
   lines.push(`- skin_roi_too_small_rate: ${round3(skinRoiTooSmallRate)}`);
   lines.push(`- geometry_sanitize_drop_rate_mean: ${dropRates.length ? round3(mean(dropRates)) : 'n/a'}`);
   lines.push('');
@@ -1140,7 +1190,8 @@ function renderMarkdown({
   lines.push('');
   lines.push(`- module_mIoU >= ${args.eval_min_miou}`);
   lines.push(`- face_detect_fail_rate <= ${args.eval_max_fail_rate}`);
-  lines.push(`- leakage_mean <= ${args.eval_max_leakage}`);
+  lines.push(`- leakage_bg_mean <= ${args.eval_max_leakage_bg}`);
+  lines.push(`- leakage_non_skin_mean (observation only)`);
   lines.push(`- skin_roi_too_small_rate <= ${args.eval_max_skin_roi_too_small} (pred_pixels < ${args.skin_roi_min_pixels})`);
   lines.push('');
 
@@ -1185,11 +1236,11 @@ function renderMarkdown({
 
   lines.push('## Per-Module Summary');
   lines.push('');
-  lines.push('| dataset | module | samples | mIoU mean | p50 | p90 | coverage mean | leakage mean | roi_too_small_rate |');
-  lines.push('|---|---|---:|---:|---:|---:|---:|---:|---:|');
+  lines.push('| dataset | module | samples | mIoU mean | p50 | p90 | coverage mean | leakage_non_skin mean | leakage_bg mean | roi_too_small_rate |');
+  lines.push('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|');
   for (const row of summaryRows) {
     lines.push(
-      `| ${row.dataset} | ${row.module_id} | ${row.samples} | ${row.miou_mean} | ${row.miou_p50} | ${row.miou_p90} | ${row.coverage_mean} | ${row.leakage_mean} | ${row.roi_too_small_rate} |`,
+      `| ${row.dataset} | ${row.module_id} | ${row.samples} | ${row.miou_mean} | ${row.miou_p50} | ${row.miou_p90} | ${row.coverage_mean} | ${row.leakage_non_skin_mean} | ${row.leakage_bg_mean} | ${row.roi_too_small_rate} |`,
     );
   }
   lines.push('');
@@ -1449,11 +1500,20 @@ async function main() {
     }
 
     const gtSkinPixels = countOnes(gtSkin.mask);
+    const imageMaskLength = gtSkin.width * gtSkin.height;
+    const gtBackgroundMaskImage = [gtSkin.background_mask, gtSkin.bg_mask]
+      .find((candidate) => candidate instanceof Uint8Array && candidate.length === imageMaskLength) || null;
+    const gtHairMaskImage = [gtSkin.hair_mask]
+      .find((candidate) => candidate instanceof Uint8Array && candidate.length === imageMaskLength) || null;
+    const gtBackgroundPixels = gtBackgroundMaskImage ? countOnes(gtBackgroundMaskImage) : 0;
+    const gtHairPixels = gtHairMaskImage ? countOnes(gtHairMaskImage) : 0;
     row.gt_stats = {
       has_gt: true,
       skin_pixels: gtSkinPixels,
       label_values_sample: gtSkinPixels > 0 ? [0, 1] : [0],
       gt_kind: 'segmentation',
+      background_pixels: gtBackgroundPixels,
+      hair_pixels: gtHairPixels,
     };
     if (!gtSkinPixels) {
       row.fail_reason = FAIL_REASONS.GT_SKIN_EMPTY;
@@ -1500,6 +1560,16 @@ async function main() {
 
     const gtModuleMasks = decodeGtModuleMasks(derivedGt, args.grid_size, activeModuleBoxes);
     const gtSkinMaskNorm = decodeRleBinary(derivedGt.skin_mask_rle_norm, args.grid_size * args.grid_size);
+    const gtBackgroundMaskNorm = gtBackgroundMaskImage
+      ? cropMaskToNorm(
+          gtBackgroundMaskImage,
+          gtSkin.width,
+          gtSkin.height,
+          resolvedFaceCrop.bbox_px,
+          args.grid_size,
+          args.grid_size,
+        )
+      : invertBinaryMask(gtSkinMaskNorm);
     const predicted = moduleMasksFromCardPayload(payload, args.grid_size, activeModuleBoxes);
     const predUnionMask = createMask(args.grid_size, args.grid_size, 0);
     const circlePriorMissing = Boolean(args.circle_model_calibration && !circleModel.meta.enabled);
@@ -1533,6 +1603,8 @@ async function main() {
         module_id: moduleId,
         iou: round3(iouScore(predMask, gtMask)),
         coverage: round3(coverageScore(predMask, gtMask)),
+        leakage_non_skin: round3(leakageScore(predMask, gtSkinMaskNorm)),
+        leakage_bg: round3(leakageAgainstMask(predMask, gtBackgroundMaskNorm)),
         leakage: round3(leakageScore(predMask, gtSkinMaskNorm)),
         pred_pixels: predPixels,
         gt_pixels: gtPixels,
@@ -1580,7 +1652,9 @@ async function main() {
       modules_scored: moduleScores.length,
       miou_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.iou || 0)))),
       coverage_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.coverage || 0)))),
-      leakage_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.leakage || 0)))),
+      leakage_non_skin_mean: round3(mean(moduleScores.map((moduleScore) => Number((moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0)))),
+      leakage_bg_mean: round3(mean(moduleScores.map((moduleScore) => Number((moduleScore.leakage_bg ?? moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0)))),
+      leakage_mean: round3(mean(moduleScores.map((moduleScore) => Number((moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0)))),
     };
     if (!moduleScores.length && row.fail_reason === FAIL_REASONS.UNKNOWN) {
       row.fail_reason = FAIL_REASONS.METRIC_SKIP;
@@ -1636,13 +1710,15 @@ async function main() {
 
   const okRows = sampleRows.filter((row) => row && row.ok && !row.weak_label_only);
   const miouValues = [];
-  const leakageValues = [];
+  const leakageNonSkinValues = [];
+  const leakageBgValues = [];
   let skinRoiTooSmallCount = 0;
   let skinRoiEvaluatedCount = 0;
   for (const row of okRows) {
     for (const moduleScore of row.module_scores || []) {
       miouValues.push(Number(moduleScore.iou || 0));
-      leakageValues.push(Number(moduleScore.leakage || 0));
+      leakageNonSkinValues.push(Number((moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0));
+      leakageBgValues.push(Number((moduleScore.leakage_bg ?? moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0));
     }
     skinRoiTooSmallCount += Number(row.skin_roi_too_small_count || 0);
     skinRoiEvaluatedCount += Number(row.skin_roi_evaluated_count || 0);
@@ -1651,7 +1727,8 @@ async function main() {
     ? okRows.filter((row) => row.face_detect_ok === false).length / okRows.length
     : 0;
   const miouMean = mean(miouValues);
-  const leakageMean = mean(leakageValues);
+  const leakageNonSkinMean = mean(leakageNonSkinValues);
+  const leakageBgMean = mean(leakageBgValues);
   const skinRoiTooSmallRate = skinRoiEvaluatedCount > 0 ? skinRoiTooSmallCount / skinRoiEvaluatedCount : 0;
 
   const softWarnings = [];
@@ -1662,8 +1739,11 @@ async function main() {
   if (faceDetectFailRate > args.eval_max_fail_rate) {
     softWarnings.push(`face_detect_fail_rate ${round3(faceDetectFailRate)} > threshold ${args.eval_max_fail_rate}`);
   }
-  if (leakageMean > args.eval_max_leakage) {
-    softWarnings.push(`leakage_mean ${round3(leakageMean)} > threshold ${args.eval_max_leakage}`);
+  if (leakageBgMean > args.eval_max_leakage_bg) {
+    softWarnings.push(`leakage_bg_mean ${round3(leakageBgMean)} > threshold ${args.eval_max_leakage_bg}`);
+  }
+  if (leakageNonSkinMean > args.eval_max_leakage) {
+    softWarnings.push(`leakage_non_skin_mean ${round3(leakageNonSkinMean)} > observation ${args.eval_max_leakage}`);
   }
   if (skinRoiTooSmallRate > args.eval_max_skin_roi_too_small) {
     softWarnings.push(
@@ -1709,7 +1789,9 @@ async function main() {
     circle_model_calibration: args.circle_model_calibration,
     sample_seed: sampleSeed,
     module_miou_mean: round3(miouMean),
-    leakage_mean: round3(leakageMean),
+    leakage_non_skin_mean: round3(leakageNonSkinMean),
+    leakage_bg_mean: round3(leakageBgMean),
+    leakage_mean: round3(leakageNonSkinMean),
     skin_roi_too_small_rate: round3(skinRoiTooSmallRate),
     face_detect_fail_rate: round3(faceDetectFailRate),
     fail_reasons: failReasonRows,

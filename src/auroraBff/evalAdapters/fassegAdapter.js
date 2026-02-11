@@ -97,6 +97,8 @@ async function buildSkinMask(evalSample) {
   }
 
   const labelImage = await readMaskLabelImage(maskPath);
+  const backgroundMask = maskFromAllowedLabelValues(labelImage, [0]);
+  const hairMask = maskFromAllowedLabelValues(labelImage, [2]);
   const primaryMask = maskFromAllowedLabelValues(labelImage, [PRIMARY_SKIN_LABEL]);
   const primaryCount = countOnes(primaryMask);
   if (primaryCount >= 128) {
@@ -106,6 +108,8 @@ async function buildSkinMask(evalSample) {
       width: labelImage.width,
       height: labelImage.height,
       mask: primaryMask,
+      background_mask: backgroundMask,
+      hair_mask: hairMask,
       note: null,
     };
   }
@@ -138,6 +142,8 @@ async function buildSkinMask(evalSample) {
     width: labelImage.width,
     height: labelImage.height,
     mask: bestMask,
+    background_mask: backgroundMask,
+    hair_mask: hairMask,
     note: bestLabel === PRIMARY_SKIN_LABEL ? null : `fallback_label_${bestLabel}`,
   };
 }
