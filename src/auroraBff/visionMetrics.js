@@ -76,6 +76,8 @@ const pendingClarificationUpgradedCounter = new Map();
 const pendingClarificationTruncatedCounter = new Map();
 const resumePrefixInjectedCounter = new Map();
 const resumePrefixHistoryItemsCounter = new Map();
+const resumeResponseModeCounter = new Map();
+const resumePlaintextReaskDetectedCounter = new Map();
 const profileContextMissingCounter = new Map();
 const sessionPatchProfileEmittedCounter = new Map();
 const upstreamCallsCounter = new Map();
@@ -279,6 +281,26 @@ function normalizeResumePrefixHistoryItemsCount(count) {
   const n = Number(count);
   if (!Number.isFinite(n) || n < 0) return '0';
   return String(Math.max(0, Math.min(6, Math.trunc(n))));
+}
+
+function normalizeResumeResponseMode(mode) {
+  const token = cleanMetricToken(mode, 'mixed');
+  if (token === 'answer' || token === 'question' || token === 'mixed') return token;
+  return 'mixed';
+}
+
+function normalizeResumeReaskField(field) {
+  const token = cleanMetricToken(field, 'unknown');
+  if (
+    token === 'skintype' ||
+    token === 'sensitivity' ||
+    token === 'barrierstatus' ||
+    token === 'goals' ||
+    token === 'budgettier'
+  ) {
+    return token;
+  }
+  return 'unknown';
 }
 
 function normalizeProfileContextSide(side) {
@@ -510,6 +532,22 @@ function recordResumePrefixHistoryItems({ count } = {}) {
   incCounter(
     resumePrefixHistoryItemsCounter,
     { count: normalizeResumePrefixHistoryItemsCount(count) },
+    1,
+  );
+}
+
+function recordResumeResponseMode({ mode } = {}) {
+  incCounter(
+    resumeResponseModeCounter,
+    { mode: normalizeResumeResponseMode(mode) },
+    1,
+  );
+}
+
+function recordResumePlaintextReaskDetected({ field } = {}) {
+  incCounter(
+    resumePlaintextReaskDetectedCounter,
+    { field: normalizeResumeReaskField(field) },
     1,
   );
 }
@@ -1141,6 +1179,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE resume_prefix_history_items_total counter');
   renderCounter(lines, 'resume_prefix_history_items_total', resumePrefixHistoryItemsCounter);
 
+  lines.push('# HELP resume_response_mode_total Resume-turn response mode classification (answer|question|mixed).');
+  lines.push('# TYPE resume_response_mode_total counter');
+  renderCounter(lines, 'resume_response_mode_total', resumeResponseModeCounter);
+
+  lines.push('# HELP resume_plaintext_reask_detected_total Resume-turn plaintext re-ask detections for already-known fields.');
+  lines.push('# TYPE resume_plaintext_reask_detected_total counter');
+  renderCounter(lines, 'resume_plaintext_reask_detected_total', resumePlaintextReaskDetectedCounter);
+
   lines.push('# HELP profile_context_missing_total Total number of requests missing profile context from frontend session or backend storage.');
   lines.push('# TYPE profile_context_missing_total counter');
   renderCounter(lines, 'profile_context_missing_total', profileContextMissingCounter);
@@ -1271,6 +1317,8 @@ function resetVisionMetrics() {
   pendingClarificationTruncatedCounter.clear();
   resumePrefixInjectedCounter.clear();
   resumePrefixHistoryItemsCounter.clear();
+  resumeResponseModeCounter.clear();
+  resumePlaintextReaskDetectedCounter.clear();
   profileContextMissingCounter.clear();
   sessionPatchProfileEmittedCounter.clear();
   upstreamCallsCounter.clear();
@@ -1339,6 +1387,8 @@ function snapshotVisionMetrics() {
     pendingClarificationTruncated: Array.from(pendingClarificationTruncatedCounter.entries()),
     resumePrefixInjected: Array.from(resumePrefixInjectedCounter.entries()),
     resumePrefixHistoryItems: Array.from(resumePrefixHistoryItemsCounter.entries()),
+    resumeResponseMode: Array.from(resumeResponseModeCounter.entries()),
+    resumePlaintextReaskDetected: Array.from(resumePlaintextReaskDetectedCounter.entries()),
     profileContextMissing: Array.from(profileContextMissingCounter.entries()),
     sessionPatchProfileEmitted: Array.from(sessionPatchProfileEmittedCounter.entries()),
     upstreamCalls: Array.from(upstreamCallsCounter.entries()),
@@ -1368,6 +1418,8 @@ module.exports = {
   recordPendingClarificationTruncated,
   recordResumePrefixInjected,
   recordResumePrefixHistoryItems,
+  recordResumeResponseMode,
+  recordResumePlaintextReaskDetected,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,

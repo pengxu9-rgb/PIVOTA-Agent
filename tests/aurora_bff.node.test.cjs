@@ -1952,6 +1952,7 @@ test('/v1/chat: clarification flow v2 resume injects resume prefix when enabled'
       AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
       AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
       AURORA_CHAT_RESUME_PREFIX_V1: 'true',
+      AURORA_CHAT_RESUME_PREFIX_V2: 'false',
     },
     async () => {
       const routesModuleId = require.resolve('../src/auroraBff/routes');
@@ -2026,6 +2027,89 @@ test('/v1/chat: clarification flow v2 resume injects resume prefix when enabled'
   );
 });
 
+test('/v1/chat: clarification flow v2 resume injects authoritative resume prefix v2 when enabled', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+      AURORA_CHAT_RESUME_PREFIX_V1: 'true',
+      AURORA_CHAT_RESUME_PREFIX_V2: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp1 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_v2_on', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST',
+            session: { state: 'idle', profile: { sensitivity: 'high' } },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending1 = resp1.body?.session_patch?.state?.pending_clarification;
+        const chip1 = Array.isArray(resp1.body?.suggested_chips) ? resp1.body.suggested_chips[0] : null;
+        assert.ok(pending1);
+        assert.ok(chip1);
+
+        const resp2 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_v2_on', 'X-Trace-ID': 'test_trace2', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip1.chip_id,
+              kind: 'chip',
+              data: chip1.data,
+            },
+            session: { state: { pending_clarification: pending1 } },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending2 = resp2.body?.session_patch?.state?.pending_clarification;
+        const chip2 = Array.isArray(resp2.body?.suggested_chips) ? resp2.body.suggested_chips[0] : null;
+        assert.ok(pending2);
+        assert.ok(chip2);
+
+        const resp3 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_v2_on', 'X-Trace-ID': 'test_trace3', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip2.chip_id,
+              kind: 'chip',
+              data: chip2.data,
+            },
+            session: { state: { pending_clarification: pending2 } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const resumeQuery = String(resp3.body?.assistant_message?.content || '');
+        assert.match(resumeQuery, /AUTHORITATIVE/i);
+        assert.match(resumeQuery, /Original user request \(answer this\):\s*"CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST"/i);
+        assert.match(resumeQuery, /Profile fields now known/i);
+        assert.match(resumeQuery, /ask at most ONE new question/i);
+        assert.match(resumeQuery, /- goals = "acne"/i);
+
+        const snap = snapshotVisionMetrics();
+        assert.equal(getLabeledCounterValue(snap.resumePrefixInjected, { enabled: 'true' }), 1);
+        assert.equal(getLabeledCounterValue(snap.resumePrefixHistoryItems, { count: '2' }), 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: resume prefix is absent when AURORA_CHAT_RESUME_PREFIX_V1=false while history context is still sent', async () => {
   resetVisionMetrics();
   await withEnv(
@@ -2034,6 +2118,7 @@ test('/v1/chat: resume prefix is absent when AURORA_CHAT_RESUME_PREFIX_V1=false 
       AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
       AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
       AURORA_CHAT_RESUME_PREFIX_V1: 'false',
+      AURORA_CHAT_RESUME_PREFIX_V2: 'false',
     },
     async () => {
       const routesModuleId = require.resolve('../src/auroraBff/routes');
@@ -2099,6 +2184,110 @@ test('/v1/chat: resume prefix is absent when AURORA_CHAT_RESUME_PREFIX_V1=false 
         assert.equal(getLabeledCounterValue(snap.resumePrefixInjected, { enabled: 'false' }), 1);
         assert.equal(getLabeledCounterValue(snap.resumePrefixHistoryItems, { count: '0' }), 1);
         assert.equal(getLabeledCounterValue(snap.clarificationHistorySent, { count: '2' }), 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: resume probe metrics detect intake-like resume output and do not run on ordinary turns', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+      AURORA_CHAT_RESUME_PREFIX_V1: 'true',
+      AURORA_CHAT_RESUME_PREFIX_V2: 'false',
+      AURORA_CHAT_RESUME_PROBE_METRICS: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp1 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_resume_probe_bad', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_RESUME_PROBE_BAD_TEST',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending1 = resp1.body?.session_patch?.state?.pending_clarification;
+        const chip1 = Array.isArray(resp1.body?.suggested_chips) ? resp1.body.suggested_chips[0] : null;
+        assert.ok(pending1);
+        assert.ok(chip1);
+
+        const resp2 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_resume_probe_bad', 'X-Trace-ID': 'test_trace2', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip1.chip_id,
+              kind: 'chip',
+              data: chip1.data,
+            },
+            session: { state: { pending_clarification: pending1 } },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending2 = resp2.body?.session_patch?.state?.pending_clarification;
+        const chip2 = Array.isArray(resp2.body?.suggested_chips) ? resp2.body.suggested_chips[0] : null;
+        assert.ok(pending2);
+        assert.ok(chip2);
+
+        const resp3 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_resume_probe_bad', 'X-Trace-ID': 'test_trace3', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip2.chip_id,
+              kind: 'chip',
+              data: chip2.data,
+            },
+            session: { state: { pending_clarification: pending2 } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const badResumeText = String(resp3.body?.assistant_message?.content || '');
+        assert.match(badResumeText, /quick skin profile/i);
+
+        const snapAfterResume = snapshotVisionMetrics();
+        const questionModeCount = getLabeledCounterValue(snapAfterResume.resumeResponseMode, { mode: 'question' });
+        const reaskSkinType = getLabeledCounterValue(snapAfterResume.resumePlaintextReaskDetected, { field: 'skintype' });
+        const reaskGoals = getLabeledCounterValue(snapAfterResume.resumePlaintextReaskDetected, { field: 'goals' });
+        assert.equal(questionModeCount, 1);
+        assert.ok(reaskSkinType >= 1 || reaskGoals >= 1);
+
+        await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_resume_probe_non_resume', 'X-Trace-ID': 'test_trace4', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'RESUME_PROBE_NON_RESUME_BAD_TEXT_TEST',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const snapAfterOrdinary = snapshotVisionMetrics();
+        assert.equal(getLabeledCounterValue(snapAfterOrdinary.resumeResponseMode, { mode: 'question' }), questionModeCount);
+        assert.equal(
+          getLabeledCounterValue(snapAfterOrdinary.resumePlaintextReaskDetected, { field: 'skintype' }),
+          reaskSkinType,
+        );
+        assert.equal(
+          getLabeledCounterValue(snapAfterOrdinary.resumePlaintextReaskDetected, { field: 'goals' }),
+          reaskGoals,
+        );
       } finally {
         delete require.cache[routesModuleId];
       }

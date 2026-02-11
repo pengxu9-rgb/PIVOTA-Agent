@@ -11,7 +11,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from .label_map import IGNORE_INDEX, remap_dataset_mask
+from .label_map import IGNORE_INDEX, remap_dataset_mask, to_binary_skin_mask
 
 
 SUPPORTED_DATASETS = ("fasseg", "lapa", "celebamaskhq", "acne04")
@@ -287,9 +287,11 @@ class MultiDatasetSegDataset(Dataset):
         records: Sequence[SampleRecord],
         *,
         transform=None,
+        binary_skin: bool = True,
     ) -> None:
         self.records = list(records)
         self.transform = transform
+        self.binary_skin = bool(binary_skin)
 
     def __len__(self) -> int:
         return len(self.records)
@@ -318,6 +320,9 @@ class MultiDatasetSegDataset(Dataset):
             mask = remap_dataset_mask(record.dataset, mask=raw_mask)
         else:
             mask = np.full((image_h, image_w), IGNORE_INDEX, dtype=np.uint8)
+
+        if self.binary_skin:
+            mask = to_binary_skin_mask(mask, preserve_ignore_index=True)
 
         if self.transform is not None:
             image, mask = self.transform(image, mask)

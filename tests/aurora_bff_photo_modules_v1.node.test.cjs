@@ -109,6 +109,18 @@ function makeDiagnosisInternalFixture() {
   };
 }
 
+function makeDiagnosisInternalWithFaceCropFixture() {
+  return {
+    ...makeDiagnosisInternalFixture(),
+    face_crop: {
+      coord_space: 'orig_px_v1',
+      bbox_px: { x: 108, y: 120, w: 864, h: 1200 },
+      orig_size_px: { w: 1080, h: 1440 },
+      render_size_px_hint: { w: 384, h: 512 },
+    },
+  };
+}
+
 test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bounds', () => {
   const built = buildPhotoModulesCard({
     requestId: 'req_photo_modules_1',
@@ -265,6 +277,8 @@ test('photo modules card: face oval clip enabled keeps module mask pixels <= dis
       DIAG_MODULE_SHRINK_CHIN: '1',
       DIAG_MODULE_SHRINK_FOREHEAD: '1',
       DIAG_MODULE_SHRINK_CHEEK: '1',
+      DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '0',
+      DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
     },
     () => {
       const offLoaded = loadPhotoModulesBuilder();
@@ -274,7 +288,7 @@ test('photo modules card: face oval clip enabled keeps module mask pixels <= dis
         usedPhotos: true,
         photoQuality: { grade: 'pass', reasons: [] },
         photoNotice: 'notice',
-        diagnosisInternal: makeDiagnosisInternalFixture(),
+        diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
         profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
         language: 'EN',
         ingredientRecEnabled: true,
@@ -286,9 +300,11 @@ test('photo modules card: face oval clip enabled keeps module mask pixels <= dis
       return withEnv(
         {
           DIAG_FACE_OVAL_CLIP: 'true',
-          DIAG_MODULE_SHRINK_CHIN: '0.8',
-          DIAG_MODULE_SHRINK_FOREHEAD: '0.88',
-          DIAG_MODULE_SHRINK_CHEEK: '0.9',
+          DIAG_MODULE_SHRINK_CHIN: '1',
+          DIAG_MODULE_SHRINK_FOREHEAD: '1',
+          DIAG_MODULE_SHRINK_CHEEK: '1',
+          DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '0',
+          DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
         },
         () => {
           const onLoaded = loadPhotoModulesBuilder();
@@ -298,7 +314,7 @@ test('photo modules card: face oval clip enabled keeps module mask pixels <= dis
             usedPhotos: true,
             photoQuality: { grade: 'pass', reasons: [] },
             photoNotice: 'notice',
-            diagnosisInternal: makeDiagnosisInternalFixture(),
+            diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
             profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
             language: 'EN',
             ingredientRecEnabled: true,
@@ -329,5 +345,43 @@ test('photo modules card: face oval clip enabled keeps module mask pixels <= dis
           }
         },
       );
+    },
+  ));
+
+test('photo modules card: face oval clip too small falls back and marks degraded reason', () =>
+  withEnv(
+    {
+      DIAG_FACE_OVAL_CLIP: 'true',
+      DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '1',
+      DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
+      DIAG_MODULE_SHRINK_CHIN: '1',
+      DIAG_MODULE_SHRINK_FOREHEAD: '1',
+      DIAG_MODULE_SHRINK_CHEEK: '1',
+    },
+    () => {
+      const loaded = loadPhotoModulesBuilder();
+      const built = loaded.buildPhotoModulesCard({
+        requestId: 'req_photo_modules_clip_too_small',
+        analysis: makeAnalysisFixture(),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        photoNotice: 'notice',
+        diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
+        profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+        language: 'EN',
+        ingredientRecEnabled: true,
+        productRecEnabled: false,
+      });
+      unloadPhotoModules(loaded.moduleId);
+      assert.ok(built && built.card && built.card.payload);
+
+      const payload = built.card.payload;
+      assert.equal(Array.isArray(payload.degraded_reasons), true);
+      assert.equal(payload.degraded_reasons.includes('FACE_OVAL_CLIP_TOO_SMALL'), true);
+      assert.equal(payload.degraded_reason, 'FACE_OVAL_CLIP_TOO_SMALL');
+
+      const modules = Array.isArray(payload.modules) ? payload.modules : [];
+      const degradedCount = modules.filter((moduleRow) => moduleRow && moduleRow.degraded_reason === 'FACE_OVAL_CLIP_TOO_SMALL').length;
+      assert.ok(degradedCount > 0, 'expected at least one module with FACE_OVAL_CLIP_TOO_SMALL');
     },
   ));
