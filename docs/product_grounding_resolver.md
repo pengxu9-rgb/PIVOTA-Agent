@@ -85,6 +85,41 @@ Additionally, when Postgres is configured, it upserts an aggregated gap record i
 Headers:
 - `X-ADMIN-KEY: $ADMIN_API_KEY`
 
+## Bench + Golden eval (deterministic)
+
+These are **local-only** sanity checks for the **matching / ranking** logic (no DB, no upstream network).
+
+### Benchmark (latency/throughput)
+
+Runs a deterministic micro-benchmark over a synthetic candidate set derived from the golden fixture and prints **JSON to stdout**:
+
+```bash
+node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350
+```
+
+Options:
+- `--fixture <path>` (default: `tests/fixtures/product_grounding/golden_v1.json`)
+- `--out <path>` to write the JSON report to a file
+
+### Golden accuracy harness
+
+Runs a small golden set with Top‑1 / MRR thresholds:
+
+```bash
+node --test tests/product_grounding_eval.node.test.cjs
+```
+
+Fixture location: `tests/fixtures/product_grounding/golden_v1.json`
+
+## Extensibility hooks (DI)
+
+For testing/experiments, `src/services/productGroundingResolver.js` exposes:
+- `createProductGroundingResolver(deps)` to inject:
+  - `fetchCandidatesViaProductsCache`
+  - `fetchCandidatesViaAgentSearch`
+  - `scoreAndRankCandidates`
+  - `resolveFromRankedCandidates`
+
 ## Acceptance (curl)
 
 For each of the three products below:
