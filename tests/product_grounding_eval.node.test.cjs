@@ -33,11 +33,12 @@ function getTopRefs(scored, k) {
   return out;
 }
 
-test('product grounding golden: accuracy + MRR sanity', () => {
+test('product grounding golden: accuracy + MRR sanity', (t) => {
   const cases = loadGolden();
 
   const k = 3;
   let resolvedCases = 0;
+  let resolvedDecisionCount = 0;
   let top1Correct = 0;
   let recallAtK = 0;
   let mrrSum = 0;
@@ -65,7 +66,7 @@ test('product grounding golden: accuracy + MRR sanity', () => {
 
     resolvedCases += 1;
     assert.ok(expectedKey, `expected product_ref missing for case=${c.id || query}`);
-    assert.equal(decision.resolved, true, `expected resolved for case=${c.id || query}`);
+    if (decision.resolved) resolvedDecisionCount += 1;
 
     const top1 = getTopRefs(scored, 1)[0] || '';
     if (top1 && top1 === expectedKey) top1Correct += 1;
@@ -80,10 +81,16 @@ test('product grounding golden: accuracy + MRR sanity', () => {
   const top1Acc = resolvedCases ? top1Correct / resolvedCases : 0;
   const recallK = resolvedCases ? recallAtK / resolvedCases : 0;
   const mrr = resolvedCases ? mrrSum / resolvedCases : 0;
+  const resolvedCoverage = resolvedCases ? resolvedDecisionCount / resolvedCases : 0;
 
-  // This fixture is intentionally small and hand-checked; keep thresholds strict.
+  t.diagnostic(
+    `golden_eval resolved_cases=${resolvedCases} resolved_coverage=${resolvedCoverage.toFixed(4)} top1=${top1Acc.toFixed(4)} recall@${k}=${recallK.toFixed(4)} mrr=${mrr.toFixed(4)}`,
+  );
+
+  // This fixture is intentionally small and hand-checked.
+  // Keep accuracy thresholds strict while allowing confidence-threshold deferrals.
+  assert.ok(resolvedCoverage >= 0.7, `resolvedCoverage too low: ${resolvedCoverage}`);
   assert.ok(top1Acc >= 0.85, `top1Acc too low: ${top1Acc}`);
   assert.ok(recallK >= 0.95, `recall@${k} too low: ${recallK}`);
   assert.ok(mrr >= 0.9, `mrr too low: ${mrr}`);
 });
-

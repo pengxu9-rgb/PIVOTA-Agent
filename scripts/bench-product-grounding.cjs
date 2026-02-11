@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const { _internals } = require('../src/services/productGroundingResolver');
 
 function parseArgs(argv) {
-  const out = { seed: 42, repeat: 200, candidates: 350, fixture: '', out: '' };
+  const out = { seed: 42, repeat: 200, candidates: 350, warmupRepeat: 30, fixture: '', out: '' };
   const args = Array.isArray(argv) ? argv.slice() : [];
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
@@ -22,6 +23,11 @@ function parseArgs(argv) {
     }
     if (a === '--candidates' && args[i + 1]) {
       out.candidates = Math.max(10, Math.min(5000, Math.trunc(Number(args[i + 1])) || out.candidates));
+      i += 1;
+      continue;
+    }
+    if (a === '--warmup-repeat' && args[i + 1]) {
+      out.warmupRepeat = Math.max(0, Math.min(500, Math.trunc(Number(args[i + 1])) || out.warmupRepeat));
       i += 1;
       continue;
     }
@@ -61,6 +67,20 @@ function percentile(sorted, p) {
 
 function nowMs() {
   return Number(process.hrtime.bigint()) / 1e6;
+}
+
+function getEnvironmentSummary() {
+  const cpuInfo = os.cpus() || [];
+  const firstCpu = cpuInfo[0] || {};
+  return {
+    node_version: process.version,
+    v8_version: process.versions?.v8 || 'unknown',
+    os_platform: process.platform,
+    os_release: os.release(),
+    os_arch: process.arch,
+    cpu_model: String(firstCpu.model || 'unknown').trim(),
+    cpu_count: cpuInfo.length || 0,
+  };
 }
 
 function loadGoldenFixture(p) {
@@ -135,9 +155,12 @@ function main() {
   const { cases, queries } = loadGoldenFixture(fixturePath);
   const candidateProducts = buildSyntheticCandidates({ seed: args.seed, n: args.candidates, goldenCases: cases });
 
-  // Warm-up (JIT / caches)
-  for (let i = 0; i < Math.min(20, queries.length); i += 1) {
-    _internals.scoreAndRankCandidates({ query: queries[i], lang: 'en', products: candidateProducts, options: {} });
+  // Warm-up (JIT / inline caches).
+  const warmupRepeat = Math.max(0, Number(args.warmupRepeat) || 0);
+  for (let r = 0; r < warmupRepeat; r += 1) {
+    for (const q of queries) {
+      _internals.scoreAndRankCandidates({ query: q, lang: 'en', products: candidateProducts, options: {} });
+    }
   }
 
   const durs = [];
@@ -163,9 +186,11 @@ function main() {
   const report = {
     schema_version: 'pivota.product_grounding.bench.v1',
     ts: new Date().toISOString(),
+    env: getEnvironmentSummary(),
     params: {
       seed: args.seed,
       repeat: args.repeat,
+      warmup_repeat: warmupRepeat,
       queries: queries.length,
       candidates: candidateProducts.length,
       fixture: path.relative(process.cwd(), fixturePath),
@@ -183,7 +208,10 @@ function main() {
 
   console.error('== bench-product-grounding ==');
   console.error(
-    `ops=${ops} queries=${queries.length} candidates=${candidateProducts.length} repeat=${args.repeat} total_ms=${report.summary.total_ms} p50_ms=${report.summary.p50_ms} p95_ms=${report.summary.p95_ms} thr=${report.summary.throughput_ops_per_sec}/s`,
+    `ops=${ops} queries=${queries.length} candidates=${candidateProducts.length} repeat=${args.repeat} warmup_repeat=${warmupRepeat} total_ms=${report.summary.total_ms} p50_ms=${report.summary.p50_ms} p95_ms=${report.summary.p95_ms} thr=${report.summary.throughput_ops_per_sec}/s`,
+  );
+  console.error(
+    `env node=${report.env.node_version} os=${report.env.os_platform}/${report.env.os_arch} release=${report.env.os_release} cpu=\"${report.env.cpu_model}\" x${report.env.cpu_count}`,
   );
 
   if (args.out) {
@@ -197,4 +225,3 @@ function main() {
 }
 
 main();
-

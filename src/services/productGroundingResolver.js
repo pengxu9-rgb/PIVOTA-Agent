@@ -11,11 +11,6 @@ const LATIN_STOPWORDS = new Set([
   'at',
   'be',
   'by',
-  'can',
-  'could',
-  'did',
-  'do',
-  'does',
   'for',
   'from',
   'have',
@@ -26,43 +21,13 @@ const LATIN_STOPWORDS = new Set([
   'of',
   'on',
   'or',
-  'please',
-  'should',
   'the',
   'this',
   'to',
-  'want',
   'with',
-  'would',
   'you',
   'your',
-  // High-frequency commerce wrappers that are not useful for product identity.
-  'any',
-  'available',
-  'buy',
-  'find',
-  'in-stock',
-  'instock',
-  'need',
-  'product',
-  'products',
-  'sell',
-  'selling',
-  'stock',
 ]);
-const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
-const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
-const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
-
-function compactNoSpaces(s) {
-  return String(s || '').replace(/\s+/g, '');
-}
-
-function stripCommonCjkQueryAffixes(compact) {
-  const s = String(compact || '');
-  if (!s) return '';
-  return s.replace(CJK_QUERY_PREFIX_RE, '').replace(CJK_QUERY_SUFFIX_RE, '');
-}
 
 function sleep(ms) {
   const delay = Math.max(0, Number(ms) || 0);
@@ -289,7 +254,7 @@ function computeTokenOverlapScoreFromTokenSet(queryTokens, tokenSet) {
 }
 
 function computeCandidateTextScore({ normalizedQuery, queryTokens, product }) {
-  if (!normalizedQuery) return { score: 0, reason: 'empty_query' };
+  if (!normalizedQuery) return 0;
 
   const title = getCandidateTitle(product);
   const normTitle = normalizeTextForResolver(title);
@@ -300,18 +265,6 @@ function computeCandidateTextScore({ normalizedQuery, queryTokens, product }) {
   const combined = `${brand} ${title}`.trim();
   const normCombined = normalizeTextForResolver(combined);
   if (normCombined && normCombined.includes(normalizedQuery)) return { score: 0.9, reason: 'brand_title_contains_query' };
-
-  // CJK queries often come without whitespace tokenization (e.g. "有没有薇诺娜修护乳").
-  // If we have Han characters, fall back to compact containment (strip common question affixes).
-  if (normCombined && (HAS_HAN_RE.test(normalizedQuery) || HAS_HAN_RE.test(normCombined))) {
-    const compactQuery = stripCommonCjkQueryAffixes(compactNoSpaces(normalizedQuery));
-    if (compactQuery && compactQuery.length >= 2) {
-      const compactCandidate = compactNoSpaces(normCombined);
-      if (compactCandidate && compactCandidate.includes(compactQuery)) {
-        return { score: 0.9, reason: 'cjk_compact_contains_query' };
-      }
-    }
-  }
 
   const tokens = tokenizeNormalizedResolverQuery(normCombined);
   const score = computeTokenOverlapScoreFromTokenSet(queryTokens, new Set(tokens));

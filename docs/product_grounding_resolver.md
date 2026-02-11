@@ -97,9 +97,25 @@ Runs a deterministic micro-benchmark over a synthetic candidate set derived from
 node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350
 ```
 
+Recommended reviewer command (stable enough for PR comparison):
+
+```bash
+node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30
+```
+
 Options:
 - `--fixture <path>` (default: `tests/fixtures/product_grounding/golden_v1.json`)
+- `--warmup-repeat <n>` (default: `30`)
 - `--out <path>` to write the JSON report to a file
+
+Output interpretation:
+- `p50_ms`: median per-call latency
+- `p95_ms`: tail latency
+- `throughput_ops_per_sec`: higher is better
+- `env`: runtime environment (`node_version`, `os`, `cpu_model`, `cpu_count`) for apples-to-apples runs
+
+Note:
+- Benchmark/eval outputs are local artifacts only and should **not** be committed in PRs (`reports/`, `outputs/`, ad-hoc JSON files).
 
 ### Golden accuracy harness
 
@@ -108,6 +124,9 @@ Runs a small golden set with Top‑1 / MRR thresholds:
 ```bash
 node --test tests/product_grounding_eval.node.test.cjs
 ```
+
+The test log prints a concise summary line:
+- `golden_eval resolved_cases=... resolved_coverage=... top1=... recall@3=... mrr=...`
 
 Fixture location: `tests/fixtures/product_grounding/golden_v1.json`
 
