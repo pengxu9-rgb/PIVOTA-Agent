@@ -3610,7 +3610,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/healthz', (req, res) => {
+const healthRouteHandler = (req, res) => {
   const dbConfigured = Boolean(process.env.DATABASE_URL);
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
   const minSellable = Math.max(Number(process.env.HEALTHZ_MIN_SELLABLE_PRODUCTS || 20) || 20, 0);
@@ -3709,7 +3709,10 @@ app.get('/healthz', (req, res) => {
         warning: 'healthz_cache_stats_failed',
       });
     });
-});
+};
+
+app.get('/healthz', healthRouteHandler);
+app.get('/health', healthRouteHandler);
 
 app.get('/version', (req, res) => {
   return res.json({

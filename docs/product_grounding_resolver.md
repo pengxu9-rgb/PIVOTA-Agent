@@ -94,22 +94,49 @@ These are **local-only** sanity checks for the **matching / ranking** logic (no 
 Runs a deterministic micro-benchmark over a synthetic candidate set derived from the golden fixture and prints **JSON to stdout**:
 
 ```bash
-node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350
+node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30
 ```
 
 Options:
 - `--fixture <path>` (default: `tests/fixtures/product_grounding/golden_v1.json`)
+- `--warmup-repeat <n>` (default: `30`)
 - `--out <path>` to write the JSON report to a file
+
+Recommended for stable numbers:
+
+```bash
+for i in 1 2 3; do
+  node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30
+done
+```
+
+Interpretation:
+- `p50_ms`: typical latency
+- `p95_ms`: tail latency (primary regression guard)
+- `throughput_ops_per_sec`: sustained throughput under this workload
+
+Do not commit benchmark/eval generated outputs (`reports/`, JSONL, CSV).
 
 ### Golden accuracy harness
 
-Runs a small golden set with Top‑1 / MRR thresholds:
+Runs both suites in one command:
+- v1 regression (`golden_v1.json`, must remain backward-compatible)
+- v2 accuracy suite (`golden_v2.json`, opt-in scoring improvements)
 
 ```bash
 node --test tests/product_grounding_eval.node.test.cjs
 ```
 
-Fixture location: `tests/fixtures/product_grounding/golden_v1.json`
+Fixture locations:
+- `tests/fixtures/product_grounding/golden_v1.json`
+- `tests/fixtures/product_grounding/golden_v2.json`
+
+## CI Automation
+
+- `.github/workflows/product-grounding-eval-bench.yml`
+  - runs `node --test tests/product_grounding_eval.node.test.cjs`
+  - runs bench 3 times with `--repeat 200 --candidates 350 --warmup-repeat 30`
+  - publishes median `p50_ms`, `p95_ms`, `throughput_ops_per_sec` in workflow summary
 
 ## Extensibility hooks (DI)
 

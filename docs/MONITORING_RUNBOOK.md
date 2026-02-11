@@ -88,6 +88,35 @@ make monitoring-validate
 make release-gate
 ```
 
+## Chat Follow-up Canary (post-env rollout)
+
+Use this probe to validate the high-risk chat regressions after env changes:
+
+- No fallback to diagnosis intake for brand availability asks
+- No repeated `skinType` clarification for this flow
+- No increase in `claims_violation_total`
+
+Manual run:
+
+```bash
+node scripts/chat_followup_canary.mjs --base https://pivota-agent-production.up.railway.app
+```
+
+Outputs:
+- JSON summary to stdout
+- Markdown report under `reports/chat_followup_canary_*.md`
+
+Hard gates (script exit non-zero on failure):
+- `cards` contain `product_parse` and `offers_resolved`
+- `cards` do not contain `diagnosis_gate`
+- assistant message does not ask intake profile fields (skin type / barrier / goals)
+- `catalog_availability_shortcircuit_total` increases by at least 1
+- `repeated_clarify_field_total{field="skinType"}` delta is 0
+- `claims_violation_total` delta is 0
+
+Scheduled probe:
+- `.github/workflows/chat-followup-canary.yml` runs hourly (`cron: 17 * * * *`) and uploads report artifacts.
+
 ## Rollback
 
 1. Soft rollback (verifier only):
