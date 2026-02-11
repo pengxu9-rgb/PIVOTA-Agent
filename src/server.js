@@ -1316,6 +1316,58 @@ function countUsableSearchProducts(products) {
   return products.filter((product) => hasUsableSearchProduct(product)).length;
 }
 
+function normalizeSearchTextForMatch(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeSearchTextForMatch(raw) {
+  return normalizeSearchTextForMatch(raw)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function buildFallbackCandidateText(product) {
+  if (!product || typeof product !== 'object') return '';
+  const parts = [
+    product.title,
+    product.name,
+    product.display_name,
+    product.brand,
+    product.product_name,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  return normalizeSearchTextForMatch(parts.join(' '));
+}
+
+function isProxySearchFallbackRelevant(normalized, queryText) {
+  const products = Array.isArray(normalized?.products) ? normalized.products : [];
+  if (!products.length) return false;
+
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return true;
+
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const longQuery = queryTokens.length >= 2;
+
+  for (const product of products.slice(0, 8)) {
+    if (!hasUsableSearchProduct(product)) continue;
+    const candidateText = buildFallbackCandidateText(product);
+    if (!candidateText) continue;
+    if (candidateText.includes(normalizedQuery)) return true;
+    if (!longQuery) return true;
+    const overlapCount = queryTokens.filter((token) => candidateText.includes(token)).length;
+    if (overlapCount >= 2) return true;
+  }
+
+  return false;
+}
+
 function shouldFallbackProxySearch(normalized, statusCode) {
   if (Number(statusCode) >= 500) return true;
   if (Number(statusCode) < 200 || Number(statusCode) >= 300) return false;
@@ -1433,7 +1485,6 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }
   const preferMerchants = uniqueStrings([
     merchantId,
     ...merchantIds,
-    ...getCreatorCatalogMerchantIds(),
   ]);
 
   const timeoutMs = Math.max(
@@ -4563,7 +4614,8 @@ async function proxyAgentSearchToBackend(req, res) {
           fallback &&
           fallback.status >= 200 &&
           fallback.status < 300 &&
-          fallback.usableCount >= Math.max(1, primaryUsableCount)
+          fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+          isProxySearchFallbackRelevant(fallback.data, queryText)
         ) {
           return res.status(fallback.status).json(fallback.data);
         }
@@ -4612,7 +4664,9 @@ async function proxyAgentSearchToBackend(req, res) {
           reason: 'primary_request_failed',
         });
         if (fallback && fallback.status >= 200 && fallback.status < 300 && fallback.usableCount > 0) {
-          return res.status(fallback.status).json(fallback.data);
+          if (isProxySearchFallbackRelevant(fallback.data, queryText)) {
+            return res.status(fallback.status).json(fallback.data);
+          }
         }
       } catch (fallbackErr) {
         logger.warn(
