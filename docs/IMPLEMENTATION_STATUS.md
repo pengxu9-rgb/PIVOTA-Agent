@@ -1,6 +1,6 @@
 # Implementation Status (Aurora Diagnosis Pipeline)
 
-Last updated: 2026-02-10 (product-rec enabled verification + env rollback checklist + monitoring guard-metric alignment)
+Last updated: 2026-02-10 (product-rec enabled verification + env rollback checklist + monitoring guard-metric alignment + dupe-kb ingest/prod retrieval verification)
 
 ## 1) Current Pipeline (text flow)
 
@@ -377,3 +377,35 @@ Conclusion:
    - `claims_violation_total == 0`
    - `product_rec_suppressed_total{reason="LOW_EVIDENCE"}` may increase
    - `product_rec_emitted_total` can remain `0` at this stage
+
+## 9) Dupe KB CSV Ingest + Chatbox Retrieval Verification (2026-02-10 UTC)
+
+Input CSV:
+- `/Users/pengchydan/Desktop/aurora_kb_ingest_targets200_BIDIRECTIONAL_TOP3TOP2_PLAINJSON_QUOTEALL_TINY.csv`
+
+Pre-ingest validation:
+- `rows=200/200`, header order exact match, `dupes_json` + `comparables_json` parse pass (`200/200`), rejected rows `0`.
+- Validation artifact: `reports/dupe_kb_ingest_validation_20260210_1456.json`
+
+Ingest result:
+- Destination table: `aurora_dupe_kb` (`src/db/migrations/018_aurora_dupe_kb.sql`)
+- Access layer: `src/auroraBff/dupeKbStore.js:202`
+- Full ingest source tag: `csv_ingest_staging_full_20260210`
+- Full ingest count: `200/200` success, `0` rejected.
+- Verification report: `reports/dupe_kb_ingest_verification_20260210_1458.md`
+
+System retrieval path (same path Aurora dupe card uses):
+- Endpoint: `POST /v1/dupe/suggest` (`src/auroraBff/routes.js:6700`)
+- Example production verification response:
+  - `kb_key=url:https://www.skinceuticals.com/skincare/anti-aging-creams/triple-lipid-restore-2-4-2/S09.html`
+  - `source=csv_ingest_staging_full_20260210`
+  - `dupes_len=3`, `comparables_len=2`
+
+Production replay proof:
+- Service commit: `e0f1069902dd`
+- Random sample replay via `/v1/dupe/suggest`: `10/10` HTTP success, `10/10` parse-ready arrays, `10/10` non-empty results.
+- Latency: `p50=425ms`, `p95=881ms`
+- Artifact: `reports/dupe_kb_production_replay_20260210_1629.md`
+
+Conclusion:
+- This CSV has been successfully ingested into KB and is callable by Aurora chatbox dupe-suggest retrieval path in production.
