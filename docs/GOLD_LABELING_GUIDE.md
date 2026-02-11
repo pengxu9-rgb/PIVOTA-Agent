@@ -76,3 +76,44 @@ export DIAG_CALIBRATION_USE_LATEST_VERSION=true
 - Runtime loader prefers latest version file when:
   - `DIAG_CALIBRATION_ENABLED=true`
   - `DIAG_CALIBRATION_USE_LATEST_VERSION=true`
+
+## Gold Labeling v2 (Seed Pack + Label Studio + Eval)
+This section adds the local-first closed loop built around `review_pack_mixed` outputs.
+
+1. Generate seed pack tasks + manifest from latest mixed review outputs:
+```bash
+make gold-seed-pack LIMIT=120
+```
+Outputs:
+- `artifacts/gold_seed_tasks_labelstudio.json`
+- `artifacts/gold_seed_manifest.json`
+- `reports/gold_seed_pack_<run_id>.md`
+
+2. Label in local Label Studio:
+- Use config: `label_studio/project_oval_skin.xml`
+- Import tasks: `artifacts/gold_seed_tasks_labelstudio.json`
+- Export annotations as JSON.
+
+3. Import Label Studio export into canonical Aurora NDJSON:
+```bash
+make gold-label-import GOLD_IMPORT_IN=/path/to/label_studio_export.json
+```
+Output:
+- `artifacts/gold_labels.ndjson`
+
+4. Run offline gold evaluation:
+```bash
+make eval-gold \
+  EVAL_GOLD_LABELS=artifacts/gold_labels.ndjson \
+  EVAL_GOLD_PRED_JSONL=reports/review_pack_mixed_<run_id>.jsonl
+```
+Outputs:
+- `reports/eval_gold_<run_id>.md`
+- `reports/eval_gold_<run_id>.csv`
+- `reports/eval_gold_<run_id>.jsonl`
+- `artifacts/calibration_train_samples.ndjson`
+
+5. (Optional) Train calibrator directly from gold eval train samples:
+```bash
+make train-calibrator CAL_TRAIN_SAMPLES=artifacts/calibration_train_samples.ndjson
+```

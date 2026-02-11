@@ -1,0 +1,108 @@
+[
+  {
+    "id": "task_mock_001",
+    "data": {
+      "sample_hash": "mockhash001",
+      "source": "lapa",
+      "local_path": "/tmp/mock_001.jpg",
+      "image": "file:///tmp/mock_001.jpg"
+    },
+    "annotations": [
+      {
+        "created_at": "2026-02-11T10:00:00.000Z",
+        "completed_by": "annotator_alpha",
+        "result": [
+          {
+            "type": "polygonlabels",
+            "from_name": "face_oval",
+            "value": {
+              "polygonlabels": ["face_oval"],
+              "points": [[20, 10], [80, 10], [85, 50], [80, 90], [20, 90], [15, 50]]
+            }
+          },
+          {
+            "type": "polygonlabels",
+            "from_name": "skin",
+            "value": {
+              "polygonlabels": ["skin"],
+              "points": [[25, 18], [75, 18], [78, 48], [75, 82], [25, 82], [22, 48]]
+            }
+          },
+          {
+            "type": "polygonlabels",
+            "from_name": "hair",
+            "value": {
+              "polygonlabels": ["hair"],
+              "points": [[24, 8], [76, 8], [80, 22], [20, 22]]
+            }
+          },
+          {
+            "type": "polygonlabels",
+            "from_name": "background",
+            "value": {
+              "polygonlabels": ["background"],
+              "points": [[0, 0], [100, 0], [100, 8], [0, 8]]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "task_mock_002",
+    "data": {
+      "sample_hash": "mockhash002",
+      "source": "celebamaskhq",
+      "local_path": "/tmp/mock_002.jpg",
+      "image": "file:///tmp/mock_002.jpg",
+      "width": 1000,
+      "height": 800
+    },
+    "annotations": [
+      {
+        "created_at": "2026-02-11T10:05:00.000Z",
+        "completed_by": {
+          "email": "annotator_beta@local"
+        },
+        "result": [
+          {
+            "type": "polygonlabels",
+            "value": {
+              "polygonlabels": ["face_oval"],
+              "original_width": 1000,
+              "original_height": 800,
+              "points": [[180, 90], [820, 90], [860, 390], [820, 710], [180, 710], [140, 390]]
+            }
+          },
+          {
+            "type": "polygonlabels",
+            "value": {
+              "polygonlabels": ["skin"],
+              "original_width": 1000,
+              "original_height": 800,
+              "points": [[240, 150], [760, 150], [790, 390], [760, 650], [240, 650], [210, 390]]
+            }
+          },
+          {
+            "type": "polygonlabels",
+            "value": {
+              "polygonlabels": ["hair"],
+              "original_width": 1000,
+              "original_height": 800,
+              "points": [[220, 70], [780, 70], [810, 180], [190, 180]]
+            }
+          },
+          {
+            "type": "polygonlabels",
+            "value": {
+              "polygonlabels": ["background"],
+              "original_width": 1000,
+              "original_height": 800,
+              "points": [[0, 0], [1000, 0], [1000, 70], [0, 70]]
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

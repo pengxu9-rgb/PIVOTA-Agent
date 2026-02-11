@@ -1,0 +1,21 @@
+<View>
+  <Header value="Aurora Gold Labeling — Oval/Skin/Hair/Background" />
+  <Image name="image" value="$image" zoom="true" />
+  <PolygonLabels name="face_oval" toName="image" showInline="true">
+    <Label value="face_oval" background="#4CAF50" />
+  </PolygonLabels>
+  <PolygonLabels name="skin" toName="image" showInline="true">
+    <Label value="skin" background="#FF9800" />
+  </PolygonLabels>
+  <PolygonLabels name="hair" toName="image" showInline="true">
+    <Label value="hair" background="#9C27B0" />
+  </PolygonLabels>
+  <PolygonLabels name="background" toName="image" showInline="true">
+    <Label value="background" background="#607D8B" />
+  </PolygonLabels>
+  <RectangleLabels name="artifact_box" toName="image" showInline="true">
+    <Label value="bad_region" background="#F44336" />
+    <Label value="artifact" background="#795548" />
+  </RectangleLabels>
+  <Text name="meta_source" value="source=$source | sample_hash=$sample_hash | bucket=$bucket" />
+</View>

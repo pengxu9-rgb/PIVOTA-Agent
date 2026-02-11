@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-label-import eval-gold train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -47,18 +47,31 @@ GOLD_HARD_RATIO ?= 0.6
 GOLD_QUOTA_FILE ?=
 GOLD_ALLOW_ROI ?= false
 GOLD_SEED ?=
+GOLD_SEED_LIMIT ?= 120
+GOLD_SEED_BUCKETS ?= CHIN_OVERFLOW,BG_LEAKAGE,NOSE_OVERFLOW,LAPA_FAIL,RANDOM_BASELINE
+GOLD_SEED_BUCKET_MIN ?= 20
+GOLD_SEED_SOURCE_MIN ?= 8
+GOLD_SEED_TASKS_OUT ?= artifacts/gold_seed_tasks_labelstudio.json
+GOLD_SEED_MANIFEST_OUT ?= artifacts/gold_seed_manifest.json
+REVIEW_MD ?=
+REVIEW_JSONL ?=
 GOLD_IMPORT_IN ?=
-GOLD_IMPORT_OUT ?= tmp/diag_pseudo_label_factory/gold_labels.ndjson
+GOLD_IMPORT_OUT ?= artifacts/gold_labels.ndjson
 GOLD_IMPORT_QA_STATUS ?= approved
 GOLD_IMPORT_ANNOTATOR ?=
 CAL_MODEL_OUTPUTS ?= tmp/diag_pseudo_label_factory/model_outputs.ndjson
-CAL_GOLD_LABELS ?= tmp/diag_pseudo_label_factory/gold_labels.ndjson
+CAL_GOLD_LABELS ?= $(GOLD_IMPORT_OUT)
+CAL_TRAIN_SAMPLES ?=
 CAL_OUT_DIR ?= model_registry
 CAL_ALIAS_PATH ?= model_registry/diag_calibration_v1.json
 CAL_IOU ?= 0.3
 CAL_MIN_GROUP_SAMPLES ?= 24
 CAL_EVAL_MODEL ?=
 CAL_EVAL_OUT ?= reports/calibration_eval.json
+EVAL_GOLD_LABELS ?= $(GOLD_IMPORT_OUT)
+EVAL_GOLD_PRED_JSONL ?=
+EVAL_GOLD_GRID ?= 256
+EVAL_GOLD_CAL_TRAIN_OUT ?= artifacts/calibration_train_samples.ndjson
 REGION_ACC_MODEL_OUTPUTS ?= $(CAL_MODEL_OUTPUTS)
 REGION_ACC_GOLD_LABELS ?= $(CAL_GOLD_LABELS)
 REGION_ACC_IOU ?= 0.3
@@ -178,11 +191,17 @@ monitoring-validate:
 gold-label-sample:
 	node scripts/sample_gold_label_tasks.js $(if $(GOLD_TASKS_IN),--hardCases $(GOLD_TASKS_IN),) --out $(GOLD_TASKS_OUT) --total $(GOLD_TOTAL) --hardRatio $(GOLD_HARD_RATIO) --allowRoi $(GOLD_ALLOW_ROI) $(if $(GOLD_TASKS_DATE),--date $(GOLD_TASKS_DATE),) $(if $(GOLD_QUOTA_FILE),--quotaFile $(GOLD_QUOTA_FILE),) $(if $(GOLD_SEED),--seed $(GOLD_SEED),)
 
+gold-seed-pack:
+	node scripts/gold_seed_pack.mjs --limit "$(GOLD_SEED_LIMIT)" --buckets "$(GOLD_SEED_BUCKETS)" --bucket_min "$(GOLD_SEED_BUCKET_MIN)" --source_min "$(GOLD_SEED_SOURCE_MIN)" --tasks_out "$(GOLD_SEED_TASKS_OUT)" --manifest_out "$(GOLD_SEED_MANIFEST_OUT)" --report_dir "$(EVAL_REPORT_DIR)" --cache_dir "$(CACHE_DIR)" --internal_dir "$(if $(INTERNAL_DIR),$(INTERNAL_DIR),$(HOME)/Desktop/Aurora/internal test photos)" --lapa_dir "$(if $(LAPA_DIR),$(LAPA_DIR),$(HOME)/Desktop/Aurora/datasets_raw/LaPa DB)" --celeba_dir "$(if $(CELEBA_DIR),$(CELEBA_DIR),$(HOME)/Desktop/Aurora/datasets_raw/CelebAMask-HQ(1)/CelebAMask-HQ/CelebA-HQ-img)" $(if $(REVIEW_MD),--review_md "$(REVIEW_MD)",) $(if $(REVIEW_JSONL),--review_jsonl "$(REVIEW_JSONL)",) $(if $(GOLD_SEED),--seed "$(GOLD_SEED)",)
+
 gold-label-import:
-	node scripts/import_gold_labels.js --in $(GOLD_IMPORT_IN) --out $(GOLD_IMPORT_OUT) --qaStatus $(GOLD_IMPORT_QA_STATUS) $(if $(GOLD_IMPORT_ANNOTATOR),--annotatorId $(GOLD_IMPORT_ANNOTATOR),)
+	node scripts/gold_label_import.mjs --in "$(GOLD_IMPORT_IN)" --out "$(GOLD_IMPORT_OUT)" --qa_status "$(GOLD_IMPORT_QA_STATUS)" $(if $(GOLD_IMPORT_ANNOTATOR),--annotator "$(GOLD_IMPORT_ANNOTATOR)",)
+
+eval-gold:
+	node scripts/eval_gold.mjs --gold_labels "$(EVAL_GOLD_LABELS)" --report_dir "$(EVAL_REPORT_DIR)" --grid_size "$(EVAL_GOLD_GRID)" --calibration_out "$(EVAL_GOLD_CAL_TRAIN_OUT)" $(if $(EVAL_GOLD_PRED_JSONL),--pred_jsonl "$(EVAL_GOLD_PRED_JSONL)",)
 
 train-calibrator:
-	node scripts/train_calibrator.js --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --outDir $(CAL_OUT_DIR) --aliasPath $(CAL_ALIAS_PATH) --iouThreshold $(CAL_IOU) --minGroupSamples $(CAL_MIN_GROUP_SAMPLES)
+	node scripts/train_calibrator.js --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --outDir $(CAL_OUT_DIR) --aliasPath $(CAL_ALIAS_PATH) --iouThreshold $(CAL_IOU) --minGroupSamples $(CAL_MIN_GROUP_SAMPLES) $(if $(CAL_TRAIN_SAMPLES),--trainSamples $(CAL_TRAIN_SAMPLES),)
 
 eval-calibration:
 	node scripts/eval_calibration.js --model $(if $(CAL_EVAL_MODEL),$(CAL_EVAL_MODEL),$(CAL_ALIAS_PATH)) --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --iouThreshold $(CAL_IOU) --outJson $(CAL_EVAL_OUT)
