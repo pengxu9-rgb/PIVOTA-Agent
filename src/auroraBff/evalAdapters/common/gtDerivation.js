@@ -133,6 +133,69 @@ function deriveGtModulesFromSkinMask({
   };
 }
 
+function deriveGtModulesFromImageMasks({
+  skinMaskImage,
+  moduleMasksImage,
+  imageWidth,
+  imageHeight,
+  faceCropBox,
+  gridSize = 128,
+  moduleIds,
+  moduleBoxes,
+}) {
+  if (!skinMaskImage || !(skinMaskImage.mask instanceof Uint8Array)) {
+    return {
+      coord_space: 'face_crop_norm_v1',
+      grid: { w: gridSize, h: gridSize },
+      skin_mask_rle_norm: '',
+      module_masks: [],
+      warnings: ['skin_mask_missing'],
+    };
+  }
+
+  const sourceW = Number(skinMaskImage.width) || Number(imageWidth) || 1;
+  const sourceH = Number(skinMaskImage.height) || Number(imageHeight) || 1;
+  const crop = normalizeFaceCropBox(faceCropBox, imageWidth || sourceW, imageHeight || sourceH);
+  const targetW = Math.max(16, Math.min(512, Math.floor(Number(gridSize) || 128)));
+  const targetH = targetW;
+
+  const skinMaskNorm = cropMaskToNorm(skinMaskImage.mask, sourceW, sourceH, crop, targetW, targetH);
+  const modules = [];
+  const warnings = [];
+  const boxLookup = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
+  const imageMasks = moduleMasksImage && typeof moduleMasksImage === 'object' ? moduleMasksImage : {};
+  const ids = Array.isArray(moduleIds) && moduleIds.length ? moduleIds : Object.keys(boxLookup);
+
+  for (const moduleId of ids) {
+    const imageMask = imageMasks[moduleId];
+    let gtMaskNorm = null;
+    if (imageMask instanceof Uint8Array && imageMask.length === sourceW * sourceH) {
+      gtMaskNorm = cropMaskToNorm(imageMask, sourceW, sourceH, crop, targetW, targetH);
+      gtMaskNorm = andMasks(gtMaskNorm, skinMaskNorm);
+    } else {
+      const moduleMaskNorm = moduleMaskFromBox(moduleId, targetW, targetH, boxLookup);
+      gtMaskNorm = andMasks(skinMaskNorm, moduleMaskNorm);
+      warnings.push(`module_mask_missing:${moduleId}`);
+    }
+    modules.push({
+      module_id: moduleId,
+      coord_space: 'face_crop_norm_v1',
+      mask_rle_norm: encodeRleBinary(gtMaskNorm),
+      positive_pixels: countOnes(gtMaskNorm),
+    });
+  }
+
+  return {
+    coord_space: 'face_crop_norm_v1',
+    grid: { w: targetW, h: targetH },
+    face_crop_bbox_px: crop,
+    skin_mask_rle_norm: encodeRleBinary(skinMaskNorm),
+    skin_positive_pixels: countOnes(skinMaskNorm),
+    module_masks: modules,
+    warnings,
+  };
+}
+
 function saveDerivedGt(cacheRootDir, dataset, sampleId, payload) {
   const filePath = path.join(cacheRootDir, 'derived_gt', dataset, `${sampleId}.json`);
   writeJson(filePath, payload);
@@ -143,5 +206,6 @@ module.exports = {
   normalizeFaceCropBox,
   faceCropFromSkinBBoxNorm,
   deriveGtModulesFromSkinMask,
+  deriveGtModulesFromImageMasks,
   saveDerivedGt,
 };

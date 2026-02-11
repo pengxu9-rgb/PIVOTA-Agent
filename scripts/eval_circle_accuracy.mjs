@@ -49,6 +49,7 @@ const {
   normalizeFaceCropBox,
   faceCropFromSkinBBoxNorm,
   deriveGtModulesFromSkinMask,
+  deriveGtModulesFromImageMasks,
   saveDerivedGt,
 } = require('../src/auroraBff/evalAdapters/common/gtDerivation');
 const { runSkinDiagnosisV1, buildSkinAnalysisFromDiagnosisV1 } = require('../src/auroraBff/skinDiagnosisV1');
@@ -334,6 +335,7 @@ function predModulesMissingBreakdown(rows) {
 function datasetEvalMode(datasetName) {
   const token = String(datasetName || '').trim().toLowerCase();
   if (token === 'fasseg') return 'segmentation_only';
+  if (token === 'celebamaskhq') return 'parsing_gt';
   return 'full';
 }
 
@@ -1724,12 +1726,13 @@ async function main() {
     };
     row.gt_stats.face_crop_source = usePayloadFaceCrop ? 'payload_face_crop' : 'skin_bbox_fallback';
 
-    const derivedGt = deriveGtModulesFromSkinMask({
+    const derivedGt = deriveGtModulesFromImageMasks({
       skinMaskImage: {
         mask: gtSkin.mask,
         width: gtSkin.width,
         height: gtSkin.height,
       },
+      moduleMasksImage: gtSkin && gtSkin.module_masks ? gtSkin.module_masks : null,
       imageWidth: gtSkin.width,
       imageHeight: gtSkin.height,
       faceCropBox: resolvedFaceCrop,
@@ -2023,7 +2026,7 @@ async function main() {
     leakage_mean: round3(leakageNonSkinMean),
     empty_module_rate: round3(emptyModuleRate),
     module_pixels_min: modulePixelsMin,
-    dataset_eval_mode: segmentationOnlyRun ? 'segmentation_only' : 'full',
+    dataset_eval_mode: args.datasets.length === 1 ? datasetEvalMode(args.datasets[0]) : (segmentationOnlyRun ? 'segmentation_only' : 'mixed'),
     skin_roi_too_small_rate: round3(skinRoiTooSmallRate),
     face_detect_fail_rate: round3(faceDetectFailRate),
     fail_reasons: failReasonRows,
