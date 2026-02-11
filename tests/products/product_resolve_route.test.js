@@ -207,6 +207,10 @@ describe('POST /agent/v1/products/resolve', () => {
       expect.objectContaining({
         sources: expect.arrayContaining([
           expect.objectContaining({
+            source: 'products_cache_global',
+            ok: false,
+          }),
+          expect.objectContaining({
             source: 'agent_search_scoped',
             ok: false,
           }),
@@ -302,20 +306,22 @@ describe('POST /agent/v1/products/resolve', () => {
     );
   });
 
-  test('accepts hints.product_ref with product_id only', async () => {
+  test('accepts hints.product_ref with non-opaque product_id only', async () => {
     const app = require('../../src/server');
-    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+    const hintedProductId = '9886499864904';
+    const hintedAlias = 'Paula Choice 2 percent BHA Liquid';
 
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
       .send({
-        query: hintedProductId,
+        query: 'e7c90e06-8673-4c97-835d-074a26ab2162',
         lang: 'en',
         hints: {
           product_ref: {
             product_id: hintedProductId,
           },
-          aliases: ['Paula Choice 2 percent BHA Liquid'],
+          aliases: [hintedAlias],
+          title: hintedAlias,
         },
         options: {
           search_all_merchants: false,
@@ -330,6 +336,86 @@ describe('POST /agent/v1/products/resolve', () => {
         product_ref: {
           product_id: hintedProductId,
         },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_from_hints: true,
+      }),
+    );
+  });
+
+  test('does not resolve opaque hints.product_ref product_id without merchant_id', async () => {
+    const app = require('../../src/server');
+    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: hintedProductId,
+        lang: 'en',
+        hints: {
+          product_ref: {
+            product_id: hintedProductId,
+          },
+          aliases: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+        },
+        options: {
+          search_all_merchants: false,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: false,
+        reason: 'no_candidates',
+        product_ref: null,
+      }),
+    );
+  });
+
+  test('resolves opaque hints.product_ref using single prefer_merchant when merchant_id missing', async () => {
+    const app = require('../../src/server');
+    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+    const preferMerchant = 'merch_efbc46b4619cfbdf';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: hintedProductId,
+        lang: 'en',
+        hints: {
+          product_ref: {
+            product_id: hintedProductId,
+          },
+          aliases: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+        },
+        options: {
+          prefer_merchants: [preferMerchant],
+          search_all_merchants: false,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        product_ref: {
+          product_id: hintedProductId,
+          merchant_id: preferMerchant,
+        },
+        reason: 'hint_product_ref',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        hint_short_circuit: true,
+        sources: expect.arrayContaining([
+          expect.objectContaining({ source: 'hints_product_ref', merchant_inferred: true }),
+        ]),
       }),
     );
   });

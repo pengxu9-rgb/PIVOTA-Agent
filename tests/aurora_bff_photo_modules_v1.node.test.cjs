@@ -385,3 +385,41 @@ test('photo modules card: face oval clip too small falls back and marks degraded
       assert.ok(degradedCount > 0, 'expected at least one module with FACE_OVAL_CLIP_TOO_SMALL');
     },
   ));
+test('photo modules card: internal_debug includes shrink_factors_used for all modules', () =>
+  withEnv(
+    {
+      DIAG_MODULE_SHRINK_CHIN: '0.8',
+      DIAG_MODULE_SHRINK_FOREHEAD: '0.88',
+      DIAG_MODULE_SHRINK_CHEEK: '0.9',
+      DIAG_MODULE_SHRINK_UNDER_EYE: '0.95',
+      DIAG_MODULE_SHRINK_NOSE: '0.95',
+    },
+    () => {
+      const loaded = loadPhotoModulesBuilder();
+      const built = loaded.buildPhotoModulesCard({
+        requestId: 'req_photo_modules_shrink_debug',
+        analysis: makeAnalysisFixture(),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        photoNotice: 'notice',
+        diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
+        profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+        language: 'EN',
+        ingredientRecEnabled: true,
+        productRecEnabled: false,
+        internalTestMode: true,
+      });
+      unloadPhotoModules(loaded.moduleId);
+      assert.ok(built && built.card && built.card.payload);
+      const payload = built.card.payload;
+      assert.ok(payload.internal_debug && payload.internal_debug.shrink_factors_used);
+      const factors = payload.internal_debug.shrink_factors_used;
+      assert.equal(factors.chin, 0.8);
+      assert.equal(factors.forehead, 0.88);
+      assert.equal(factors.left_cheek, 0.9);
+      assert.equal(factors.right_cheek, 0.9);
+      assert.equal(factors.under_eye_left, 0.95);
+      assert.equal(factors.under_eye_right, 0.95);
+      assert.equal(factors.nose, 0.95);
+    },
+  ));
