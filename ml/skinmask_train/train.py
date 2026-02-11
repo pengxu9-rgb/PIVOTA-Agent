@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from transformers import AutoImageProcessor, SegformerForSemanticSegmentation, get_linear_schedule_with_warmup
+from transformers import SegformerForSemanticSegmentation, get_linear_schedule_with_warmup
 
 from .augment import build_eval_transform, build_train_augment
 from .datasets import (
@@ -26,7 +26,8 @@ from .datasets import (
     split_records,
     to_device,
 )
-from .label_map import CLASS_TO_ID, ID_TO_CLASS, IGNORE_INDEX, UNIFIED_CLASSES
+from .label_map import IGNORE_INDEX, SKIN_BINARY_CLASSES
+from .preprocess import create_train_image_processor
 
 
 def now_key() -> str:
@@ -65,6 +66,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--save_every", type=int, default=1, help="Epoch interval for checkpoint snapshots.")
     parser.add_argument("--max_steps", type=int, default=0, help="Optional global max optimizer steps.")
+    parser.add_argument("--skin_threshold", type=float, default=0.5, help="Sigmoid threshold for eval metrics.")
+    parser.add_argument("--bce_weight", type=float, default=1.0, help="BCEWithLogits loss weight.")
+    parser.add_argument("--dice_weight", type=float, default=1.0, help="Soft dice loss weight.")
     return parser.parse_args()
 
 
@@ -72,17 +76,70 @@ def pick_device(token: str) -> torch.device:
     normalized = str(token or "auto").strip().lower()
     if normalized == "cpu":
         return torch.device("cpu")
+    if normalized == "mps":
+        return torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     if normalized == "cuda":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
 
 
 def safe_ratio(num: float, den: float) -> float:
     return num / den if den > 0 else 0.0
 
 
+def _resize_logits_to_labels(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    if logits.shape[-2:] == labels.shape[-2:]:
+        return logits
+    return torch.nn.functional.interpolate(
+        logits,
+        size=labels.shape[-2:],
+        mode="bilinear",
+        align_corners=False,
+    )
+
+
+def compute_binary_skin_loss(
+    *,
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    bce_weight: float = 1.0,
+    dice_weight: float = 1.0,
+    ignore_index: int = IGNORE_INDEX,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    logits = _resize_logits_to_labels(logits, labels)[:, 0, :, :].contiguous()
+    valid = labels != int(ignore_index)
+    target = (labels == 1).float()
+
+    valid_count = torch.count_nonzero(valid)
+    if valid_count.item() <= 0:
+        return logits.new_tensor(0.0)
+    valid_float = valid.float()
+    pos = torch.sum(target * valid_float)
+    neg = torch.sum((1.0 - target) * valid_float)
+    pos_weight = torch.clamp(neg / (pos + eps), min=1.0, max=8.0)
+    bce_map = torch.nn.functional.binary_cross_entropy_with_logits(
+        logits,
+        target,
+        pos_weight=pos_weight,
+        reduction="none",
+    )
+    bce = torch.sum(bce_map * valid_float) / torch.sum(valid_float)
+
+    probs = torch.sigmoid(logits)
+    probs = probs * valid_float
+    target = target * valid_float
+    intersection = torch.sum(probs * target, dim=(1, 2))
+    denom = torch.sum(probs, dim=(1, 2)) + torch.sum(target, dim=(1, 2))
+    dice_loss = 1.0 - ((2.0 * intersection + eps) / (denom + eps))
+    dice = torch.mean(dice_loss)
+    return bce * float(max(0.0, bce_weight)) + dice * float(max(0.0, dice_weight))
+
+
 @torch.no_grad()
-def evaluate(model, loader: DataLoader, device: torch.device) -> dict:
+def evaluate(model, loader: DataLoader, device: torch.device, *, threshold: float = 0.5) -> dict:
     model.eval()
     total_loss = 0.0
     total_batches = 0
@@ -90,26 +147,21 @@ def evaluate(model, loader: DataLoader, device: torch.device) -> dict:
     coverage_values = []
     leakage_values = []
 
-    skin_id = CLASS_TO_ID["skin"]
+    skin_threshold = float(max(0.05, min(0.95, threshold)))
 
     for batch in loader:
         batch = to_device(batch, device)
-        outputs = model(pixel_values=batch["pixel_values"], labels=batch["labels"])
-        loss = outputs.loss
+        outputs = model(pixel_values=batch["pixel_values"])
+        logits = outputs.logits
+        labels = batch["labels"]
+        loss = compute_binary_skin_loss(logits=logits, labels=labels)
         if torch.is_tensor(loss):
             total_loss += float(loss.detach().cpu().item())
             total_batches += 1
 
-        logits = outputs.logits
-        labels = batch["labels"]
-        if logits.shape[-2:] != labels.shape[-2:]:
-            logits = torch.nn.functional.interpolate(
-                logits,
-                size=labels.shape[-2:],
-                mode="bilinear",
-                align_corners=False,
-            )
-        pred = torch.argmax(logits, dim=1)
+        logits = _resize_logits_to_labels(logits, labels)[:, 0, :, :]
+        probs = torch.sigmoid(logits)
+        pred = probs >= skin_threshold
 
         for idx in range(pred.shape[0]):
             pred_mask = pred[idx]
@@ -117,8 +169,8 @@ def evaluate(model, loader: DataLoader, device: torch.device) -> dict:
             valid = gt_mask != IGNORE_INDEX
             if torch.count_nonzero(valid).item() == 0:
                 continue
-            pred_skin = (pred_mask == skin_id) & valid
-            gt_skin = (gt_mask == skin_id) & valid
+            pred_skin = pred_mask & valid
+            gt_skin = (gt_mask == 1) & valid
             intersection = torch.count_nonzero(pred_skin & gt_skin).item()
             union = torch.count_nonzero(pred_skin | gt_skin).item()
             gt_count = torch.count_nonzero(gt_skin).item()
@@ -160,13 +212,13 @@ def save_checkpoint(
     image_processor.save_pretrained(ckpt_dir / "hf_processor")
 
     payload = {
-        "schema_version": "aurora.skinmask.train.v1",
+        "schema_version": "aurora.skinmask.train.v2",
         "epoch": int(epoch),
         "step": int(step),
         "metrics": metrics,
         "backbone_name": args.backbone_name,
-        "num_labels": len(UNIFIED_CLASSES),
-        "classes": list(UNIFIED_CLASSES),
+        "num_labels": 1,
+        "classes": list(SKIN_BINARY_CLASSES),
         "ignore_index": IGNORE_INDEX,
         "model_dir": str((ckpt_dir / "hf_model").as_posix()),
         "processor_dir": str((ckpt_dir / "hf_processor").as_posix()),
@@ -204,9 +256,7 @@ def main() -> None:
     train_dataset = MultiDatasetSegDataset(train_records, transform=build_train_augment(args.image_size))
     val_dataset = MultiDatasetSegDataset(val_records, transform=build_eval_transform(args.image_size)) if val_records else None
 
-    image_processor = AutoImageProcessor.from_pretrained(args.backbone_name)
-    if hasattr(image_processor, "do_reduce_labels"):
-        image_processor.do_reduce_labels = False
+    image_processor = create_train_image_processor(args.backbone_name)
     collate_fn = partial(collate_for_segformer, image_processor=image_processor)
 
     train_loader = DataLoader(
@@ -232,9 +282,9 @@ def main() -> None:
 
     model = SegformerForSemanticSegmentation.from_pretrained(
         args.backbone_name,
-        num_labels=len(UNIFIED_CLASSES),
-        id2label=ID_TO_CLASS,
-        label2id=CLASS_TO_ID,
+        num_labels=1,
+        id2label={0: "skin"},
+        label2id={"skin": 0},
         ignore_mismatched_sizes=True,
     )
     if hasattr(model.config, "semantic_loss_ignore_index"):
@@ -257,8 +307,13 @@ def main() -> None:
         epoch_batches = 0
         for batch in train_loader:
             batch = to_device(batch, device)
-            outputs = model(pixel_values=batch["pixel_values"], labels=batch["labels"])
-            loss = outputs.loss
+            outputs = model(pixel_values=batch["pixel_values"])
+            loss = compute_binary_skin_loss(
+                logits=outputs.logits,
+                labels=batch["labels"],
+                bce_weight=args.bce_weight,
+                dice_weight=args.dice_weight,
+            )
             loss.backward()
             optimizer.step()
             scheduler.step()
@@ -271,7 +326,7 @@ def main() -> None:
                 break
 
         train_loss = epoch_loss / epoch_batches if epoch_batches else 0.0
-        val_metrics = evaluate(model, val_loader, device) if val_loader else {
+        val_metrics = evaluate(model, val_loader, device, threshold=args.skin_threshold) if val_loader else {
             "loss": 0.0,
             "miou_skin": 0.0,
             "coverage_skin": 0.0,
@@ -338,6 +393,12 @@ def main() -> None:
         "run_dir": str(run_dir.as_posix()),
         "device": str(device),
         "datasets": datasets,
+        "binary_skinmask": True,
+        "skin_threshold": float(max(0.05, min(0.95, args.skin_threshold))),
+        "loss": {
+            "bce_weight": float(args.bce_weight),
+            "dice_weight": float(args.dice_weight),
+        },
         "records": {
             "train": train_stats,
             "val": val_stats,

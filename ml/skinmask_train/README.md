@@ -1,6 +1,7 @@
 # Aurora Skinmask Train
 
 This folder trains and exports the face/skin segmentation model used to refine `photo_modules_v1` leakage control.
+Current default is a binary model (`skin` vs `non_skin`) with single-channel sigmoid output.
 
 ## Prerequisites
 
@@ -37,17 +38,18 @@ Outputs:
 ## Export ONNX
 
 ```bash
-make export-skinmask CKPT="outputs/skinmask_train/run_*/best" OUT=artifacts/skinmask_v1.onnx
+make export-skinmask CKPT="outputs/skinmask_train/run_*/best" OUT=artifacts/skinmask_v2.onnx
 ```
 
 Outputs:
-- `artifacts/skinmask_v1.onnx`
-- `artifacts/skinmask_v1.onnx.json`
+- `artifacts/skinmask_v2.onnx`
+- `artifacts/skinmask_v2.schema.json`
+- `artifacts/skinmask_v2.onnx.json`
 
 ## A/B with eval-circle
 
 ```bash
-make eval-skinmask ONNX=artifacts/skinmask_v1.onnx DATASETS="fasseg,lapa,celebamaskhq" LIMIT=200
+make eval-skinmask ONNX=artifacts/skinmask_v2.onnx DATASETS="fasseg,lapa,celebamaskhq" LIMIT=200
 ```
 
 Outputs:
@@ -56,5 +58,6 @@ Outputs:
 ## Notes
 
 - Default backbone: `SegFormer-B0` (`nvidia/segformer-b0-finetuned-ade-512-512`).
+- Train loss: `BCEWithLogits + Dice` on binary skin target.
 - Label space is unified in `label_map.py`; missing classes are mapped to `ignore_index=255`.
 - Do not commit datasets or generated outputs.

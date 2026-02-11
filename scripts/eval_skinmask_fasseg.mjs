@@ -17,7 +17,6 @@ const {
 } = require('../src/auroraBff/evalAdapters/common/datasetUtils');
 const {
   readMaskLabelImage,
-  maskFromAllowedLabelValues,
   cropMaskToNorm,
 } = require('../src/auroraBff/evalAdapters/common/maskUtils');
 const { faceCropFromSkinBBoxNorm } = require('../src/auroraBff/evalAdapters/common/gtDerivation');
@@ -32,7 +31,7 @@ const { inferSkinMaskOnFaceCrop, loadSkinmaskSchema } = require('../src/auroraBf
 
 const DEFAULT_CACHE_DIR = path.join('datasets_cache', 'external');
 const DEFAULT_REPORT_DIR = 'reports';
-const DEFAULT_ONNX = path.join('artifacts', 'skinmask_v1.onnx');
+const DEFAULT_ONNX = path.join('artifacts', 'skinmask_v2.onnx');
 const DEFAULT_LIMIT = 150;
 const DEFAULT_GRID_SIZE = Math.max(
   32,
@@ -131,15 +130,76 @@ function maskBoundingNorm(mask, width, height) {
   };
 }
 
-function buildBgMask(skinMask, hairMask) {
-  const len = Math.max(skinMask ? skinMask.length : 0, hairMask ? hairMask.length : 0);
-  const out = new Uint8Array(len);
-  for (let i = 0; i < len; i += 1) {
-    const isSkin = skinMask && skinMask[i] ? 1 : 0;
-    const isHair = hairMask && hairMask[i] ? 1 : 0;
-    out[i] = isSkin || isHair ? 0 : 1;
+function deriveFassegMasks(labelImage) {
+  const width = Math.max(1, Math.trunc(Number(labelImage && labelImage.width) || 0));
+  const height = Math.max(1, Math.trunc(Number(labelImage && labelImage.height) || 0));
+  const raw = labelImage && labelImage.data;
+  const data =
+    raw && typeof raw.length === 'number' && ArrayBuffer.isView(raw)
+      ? raw
+      : null;
+  if (!data || !width || !height || Number(data.length) !== width * height) {
+    return {
+      ok: false,
+      reason: 'label_image_invalid',
+    };
   }
-  return out;
+
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < data.length; i += 1) {
+    const value = Number(data[i]) & 0xff;
+    hist[value] += 1;
+  }
+  const uniqueCount = hist.reduce((acc, count) => (count > 0 ? acc + 1 : acc), 0);
+  const compressedLike = uniqueCount > 16;
+
+  const skinMask = createMask(width, height, 0);
+  const hairMask = createMask(width, height, 0);
+  const bgMask = createMask(width, height, 0);
+
+  if (compressedLike) {
+    for (let i = 0; i < data.length; i += 1) {
+      const value = Number(data[i]) & 0xff;
+      if (value >= 192) {
+        skinMask[i] = 1;
+      } else if (value >= 64) {
+        hairMask[i] = 1;
+      } else {
+        bgMask[i] = 1;
+      }
+    }
+    return {
+      ok: true,
+      mode: 'jpeg_quantized_3band',
+      width,
+      height,
+      skinMask,
+      hairMask,
+      bgMask,
+      uniqueCount,
+    };
+  }
+
+  for (let i = 0; i < data.length; i += 1) {
+    const value = Number(data[i]) & 0xff;
+    if (value === 1) {
+      skinMask[i] = 1;
+    } else if (value === 2) {
+      hairMask[i] = 1;
+    } else {
+      bgMask[i] = 1;
+    }
+  }
+  return {
+    ok: true,
+    mode: 'label_012',
+    width,
+    height,
+    skinMask,
+    hairMask,
+    bgMask,
+    uniqueCount,
+  };
 }
 
 function safeRatio(num, den) {
@@ -448,6 +508,7 @@ async function run() {
       gt_skin_pixels: 0,
       gt_hair_pixels: 0,
       gt_bg_pixels: 0,
+      gt_mapping_mode: null,
       skinmask_pixels_est: 0,
       skinmask_reason: null,
     };
@@ -458,30 +519,6 @@ async function run() {
     } catch (error) {
       row.fail_reason = 'IMAGE_READ_FAIL';
       row.note = String(error && error.message ? error.message : error);
-      rows.push(row);
-      continue;
-    }
-
-    let gtSkin = null;
-    try {
-      gtSkin = await adapter.buildSkinMask(evalSample);
-    } catch (error) {
-      row.fail_reason = 'GT_SKIN_BUILD_FAIL';
-      row.note = String(error && error.message ? error.message : error);
-      rows.push(row);
-      continue;
-    }
-    if (!gtSkin || !gtSkin.ok || !(gtSkin.mask instanceof Uint8Array)) {
-      row.fail_reason = 'GT_SKIN_MISSING';
-      row.note = gtSkin && gtSkin.reason ? String(gtSkin.reason) : 'gt_skin_missing';
-      rows.push(row);
-      continue;
-    }
-
-    const gtSkinPixelsFull = countOnes(gtSkin.mask);
-    if (!gtSkinPixelsFull) {
-      row.fail_reason = 'GT_SKIN_EMPTY';
-      row.note = 'gt_skin_pixels_zero';
       rows.push(row);
       continue;
     }
@@ -504,13 +541,32 @@ async function run() {
       continue;
     }
 
-    const hairMaskFull = maskFromAllowedLabelValues(labelImage, [2]);
-    const bgMaskFull = buildBgMask(gtSkin.mask, hairMaskFull);
-    const gtSkinBboxNorm = maskBoundingNorm(gtSkin.mask, gtSkin.width, gtSkin.height);
+    const gtDerived = deriveFassegMasks(labelImage);
+    if (!gtDerived.ok) {
+      row.fail_reason = 'GT_SKIN_MISSING';
+      row.note = gtDerived.reason || 'gt_derive_failed';
+      rows.push(row);
+      continue;
+    }
+
+    const gtSkinFull = gtDerived.skinMask;
+    const hairMaskFull = gtDerived.hairMask;
+    const bgMaskFull = gtDerived.bgMask;
+    row.gt_mapping_mode = String(gtDerived.mode || 'unknown');
+
+    const gtSkinPixelsFull = countOnes(gtSkinFull);
+    if (!gtSkinPixelsFull) {
+      row.fail_reason = 'GT_SKIN_EMPTY';
+      row.note = `gt_skin_pixels_zero:${row.gt_mapping_mode}`;
+      rows.push(row);
+      continue;
+    }
+
+    const gtSkinBboxNorm = maskBoundingNorm(gtSkinFull, gtDerived.width, gtDerived.height);
     const faceCropBox = faceCropFromSkinBBoxNorm({
       skinBboxNorm: gtSkinBboxNorm,
-      imageWidth: gtSkin.width,
-      imageHeight: gtSkin.height,
+      imageWidth: gtDerived.width,
+      imageHeight: gtDerived.height,
       marginScale: 1.2,
     });
     const diagnosisInternal = {
@@ -518,13 +574,13 @@ async function run() {
       face_crop: {
         coord_space: 'orig_px_v1',
         bbox_px: faceCropBox,
-        orig_size_px: { w: gtSkin.width, h: gtSkin.height },
+        orig_size_px: { w: gtDerived.width, h: gtDerived.height },
         render_size_px_hint: {
-          w: Math.max(1, Math.min(gtSkin.width, 512)),
-          h: Math.max(1, Math.min(gtSkin.height, 512)),
+          w: Math.max(1, Math.min(gtDerived.width, 512)),
+          h: Math.max(1, Math.min(gtDerived.height, 512)),
         },
       },
-      orig_size_px: { w: gtSkin.width, h: gtSkin.height },
+      orig_size_px: { w: gtDerived.width, h: gtDerived.height },
     };
 
     let inferred = null;
@@ -558,9 +614,9 @@ async function run() {
     }
 
     const predMaskNorm = decodeRleBinary(inferred.mask_rle_norm, args.grid_size * args.grid_size);
-    const gtSkinNorm = cropMaskToNorm(gtSkin.mask, gtSkin.width, gtSkin.height, faceCropBox, args.grid_size, args.grid_size);
-    const gtHairNorm = cropMaskToNorm(hairMaskFull, gtSkin.width, gtSkin.height, faceCropBox, args.grid_size, args.grid_size);
-    const gtBgNorm = cropMaskToNorm(bgMaskFull, gtSkin.width, gtSkin.height, faceCropBox, args.grid_size, args.grid_size);
+    const gtSkinNorm = cropMaskToNorm(gtSkinFull, gtDerived.width, gtDerived.height, faceCropBox, args.grid_size, args.grid_size);
+    const gtHairNorm = cropMaskToNorm(hairMaskFull, gtDerived.width, gtDerived.height, faceCropBox, args.grid_size, args.grid_size);
+    const gtBgNorm = cropMaskToNorm(bgMaskFull, gtDerived.width, gtDerived.height, faceCropBox, args.grid_size, args.grid_size);
 
     const predPixels = countOnes(predMaskNorm);
     const gtSkinPixels = countOnes(gtSkinNorm);

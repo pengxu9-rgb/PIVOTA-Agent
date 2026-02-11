@@ -17,6 +17,7 @@ const DEFAULT_LANG = 'en';
 const DEFAULT_SAMPLE_SEED = 'fasseg_matrix_seed_v1';
 const DEFAULT_CIRCLE_MODEL_MIN_PIXELS = 24;
 const DEFAULT_REGRESSION_DELTA = 0.02;
+const DEFAULT_BASELINE_GROUP = 'c1_k1';
 
 function nowKey() {
   const d = new Date();
@@ -52,6 +53,11 @@ function round3(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 1000) / 1000;
+}
+
+function safeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 function mean(values) {
@@ -253,6 +259,41 @@ async function readCsvRows(filePath) {
   return rows;
 }
 
+async function readJsonlRows(filePath) {
+  const text = await fsp.readFile(path.resolve(filePath), 'utf8');
+  return String(text)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch (_error) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function csvEscape(value) {
+  const raw = value == null ? '' : String(value);
+  if (!/[,"\n]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+async function writeCsvRows(filePath, headers, rows) {
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((header) => csvEscape(row[header])).join(','));
+  }
+  await fsp.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+async function writeJsonlRows(filePath, rows) {
+  const lines = rows.map((row) => JSON.stringify(row));
+  await fsp.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8');
+}
+
 function findEvalScript(repoRoot) {
   const scriptPath = path.join(repoRoot, 'scripts', 'eval_circle_accuracy.mjs');
   if (!fs.existsSync(scriptPath)) throw new Error(`eval_script_missing:${scriptPath}`);
@@ -340,15 +381,8 @@ function runGroupEval({ args, repoRoot, evalScript, runDir, group }) {
 function moduleMetric(rows, moduleId, field) {
   const row = rows.find((item) => String(item.module_id || '') === String(moduleId));
   if (!row) return null;
-  const value = Number(row[field]);
+  const value = safeNumber(row[field], NaN);
   return Number.isFinite(value) ? round3(value) : null;
-}
-
-function cheeksAggregate(rows, field) {
-  const left = moduleMetric(rows, 'left_cheek', field);
-  const right = moduleMetric(rows, 'right_cheek', field);
-  const values = [left, right].filter((value) => Number.isFinite(Number(value)));
-  return values.length ? round3(mean(values)) : null;
 }
 
 function computeRegressionDriverRows(groupMap) {
@@ -360,24 +394,156 @@ function computeRegressionDriverRows(groupMap) {
     {
       factor: 'circle',
       context: 'calibration=0',
-      delta_leakage: round3(Number(c1k0.leakage_mean || 0) - Number(c0k0.leakage_mean || 0)),
+      delta_leakage: round3(safeNumber(c1k0.leakage_mean) - safeNumber(c0k0.leakage_mean)),
     },
     {
       factor: 'circle',
       context: 'calibration=1',
-      delta_leakage: round3(Number(c1k1.leakage_mean || 0) - Number(c0k1.leakage_mean || 0)),
+      delta_leakage: round3(safeNumber(c1k1.leakage_mean) - safeNumber(c0k1.leakage_mean)),
     },
     {
       factor: 'calibration',
       context: 'circle=0',
-      delta_leakage: round3(Number(c0k1.leakage_mean || 0) - Number(c0k0.leakage_mean || 0)),
+      delta_leakage: round3(safeNumber(c0k1.leakage_mean) - safeNumber(c0k0.leakage_mean)),
     },
     {
       factor: 'calibration',
       context: 'circle=1',
-      delta_leakage: round3(Number(c1k1.leakage_mean || 0) - Number(c1k0.leakage_mean || 0)),
+      delta_leakage: round3(safeNumber(c1k1.leakage_mean) - safeNumber(c1k0.leakage_mean)),
     },
   ];
+}
+
+function computeCoverageMean(jsonlRows, csvRows) {
+  const valuesFromJsonl = (Array.isArray(jsonlRows) ? jsonlRows : [])
+    .map((row) => safeNumber(row && row.metric_stats ? row.metric_stats.coverage_mean : NaN, NaN))
+    .filter((value) => Number.isFinite(value));
+  if (valuesFromJsonl.length) return round3(mean(valuesFromJsonl));
+  const valuesFromCsv = (Array.isArray(csvRows) ? csvRows : [])
+    .map((row) => safeNumber(row.coverage_mean, NaN))
+    .filter((value) => Number.isFinite(value));
+  if (valuesFromCsv.length) return round3(mean(valuesFromCsv));
+  return 0;
+}
+
+function extractSampleHashes(jsonlRows) {
+  const values = new Set();
+  for (const row of jsonlRows || []) {
+    const sampleHash = String(row && row.sample_hash ? row.sample_hash : '').trim();
+    if (sampleHash) values.add(sampleHash);
+  }
+  return Array.from(values).sort();
+}
+
+function computeSampleSetConsistency(groups, jsonlByGroup) {
+  const baselineHashes = extractSampleHashes(jsonlByGroup[groups[0].id] || []);
+  const baselineKey = baselineHashes.join(',');
+  for (const group of groups.slice(1)) {
+    const hashes = extractSampleHashes(jsonlByGroup[group.id] || []);
+    if (hashes.join(',') !== baselineKey) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildModuleTable(csvByGroup, groupIds) {
+  const trackedModules = [
+    { module: 'chin', type: 'single', left: 'chin', right: 'chin' },
+    { module: 'forehead', type: 'single', left: 'forehead', right: 'forehead' },
+    { module: 'cheeks', type: 'avg', left: 'left_cheek', right: 'right_cheek' },
+  ];
+  const trackedMetrics = [
+    { key: 'miou_mean', label: 'mIoU', higher_is_better: true },
+    { key: 'leakage_mean', label: 'leakage', higher_is_better: false },
+    { key: 'coverage_mean', label: 'coverage', higher_is_better: true },
+  ];
+  const rows = [];
+  for (const moduleEntry of trackedModules) {
+    for (const metricEntry of trackedMetrics) {
+      const row = {
+        module: moduleEntry.module,
+        metric: metricEntry.label,
+        metric_key: metricEntry.key,
+        higher_is_better: metricEntry.higher_is_better,
+      };
+      for (const groupId of groupIds) {
+        const csvRows = csvByGroup[groupId] || [];
+        const value = moduleEntry.type === 'avg'
+          ? round3(mean([
+            moduleMetric(csvRows, moduleEntry.left, metricEntry.key),
+            moduleMetric(csvRows, moduleEntry.right, metricEntry.key),
+          ].filter((x) => Number.isFinite(Number(x)))))
+          : moduleMetric(csvRows, moduleEntry.left, metricEntry.key);
+        row[groupId] = Number.isFinite(Number(value)) ? round3(value) : null;
+      }
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+function markBestGroup(moduleRow, groupIds) {
+  const entries = groupIds
+    .map((groupId) => ({ group_id: groupId, value: safeNumber(moduleRow[groupId], NaN) }))
+    .filter((item) => Number.isFinite(item.value));
+  if (!entries.length) return null;
+  const comparator = moduleRow.higher_is_better
+    ? (a, b) => b.value - a.value
+    : (a, b) => a.value - b.value;
+  entries.sort(comparator);
+  return entries[0].group_id;
+}
+
+function computeDeltasForGroup(groupMap, baselineGroupId) {
+  const baseline = groupMap[baselineGroupId] || {};
+  const baselineLeakage = safeNumber(baseline.leakage_mean);
+  const baselineMiou = safeNumber(baseline.module_miou_mean);
+  const baselineCoverage = safeNumber(baseline.coverage_mean);
+  const out = {};
+  for (const [groupId, item] of Object.entries(groupMap)) {
+    out[groupId] = {
+      leakage_delta_vs_baseline: round3(safeNumber(item.leakage_mean) - baselineLeakage),
+      miou_delta_vs_baseline: round3(safeNumber(item.module_miou_mean) - baselineMiou),
+      coverage_delta_vs_baseline: round3(safeNumber(item.coverage_mean) - baselineCoverage),
+    };
+  }
+  return out;
+}
+
+function findRecommendation(groups, groupMap, baselineGroupId) {
+  const baseline = groupMap[baselineGroupId];
+  if (!baseline) return null;
+  const candidates = groups
+    .filter((group) => group.id !== baselineGroupId)
+    .map((group) => {
+      const item = groupMap[group.id];
+      const leakageDelta = safeNumber(item.leakage_mean) - safeNumber(baseline.leakage_mean);
+      const miouDelta = safeNumber(item.module_miou_mean) - safeNumber(baseline.module_miou_mean);
+      const qualifies = leakageDelta <= -0.15 || miouDelta >= 0.05;
+      const score = (-leakageDelta / 0.15) + (miouDelta / 0.05);
+      return {
+        group_id: group.id,
+        circle_enabled: group.circle_enabled,
+        calibration_enabled: group.calibration_enabled,
+        leakage_delta_vs_baseline: round3(leakageDelta),
+        miou_delta_vs_baseline: round3(miouDelta),
+        qualifies,
+        score,
+      };
+    })
+    .filter((item) => item.qualifies)
+    .sort((a, b) => b.score - a.score);
+  return candidates.length ? candidates[0] : null;
+}
+
+function findMaxRegressionDriver(driverRows) {
+  const positiveRows = driverRows
+    .map((row) => ({ ...row, delta_leakage: safeNumber(row.delta_leakage) }))
+    .filter((row) => row.delta_leakage > 0);
+  if (!positiveRows.length) return null;
+  positiveRows.sort((a, b) => b.delta_leakage - a.delta_leakage);
+  return positiveRows[0];
 }
 
 function renderMd({
@@ -387,8 +553,14 @@ function renderMd({
   groupMap,
   moduleTable,
   driverRows,
+  maxRegressionDriver,
+  recommendation,
+  deltasByGroup,
+  sampleSetConsistent,
   regressionThreshold,
   mdPath,
+  csvPath,
+  jsonlPath,
 }) {
   const lines = [];
   lines.push('# Eval Circle FASSEG Matrix (Circle × Calibration)');
@@ -400,27 +572,42 @@ function renderMd({
   lines.push(`- limit: ${args.limit}`);
   lines.push(`- circle_model_path: ${args.circle_model_path}`);
   lines.push(`- regression_delta_threshold: ${round3(regressionThreshold)}`);
+  lines.push(`- sample_set_consistent: ${sampleSetConsistent ? 'true' : 'false'}`);
+  lines.push(`- baseline_group: ${DEFAULT_BASELINE_GROUP}`);
   lines.push('');
+
+  if (recommendation) {
+    lines.push('## Recommended default flags for internal test');
+    lines.push('');
+    lines.push(
+      `- group: \`${recommendation.group_id}\` (circle=${recommendation.circle_enabled ? 1 : 0}, calibration=${recommendation.calibration_enabled ? 1 : 0})`,
+    );
+    lines.push(`- leakage_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.leakage_delta_vs_baseline}`);
+    lines.push(`- mIoU_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.miou_delta_vs_baseline}`);
+    lines.push('');
+  }
 
   lines.push('## Group Summary');
   lines.push('');
-  lines.push('| group | circle_enabled | calibration_enabled | module_mIoU_mean | leakage_mean | samples_ok | samples_total |');
-  lines.push('|---|---:|---:|---:|---:|---:|---:|');
+  lines.push('| group | circle_enabled | calibration_enabled | module_mIoU_mean | leakage_mean | coverage_mean | samples_ok | samples_total | leakage_delta_vs_baseline | mIoU_delta_vs_baseline |');
+  lines.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
   for (const group of groups) {
     const row = groupMap[group.id];
+    const delta = deltasByGroup[group.id] || {};
     lines.push(
-      `| ${group.id} | ${group.circle_enabled ? 1 : 0} | ${group.calibration_enabled ? 1 : 0} | ${round3(row.module_miou_mean)} | ${round3(row.leakage_mean)} | ${row.samples_ok} | ${row.samples_total} |`,
+      `| ${group.id} | ${group.circle_enabled ? 1 : 0} | ${group.calibration_enabled ? 1 : 0} | ${round3(row.module_miou_mean)} | ${round3(row.leakage_mean)} | ${round3(row.coverage_mean)} | ${row.samples_ok} | ${row.samples_total} | ${round3(delta.leakage_delta_vs_baseline)} | ${round3(delta.miou_delta_vs_baseline)} |`,
     );
   }
   lines.push('');
 
   lines.push('## Per-Module Compare (chin / forehead / cheeks)');
   lines.push('');
-  lines.push('| module | metric | c0_k0 | c0_k1 | c1_k0 | c1_k1 |');
-  lines.push('|---|---|---:|---:|---:|---:|');
+  lines.push('| module | metric | c0_k0 | c0_k1 | c1_k0 | c1_k1 | best_group |');
+  lines.push('|---|---|---:|---:|---:|---:|---|');
   for (const row of moduleTable) {
+    const bestGroup = markBestGroup(row, groups.map((item) => item.id));
     lines.push(
-      `| ${row.module} | ${row.metric} | ${row.c0_k0 ?? 'n/a'} | ${row.c0_k1 ?? 'n/a'} | ${row.c1_k0 ?? 'n/a'} | ${row.c1_k1 ?? 'n/a'} |`,
+      `| ${row.module} | ${row.metric} | ${row.c0_k0 ?? 'n/a'} | ${row.c0_k1 ?? 'n/a'} | ${row.c1_k0 ?? 'n/a'} | ${row.c1_k1 ?? 'n/a'} | ${bestGroup || 'n/a'} |`,
     );
   }
   lines.push('');
@@ -437,13 +624,25 @@ function renderMd({
   }
   lines.push('');
 
+  if (maxRegressionDriver) {
+    lines.push('## Max Regression Driver');
+    lines.push('');
+    lines.push(
+      `- factor: ${maxRegressionDriver.factor}, context: ${maxRegressionDriver.context}, leakage_delta=${round3(maxRegressionDriver.delta_leakage)}`,
+    );
+    lines.push('');
+  }
+
   lines.push('## Artifacts');
   lines.push('');
   lines.push(`- matrix.md: \`${toPosix(path.relative(process.cwd(), mdPath))}\``);
+  lines.push(`- matrix.csv: \`${toPosix(path.relative(process.cwd(), csvPath))}\``);
+  lines.push(`- matrix.jsonl: \`${toPosix(path.relative(process.cwd(), jsonlPath))}\``);
   for (const group of groups) {
     const payload = groupMap[group.id];
     lines.push(`- ${group.id}.summary: \`${payload.artifacts && payload.artifacts.md ? payload.artifacts.md : ''}\``);
     lines.push(`- ${group.id}.csv: \`${payload.artifacts && payload.artifacts.csv ? payload.artifacts.csv : ''}\``);
+    lines.push(`- ${group.id}.jsonl: \`${payload.artifacts && payload.artifacts.jsonl ? payload.artifacts.jsonl : ''}\``);
   }
   lines.push('');
 
@@ -485,66 +684,46 @@ async function main() {
   }
 
   const csvByGroup = {};
+  const jsonlByGroup = {};
   for (const group of groups) {
     const payload = groupPayloads[group.id];
     if (!payload.artifacts || !payload.artifacts.csv) {
       throw new Error(`group_${group.id}_missing_csv_artifact`);
     }
+    if (!payload.artifacts || !payload.artifacts.jsonl) {
+      throw new Error(`group_${group.id}_missing_jsonl_artifact`);
+    }
     csvByGroup[group.id] = await readCsvRows(payload.artifacts.csv);
+    jsonlByGroup[group.id] = await readJsonlRows(payload.artifacts.jsonl);
   }
 
-  const moduleRows = ['chin', 'forehead', 'left_cheek', 'right_cheek'];
-  const moduleTable = [];
-  for (const moduleId of moduleRows) {
-    moduleTable.push({
-      module: moduleId,
-      metric: 'mIoU',
-      c0_k0: moduleMetric(csvByGroup.c0_k0, moduleId, 'miou_mean'),
-      c0_k1: moduleMetric(csvByGroup.c0_k1, moduleId, 'miou_mean'),
-      c1_k0: moduleMetric(csvByGroup.c1_k0, moduleId, 'miou_mean'),
-      c1_k1: moduleMetric(csvByGroup.c1_k1, moduleId, 'miou_mean'),
-    });
-    moduleTable.push({
-      module: moduleId,
-      metric: 'leakage',
-      c0_k0: moduleMetric(csvByGroup.c0_k0, moduleId, 'leakage_mean'),
-      c0_k1: moduleMetric(csvByGroup.c0_k1, moduleId, 'leakage_mean'),
-      c1_k0: moduleMetric(csvByGroup.c1_k0, moduleId, 'leakage_mean'),
-      c1_k1: moduleMetric(csvByGroup.c1_k1, moduleId, 'leakage_mean'),
-    });
-  }
-
-  moduleTable.push({
-    module: 'cheeks_avg',
-    metric: 'mIoU',
-    c0_k0: cheeksAggregate(csvByGroup.c0_k0, 'miou_mean'),
-    c0_k1: cheeksAggregate(csvByGroup.c0_k1, 'miou_mean'),
-    c1_k0: cheeksAggregate(csvByGroup.c1_k0, 'miou_mean'),
-    c1_k1: cheeksAggregate(csvByGroup.c1_k1, 'miou_mean'),
-  });
-  moduleTable.push({
-    module: 'cheeks_avg',
-    metric: 'leakage',
-    c0_k0: cheeksAggregate(csvByGroup.c0_k0, 'leakage_mean'),
-    c0_k1: cheeksAggregate(csvByGroup.c0_k1, 'leakage_mean'),
-    c1_k0: cheeksAggregate(csvByGroup.c1_k0, 'leakage_mean'),
-    c1_k1: cheeksAggregate(csvByGroup.c1_k1, 'leakage_mean'),
-  });
+  const moduleTable = buildModuleTable(
+    csvByGroup,
+    groups.map((group) => group.id),
+  );
 
   const groupMap = {};
   for (const group of groups) {
     const payload = groupPayloads[group.id];
     groupMap[group.id] = {
       ...payload,
-      module_miou_mean: Number(payload.module_miou_mean || 0),
-      leakage_mean: Number(payload.leakage_mean || 0),
-      samples_ok: Number(payload.samples_ok || 0),
-      samples_total: Number(payload.samples_total || 0),
+      module_miou_mean: safeNumber(payload.module_miou_mean, 0),
+      leakage_mean: safeNumber(payload.leakage_mean, 0),
+      coverage_mean: computeCoverageMean(jsonlByGroup[group.id], csvByGroup[group.id]),
+      samples_ok: safeNumber(payload.samples_ok, 0),
+      samples_total: safeNumber(payload.samples_total, 0),
     };
   }
 
+  const sampleSetConsistent = computeSampleSetConsistency(groups, jsonlByGroup);
   const driverRows = computeRegressionDriverRows(groupMap);
+  const maxRegressionDriver = findMaxRegressionDriver(driverRows);
+  const deltasByGroup = computeDeltasForGroup(groupMap, DEFAULT_BASELINE_GROUP);
+  const recommendation = findRecommendation(groups, groupMap, DEFAULT_BASELINE_GROUP);
+
   const mdPath = path.join(reportDir, `eval_circle_matrix_${runKey}.md`);
+  const csvPath = path.join(reportDir, `eval_circle_matrix_${runKey}.csv`);
+  const jsonlPath = path.join(reportDir, `eval_circle_matrix_${runKey}.jsonl`);
   const mdText = renderMd({
     runKey,
     args,
@@ -552,27 +731,209 @@ async function main() {
     groupMap,
     moduleTable,
     driverRows,
+    maxRegressionDriver,
+    recommendation,
+    deltasByGroup,
+    sampleSetConsistent,
     regressionThreshold: args.regression_delta_threshold,
     mdPath,
+    csvPath,
+    jsonlPath,
   });
   await fsp.writeFile(mdPath, mdText, 'utf8');
+
+  const csvHeaders = [
+    'section',
+    'group',
+    'module',
+    'metric',
+    'circle_enabled',
+    'calibration_enabled',
+    'value',
+    'delta_vs_baseline',
+    'module_miou_mean',
+    'leakage_mean',
+    'coverage_mean',
+    'samples_ok',
+    'samples_total',
+    'factor',
+    'context',
+    'leakage_delta',
+    'verdict',
+    'note',
+  ];
+  const csvRows = [];
+  for (const group of groups) {
+    const summary = groupMap[group.id];
+    const delta = deltasByGroup[group.id] || {};
+    csvRows.push({
+      section: 'group',
+      group: group.id,
+      module: '-',
+      metric: 'summary',
+      circle_enabled: group.circle_enabled ? 1 : 0,
+      calibration_enabled: group.calibration_enabled ? 1 : 0,
+      value: '',
+      delta_vs_baseline: '',
+      module_miou_mean: round3(summary.module_miou_mean),
+      leakage_mean: round3(summary.leakage_mean),
+      coverage_mean: round3(summary.coverage_mean),
+      samples_ok: summary.samples_ok,
+      samples_total: summary.samples_total,
+      factor: '',
+      context: '',
+      leakage_delta: round3(delta.leakage_delta_vs_baseline),
+      verdict: '',
+      note: '',
+    });
+  }
+
+  for (const row of moduleTable) {
+    for (const group of groups) {
+      const value = row[group.id];
+      const baselineValue = row[DEFAULT_BASELINE_GROUP];
+      csvRows.push({
+        section: 'module',
+        group: group.id,
+        module: row.module,
+        metric: row.metric,
+        circle_enabled: group.circle_enabled ? 1 : 0,
+        calibration_enabled: group.calibration_enabled ? 1 : 0,
+        value: value == null ? '' : round3(value),
+        delta_vs_baseline: value == null || baselineValue == null ? '' : round3(safeNumber(value) - safeNumber(baselineValue)),
+        module_miou_mean: '',
+        leakage_mean: '',
+        coverage_mean: '',
+        samples_ok: '',
+        samples_total: '',
+        factor: '',
+        context: '',
+        leakage_delta: '',
+        verdict: '',
+        note: '',
+      });
+    }
+  }
+
+  for (const row of driverRows) {
+    const isDriver = safeNumber(row.delta_leakage, 0) > args.regression_delta_threshold;
+    csvRows.push({
+      section: 'driver',
+      group: '-',
+      module: '-',
+      metric: 'leakage_delta',
+      circle_enabled: '',
+      calibration_enabled: '',
+      value: '',
+      delta_vs_baseline: '',
+      module_miou_mean: '',
+      leakage_mean: '',
+      coverage_mean: '',
+      samples_ok: '',
+      samples_total: '',
+      factor: row.factor,
+      context: row.context,
+      leakage_delta: round3(row.delta_leakage),
+      verdict: isDriver ? 'REGRESSION DRIVER' : 'ok',
+      note: '',
+    });
+  }
+
+  if (recommendation) {
+    csvRows.push({
+      section: 'recommendation',
+      group: recommendation.group_id,
+      module: '-',
+      metric: 'recommended_default_flags',
+      circle_enabled: recommendation.circle_enabled ? 1 : 0,
+      calibration_enabled: recommendation.calibration_enabled ? 1 : 0,
+      value: '',
+      delta_vs_baseline: '',
+      module_miou_mean: '',
+      leakage_mean: recommendation.leakage_delta_vs_baseline,
+      coverage_mean: '',
+      samples_ok: '',
+      samples_total: '',
+      factor: '',
+      context: '',
+      leakage_delta: recommendation.leakage_delta_vs_baseline,
+      verdict: 'RECOMMENDED',
+      note: `miou_delta=${recommendation.miou_delta_vs_baseline}`,
+    });
+  }
+
+  await writeCsvRows(csvPath, csvHeaders, csvRows);
+
+  const jsonlRows = [
+    {
+      section: 'meta',
+      run_id: runKey,
+      generated_at: new Date().toISOString(),
+      datasets: ['fasseg'],
+      sample_seed: args.sample_seed,
+      limit: args.limit,
+      baseline_group: DEFAULT_BASELINE_GROUP,
+      sample_set_consistent: sampleSetConsistent,
+      circle_model_path: args.circle_model_path,
+      regression_delta_threshold: round3(args.regression_delta_threshold),
+      recommendation: recommendation || null,
+      max_regression_driver: maxRegressionDriver || null,
+    },
+    ...groups.map((group) => ({
+      section: 'group',
+      group: group.id,
+      circle_enabled: group.circle_enabled,
+      calibration_enabled: group.calibration_enabled,
+      module_miou_mean: round3(groupMap[group.id].module_miou_mean),
+      leakage_mean: round3(groupMap[group.id].leakage_mean),
+      coverage_mean: round3(groupMap[group.id].coverage_mean),
+      samples_ok: groupMap[group.id].samples_ok,
+      samples_total: groupMap[group.id].samples_total,
+      delta_vs_baseline: deltasByGroup[group.id],
+      artifacts: groupMap[group.id].artifacts || {},
+    })),
+    ...moduleTable.map((row) => ({
+      section: 'module',
+      module: row.module,
+      metric: row.metric,
+      values: Object.fromEntries(groups.map((group) => [group.id, row[group.id]])),
+      best_group: markBestGroup(row, groups.map((group) => group.id)),
+      baseline_group: DEFAULT_BASELINE_GROUP,
+    })),
+    ...driverRows.map((row) => ({
+      section: 'driver',
+      factor: row.factor,
+      context: row.context,
+      leakage_delta: round3(row.delta_leakage),
+      verdict: safeNumber(row.delta_leakage, 0) > args.regression_delta_threshold ? 'REGRESSION DRIVER' : 'ok',
+    })),
+  ];
+  await writeJsonlRows(jsonlPath, jsonlRows);
 
   const payload = {
     ok: true,
     run_id: runKey,
     sample_seed: args.sample_seed,
+    sample_set_consistent: sampleSetConsistent,
+    baseline_group: DEFAULT_BASELINE_GROUP,
+    recommendation: recommendation || null,
+    max_regression_driver: maxRegressionDriver || null,
     groups: groups.map((group) => ({
       id: group.id,
       circle_enabled: group.circle_enabled,
       calibration_enabled: group.calibration_enabled,
       module_miou_mean: round3(groupMap[group.id].module_miou_mean),
       leakage_mean: round3(groupMap[group.id].leakage_mean),
+      coverage_mean: round3(groupMap[group.id].coverage_mean),
       samples_ok: groupMap[group.id].samples_ok,
       samples_total: groupMap[group.id].samples_total,
+      delta_vs_baseline: deltasByGroup[group.id],
     })),
     driver_rows: driverRows,
     artifacts: {
       md: toPosix(path.relative(repoRoot, mdPath)),
+      csv: toPosix(path.relative(repoRoot, csvPath)),
+      jsonl: toPosix(path.relative(repoRoot, jsonlPath)),
     },
   };
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -583,4 +944,3 @@ main().catch((error) => {
   process.stderr.write(`${String(error && error.stack ? error.stack : error)}\n`);
   process.exitCode = 1;
 });
-
