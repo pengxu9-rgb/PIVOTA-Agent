@@ -201,7 +201,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.intake.skip_analysis')).toBe(true);
   });
 
-  test('Routine: budget gate prompts and sets state S6_BUDGET', async () => {
+  test('Routine: initial request returns recommendations with optional budget optimization', async () => {
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/chat')
@@ -219,9 +219,43 @@ describe('Aurora BFF (/v1)', () => {
       .expect(200);
 
     expect(res.body.assistant_message.content).toMatch(/预算/);
-    expect(res.body.session_patch.next_state).toBe('S6_BUDGET');
-    expect(res.body.cards.some((c) => c.type === 'budget_gate')).toBe(true);
-    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('chip.budget.'))).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(true);
+    expect(res.body.session_patch.next_state).toBe('S7_PRODUCT_RECO');
+    expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.budget.optimize.entry')).toBe(true);
+  });
+
+  test('Routine: budget gate remains in S6_BUDGET when budget is still missing', async () => {
+    const app = require('../src/server');
+    const payload = {
+      message: '继续',
+      action: {
+        action_id: 'chip.start.routine',
+        kind: 'chip',
+        data: {},
+      },
+      session: { state: 'S6_BUDGET' },
+    };
+
+    const first = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_budget_gate_stability_1')
+      .set('X-Lang', 'CN')
+      .send(payload)
+      .expect(200);
+
+    const second = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', 'uid_test_budget_gate_stability_1')
+      .set('X-Lang', 'CN')
+      .send(payload)
+      .expect(200);
+
+    for (const res of [first, second]) {
+      expect(res.body.assistant_message.content).toMatch(/预算/);
+      expect(res.body.session_patch.next_state).toBe('S6_BUDGET');
+      expect(res.body.cards.some((c) => c.type === 'budget_gate')).toBe(true);
+      expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('chip.budget.'))).toBe(true);
+    }
   });
 
   test('Routine: selecting budget in S6_BUDGET generates routine recommendations', async () => {
