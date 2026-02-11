@@ -34,8 +34,14 @@ const {
 } = require('../src/auroraBff/evalAdapters/common/metrics');
 const {
   validateModuleBoxes,
-  applyModelBoxCalibration,
 } = require('../src/auroraBff/evalAdapters/common/circlePriorModel');
+const {
+  PRED_MODULES_MISSING_REASON_DETAILS,
+  normalizePredModulesMissingReasonDetail,
+  ensureModulesForPayload,
+  inferPredModulesMissingReasonDetail,
+  safeApplyCalibration,
+} = require('./eval_circle_local_fallback.cjs');
 const {
   faceCropFromSkinBBoxNorm,
   deriveGtModulesFromSkinMask,
@@ -49,6 +55,7 @@ const DEFAULT_CACHE_DIR = path.join('datasets_cache', 'external');
 const DEFAULT_DATASETS = ['lapa', 'celebamaskhq', 'fasseg'];
 const DEFAULT_REPORT_DIR = 'reports';
 const DEFAULT_GRID_SIZE = 128;
+const MODULE_MASK_GRID_SIZE = 64;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MARKET = 'EU';
@@ -136,9 +143,11 @@ function createBaseEvalRow({ dataset, sampleHash, sampleId }) {
     sample_hash: String(sampleHash || ''),
     sample_id: String(sampleId || ''),
     fail_reason: FAIL_REASONS.UNKNOWN,
+    reason_detail: null,
     gt_stats: defaultGtStats(),
     pred_stats: defaultPredStats(),
     metric_stats: defaultMetricStats(),
+    degraded_reason: null,
     weak_label_only: false,
     note: null,
   };
@@ -174,6 +183,7 @@ function finalizeEvalRow(inputRow) {
   if (metricStats.modules_scored > 0) {
     row.ok = true;
     row.fail_reason = null;
+    row.reason_detail = null;
     return row;
   }
 
@@ -181,25 +191,34 @@ function finalizeEvalRow(inputRow) {
   const currentReason = normalizeFailReason(row.fail_reason);
   if (currentReason !== FAIL_REASONS.UNKNOWN) {
     row.fail_reason = currentReason;
+    row.reason_detail =
+      currentReason === FAIL_REASONS.PRED_MODULES_MISSING
+        ? normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason)
+        : null;
     return row;
   }
   if (!predStats.has_pred_modules || predStats.module_count <= 0) {
     row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
+    row.reason_detail = normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason);
     return row;
   }
   if (!gtStats.has_gt) {
     row.fail_reason = FAIL_REASONS.GT_MISSING;
+    row.reason_detail = null;
     return row;
   }
   if (gtStats.skin_pixels <= 0) {
     row.fail_reason = FAIL_REASONS.GT_SKIN_EMPTY;
+    row.reason_detail = null;
     return row;
   }
   if (predStats.pred_skin_pixels_est <= 0) {
     row.fail_reason = FAIL_REASONS.PRED_SKIN_EMPTY;
+    row.reason_detail = null;
     return row;
   }
   row.fail_reason = FAIL_REASONS.MODULES_EMPTY;
+  row.reason_detail = null;
   return row;
 }
 
@@ -231,6 +250,30 @@ function topFailReasons(rows) {
     return a.reason.localeCompare(b.reason);
   });
   return out;
+}
+
+function predModulesMissingBreakdown(rows) {
+  const counts = new Map();
+  const allRows = Array.isArray(rows) ? rows : [];
+  const missingRows = allRows.filter((row) => row && !row.ok && normalizeFailReason(row.fail_reason) === FAIL_REASONS.PRED_MODULES_MISSING);
+  const totalMissing = missingRows.length;
+  for (const row of missingRows) {
+    const detail = normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason);
+    counts.set(detail, (counts.get(detail) || 0) + 1);
+  }
+  const out = Array.from(counts.entries()).map(([reasonDetail, count]) => ({
+    reason_detail: reasonDetail,
+    count,
+    pct_of_missing: totalMissing > 0 ? round3(count / totalMissing) : 0,
+  }));
+  out.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.reason_detail.localeCompare(b.reason_detail);
+  });
+  return {
+    total_missing: totalMissing,
+    rows: out,
+  };
 }
 
 function parseBoolean(value, fallback = false) {
@@ -777,6 +820,26 @@ async function callApiPrediction({
   };
 }
 
+function normalizeQualityGradeToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'pass' || token === 'degraded' || token === 'fail') return token;
+  return 'unknown';
+}
+
+function fallbackFaceCropFromDiagnosisInternal(diagnosisInternal) {
+  const internal = diagnosisInternal && typeof diagnosisInternal === 'object' ? diagnosisInternal : {};
+  const existing = internal.face_crop && typeof internal.face_crop === 'object' ? internal.face_crop : null;
+  if (existing && existing.bbox_px && typeof existing.bbox_px === 'object') return existing;
+  const origW = Math.max(1, Math.trunc(Number(internal.orig_size_px && internal.orig_size_px.w) || 1));
+  const origH = Math.max(1, Math.trunc(Number(internal.orig_size_px && internal.orig_size_px.h) || 1));
+  return {
+    coord_space: 'orig_px_v1',
+    bbox_px: { x: 0, y: 0, w: origW, h: origH },
+    orig_size_px: { w: origW, h: origH },
+    render_size_px_hint: { w: Math.max(1, Math.min(origW, 512)), h: Math.max(1, Math.min(origH, 512)) },
+  };
+}
+
 async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEnabled, skinmaskModelPath }) {
   const diagnosis = await runSkinDiagnosisV1({
     imageBuffer,
@@ -793,6 +856,8 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
       diagnosisInternal: diagnosis && diagnosis.internal ? diagnosis.internal : null,
       metrics: null,
       skinmask_reason: null,
+      degraded_reason: null,
+      reason_detail: null,
     };
   }
 
@@ -821,39 +886,61 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
     }
   }
 
-  const built = buildPhotoModulesCard({
-    requestId: sampleToken,
-    analysis,
-    usedPhotos: true,
-    photoQuality: diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null,
-    photoNotice: null,
-    diagnosisInternal: diagnosis.internal || null,
-    profileSummary: null,
-    language: String(lang || 'en').toLowerCase().startsWith('zh') ? 'CN' : 'EN',
-    ingredientRecEnabled: false,
-    productRecEnabled: false,
-    skinMask,
-  });
-  if (!built || !built.card || !built.card.payload) {
-    return {
-      ok: false,
-      reason: 'local_photo_modules_missing',
-      payload: null,
-      quality: diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null,
+  const quality = diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null;
+  const qualityGrade = normalizeQualityGradeToken(quality && quality.grade);
+  let built = null;
+  let localReasonDetail = null;
+  try {
+    built = buildPhotoModulesCard({
+      requestId: sampleToken,
+      analysis,
+      usedPhotos: true,
+      photoQuality: quality,
+      photoNotice: null,
       diagnosisInternal: diagnosis.internal || null,
-      metrics: null,
-      skinmask_reason: skinmaskReason,
-    };
+      profileSummary: null,
+      language: String(lang || 'en').toLowerCase().startsWith('zh') ? 'CN' : 'EN',
+      ingredientRecEnabled: false,
+      productRecEnabled: false,
+      skinMask,
+    });
+  } catch (_error) {
+    localReasonDetail = PRED_MODULES_MISSING_REASON_DETAILS.MODULEIZER_EXCEPTION;
   }
+
+  const payloadFromBuilder =
+    built && built.card && built.card.payload && typeof built.card.payload === 'object'
+      ? built.card.payload
+      : {
+          used_photos: true,
+          quality_grade: qualityGrade,
+          face_crop: fallbackFaceCropFromDiagnosisInternal(diagnosis.internal || null),
+          regions: [],
+          modules: [],
+        };
+
+  if (!localReasonDetail && (qualityGrade === 'fail' || qualityGrade === 'unknown')) {
+    localReasonDetail = PRED_MODULES_MISSING_REASON_DETAILS.QUALITY_GATED;
+  }
+  if (!localReasonDetail && (!Array.isArray(payloadFromBuilder.modules) || payloadFromBuilder.modules.length <= 0)) {
+    localReasonDetail = PRED_MODULES_MISSING_REASON_DETAILS.MODULEIZER_EXCEPTION;
+  }
+  const ensured = ensureModulesForPayload(payloadFromBuilder, {
+    gridSize: MODULE_MASK_GRID_SIZE,
+    moduleBoxes: MODULE_BOXES,
+    degradedReason: localReasonDetail,
+  });
 
   return {
     ok: true,
     reason: null,
-    payload: built.card.payload,
-    quality: diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null,
+    payload: ensured.payload,
+    quality,
     diagnosisInternal: diagnosis.internal || null,
-    metrics: built.metrics || null,
+    metrics: built && built.metrics ? built.metrics : null,
     skinmask_reason: skinmaskReason,
+    degraded_reason: ensured.degradedReason || null,
+    reason_detail: ensured.degradedReason || null,
   };
 }
 
@@ -965,6 +1052,7 @@ function renderMarkdown({
   csvPath,
   weakRows,
   failReasonRows,
+  predMissingBreakdown,
   softWarnings,
 }) {
   const total = sampleRows.length;
@@ -1041,6 +1129,19 @@ function renderMarkdown({
     lines.push(`| ${row.reason} | ${row.count} | ${row.pct} |`);
   }
   if (!failReasonRows.length) {
+    lines.push('| - | 0 | 0 |');
+  }
+  lines.push('');
+
+  lines.push('## PRED_MODULES_MISSING breakdown');
+  lines.push('');
+  lines.push('| reason_detail | count | pct_of_missing |');
+  lines.push('|---|---:|---:|');
+  if (predMissingBreakdown && Array.isArray(predMissingBreakdown.rows) && predMissingBreakdown.rows.length) {
+    for (const row of predMissingBreakdown.rows) {
+      lines.push(`| ${row.reason_detail} | ${row.count} | ${row.pct_of_missing} |`);
+    }
+  } else {
     lines.push('| - | 0 | 0 |');
   }
   lines.push('');
@@ -1195,14 +1296,35 @@ async function main() {
           skinmaskModelPath: args.skinmask_model_path,
         });
     row.skinmask_reason = prediction.skinmask_reason || null;
+    row.degraded_reason = prediction.degraded_reason
+      ? normalizePredModulesMissingReasonDetail(prediction.degraded_reason)
+      : null;
 
     if (!prediction.ok || !prediction.payload) {
       row.fail_reason = mapPredictionFailureReason(prediction.reason);
       row.note = prediction.reason || 'prediction_failed';
+      if (row.fail_reason === FAIL_REASONS.PRED_MODULES_MISSING) {
+        row.reason_detail = inferPredModulesMissingReasonDetail({
+          reasonDetail: prediction.reason_detail,
+          degradedReason: prediction.degraded_reason,
+          predictionReason: prediction.reason,
+          qualityGrade: prediction.quality && prediction.quality.grade,
+          circleModelEnabled: circleModel.meta.enabled,
+        });
+      }
       return finalizeEvalRow(row);
     }
 
-    const payload = prediction.payload;
+    const ensuredPayload = ensureModulesForPayload(prediction.payload, {
+      gridSize: args.grid_size,
+      moduleBoxes: MODULE_BOXES,
+      degradedReason: prediction.reason_detail || prediction.degraded_reason,
+    });
+    const payload = ensuredPayload.payload;
+    if (ensuredPayload.fallbackUsed) {
+      row.degraded_reason = normalizePredModulesMissingReasonDetail(ensuredPayload.degradedReason);
+      row.note = row.note || 'fallback_modules_applied';
+    }
     row.pred_stats = {
       has_pred_modules: Boolean(Array.isArray(payload.modules) && payload.modules.length),
       module_count: Array.isArray(payload.modules) ? payload.modules.length : 0,
@@ -1211,6 +1333,13 @@ async function main() {
     if (!row.pred_stats.has_pred_modules) {
       row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
       row.note = 'photo_modules_v1 missing modules';
+      row.reason_detail = inferPredModulesMissingReasonDetail({
+        reasonDetail: prediction.reason_detail,
+        degradedReason: row.degraded_reason,
+        predictionReason: prediction.reason || 'local_photo_modules_missing',
+        qualityGrade: payload && payload.quality_grade,
+        circleModelEnabled: circleModel.meta.enabled,
+      });
       row.quality_grade = String(payload && payload.quality_grade ? payload.quality_grade : '');
       return finalizeEvalRow(row);
     }
@@ -1287,19 +1416,27 @@ async function main() {
     const gtSkinMaskNorm = decodeRleBinary(derivedGt.skin_mask_rle_norm, args.grid_size * args.grid_size);
     const predicted = moduleMasksFromCardPayload(payload, args.grid_size, activeModuleBoxes);
     const predUnionMask = createMask(args.grid_size, args.grid_size, 0);
+    const circlePriorMissing = Boolean(args.circle_model_calibration && !circleModel.meta.enabled);
+    if (circlePriorMissing && !row.degraded_reason) {
+      row.degraded_reason = PRED_MODULES_MISSING_REASON_DETAILS.CIRCLE_PRIOR_MISSING;
+    }
+    let calibrationFailed = false;
 
     const moduleScores = [];
     for (const moduleId of resolvedModuleIds) {
       const predMaskRaw = predicted.moduleMasks[moduleId] || createMask(args.grid_size, args.grid_size, 0);
-      const predMask = circleModel.meta.enabled && args.circle_model_calibration
-        ? applyModelBoxCalibration({
-            moduleId,
-            predMask: predMaskRaw,
-            gridSize: args.grid_size,
-            modelBoxes: activeModuleBoxes,
-            minPixels: args.circle_model_min_pixels,
-          })
-        : predMaskRaw;
+      let predMask = predMaskRaw;
+      if (circleModel.meta.enabled && args.circle_model_calibration) {
+        const calibrated = safeApplyCalibration({
+          moduleId,
+          predMaskRaw,
+          gridSize: args.grid_size,
+          modelBoxes: activeModuleBoxes,
+          minPixels: args.circle_model_min_pixels,
+        });
+        predMask = calibrated.mask || predMaskRaw;
+        if (calibrated.failed) calibrationFailed = true;
+      }
       orMaskInto(predUnionMask, predMask);
       const gtMask = gtModuleMasks[moduleId];
       const gtPixels = countOnes(gtMask);
@@ -1316,6 +1453,9 @@ async function main() {
         roi_too_small: roiTooSmall,
       });
     }
+    if (calibrationFailed && !row.degraded_reason) {
+      row.degraded_reason = PRED_MODULES_MISSING_REASON_DETAILS.CALIBRATION_FAIL;
+    }
 
     const predSkinPixels = countOnes(predUnionMask);
     row.pred_stats.pred_skin_pixels_est = predSkinPixels;
@@ -1328,6 +1468,10 @@ async function main() {
       : [];
     const dropped = geometryDropRows.reduce((acc, metricRow) => acc + Number(metricRow && metricRow.count ? metricRow.count : 0), 0);
     const geometrySanitizeDropRate = round3(dropped / Math.max(1, dropped + Number(predicted.regionsCount || 0)));
+    const sanitizerDropped = Number(predicted.regionsCount || 0) > 0 && Number(predicted.invalidRegionCount || 0) >= Number(predicted.regionsCount || 0);
+    if (sanitizerDropped && !row.degraded_reason) {
+      row.degraded_reason = PRED_MODULES_MISSING_REASON_DETAILS.SANITIZER_DROPPED;
+    }
     const faceDetectOk = Boolean(payload && payload.face_crop && payload.face_crop.bbox_px);
 
     row.module_scores = moduleScores;
@@ -1440,6 +1584,7 @@ async function main() {
     );
   }
   const failReasonRows = topFailReasons(sampleRows);
+  const predMissingBreakdown = predModulesMissingBreakdown(sampleRows);
 
   const markdown = renderMarkdown({
     args,
@@ -1451,6 +1596,7 @@ async function main() {
     csvPath,
     weakRows,
     failReasonRows,
+    predMissingBreakdown,
     softWarnings,
   });
   writeText(mdPath, markdown);
@@ -1472,6 +1618,7 @@ async function main() {
     skin_roi_too_small_rate: round3(skinRoiTooSmallRate),
     face_detect_fail_rate: round3(faceDetectFailRate),
     fail_reasons: failReasonRows,
+    pred_modules_missing_breakdown: predMissingBreakdown,
     summary_rows: summaryRows.length,
     soft_warnings: softWarnings,
     artifacts: {

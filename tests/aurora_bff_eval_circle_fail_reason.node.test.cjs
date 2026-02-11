@@ -38,6 +38,7 @@ test('eval fail reason: missing predicted modules resolves to PRED_MODULES_MISSI
   const out = finalizeEvalRow(row);
   assert.equal(out.ok, false);
   assert.equal(out.fail_reason, FAIL_REASONS.PRED_MODULES_MISSING);
+  assert.equal(out.reason_detail, 'UNKNOWN');
 });
 
 test('samples_ok semantics: modules_scored == 0 is not ok', () => {
@@ -49,4 +50,17 @@ test('samples_ok semantics: modules_scored == 0 is not ok', () => {
   const out = finalizeEvalRow(row);
   assert.equal(out.ok, false);
   assert.equal(out.metric_stats.modules_scored, 0);
+});
+
+test('eval fail reason: missing predicted modules keeps known reason_detail', () => {
+  const row = createBaseEvalRow({ dataset: 'fasseg', sampleHash: 'e', sampleId: 's5' });
+  row.pred_stats = { has_pred_modules: false, module_count: 0, pred_skin_pixels_est: 0 };
+  row.gt_stats = { has_gt: true, skin_pixels: 140, label_values_sample: [0, 1], gt_kind: 'segmentation' };
+  row.metric_stats = { modules_scored: 0, miou_mean: 0, coverage_mean: 0, leakage_mean: 0 };
+  row.reason_detail = 'SANITIZER_DROPPED';
+
+  const out = finalizeEvalRow(row);
+  assert.equal(out.ok, false);
+  assert.equal(out.fail_reason, FAIL_REASONS.PRED_MODULES_MISSING);
+  assert.equal(out.reason_detail, 'SANITIZER_DROPPED');
 });

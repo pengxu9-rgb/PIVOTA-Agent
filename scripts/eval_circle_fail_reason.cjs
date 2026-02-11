@@ -14,6 +14,10 @@ const FAIL_REASONS = Object.freeze({
   UNKNOWN: 'UNKNOWN',
 });
 
+const {
+  normalizePredModulesMissingReasonDetail,
+} = require('./eval_circle_local_fallback.cjs');
+
 function round3(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -53,9 +57,11 @@ function createBaseEvalRow({ dataset, sampleHash, sampleId }) {
     sample_hash: String(sampleHash || ''),
     sample_id: String(sampleId || ''),
     fail_reason: FAIL_REASONS.UNKNOWN,
+    reason_detail: null,
     gt_stats: defaultGtStats(),
     pred_stats: defaultPredStats(),
     metric_stats: defaultMetricStats(),
+    degraded_reason: null,
     weak_label_only: false,
     note: null,
   };
@@ -91,6 +97,7 @@ function finalizeEvalRow(inputRow) {
   if (metricStats.modules_scored > 0) {
     row.ok = true;
     row.fail_reason = null;
+    row.reason_detail = null;
     return row;
   }
 
@@ -98,25 +105,34 @@ function finalizeEvalRow(inputRow) {
   const currentReason = normalizeFailReason(row.fail_reason);
   if (currentReason !== FAIL_REASONS.UNKNOWN) {
     row.fail_reason = currentReason;
+    row.reason_detail =
+      currentReason === FAIL_REASONS.PRED_MODULES_MISSING
+        ? normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason)
+        : null;
     return row;
   }
   if (!predStats.has_pred_modules || predStats.module_count <= 0) {
     row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
+    row.reason_detail = normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason);
     return row;
   }
   if (!gtStats.has_gt) {
     row.fail_reason = FAIL_REASONS.GT_MISSING;
+    row.reason_detail = null;
     return row;
   }
   if (gtStats.skin_pixels <= 0) {
     row.fail_reason = FAIL_REASONS.GT_SKIN_EMPTY;
+    row.reason_detail = null;
     return row;
   }
   if (predStats.pred_skin_pixels_est <= 0) {
     row.fail_reason = FAIL_REASONS.PRED_SKIN_EMPTY;
+    row.reason_detail = null;
     return row;
   }
   row.fail_reason = FAIL_REASONS.MODULES_EMPTY;
+  row.reason_detail = null;
   return row;
 }
 
