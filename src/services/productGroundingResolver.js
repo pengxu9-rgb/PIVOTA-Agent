@@ -1242,6 +1242,7 @@ module.exports = {
   _internals: {
     normalizeTextForResolver,
     tokenizeNormalizedResolverQuery,
+    resolveKnownStableProductRef,
     scoreAndRankCandidates,
     resolveFromRankedCandidates,
     isExternalProduct,

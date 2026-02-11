@@ -44,20 +44,35 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(res.body.offers.length).toBe(0);
   });
 
-  it('The Ordinary UUID input: subject resolve hits internal group, no fallback', async () => {
-    const scope = nock(process.env.PIVOTA_API_BASE)
-      .post('/v1/subject/resolve')
-      .reply(200, {
-        subject: {
-          type: 'product_group',
-          id: 'pg_to_niacinamide',
+  it('UUID-only input short-circuits via stable_alias_ref without upstream dependency', async () => {
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'offers.resolve',
+        payload: {
+          offers: {
+            product: {
+              product_id: 'c231aaaa-8b00-4145-a704-684931049303',
+            },
+            market: 'US',
+          },
         },
-        canonical_product_ref: {
-          merchant_id: 'merch_efbc46b4619cfbdf',
-          product_id: 'prod_the_ordinary_niacinamide_10_zinc_1',
-        },
-      });
+      })
+      .expect(200);
 
+    expect(res.body.status).toBe('success');
+    expect(res.body.reason_code).toBe('stable_alias_ref');
+    expect(res.body.pdp_target?.v1?.path).toBe('ref');
+    expect(res.body.pdp_target?.v1?.product_ref).toEqual({
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      product_id: '9886499864904',
+    });
+    expect(res.body.metadata?.pdp_open_path).toBe('ref');
+    expect(Array.isArray(res.body.offers)).toBe(true);
+    expect(res.body.offers.length).toBe(0);
+  });
+
+  it('The Ordinary UUID input: stable alias ref opens internal PDP directly', async () => {
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
       .send({
@@ -75,25 +90,18 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       })
       .expect(200);
 
-    expect(scope.isDone()).toBe(true);
-    expect(res.body.reason_code).toBe('subject_direct');
-    expect(res.body.pdp_target?.v1?.path).toBe('group');
-    expect(res.body.pdp_target?.v1?.subject?.product_group_id).toBe('pg_to_niacinamide');
-    expect(res.body.metadata?.pdp_open_path).toBe('group');
+    expect(res.body.reason_code).toBe('stable_alias_ref');
+    expect(res.body.pdp_target?.v1?.path).toBe('ref');
+    expect(res.body.pdp_target?.v1?.product_ref).toEqual({
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      product_id: '9886499864904',
+    });
+    expect(res.body.metadata?.pdp_open_path).toBe('ref');
     expect(Array.isArray(res.body.offers)).toBe(true);
     expect(res.body.offers.length).toBe(0);
   });
 
-  it('Winona UUID input: subject resolve hits internal ref, no fallback', async () => {
-    const scope = nock(process.env.PIVOTA_API_BASE)
-      .post('/v1/subject/resolve')
-      .reply(200, {
-        canonical_product_ref: {
-          merchant_id: 'merch_efbc46b4619cfbdf',
-          product_id: 'prod_winona_soothing_repair_serum',
-        },
-      });
-
+  it('Winona UUID input: stable alias ref opens internal PDP directly', async () => {
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
       .send({
@@ -111,12 +119,11 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       })
       .expect(200);
 
-    expect(scope.isDone()).toBe(true);
-    expect(res.body.reason_code).toBe('subject_direct');
+    expect(res.body.reason_code).toBe('stable_alias_ref');
     expect(res.body.pdp_target?.v1?.path).toBe('ref');
     expect(res.body.pdp_target?.v1?.product_ref).toEqual({
       merchant_id: 'merch_efbc46b4619cfbdf',
-      product_id: 'prod_winona_soothing_repair_serum',
+      product_id: '9886500749640',
     });
     expect(res.body.metadata?.pdp_open_path).toBe('ref');
   });
@@ -204,4 +211,3 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(res.body.metadata.sources.length).toBeGreaterThanOrEqual(2);
   });
 });
-

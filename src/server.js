@@ -56,12 +56,33 @@ const { mountRecommendationRoutes } = require('./recommendations/routes');
 const { mountAuroraBffRoutes } = require('./auroraBff/routes');
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
-const { resolveProductRef } = require('./services/productGroundingResolver');
+const {
+  resolveProductRef,
+  _internals: productGroundingResolverInternals = {},
+} = require('./services/productGroundingResolver');
 const {
   upsertMissingCatalogProduct,
   listMissingCatalogProducts,
   toCsv: missingCatalogProductsToCsv,
 } = require('./services/missingCatalogProductsStore');
+
+const resolveStableAliasByQuery =
+  typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
+    ? productGroundingResolverInternals.resolveKnownStableProductRef
+    : null;
+const normalizeResolverText =
+  typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
+    ? productGroundingResolverInternals.normalizeTextForResolver
+    : (value) => String(value || '').trim().toLowerCase();
+const tokenizeResolverQuery =
+  typeof productGroundingResolverInternals.tokenizeNormalizedResolverQuery === 'function'
+    ? productGroundingResolverInternals.tokenizeNormalizedResolverQuery
+    : (value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
@@ -135,9 +156,11 @@ const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS,
   Math.min(
     UPSTREAM_TIMEOUT_SLOW_MS,
-    Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS * 2, 10000),
+    Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS + 1500, 7000),
   ),
 );
+const UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT =
+  String(process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT || '').toLowerCase() === 'true';
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
 // even when the reviews service is degraded.
 const UPSTREAM_TIMEOUT_REVIEWS_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_REVIEWS_MS, 4000);
@@ -217,6 +240,7 @@ const OFFERS_RESOLVE_REASON_CODE_SET = new Set([
   'mapped_hit',
   'subject_direct',
   'canonical_ref_direct',
+  'stable_alias_ref',
   'no_candidates',
   'db_timeout',
   'upstream_timeout',
@@ -1797,7 +1821,10 @@ function getOpenAIClient() {
 // This keeps the gateway responsive while being more tolerant of
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
-  const timeoutRetryableOps = ['find_products', 'find_products_multi', 'find_similar_products'];
+  const timeoutRetryableOps = ['find_products', 'find_similar_products'];
+  if (UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT) {
+    timeoutRetryableOps.push('find_products_multi');
+  }
   const busyRetryableOps = [
     'find_products',
     'find_products_multi',
@@ -1872,13 +1899,22 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
   }
 
   function getTimeoutRetryMs(op, previousTimeoutMs) {
+    const prev = Number(previousTimeoutMs || 0) || 0;
     if (op === 'find_products_multi') {
-      return Math.max(previousTimeoutMs || 0, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS);
+      const bounded = Math.min(
+        UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS,
+        Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, prev + 1200),
+      );
+      return Math.max(prev, bounded);
     }
     if (op === 'find_products') {
-      return Math.max(previousTimeoutMs || 0, UPSTREAM_TIMEOUT_FIND_PRODUCTS_RETRY_MS);
+      const bounded = Math.min(
+        UPSTREAM_TIMEOUT_FIND_PRODUCTS_RETRY_MS,
+        Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS, prev + 1000),
+      );
+      return Math.max(prev, bounded);
     }
-    return Math.max(previousTimeoutMs || 0, UPSTREAM_TIMEOUT_SEARCH_RETRY_MS);
+    return Math.max(prev, UPSTREAM_TIMEOUT_SEARCH_RETRY_MS);
   }
 
   let attempt = 0;
@@ -5046,6 +5082,15 @@ function normalizeOffersResolveReasonCode(raw, fallback = 'no_candidates') {
   if (token === 'mapped' || token === 'mapped_direct' || token === 'cache_hit') return 'mapped_hit';
   if (token === 'subject_hit' || token === 'subject_match') return 'subject_direct';
   if (token === 'canonical_direct' || token === 'canonical_ref_hit') return 'canonical_ref_direct';
+  if (
+    token === 'stable_alias' ||
+    token === 'stable_alias_ref' ||
+    token === 'stable_alias_match' ||
+    token === 'alias_exact' ||
+    token === 'alias_fuzzy'
+  ) {
+    return 'stable_alias_ref';
+  }
   if (token === 'external_fallback') return 'fallback_external';
   return fallback;
 }
@@ -5350,8 +5395,8 @@ function normalizeOffersResolveInput(rawPayload) {
         displayName,
         name,
         brand,
-        offersResolveIsUuidLike(rawProductId) ? '' : rawProductId,
-        offersResolveIsUuidLike(rawSkuId) ? '' : rawSkuId,
+        rawProductId,
+        rawSkuId,
       );
     }
   }
@@ -5387,6 +5432,59 @@ function normalizeOffersResolveInput(rawPayload) {
         queryText,
     ),
   };
+}
+
+function resolveOffersResolveStableAliasRef(normalizedInput) {
+  if (!resolveStableAliasByQuery) return null;
+  const input = normalizedInput || {};
+  const composedBrandTitle = offersResolvePickFirstTrimmed(
+    input.brand && input.display_name ? `${input.brand} ${input.display_name}` : '',
+    input.brand && input.name ? `${input.brand} ${input.name}` : '',
+  );
+  const candidateQueries = [
+    input.query_text,
+    input.display_name,
+    input.name,
+    composedBrandTitle,
+    input.raw_product_id,
+    input.raw_sku_id,
+  ];
+  const seen = new Set();
+
+  for (const rawCandidate of candidateQueries) {
+    const query = String(rawCandidate || '').trim();
+    if (!query) continue;
+    const dedupeKey = query.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const normalizedQuery = normalizeResolverText(query);
+    const queryTokens = tokenizeResolverQuery(normalizedQuery);
+    if (!normalizedQuery || !Array.isArray(queryTokens) || queryTokens.length === 0) continue;
+
+    const matched = resolveStableAliasByQuery({
+      query,
+      normalizedQuery,
+      queryTokens,
+    });
+    if (
+      matched &&
+      matched.product_ref &&
+      matched.product_ref.product_id &&
+      matched.product_ref.merchant_id
+    ) {
+      return {
+        product_ref: {
+          product_id: String(matched.product_ref.product_id).trim(),
+          merchant_id: String(matched.product_ref.merchant_id).trim(),
+        },
+        match_id: String(matched.id || '').trim() || null,
+        match_reason: String(matched.reason || '').trim() || null,
+        matched_alias: String(matched.matched_alias || query).trim() || query,
+      };
+    }
+  }
+  return null;
 }
 
 function buildOffersResolveCacheSearchPayload(normalizedInput) {
@@ -5711,6 +5809,50 @@ async function handleOffersResolveOperation({
           },
         },
         reasonCode: 'canonical_ref_direct',
+        pdpTargetV1: pdpTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+      }),
+    };
+  }
+
+  const stableAliasRef = resolveOffersResolveStableAliasRef(normalizedInput);
+  if (stableAliasRef?.product_ref) {
+    const pdpTarget = buildOffersResolvePdpTargetRef(stableAliasRef.product_ref, {
+      path: 'ref',
+    });
+    sourceTrace.push({
+      source: 'stable_alias_ref',
+      ok: true,
+      attempts: 0,
+      latency_ms: 0,
+      reason: stableAliasRef.match_reason || 'stable_alias_ref',
+      ...(stableAliasRef.match_id ? { match_id: stableAliasRef.match_id } : {}),
+      ...(stableAliasRef.matched_alias ? { matched_alias: stableAliasRef.matched_alias } : {}),
+    });
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+          mapping: {
+            canonical_product_ref: stableAliasRef.product_ref,
+          },
+          metadata: {
+            source: 'offers.resolve',
+            resolve_source: 'stable_alias_ref',
+            stable_alias_match_id: stableAliasRef.match_id || null,
+            stable_alias_match_query: stableAliasRef.matched_alias || null,
+          },
+        },
+        reasonCode: 'stable_alias_ref',
         pdpTargetV1: pdpTarget,
         sourceTrace,
         queryText: normalizedInput.query_text,
