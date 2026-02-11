@@ -12,6 +12,7 @@ function parseArgs(argv) {
   const out = {
     modelOutputs: '',
     goldLabels: '',
+    trainSamples: '',
     outDir: '',
     aliasPath: '',
     iouThreshold: '',
@@ -83,21 +84,47 @@ function main() {
   const root = process.cwd();
   const modelOutputsPath = String(args.modelOutputs || path.join(root, 'tmp', 'diag_pseudo_label_factory', 'model_outputs.ndjson')).trim();
   const goldLabelsPath = String(args.goldLabels || path.join(root, 'tmp', 'diag_pseudo_label_factory', 'gold_labels.ndjson')).trim();
+  const trainSamplesPath = String(args.trainSamples || '').trim();
   const outDir = String(args.outDir || path.join(root, 'model_registry')).trim();
   const aliasPath = String(args.aliasPath || defaultModelPath(root)).trim();
   const iouThreshold = clamp(args.iouThreshold, 0.3, 0.05, 0.95);
   const minGroupSamples = Math.max(8, Math.trunc(clamp(args.minGroupSamples, 24, 8, 100000)));
   const writeAlias = parseBool(args.writeAlias, true);
 
-  const modelOutputs = readNdjson(modelOutputsPath);
-  const goldLabels = readNdjson(goldLabelsPath);
+  let modelOutputs = readNdjson(modelOutputsPath);
+  let goldLabels = readNdjson(goldLabelsPath);
+  let trainingSource = 'model_outputs+gold_labels';
+  let trainSamplesRows = [];
+
+  if (trainSamplesPath) {
+    const loadedTrainSamples = readNdjson(trainSamplesPath);
+    const pairedRows = loadedTrainSamples
+      .filter((row) => row && typeof row === 'object')
+      .map((row) => ({
+        modelOutput: row.model_output && typeof row.model_output === 'object' ? row.model_output : null,
+        goldLabel: row.gold_label && typeof row.gold_label === 'object' ? row.gold_label : null,
+      }))
+      .filter((row) => row.modelOutput && row.goldLabel);
+
+    if (pairedRows.length) {
+      modelOutputs = pairedRows.map((row) => row.modelOutput);
+      goldLabels = pairedRows.map((row) => row.goldLabel);
+      trainSamplesRows = pairedRows;
+      trainingSource = 'train_samples';
+    }
+  }
+
   if (!modelOutputs.length) {
-    process.stderr.write(`no model outputs found: ${modelOutputsPath}\n`);
+    process.stderr.write(trainingSource === 'train_samples'
+      ? `no valid train samples found: ${trainSamplesPath}\n`
+      : `no model outputs found: ${modelOutputsPath}\n`);
     process.exit(2);
     return;
   }
   if (!goldLabels.length) {
-    process.stderr.write(`no gold labels found: ${goldLabelsPath}\n`);
+    process.stderr.write(trainingSource === 'train_samples'
+      ? `no valid train samples found: ${trainSamplesPath}\n`
+      : `no gold labels found: ${goldLabelsPath}\n`);
     process.exit(2);
     return;
   }
@@ -123,8 +150,11 @@ function main() {
   const summary = {
     schema_version: model.schema_version,
     model_version: model.model_version,
+    training_source: trainingSource,
     model_outputs_path: path.resolve(modelOutputsPath),
     gold_labels_path: path.resolve(goldLabelsPath),
+    train_samples_path: trainSamplesPath ? path.resolve(trainSamplesPath) : null,
+    train_samples_rows: trainSamplesRows.length,
     written_model_path: versionPath,
     alias_model_path: aliasWritten,
     samples_total: trained.rows.length,

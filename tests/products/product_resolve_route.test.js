@@ -207,6 +207,10 @@ describe('POST /agent/v1/products/resolve', () => {
       expect.objectContaining({
         sources: expect.arrayContaining([
           expect.objectContaining({
+            source: 'products_cache_global',
+            ok: false,
+          }),
+          expect.objectContaining({
             source: 'agent_search_scoped',
             ok: false,
           }),
@@ -221,7 +225,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('filters external_seed by default', async () => {
-    const queryText = 'Winona Soothing Repair Serum';
+    const queryText = 'Unknown External Seed Product';
 
     nock('http://pivota.test')
       .persist()
@@ -259,7 +263,79 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.body.candidates).toEqual([]);
   });
 
-  test('uses hints.product_ref for uuid query without external fallback', async () => {
+  test('resolves known stable products without hints (The Ordinary + Winona)', async () => {
+    const app = require('../../src/server');
+
+    const ordinaryResp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        lang: 'en',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(ordinaryResp.status).toBe(200);
+    expect(ordinaryResp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+    expect(ordinaryResp.body.metadata).toEqual(
+      expect.objectContaining({
+        stable_alias_match_id: 'the_ordinary_niacinamide_10_zinc_1',
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'stable_alias_ref',
+            ok: true,
+          }),
+        ]),
+      }),
+    );
+
+    const winonaResp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'Winona Soothing Repair Serum',
+        lang: 'en',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(winonaResp.status).toBe(200);
+    expect(winonaResp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886500749640',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+    expect(winonaResp.body.metadata).toEqual(
+      expect.objectContaining({
+        stable_alias_match_id: 'winona_soothing_repair_serum',
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'stable_alias_ref',
+            ok: true,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  test('resolves stable alias when hints.product_ref is opaque uuid and alias is known', async () => {
     const app = require('../../src/server');
     const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
     const hintedMerchantId = 'merch_efbc46b4619cfbdf';
@@ -288,8 +364,9 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.body).toEqual(
       expect.objectContaining({
         resolved: true,
+        reason: 'stable_alias_ref',
         product_ref: {
-          product_id: hintedProductId,
+          product_id: '9886499864904',
           merchant_id: hintedMerchantId,
         },
       }),
@@ -298,24 +375,37 @@ describe('POST /agent/v1/products/resolve', () => {
       expect.objectContaining({
         query_from_hints: true,
         original_query: 'e7c90e06-8673-4c97-835d-074a26ab2162',
+        stable_alias_match_id: 'the_ordinary_niacinamide_10_zinc_1',
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'hints_product_ref',
+            reason: 'opaque_hint_requires_lookup',
+          }),
+          expect.objectContaining({
+            source: 'stable_alias_ref',
+            ok: true,
+          }),
+        ]),
       }),
     );
   });
 
-  test('accepts hints.product_ref with product_id only', async () => {
+  test('accepts hints.product_ref with non-opaque product_id only', async () => {
     const app = require('../../src/server');
-    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+    const hintedProductId = '9886499864904';
+    const hintedAlias = 'Paula Choice 2 percent BHA Liquid';
 
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
       .send({
-        query: hintedProductId,
+        query: 'e7c90e06-8673-4c97-835d-074a26ab2162',
         lang: 'en',
         hints: {
           product_ref: {
             product_id: hintedProductId,
           },
-          aliases: ['Paula Choice 2 percent BHA Liquid'],
+          aliases: [hintedAlias],
+          title: hintedAlias,
         },
         options: {
           search_all_merchants: false,
@@ -330,6 +420,91 @@ describe('POST /agent/v1/products/resolve', () => {
         product_ref: {
           product_id: hintedProductId,
         },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_from_hints: true,
+      }),
+    );
+  });
+
+  test('resolves known alias even when opaque hints.product_ref has no merchant_id', async () => {
+    const app = require('../../src/server');
+    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: hintedProductId,
+        lang: 'en',
+        hints: {
+          product_ref: {
+            product_id: hintedProductId,
+          },
+          aliases: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+        },
+        options: {
+          search_all_merchants: false,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+  });
+
+  test('resolves known alias with prefer_merchant even when hints.product_ref is opaque', async () => {
+    const app = require('../../src/server');
+    const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
+    const preferMerchant = 'merch_efbc46b4619cfbdf';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: hintedProductId,
+        lang: 'en',
+        hints: {
+          product_ref: {
+            product_id: hintedProductId,
+          },
+          aliases: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+        },
+        options: {
+          prefer_merchants: [preferMerchant],
+          search_all_merchants: false,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886499864904',
+          merchant_id: preferMerchant,
+        },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_from_hints: true,
+        stable_alias_match_id: 'the_ordinary_niacinamide_10_zinc_1',
+        sources: expect.arrayContaining([
+          expect.objectContaining({ source: 'hints_product_ref', reason: 'opaque_hint_requires_lookup' }),
+          expect.objectContaining({ source: 'stable_alias_ref', ok: true }),
+        ]),
       }),
     );
   });

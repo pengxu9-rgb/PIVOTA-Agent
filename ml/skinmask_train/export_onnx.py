@@ -7,14 +7,16 @@ from pathlib import Path
 
 import torch
 from transformers import SegformerForSemanticSegmentation
+from ml.skinmask_train.label_map import SKIN_BINARY_CLASSES, skin_class_id_from_schema, write_skinmask_schema
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export Aurora skinmask SegFormer checkpoint to ONNX.")
     parser.add_argument("--ckpt", required=True, help="Checkpoint dir (hf_model) or run dir containing hf_model.")
-    parser.add_argument("--out", default="artifacts/skinmask_v1.onnx", help="ONNX output path.")
+    parser.add_argument("--out", default="artifacts/skinmask_v2.onnx", help="ONNX output path.")
     parser.add_argument("--image_size", type=int, default=512, help="Dummy export input size.")
     parser.add_argument("--opset", type=int, default=17, help="ONNX opset.")
+    parser.add_argument("--schema_out", default="", help="Optional explicit schema output path.")
     return parser.parse_args()
 
 
@@ -54,13 +56,27 @@ def main() -> None:
             opset_version=max(13, int(args.opset)),
         )
 
+    schema_path = (
+        Path(args.schema_out).expanduser().resolve()
+        if str(args.schema_out or "").strip()
+        else out_path.with_suffix(".schema.json")
+    )
+    schema = write_skinmask_schema(
+        schema_path,
+        size=(image_size, image_size),
+        output_type="sigmoid",
+        classes=SKIN_BINARY_CLASSES,
+    )
+
     meta = {
         "ok": True,
         "schema_version": "aurora.skinmask.onnx_export.v1",
         "checkpoint_model_dir": model_dir.as_posix(),
         "onnx_path": out_path.as_posix(),
+        "schema_path": schema_path.as_posix(),
+        "skin_class_id": int(skin_class_id_from_schema(schema)),
         "input": {"name": "pixel_values", "shape": ["batch", 3, "height", "width"], "dtype": "float32"},
-        "output": {"name": "logits", "shape": ["batch", "classes", "height_out", "width_out"], "dtype": "float32"},
+        "output": {"name": "logits", "shape": ["batch", 1, "height_out", "width_out"], "dtype": "float32"},
         "opset": max(13, int(args.opset)),
     }
     meta_path = out_path.with_suffix(f"{out_path.suffix}.json")

@@ -6,8 +6,8 @@ const MODULE_BOXES = Object.freeze({
   right_cheek: { x: 0.58, y: 0.34, w: 0.34, h: 0.3 },
   nose: { x: 0.42, y: 0.32, w: 0.16, h: 0.32 },
   chin: { x: 0.33, y: 0.67, w: 0.34, h: 0.26 },
-  under_eye_left: { x: 0.18, y: 0.24, w: 0.24, h: 0.13 },
-  under_eye_right: { x: 0.58, y: 0.24, w: 0.24, h: 0.13 },
+  under_eye_left: { x: 0.16, y: 0.31, w: 0.26, h: 0.11 },
+  under_eye_right: { x: 0.58, y: 0.31, w: 0.26, h: 0.11 },
 });
 
 function clamp01(value) {

@@ -7,13 +7,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 import { normalizeDatasetName, SUPPORTED_DATASETS } from './datasets_registry.js';
+const require = createRequire(import.meta.url);
+const { buildContentProbe, deriveProbeVerdict } = require('./datasets_prepare_probe.cjs');
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.heic', '.heif', '.tif', '.tiff']);
 const EVAL_FRIENDLY_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const ZIP_EXTENSIONS = new Set(['.zip']);
 const ANNO_EXTENSIONS = new Set(['.json', '.txt', '.xml', '.csv']);
+const CODE_EXTENSIONS = new Set(['.py', '.js', '.ts', '.tsx', '.md']);
+const PROBE_MAX_FILES = 2000;
 
 const DEFAULT_RAW_DIR = path.join(os.homedir(), 'Desktop', 'datasets_raw');
 const DEFAULT_CACHE_DIR = path.join('datasets_cache', 'external');
@@ -460,6 +465,7 @@ async function main() {
     }
 
     let sourceLabel = '';
+    let sourceRel = '';
     let sourceRootAbs = '';
     let sourceSha256 = '';
     let sourceSizeBytes = 0;
@@ -473,6 +479,7 @@ async function main() {
       datasetRootDir = sourceDir;
       sourceRootAbs = sourceDir;
       sourceLabel = path.basename(sourceDir);
+      sourceRel = relPathForReport(rawDir, sourceDir);
       const sourceFiles = await walkFiles(sourceDir);
       relFiles = sourceFiles
         .map((filePath) => relFromRoot(sourceDir, filePath))
@@ -494,6 +501,7 @@ async function main() {
       const indexCandidate = path.join(extractDir, 'dataset_index.jsonl');
       await ensureDir(extractDir);
       sourceLabel = path.basename(zipPath);
+      sourceRel = relPathForReport(rawDir, zipPath);
       sourceRootAbs = '';
       sourceSha256 = zipSha256;
       sourceSizeBytes = Number(zipStat.size || 0);
@@ -519,7 +527,23 @@ async function main() {
         .sort((a, b) => a.localeCompare(b));
     }
 
-    let rows = buildDatasetIndex(dataset, relFiles);
+    const contentProbe = buildContentProbe(relFiles, PROBE_MAX_FILES);
+    const probeSeedVerdict = deriveProbeVerdict({
+      dataset,
+      contentProbe,
+      indexRecordCount: -1,
+    });
+
+    let rows = [];
+    if (probeSeedVerdict.verdict !== 'LIKELY_REPO_ZIP') {
+      rows = buildDatasetIndex(dataset, relFiles);
+    }
+
+    const probeFinal = deriveProbeVerdict({
+      dataset,
+      contentProbe,
+      indexRecordCount: rows.length,
+    });
     if (sourceRootAbs) {
       rows = attachSourceRootMeta(rows, sourceRootAbs);
     }
@@ -544,6 +568,14 @@ async function main() {
       structure: summarizeStructure(rows),
       unzip_mode: unzipMode,
       source_type: sourceDir ? 'directory' : 'zip',
+      content_probe: {
+        verdict: probeFinal.verdict,
+        image_count_est: contentProbe.image_count_est,
+        mask_count_est: contentProbe.mask_count_est,
+        code_count_est: contentProbe.code_count_est,
+        top_dirs_sample: contentProbe.top_dirs_sample,
+        hint: probeFinal.hint || '',
+      },
     };
 
     const manifestPath = path.join(manifestsDir, `${dataset}.manifest.json`);
@@ -553,7 +585,9 @@ async function main() {
       dataset,
       status: rows.length > 0 ? 'PASS' : 'WARN',
       source_file: sourceLabel,
+      source_rel: sourceRel || sourceLabel,
       source_sha256_12: sourceSha256.slice(0, 12),
+      source_mtime_iso: sourceMtimeMs ? new Date(sourceMtimeMs).toISOString() : '',
       records: rows.length,
       structure: manifest.structure,
       splits: manifest.splits,
@@ -561,6 +595,8 @@ async function main() {
       manifest: relPathForReport(repoRoot, manifestPath),
       index: relPathForReport(repoRoot, indexFile),
       unzip_mode: unzipMode,
+      verdict: probeFinal.verdict,
+      hint: probeFinal.hint || '',
     });
   }
 
@@ -572,18 +608,14 @@ async function main() {
   lines.push(`- cache_root: ${toPosix(path.relative(repoRoot, cacheRootDir))}`);
   lines.push(`- datasets: ${datasets.join(', ')}`);
   lines.push('');
-  lines.push('| dataset | status | source | sha256(12) | records | images/masks/annos | class_count | split_summary | unzip_mode |');
-  lines.push('|---|---:|---|---|---:|---|---:|---|---|');
+  lines.push('| dataset | chosen_zip | sha256(12) | mtime | index_records_total | verdict | hint |');
+  lines.push('|---|---|---|---|---:|---|---|');
   for (const row of reportRows) {
     if (row.status === 'FAIL') {
-      lines.push(`| ${row.dataset} | FAIL | - | - | 0 | - | 0 | - | ${row.message} |`);
+      lines.push(`| ${row.dataset} | - | - | - | 0 | FAIL | ${row.message} |`);
       continue;
     }
-    const struct = row.structure || {};
-    const splits = Object.entries(row.splits || {}).map(([k, v]) => `${k}:${v}`).join(', ');
-    lines.push(
-      `| ${row.dataset} | ${row.status} | ${row.source_file} | ${row.source_sha256_12} | ${row.records} | ${struct.images || 0}/${struct.masks || 0}/${struct.annotations || 0} | ${row.class_count} | ${splits || '-'} | ${row.unzip_mode} |`,
-    );
+    lines.push(`| ${row.dataset} | ${row.source_rel || row.source_file} | ${row.source_sha256_12} | ${row.source_mtime_iso || '-'} | ${row.records} | ${row.verdict || '-'} | ${row.hint || '-'} |`);
   }
   lines.push('');
   lines.push('## Notes');

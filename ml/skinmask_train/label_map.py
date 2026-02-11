@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from typing import Dict, Iterable, Mapping
 
 import numpy as np
@@ -18,6 +20,12 @@ UNIFIED_CLASSES = (
 
 CLASS_TO_ID = {name: index for index, name in enumerate(UNIFIED_CLASSES)}
 ID_TO_CLASS = {index: name for name, index in CLASS_TO_ID.items()}
+SKIN_CLASS_NAME = "skin"
+NON_SKIN_CLASS_NAME = "non_skin"
+SKIN_BINARY_CLASSES = (NON_SKIN_CLASS_NAME, SKIN_CLASS_NAME)
+SKINMASK_SCHEMA_VERSION = "aurora.skinmask.schema.v1"
+DEFAULT_INPUT_MEAN = (0.485, 0.456, 0.406)
+DEFAULT_INPUT_STD = (0.229, 0.224, 0.225)
 
 
 @dataclass(frozen=True)
@@ -33,6 +41,78 @@ LABEL_SPACES: Dict[str, LabelSpace] = {
     "fasseg": LabelSpace(dataset="fasseg", classes=UNIFIED_CLASSES),
     "acne04": LabelSpace(dataset="acne04", classes=UNIFIED_CLASSES),
 }
+
+
+def _normalize_size(size: int | tuple[int, int] | list[int]) -> tuple[int, int]:
+    if isinstance(size, int):
+        token = max(32, int(size))
+        return (token, token)
+    if isinstance(size, (tuple, list)) and len(size) >= 2:
+        h = max(32, int(size[0]))
+        w = max(32, int(size[1]))
+        return (h, w)
+    return (512, 512)
+
+
+def skinmask_schema(
+    *,
+    size: int | tuple[int, int] | list[int] = (512, 512),
+    output_type: str = "sigmoid",
+    classes: tuple[str, ...] | list[str] | None = None,
+) -> dict:
+    h, w = _normalize_size(size)
+    out_type = str(output_type or "sigmoid").strip().lower()
+    if out_type not in {"softmax", "sigmoid"}:
+        out_type = "sigmoid"
+    output_classes = list(classes or SKIN_BINARY_CLASSES)
+    if not output_classes:
+        output_classes = list(SKIN_BINARY_CLASSES)
+    skin_class_id = output_classes.index(SKIN_CLASS_NAME) if SKIN_CLASS_NAME in output_classes else max(0, len(output_classes) - 1)
+    return {
+        "schema_version": SKINMASK_SCHEMA_VERSION,
+        "input": {
+            "color_space": "RGB",
+            "range": "0-1",
+            "mean": [float(v) for v in DEFAULT_INPUT_MEAN],
+            "std": [float(v) for v in DEFAULT_INPUT_STD],
+            "size": [int(h), int(w)],
+            "layout": "NCHW",
+        },
+        "output": {
+            "type": out_type,
+            "classes": output_classes,
+            "skin_class": SKIN_CLASS_NAME,
+            "skin_class_id": int(skin_class_id),
+        },
+    }
+
+
+def skin_class_id_from_schema(schema: Mapping[str, object] | None) -> int:
+    payload = schema if isinstance(schema, Mapping) else {}
+    output = payload.get("output")
+    if not isinstance(output, Mapping):
+        return CLASS_TO_ID[SKIN_CLASS_NAME]
+    classes = output.get("classes")
+    skin_class = str(output.get("skin_class") or SKIN_CLASS_NAME).strip()
+    if isinstance(classes, Iterable) and not isinstance(classes, (str, bytes)):
+        class_list = [str(item) for item in classes]
+        if skin_class in class_list:
+            return class_list.index(skin_class)
+    return CLASS_TO_ID.get(skin_class, CLASS_TO_ID[SKIN_CLASS_NAME])
+
+
+def write_skinmask_schema(
+    schema_path: str | Path,
+    *,
+    size: int | tuple[int, int] | list[int] = (512, 512),
+    output_type: str = "sigmoid",
+    classes: tuple[str, ...] | list[str] | None = None,
+) -> dict:
+    schema = skinmask_schema(size=size, output_type=output_type, classes=classes)
+    target = Path(schema_path).expanduser().resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(f"{json.dumps(schema, ensure_ascii=False, indent=2)}\n", encoding="utf-8")
+    return schema
 
 
 def normalize_dataset_name(dataset: str) -> str:
@@ -167,13 +247,12 @@ def remap_dataset_mask(
     raise ValueError(f"unsupported_dataset:{dataset}")
 
 
-def to_binary_skin_mask(unified_mask: np.ndarray, *, include_unknown_as_non_skin: bool = True) -> np.ndarray:
+def to_binary_skin_mask(unified_mask: np.ndarray, *, preserve_ignore_index: bool = True) -> np.ndarray:
     if unified_mask.ndim != 2:
         raise ValueError("unified_mask_must_be_2d")
-    skin = (unified_mask == CLASS_TO_ID["skin"]).astype(np.uint8)
-    if include_unknown_as_non_skin:
-        return skin
-    unknown = unified_mask == IGNORE_INDEX
-    skin[unknown] = 0
-    return skin
-
+    binary = np.zeros(unified_mask.shape, dtype=np.uint8)
+    binary[unified_mask == CLASS_TO_ID[SKIN_CLASS_NAME]] = 1
+    if preserve_ignore_index:
+        binary = binary.copy()
+        binary[unified_mask == IGNORE_INDEX] = np.uint8(IGNORE_INDEX)
+    return binary

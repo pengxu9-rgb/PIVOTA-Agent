@@ -60,6 +60,125 @@ function buildContextPrefix({ profile, recentLogs, ...meta } = {}) {
   return lines.length ? `${lines.join('\n')}\n\n` : '';
 }
 
+function truncateText(value, maxChars) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars);
+}
+
+function normalizeResumeHistory(history) {
+  if (!Array.isArray(history)) return [];
+  const out = [];
+  for (const item of history) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const qid = truncateText(item.question_id, 80);
+    const option = truncateText(item.option, 60);
+    if (!qid || !option) continue;
+    out.push({ question_id: qid, option });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+function normalizeKnownProfileFields(fields) {
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return null;
+  const out = {};
+
+  const skinType = truncateText(fields.skinType, 40);
+  if (skinType) out.skinType = skinType;
+
+  const sensitivity = truncateText(fields.sensitivity, 40);
+  if (sensitivity) out.sensitivity = sensitivity;
+
+  const barrierStatus = truncateText(fields.barrierStatus, 40);
+  if (barrierStatus) out.barrierStatus = barrierStatus;
+
+  const budgetTier = truncateText(fields.budgetTier, 40);
+  if (budgetTier) out.budgetTier = budgetTier;
+
+  if (Array.isArray(fields.goals)) {
+    const goals = [];
+    for (const rawGoal of fields.goals) {
+      const goal = truncateText(rawGoal, 40);
+      if (!goal) continue;
+      goals.push(goal);
+      if (goals.length >= 5) break;
+    }
+    if (goals.length) out.goals = goals;
+  }
+
+  return Object.keys(out).length ? out : null;
+}
+
+function buildResumeContextPrefix(resumeContext) {
+  if (!resumeContext || typeof resumeContext !== 'object' || Array.isArray(resumeContext)) return '';
+  if (resumeContext.enabled === false) return '';
+
+  const resumeText = truncateText(resumeContext.resume_user_text, 300) || '(no message)';
+  const flowId = truncateText(resumeContext.flow_id, 40);
+  const includeHistory = resumeContext.include_history !== false;
+  const history = includeHistory ? normalizeResumeHistory(resumeContext.clarification_history) : [];
+  const knownProfileFields = normalizeKnownProfileFields(resumeContext.known_profile_fields);
+  const templateVersion = String(resumeContext.template_version || 'v1').trim().toLowerCase();
+
+  let lines = null;
+  if (templateVersion === 'v2') {
+    lines = ['[RESUME CONTEXT — AUTHORITATIVE]'];
+    if (flowId) lines.push(`Flow: ${flowId}`);
+    lines.push(`Original user request (answer this): "${resumeText}"`);
+    lines.push('');
+    if (includeHistory) {
+      if (history.length) {
+        lines.push('Answered clarifications (do NOT ask again):');
+        for (const item of history) {
+          lines.push(`- ${item.question_id} = "${item.option}"`);
+        }
+      } else {
+        lines.push('Answered clarifications: none listed (but if already answered via UI, do NOT ask again).');
+      }
+    } else {
+      lines.push('Clarifications were answered via UI; do NOT ask again.');
+    }
+    lines.push('');
+    lines.push('Profile fields now known (authoritative; use directly):');
+    if (knownProfileFields) {
+      if (knownProfileFields.skinType) lines.push(`- skinType = "${knownProfileFields.skinType}"`);
+      if (knownProfileFields.sensitivity) lines.push(`- sensitivity = "${knownProfileFields.sensitivity}"`);
+      if (knownProfileFields.barrierStatus) lines.push(`- barrierStatus = "${knownProfileFields.barrierStatus}"`);
+      if (Array.isArray(knownProfileFields.goals)) {
+        for (const goal of knownProfileFields.goals) {
+          lines.push(`- goals = "${goal}"`);
+        }
+      }
+      if (knownProfileFields.budgetTier) lines.push(`- budgetTier = "${knownProfileFields.budgetTier}"`);
+    }
+    lines.push('(If a field is not listed here, treat it as unknown.)');
+    lines.push('');
+    lines.push('Instruction:');
+    lines.push('1) Do NOT repeat any questions above.');
+    lines.push('2) Do NOT restart intake or request a full profile.');
+    lines.push('3) Proceed to answer the original request now.');
+    lines.push('4) If truly necessary, ask at most ONE new question, and it must NOT be something already answered/known.');
+  } else {
+    lines = ['[RESUME CONTEXT]'];
+    if (flowId) lines.push(`Flow: ${flowId}`);
+    lines.push(`Original user request: "${resumeText}"`);
+    if (history.length) {
+      lines.push('Clarification answers (in order):');
+      for (const item of history) {
+        lines.push(`- ${item.question_id}: ${item.option}`);
+      }
+    } else {
+      lines.push('Clarifications were answered via UI; proceed without asking again.');
+    }
+    lines.push(
+      'Instruction: Do not ask for these clarifications again. Continue answering the original request using the provided answers and profile.',
+    );
+  }
+  return `${lines.join('\n')}\n\n`;
+}
+
 function normalizeMockInput(input) {
   if (typeof input === 'string') return { query: input, anchor_product_id: null, messages: [] };
   if (!input || typeof input !== 'object') return { query: '', anchor_product_id: null, messages: [] };
@@ -79,6 +198,191 @@ function mockAuroraChat(input) {
   // Test helper: allow asserting what the BFF sent upstream (prefix includes profile/recent logs/meta).
   if (/CHAT_PROFILE_PREFIX_ECHO_TEST/i.test(q)) {
     return { answer: q, intent: 'chat', cards: [] };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_FREE_TEXT_CONTINUE_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: free text after pending clarification abandon.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TTL_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: pending clarification TTL fallback to upstream.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TRUNCATION_TEST/i.test(q)) {
+    const questions = Array.from({ length: 8 }).map((_, i) => ({
+      id: `question_${i}`,
+      question: `Question ${i} ${'Q'.repeat(260)}`,
+      options: Array.from({ length: 12 }).map((__, j) => `Option ${i}-${j} ${'O'.repeat(120)}`),
+    }));
+    return {
+      answer: 'Mock: clarification truncation stress.',
+      intent: 'clarify',
+      cards: [],
+      clarification: { questions },
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return { answer: q, intent: 'chat', cards: [] };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_RESUME_PROBE_BAD_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return {
+        answer:
+          'Before I can recommend products safely, I need a quick skin profile:\n' +
+          '1) What is your skin type?\n' +
+          '2) Is your barrier stable or do you have stinging/redness?\n' +
+          '3) What is your main goal?',
+        intent: 'chat',
+        cards: [],
+      };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/RESUME_PROBE_NON_RESUME_BAD_TEXT_TEST/i.test(q)) {
+    return {
+      answer:
+        'Before I can recommend products safely, I need a quick skin profile:\n' +
+        '1) What is your skin type?\n' +
+        '2) What is your main goal?',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return {
+        answer: 'Mock: clarification flow resumed with history context.',
+        intent: 'chat',
+        cards: [],
+      };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_SKINTYPE_ONLY_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: one clarification question.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+        ],
+        missing_fields: ['skinType'],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_SKINTYPE_NEXT_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: two clarification questions.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'next',
+            question: 'What do you want to do next?',
+            options: ['Build an AM/PM routine', 'Evaluate one product'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_INVALID_OPTIONS_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: invalid clarification schema.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: 'Oily',
+          },
+        ],
+      },
+    };
   }
 
   if (/DUPE_SUGGEST_TEST/i.test(q)) {
@@ -773,8 +1077,12 @@ async function auroraChat({
   messages,
   debug,
   allow_recommendations,
+  resume_context,
 } = {}) {
-  if (USE_AURORA_MOCK) return mockAuroraChat({ query, anchor_product_id, messages });
+  const queryText = String(query || '');
+  const resumePrefix = buildResumeContextPrefix(resume_context);
+  const finalQuery = resumePrefix ? `${resumePrefix}${queryText}` : queryText;
+  if (USE_AURORA_MOCK) return mockAuroraChat({ query: finalQuery, anchor_product_id, messages });
   const base = normalizeBaseUrl(baseUrl);
   if (!base) {
     const err = new Error('AURORA_DECISION_BASE_URL not configured');
@@ -782,7 +1090,7 @@ async function auroraChat({
     throw err;
   }
   const url = `${base}/api/chat`;
-  const payload = { query };
+  const payload = { query: finalQuery };
   if (llm_provider) payload.llm_provider = llm_provider;
   if (llm_model) payload.llm_model = llm_model;
   if (anchor_product_id) payload.anchor_product_id = anchor_product_id;

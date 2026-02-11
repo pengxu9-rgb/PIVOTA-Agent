@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { buildPhotoModulesCard } = require('../src/auroraBff/photoModulesV1');
 const { resetVisionMetrics, renderVisionMetricsPrometheus } = require('../src/auroraBff/visionMetrics');
+const { decodeRleBinary, countOnes } = require('../src/auroraBff/evalAdapters/common/metrics');
 
 function withEnv(patch, fn) {
   const prev = {};
@@ -36,6 +37,17 @@ function loadRoutesInternal() {
 }
 
 function unloadRoutes(moduleId) {
+  if (moduleId) delete require.cache[moduleId];
+}
+
+function loadPhotoModulesBuilder() {
+  const moduleId = require.resolve('../src/auroraBff/photoModulesV1');
+  delete require.cache[moduleId];
+  const mod = require('../src/auroraBff/photoModulesV1');
+  return { moduleId, buildPhotoModulesCard: mod.buildPhotoModulesCard };
+}
+
+function unloadPhotoModules(moduleId) {
   if (moduleId) delete require.cache[moduleId];
 }
 
@@ -94,6 +106,18 @@ function makeDiagnosisInternalFixture() {
     orig_size_px: { w: 1080, h: 1440 },
     skin_bbox_norm: { x0: 0.19, y0: 0.11, x1: 0.81, y1: 0.9 },
     face_crop_margin_scale: 1.2,
+  };
+}
+
+function makeDiagnosisInternalWithFaceCropFixture() {
+  return {
+    ...makeDiagnosisInternalFixture(),
+    face_crop: {
+      coord_space: 'orig_px_v1',
+      bbox_px: { x: 108, y: 120, w: 864, h: 1200 },
+      orig_size_px: { w: 1080, h: 1440 },
+      render_size_px_hint: { w: 384, h: 512 },
+    },
   };
 }
 
@@ -243,5 +267,175 @@ test('routes helper: flag off does not emit card, flag on emits and records metr
           assert.match(metrics, /geometry_sanitizer_drop_total\{reason="[^"]+",region_type="bbox"\}/);
         },
       );
+    },
+  ));
+
+test('photo modules card: face oval clip enabled keeps module mask pixels <= disabled', () =>
+  withEnv(
+    {
+      DIAG_FACE_OVAL_CLIP: 'false',
+      DIAG_MODULE_SHRINK_CHIN: '1',
+      DIAG_MODULE_SHRINK_FOREHEAD: '1',
+      DIAG_MODULE_SHRINK_CHEEK: '1',
+      DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '0',
+      DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
+      DIAG_MODULE_MIN_PIXELS_UNDER_EYE: '1',
+      DIAG_MODULE_MIN_PIXELS_FOREHEAD: '1',
+      DIAG_MODULE_MIN_PIXELS_CHIN: '1',
+      DIAG_MODULE_MIN_PIXELS_CHEEK: '1',
+      DIAG_MODULE_MIN_PIXELS_DEFAULT: '1',
+    },
+    () => {
+      const offLoaded = loadPhotoModulesBuilder();
+      const offCard = offLoaded.buildPhotoModulesCard({
+        requestId: 'req_photo_modules_clip_off',
+        analysis: makeAnalysisFixture(),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        photoNotice: 'notice',
+        diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
+        profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+        language: 'EN',
+        ingredientRecEnabled: true,
+        productRecEnabled: false,
+      });
+      unloadPhotoModules(offLoaded.moduleId);
+      assert.ok(offCard && offCard.card && offCard.card.payload);
+
+      return withEnv(
+        {
+          DIAG_FACE_OVAL_CLIP: 'true',
+          DIAG_MODULE_SHRINK_CHIN: '1',
+          DIAG_MODULE_SHRINK_FOREHEAD: '1',
+          DIAG_MODULE_SHRINK_CHEEK: '1',
+          DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '0',
+          DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
+          DIAG_MODULE_MIN_PIXELS_UNDER_EYE: '1',
+          DIAG_MODULE_MIN_PIXELS_FOREHEAD: '1',
+          DIAG_MODULE_MIN_PIXELS_CHIN: '1',
+          DIAG_MODULE_MIN_PIXELS_CHEEK: '1',
+          DIAG_MODULE_MIN_PIXELS_DEFAULT: '1',
+        },
+        () => {
+          const onLoaded = loadPhotoModulesBuilder();
+          const onCard = onLoaded.buildPhotoModulesCard({
+            requestId: 'req_photo_modules_clip_on',
+            analysis: makeAnalysisFixture(),
+            usedPhotos: true,
+            photoQuality: { grade: 'pass', reasons: [] },
+            photoNotice: 'notice',
+            diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
+            profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+            language: 'EN',
+            ingredientRecEnabled: true,
+            productRecEnabled: false,
+          });
+          unloadPhotoModules(onLoaded.moduleId);
+          assert.ok(onCard && onCard.card && onCard.card.payload);
+
+          const offModules = new Map(
+            (offCard.card.payload.modules || []).map((moduleRow) => [moduleRow.module_id, moduleRow]),
+          );
+          const onModules = new Map(
+            (onCard.card.payload.modules || []).map((moduleRow) => [moduleRow.module_id, moduleRow]),
+          );
+          for (const [moduleId, offModule] of offModules.entries()) {
+            const onModule = onModules.get(moduleId);
+            assert.ok(onModule, `missing module ${moduleId}`);
+            const offGrid = Number(offModule.mask_grid || 64);
+            const onGrid = Number(onModule.mask_grid || 64);
+            const offMask = decodeRleBinary(String(offModule.mask_rle_norm || ''), offGrid * offGrid);
+            const onMask = decodeRleBinary(String(onModule.mask_rle_norm || ''), onGrid * onGrid);
+            const offPixels = countOnes(offMask);
+            const onPixels = countOnes(onMask);
+            assert.ok(
+              onPixels <= offPixels,
+              `module ${moduleId} clip expected <= off pixels, got on=${onPixels} off=${offPixels}`,
+            );
+          }
+        },
+      );
+    },
+  ));
+
+test('photo modules card: face oval clip too small falls back and marks degraded reason', () =>
+  withEnv(
+    {
+      DIAG_FACE_OVAL_CLIP: 'true',
+      DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '1',
+      DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
+      DIAG_MODULE_SHRINK_CHIN: '1',
+      DIAG_MODULE_SHRINK_FOREHEAD: '1',
+      DIAG_MODULE_SHRINK_CHEEK: '1',
+    },
+    () => {
+      const loaded = loadPhotoModulesBuilder();
+      const built = loaded.buildPhotoModulesCard({
+        requestId: 'req_photo_modules_clip_too_small',
+        analysis: makeAnalysisFixture(),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        photoNotice: 'notice',
+        diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
+        profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+        language: 'EN',
+        ingredientRecEnabled: true,
+        productRecEnabled: false,
+      });
+      unloadPhotoModules(loaded.moduleId);
+      assert.ok(built && built.card && built.card.payload);
+
+      const payload = built.card.payload;
+      assert.equal(Array.isArray(payload.degraded_reasons), true);
+      assert.equal(payload.degraded_reasons.includes('FACE_OVAL_CLIP_TOO_SMALL'), true);
+      assert.equal(payload.degraded_reason, 'FACE_OVAL_CLIP_TOO_SMALL');
+      assert.ok(payload.internal_debug == null || typeof payload.internal_debug.clip_fallback_reason === 'string' || payload.internal_debug.clip_fallback_reason == null);
+
+      const modules = Array.isArray(payload.modules) ? payload.modules : [];
+      const degradedCount = modules.filter((moduleRow) => moduleRow && moduleRow.degraded_reason === 'FACE_OVAL_CLIP_TOO_SMALL').length;
+      assert.ok(degradedCount > 0, 'expected at least one module with FACE_OVAL_CLIP_TOO_SMALL');
+    },
+  ));
+
+test('photo modules card: internal_debug includes shrink_factors_used for all modules', () =>
+  withEnv(
+    {
+      DIAG_MODULE_SHRINK_CHIN: '0.8',
+      DIAG_MODULE_SHRINK_FOREHEAD: '0.88',
+      DIAG_MODULE_SHRINK_CHEEK: '0.9',
+      DIAG_MODULE_SHRINK_UNDER_EYE: '0.95',
+      DIAG_MODULE_SHRINK_NOSE: '0.95',
+    },
+    () => {
+      const loaded = loadPhotoModulesBuilder();
+      const built = loaded.buildPhotoModulesCard({
+        requestId: 'req_photo_modules_shrink_debug',
+        analysis: makeAnalysisFixture(),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        photoNotice: 'notice',
+        diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
+        profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+        language: 'EN',
+        ingredientRecEnabled: true,
+        productRecEnabled: false,
+        internalTestMode: true,
+      });
+      unloadPhotoModules(loaded.moduleId);
+      assert.ok(built && built.card && built.card.payload);
+      const payload = built.card.payload;
+      assert.ok(payload.internal_debug && payload.internal_debug.shrink_factors_used);
+      const factors = payload.internal_debug.shrink_factors_used;
+      assert.equal(factors.chin, 0.8);
+      assert.equal(factors.forehead, 0.88);
+      assert.equal(factors.left_cheek, 0.9);
+      assert.equal(factors.right_cheek, 0.9);
+      assert.equal(factors.under_eye_left, 0.95);
+      assert.equal(factors.under_eye_right, 0.95);
+      assert.equal(factors.nose, 0.95);
+      assert.equal(typeof payload.internal_debug.chin_guard_applied, 'boolean');
+      assert.equal(typeof payload.internal_debug.nose_guard_applied, 'boolean');
+      assert.equal(typeof payload.internal_debug.forehead_band_applied, 'boolean');
+      assert.equal(Number.isFinite(Number(payload.internal_debug.forehead_band_ratio_used)), true);
     },
   ));

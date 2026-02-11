@@ -23,7 +23,7 @@ from .datasets import (
     split_records,
     to_device,
 )
-from .label_map import CLASS_TO_ID, IGNORE_INDEX
+from .label_map import IGNORE_INDEX
 
 
 @dataclass
@@ -82,6 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", required=True, help="Checkpoint dir containing hf_model and hf_processor.")
     parser.add_argument("--report_dir", default="reports")
     parser.add_argument("--out_json", default="")
+    parser.add_argument("--skin_threshold", type=float, default=0.5)
     return parser.parse_args()
 
 
@@ -113,14 +114,14 @@ def safe_ratio(numerator: int, denominator: int) -> float:
 
 
 @torch.no_grad()
-def evaluate(model, loader: DataLoader, device: torch.device) -> dict:
+def evaluate(model, loader: DataLoader, device: torch.device, *, threshold: float = 0.5) -> dict:
     model.eval()
-    skin_id = CLASS_TO_ID["skin"]
+    skin_threshold = float(max(0.05, min(0.95, threshold)))
     accum = EvalAccum()
 
     for batch in loader:
         batch = to_device(batch, device)
-        outputs = model(pixel_values=batch["pixel_values"], labels=batch["labels"])
+        outputs = model(pixel_values=batch["pixel_values"])
         logits = outputs.logits
         labels = batch["labels"]
         if logits.shape[-2:] != labels.shape[-2:]:
@@ -130,7 +131,8 @@ def evaluate(model, loader: DataLoader, device: torch.device) -> dict:
                 mode="bilinear",
                 align_corners=False,
             )
-        pred = torch.argmax(logits, dim=1)
+        probs = torch.sigmoid(logits[:, 0, :, :])
+        pred = probs >= skin_threshold
 
         for idx in range(pred.shape[0]):
             pred_mask = pred[idx]
@@ -140,8 +142,8 @@ def evaluate(model, loader: DataLoader, device: torch.device) -> dict:
                 accum.samples_total += 1
                 continue
 
-            pred_skin = (pred_mask == skin_id) & valid
-            gt_skin = (gt_mask == skin_id) & valid
+            pred_skin = pred_mask & valid
+            gt_skin = (gt_mask == 1) & valid
 
             intersection = torch.count_nonzero(pred_skin & gt_skin).item()
             union = torch.count_nonzero(pred_skin | gt_skin).item()
@@ -229,7 +231,7 @@ def main() -> None:
         model.config.semantic_loss_ignore_index = IGNORE_INDEX
     model.to(device)
 
-    summary = evaluate(model, loader, device)
+    summary = evaluate(model, loader, device, threshold=args.skin_threshold)
     summary["ok"] = True
     summary["device"] = str(device)
     summary["split"] = args.split

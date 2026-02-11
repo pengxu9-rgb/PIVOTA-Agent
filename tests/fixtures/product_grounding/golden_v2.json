@@ -1,0 +1,90 @@
+{
+  "schema_version": "pivota.product_grounding.golden.v2",
+  "cases": [
+    {
+      "id": "model_wf1000xm5",
+      "query": "Sony WF1000XM5 earbuds",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m1", "product_id": "p_sony_wf1000xm4", "vendor": "Sony", "title": "Sony WF-1000XM4 Wireless Earbuds" },
+        { "merchant_id": "m1", "product_id": "p_sony_wf1000xm5", "vendor": "Sony", "title": "Sony WF-1000XM5 Wireless Earbuds" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m1", "product_id": "p_sony_wf1000xm5" } }
+    },
+    {
+      "id": "brand_alias_cn_winona",
+      "query": "请问有没有薇诺娜修护乳呢",
+      "lang": "cn",
+      "candidates": [
+        { "merchant_id": "m2", "product_id": "p_winora_repair_50", "vendor": "薇诺雅", "title": "薇诺雅 修护乳 50ml" },
+        { "merchant_id": "m2", "product_id": "p_winona_repair_50", "vendor": "薇诺娜", "title": "薇诺娜 修护乳 50ml" },
+        { "merchant_id": "m3", "product_id": "p_lrp_cicaplast", "vendor": "La Roche-Posay", "title": "La Roche-Posay Cicaplast Baume B5 40ml" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m2", "product_id": "p_winona_repair_50" } }
+    },
+    {
+      "id": "brand_alias_lrp",
+      "query": "LRP anthelios spf50",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m4", "product_id": "p_lrp_anthelios_spf30", "vendor": "La Roche-Posay", "title": "La Roche-Posay Anthelios SPF30 50ml" },
+        { "merchant_id": "m4", "product_id": "p_lrp_anthelios_spf50", "vendor": "La Roche-Posay", "title": "La Roche-Posay Anthelios SPF50 50ml" },
+        { "merchant_id": "m5", "product_id": "p_biore_uv_spf50", "vendor": "Biore", "title": "Biore UV Aqua Rich SPF50" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m4", "product_id": "p_lrp_anthelios_spf50" } }
+    },
+    {
+      "id": "brand_alias_sk2_compact",
+      "query": "SK2 essence 230ml",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m6", "product_id": "p_sk2_essence_75", "vendor": "SK-II", "title": "Facial Treatment Essence 75ml" },
+        { "merchant_id": "m6", "product_id": "p_sk2_essence_230", "vendor": "SK-II", "title": "Facial Treatment Essence 230ml" },
+        { "merchant_id": "m7", "product_id": "p_ski_essence_230", "vendor": "Ski", "title": "Hydration Essence 230ml" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m6", "product_id": "p_sk2_essence_230" } }
+    },
+    {
+      "id": "numeric_disambiguation_storage",
+      "query": "iPhone 15 Pro 256GB",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m8", "product_id": "p_iphone15pro_128", "vendor": "Apple", "title": "iPhone 15 Pro 128GB" },
+        { "merchant_id": "m8", "product_id": "p_iphone15pro_256", "vendor": "Apple", "title": "iPhone 15 Pro 256GB" },
+        { "merchant_id": "m8", "product_id": "p_iphone15_256", "vendor": "Apple", "title": "iPhone 15 256GB" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m8", "product_id": "p_iphone15pro_256" } }
+    },
+    {
+      "id": "prefix_suffix_collision_brand",
+      "query": "cera ve cleanser 355ml",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m9", "product_id": "p_cerave_cleanser_355", "vendor": "CeraVe", "title": "Hydrating Cleanser 355ml" },
+        { "merchant_id": "m9", "product_id": "p_ceramide_cleanser_355", "vendor": "Ceramide Lab", "title": "Hydrating Cleanser 355ml" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m9", "product_id": "p_cerave_cleanser_355" } }
+    },
+    {
+      "id": "noise_penalty_partial_overlap",
+      "query": "Anua toner",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m10", "product_id": "p_anua_heartleaf_77", "vendor": "Anua", "title": "Anua Heartleaf 77 Toner 250ml" },
+        { "merchant_id": "m10", "product_id": "p_anuar_serum", "vendor": "Anuar", "title": "Anuar Moisturizing Serum 30ml" },
+        { "merchant_id": "m10", "product_id": "p_anew_toner", "vendor": "Anew", "title": "Anew Hydrating Toner 200ml" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m10", "product_id": "p_anua_heartleaf_77" } }
+    },
+    {
+      "id": "unresolved_generic_query_v2",
+      "query": "best daily cream maybe maybe",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m11", "product_id": "p_random_mask", "vendor": "Random", "title": "Random Repair Mask 50ml" },
+        { "merchant_id": "m11", "product_id": "p_random_toner", "vendor": "Random", "title": "Random Hydrating Toner 120ml" }
+      ],
+      "expect": { "resolved": false, "product_ref": null }
+    }
+  ]
+}

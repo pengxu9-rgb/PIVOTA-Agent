@@ -1,0 +1,48 @@
+name: Chat Follow-up Canary
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Aurora BFF base URL"
+        required: false
+        default: "https://pivota-agent-production.up.railway.app"
+
+concurrency:
+  group: chat-followup-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ inputs.base_url || vars.AURORA_BFF_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run follow-up canary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          OUT="reports/chat_followup_canary_${GITHUB_RUN_ID}.md"
+          node scripts/chat_followup_canary.mjs \
+            --base "$BASE_URL" \
+            --uid "gh-canary-${GITHUB_RUN_ID}" \
+            --out "$OUT"
+          echo "Canary report: $OUT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload canary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-followup-canary-report
+          path: reports/chat_followup_canary_*.md
+          if-no-files-found: error
