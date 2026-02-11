@@ -238,6 +238,7 @@ ingest-ingredient-sources:
 	node scripts/ingest_ingredient_sources.js --data-dir $(INGREDIENT_KB_DATA_DIR) --artifact-path $(INGREDIENT_KB_ARTIFACT) --manifest-path $(INGREDIENT_KB_MANIFEST) --sources-report $(INGREDIENT_KB_SOURCES_REPORT) --claims-audit-report $(INGREDIENT_KB_CLAIMS_AUDIT) $(if $(filter true,$(INGREDIENT_KB_FETCH_LIVE)),--fetch-live,)
 
 ingredient-kb-audit:
+	node scripts/ingest_ingredient_sources.js --data-dir $(INGREDIENT_KB_DATA_DIR) --artifact-path $(INGREDIENT_KB_ARTIFACT) --manifest-path $(INGREDIENT_KB_MANIFEST) --sources-report $(INGREDIENT_KB_SOURCES_REPORT) --claims-audit-report $(INGREDIENT_KB_CLAIMS_AUDIT) $(if $(filter true,$(INGREDIENT_KB_FETCH_LIVE)),--fetch-live,)
 	node scripts/ingest_ingredient_sources.js --audit-only --artifact-path $(INGREDIENT_KB_ARTIFACT) --claims-audit-report $(INGREDIENT_KB_CLAIMS_AUDIT) --fail-on-audit
 
 ingredient-kb-dry-run:
