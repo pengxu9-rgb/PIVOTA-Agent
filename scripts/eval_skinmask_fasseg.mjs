@@ -28,7 +28,7 @@ const {
   iouScore,
   decodeRleBinary,
 } = require('../src/auroraBff/evalAdapters/common/metrics');
-const { inferSkinMaskOnFaceCrop } = require('../src/auroraBff/skinmaskOnnx');
+const { inferSkinMaskOnFaceCrop, loadSkinmaskSchema } = require('../src/auroraBff/skinmaskOnnx');
 
 const DEFAULT_CACHE_DIR = path.join('datasets_cache', 'external');
 const DEFAULT_REPORT_DIR = 'reports';
@@ -260,6 +260,7 @@ function buildSummaryCsv({ metrics, samplesTotal, samplesOk, samplesFailed, fail
   lines.push(`hair_as_skin_rate,${round3(metrics.hair_as_skin_rate_mean)},${round3(metrics.hair_as_skin_rate_p50)},${round3(metrics.hair_as_skin_rate_p90)}`);
   lines.push(`bg_as_skin_rate,${round3(metrics.bg_as_skin_rate_mean)},${round3(metrics.bg_as_skin_rate_p50)},${round3(metrics.bg_as_skin_rate_p90)}`);
   lines.push(`skin_miss_rate,${round3(metrics.skin_miss_rate_mean)},${round3(metrics.skin_miss_rate_p50)},${round3(metrics.skin_miss_rate_p90)}`);
+  lines.push(`pred_skin_ratio,${round3(metrics.pred_skin_ratio_mean)},${round3(metrics.pred_skin_ratio_p50)},${round3(metrics.pred_skin_ratio_p90)}`);
   lines.push('');
   lines.push('summary,value');
   lines.push(`samples_total,${samplesTotal}`);
@@ -281,6 +282,8 @@ function buildSummaryMd({
   samplesFailed,
   metrics,
   failReasonRows,
+  schemaSummary,
+  sanity,
   artifactLabels,
 }) {
   const lines = [];
@@ -299,6 +302,19 @@ function buildSummaryMd({
   lines.push(`- samples_ok: ${samplesOk}`);
   lines.push(`- samples_failed: ${samplesFailed}`);
   lines.push('');
+  lines.push('## Schema');
+  lines.push('');
+  lines.push(`- schema_path: ${schemaSummary.schema_path || 'n/a'}`);
+  lines.push(`- schema_loaded: ${schemaSummary.schema_loaded ? 'true' : 'false'}`);
+  lines.push(`- schema_version: ${schemaSummary.schema_version || 'n/a'}`);
+  lines.push(`- input_color_space: ${schemaSummary.input_color_space || 'n/a'}`);
+  lines.push(`- input_range: ${schemaSummary.input_range || 'n/a'}`);
+  lines.push(`- input_size: ${Array.isArray(schemaSummary.input_size) ? schemaSummary.input_size.join('x') : 'n/a'}`);
+  lines.push(`- output_type: ${schemaSummary.output_type || 'n/a'}`);
+  lines.push(`- output_classes: ${Array.isArray(schemaSummary.output_classes) ? schemaSummary.output_classes.join(',') : 'n/a'}`);
+  lines.push(`- skin_class: ${schemaSummary.skin_class || 'n/a'}`);
+  lines.push(`- skin_class_id: ${Number.isFinite(Number(schemaSummary.skin_class_id)) ? Number(schemaSummary.skin_class_id) : 'n/a'}`);
+  lines.push('');
   lines.push('## Metrics');
   lines.push('');
   lines.push('| metric | mean | p50 | p90 |');
@@ -307,6 +323,16 @@ function buildSummaryMd({
   lines.push(`| hair_as_skin_rate | ${round3(metrics.hair_as_skin_rate_mean)} | ${round3(metrics.hair_as_skin_rate_p50)} | ${round3(metrics.hair_as_skin_rate_p90)} |`);
   lines.push(`| bg_as_skin_rate | ${round3(metrics.bg_as_skin_rate_mean)} | ${round3(metrics.bg_as_skin_rate_p50)} | ${round3(metrics.bg_as_skin_rate_p90)} |`);
   lines.push(`| skin_miss_rate | ${round3(metrics.skin_miss_rate_mean)} | ${round3(metrics.skin_miss_rate_p50)} | ${round3(metrics.skin_miss_rate_p90)} |`);
+  lines.push(`| pred_skin_ratio | ${round3(metrics.pred_skin_ratio_mean)} | ${round3(metrics.pred_skin_ratio_p50)} | ${round3(metrics.pred_skin_ratio_p90)} |`);
+  lines.push('');
+  if (sanity && sanity.triggered) {
+    lines.push('## Warnings');
+    lines.push('');
+    lines.push(
+      `- WARNING: ${sanity.code} (pred_skin_ratio_mean=${round3(sanity.pred_skin_ratio_mean)}, skin_iou_mean=${round3(sanity.skin_iou_mean)}). likely class mapping wrong.`,
+    );
+    lines.push('');
+  }
   lines.push('');
   lines.push('## Fail Reasons');
   lines.push('');
@@ -343,6 +369,44 @@ async function run() {
   if (!onnxStat.isFile()) {
     throw new Error(`onnx_not_file:${args.onnx}`);
   }
+  const schemaResolved = loadSkinmaskSchema(onnxPath);
+  const schemaSummary = {
+    schema_path:
+      schemaResolved && schemaResolved.schema_path
+        ? makeRelativeLabel(repoRoot, schemaResolved.schema_path)
+        : null,
+    schema_loaded: Boolean(schemaResolved && schemaResolved.schema_loaded),
+    schema_version:
+      schemaResolved && schemaResolved.schema_version ? String(schemaResolved.schema_version) : null,
+    input_color_space:
+      schemaResolved && schemaResolved.input && schemaResolved.input.color_space
+        ? String(schemaResolved.input.color_space)
+        : null,
+    input_range:
+      schemaResolved && schemaResolved.input && schemaResolved.input.range
+        ? String(schemaResolved.input.range)
+        : null,
+    input_size:
+      schemaResolved && schemaResolved.input && Array.isArray(schemaResolved.input.size)
+        ? schemaResolved.input.size.map((value) => Number(value))
+        : null,
+    output_type:
+      schemaResolved && schemaResolved.output && schemaResolved.output.type
+        ? String(schemaResolved.output.type)
+        : null,
+    output_classes:
+      schemaResolved && schemaResolved.output && Array.isArray(schemaResolved.output.classes)
+        ? schemaResolved.output.classes.map((token) => String(token))
+        : [],
+    skin_class:
+      schemaResolved && schemaResolved.output && schemaResolved.output.skin_class
+        ? String(schemaResolved.output.skin_class)
+        : null,
+    skin_class_id:
+      schemaResolved && schemaResolved.output && Number.isFinite(Number(schemaResolved.output.skin_class_id))
+        ? Number(schemaResolved.output.skin_class_id)
+        : null,
+  };
 
   const cache = normalizeCacheDirs(args.cache_dir);
   const adapter = getAdapter('fasseg');
@@ -379,6 +443,7 @@ async function run() {
       hair_as_skin_rate: 0,
       bg_as_skin_rate: 0,
       skin_miss_rate: 0,
+      pred_skin_ratio: 0,
       pred_skin_pixels: 0,
       gt_skin_pixels: 0,
       gt_hair_pixels: 0,
@@ -470,6 +535,7 @@ async function run() {
           diagnosisInternal,
           modelPath: onnxPath,
           gridSize: args.grid_size,
+          allowPriorFallback: false,
         }),
         args.timeout_ms,
       );
@@ -508,6 +574,7 @@ async function run() {
     row.ok = true;
     row.fail_reason = null;
     row.pred_skin_pixels = predPixels;
+    row.pred_skin_ratio = round3(safeRatio(predPixels, args.grid_size * args.grid_size));
     row.gt_skin_pixels = gtSkinPixels;
     row.gt_hair_pixels = gtHairPixels;
     row.gt_bg_pixels = gtBgPixels;
@@ -533,6 +600,15 @@ async function run() {
     skin_miss_rate_mean: round3(mean(okRows.map((row) => row.skin_miss_rate))),
     skin_miss_rate_p50: round3(percentile(okRows.map((row) => row.skin_miss_rate), 50)),
     skin_miss_rate_p90: round3(percentile(okRows.map((row) => row.skin_miss_rate), 90)),
+    pred_skin_ratio_mean: round3(mean(okRows.map((row) => row.pred_skin_ratio))),
+    pred_skin_ratio_p50: round3(percentile(okRows.map((row) => row.pred_skin_ratio), 50)),
+    pred_skin_ratio_p90: round3(percentile(okRows.map((row) => row.pred_skin_ratio), 90)),
+  };
+  const sanity = {
+    code: 'SKINMASK_CLASS_MAPPING_LIKELY_WRONG',
+    triggered: metrics.pred_skin_ratio_mean > 0.8 && metrics.skin_iou_mean < 0.2,
+    pred_skin_ratio_mean: round3(metrics.pred_skin_ratio_mean),
+    skin_iou_mean: round3(metrics.skin_iou_mean),
   };
 
   const jsonlPath = path.join(reportDir, `eval_skinmask_fasseg_${runId}.jsonl`);
@@ -567,21 +643,31 @@ async function run() {
       samplesFailed: rows.length - okRows.length,
       metrics,
       failReasonRows,
+      schemaSummary,
+      sanity,
       artifactLabels,
     }),
   );
 
   const payload = {
-    ok: true,
+    ok: !sanity.triggered,
     run_id: runId,
     dataset: 'fasseg',
     samples_total: rows.length,
     samples_ok: okRows.length,
     samples_failed: rows.length - okRows.length,
     metrics,
+    schema: schemaSummary,
+    sanity,
     artifacts: artifactLabels,
   };
   process.stdout.write(`${JSON.stringify(payload)}\n`);
+  if (sanity.triggered) {
+    process.stderr.write(
+      `eval_skinmask_fasseg_failed: likely class mapping wrong (pred_skin_ratio_mean=${round3(metrics.pred_skin_ratio_mean)}, skin_iou_mean=${round3(metrics.skin_iou_mean)})\n`,
+    );
+    process.exitCode = 2;
+  }
 }
 
 run().catch((error) => {

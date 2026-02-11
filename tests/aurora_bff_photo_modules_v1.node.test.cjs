@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { buildPhotoModulesCard } = require('../src/auroraBff/photoModulesV1');
 const { resetVisionMetrics, renderVisionMetricsPrometheus } = require('../src/auroraBff/visionMetrics');
+const { decodeRleBinary, countOnes } = require('../src/auroraBff/evalAdapters/common/metrics');
 
 function withEnv(patch, fn) {
   const prev = {};
@@ -36,6 +37,17 @@ function loadRoutesInternal() {
 }
 
 function unloadRoutes(moduleId) {
+  if (moduleId) delete require.cache[moduleId];
+}
+
+function loadPhotoModulesBuilder() {
+  const moduleId = require.resolve('../src/auroraBff/photoModulesV1');
+  delete require.cache[moduleId];
+  const mod = require('../src/auroraBff/photoModulesV1');
+  return { moduleId, buildPhotoModulesCard: mod.buildPhotoModulesCard };
+}
+
+function unloadPhotoModules(moduleId) {
   if (moduleId) delete require.cache[moduleId];
 }
 
@@ -241,6 +253,80 @@ test('routes helper: flag off does not emit card, flag on emits and records metr
           assert.match(metrics, /modules_issue_count_histogram\{module_id="[^"]+",issue_type="redness"\}/);
           assert.match(metrics, /ingredient_actions_emitted_total\{module_id="[^"]+",issue_type="redness"\}/);
           assert.match(metrics, /geometry_sanitizer_drop_total\{reason="[^"]+",region_type="bbox"\}/);
+        },
+      );
+    },
+  ));
+
+test('photo modules card: face oval clip enabled keeps module mask pixels <= disabled', () =>
+  withEnv(
+    {
+      DIAG_FACE_OVAL_CLIP: 'false',
+      DIAG_MODULE_SHRINK_CHIN: '1',
+      DIAG_MODULE_SHRINK_FOREHEAD: '1',
+      DIAG_MODULE_SHRINK_CHEEK: '1',
+    },
+    () => {
+      const offLoaded = loadPhotoModulesBuilder();
+      const offCard = offLoaded.buildPhotoModulesCard({
+        requestId: 'req_photo_modules_clip_off',
+        analysis: makeAnalysisFixture(),
+        usedPhotos: true,
+        photoQuality: { grade: 'pass', reasons: [] },
+        photoNotice: 'notice',
+        diagnosisInternal: makeDiagnosisInternalFixture(),
+        profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+        language: 'EN',
+        ingredientRecEnabled: true,
+        productRecEnabled: false,
+      });
+      unloadPhotoModules(offLoaded.moduleId);
+      assert.ok(offCard && offCard.card && offCard.card.payload);
+
+      return withEnv(
+        {
+          DIAG_FACE_OVAL_CLIP: 'true',
+          DIAG_MODULE_SHRINK_CHIN: '0.8',
+          DIAG_MODULE_SHRINK_FOREHEAD: '0.88',
+          DIAG_MODULE_SHRINK_CHEEK: '0.9',
+        },
+        () => {
+          const onLoaded = loadPhotoModulesBuilder();
+          const onCard = onLoaded.buildPhotoModulesCard({
+            requestId: 'req_photo_modules_clip_on',
+            analysis: makeAnalysisFixture(),
+            usedPhotos: true,
+            photoQuality: { grade: 'pass', reasons: [] },
+            photoNotice: 'notice',
+            diagnosisInternal: makeDiagnosisInternalFixture(),
+            profileSummary: { barrierStatus: 'impaired', sensitivity: 'high' },
+            language: 'EN',
+            ingredientRecEnabled: true,
+            productRecEnabled: false,
+          });
+          unloadPhotoModules(onLoaded.moduleId);
+          assert.ok(onCard && onCard.card && onCard.card.payload);
+
+          const offModules = new Map(
+            (offCard.card.payload.modules || []).map((moduleRow) => [moduleRow.module_id, moduleRow]),
+          );
+          const onModules = new Map(
+            (onCard.card.payload.modules || []).map((moduleRow) => [moduleRow.module_id, moduleRow]),
+          );
+          for (const [moduleId, offModule] of offModules.entries()) {
+            const onModule = onModules.get(moduleId);
+            assert.ok(onModule, `missing module ${moduleId}`);
+            const offGrid = Number(offModule.mask_grid || 64);
+            const onGrid = Number(onModule.mask_grid || 64);
+            const offMask = decodeRleBinary(String(offModule.mask_rle_norm || ''), offGrid * offGrid);
+            const onMask = decodeRleBinary(String(onModule.mask_rle_norm || ''), onGrid * onGrid);
+            const offPixels = countOnes(offMask);
+            const onPixels = countOnes(onMask);
+            assert.ok(
+              onPixels <= offPixels,
+              `module ${moduleId} clip expected <= off pixels, got on=${onPixels} off=${offPixels}`,
+            );
+          }
         },
       );
     },

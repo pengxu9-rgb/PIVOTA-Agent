@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from typing import Dict, Iterable, Mapping
 
 import numpy as np
@@ -18,6 +20,10 @@ UNIFIED_CLASSES = (
 
 CLASS_TO_ID = {name: index for index, name in enumerate(UNIFIED_CLASSES)}
 ID_TO_CLASS = {index: name for name, index in CLASS_TO_ID.items()}
+SKIN_CLASS_NAME = "skin"
+SKINMASK_SCHEMA_VERSION = "aurora.skinmask.schema.v1"
+DEFAULT_INPUT_MEAN = (0.485, 0.456, 0.406)
+DEFAULT_INPUT_STD = (0.229, 0.224, 0.225)
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,71 @@ LABEL_SPACES: Dict[str, LabelSpace] = {
     "fasseg": LabelSpace(dataset="fasseg", classes=UNIFIED_CLASSES),
     "acne04": LabelSpace(dataset="acne04", classes=UNIFIED_CLASSES),
 }
+
+
+def _normalize_size(size: int | tuple[int, int] | list[int]) -> tuple[int, int]:
+    if isinstance(size, int):
+        token = max(32, int(size))
+        return (token, token)
+    if isinstance(size, (tuple, list)) and len(size) >= 2:
+        h = max(32, int(size[0]))
+        w = max(32, int(size[1]))
+        return (h, w)
+    return (512, 512)
+
+
+def skinmask_schema(
+    *,
+    size: int | tuple[int, int] | list[int] = (512, 512),
+    output_type: str = "softmax",
+) -> dict:
+    h, w = _normalize_size(size)
+    out_type = str(output_type or "softmax").strip().lower()
+    if out_type not in {"softmax", "sigmoid"}:
+        out_type = "softmax"
+    return {
+        "schema_version": SKINMASK_SCHEMA_VERSION,
+        "input": {
+            "color_space": "RGB",
+            "range": "0-1",
+            "mean": [float(v) for v in DEFAULT_INPUT_MEAN],
+            "std": [float(v) for v in DEFAULT_INPUT_STD],
+            "size": [int(h), int(w)],
+            "layout": "NCHW",
+        },
+        "output": {
+            "type": out_type,
+            "classes": list(UNIFIED_CLASSES),
+            "skin_class": SKIN_CLASS_NAME,
+        },
+    }
+
+
+def skin_class_id_from_schema(schema: Mapping[str, object] | None) -> int:
+    payload = schema if isinstance(schema, Mapping) else {}
+    output = payload.get("output")
+    if not isinstance(output, Mapping):
+        return CLASS_TO_ID[SKIN_CLASS_NAME]
+    classes = output.get("classes")
+    skin_class = str(output.get("skin_class") or SKIN_CLASS_NAME).strip()
+    if isinstance(classes, Iterable) and not isinstance(classes, (str, bytes)):
+        class_list = [str(item) for item in classes]
+        if skin_class in class_list:
+            return class_list.index(skin_class)
+    return CLASS_TO_ID.get(skin_class, CLASS_TO_ID[SKIN_CLASS_NAME])
+
+
+def write_skinmask_schema(
+    schema_path: str | Path,
+    *,
+    size: int | tuple[int, int] | list[int] = (512, 512),
+    output_type: str = "softmax",
+) -> dict:
+    schema = skinmask_schema(size=size, output_type=output_type)
+    target = Path(schema_path).expanduser().resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(f"{json.dumps(schema, ensure_ascii=False, indent=2)}\n", encoding="utf-8")
+    return schema
 
 
 def normalize_dataset_name(dataset: str) -> str:
@@ -176,4 +247,3 @@ def to_binary_skin_mask(unified_mask: np.ndarray, *, include_unknown_as_non_skin
     unknown = unified_mask == IGNORE_INDEX
     skin[unknown] = 0
     return skin
-
