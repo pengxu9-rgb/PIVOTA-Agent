@@ -4242,6 +4242,42 @@ function pickResolveOptions(raw) {
   };
 }
 
+function normalizeResolveFailureCode(raw, fallback = 'no_candidates') {
+  const code = String(raw || '').trim().toLowerCase();
+  if (code === 'db_error' || code === 'upstream_timeout' || code === 'no_candidates') return code;
+  return fallback;
+}
+
+function inferResolveFailureCode({ result, err } = {}) {
+  const explicit = normalizeResolveFailureCode(
+    result?.reason_code || result?.reasonCode || result?.metadata?.resolve_reason_code,
+    '',
+  );
+  if (explicit) return explicit;
+
+  const reason = String(result?.reason || '').trim().toLowerCase();
+  if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return 'no_candidates';
+  if (reason.startsWith('db_') || reason === 'products_cache_missing') return 'db_error';
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
+
+  const sourceReasons = Array.isArray(result?.metadata?.sources)
+    ? result.metadata.sources
+        .map((item) => String(item && item.reason ? item.reason : '').trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+  if (sourceReasons.some((r) => r.startsWith('db_') || r === 'products_cache_missing')) return 'db_error';
+  if (sourceReasons.some((r) => r.includes('timeout') || r.startsWith('upstream_'))) return 'upstream_timeout';
+
+  const errText = String(err?.code || err?.message || err || '').trim().toLowerCase();
+  if (errText.includes('timeout') || errText.includes('econnaborted') || errText.includes('etimedout')) {
+    return 'upstream_timeout';
+  }
+  if (errText.includes('db_') || errText.includes('database') || errText.includes('postgres')) {
+    return 'db_error';
+  }
+  return 'no_candidates';
+}
+
 app.post('/agent/v1/products/resolve', async (req, res) => {
   const checkoutToken =
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
@@ -4294,8 +4330,21 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
       checkoutToken,
     });
 
+    const unresolvedReasonCode = !result?.resolved ? inferResolveFailureCode({ result }) : null;
+    const responsePayload =
+      !result?.resolved && unresolvedReasonCode
+        ? {
+            ...result,
+            reason_code: unresolvedReasonCode,
+            metadata: {
+              ...(result?.metadata && typeof result.metadata === 'object' ? result.metadata : {}),
+              resolve_reason_code: unresolvedReasonCode,
+            },
+          }
+        : result;
+
     // Best-effort: record gaps for ops restock (do not block the UI).
-    if (!result?.resolved) {
+    if (!responsePayload?.resolved) {
       const caller =
         String(body.caller || req.header('X-Caller') || req.header('User-Agent') || '')
           .trim()
@@ -4306,12 +4355,13 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
           .slice(0, 120) || null;
       const event = {
         query: queryText,
-        normalized_query: result?.normalized_query || null,
+        normalized_query: responsePayload?.normalized_query || null,
         lang,
         hints,
         caller,
         session_id: sessionId,
-        reason: result?.reason || 'unresolved',
+        reason: responsePayload?.reason || 'unresolved',
+        reason_code: unresolvedReasonCode || null,
         timestamp: new Date().toISOString(),
       };
       logger.info({ event_name: 'missing_catalog_product', ...event }, 'missing_catalog_product');
@@ -4320,19 +4370,22 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
       });
     }
 
-    return res.json(result);
+    return res.json(responsePayload);
   } catch (err) {
+    const reasonCode = inferResolveFailureCode({ err });
     logger.warn({ err: err?.message || String(err) }, 'products.resolve failed; returning unresolved');
     return res.json({
       resolved: false,
       product_ref: null,
       confidence: 0,
       reason: 'internal_error',
+      reason_code: reasonCode,
       candidates: [],
       normalized_query: queryText,
       metadata: {
         lang,
         error: 'internal_error',
+        resolve_reason_code: reasonCode,
       },
     });
   }

@@ -8,6 +8,31 @@ process.env.PIVOTA_BACKEND_BASE_URL = 'https://pivota-backend.test';
 process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'test_key';
 
 const axios = require('axios');
+const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
+
+async function withEnv(overrides, fn) {
+  const prev = {};
+  for (const key of Object.keys(overrides || {})) {
+    prev[key] = process.env[key];
+    const next = overrides[key];
+    if (next === undefined || next === null) delete process.env[key];
+    else process.env[key] = String(next);
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const key of Object.keys(overrides || {})) {
+      if (prev[key] === undefined) delete process.env[key];
+      else process.env[key] = prev[key];
+    }
+  }
+}
+
+function loadRoutesFresh() {
+  delete require.cache[ROUTES_MODULE_PATH];
+  // eslint-disable-next-line global-require, import/no-dynamic-require
+  return require('../src/auroraBff/routes');
+}
 
 const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
   const m = String(method || '').toLowerCase();
@@ -64,6 +89,55 @@ const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, qu
   return { status: res.statusCode, body: res.body };
 };
 
+function buildRecoChatBody() {
+  return {
+    action: {
+      action_id: 'chip.start.reco_products',
+      kind: 'chip',
+      data: {
+        reply_text: 'Get product recommendations',
+        profile_patch: {
+          skinType: 'oily',
+          sensitivity: 'low',
+          barrierStatus: 'healthy',
+          goals: ['acne'],
+        },
+      },
+    },
+    client_state: 'IDLE_CHAT',
+    session: { state: 'idle' },
+    language: 'EN',
+  };
+}
+
+async function invokeRecoChat(app, headers = {}) {
+  return invokeRoute(app, 'POST', '/v1/chat', {
+    headers: {
+      'X-Aurora-UID': 'test_uid',
+      'X-Trace-ID': 'test_trace',
+      'X-Brief-ID': 'test_brief',
+      ...headers,
+    },
+    body: buildRecoChatBody(),
+  });
+}
+
+function getRecoCard(responseBody) {
+  const cards = Array.isArray(responseBody?.cards) ? responseBody.cards : [];
+  return cards.find((c) => c && c.type === 'recommendations') || null;
+}
+
+function getRecoItems(responseBody) {
+  const recoCard = getRecoCard(responseBody);
+  return Array.isArray(recoCard?.payload?.recommendations) ? recoCard.payload.recommendations : [];
+}
+
+function getRecoPathStats(responseBody) {
+  const recoCard = getRecoCard(responseBody);
+  const stats = recoCard?.payload?.metadata?.pdp_open_path_stats;
+  return stats && typeof stats === 'object' ? stats : null;
+}
+
 test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled', async () => {
   const originalGet = axios.get;
   const queries = [];
@@ -88,28 +162,13 @@ test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled
 
   try {
     const express = require('express');
-    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
 
     const app = express();
     app.use(express.json({ limit: '1mb' }));
     mountAuroraBffRoutes(app, { logger: null });
 
-    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
-      headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
-      body: {
-        action: {
-          action_id: 'chip.start.reco_products',
-          kind: 'chip',
-          data: {
-            reply_text: 'Get product recommendations',
-            profile_patch: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'healthy', goals: ['acne'] },
-          },
-        },
-        client_state: 'IDLE_CHAT',
-        session: { state: 'idle' },
-        language: 'EN',
-      },
-    });
+    const resp = await invokeRecoChat(app);
 
     assert.equal(resp.status, 200);
     const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
@@ -123,4 +182,220 @@ test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled
   } finally {
     axios.get = originalGet;
   }
+});
+
+test('The Ordinary recommendation: pdp_open path is direct internal (group), no fallback', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'the ordinary niacinamide 10% + zinc 1%',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let resolveCalls = 0;
+      axios.get = async (url, config = {}) => {
+        if (!String(url).includes('/agent/v1/products/search')) throw new Error(`Unexpected axios.get: ${url}`);
+        const q = String(config?.params?.query || '').toLowerCase();
+        if (!q.includes('ordinary')) throw new Error(`Unexpected query: ${q}`);
+        return {
+          data: {
+            products: [
+              {
+                product_id: 'prod_to_niacinamide',
+                merchant_id: 'mid_to',
+                product_group_id: 'pg_to_niacinamide',
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+                display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              },
+            ],
+          },
+        };
+      };
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) resolveCalls += 1;
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRecoChat(app, { 'X-Aurora-UID': 'test_uid_to' });
+        assert.equal(resp.status, 200);
+
+        const recos = getRecoItems(resp.body);
+        assert.ok(recos.length > 0);
+        const first = recos[0];
+        const stats = getRecoPathStats(resp.body);
+
+        assert.equal(first?.metadata?.pdp_open_path, 'group');
+        assert.equal(first?.pdp_open?.path, 'group');
+        assert.equal(first?.pdp_open?.subject?.product_group_id, 'pg_to_niacinamide');
+        assert.ok(first?.pdp_open?.get_pdp_v2_payload?.subject?.id);
+        assert.equal(Boolean(first?.pdp_open?.external), false);
+        assert.ok(first?.pdp_open?.subject?.product_group_id || first?.pdp_open?.product_ref);
+        assert.equal(stats?.group, 1);
+        assert.equal(stats?.external, 0);
+        assert.equal(resolveCalls, 0);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Winona recommendation: pdp_open path is direct internal (ref), no fallback', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'winona soothing repair serum',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let resolveCalls = 0;
+      axios.get = async (url, config = {}) => {
+        if (!String(url).includes('/agent/v1/products/search')) throw new Error(`Unexpected axios.get: ${url}`);
+        const q = String(config?.params?.query || '').toLowerCase();
+        if (!q.includes('winona')) throw new Error(`Unexpected query: ${q}`);
+        return {
+          data: {
+            products: [
+              {
+                product_id: 'prod_winona_repair',
+                merchant_id: 'mid_winona',
+                brand: 'Winona',
+                name: 'Soothing Repair Serum',
+                display_name: 'Winona Soothing Repair Serum',
+              },
+            ],
+          },
+        };
+      };
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) resolveCalls += 1;
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRecoChat(app, { 'X-Aurora-UID': 'test_uid_winona' });
+        assert.equal(resp.status, 200);
+
+        const recos = getRecoItems(resp.body);
+        assert.ok(recos.length > 0);
+        const first = recos[0];
+        const stats = getRecoPathStats(resp.body);
+
+        assert.equal(first?.metadata?.pdp_open_path, 'ref');
+        assert.equal(first?.pdp_open?.path, 'ref');
+        assert.equal(first?.pdp_open?.product_ref?.merchant_id, 'mid_winona');
+        assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_winona_repair');
+        assert.ok(first?.pdp_open?.get_pdp_v2_payload?.product_ref?.product_id);
+        assert.equal(Boolean(first?.pdp_open?.external), false);
+        assert.ok(first?.pdp_open?.subject?.product_group_id || first?.pdp_open?.product_ref);
+        assert.equal(stats?.ref, 1);
+        assert.equal(stats?.external, 0);
+        assert.equal(resolveCalls, 0);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Unresolved recommendation: external fallback only after one resolve attempt (new tab + reason code)', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let resolveCalls = 0;
+      let lastResolveBody = null;
+      axios.get = async (url) => {
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+      axios.post = async (url, body) => {
+        if (!String(url).includes('/agent/v1/products/resolve')) {
+          throw new Error(`Unexpected axios.post: ${url}`);
+        }
+        resolveCalls += 1;
+        lastResolveBody = body;
+        return {
+          status: 200,
+          data: {
+            resolved: false,
+            product_ref: null,
+            reason: 'no_candidates',
+            reason_code: 'no_candidates',
+            candidates: [],
+            metadata: { resolve_reason_code: 'no_candidates', sources: [{ source: 'agent_search_global', ok: false, reason: 'no_results' }] },
+          },
+        };
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRecoChat(app, { 'X-Aurora-UID': 'test_uid_unresolved' });
+        assert.equal(resp.status, 200);
+
+        const recos = getRecoItems(resp.body);
+        assert.ok(recos.length > 0);
+        const first = recos[0];
+        const stats = getRecoPathStats(resp.body);
+        const serialized = JSON.stringify(first).toLowerCase();
+
+        assert.equal(resolveCalls, 1);
+        assert.ok(lastResolveBody && typeof lastResolveBody.query === 'string' && lastResolveBody.query.length > 0);
+        assert.equal(first?.metadata?.pdp_open_path, 'external');
+        assert.equal(first?.metadata?.resolve_reason_code, 'no_candidates');
+        assert.equal(first?.pdp_open?.path, 'external');
+        assert.equal(first?.pdp_open?.external?.provider, 'google');
+        assert.equal(first?.pdp_open?.external?.target, '_blank');
+        assert.ok(String(first?.pdp_open?.external?.url || '').startsWith('https://www.google.com/search?q='));
+        assert.notEqual(String(first?.pdp_open?.external?.url || ''), 'about:blank');
+        assert.equal(serialized.includes('reply_text'), false);
+        assert.equal(serialized.includes('shopping-agent'), false);
+        assert.equal(serialized.includes('browse'), false);
+        assert.equal(stats?.external, 1);
+        assert.equal(stats?.group, 0);
+        assert.equal(stats?.ref, 0);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
 });
