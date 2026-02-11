@@ -8968,6 +8968,63 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
       }
 
+      if (!response && operation === 'find_products_multi') {
+        const queryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+        if (queryText) {
+          const fallbackReason =
+            err?.response?.status
+              ? `upstream_status_${err.response.status}`
+              : err?.code === 'ECONNABORTED'
+                ? 'upstream_timeout'
+                : 'upstream_exception';
+
+          try {
+            const fallback = await queryFindProductsMultiFallback({
+              queryParams,
+              checkoutToken,
+              reason: fallbackReason,
+            });
+            if (
+              fallback &&
+              fallback.status >= 200 &&
+              fallback.status < 300 &&
+              fallback.usableCount > 0 &&
+              isProxySearchFallbackRelevant(fallback.data, queryText)
+            ) {
+              response = { status: fallback.status, data: fallback.data };
+            }
+          } catch (fallbackErr) {
+            logger.warn(
+              { err: fallbackErr?.message || String(fallbackErr) },
+              'find_products_multi invoke fallback failed after upstream exception',
+            );
+          }
+
+          if (!response) {
+            try {
+              const resolverFallback = await queryResolveSearchFallback({
+                queryParams,
+                checkoutToken,
+                reason: 'resolver_after_exception',
+              });
+              if (
+                resolverFallback &&
+                resolverFallback.status >= 200 &&
+                resolverFallback.status < 300 &&
+                resolverFallback.usableCount > 0
+              ) {
+                response = { status: resolverFallback.status, data: resolverFallback.data };
+              }
+            } catch (resolverErr) {
+              logger.warn(
+                { err: resolverErr?.message || String(resolverErr) },
+                'find_products_multi resolver fallback failed after upstream exception',
+              );
+            }
+          }
+        }
+      }
+
       if (!response) throw err;
     }
     let upstreamData = response.data;
@@ -8989,6 +9046,70 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         limit: queryParams?.limit,
         offset: queryParams?.offset,
       });
+    }
+
+    if (operation === 'find_products_multi') {
+      const queryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+      const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
+      const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
+
+      if (shouldFallback) {
+        let replacedByFallback = false;
+
+        try {
+          const fallback = await queryFindProductsMultiFallback({
+            queryParams,
+            checkoutToken,
+            reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
+          });
+          if (
+            fallback &&
+            fallback.status >= 200 &&
+            fallback.status < 300 &&
+            fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+            isProxySearchFallbackRelevant(fallback.data, queryText)
+          ) {
+            upstreamData = fallback.data;
+            replacedByFallback = true;
+          }
+        } catch (fallbackErr) {
+          logger.warn(
+            { err: fallbackErr?.message || String(fallbackErr) },
+            'find_products_multi invoke fallback failed after primary response',
+          );
+        }
+
+        if (!replacedByFallback) {
+          try {
+            const resolverFallback = await queryResolveSearchFallback({
+              queryParams,
+              checkoutToken,
+              reason: 'resolver_after_primary',
+            });
+            if (
+              resolverFallback &&
+              resolverFallback.status >= 200 &&
+              resolverFallback.status < 300 &&
+              resolverFallback.usableCount > 0
+            ) {
+              upstreamData = resolverFallback.data;
+              replacedByFallback = true;
+            }
+          } catch (resolverErr) {
+            logger.warn(
+              { err: resolverErr?.message || String(resolverErr) },
+              'find_products_multi resolver fallback failed after primary response',
+            );
+          }
+        }
+
+        if (!replacedByFallback) {
+          upstreamData = withProxySearchFallbackMetadata(upstreamData, {
+            applied: false,
+            reason: 'fallback_not_better',
+          });
+        }
+      }
     }
 
     if (operation === 'offers.resolve') {
