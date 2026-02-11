@@ -16,8 +16,7 @@ This MVP adds a **merchant-agnostic** resolver endpoint so upstream recommenders
     "prefer_merchants": ["merch_efbc46b4619cfbdf"],
     "search_all_merchants": true,
     "allow_external_seed": false,
-    "timeout_ms": 1500,
-    "scoring_version": "v1"
+    "timeout_ms": 1500
   },
   "hints": {
     "category": "skincare",
@@ -29,7 +28,6 @@ This MVP adds a **merchant-agnostic** resolver endpoint so upstream recommenders
 Notes:
 - `prefer_merchants` is used as a strong preference signal (and first-pass recall via `products_cache` when available).
 - `allow_external_seed=false` filters out `merchant_id=external_seed` / `source_type=external_seed` candidates by default.
-- `scoring_version` supports `v1|v2` (default `v1`). `v1` is the conservative fallback; `v2` is accuracy-focused scoring.
 - The resolver is **timeout-budgeted**; on timeout it returns `resolved=false` (no 5xx/Google fallback needed in UI).
 
 ### Response
@@ -96,12 +94,6 @@ These are **local-only** sanity checks for the **matching / ranking** logic (no 
 Runs a deterministic micro-benchmark over a synthetic candidate set derived from the golden fixture and prints **JSON to stdout**:
 
 ```bash
-node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350
-```
-
-Recommended reviewer command (stable enough for PR comparison):
-
-```bash
 node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30
 ```
 
@@ -109,48 +101,35 @@ Options:
 - `--fixture <path>` (default: `tests/fixtures/product_grounding/golden_v1.json`)
 - `--warmup-repeat <n>` (default: `30`)
 - `--out <path>` to write the JSON report to a file
-- To benchmark v2 scoring, set env on the command:
-  - `PRODUCT_GROUNDING_SCORING_VERSION=v2 node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30`
 
-Output interpretation:
-- `p50_ms`: median per-call latency
-- `p95_ms`: tail latency
-- `throughput_ops_per_sec`: higher is better
-- `env`: runtime environment (`node_version`, `os`, `cpu_model`, `cpu_count`) for apples-to-apples runs
+Recommended for stable numbers:
 
-Note:
-- Benchmark/eval outputs are local artifacts only and should **not** be committed in PRs (`reports/`, `outputs/`, ad-hoc JSON files).
+```bash
+for i in 1 2 3; do
+  node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30
+done
+```
+
+Interpretation:
+- `p50_ms`: typical latency
+- `p95_ms`: tail latency (primary regression guard)
+- `throughput_ops_per_sec`: sustained throughput under this workload
+
+Do not commit benchmark/eval generated outputs (`reports/`, JSONL, CSV).
 
 ### Golden accuracy harness
 
-Runs regression and accuracy suites:
+Runs both suites in one command:
+- v1 regression (`golden_v1.json`, must remain backward-compatible)
+- v2 accuracy suite (`golden_v2.json`, opt-in scoring improvements)
 
 ```bash
 node --test tests/product_grounding_eval.node.test.cjs
 ```
 
-The test log prints concise summaries:
-- `golden_v1 resolved_cases=... resolved_coverage=... top1=... recall@3=... mrr=...`
-- `golden_v2 resolved_cases=... resolved_coverage=... top1=... recall@3=... mrr=...`
-
 Fixture locations:
-- `tests/fixtures/product_grounding/golden_v1.json` (v1 regression baseline)
-- `tests/fixtures/product_grounding/golden_v2.json` (intentional v2 improvements)
-
-Manual API check for specific scoring version:
-
-```bash
-curl -sS "$BASE/agent/v1/products/resolve" \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"Sony WF1000XM5 earbuds","lang":"en","options":{"scoring_version":"v2"}}'
-```
-
-Environment-based scoring switch:
-- `PRODUCT_GROUNDING_SCORING_VERSION=v1` (default fallback)
-- `PRODUCT_GROUNDING_SCORING_VERSION=v2` (opt-in rollout)
-
-Artifact policy:
-- Do not commit benchmark/eval outputs (`reports/`, `outputs/`, ad-hoc JSON files).
+- `tests/fixtures/product_grounding/golden_v1.json`
+- `tests/fixtures/product_grounding/golden_v2.json`
 
 ## CI Automation
 
