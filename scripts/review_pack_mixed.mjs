@@ -6,6 +6,7 @@ import path from 'node:path';
 import { Blob } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import sharp from 'sharp';
 import {
   collectPhotoFiles,
   csvEscape,
@@ -46,9 +47,13 @@ const DEFAULT_OUTSIDE_TOUCH_THRESHOLD = 0.02;
 const DEFAULT_BAND_TOUCH_THRESHOLD = 0.08;
 const DEFAULT_CHIN_BOTTOM_BAND_RATIO = 0.03;
 const DEFAULT_NOSE_SIDE_BAND_RATIO = 0.03;
-const DEFAULT_RISK_PIXELS_MIN_THRESH = 120;
+const DEFAULT_RISK_PIXELS_MIN_THRESH = 16;
 const DEFAULT_RISK_INNER_OVAL_SCALE = 0.94;
 const DEFAULT_GOLD_BUCKET_TOPN = 20;
+const DEFAULT_LOW_MODULE_PIXELS_THRESH = 16;
+const DEFAULT_UNDER_EYE_NEAR_MARGIN = 8;
+const DEFAULT_TOP_RISK_LOW_PIXELS_MAX_RATIO = 0.65;
+const DEFAULT_HEIC_CONVERT_DIR = path.join('datasets_cache', 'internal_converted');
 const FACE_OVAL_POLYGON = Object.freeze([
   { x: 0.5, y: 0.06 },
   { x: 0.64, y: 0.1 },
@@ -179,10 +184,18 @@ function fileExtToken(filePath) {
     .toLowerCase();
 }
 
-function detectMagicType(inputBuffer) {
-  if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length < 12) return 'unknown';
+function detectMagicInfo(inputBuffer) {
+  if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length < 12) {
+    return {
+      magic_type: 'unknown',
+      container_hint: null,
+    };
+  }
   if (inputBuffer.length >= 3 && inputBuffer[0] === 0xff && inputBuffer[1] === 0xd8 && inputBuffer[2] === 0xff) {
-    return 'jpg';
+    return {
+      magic_type: 'jpeg',
+      container_hint: null,
+    };
   }
   if (
     inputBuffer.length >= 8
@@ -195,20 +208,159 @@ function detectMagicType(inputBuffer) {
     && inputBuffer[6] === 0x1a
     && inputBuffer[7] === 0x0a
   ) {
-    return 'png';
+    return {
+      magic_type: 'png',
+      container_hint: null,
+    };
   }
   const riff = inputBuffer.toString('ascii', 0, 4);
   const webp = inputBuffer.toString('ascii', 8, 12);
-  if (riff === 'RIFF' && webp === 'WEBP') return 'webp';
+  if (riff === 'RIFF' && webp === 'WEBP') {
+    return {
+      magic_type: 'webp',
+      container_hint: null,
+    };
+  }
   const ftyp = inputBuffer.toString('ascii', 4, 8);
   if (ftyp === 'ftyp') {
     const brand = inputBuffer.toString('ascii', 8, 12).toLowerCase();
-    if (['heic', 'heif', 'heix', 'hevc', 'heis', 'heim', 'mif1', 'msf1'].includes(brand)) {
-      return 'heic';
+    const container_hint = `ftyp${brand}`;
+    if (['heic', 'heix', 'hevc', 'hevx', 'heis', 'heim'].includes(brand)) {
+      return {
+        magic_type: 'heic',
+        container_hint,
+      };
     }
-    return 'isobmff';
+    if (['heif', 'mif1', 'msf1'].includes(brand)) {
+      return {
+        magic_type: 'heif',
+        container_hint,
+      };
+    }
+    return {
+      magic_type: 'unknown',
+      container_hint,
+    };
   }
+  return {
+    magic_type: 'unknown',
+    container_hint: null,
+  };
+}
+
+function extToMagicType(ext) {
+  const token = String(ext || '').trim().toLowerCase();
+  if (token === '.jpg' || token === '.jpeg') return 'jpeg';
+  if (token === '.png') return 'png';
+  if (token === '.webp') return 'webp';
+  if (token === '.heic') return 'heic';
+  if (token === '.heif') return 'heif';
   return 'unknown';
+}
+
+function isHeicMagicType(magicType) {
+  const token = String(magicType || '').trim().toLowerCase();
+  return token === 'heic' || token === 'heif';
+}
+
+function isHeicExt(ext) {
+  const token = String(ext || '').trim().toLowerCase();
+  return token === '.heic' || token === '.heif';
+}
+
+function isHeicMismatch(ext, magicType) {
+  if (!isHeicMagicType(magicType)) return false;
+  return !isHeicExt(ext);
+}
+
+async function probeSharpDecode(inputBuffer) {
+  try {
+    await sharp(inputBuffer, { failOn: 'none' })
+      .rotate()
+      .resize({ width: 8, height: 8, fit: 'inside', withoutEnlargement: true })
+      .raw()
+      .toBuffer();
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function commandExists(command) {
+  const result = spawnSync('which', [command], { encoding: 'utf8' });
+  return result.status === 0;
+}
+
+function runConvertCommand(command, commandArgs) {
+  const result = spawnSync(command, commandArgs, { encoding: 'utf8' });
+  if (result.status === 0) {
+    return {
+      ok: true,
+      tool: command,
+      stderr: String(result.stderr || '').trim(),
+    };
+  }
+  return {
+    ok: false,
+    tool: command,
+    stderr: String(result.stderr || '').trim() || String(result.stdout || '').trim(),
+    error_code: `${command}_failed`,
+  };
+}
+
+async function convertHeicToJpeg({ inputPath, outputPath }) {
+  await fsp.mkdir(path.dirname(outputPath), { recursive: true });
+
+  const candidates = [];
+  if (commandExists('sips')) {
+    candidates.push({
+      tool: 'sips',
+      command: 'sips',
+      args: ['-s', 'format', 'jpeg', inputPath, '--out', outputPath],
+    });
+  }
+  if (commandExists('magick')) {
+    candidates.push({
+      tool: 'magick',
+      command: 'magick',
+      args: [inputPath, outputPath],
+    });
+  }
+  if (commandExists('convert')) {
+    candidates.push({
+      tool: 'convert',
+      command: 'convert',
+      args: [inputPath, outputPath],
+    });
+  }
+
+  if (!candidates.length) {
+    return {
+      ok: false,
+      tool: null,
+      error_code: 'NO_CONVERTER',
+      error_message: 'no_heic_converter_found',
+    };
+  }
+
+  for (const candidate of candidates) {
+    const converted = runConvertCommand(candidate.command, candidate.args);
+    if (!converted.ok) continue;
+    const stat = await fsp.stat(outputPath).catch(() => null);
+    if (stat && stat.isFile() && stat.size > 0) {
+      return {
+        ok: true,
+        tool: candidate.tool,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    tool: candidates[0].tool,
+    error_code: 'HEIC_CONVERT_FAIL',
+    error_message: 'convert_command_failed',
+  };
 }
 
 function classifyDecodeFailure({ error, ext, magicType }) {
@@ -216,7 +368,7 @@ function classifyDecodeFailure({ error, ext, magicType }) {
   const message = String(error && error.message ? error.message : error || '').toLowerCase();
   const extToken = String(ext || '').trim().toLowerCase();
   const magic = String(magicType || '').trim().toLowerCase();
-  const maybeHeic = magic === 'heic' || extToken === '.heic' || extToken === '.heif';
+  const maybeHeic = magic === 'heic' || magic === 'heif' || extToken === '.heic' || extToken === '.heif';
   if (maybeHeic && (code.includes('heic') || message.includes('heic') || message.includes('heif') || code === 'unsupported_image_format')) {
     return {
       reason_detail: 'HEIC_UNSUPPORTED',
@@ -357,6 +509,8 @@ function parseArgs(argv) {
     eval_grid_size: parseNumber(process.env.EVAL_GRID_SIZE, 128, 64, 512),
     eval_shuffle: parseBoolean(process.env.EVAL_SHUFFLE || process.env.SHUFFLE, false),
     run_mode: RUN_MODES.has(runModeToken) ? runModeToken : 'auto',
+    convert_heic: parseBoolean(process.env.CONVERT_HEIC, false),
+    heic_convert_dir: String(process.env.HEIC_CONVERT_DIR || DEFAULT_HEIC_CONVERT_DIR),
     outside_touch_threshold: parseNumber(process.env.RISK_OUTSIDE_TOUCH_THRESHOLD, DEFAULT_OUTSIDE_TOUCH_THRESHOLD, 0, 1),
     band_touch_threshold: parseNumber(process.env.RISK_BAND_TOUCH_THRESHOLD, DEFAULT_BAND_TOUCH_THRESHOLD, 0, 1),
     chin_bottom_band_ratio: parseNumber(process.env.RISK_CHIN_BOTTOM_BAND_RATIO, DEFAULT_CHIN_BOTTOM_BAND_RATIO, 0.001, 0.5),
@@ -364,6 +518,14 @@ function parseArgs(argv) {
     risk_pixels_min_thresh: parseNumber(process.env.RISK_PIXELS_MIN_THRESH, DEFAULT_RISK_PIXELS_MIN_THRESH, 1, 4096),
     risk_inner_oval_scale: parseNumber(process.env.RISK_INNER_OVAL_SCALE, DEFAULT_RISK_INNER_OVAL_SCALE, 0.7, 1),
     gold_bucket_topn: parseNumber(process.env.REVIEW_GOLD_BUCKET_TOPN, DEFAULT_GOLD_BUCKET_TOPN, 1, 200),
+    low_module_pixels_thresh: parseNumber(process.env.REVIEW_LOW_MODULE_PIXELS_THRESH, DEFAULT_LOW_MODULE_PIXELS_THRESH, 1, 512),
+    under_eye_near_margin: parseNumber(process.env.REVIEW_UNDER_EYE_NEAR_MARGIN, DEFAULT_UNDER_EYE_NEAR_MARGIN, 0, 128),
+    top_risk_low_pixels_max_ratio: parseNumber(
+      process.env.REVIEW_TOP_RISK_LOW_PIXELS_MAX_RATIO,
+      DEFAULT_TOP_RISK_LOW_PIXELS_MAX_RATIO,
+      0,
+      1,
+    ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -485,6 +647,21 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--convert_heic' && next) {
+      out.convert_heic = parseBoolean(next, out.convert_heic);
+      i += 1;
+      continue;
+    }
+    if (token === '--heic_convert_dir' && next) {
+      out.heic_convert_dir = String(next || '').trim() || out.heic_convert_dir;
+      i += 1;
+      continue;
+    }
+    if (token === '--top_risk_low_pixels_max_ratio' && next) {
+      out.top_risk_low_pixels_max_ratio = parseNumber(next, out.top_risk_low_pixels_max_ratio, 0, 1);
+      i += 1;
+      continue;
+    }
   }
 
   out.market = normalizeMarket(out.market);
@@ -503,6 +680,8 @@ function parseArgs(argv) {
   out.circle_model_min_pixels = Math.max(1, Math.trunc(out.circle_model_min_pixels));
   out.report_dir = String(out.report_dir || DEFAULT_REPORT_DIR).trim() || DEFAULT_REPORT_DIR;
   out.run_mode = RUN_MODES.has(out.run_mode) ? out.run_mode : 'auto';
+  out.convert_heic = parseBoolean(out.convert_heic, false);
+  out.heic_convert_dir = String(out.heic_convert_dir || DEFAULT_HEIC_CONVERT_DIR).trim() || DEFAULT_HEIC_CONVERT_DIR;
   out.outside_touch_threshold = parseNumber(out.outside_touch_threshold, DEFAULT_OUTSIDE_TOUCH_THRESHOLD, 0, 1);
   out.band_touch_threshold = parseNumber(out.band_touch_threshold, DEFAULT_BAND_TOUCH_THRESHOLD, 0, 1);
   out.chin_bottom_band_ratio = parseNumber(out.chin_bottom_band_ratio, DEFAULT_CHIN_BOTTOM_BAND_RATIO, 0.001, 0.5);
@@ -510,6 +689,14 @@ function parseArgs(argv) {
   out.risk_pixels_min_thresh = Math.max(1, Math.trunc(parseNumber(out.risk_pixels_min_thresh, DEFAULT_RISK_PIXELS_MIN_THRESH, 1, 4096)));
   out.risk_inner_oval_scale = parseNumber(out.risk_inner_oval_scale, DEFAULT_RISK_INNER_OVAL_SCALE, 0.7, 1);
   out.gold_bucket_topn = Math.max(1, Math.trunc(parseNumber(out.gold_bucket_topn, DEFAULT_GOLD_BUCKET_TOPN, 1, 200)));
+  out.low_module_pixels_thresh = Math.max(1, Math.trunc(parseNumber(out.low_module_pixels_thresh, DEFAULT_LOW_MODULE_PIXELS_THRESH, 1, 512)));
+  out.under_eye_near_margin = Math.max(0, Math.trunc(parseNumber(out.under_eye_near_margin, DEFAULT_UNDER_EYE_NEAR_MARGIN, 0, 128)));
+  out.top_risk_low_pixels_max_ratio = parseNumber(
+    out.top_risk_low_pixels_max_ratio,
+    DEFAULT_TOP_RISK_LOW_PIXELS_MAX_RATIO,
+    0,
+    1,
+  );
   return out;
 }
 
@@ -718,6 +905,34 @@ function summarizeModules(modules, options = {}) {
   };
 }
 
+function sanitizeModulePixelsMap(input) {
+  if (!input || typeof input !== 'object') return {};
+  const out = {};
+  for (const [key, value] of Object.entries(input)) {
+    const token = String(key || '').trim();
+    if (!token) continue;
+    out[token] = Math.max(0, Math.trunc(safeNumber(value, 0)));
+  }
+  return out;
+}
+
+function parseModuleGuardPixelDiffs(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  for (const row of input) {
+    if (!row || typeof row !== 'object') continue;
+    const moduleId = String(row.module_id || '').trim();
+    if (!moduleId) continue;
+    out.push({
+      module_id: moduleId,
+      before_pixels: Math.max(0, Math.trunc(safeNumber(row.before_pixels, 0))),
+      after_pixels: Math.max(0, Math.trunc(safeNumber(row.after_pixels, 0))),
+      threshold: Math.max(0, Math.trunc(safeNumber(row.threshold, 0))),
+    });
+  }
+  return out;
+}
+
 function parseDegradedReasons(photoPayload) {
   const reasons = new Set();
   const push = (value) => {
@@ -811,6 +1026,13 @@ async function analyzePhotoViaApi({
       modules_count: 0,
       module_pixels_min: 0,
       empty_module_rate: 1,
+      module_pixels_map: {},
+      under_eye_left_pixels: 0,
+      under_eye_right_pixels: 0,
+      module_guard_triggered: false,
+      guarded_modules: [],
+      module_guard_pixel_diffs: [],
+      module_min_pixels_under_eye: null,
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
@@ -844,6 +1066,13 @@ async function analyzePhotoViaApi({
       modules_count: 0,
       module_pixels_min: 0,
       empty_module_rate: 1,
+      module_pixels_map: {},
+      under_eye_left_pixels: 0,
+      under_eye_right_pixels: 0,
+      module_guard_triggered: false,
+      guarded_modules: [],
+      module_guard_pixel_diffs: [],
+      module_min_pixels_under_eye: null,
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
@@ -880,6 +1109,12 @@ async function analyzePhotoViaApi({
     photoPayload,
     analysisCard && analysisCard.payload ? analysisCard.payload : null,
   ], 'landmark_ok');
+  const modulePixelsMap = moduleSummary.module_rows.reduce((acc, row) => {
+    const moduleId = String(row && row.module_id ? row.module_id : '').trim();
+    if (!moduleId) return acc;
+    acc[moduleId] = Math.max(0, Math.trunc(safeNumber(row.module_pixels, 0)));
+    return acc;
+  }, {});
 
   return {
     ok: true,
@@ -890,6 +1125,13 @@ async function analyzePhotoViaApi({
     modules_count: moduleSummary.modules_count,
     module_pixels_min: moduleSummary.module_pixels_min,
     empty_module_rate: moduleSummary.empty_module_rate,
+    module_pixels_map: modulePixelsMap,
+    under_eye_left_pixels: Math.max(0, Math.trunc(safeNumber(modulePixelsMap.under_eye_left, 0))),
+    under_eye_right_pixels: Math.max(0, Math.trunc(safeNumber(modulePixelsMap.under_eye_right, 0))),
+    module_guard_triggered: false,
+    guarded_modules: [],
+    module_guard_pixel_diffs: [],
+    module_min_pixels_under_eye: null,
     chin_leakage_bg: null,
     nose_leakage_bg: null,
     leakage_bg_mean: null,
@@ -956,6 +1198,13 @@ async function analyzePhotoViaLocal({
       modules_count: 0,
       module_pixels_min: 0,
       empty_module_rate: 1,
+      module_pixels_map: {},
+      under_eye_left_pixels: 0,
+      under_eye_right_pixels: 0,
+      module_guard_triggered: false,
+      guarded_modules: [],
+      module_guard_pixel_diffs: [],
+      module_min_pixels_under_eye: null,
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
@@ -988,6 +1237,13 @@ async function analyzePhotoViaLocal({
       modules_count: 0,
       module_pixels_min: 0,
       empty_module_rate: 1,
+      module_pixels_map: {},
+      under_eye_left_pixels: 0,
+      under_eye_right_pixels: 0,
+      module_guard_triggered: false,
+      guarded_modules: [],
+      module_guard_pixel_diffs: [],
+      module_min_pixels_under_eye: null,
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
@@ -1064,6 +1320,30 @@ async function analyzePhotoViaLocal({
   if (ensured && ensured.degradedReason && !degradedReasons.includes(ensured.degradedReason)) {
     degradedReasons.push(ensured.degradedReason);
   }
+  const debugInfo = payload && payload.internal_debug && typeof payload.internal_debug === 'object'
+    ? payload.internal_debug
+    : {};
+  const modulePixelsMap = Object.keys(sanitizeModulePixelsMap(debugInfo.module_pixels_map)).length
+    ? sanitizeModulePixelsMap(debugInfo.module_pixels_map)
+    : moduleSummary.module_rows.reduce((acc, row) => {
+      const moduleId = String(row && row.module_id ? row.module_id : '').trim();
+      if (!moduleId) return acc;
+      acc[moduleId] = Math.max(0, Math.trunc(safeNumber(row.module_pixels, 0)));
+      return acc;
+    }, {});
+  const moduleGuardPixelDiffs = parseModuleGuardPixelDiffs(debugInfo.module_guard_pixel_diffs);
+  const guardedModules = Array.isArray(debugInfo.guarded_modules)
+    ? Array.from(
+      new Set(
+        debugInfo.guarded_modules
+          .map((value) => String(value || '').trim())
+          .filter(Boolean),
+      ),
+    )
+    : [];
+  const moduleGuardTriggered = Boolean(debugInfo.module_guard_triggered)
+    || moduleGuardPixelDiffs.length > 0
+    || guardedModules.length > 0;
 
   return {
     ok: moduleSummary.modules_count > 0,
@@ -1075,6 +1355,16 @@ async function analyzePhotoViaLocal({
     modules_count: moduleSummary.modules_count,
     module_pixels_min: moduleSummary.module_pixels_min,
     empty_module_rate: moduleSummary.empty_module_rate,
+    module_pixels_map: modulePixelsMap,
+    under_eye_left_pixels: Math.max(0, Math.trunc(safeNumber(modulePixelsMap.under_eye_left, 0))),
+    under_eye_right_pixels: Math.max(0, Math.trunc(safeNumber(modulePixelsMap.under_eye_right, 0))),
+    module_guard_triggered: moduleGuardTriggered,
+    guarded_modules: guardedModules,
+    module_guard_pixel_diffs: moduleGuardPixelDiffs,
+    module_min_pixels_under_eye:
+      debugInfo.module_min_pixels_under_eye == null
+        ? null
+        : Math.max(0, Math.trunc(safeNumber(debugInfo.module_min_pixels_under_eye, 0))),
     chin_leakage_bg: null,
     nose_leakage_bg: null,
     leakage_bg_mean: null,
@@ -1166,6 +1456,7 @@ async function collectSampleFiles({ dirPath, limit, seed, source, cacheDir }) {
         if (!imagePath) {
           return {
             file_path: '',
+            image_path_rel: '',
             sample_hash: sampleHash.slice(0, 20),
             source_dataset: source,
             reason_detail: 'LOCAL_FILE_NOT_FOUND',
@@ -1175,6 +1466,7 @@ async function collectSampleFiles({ dirPath, limit, seed, source, cacheDir }) {
         if (/^https?:\/\//i.test(imagePath)) {
           return {
             file_path: imagePath,
+            image_path_rel: toPosix(imagePath),
             sample_hash: sampleHash.slice(0, 20),
             source_dataset: source,
             reason_detail: 'LOCAL_FILE_NOT_FOUND',
@@ -1183,6 +1475,7 @@ async function collectSampleFiles({ dirPath, limit, seed, source, cacheDir }) {
         }
         return {
           file_path: path.resolve(indexRoot, imagePath),
+          image_path_rel: toPosix(imagePath),
           sample_hash: sampleHash.slice(0, 20),
           source_dataset: source,
           reason_detail: null,
@@ -1213,6 +1506,7 @@ async function collectSampleFiles({ dirPath, limit, seed, source, cacheDir }) {
   });
   const candidates = collected.files.map((filePath) => ({
     file_path: filePath,
+    image_path_rel: toPosix(path.relative(resolved, filePath)),
     sample_hash: sha256Hex(`${source}:${toPosix(path.relative(resolved, filePath))}`).slice(0, 20),
     source_dataset: source,
     reason_detail: null,
@@ -1287,17 +1581,31 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         dataset: source,
         pipeline_mode_used: String(sample.preload_note || '').includes('http_path_forbidden') ? 'remote' : 'local',
         sample_hash: sampleHashSeed || sha256Hex(`preload_fail:${source}:${filePath}`).slice(0, 20),
+        image_path_rel: String(sample.image_path_rel || '').trim() || null,
         ok: false,
         fail_reason: 'SAMPLE_LOAD_FAIL',
         reason_detail: String(sample.reason_detail || 'LOCAL_FILE_NOT_FOUND'),
+        ext_from_path: ext || null,
+        magic_type: null,
+        container_hint: null,
         decode_ext: ext || null,
         decode_magic: null,
         decode_error_code: null,
+        heic_conversion_applied: false,
+        heic_conversion_status: null,
+        heic_conversion_tool: null,
         status_code: 0,
         quality_grade: null,
         modules_count: 0,
         module_pixels_min: 0,
         empty_module_rate: 1,
+        module_pixels_map: {},
+        under_eye_left_pixels: 0,
+        under_eye_right_pixels: 0,
+        module_guard_triggered: false,
+        guarded_modules: [],
+        module_guard_pixel_diffs: [],
+        module_min_pixels_under_eye: null,
         leakage_bg_mean: null,
         leakage_bg_est_mean: null,
         chin_leakage_bg: null,
@@ -1330,17 +1638,31 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         dataset: source,
         pipeline_mode_used: 'local',
         sample_hash: sampleHashSeed || sha256Hex(`read_fail:${source}:${String(filePath || '')}`).slice(0, 20),
+        image_path_rel: String(sample.image_path_rel || '').trim() || null,
         ok: false,
         fail_reason: 'SAMPLE_LOAD_FAIL',
         reason_detail: classifySampleLoadReason(error),
+        ext_from_path: ext || null,
+        magic_type: null,
+        container_hint: null,
         decode_ext: ext || null,
         decode_magic: null,
         decode_error_code: String(error && error.code ? error.code : '').trim().toUpperCase() || null,
+        heic_conversion_applied: false,
+        heic_conversion_status: null,
+        heic_conversion_tool: null,
         status_code: 0,
         quality_grade: null,
         modules_count: 0,
         module_pixels_min: 0,
         empty_module_rate: 1,
+        module_pixels_map: {},
+        under_eye_left_pixels: 0,
+        under_eye_right_pixels: 0,
+        module_guard_triggered: false,
+        guarded_modules: [],
+        module_guard_pixel_diffs: [],
+        module_min_pixels_under_eye: null,
         leakage_bg_mean: null,
         leakage_bg_est_mean: null,
         chin_leakage_bg: null,
@@ -1366,33 +1688,182 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
 
     let preprocessed;
     let sampleHash = sampleHashSeed || sha256Hex(rawBuffer).slice(0, 20);
-    const magicType = detectMagicType(rawBuffer);
+    const magicInfo = detectMagicInfo(rawBuffer);
+    let decodeBuffer = rawBuffer;
+    let decodeExt = ext || '';
+    let decodeMagicInfo = magicInfo;
+    let conversionApplied = false;
+    let conversionStatus = null;
+    let conversionTool = null;
+
+    if (isHeicMagicType(magicInfo.magic_type)) {
+      const heicSupported = await probeSharpDecode(rawBuffer);
+      if (!heicSupported) {
+        if (args.convert_heic && filePath) {
+          const convertedPath = path.resolve(args.heic_convert_dir, `${sampleHash}.jpg`);
+          const convertResult = await convertHeicToJpeg({
+            inputPath: filePath,
+            outputPath: convertedPath,
+          });
+          if (convertResult.ok) {
+            conversionApplied = true;
+            conversionStatus = 'SUCCESS';
+            conversionTool = convertResult.tool || null;
+            decodeBuffer = await fsp.readFile(convertedPath);
+            decodeExt = '.jpg';
+            decodeMagicInfo = detectMagicInfo(decodeBuffer);
+          } else {
+            conversionApplied = true;
+            conversionStatus = 'FAIL';
+            conversionTool = convertResult.tool || null;
+            const convertFailRow = {
+              source,
+              dataset: source,
+              pipeline_mode_used: 'local',
+              sample_hash: sampleHash,
+              image_path_rel: String(sample.image_path_rel || '').trim() || null,
+              ok: false,
+              fail_reason: 'SAMPLE_LOAD_FAIL',
+              reason_detail: 'HEIC_CONVERT_FAIL',
+              ext_from_path: ext || null,
+              magic_type: magicInfo.magic_type || 'unknown',
+              container_hint: magicInfo.container_hint || null,
+              decode_ext: ext || null,
+              decode_magic: magicInfo.magic_type || 'unknown',
+              decode_error_code: convertResult.error_code || 'HEIC_CONVERT_FAIL',
+              heic_conversion_applied: true,
+              heic_conversion_status: 'FAIL',
+              heic_conversion_tool: conversionTool,
+              status_code: 0,
+              quality_grade: null,
+              modules_count: 0,
+              module_pixels_min: 0,
+              empty_module_rate: 1,
+              module_pixels_map: {},
+              under_eye_left_pixels: 0,
+              under_eye_right_pixels: 0,
+              module_guard_triggered: false,
+              guarded_modules: [],
+              module_guard_pixel_diffs: [],
+              module_min_pixels_under_eye: null,
+              leakage_bg_mean: null,
+              leakage_bg_est_mean: null,
+              chin_leakage_bg: null,
+              nose_leakage_bg: null,
+              chin_leakage_bg_est: null,
+              nose_leakage_bg_est: null,
+              chin_outside_oval_ratio: null,
+              nose_outside_oval_ratio: null,
+              chin_bottom_band_ratio: null,
+              nose_side_band_ratio: null,
+              leakage_hair_mean: null,
+              chin_touches_oval_bottom: false,
+              nose_touches_oval_side: false,
+              degraded_reasons: [],
+              reverted_modules: [],
+              face_detect_ok: null,
+              landmark_ok: null,
+              note: String(convertResult.error_message || 'heic_convert_failed').slice(0, 120),
+            };
+            convertFailRow.risk_score = computeRiskScore(convertFailRow, args);
+            return convertFailRow;
+          }
+        } else {
+          const unsupportedRow = {
+            source,
+            dataset: source,
+            pipeline_mode_used: 'local',
+            sample_hash: sampleHash,
+            image_path_rel: String(sample.image_path_rel || '').trim() || null,
+            ok: false,
+            fail_reason: 'SAMPLE_LOAD_FAIL',
+            reason_detail: 'HEIC_UNSUPPORTED',
+            ext_from_path: ext || null,
+            magic_type: magicInfo.magic_type || 'unknown',
+            container_hint: magicInfo.container_hint || null,
+            decode_ext: ext || null,
+            decode_magic: magicInfo.magic_type || 'unknown',
+            decode_error_code: 'heic_decode_failed',
+            heic_conversion_applied: false,
+            heic_conversion_status: null,
+            heic_conversion_tool: null,
+            status_code: 0,
+            quality_grade: null,
+            modules_count: 0,
+            module_pixels_min: 0,
+            empty_module_rate: 1,
+            module_pixels_map: {},
+            under_eye_left_pixels: 0,
+            under_eye_right_pixels: 0,
+            module_guard_triggered: false,
+            guarded_modules: [],
+            module_guard_pixel_diffs: [],
+            module_min_pixels_under_eye: null,
+            leakage_bg_mean: null,
+            leakage_bg_est_mean: null,
+            chin_leakage_bg: null,
+            nose_leakage_bg: null,
+            chin_leakage_bg_est: null,
+            nose_leakage_bg_est: null,
+            chin_outside_oval_ratio: null,
+            nose_outside_oval_ratio: null,
+            chin_bottom_band_ratio: null,
+            nose_side_band_ratio: null,
+            leakage_hair_mean: null,
+            chin_touches_oval_bottom: false,
+            nose_touches_oval_side: false,
+            degraded_reasons: [],
+            reverted_modules: [],
+            face_detect_ok: null,
+            landmark_ok: null,
+            note: 'heic_not_supported_and_convert_disabled',
+          };
+          unsupportedRow.risk_score = computeRiskScore(unsupportedRow, args);
+          return unsupportedRow;
+        }
+      }
+    }
+
     try {
       preprocessed = await preprocessPhotoBuffer({
-        inputBuffer: rawBuffer,
-        extension: ext,
+        inputBuffer: decodeBuffer,
+        extension: decodeExt,
         sanitize: true,
         maxEdge: args.max_edge,
       });
       sampleHash = sha256Hex(preprocessed.buffer).slice(0, 20);
     } catch (error) {
-      const decoded = classifyDecodeFailure({ error, ext, magicType });
+      const decoded = classifyDecodeFailure({ error, ext: decodeExt, magicType: decodeMagicInfo.magic_type });
       const decodeFailRow = {
         source,
         dataset: source,
         pipeline_mode_used: 'local',
         sample_hash: sampleHash,
+        image_path_rel: String(sample.image_path_rel || '').trim() || null,
         ok: false,
         fail_reason: 'SAMPLE_LOAD_FAIL',
         reason_detail: decoded.reason_detail,
+        ext_from_path: ext || null,
+        magic_type: magicInfo.magic_type || 'unknown',
+        container_hint: magicInfo.container_hint || null,
         decode_ext: ext || null,
-        decode_magic: magicType || 'unknown',
+        decode_magic: decodeMagicInfo.magic_type || 'unknown',
         decode_error_code: decoded.error_code,
+        heic_conversion_applied: conversionApplied,
+        heic_conversion_status: conversionStatus,
+        heic_conversion_tool: conversionTool,
         status_code: 0,
         quality_grade: null,
         modules_count: 0,
         module_pixels_min: 0,
         empty_module_rate: 1,
+        module_pixels_map: {},
+        under_eye_left_pixels: 0,
+        under_eye_right_pixels: 0,
+        module_guard_triggered: false,
+        guarded_modules: [],
+        module_guard_pixel_diffs: [],
+        module_min_pixels_under_eye: null,
         leakage_bg_mean: null,
         leakage_bg_est_mean: null,
         chin_leakage_bg: null,
@@ -1450,6 +1921,13 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         modules_count: 0,
         module_pixels_min: 0,
         empty_module_rate: 1,
+        module_pixels_map: {},
+        under_eye_left_pixels: 0,
+        under_eye_right_pixels: 0,
+        module_guard_triggered: false,
+        guarded_modules: [],
+        module_guard_pixel_diffs: [],
+        module_min_pixels_under_eye: null,
         chin_leakage_bg: null,
         nose_leakage_bg: null,
         leakage_bg_mean: null,
@@ -1476,17 +1954,34 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
       dataset: source,
       pipeline_mode_used: pipelineMode,
       sample_hash: sampleHash,
+      image_path_rel: String(sample.image_path_rel || '').trim() || null,
       ok: Boolean(result.ok),
       fail_reason: result.fail_reason || null,
       reason_detail: result.reason_detail || null,
+      ext_from_path: ext || null,
+      magic_type: magicInfo.magic_type || null,
+      container_hint: magicInfo.container_hint || null,
       decode_ext: ext || null,
-      decode_magic: magicType || null,
+      decode_magic: decodeMagicInfo.magic_type || null,
       decode_error_code: null,
+      heic_conversion_applied: conversionApplied,
+      heic_conversion_status: conversionStatus,
+      heic_conversion_tool: conversionTool,
       status_code: safeNumber(result.status_code, 0),
       quality_grade: result.quality_grade || null,
       modules_count: safeNumber(result.modules_count, 0),
       module_pixels_min: safeNumber(result.module_pixels_min, 0),
       empty_module_rate: round3(safeNumber(result.empty_module_rate, 1)),
+      module_pixels_map: sanitizeModulePixelsMap(result.module_pixels_map),
+      under_eye_left_pixels: Math.max(0, Math.trunc(safeNumber(result.under_eye_left_pixels, 0))),
+      under_eye_right_pixels: Math.max(0, Math.trunc(safeNumber(result.under_eye_right_pixels, 0))),
+      module_guard_triggered: Boolean(result.module_guard_triggered),
+      guarded_modules: Array.isArray(result.guarded_modules)
+        ? Array.from(new Set(result.guarded_modules.map((value) => String(value || '').trim()).filter(Boolean)))
+        : [],
+      module_guard_pixel_diffs: parseModuleGuardPixelDiffs(result.module_guard_pixel_diffs),
+      module_min_pixels_under_eye:
+        result.module_min_pixels_under_eye == null ? null : Math.max(0, Math.trunc(safeNumber(result.module_min_pixels_under_eye, 0))),
       leakage_bg_mean: null,
       leakage_bg_est_mean: result.leakage_bg_est_mean == null ? null : round3(result.leakage_bg_est_mean),
       leakage_hair_mean: null,
@@ -1533,10 +2028,20 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
   const dataAccessMap = new Map();
   const decodeFailureMap = new Map();
   const decodeExamples = [];
+  let heicMismatchCount = 0;
+  let convertSuccessCount = 0;
+  let convertFailCount = 0;
   const integrationFailMap = new Map();
   const revertMap = new Map();
+  const guardedModuleMap = new Map();
+  const moduleGuardPixelDiffRows = [];
   const okRows = rows.filter((row) => row.ok);
   const failRows = rows.filter((row) => !row.ok);
+  for (const row of rows) {
+    if (isHeicMismatch(row.ext_from_path, row.magic_type)) heicMismatchCount += 1;
+    if (row.heic_conversion_status === 'SUCCESS') convertSuccessCount += 1;
+    if (row.heic_conversion_status === 'FAIL') convertFailCount += 1;
+  }
   for (const row of failRows) {
     const key = String(row.fail_reason || 'UNKNOWN');
     failMap.set(key, (failMap.get(key) || 0) + 1);
@@ -1544,12 +2049,15 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
       const detail = String(row.reason_detail || 'UNKNOWN');
       dataAccessMap.set(detail, (dataAccessMap.get(detail) || 0) + 1);
       const extToken = String(row.decode_ext || '').trim().toLowerCase() || '-';
-      const decodeKey = `${extToken}|${detail}`;
+      const magicToken = String(row.magic_type || row.decode_magic || '').trim().toLowerCase() || '-';
+      const decodeKey = `${extToken}|${magicToken}|${detail}`;
       decodeFailureMap.set(decodeKey, (decodeFailureMap.get(decodeKey) || 0) + 1);
-      if (decodeExamples.length < 5 && (detail === 'HEIC_UNSUPPORTED' || detail === 'DECODE_FAIL')) {
+      if (decodeExamples.length < 5 && (detail === 'HEIC_UNSUPPORTED' || detail === 'HEIC_CONVERT_FAIL' || detail === 'DECODE_FAIL')) {
         decodeExamples.push({
           sample_hash: String(row.sample_hash || '').trim(),
           ext: extToken,
+          magic_type: magicToken,
+          container_hint: String(row.container_hint || '').trim() || '-',
           reason_detail: detail,
           error_code: String(row.decode_error_code || '').trim() || '-',
         });
@@ -1564,6 +2072,25 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
     const tokens = Array.isArray(row.reverted_modules) && row.reverted_modules.length ? row.reverted_modules : ['-'];
     for (const token of tokens) {
       revertMap.set(token, (revertMap.get(token) || 0) + 1);
+    }
+    if (row.module_guard_triggered) {
+      const modules = Array.isArray(row.guarded_modules) && row.guarded_modules.length
+        ? row.guarded_modules
+        : ['unknown'];
+      for (const moduleId of modules) {
+        guardedModuleMap.set(moduleId, (guardedModuleMap.get(moduleId) || 0) + 1);
+      }
+      const diffs = Array.isArray(row.module_guard_pixel_diffs) ? row.module_guard_pixel_diffs : [];
+      for (const diff of diffs) {
+        if (!diff || typeof diff !== 'object') continue;
+        moduleGuardPixelDiffRows.push({
+          sample_hash: row.sample_hash,
+          module_id: String(diff.module_id || '').trim() || 'unknown',
+          before_pixels: Math.max(0, Math.trunc(safeNumber(diff.before_pixels, 0))),
+          after_pixels: Math.max(0, Math.trunc(safeNumber(diff.after_pixels, 0))),
+          threshold: Math.max(0, Math.trunc(safeNumber(diff.threshold, 0))),
+        });
+      }
     }
   }
   const pixels = okRows
@@ -1589,17 +2116,27 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         .sort((a, b) => b.count - a.count || a.reason_detail.localeCompare(b.reason_detail)),
       decode_failures_breakdown: Array.from(decodeFailureMap.entries())
         .map(([token, count]) => {
-          const [ext, reason_detail] = String(token).split('|');
-          return { ext, reason_detail, count };
+          const [ext, magic_type, reason_detail] = String(token).split('|');
+          return { ext, magic_type, reason_detail, count };
         })
-        .sort((a, b) => b.count - a.count || a.ext.localeCompare(b.ext) || a.reason_detail.localeCompare(b.reason_detail)),
+        .sort((a, b) => b.count - a.count || a.ext.localeCompare(b.ext) || a.magic_type.localeCompare(b.magic_type) || a.reason_detail.localeCompare(b.reason_detail)),
       decode_error_examples: decodeExamples,
+      heic_mismatch_count: heicMismatchCount,
+      convert_success_count: convertSuccessCount,
+      convert_fail_count: convertFailCount,
       integration_failures: Array.from(integrationFailMap.entries())
         .map(([reason, count]) => ({ reason, count }))
         .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
       reverted_modules: Array.from(revertMap.entries())
         .map(([module_id, count]) => ({ module_id, count }))
         .sort((a, b) => b.count - a.count || a.module_id.localeCompare(b.module_id)),
+      module_guard_trigger_count: okRows.filter((row) => row.module_guard_triggered).length,
+      guarded_modules_breakdown: Array.from(guardedModuleMap.entries())
+        .map(([module_id, count]) => ({ module_id, count }))
+        .sort((a, b) => b.count - a.count || a.module_id.localeCompare(b.module_id)),
+      module_guard_pixel_diffs: moduleGuardPixelDiffRows
+        .sort((a, b) => (b.before_pixels - a.before_pixels) || (b.threshold - a.threshold) || a.sample_hash.localeCompare(b.sample_hash))
+        .slice(0, 30),
       module_pixels_min_mean: round3(mean(pixels)),
       module_pixels_min_p50: round3(percentile(pixels, 0.5)),
       face_detect_fail_rate: faceDetectKnown.length
@@ -1663,6 +2200,7 @@ function toFassegRow(row) {
     dataset: 'fasseg',
     pipeline_mode_used: 'fasseg_eval',
     sample_hash: String(row && row.sample_hash ? row.sample_hash : ''),
+    image_path_rel: null,
     ok: Boolean(row && row.ok),
     fail_reason: row && row.fail_reason ? String(row.fail_reason) : null,
     reason_detail: row && row.reason_detail ? String(row.reason_detail) : null,
@@ -1671,6 +2209,13 @@ function toFassegRow(row) {
     modules_count: safeNumber(row && row.pred_stats && row.pred_stats.module_count, 0),
     module_pixels_min: safeNumber(metricStats.module_pixels_min, 0),
     empty_module_rate: round3(safeNumber(metricStats.empty_module_rate, 0)),
+    module_pixels_map: {},
+    under_eye_left_pixels: 0,
+    under_eye_right_pixels: 0,
+    module_guard_triggered: false,
+    guarded_modules: [],
+    module_guard_pixel_diffs: [],
+    module_min_pixels_under_eye: null,
     leakage_bg_mean: round3(safeNumber(metricStats.leakage_bg_mean, safeNumber(metricStats.leakage_mean, 0))),
     leakage_bg_est_mean: null,
     chin_leakage_bg: chinLeak,
@@ -1690,9 +2235,15 @@ function toFassegRow(row) {
     note: row && row.note ? String(row.note) : '',
     risk_score: round3(Math.max(safeNumber(chinLeak, 0), safeNumber(noseLeak, 0))),
     leakage_hair_mean: round3(safeNumber(metricStats.leakage_hair_mean, 0)),
+    ext_from_path: null,
+    magic_type: null,
+    container_hint: null,
     decode_ext: null,
     decode_magic: null,
     decode_error_code: null,
+    heic_conversion_applied: false,
+    heic_conversion_status: null,
+    heic_conversion_tool: null,
   };
 }
 
@@ -1758,7 +2309,7 @@ function runFassegEval({ args, runDir, chosenGroup }) {
   return payload;
 }
 
-function topRiskRows(rows, limit = 20) {
+function topRiskRows(rows, limit = 20, options = {}) {
   const ordered = [...rows]
     .filter((row) => String(row.pipeline_mode_used || '') === 'local')
     .filter((row) => row && row.ok === true)
@@ -1771,6 +2322,24 @@ function topRiskRows(rows, limit = 20) {
     });
   const target = Math.max(0, Math.trunc(limit));
   if (!target || !ordered.length) return [];
+  const lowModulePixelsThresh = Math.max(
+    1,
+    Math.trunc(parseNumber(options.low_module_pixels_thresh, DEFAULT_LOW_MODULE_PIXELS_THRESH, 1, 2048)),
+  );
+  const maxLowPixelsRatio = parseNumber(
+    options.max_low_pixels_ratio,
+    DEFAULT_TOP_RISK_LOW_PIXELS_MAX_RATIO,
+    0,
+    1,
+  );
+  const lowPixelsBudget = Math.max(0, Math.trunc(Math.ceil(target * maxLowPixelsRatio)));
+  let lowPixelsSelected = 0;
+  const isLowModulePixels = (row) => safeNumber(row.module_pixels_min, 0) < lowModulePixelsThresh;
+  const canUseLowModulePixelsRow = (row) => !isLowModulePixels(row) || lowPixelsSelected < lowPixelsBudget;
+  const onRowSelected = (row) => {
+    if (isLowModulePixels(row)) lowPixelsSelected += 1;
+  };
+  const deferredLowPixelRows = [];
 
   const signatureOf = (row) => [
     round3(row.risk_score),
@@ -1787,11 +2356,16 @@ function topRiskRows(rows, limit = 20) {
   const maxPerSignature = Math.max(2, Math.trunc(target / 4));
 
   for (const row of ordered) {
+    if (!canUseLowModulePixelsRow(row)) {
+      deferredLowPixelRows.push(row);
+      continue;
+    }
     const signature = signatureOf(row);
     if (signatureCounts.has(signature)) continue;
     selected.push(row);
     selectedHashes.add(String(row.sample_hash || ''));
     signatureCounts.set(signature, 1);
+    onRowSelected(row);
     if (selected.length >= target) break;
   }
 
@@ -1799,12 +2373,17 @@ function topRiskRows(rows, limit = 20) {
     for (const row of ordered) {
       const sampleHash = String(row.sample_hash || '');
       if (selectedHashes.has(sampleHash)) continue;
+      if (!canUseLowModulePixelsRow(row)) {
+        deferredLowPixelRows.push(row);
+        continue;
+      }
       const signature = signatureOf(row);
       const count = signatureCounts.get(signature) || 0;
       if (count >= maxPerSignature) continue;
       selected.push(row);
       selectedHashes.add(sampleHash);
       signatureCounts.set(signature, count + 1);
+      onRowSelected(row);
       if (selected.length >= target) break;
     }
   }
@@ -1813,8 +2392,24 @@ function topRiskRows(rows, limit = 20) {
     for (const row of ordered) {
       const sampleHash = String(row.sample_hash || '');
       if (selectedHashes.has(sampleHash)) continue;
+      if (!canUseLowModulePixelsRow(row)) {
+        deferredLowPixelRows.push(row);
+        continue;
+      }
       selected.push(row);
       selectedHashes.add(sampleHash);
+      onRowSelected(row);
+      if (selected.length >= target) break;
+    }
+  }
+
+  if (selected.length < target && deferredLowPixelRows.length) {
+    for (const row of deferredLowPixelRows) {
+      const sampleHash = String(row.sample_hash || '');
+      if (selectedHashes.has(sampleHash)) continue;
+      selected.push(row);
+      selectedHashes.add(sampleHash);
+      onRowSelected(row);
       if (selected.length >= target) break;
     }
   }
@@ -1852,7 +2447,38 @@ function renderMd({
     ...lapaResult.rows.map((row) => ({ ...row, source_dataset: 'lapa' })),
     ...celebaResult.rows.map((row) => ({ ...row, source_dataset: 'celebamaskhq' })),
   ];
-  const externalTopRisk = topRiskRows(externalRows, 20);
+  const localRows = [
+    ...internalResult.rows,
+    ...lapaResult.rows,
+    ...celebaResult.rows,
+  ].filter((row) => String(row.pipeline_mode_used || '') === 'local');
+  const localGuardRows = localRows.filter((row) => row.module_guard_triggered);
+  const localGuardModuleCounts = new Map();
+  const localGuardDiffRows = [];
+  for (const row of localGuardRows) {
+    const modules = Array.isArray(row.guarded_modules) && row.guarded_modules.length
+      ? row.guarded_modules
+      : ['unknown'];
+    for (const moduleId of modules) {
+      const token = String(moduleId || '').trim() || 'unknown';
+      localGuardModuleCounts.set(token, (localGuardModuleCounts.get(token) || 0) + 1);
+    }
+    for (const diff of Array.isArray(row.module_guard_pixel_diffs) ? row.module_guard_pixel_diffs : []) {
+      if (!diff || typeof diff !== 'object') continue;
+      localGuardDiffRows.push({
+        source: row.source,
+        sample_hash: row.sample_hash,
+        module_id: String(diff.module_id || '').trim() || 'unknown',
+        before_pixels: Math.max(0, Math.trunc(safeNumber(diff.before_pixels, 0))),
+        after_pixels: Math.max(0, Math.trunc(safeNumber(diff.after_pixels, 0))),
+        threshold: Math.max(0, Math.trunc(safeNumber(diff.threshold, 0))),
+      });
+    }
+  }
+  const externalTopRisk = topRiskRows(externalRows, 20, {
+    low_module_pixels_thresh: args.low_module_pixels_thresh,
+    max_low_pixels_ratio: args.top_risk_low_pixels_max_ratio,
+  });
   const constantFeatureWarnings = (() => {
     if (!externalTopRisk.length) return [];
     const targets = [
@@ -1887,6 +2513,12 @@ function renderMd({
     );
     return signatures.size;
   })();
+  const top20LowModulePixelsCount = externalTopRisk.filter(
+    (row) => safeNumber(row.module_pixels_min, 0) < Math.max(1, Math.trunc(args.low_module_pixels_thresh)),
+  ).length;
+  const top20LowModulePixelsRatio = externalTopRisk.length
+    ? round3(top20LowModulePixelsCount / externalTopRisk.length)
+    : 0;
   const integrationFailures = [
     ...((internalResult.summary && internalResult.summary.integration_failures) || []).map((row) => ({ source: 'internal', reason: row.reason, count: row.count })),
     ...((lapaResult.summary && lapaResult.summary.integration_failures) || []).map((row) => ({ source: 'lapa', reason: row.reason, count: row.count })),
@@ -1920,6 +2552,15 @@ function renderMd({
   ]
     .filter((row) => safeNumber(row.count, 0) > 0)
     .sort((a, b) => safeNumber(b.count, 0) - safeNumber(a.count, 0) || String(a.source).localeCompare(String(b.source)));
+  const heicMismatchCount = safeNumber(internalResult.summary.heic_mismatch_count, 0)
+    + safeNumber(lapaResult.summary.heic_mismatch_count, 0)
+    + safeNumber(celebaResult.summary.heic_mismatch_count, 0);
+  const convertSuccessCount = safeNumber(internalResult.summary.convert_success_count, 0)
+    + safeNumber(lapaResult.summary.convert_success_count, 0)
+    + safeNumber(celebaResult.summary.convert_success_count, 0);
+  const convertFailCount = safeNumber(internalResult.summary.convert_fail_count, 0)
+    + safeNumber(lapaResult.summary.convert_fail_count, 0)
+    + safeNumber(celebaResult.summary.convert_fail_count, 0);
   const decodeErrorExamples = [
     ...((internalResult.summary && internalResult.summary.decode_error_examples) || []).map((row) => ({ source: 'internal', ...row })),
     ...((lapaResult.summary && lapaResult.summary.decode_error_examples) || []).map((row) => ({ source: 'lapa', ...row })),
@@ -2002,26 +2643,30 @@ function renderMd({
   lines.push('');
   lines.push('### Decode failures breakdown');
   lines.push('');
-  lines.push('| source | ext | reason_detail | count |');
-  lines.push('|---|---|---|---:|');
+  lines.push(`- heic_mismatch_count: ${Math.trunc(heicMismatchCount)}`);
+  lines.push(`- convert_success_count: ${Math.trunc(convertSuccessCount)}`);
+  lines.push(`- convert_fail_count: ${Math.trunc(convertFailCount)}`);
+  lines.push('');
+  lines.push('| source | ext | magic_type | reason_detail | count |');
+  lines.push('|---|---|---|---|---:|');
   if (decodeFailureBreakdown.length) {
     for (const row of decodeFailureBreakdown) {
-      lines.push(`| ${row.source} | ${row.ext || '-'} | ${row.reason_detail || '-'} | ${Math.trunc(safeNumber(row.count, 0))} |`);
+      lines.push(`| ${row.source} | ${row.ext || '-'} | ${row.magic_type || '-'} | ${row.reason_detail || '-'} | ${Math.trunc(safeNumber(row.count, 0))} |`);
     }
   } else {
-    lines.push('| - | - | - | 0 |');
+    lines.push('| - | - | - | - | 0 |');
   }
   lines.push('');
   lines.push('### Top 5 decode errors (sample hash only)');
   lines.push('');
-  lines.push('| source | sample_hash | ext | reason_detail | error_code |');
-  lines.push('|---|---|---|---|---|');
+  lines.push('| source | sample_hash | ext | magic_type | container_hint | reason_detail | error_code |');
+  lines.push('|---|---|---|---|---|---|---|');
   if (decodeErrorExamples.length) {
     for (const row of decodeErrorExamples) {
-      lines.push(`| ${row.source} | ${row.sample_hash || '-'} | ${row.ext || '-'} | ${row.reason_detail || '-'} | ${row.error_code || '-'} |`);
+      lines.push(`| ${row.source} | ${row.sample_hash || '-'} | ${row.ext || '-'} | ${row.magic_type || '-'} | ${row.container_hint || '-'} | ${row.reason_detail || '-'} | ${row.error_code || '-'} |`);
     }
   } else {
-    lines.push('| - | - | - | - | - |');
+    lines.push('| - | - | - | - | - | - | - |');
   }
   lines.push('');
   lines.push('### Integration failures (remote-only)');
@@ -2039,10 +2684,44 @@ function renderMd({
   lines.push('### Risk feature diagnostics');
   lines.push('');
   lines.push(`- top20_distinct_signature_count: ${riskTopDistinctSignatures}`);
+  lines.push(`- top20_low_module_pixels_max_ratio_target: ${round3(args.top_risk_low_pixels_max_ratio)}`);
+  lines.push(`- top20_low_module_pixels_count(<${Math.max(1, Math.trunc(args.low_module_pixels_thresh))}): ${top20LowModulePixelsCount}`);
+  lines.push(`- top20_low_module_pixels_ratio: ${top20LowModulePixelsRatio}`);
   if (constantFeatureWarnings.length) {
     for (const token of constantFeatureWarnings) lines.push(`- WARNING: ${token}`);
   } else {
     lines.push('- no constant risk features detected in current Top20 selection');
+  }
+  lines.push('');
+  lines.push('### Module guard diagnostics (local-only)');
+  lines.push('');
+  lines.push(`- guard_triggered_sample_count: ${localGuardRows.length}`);
+  lines.push(`- guard_diff_rows_total: ${localGuardDiffRows.length}`);
+  lines.push('');
+  lines.push('| module_id | trigger_count |');
+  lines.push('|---|---:|');
+  if (localGuardModuleCounts.size > 0) {
+    const rows = Array.from(localGuardModuleCounts.entries())
+      .map(([moduleId, count]) => ({ moduleId, count }))
+      .sort((a, b) => b.count - a.count || a.moduleId.localeCompare(b.moduleId));
+    for (const row of rows) {
+      lines.push(`| ${row.moduleId} | ${Math.trunc(safeNumber(row.count, 0))} |`);
+    }
+  } else {
+    lines.push('| - | 0 |');
+  }
+  lines.push('');
+  lines.push('| source | sample_hash | module_id | before_pixels | after_pixels | threshold |');
+  lines.push('|---|---|---|---:|---:|---:|');
+  if (localGuardDiffRows.length) {
+    const rows = [...localGuardDiffRows]
+      .sort((a, b) => (a.after_pixels - b.after_pixels) || (a.before_pixels - b.before_pixels) || a.sample_hash.localeCompare(b.sample_hash))
+      .slice(0, 20);
+    for (const row of rows) {
+      lines.push(`| ${row.source} | ${row.sample_hash} | ${row.module_id} | ${row.before_pixels} | ${row.after_pixels} | ${row.threshold} |`);
+    }
+  } else {
+    lines.push('| - | - | - | 0 | 0 | 0 |');
   }
   lines.push('');
   lines.push('### Top 20 Risk Samples (heuristic)');
@@ -2083,18 +2762,29 @@ async function writeCsv(filePath, rows) {
     'dataset',
     'pipeline_mode_used',
     'sample_hash',
+    'image_path_rel',
     'ok',
     'fail_reason',
     'reason_detail',
+    'ext_from_path',
+    'magic_type',
+    'container_hint',
     'decode_ext',
     'decode_magic',
     'decode_error_code',
+    'heic_conversion_applied',
+    'heic_conversion_status',
+    'heic_conversion_tool',
     'integration_status',
     'integration_fail_reason',
     'status_code',
     'quality_grade',
     'modules_count',
     'module_pixels_min',
+    'under_eye_left_pixels',
+    'under_eye_right_pixels',
+    'module_guard_triggered',
+    'module_min_pixels_under_eye',
     'empty_module_rate',
     'leakage_bg_mean',
     'leakage_bg_est_mean',
@@ -2112,8 +2802,11 @@ async function writeCsv(filePath, rows) {
     'face_detect_ok',
     'landmark_ok',
     'risk_score',
+    'module_pixels_map',
+    'module_guard_pixel_diffs',
     'degraded_reasons',
     'reverted_modules',
+    'guarded_modules',
     'note',
   ];
   const lines = [headers.join(',')];
@@ -2121,8 +2814,18 @@ async function writeCsv(filePath, rows) {
     lines.push(
       headers
         .map((header) => {
-          if (header === 'degraded_reasons' || header === 'reverted_modules') {
+          if (
+            header === 'degraded_reasons'
+            || header === 'reverted_modules'
+            || header === 'guarded_modules'
+          ) {
             return csvEscape(Array.isArray(row[header]) ? row[header].join('|') : '');
+          }
+          if (header === 'module_pixels_map' || header === 'module_guard_pixel_diffs') {
+            const value = row[header];
+            if (value == null) return csvEscape('');
+            if (typeof value === 'string') return csvEscape(value);
+            return csvEscape(JSON.stringify(value));
           }
           return csvEscape(row[header]);
         })
@@ -2134,12 +2837,19 @@ async function writeCsv(filePath, rows) {
 
 function buildGoldSeedRows(rows, args) {
   const topN = Math.max(1, Math.trunc(parseNumber(args.gold_bucket_topn, DEFAULT_GOLD_BUCKET_TOPN, 1, 200)));
-  const pixelThreshold = Math.max(
+  const lowPixelThreshold = Math.max(
     1,
-    Math.trunc(parseNumber(args.risk_pixels_min_thresh, DEFAULT_RISK_PIXELS_MIN_THRESH, 1, 4096)),
+    Math.trunc(parseNumber(args.low_module_pixels_thresh, DEFAULT_LOW_MODULE_PIXELS_THRESH, 1, 512)),
   );
+  const underEyeNearMargin = Math.max(
+    0,
+    Math.trunc(parseNumber(args.under_eye_near_margin, DEFAULT_UNDER_EYE_NEAR_MARGIN, 0, 128)),
+  );
+  const sourceRank = (source) => (String(source || '').trim().toLowerCase() === 'internal' ? 0 : 1);
   const byRisk = (items) =>
     [...items].sort((a, b) => {
+      const sourceDiff = sourceRank(a.source) - sourceRank(b.source);
+      if (sourceDiff !== 0) return sourceDiff;
       const diff = safeNumber(b.risk_score, 0) - safeNumber(a.risk_score, 0);
       if (Math.abs(diff) > 1e-9) return diff;
       return String(a.sample_hash || '').localeCompare(String(b.sample_hash || ''));
@@ -2150,22 +2860,40 @@ function buildGoldSeedRows(rows, args) {
     .filter((row) => safeNumber(row.module_pixels_min, 0) > 0);
   const buckets = [
     {
+      bucket: 'UNDER_EYE_TOO_THIN',
+      items: localOk.filter((row) => {
+        const threshold = Math.max(1, Math.trunc(safeNumber(row.module_min_pixels_under_eye, 64)));
+        const nearThreshold = threshold + underEyeNearMargin;
+        const leftPixels = Math.max(0, Math.trunc(safeNumber(row.under_eye_left_pixels, 0)));
+        const rightPixels = Math.max(0, Math.trunc(safeNumber(row.under_eye_right_pixels, 0)));
+        const guardedSet = new Set(
+          (Array.isArray(row.guarded_modules) ? row.guarded_modules : [])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        );
+        const guardTriggered = Boolean(row.module_guard_triggered);
+        return (
+          leftPixels < nearThreshold
+          || rightPixels < nearThreshold
+          || (guardTriggered && (guardedSet.has('under_eye_left') || guardedSet.has('under_eye_right')))
+        );
+      }),
+    },
+    {
       bucket: 'CHIN_OVERFLOW',
       items: localOk.filter(
-        (row) => safeNumber(row.chin_outside_oval_ratio, 0) > args.outside_touch_threshold
-          && safeNumber(row.chin_bottom_band_ratio, 0) > args.band_touch_threshold,
+        (row) => safeNumber(row.chin_outside_oval_ratio, 0) > 0.05,
       ),
     },
     {
       bucket: 'NOSE_OVERFLOW',
       items: localOk.filter(
-        (row) => safeNumber(row.nose_outside_oval_ratio, 0) > args.outside_touch_threshold
-          && safeNumber(row.nose_side_band_ratio, 0) > args.band_touch_threshold,
+        (row) => safeNumber(row.nose_outside_oval_ratio, 0) > 0.05,
       ),
     },
     {
-      bucket: 'SMALL_MODULE',
-      items: localOk.filter((row) => safeNumber(row.module_pixels_min, 0) < pixelThreshold),
+      bucket: 'LOW_MODULE_PIXELS',
+      items: localOk.filter((row) => safeNumber(row.module_pixels_min, 0) < lowPixelThreshold),
     },
   ];
   const out = [];
@@ -2173,16 +2901,29 @@ function buildGoldSeedRows(rows, args) {
     const top = byRisk(bucket.items).slice(0, topN);
     top.forEach((row, index) => {
       out.push({
-        bucket: bucket.bucket,
-        rank_in_bucket: index + 1,
         source: row.source,
         sample_hash: row.sample_hash,
-        risk_score: round3(row.risk_score),
-        module_pixels_min: Math.trunc(safeNumber(row.module_pixels_min, 0)),
-        chin_outside_oval_ratio: row.chin_outside_oval_ratio == null ? null : round3(row.chin_outside_oval_ratio),
-        chin_bottom_band_ratio: row.chin_bottom_band_ratio == null ? null : round3(row.chin_bottom_band_ratio),
-        nose_outside_oval_ratio: row.nose_outside_oval_ratio == null ? null : round3(row.nose_outside_oval_ratio),
-        nose_side_band_ratio: row.nose_side_band_ratio == null ? null : round3(row.nose_side_band_ratio),
+        image_path_rel: row.image_path_rel || null,
+        suggested_bucket: bucket.bucket,
+        rank_in_bucket: index + 1,
+        key_metrics: {
+          risk_score: round3(row.risk_score),
+          module_pixels_min: Math.trunc(safeNumber(row.module_pixels_min, 0)),
+          under_eye_left_pixels: Math.trunc(safeNumber(row.under_eye_left_pixels, 0)),
+          under_eye_right_pixels: Math.trunc(safeNumber(row.under_eye_right_pixels, 0)),
+          module_guard_triggered: Boolean(row.module_guard_triggered),
+          guarded_modules: Array.isArray(row.guarded_modules) ? row.guarded_modules : [],
+          chin_outside_oval_ratio:
+            row.chin_outside_oval_ratio == null ? null : round3(row.chin_outside_oval_ratio),
+          chin_bottom_band_ratio:
+            row.chin_bottom_band_ratio == null ? null : round3(row.chin_bottom_band_ratio),
+          nose_outside_oval_ratio:
+            row.nose_outside_oval_ratio == null ? null : round3(row.nose_outside_oval_ratio),
+          nose_side_band_ratio:
+            row.nose_side_band_ratio == null ? null : round3(row.nose_side_band_ratio),
+          leakage_bg_est_mean:
+            row.leakage_bg_est_mean == null ? null : round3(row.leakage_bg_est_mean),
+        },
       });
     });
   }

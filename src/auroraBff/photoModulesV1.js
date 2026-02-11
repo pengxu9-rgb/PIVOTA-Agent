@@ -70,6 +70,14 @@ const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOR
 const MODULE_SHRINK_CHEEK = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHEEK, 0.65, 0.4, 1);
 const MODULE_SHRINK_UNDER_EYE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_UNDER_EYE, 0.5, 0.35, 1);
 const MODULE_SHRINK_NOSE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_NOSE, 0.45, 0.3, 1);
+const MODULE_MIN_PIXELS_UNDER_EYE = Math.max(
+  1,
+  Math.min(1024, Math.trunc(Number(process.env.DIAG_MODULE_MIN_PIXELS_UNDER_EYE || 64) || 64)),
+);
+const MODULE_MIN_PIXELS_DEFAULT = Math.max(
+  1,
+  Math.min(2048, Math.trunc(Number(process.env.DIAG_MODULE_MIN_PIXELS_DEFAULT || 128) || 128)),
+);
 const FOREHEAD_BAND_RATIO = parseEnvNumber(process.env.DIAG_FOREHEAD_BAND_RATIO, 0.25, 0.15, 0.95);
 const FOREHEAD_BROW_LINE_Y = parseEnvNumber(process.env.DIAG_FOREHEAD_BROW_LINE_Y, 0.38, 0.22, 0.6);
 const NOSE_GUARD_MAX_WIDTH = parseEnvNumber(process.env.DIAG_NOSE_GUARD_MAX_WIDTH, 0.07, 0.05, 0.35);
@@ -1490,6 +1498,10 @@ function buildFaceOvalClipFallbackMask({
   };
 }
 
+function isUnderEyeModule(moduleId) {
+  return moduleId === 'under_eye_left' || moduleId === 'under_eye_right';
+}
+
 function attachModuleMasks({
   modules,
   regions,
@@ -1548,6 +1560,10 @@ function attachModuleMasks({
   let faceOvalClipFallbackModules = 0;
   const faceOvalClipFallbackReasons = [];
   const degradedReasons = new Set();
+  const modulePixelsMap = {};
+  const guardedModules = [];
+  const moduleGuardPixelDiffs = [];
+  const underEyeGuardThreshold = MODULE_MIN_PIXELS_UNDER_EYE;
 
   const modulesOut = safeModules.map((moduleRow) => {
     const modulePayload = moduleRow && typeof moduleRow === 'object' ? { ...moduleRow } : {};
@@ -1678,6 +1694,48 @@ function attachModuleMasks({
       }
     }
 
+    const beforeGuardPixels = countOnes(finalMask);
+    if (isUnderEyeModule(moduleId) && beforeGuardPixels < underEyeGuardThreshold) {
+      const baseNoShrink = activeModuleBoxes[moduleId] || MODULE_BOXES[moduleId] || moduleBaseBox;
+      const guardApplied = applyModuleGuards(moduleId, baseNoShrink);
+      const guardBox = guardApplied.box || baseNoShrink || moduleBaseBox;
+      let guardMask = bboxNormToMask(guardBox, targetGrid, targetGrid);
+      if (faceOvalMask) {
+        guardMask = andMasks(guardMask, faceOvalMask);
+      }
+      if (skinMaskNorm && skinMaskReliable) {
+        const guardIntersected = andMasks(guardMask, skinMaskNorm);
+        const guardPixels = countOnes(guardMask);
+        const guardIntersectedPixels = countOnes(guardIntersected);
+        const guardKeepThreshold = Math.max(
+          MODULE_SKIN_INTERSECTION_MIN_PIXELS,
+          Math.trunc(guardPixels * MODULE_SKIN_INTERSECTION_MIN_RATIO),
+        );
+        if (guardIntersectedPixels >= guardKeepThreshold) {
+          guardMask = guardIntersected;
+        }
+      }
+      const guardPixels = countOnes(guardMask);
+      if (guardPixels > beforeGuardPixels) {
+        finalMask = guardMask;
+      }
+      const afterGuardPixels = countOnes(finalMask);
+      if (afterGuardPixels < underEyeGuardThreshold && !moduleDegradedReason) {
+        moduleDegradedReason = 'UNDER_EYE_TOO_THIN';
+        degradedReasons.add(moduleDegradedReason);
+      }
+      guardedModules.push(moduleId);
+      moduleGuardPixelDiffs.push({
+        module_id: moduleId,
+        before_pixels: beforeGuardPixels,
+        after_pixels: afterGuardPixels,
+        threshold: underEyeGuardThreshold,
+      });
+    }
+
+    const finalPixels = countOnes(finalMask);
+    modulePixelsMap[moduleId] = finalPixels;
+
     const box = maskBoundingBox(finalMask, targetGrid) || modulePayload.box || moduleBaseBox || null;
     return {
       ...modulePayload,
@@ -1685,9 +1743,15 @@ function attachModuleMasks({
       ...(box ? { box } : {}),
       ...(evidenceIds.size ? { evidence_region_ids: Array.from(evidenceIds) } : {}),
       mask_grid: targetGrid,
+      module_pixels: finalPixels,
       mask_rle_norm: encodeRleBinary(finalMask),
     };
   });
+
+  const modulePixelValues = Object.values(modulePixelsMap)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  const modulePixelsMin = modulePixelValues.length ? Math.max(0, Math.min(...modulePixelValues)) : 0;
 
   return {
     modules: modulesOut,
@@ -1708,6 +1772,13 @@ function attachModuleMasks({
     nose_hard_guard_applied: noseHardGuardApplied,
     forehead_band_ratio_used: round3(FOREHEAD_BAND_RATIO),
     forehead_band_applied: foreheadBandApplied,
+    module_pixels_map: modulePixelsMap,
+    module_pixels_min: Math.max(0, Math.trunc(modulePixelsMin)),
+    module_guard_triggered: guardedModules.length > 0,
+    guarded_modules: Array.from(new Set(guardedModules)),
+    module_guard_pixel_diffs: moduleGuardPixelDiffs,
+    module_min_pixels_under_eye: underEyeGuardThreshold,
+    module_min_pixels_default: MODULE_MIN_PIXELS_DEFAULT,
     degraded_reasons: Array.from(degradedReasons),
   };
 }
@@ -1827,6 +1898,13 @@ function buildPhotoModulesCard({
       nose_hard_guard_applied: moduleMaskBuild.nose_hard_guard_applied,
       forehead_band_ratio_used: moduleMaskBuild.forehead_band_ratio_used,
       forehead_band_applied: moduleMaskBuild.forehead_band_applied,
+      module_pixels_map: moduleMaskBuild.module_pixels_map,
+      module_pixels_min: moduleMaskBuild.module_pixels_min,
+      module_guard_triggered: moduleMaskBuild.module_guard_triggered,
+      guarded_modules: moduleMaskBuild.guarded_modules,
+      module_guard_pixel_diffs: moduleMaskBuild.module_guard_pixel_diffs,
+      module_min_pixels_under_eye: moduleMaskBuild.module_min_pixels_under_eye,
+      module_min_pixels_default: moduleMaskBuild.module_min_pixels_default,
       degraded_reasons: moduleMaskBuild.degraded_reasons,
     };
   }
