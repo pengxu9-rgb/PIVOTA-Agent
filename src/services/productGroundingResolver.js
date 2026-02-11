@@ -743,17 +743,57 @@ function createProductGroundingResolver(deps = {}) {
 
   const products = [];
   const sources = [];
-  let scopedCacheFailedInfra = false;
+  const hintedRefProductId = String(hintData.product_ref?.product_id || '').trim();
+  const hintedRefMerchantId = String(hintData.product_ref?.merchant_id || '').trim();
+  const inferredHintMerchantId =
+    hintedRefMerchantId ||
+    (isUuidLike(hintedRefProductId) && preferMerchants.length === 1 ? preferMerchants[0] : '');
+  const canUseHintProductRef =
+    Boolean(hintedRefProductId) &&
+    (Boolean(inferredHintMerchantId) || !isUuidLike(hintedRefProductId));
 
-  if (hintData.product_ref && (hintedQuery || isUuidLike(rawQuery))) {
-    products.push({
+  if (canUseHintProductRef && (hintedQuery || isUuidLike(rawQuery))) {
+    const resolvedHintRef = {
       product_id: hintData.product_ref.product_id,
-      merchant_id: hintData.product_ref.merchant_id,
+      ...(inferredHintMerchantId ? { merchant_id: inferredHintMerchantId } : {}),
+    };
+    products.push({
+      product_id: resolvedHintRef.product_id,
+      ...(resolvedHintRef.merchant_id ? { merchant_id: resolvedHintRef.merchant_id } : {}),
       title: hintedQuery || rawQuery,
       ...(hintData.brand ? { brand: hintData.brand } : {}),
       source: 'hint_product_ref',
     });
-    sources.push({ source: 'hints_product_ref', ok: true, count: 1 });
+    sources.push({
+      source: 'hints_product_ref',
+      ok: true,
+      count: 1,
+      ...(hintedRefMerchantId ? {} : inferredHintMerchantId ? { merchant_inferred: true } : {}),
+    });
+    const latencyMs = Date.now() - startMs;
+    return {
+      resolved: true,
+      product_ref: resolvedHintRef,
+      confidence: 1,
+      reason: 'hint_product_ref',
+      candidates: [
+        {
+          product_ref: resolvedHintRef,
+          title: hintedQuery || rawQuery,
+          score: 1,
+        },
+      ],
+      normalized_query: normalizedQuery,
+      metadata: {
+        lang: String(lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
+        timeout_ms: timeoutMs,
+        latency_ms: latencyMs,
+        sources,
+        ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
+        ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+        hint_short_circuit: true,
+      },
+    };
   }
 
   function remainingMs() {
@@ -783,10 +823,6 @@ function createProductGroundingResolver(deps = {}) {
       products.push(...cacheResp.products);
       sources.push({ source: 'products_cache', ok: true, count: cacheResp.products.length });
     } else {
-      const reason = String(cacheResp.reason || 'no_results');
-      if (reason === 'db_error' || reason === 'db_not_configured' || reason === 'products_cache_missing') {
-        scopedCacheFailedInfra = true;
-      }
       sources.push({ source: 'products_cache', ok: false, reason: cacheResp.reason || 'no_results' });
     }
   }
@@ -830,7 +866,6 @@ function createProductGroundingResolver(deps = {}) {
   const globalCacheTimeout = stageTimeout({ capMs: 850, reserveMs: 300, floorMs: 60 });
   const shouldTryGlobalCache =
     globalCacheTimeout >= 60 &&
-    !scopedCacheFailedInfra &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     products.length < Math.max(6, Math.min(14, limit));
   if (shouldTryGlobalCache) {
