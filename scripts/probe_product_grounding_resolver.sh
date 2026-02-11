@@ -7,6 +7,10 @@ TIMEOUT_MS="${TIMEOUT_MS:-2200}"
 UPSTREAM_RETRIES="${UPSTREAM_RETRIES:-1}"
 OUT_DIR="${OUT_DIR:-reports}"
 PROBE_INCLUDE_STABLE_HINTS="${PROBE_INCLUDE_STABLE_HINTS:-true}"
+CURL_RETRY_MAX="${CURL_RETRY_MAX:-6}"
+CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-1}"
+CURL_CONNECT_TIMEOUT_SEC="${CURL_CONNECT_TIMEOUT_SEC:-5}"
+CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-45}"
 
 mkdir -p "$OUT_DIR"
 ts="$(date -u +%Y%m%d_%H%M%S)"
@@ -44,6 +48,10 @@ resolved_count=0
   echo "- timeout_ms: \`$TIMEOUT_MS\`"
   echo "- upstream_retries: \`$UPSTREAM_RETRIES\`"
   echo "- include_stable_hints: \`$PROBE_INCLUDE_STABLE_HINTS\`"
+  echo "- curl_retry_max: \`$CURL_RETRY_MAX\`"
+  echo "- curl_retry_delay_sec: \`$CURL_RETRY_DELAY_SEC\`"
+  echo "- curl_connect_timeout_sec: \`$CURL_CONNECT_TIMEOUT_SEC\`"
+  echo "- curl_max_time_sec: \`$CURL_MAX_TIME_SEC\`"
   echo
   echo "| query | hinted | resolved | reason | reason_code | confidence | latency_ms | matched_product_id | matched_merchant_id | top_candidate | sources |"
   echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
@@ -102,9 +110,40 @@ print(json.dumps(obj, ensure_ascii=False))
 PY
 )"
 
-  resp="$(curl -sS -X POST "${BASE}/agent/v1/products/resolve" \
+  resp=""
+  if ! resp="$(curl -sS \
+    --retry "$CURL_RETRY_MAX" \
+    --retry-all-errors \
+    --retry-delay "$CURL_RETRY_DELAY_SEC" \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT_SEC" \
+    --max-time "$CURL_MAX_TIME_SEC" \
+    -X POST "${BASE}/agent/v1/products/resolve" \
     -H "Content-Type: application/json" \
-    --data "$payload")"
+    --data "$payload" 2>/tmp/product_grounding_probe_curl_err.$$)"; then
+    curl_err="$(tr '\n' ';' </tmp/product_grounding_probe_curl_err.$$ | sed 's/;/ /g')"
+    reason="curl_failed"
+    reason_code="network_error"
+    confidence=""
+    latency=""
+    matched_product=""
+    matched_merchant=""
+    top_pid=""
+    top_title=""
+    source_summary="curl:fail(${curl_err})"
+
+    query_csv="${query//\"/\"\"}"
+    top_title_csv="${top_title//\"/\"\"}"
+    source_csv="${source_summary//\"/\"\"}"
+    printf '"%s",%s,%s,"%s","%s",%s,%s,"%s","%s","%s","%s","%s"\n' \
+      "$query_csv" "false" "false" "$reason" "$reason_code" "${confidence:-}" "${latency:-}" \
+      "$matched_product" "$matched_merchant" "$top_pid" "$top_title_csv" "$source_csv" >> "$report_csv"
+
+    query_md="${query//|/\\|}"
+    top_md="${top_title//|/\\|}"
+    sources_md="${source_summary//|/\\|}"
+    echo "| ${query_md} | false | false | ${reason} | ${reason_code} | ${confidence:-n/a} | ${latency:-n/a} | ${matched_product:-n/a} | ${matched_merchant:-n/a} | ${top_pid:-n/a} ${top_md:+(${top_md})} | ${sources_md:-n/a} |" >> "$report_md"
+    continue
+  fi
 
   parsed="$(python3 -c '
 import json, sys

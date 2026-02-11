@@ -5726,11 +5726,15 @@ function buildRecoResolveHints({ base, skuCandidate, rawProductId, rawMerchantId
   pushAlias(base?.title);
 
   const hints = {};
-  if (rawProductId) {
-    hints.product_ref = {
+  const canonicalHintRef = normalizeCanonicalProductRef(
+    {
       product_id: rawProductId,
-      ...(rawMerchantId ? { merchant_id: rawMerchantId } : {}),
-    };
+      merchant_id: rawMerchantId,
+    },
+    { requireMerchant: false, allowOpaqueProductId: false },
+  );
+  if (canonicalHintRef) {
+    hints.product_ref = canonicalHintRef;
   }
   if (brand) hints.brand = brand;
   if (aliases.length) hints.aliases = aliases.slice(0, 8);
