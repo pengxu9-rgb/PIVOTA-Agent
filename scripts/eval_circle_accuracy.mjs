@@ -64,6 +64,20 @@ const DEFAULT_MAX_LEAKAGE = Number(process.env.EVAL_MAX_LEAKAGE || 0.1);
 const DEFAULT_MAX_SKIN_ROI_TOO_SMALL = Number(process.env.EVAL_MAX_SKIN_ROI_TOO_SMALL || 0.2);
 const DEFAULT_SKIN_ROI_MIN_PIXELS = Number(process.env.EVAL_SKIN_ROI_MIN_PIXELS || process.env.DIAG_SKINMASK_MIN_PIXELS || 8);
 
+const FAIL_REASONS = Object.freeze({
+  NO_INDEX: 'NO_INDEX',
+  IMAGE_READ_FAIL: 'IMAGE_READ_FAIL',
+  FACE_DETECT_FAIL: 'FACE_DETECT_FAIL',
+  LANDMARK_FAIL: 'LANDMARK_FAIL',
+  PRED_MODULES_MISSING: 'PRED_MODULES_MISSING',
+  GT_MISSING: 'GT_MISSING',
+  GT_SKIN_EMPTY: 'GT_SKIN_EMPTY',
+  PRED_SKIN_EMPTY: 'PRED_SKIN_EMPTY',
+  MODULES_EMPTY: 'MODULES_EMPTY',
+  METRIC_SKIP: 'METRIC_SKIP',
+  UNKNOWN: 'UNKNOWN',
+});
+
 function nowRunKey() {
   const d = new Date();
   const y = d.getUTCFullYear();
@@ -87,6 +101,136 @@ function round3(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 1000) / 1000;
+}
+
+function defaultGtStats() {
+  return {
+    has_gt: false,
+    skin_pixels: 0,
+    label_values_sample: [],
+    gt_kind: 'none',
+  };
+}
+
+function defaultPredStats() {
+  return {
+    has_pred_modules: false,
+    module_count: 0,
+    pred_skin_pixels_est: 0,
+  };
+}
+
+function defaultMetricStats() {
+  return {
+    modules_scored: 0,
+    miou_mean: 0,
+    coverage_mean: 0,
+    leakage_mean: 0,
+  };
+}
+
+function createBaseEvalRow({ dataset, sampleHash, sampleId }) {
+  return {
+    ok: false,
+    dataset: String(dataset || 'unknown'),
+    sample_hash: String(sampleHash || ''),
+    sample_id: String(sampleId || ''),
+    fail_reason: FAIL_REASONS.UNKNOWN,
+    gt_stats: defaultGtStats(),
+    pred_stats: defaultPredStats(),
+    metric_stats: defaultMetricStats(),
+    weak_label_only: false,
+    note: null,
+  };
+}
+
+function normalizeFailReason(input) {
+  const token = String(input || '').trim().toUpperCase();
+  const known = Object.values(FAIL_REASONS);
+  return known.includes(token) ? token : FAIL_REASONS.UNKNOWN;
+}
+
+function finalizeEvalRow(inputRow) {
+  const row = inputRow && typeof inputRow === 'object' ? { ...inputRow } : createBaseEvalRow({});
+  const gtStats = row.gt_stats && typeof row.gt_stats === 'object' ? row.gt_stats : defaultGtStats();
+  const predStats = row.pred_stats && typeof row.pred_stats === 'object' ? row.pred_stats : defaultPredStats();
+  const metricStats = row.metric_stats && typeof row.metric_stats === 'object' ? row.metric_stats : defaultMetricStats();
+
+  const modulesScored = Number(metricStats.modules_scored || 0);
+  metricStats.modules_scored = Number.isFinite(modulesScored) ? Math.max(0, Math.trunc(modulesScored)) : 0;
+  metricStats.miou_mean = round3(metricStats.miou_mean || 0);
+  metricStats.coverage_mean = round3(metricStats.coverage_mean || 0);
+  metricStats.leakage_mean = round3(metricStats.leakage_mean || 0);
+  gtStats.skin_pixels = Number.isFinite(Number(gtStats.skin_pixels)) ? Math.max(0, Number(gtStats.skin_pixels)) : 0;
+  predStats.module_count = Number.isFinite(Number(predStats.module_count)) ? Math.max(0, Number(predStats.module_count)) : 0;
+  predStats.pred_skin_pixels_est = Number.isFinite(Number(predStats.pred_skin_pixels_est))
+    ? Math.max(0, Number(predStats.pred_skin_pixels_est))
+    : 0;
+
+  row.gt_stats = gtStats;
+  row.pred_stats = predStats;
+  row.metric_stats = metricStats;
+
+  if (metricStats.modules_scored > 0) {
+    row.ok = true;
+    row.fail_reason = null;
+    return row;
+  }
+
+  row.ok = false;
+  const currentReason = normalizeFailReason(row.fail_reason);
+  if (currentReason !== FAIL_REASONS.UNKNOWN) {
+    row.fail_reason = currentReason;
+    return row;
+  }
+  if (!predStats.has_pred_modules || predStats.module_count <= 0) {
+    row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
+    return row;
+  }
+  if (!gtStats.has_gt) {
+    row.fail_reason = FAIL_REASONS.GT_MISSING;
+    return row;
+  }
+  if (gtStats.skin_pixels <= 0) {
+    row.fail_reason = FAIL_REASONS.GT_SKIN_EMPTY;
+    return row;
+  }
+  if (predStats.pred_skin_pixels_est <= 0) {
+    row.fail_reason = FAIL_REASONS.PRED_SKIN_EMPTY;
+    return row;
+  }
+  row.fail_reason = FAIL_REASONS.MODULES_EMPTY;
+  return row;
+}
+
+function mapPredictionFailureReason(rawReason) {
+  const token = String(rawReason || '').toLowerCase();
+  if (!token) return FAIL_REASONS.UNKNOWN;
+  if (token.includes('dataset_index_missing') || token.includes('dataset_root_not_found')) return FAIL_REASONS.NO_INDEX;
+  if (token.includes('face')) return FAIL_REASONS.FACE_DETECT_FAIL;
+  if (token.includes('landmark')) return FAIL_REASONS.LANDMARK_FAIL;
+  if (token.includes('photo_modules') || token.includes('modules_missing')) return FAIL_REASONS.PRED_MODULES_MISSING;
+  return FAIL_REASONS.UNKNOWN;
+}
+
+function topFailReasons(rows) {
+  const counts = new Map();
+  const total = Array.isArray(rows) ? rows.length : 0;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || row.ok) continue;
+    const reason = normalizeFailReason(row.fail_reason);
+    counts.set(reason, (counts.get(reason) || 0) + 1);
+  }
+  const out = Array.from(counts.entries()).map(([reason, count]) => ({
+    reason,
+    count,
+    pct: total > 0 ? round3(count / total) : 0,
+  }));
+  out.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.reason.localeCompare(b.reason);
+  });
+  return out;
 }
 
 function parseBoolean(value, fallback = false) {
@@ -728,7 +872,17 @@ async function runWithConcurrency(items, concurrency, worker) {
       try {
         results[index] = await worker(items[index], index);
       } catch (error) {
-        results[index] = { ok: false, reason: String(error && error.message ? error.message : error) };
+        const item = items[index] || {};
+        const fallbackHash = hashId(`${item && item.dataset ? item.dataset : 'unknown'}:${index}:worker_error`);
+        results[index] = finalizeEvalRow({
+          ...createBaseEvalRow({
+            dataset: item && item.dataset ? item.dataset : 'unknown',
+            sampleHash: fallbackHash,
+            sampleId: item && item.sample && item.sample.sample_id ? item.sample.sample_id : `worker_error_${index}`,
+          }),
+          fail_reason: FAIL_REASONS.UNKNOWN,
+          note: String(error && error.message ? error.message : error),
+        });
       }
     }
   }
@@ -810,6 +964,7 @@ function renderMarkdown({
   jsonlPath,
   csvPath,
   weakRows,
+  failReasonRows,
   softWarnings,
 }) {
   const total = sampleRows.length;
@@ -878,6 +1033,18 @@ function renderMarkdown({
     lines.push('');
   }
 
+  lines.push('## Top Fail Reasons');
+  lines.push('');
+  lines.push('| fail_reason | count | pct_of_total |');
+  lines.push('|---|---:|---:|');
+  for (const row of failReasonRows) {
+    lines.push(`| ${row.reason} | ${row.count} | ${row.pct} |`);
+  }
+  if (!failReasonRows.length) {
+    lines.push('| - | 0 | 0 |');
+  }
+  lines.push('');
+
   lines.push('## Per-Module Summary');
   lines.push('');
   lines.push('| dataset | module | samples | mIoU mean | p50 | p90 | coverage mean | leakage mean | roi_too_small_rate |');
@@ -931,35 +1098,84 @@ async function main() {
   if (args.emit_debug_overlays) await ensureDir(debugDir);
 
   const allSamples = [];
+  const seedRows = [];
   for (const dataset of args.datasets) {
     const adapter = getAdapter(dataset);
     if (!adapter) throw new Error(`adapter_not_found:${dataset}`);
-    const loaded = await adapter.loadSamples({
-      repoRoot,
-      cacheExternalDir: cache.cacheExternalDir,
-      cacheRootDir: cache.cacheRootDir,
-      limit: args.limit || undefined,
-      shuffle: args.shuffle,
-      seed: runKey,
-    });
-    for (const sample of loaded.samples || []) {
-      allSamples.push({
-        dataset,
-        adapter,
-        sample,
+    try {
+      const loaded = await adapter.loadSamples({
+        repoRoot,
+        cacheExternalDir: cache.cacheExternalDir,
+        cacheRootDir: cache.cacheRootDir,
+        limit: args.limit || undefined,
+        shuffle: args.shuffle,
+        seed: runKey,
       });
+      for (const sample of loaded.samples || []) {
+        allSamples.push({
+          dataset,
+          adapter,
+          sample,
+        });
+      }
+    } catch (error) {
+      const detail = String(error && error.message ? error.message : error);
+      seedRows.push(finalizeEvalRow({
+        ...createBaseEvalRow({
+          dataset,
+          sampleHash: hashId(`${dataset}:NO_INDEX:${runKey}`),
+          sampleId: `${dataset}:no_index`,
+        }),
+        fail_reason: FAIL_REASONS.NO_INDEX,
+        note: detail,
+      }));
     }
   }
 
-  if (!allSamples.length) {
+  if (!allSamples.length && !seedRows.length) {
     throw new Error('no_samples_found_after_prepare');
   }
 
-  const sampleRows = await runWithConcurrency(allSamples, args.concurrency, async (entry, index) => {
-    const evalSample = entry.adapter.toEvalSample(entry.sample);
-    const imageBuffer = await fsp.readFile(evalSample.image_bytes_path);
-    const normalizedImageBuffer = await normalizeImageForPrediction(imageBuffer);
+  const runtimeRows = await runWithConcurrency(allSamples, args.concurrency, async (entry, index) => {
+    let evalSample = null;
+    try {
+      evalSample = entry.adapter.toEvalSample(entry.sample);
+    } catch (error) {
+      return finalizeEvalRow({
+        ...createBaseEvalRow({
+          dataset: entry.dataset,
+          sampleHash: hashId(`${entry.dataset}:EVAL_SAMPLE:${index}`),
+          sampleId: `eval_sample_error_${index}`,
+        }),
+        fail_reason: FAIL_REASONS.UNKNOWN,
+        note: String(error && error.message ? error.message : error),
+      });
+    }
+
     const sampleHash = hashId(`${entry.dataset}:${evalSample.sample_id}:${index}`);
+    const row = createBaseEvalRow({
+      dataset: entry.dataset,
+      sampleHash,
+      sampleId: evalSample.sample_id,
+    });
+    row.source_mode = args.base_url ? 'api' : 'local';
+    row.gt_stats = {
+      ...row.gt_stats,
+      has_gt: Boolean(evalSample && Array.isArray(evalSample.gt_masks) && evalSample.gt_masks.length),
+      gt_kind: evalSample && Array.isArray(evalSample.gt_masks) && evalSample.gt_masks[0]
+        ? String(evalSample.gt_masks[0].kind || 'segmentation')
+        : 'none',
+    };
+
+    let imageBuffer;
+    try {
+      imageBuffer = await fsp.readFile(evalSample.image_bytes_path);
+    } catch (error) {
+      row.fail_reason = FAIL_REASONS.IMAGE_READ_FAIL;
+      row.note = String(error && error.message ? error.message : error);
+      return finalizeEvalRow(row);
+    }
+    const normalizedImageBuffer = await normalizeImageForPrediction(imageBuffer);
 
     const prediction = args.base_url
       ? await callApiPrediction({
@@ -978,33 +1194,58 @@ async function main() {
           skinmaskEnabled: args.skinmask_enabled,
           skinmaskModelPath: args.skinmask_model_path,
         });
+    row.skinmask_reason = prediction.skinmask_reason || null;
 
     if (!prediction.ok || !prediction.payload) {
-      return {
-        ok: false,
-        dataset: entry.dataset,
-        sample_hash: sampleHash,
-        sample_id: evalSample.sample_id,
-      reason: prediction.reason || 'prediction_failed',
-      skinmask_reason: prediction.skinmask_reason || null,
+      row.fail_reason = mapPredictionFailureReason(prediction.reason);
+      row.note = prediction.reason || 'prediction_failed';
+      return finalizeEvalRow(row);
+    }
+
+    const payload = prediction.payload;
+    row.pred_stats = {
+      has_pred_modules: Boolean(Array.isArray(payload.modules) && payload.modules.length),
+      module_count: Array.isArray(payload.modules) ? payload.modules.length : 0,
+      pred_skin_pixels_est: 0,
     };
+    if (!row.pred_stats.has_pred_modules) {
+      row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
+      row.note = 'photo_modules_v1 missing modules';
+      row.quality_grade = String(payload && payload.quality_grade ? payload.quality_grade : '');
+      return finalizeEvalRow(row);
     }
 
     const gtSkin = await entry.adapter.buildSkinMask(evalSample);
     if (!gtSkin || !gtSkin.ok || !(gtSkin.mask instanceof Uint8Array)) {
-      return {
-        ok: true,
-        weak_label_only: true,
-        dataset: entry.dataset,
-        sample_hash: sampleHash,
-        sample_id: evalSample.sample_id,
-        reason: gtSkin && gtSkin.reason ? gtSkin.reason : 'weak_label_only',
-        note: gtSkin && gtSkin.note ? gtSkin.note : null,
-        lesion_count_weak: gtSkin && Number.isFinite(Number(gtSkin.lesion_count_weak)) ? Number(gtSkin.lesion_count_weak) : null,
+      row.fail_reason = FAIL_REASONS.GT_MISSING;
+      row.weak_label_only = Boolean(gtSkin && gtSkin.weak_label);
+      row.note = gtSkin && gtSkin.note
+        ? String(gtSkin.note)
+        : (entry.dataset === 'celebamaskhq' ? 'NEED_MASK_MERGE_ADAPTER' : 'gt_missing');
+      row.lesion_count_weak = gtSkin && Number.isFinite(Number(gtSkin.lesion_count_weak))
+        ? Number(gtSkin.lesion_count_weak)
+        : null;
+      row.gt_stats = {
+        ...row.gt_stats,
+        has_gt: false,
+        gt_kind: row.weak_label_only ? 'weak' : row.gt_stats.gt_kind,
       };
+      return finalizeEvalRow(row);
     }
 
-    const payload = prediction.payload;
+    const gtSkinPixels = countOnes(gtSkin.mask);
+    row.gt_stats = {
+      has_gt: true,
+      skin_pixels: gtSkinPixels,
+      label_values_sample: gtSkinPixels > 0 ? [0, 1] : [0],
+      gt_kind: 'segmentation',
+    };
+    if (!gtSkinPixels) {
+      row.fail_reason = FAIL_REASONS.GT_SKIN_EMPTY;
+      row.note = 'gt_skin_pixels_zero';
+      return finalizeEvalRow(row);
+    }
+
     const fallbackSkinBbox = skinMaskBoundingNorm(gtSkin.mask, gtSkin.width, gtSkin.height);
     const fallbackFaceCrop = faceCropFromSkinBBoxNorm({
       skinBboxNorm: fallbackSkinBbox,
@@ -1045,10 +1286,11 @@ async function main() {
     const gtModuleMasks = decodeGtModuleMasks(derivedGt, args.grid_size, activeModuleBoxes);
     const gtSkinMaskNorm = decodeRleBinary(derivedGt.skin_mask_rle_norm, args.grid_size * args.grid_size);
     const predicted = moduleMasksFromCardPayload(payload, args.grid_size, activeModuleBoxes);
+    const predUnionMask = createMask(args.grid_size, args.grid_size, 0);
 
     const moduleScores = [];
     for (const moduleId of resolvedModuleIds) {
-      const predMaskRaw = predicted.moduleMasks[moduleId];
+      const predMaskRaw = predicted.moduleMasks[moduleId] || createMask(args.grid_size, args.grid_size, 0);
       const predMask = circleModel.meta.enabled && args.circle_model_calibration
         ? applyModelBoxCalibration({
             moduleId,
@@ -1058,6 +1300,7 @@ async function main() {
             minPixels: args.circle_model_min_pixels,
           })
         : predMaskRaw;
+      orMaskInto(predUnionMask, predMask);
       const gtMask = gtModuleMasks[moduleId];
       const gtPixels = countOnes(gtMask);
       if (!gtPixels) continue;
@@ -1074,37 +1317,44 @@ async function main() {
       });
     }
 
+    const predSkinPixels = countOnes(predUnionMask);
+    row.pred_stats.pred_skin_pixels_est = predSkinPixels;
+    if (predSkinPixels <= 0) {
+      row.fail_reason = FAIL_REASONS.PRED_SKIN_EMPTY;
+    }
+
     const geometryDropRows = Array.isArray(prediction.metrics && prediction.metrics.geometryDropCounts)
       ? prediction.metrics.geometryDropCounts
       : [];
-    const dropped = geometryDropRows.reduce((acc, row) => acc + Number(row && row.count ? row.count : 0), 0);
+    const dropped = geometryDropRows.reduce((acc, metricRow) => acc + Number(metricRow && metricRow.count ? metricRow.count : 0), 0);
     const geometrySanitizeDropRate = round3(dropped / Math.max(1, dropped + Number(predicted.regionsCount || 0)));
     const faceDetectOk = Boolean(payload && payload.face_crop && payload.face_crop.bbox_px);
 
-    const row = {
-      ok: true,
-      dataset: entry.dataset,
-      sample_hash: sampleHash,
-      sample_id: evalSample.sample_id,
-      module_scores: moduleScores,
-      quality_grade: String(payload && payload.quality_grade ? payload.quality_grade : ''),
-      regions_count: Number(predicted.regionsCount || 0),
-      invalid_region_count: Number(predicted.invalidRegionCount || 0),
-      face_detect_ok: faceDetectOk,
-      landmark_ok: faceDetectOk,
-      geometry_sanitize_drop_rate: Number.isFinite(geometrySanitizeDropRate) ? geometrySanitizeDropRate : null,
-      skin_roi_too_small_count: moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length,
-      skin_roi_evaluated_count: moduleScores.length,
-      skin_roi_too_small_rate: round3(
-        moduleScores.length
-          ? moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length / moduleScores.length
-          : 0,
-      ),
-      weak_label_only: false,
-      derived_gt_path: toPosix(path.relative(repoRoot, derivedPath)),
-      source_mode: args.base_url ? 'api' : 'local',
-      skinmask_reason: prediction.skinmask_reason || null,
+    row.module_scores = moduleScores;
+    row.quality_grade = String(payload && payload.quality_grade ? payload.quality_grade : '');
+    row.regions_count = Number(predicted.regionsCount || 0);
+    row.invalid_region_count = Number(predicted.invalidRegionCount || 0);
+    row.face_detect_ok = faceDetectOk;
+    row.landmark_ok = faceDetectOk;
+    row.geometry_sanitize_drop_rate = Number.isFinite(geometrySanitizeDropRate) ? geometrySanitizeDropRate : null;
+    row.skin_roi_too_small_count = moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length;
+    row.skin_roi_evaluated_count = moduleScores.length;
+    row.skin_roi_too_small_rate = round3(
+      moduleScores.length
+        ? moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length / moduleScores.length
+        : 0,
+    );
+    row.weak_label_only = false;
+    row.derived_gt_path = toPosix(path.relative(repoRoot, derivedPath));
+    row.metric_stats = {
+      modules_scored: moduleScores.length,
+      miou_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.iou || 0)))),
+      coverage_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.coverage || 0)))),
+      leakage_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.leakage || 0)))),
     };
+    if (!moduleScores.length && row.fail_reason === FAIL_REASONS.UNKNOWN) {
+      row.fail_reason = FAIL_REASONS.METRIC_SKIP;
+    }
 
     if (args.emit_debug_overlays) {
       const debugPath = path.join(debugDir, `${entry.dataset}_${sampleHash}.json`);
@@ -1124,8 +1374,10 @@ async function main() {
       row.debug_path = toPosix(path.relative(repoRoot, debugPath));
     }
 
-    return row;
+    return finalizeEvalRow(row);
   });
+
+  const sampleRows = [...seedRows, ...runtimeRows].map((row) => finalizeEvalRow(row));
 
   writeJsonl(jsonlPath, sampleRows);
 
@@ -1187,6 +1439,7 @@ async function main() {
       `skin_roi_too_small_rate ${round3(skinRoiTooSmallRate)} > threshold ${args.eval_max_skin_roi_too_small}`,
     );
   }
+  const failReasonRows = topFailReasons(sampleRows);
 
   const markdown = renderMarkdown({
     args,
@@ -1197,6 +1450,7 @@ async function main() {
     jsonlPath,
     csvPath,
     weakRows,
+    failReasonRows,
     softWarnings,
   });
   writeText(mdPath, markdown);
@@ -1217,6 +1471,8 @@ async function main() {
     leakage_mean: round3(leakageMean),
     skin_roi_too_small_rate: round3(skinRoiTooSmallRate),
     face_detect_fail_rate: round3(faceDetectFailRate),
+    fail_reasons: failReasonRows,
+    summary_rows: summaryRows.length,
     soft_warnings: softWarnings,
     artifacts: {
       jsonl: toPosix(path.relative(repoRoot, jsonlPath)),
