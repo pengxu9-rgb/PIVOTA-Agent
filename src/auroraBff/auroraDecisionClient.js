@@ -81,6 +81,122 @@ function mockAuroraChat(input) {
     return { answer: q, intent: 'chat', cards: [] };
   }
 
+  if (/CLARIFICATION_FLOW_V2_FREE_TEXT_CONTINUE_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: free text after pending clarification abandon.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TTL_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: pending clarification TTL fallback to upstream.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TRUNCATION_TEST/i.test(q)) {
+    const questions = Array.from({ length: 8 }).map((_, i) => ({
+      id: `question_${i}`,
+      question: `Question ${i} ${'Q'.repeat(260)}`,
+      options: Array.from({ length: 12 }).map((__, j) => `Option ${i}-${j} ${'O'.repeat(120)}`),
+    }));
+    return {
+      answer: 'Mock: clarification truncation stress.',
+      intent: 'clarify',
+      cards: [],
+      clarification: { questions },
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return {
+        answer: 'Mock: clarification flow resumed with history context.',
+        intent: 'chat',
+        cards: [],
+      };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_SKINTYPE_ONLY_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: one clarification question.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+        ],
+        missing_fields: ['skinType'],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_SKINTYPE_NEXT_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: two clarification questions.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'next',
+            question: 'What do you want to do next?',
+            options: ['Build an AM/PM routine', 'Evaluate one product'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_INVALID_OPTIONS_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: invalid clarification schema.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: 'Oily',
+          },
+        ],
+      },
+    };
+  }
+
   if (/DUPE_SUGGEST_TEST/i.test(q)) {
     return {
       answer: 'Mock: dupe suggest alternatives.',

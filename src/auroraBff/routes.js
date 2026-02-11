@@ -29,6 +29,18 @@ const {
   recordClarificationIdNormalizedEmpty,
   recordCatalogAvailabilityShortCircuit,
   recordRepeatedClarifyField,
+  recordClarificationPresent,
+  recordClarificationQuestionFiltered,
+  recordClarificationAllQuestionsFiltered,
+  recordClarificationSchemaInvalid,
+  recordClarificationFlowV2Started,
+  recordPendingClarificationStep,
+  recordPendingClarificationCompleted,
+  recordPendingClarificationAbandoned,
+  recordClarificationHistorySent,
+  recordAuroraChatSkipped,
+  recordPendingClarificationUpgraded,
+  recordPendingClarificationTruncated,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
@@ -161,6 +173,25 @@ const AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_CHAT_CLARIFICATION_FILTER_KNOWN_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CLARIFICATION_FILTER_KNOWN || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CLARIFICATION_FLOW_V2 || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
@@ -3370,6 +3401,431 @@ function normalizeClarificationField(raw) {
   if (/(sensit|敏感程度|敏感性)/.test(haystack)) return 'sensitivity';
   if (/(skin|肤质|皮肤类型|油皮|干皮|混合|中性|oily|dry|combo|combination|mixed|normal)/.test(haystack)) return 'skinType';
   return norm;
+}
+
+const FILTERABLE_CLARIFICATION_FIELDS = new Set(['skinType', 'sensitivity', 'barrierStatus', 'goals', 'budgetTier']);
+
+function hasKnownClarificationFieldValue(profileSummary, field) {
+  if (!field || !profileSummary || typeof profileSummary !== 'object') return false;
+  const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+  if (field === 'skinType') {
+    const v = norm(profileSummary.skinType);
+    return Boolean(v && v !== 'unknown');
+  }
+  if (field === 'sensitivity') {
+    const v = norm(profileSummary.sensitivity);
+    return Boolean(v && v !== 'unknown');
+  }
+  if (field === 'barrierStatus') {
+    const v = norm(profileSummary.barrierStatus);
+    return Boolean(v && v !== 'unknown');
+  }
+  if (field === 'goals') {
+    const goals = Array.isArray(profileSummary.goals) ? profileSummary.goals : [];
+    return goals.some((g) => norm(g));
+  }
+  if (field === 'budgetTier') {
+    const v = norm(profileSummary.budgetTier);
+    return Boolean(v && v !== 'unknown');
+  }
+  return false;
+}
+
+function filterClarificationQuestionsForChips({ clarification, profileSummary, filterKnown } = {}) {
+  if (!clarification || typeof clarification !== 'object') return [];
+
+  const rawQuestions = clarification.questions;
+  if (!Array.isArray(rawQuestions)) {
+    recordClarificationSchemaInvalid({ reason: 'questions_not_array' });
+    return [];
+  }
+
+  const questions = [];
+  let filteredKnownCount = 0;
+  let validQuestionCount = 0;
+  for (const rawQuestion of rawQuestions) {
+    if (!rawQuestion || typeof rawQuestion !== 'object' || Array.isArray(rawQuestion)) {
+      recordClarificationSchemaInvalid({ reason: 'question_not_object' });
+      continue;
+    }
+
+    const qidRaw = typeof rawQuestion.id === 'string' ? rawQuestion.id.trim() : '';
+    const qid = qidRaw || 'clarify';
+    if (!qidRaw) {
+      recordClarificationSchemaInvalid({ reason: 'question_id_missing' });
+    }
+
+    if (!Array.isArray(rawQuestion.options)) {
+      recordClarificationSchemaInvalid({ reason: 'question_options_not_array' });
+      continue;
+    }
+
+    let hasInvalidOptionType = false;
+    const options = [];
+    for (const rawOption of rawQuestion.options) {
+      if (typeof rawOption !== 'string') {
+        hasInvalidOptionType = true;
+        continue;
+      }
+      const option = rawOption.trim();
+      if (option) options.push(option);
+    }
+    if (hasInvalidOptionType) {
+      recordClarificationSchemaInvalid({ reason: 'question_option_non_string' });
+    }
+    if (!options.length) {
+      recordClarificationSchemaInvalid({ reason: 'question_options_empty' });
+      continue;
+    }
+    const question = typeof rawQuestion.question === 'string' ? rawQuestion.question.trim() : '';
+
+    validQuestionCount += 1;
+    const field = normalizeClarificationField(qid);
+    const shouldFilterKnown =
+      Boolean(filterKnown) &&
+      FILTERABLE_CLARIFICATION_FIELDS.has(field) &&
+      hasKnownClarificationFieldValue(profileSummary, field);
+    if (shouldFilterKnown) {
+      filteredKnownCount += 1;
+      recordClarificationQuestionFiltered({ field });
+      // Keep existing observability for repeated asks, even when we filter the chips.
+      recordRepeatedClarifyField({ field });
+      continue;
+    }
+
+    questions.push({ id: qid, question, options });
+  }
+
+  if (Boolean(filterKnown) && validQuestionCount > 0 && filteredKnownCount > 0 && questions.length === 0) {
+    recordClarificationAllQuestionsFiltered();
+  }
+
+  return questions;
+}
+
+const PENDING_CLARIFICATION_SCHEMA_V1 = 1;
+const PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT = 800;
+const PENDING_CLARIFICATION_MAX_QUEUE = 5;
+const PENDING_CLARIFICATION_MAX_OPTIONS = 8;
+const PENDING_CLARIFICATION_MAX_QUESTION = 200;
+const PENDING_CLARIFICATION_MAX_OPTION = 80;
+const PENDING_CLARIFICATION_MAX_HISTORY = 6;
+
+function makeFlowId() {
+  const rand = crypto.randomBytes(6).toString('hex').slice(0, 12);
+  return `pc_${rand || Math.random().toString(36).slice(2, 10)}`;
+}
+
+function truncate(value, maxChars) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return { value: '', truncated: false };
+  if (text.length <= maxChars) return { value: text, truncated: false };
+  return { value: text.slice(0, maxChars), truncated: true };
+}
+
+function capArray(items, maxCount) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length <= maxCount) return { values: list, dropped: 0 };
+  return { values: list.slice(0, maxCount), dropped: list.length - maxCount };
+}
+
+function normalizePendingClarificationId(rawId) {
+  const idRaw = typeof rawId === 'string' ? rawId.trim() : '';
+  const id = idRaw || 'clarify';
+  const normId = normalizeClarificationField(id);
+  return { id, norm_id: normId };
+}
+
+function recordPendingClarificationTruncationFields(fields) {
+  for (const field of Array.from(fields || [])) {
+    recordPendingClarificationTruncated({ field });
+  }
+}
+
+function normalizeClarificationQuestionForPending(rawQuestion, { recordTruncationMetrics = true, truncationFields } = {}) {
+  if (!rawQuestion || typeof rawQuestion !== 'object' || Array.isArray(rawQuestion)) return null;
+  if (!Array.isArray(rawQuestion.options)) return null;
+
+  const localTruncationFields = new Set();
+  const idInfo = normalizePendingClarificationId(rawQuestion.id);
+  const questionTextRaw = typeof rawQuestion.question === 'string' ? rawQuestion.question.trim() : '';
+  const questionTrimmed = truncate(questionTextRaw, PENDING_CLARIFICATION_MAX_QUESTION);
+  if (questionTrimmed.truncated) localTruncationFields.add('question');
+
+  const options = [];
+  for (const rawOption of rawQuestion.options) {
+    if (typeof rawOption !== 'string') continue;
+    const optionText = rawOption.trim();
+    if (!optionText) continue;
+    const optionTrimmed = truncate(optionText, PENDING_CLARIFICATION_MAX_OPTION);
+    if (optionTrimmed.truncated) localTruncationFields.add('option');
+    options.push(optionTrimmed.value);
+  }
+  if (!options.length) return null;
+
+  const cappedOptions = capArray(options, PENDING_CLARIFICATION_MAX_OPTIONS);
+  if (cappedOptions.dropped > 0) localTruncationFields.add('options');
+
+  for (const field of Array.from(localTruncationFields)) {
+    if (truncationFields && truncationFields.add) truncationFields.add(field);
+  }
+  if (recordTruncationMetrics && localTruncationFields.size > 0) {
+    recordPendingClarificationTruncationFields(localTruncationFields);
+  }
+
+  return {
+    id: idInfo.id,
+    norm_id: idInfo.norm_id,
+    question: questionTrimmed.value,
+    options: cappedOptions.values,
+  };
+}
+
+function isClarifyChipAction(action, { actionId, clarificationId } = {}) {
+  const id =
+    typeof actionId === 'string'
+      ? actionId.trim()
+      : typeof action === 'string'
+        ? action.trim()
+        : action && typeof action === 'object' && typeof action.action_id === 'string'
+          ? action.action_id.trim()
+          : '';
+  if (id.toLowerCase().startsWith('chip.clarify.')) return true;
+  if (parseClarificationIdFromActionId(id)) return true;
+  return Boolean(typeof clarificationId === 'string' && clarificationId.trim());
+}
+
+function hasPendingClarificationStateHint(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return false;
+  const data = action.data && typeof action.data === 'object' ? action.data : null;
+  if (!data) return false;
+  if (Object.prototype.hasOwnProperty.call(data, 'clarification_step')) return true;
+  if (typeof data.clarification_question_id === 'string' && data.clarification_question_id.trim()) return true;
+  if (typeof data.clarificationQuestionId === 'string' && data.clarificationQuestionId.trim()) return true;
+  return false;
+}
+
+function extractClarificationQuestionIdFromAction(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return '';
+  const data = action.data && typeof action.data === 'object' ? action.data : null;
+  if (!data) return '';
+  const raw =
+    (typeof data.clarification_question_id === 'string' && data.clarification_question_id) ||
+    (typeof data.clarificationQuestionId === 'string' && data.clarificationQuestionId) ||
+    '';
+  return String(raw || '').trim();
+}
+
+function sanitizePendingClarification(rawPending, { recordMetrics = true } = {}) {
+  if (!rawPending || typeof rawPending !== 'object' || Array.isArray(rawPending)) return null;
+  const truncationFields = new Set();
+
+  const createdAtRaw = Number(rawPending.created_at_ms);
+  if (!Number.isFinite(createdAtRaw) || createdAtRaw <= 0) return null;
+  const createdAtMs = Math.trunc(createdAtRaw);
+
+  const resumeTextRaw = typeof rawPending.resume_user_text === 'string' ? rawPending.resume_user_text.trim() : '';
+  if (!resumeTextRaw) return null;
+  const resumeText = truncate(resumeTextRaw, PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT);
+  if (resumeText.truncated) truncationFields.add('resume_user_text');
+
+  const flowIdRaw = typeof rawPending.flow_id === 'string' ? rawPending.flow_id.trim() : '';
+  const flowId = /^pc_[a-z0-9]+$/i.test(flowIdRaw) ? flowIdRaw.slice(0, 32) : makeFlowId();
+
+  const resumeUserHashRaw = typeof rawPending.resume_user_hash === 'string' ? rawPending.resume_user_hash.trim() : '';
+  const resumeUserHashSafe = (resumeUserHashRaw || stableHashBase36(resumeText.value).slice(0, 20))
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 24);
+
+  if (!Array.isArray(rawPending.queue)) return null;
+  const normalizedQueue = [];
+  for (const rawQuestion of rawPending.queue) {
+    const normalized = normalizeClarificationQuestionForPending(rawQuestion, {
+      recordTruncationMetrics: false,
+      truncationFields,
+    });
+    if (normalized) normalizedQueue.push(normalized);
+  }
+  if (normalizedQueue.length < rawPending.queue.length) truncationFields.add('queue');
+  const cappedQueue = capArray(normalizedQueue, PENDING_CLARIFICATION_MAX_QUEUE);
+  if (cappedQueue.dropped > 0) truncationFields.add('queue');
+
+  let current = null;
+  if (rawPending.current && typeof rawPending.current === 'object' && !Array.isArray(rawPending.current)) {
+    const currentIdRaw = typeof rawPending.current.id === 'string' ? rawPending.current.id.trim() : '';
+    if (currentIdRaw) {
+      const currentIdInfo = normalizePendingClarificationId(currentIdRaw);
+      current = { id: currentIdInfo.id, norm_id: currentIdInfo.norm_id };
+    }
+  }
+
+  const historyRaw = Array.isArray(rawPending.history) ? rawPending.history : [];
+  if (!Array.isArray(rawPending.history) && rawPending.history != null) {
+    truncationFields.add('history');
+  }
+  const normalizedHistory = [];
+  for (const entry of historyRaw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const questionIdRaw = typeof entry.question_id === 'string' ? entry.question_id.trim() : '';
+    const optionRaw = typeof entry.option === 'string' ? entry.option.trim() : '';
+    const tsMsRaw = Number(entry.ts_ms);
+    if (!questionIdRaw || !optionRaw || !Number.isFinite(tsMsRaw) || tsMsRaw <= 0) continue;
+
+    const questionIdInfo = normalizePendingClarificationId(questionIdRaw);
+    const optionTrimmed = truncate(optionRaw, PENDING_CLARIFICATION_MAX_OPTION);
+    if (optionTrimmed.truncated) truncationFields.add('option');
+
+    normalizedHistory.push({
+      question_id: questionIdInfo.id,
+      norm_id:
+        typeof entry.norm_id === 'string' && entry.norm_id.trim()
+          ? entry.norm_id.trim().slice(0, 80)
+          : questionIdInfo.norm_id,
+      option: optionTrimmed.value,
+      ts_ms: Math.trunc(tsMsRaw),
+    });
+  }
+  if (normalizedHistory.length < historyRaw.length) truncationFields.add('history');
+  let history = normalizedHistory;
+  if (normalizedHistory.length > PENDING_CLARIFICATION_MAX_HISTORY) {
+    history = normalizedHistory.slice(-PENDING_CLARIFICATION_MAX_HISTORY);
+    truncationFields.add('history');
+  }
+
+  const canonical = {
+    v: PENDING_CLARIFICATION_SCHEMA_V1,
+    flow_id: flowId,
+    created_at_ms: createdAtMs,
+    resume_user_text: resumeText.value,
+    ...(resumeUserHashSafe ? { resume_user_hash: resumeUserHashSafe } : {}),
+    step_index: history.length,
+    ...(current ? { current } : {}),
+    queue: cappedQueue.values,
+    history,
+  };
+
+  const upgraded = Number(rawPending.v) !== PENDING_CLARIFICATION_SCHEMA_V1;
+  if (recordMetrics) {
+    if (upgraded) recordPendingClarificationUpgraded({ from: 'legacy' });
+    if (truncationFields.size > 0) recordPendingClarificationTruncationFields(truncationFields);
+  }
+
+  return { pending: canonical, upgraded };
+}
+
+function getPendingClarification(session) {
+  const s = session && typeof session === 'object' ? session : null;
+  if (!s) return null;
+  const state = s.state && typeof s.state === 'object' && !Array.isArray(s.state) ? s.state : null;
+  if (!state) return null;
+  const raw = state.pending_clarification;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return sanitizePendingClarification(raw, { recordMetrics: true });
+}
+
+function emitPendingClarificationPatch(sessionPatch, pendingOrNull) {
+  if (!sessionPatch || typeof sessionPatch !== 'object') return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.pending_clarification = pendingOrNull || null;
+  sessionPatch.state = state;
+}
+
+function buildChipsForQuestion(question, { stepIndex } = {}) {
+  const q = normalizeClarificationQuestionForPending(question);
+  if (!q) return [];
+  const qid = String(q.id || 'clarify').trim() || 'clarify';
+  const step = Number.isFinite(Number(stepIndex)) ? Math.max(1, Math.trunc(Number(stepIndex))) : 1;
+  return q.options.slice(0, 8).map((option) => ({
+    chip_id: `chip.clarify.${qid}.${option.trim().slice(0, 40).replace(/\s+/g, '_')}`,
+    label: option,
+    kind: 'quick_reply',
+    data: {
+      reply_text: option,
+      clarification_id: qid,
+      clarification_question_id: qid,
+      clarification_norm_id: String(q.norm_id || ''),
+      clarification_step: step,
+    },
+  }));
+}
+
+function advancePendingClarification(pending, selectedOption, selectedQuestionId) {
+  const nowMs = Date.now();
+  const option = typeof selectedOption === 'string' ? selectedOption.trim() : '';
+  const currentId =
+    (typeof selectedQuestionId === 'string' && selectedQuestionId.trim()) ||
+    (pending && pending.current && typeof pending.current.id === 'string' && pending.current.id.trim()) ||
+    'clarify';
+  const currentIdInfo = normalizePendingClarificationId(currentId);
+  const optionTrimmed = truncate(option || '(empty)', PENDING_CLARIFICATION_MAX_OPTION);
+  if (optionTrimmed.truncated) {
+    recordPendingClarificationTruncated({ field: 'option' });
+  }
+  const entry = {
+    question_id: currentIdInfo.id,
+    norm_id: currentIdInfo.norm_id,
+    option: optionTrimmed.value || '(empty)',
+    ts_ms: nowMs,
+  };
+
+  const history = Array.isArray(pending && pending.history) ? [...pending.history, entry] : [entry];
+  const queue = Array.isArray(pending && pending.queue) ? pending.queue : [];
+  const historyState = sanitizePendingClarification(
+    {
+      v: PENDING_CLARIFICATION_SCHEMA_V1,
+      flow_id: pending && typeof pending.flow_id === 'string' ? pending.flow_id : makeFlowId(),
+      created_at_ms: Number(pending && pending.created_at_ms) || nowMs,
+      resume_user_text: typeof pending?.resume_user_text === 'string' ? pending.resume_user_text : '(no message)',
+      ...(pending && typeof pending.resume_user_hash === 'string' ? { resume_user_hash: pending.resume_user_hash } : {}),
+      step_index: history.length,
+      ...(pending && pending.current ? { current: pending.current } : {}),
+      queue,
+      history,
+    },
+    { recordMetrics: true },
+  );
+  const boundedHistory = historyState ? historyState.pending.history : history.slice(-PENDING_CLARIFICATION_MAX_HISTORY);
+  if (!queue.length) {
+    return { nextPending: null, nextQuestion: null, history: boundedHistory };
+  }
+
+  const nextQuestion = normalizeClarificationQuestionForPending(queue[0], { recordTruncationMetrics: true });
+  if (!nextQuestion) return { nextPending: null, nextQuestion: null, history: boundedHistory };
+  const nextPendingState = sanitizePendingClarification(
+    {
+      v: PENDING_CLARIFICATION_SCHEMA_V1,
+      flow_id: pending && typeof pending.flow_id === 'string' ? pending.flow_id : makeFlowId(),
+      created_at_ms: Number(pending && pending.created_at_ms) || nowMs,
+      resume_user_text: typeof pending?.resume_user_text === 'string' ? pending.resume_user_text : '(no message)',
+      ...(pending && typeof pending.resume_user_hash === 'string' ? { resume_user_hash: pending.resume_user_hash } : {}),
+      step_index: boundedHistory.length,
+      current: { id: nextQuestion.id, norm_id: nextQuestion.norm_id },
+      queue: queue.slice(1),
+      history: boundedHistory,
+    },
+    { recordMetrics: true },
+  );
+  if (!nextPendingState || !nextPendingState.pending) {
+    return { nextPending: null, nextQuestion: null, history: boundedHistory };
+  }
+  return { nextPending: nextPendingState.pending, nextQuestion, history: nextPendingState.pending.history };
+}
+
+function compactClarificationHistory(history) {
+  const out = [];
+  const list = Array.isArray(history) ? history : [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const questionId = typeof item.question_id === 'string' ? item.question_id.trim() : '';
+    const option = typeof item.option === 'string' ? item.option.trim() : '';
+    if (!questionId || !option) continue;
+    out.push({
+      question_id: questionId.slice(0, 120),
+      option: option.slice(0, 120),
+    });
+    if (out.length >= 5) break;
+  }
+  return out;
 }
 
 function isUnsureToken(raw) {
@@ -10417,6 +10873,117 @@ function mountAuroraBffRoutes(app, { logger }) {
         // static state-machine map, but are still explicit recommendation interactions.
         recoInteractionAllowed;
 
+      let upstreamMessage = message;
+      let clarificationHistoryForUpstream = null;
+      let pendingClarificationPatchOverride = undefined;
+      let forceUpstreamAfterPendingAbandon = false;
+      const clarifyChipAction = isClarifyChipAction(parsed.data.action, { actionId, clarificationId });
+      const sessionStateRaw =
+        parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+          ? parsed.data.session.state
+          : null;
+      const hasRawPendingClarification =
+        sessionStateRaw &&
+        typeof sessionStateRaw === 'object' &&
+        !Array.isArray(sessionStateRaw) &&
+        Object.prototype.hasOwnProperty.call(sessionStateRaw, 'pending_clarification');
+      const pendingClarificationState = getPendingClarification(parsed.data.session);
+      const pendingClarification = pendingClarificationState ? pendingClarificationState.pending : null;
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        pendingClarificationState &&
+        pendingClarificationState.upgraded &&
+        pendingClarificationPatchOverride === undefined
+      ) {
+        pendingClarificationPatchOverride = pendingClarification;
+      }
+      if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED && hasRawPendingClarification && !pendingClarification) {
+        recordPendingClarificationAbandoned({ reason: 'error' });
+      }
+
+      let pendingClarificationExpired = false;
+      if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED && pendingClarification) {
+        const ageMs = Date.now() - Number(pendingClarification.created_at_ms || 0);
+        if (!Number.isFinite(ageMs) || ageMs > PENDING_CLARIFICATION_TTL_MS) {
+          pendingClarificationExpired = true;
+          pendingClarificationPatchOverride = null;
+          if (clarifyChipAction) forceUpstreamAfterPendingAbandon = true;
+          recordPendingClarificationAbandoned({ reason: 'ttl' });
+        }
+      }
+
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        pendingClarification &&
+        !pendingClarificationExpired &&
+        !clarifyChipAction &&
+        message
+      ) {
+        pendingClarificationPatchOverride = null;
+        recordPendingClarificationAbandoned({ reason: 'free_text' });
+      }
+
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        !pendingClarification &&
+        clarifyChipAction &&
+        hasPendingClarificationStateHint(parsed.data.action)
+      ) {
+        recordPendingClarificationAbandoned({ reason: 'missing_state' });
+      }
+
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        pendingClarification &&
+        !pendingClarificationExpired &&
+        clarifyChipAction
+      ) {
+        const selectedOption = actionReplyText || parseClarificationReplyFromActionId(actionId);
+        const selectedQuestionId =
+          extractClarificationQuestionIdFromAction(parsed.data.action) ||
+          (pendingClarification.current && pendingClarification.current.id) ||
+          (typeof clarificationId === 'string' ? clarificationId.trim() : '') ||
+          parseClarificationIdFromActionId(actionId);
+        const { nextPending, nextQuestion, history } = advancePendingClarification(
+          pendingClarification,
+          selectedOption,
+          selectedQuestionId,
+        );
+
+        if (nextPending && nextQuestion) {
+          const profileSummaryForPatch = summarizeProfileForContext(profile);
+          const sessionPatch = {};
+          emitPendingClarificationPatch(sessionPatch, nextPending);
+          if (profileSummaryForPatch) {
+            sessionPatch.profile = profileSummaryForPatch;
+            recordSessionPatchProfileEmitted({ changed: Boolean(appliedProfilePatch) });
+          }
+          const nextStepIndex = Array.isArray(nextPending.history) ? nextPending.history.length + 1 : 1;
+          const chips = buildChipsForQuestion(nextQuestion, { stepIndex: nextStepIndex });
+          recordAuroraChatSkipped({ reason: 'pending_clarification_step' });
+          recordPendingClarificationStep({ stepIndex: Array.isArray(nextPending.history) ? nextPending.history.length : 1 });
+
+          const questionText = String(nextQuestion.question || '').trim() ||
+            (ctx.lang === 'CN' ? '再补充一个信息就好。' : 'One more quick question.');
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(questionText),
+            suggested_chips: chips,
+            cards: [],
+            session_patch: sessionPatch,
+            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'pending_clarification_step' })],
+          });
+          return res.json(envelope);
+        }
+
+        pendingClarificationPatchOverride = null;
+        upstreamMessage = pendingClarification.resume_user_text || upstreamMessage || message;
+        if (AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED) {
+          clarificationHistoryForUpstream = compactClarificationHistory(history);
+        }
+        forceUpstreamAfterPendingAbandon = true;
+        recordPendingClarificationCompleted();
+      }
+
       // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
       let nextStateOverride = null;
 
@@ -10971,11 +11538,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
-      const budgetClarificationAction = isBudgetClarificationAction(actionId, clarificationId);
+      const budgetClarificationAction =
+        !forceUpstreamAfterPendingAbandon && isBudgetClarificationAction(actionId, clarificationId);
       const budgetChipCanContinueReco =
         budgetClarificationAction &&
         ctx.state === 'S6_BUDGET';
       const profileClarificationAction =
+        !forceUpstreamAfterPendingAbandon &&
         Boolean(appliedProfilePatch && Object.keys(appliedProfilePatch).length > 0) &&
         (String(actionId || '').trim().toLowerCase().startsWith('chip.clarify.') || Boolean(clarificationId));
       const budgetChipOutOfFlow =
@@ -11038,6 +11607,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
       const wantsProductRecommendations =
+        !forceUpstreamAfterPendingAbandon &&
         allowRecoCards &&
         !looksLikeIngredientScienceIntent(message, parsed.data.action) &&
         !looksLikeRoutineRequest(message, parsed.data.action) &&
@@ -11271,6 +11841,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let upstream = null;
       const profileSummary = summarizeProfileForContext(profile);
+      const historyForPrefix = Array.isArray(clarificationHistoryForUpstream) ? clarificationHistoryForUpstream : [];
+      if (historyForPrefix.length) {
+        recordClarificationHistorySent({ count: historyForPrefix.length });
+      }
       const prefix = buildContextPrefix({
         profile: profileSummary,
         recentLogs,
@@ -11280,8 +11854,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         trigger_source: ctx.trigger_source,
         action_id: parsed.data.action && typeof parsed.data.action === 'object' ? parsed.data.action.action_id : null,
         clarification_id: clarificationId,
+        ...(historyForPrefix.length ? { clarification_history: historyForPrefix } : {}),
       });
-      const query = `${prefix}${message || '(no message)'}`;
+      const query = `${prefix}${upstreamMessage || '(no message)'}`;
       const upstreamStartedAt = Date.now();
       try {
         upstream = await auroraChat({
@@ -11349,56 +11924,58 @@ function mountAuroraBffRoutes(app, { logger }) {
       const clarification = upstream && upstream.clarification && typeof upstream.clarification === 'object'
         ? upstream.clarification
         : null;
+      recordClarificationPresent({ present: Boolean(clarification) });
 
-	      const suggestedChips = [];
-	      if (clarification && Array.isArray(clarification.questions) && clarification.questions[0]) {
-	        const q0 = clarification.questions[0];
-	        const qidRaw = q0 && typeof q0.id === 'string' ? q0.id : 'clarify';
-	        const qid = qidRaw || 'clarify';
-	        const repeatedField = (() => {
-	          const field = normalizeClarificationField(qid);
-	          if (!field || !profileSummary || typeof profileSummary !== 'object') return null;
-	          const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
-	          if (field === 'skinType') {
-	            const v = norm(profileSummary.skinType);
-	            return v && v !== 'unknown' ? field : null;
-	          }
-	          if (field === 'sensitivity') {
-	            const v = norm(profileSummary.sensitivity);
-	            return v && v !== 'unknown' ? field : null;
-	          }
-	          if (field === 'barrierStatus') {
-	            const v = norm(profileSummary.barrierStatus);
-	            return v && v !== 'unknown' ? field : null;
-	          }
-	          if (field === 'goals') {
-	            const goals = Array.isArray(profileSummary.goals) ? profileSummary.goals : [];
-	            return goals.some((g) => norm(g)) ? field : null;
-	          }
-	          if (field === 'budgetTier') {
-	            const v = norm(profileSummary.budgetTier);
-	            return v && v !== 'unknown' ? field : null;
-	          }
-	          return null;
-	        })();
-	        if (repeatedField) recordRepeatedClarifyField({ field: repeatedField });
-	        const options = q0 && Array.isArray(q0.options) ? q0.options : [];
-	        for (const opt of options.slice(0, 8)) {
-	          if (typeof opt !== 'string' || !opt.trim()) continue;
-	          suggestedChips.push({
-	            chip_id: `chip.clarify.${qid}.${opt.trim().slice(0, 40).replace(/\s+/g, '_')}`,
-	            label: opt.trim(),
-	            kind: 'quick_reply',
-	            data: { reply_text: opt.trim(), clarification_id: qid },
-	          });
-	        }
-	      }
+      const clarificationQuestions = filterClarificationQuestionsForChips({
+        clarification,
+        profileSummary,
+        filterKnown: AURORA_CHAT_CLARIFICATION_FILTER_KNOWN_ENABLED,
+      });
+
+      let pendingClarificationFromUpstream = null;
+      const suggestedChips = [];
+      if (clarificationQuestions[0]) {
+        const q0 = clarificationQuestions[0];
+        const qid = String(q0.id || 'clarify').trim() || 'clarify';
+        const repeatedField = (() => {
+          const field = normalizeClarificationField(qid);
+          return hasKnownClarificationFieldValue(profileSummary, field) ? field : null;
+        })();
+        if (repeatedField) recordRepeatedClarifyField({ field: repeatedField });
+
+        if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED && clarificationQuestions.length > 1) {
+          const resumeUserText = String(upstreamMessage || message || '(no message)').trim() || '(no message)';
+          const seededPending = sanitizePendingClarification(
+            {
+              v: PENDING_CLARIFICATION_SCHEMA_V1,
+              flow_id: makeFlowId(),
+              created_at_ms: Date.now(),
+              resume_user_text: resumeUserText,
+              step_index: 0,
+              current: { id: qid },
+              queue: clarificationQuestions.slice(1).map((q) => ({
+                id: String(q.id || 'clarify'),
+                question: String(q.question || ''),
+                options: Array.isArray(q.options) ? q.options : [],
+              })),
+              history: [],
+            },
+            { recordMetrics: true },
+          );
+          if (seededPending && seededPending.pending && seededPending.pending.queue.length > 0) {
+            pendingClarificationFromUpstream = seededPending.pending;
+            recordClarificationFlowV2Started();
+          }
+        }
+        suggestedChips.push(...buildChipsForQuestion(q0, { stepIndex: 1 }));
+      }
 
       const contextRaw = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
       const derivedCards = [];
       let heatmapImpressionEvent = null;
+      const responseIntentMessage = upstreamMessage || message;
       const envStressActionRequested = typeof actionId === 'string' && /env[_-]?stress|environment[_-]?stress|weather|itinerary/i.test(actionId);
-      const looksEnv = looksLikeWeatherOrEnvironmentQuestion(message);
+      const looksEnv = looksLikeWeatherOrEnvironmentQuestion(responseIntentMessage);
       const wantsEnvStressCard = Boolean(debugUpstream) || envStressActionRequested || looksEnv;
 
       const isEnvStressCard = (card) => {
@@ -11424,7 +12001,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         envStressUi = buildEnvStressUiModelFromUpstream(envStressRaw, { language: ctx.lang });
       }
       if (!envStressUi && (envStressActionRequested || looksEnv)) {
-        envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
+        envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message: responseIntentMessage, language: ctx.lang });
       }
       if (envStressUi && wantsEnvStressCard) {
         derivedCards.push({
@@ -11442,7 +12019,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null;
         const wantsConflictCards =
           Boolean(debugUpstream) ||
-          looksLikeCompatibilityOrConflictQuestion(message) ||
+          looksLikeCompatibilityOrConflictQuestion(responseIntentMessage) ||
           (typeof actionId === 'string' && /(routine|compat|conflict|heatmap)/i.test(actionId)) ||
           (conflictDetector && conflictDetector.safe === false) ||
           (Array.isArray(conflictDetector && conflictDetector.conflicts) && conflictDetector.conflicts.length > 0);
@@ -11759,7 +12336,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
 
       if (
-        looksLikeSuitabilityRequest(message) &&
+        looksLikeSuitabilityRequest(responseIntentMessage) &&
         anchorFromContext &&
         !derivedCards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis') &&
         !cards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis')
@@ -11778,7 +12355,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Fit-check fallback: if user asks suitability but upstream did not provide a renderable
       // `product_analysis` card, run a dedicated deep-scan to guarantee actionable output.
       const wantsSuitabilityFallback =
-        looksLikeSuitabilityRequest(message);
+        looksLikeSuitabilityRequest(responseIntentMessage);
 
       const hasProductAnalysisCard = (arr) =>
         Array.isArray(arr) &&
@@ -11794,7 +12371,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       ) {
         const productInput =
           anchorProductUrl ||
-          extractProductInputFromFitCheckText(message) ||
+          extractProductInputFromFitCheckText(responseIntentMessage) ||
           '';
 
         if (productInput) {
@@ -12038,7 +12615,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const routeHintFromCards = inferRouteFromCards(routeCards);
       const routeHintFromMessage =
         !routeHintFromCards
-          ? inferRouteFromMessageIntent(message, { allowRecoCards: allowRecs })
+          ? inferRouteFromMessageIntent(responseIntentMessage, { allowRecoCards: allowRecs })
           : null;
       const routeHint = resolveRouteHint(routeHintFromCards, routeHintFromMessage);
       if (routeHint && routeHint.route) {
@@ -12070,6 +12647,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (shouldEchoProfile) {
         sessionPatch.profile = profileSummary;
         recordSessionPatchProfileEmitted({ changed: Boolean(appliedProfilePatch) });
+      }
+      if (pendingClarificationPatchOverride !== undefined) {
+        emitPendingClarificationPatch(sessionPatch, pendingClarificationPatchOverride);
+      } else if (pendingClarificationFromUpstream) {
+        emitPendingClarificationPatch(sessionPatch, pendingClarificationFromUpstream);
       }
 
       const envelope = buildEnvelope(ctx, {

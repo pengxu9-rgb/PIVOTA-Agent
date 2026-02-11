@@ -122,6 +122,7 @@ If no local short-circuit triggers:
 
 - BFF builds a text prefix with `profile`, `recent_logs`, and `meta`
 - calls `auroraChat({ allow_recommendations: allowRecoCards, ... })`
+- clarification payload key is `clarification` (not `clarification_request`); when present, BFF turns the first remaining valid question into `suggested_chips`
 - strips recommendation cards when not allowed
 - derives additional cards from upstream `context`:
   - `env_stress` (from context or local fallback)
@@ -131,6 +132,38 @@ If no local short-circuit triggers:
   - UI hides it if `external_verification.citations` is empty
 
 Source: `pivota-agent-backend/src/auroraBff/routes.js:10860+` and `routes.js:11000+`.
+
+### 1.7 Clarification Flow V2 session state (`pending_clarification`)
+
+When `AURORA_CHAT_CLARIFICATION_FLOW_V2=true` and upstream returns multiple clarification questions, BFF stores
+`session_patch.state.pending_clarification` in canonical v1 shape:
+
+```json
+{
+  "v": 1,
+  "flow_id": "pc_ab12cd34ef56",
+  "created_at_ms": 1739232000000,
+  "resume_user_text": "original user message (truncated to <=800 chars)",
+  "resume_user_hash": "optional hash",
+  "step_index": 0,
+  "current": { "id": "skin_type", "norm_id": "skinType" },
+  "queue": [
+    {
+      "id": "goals",
+      "norm_id": "goals",
+      "question": "What is your top goal now?",
+      "options": ["Acne control", "Barrier repair", "Brightening"]
+    }
+  ],
+  "history": []
+}
+```
+
+Notes:
+
+- BFF still accepts legacy pending state (no `v/flow_id/step_index/norm_id`) and upgrades it in-place on next turn.
+- Payload is bounded to control cost and drift:
+  - `resume_user_text<=800`, `queue<=5`, `question<=200`, `options<=8`, `option<=80`, `history<=6`.
 
 ---
 
