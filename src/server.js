@@ -4236,6 +4236,8 @@ function pickResolveOptions(raw) {
     ...(o.upstreamRetries !== undefined ? { upstream_retries: o.upstreamRetries } : {}),
     ...(o.upstream_retry_backoff_ms !== undefined ? { upstream_retry_backoff_ms: o.upstream_retry_backoff_ms } : {}),
     ...(o.upstreamRetryBackoffMs !== undefined ? { upstream_retry_backoff_ms: o.upstreamRetryBackoffMs } : {}),
+    ...(o.scoring_version !== undefined ? { scoring_version: o.scoring_version } : {}),
+    ...(o.scoringVersion !== undefined ? { scoring_version: o.scoringVersion } : {}),
   };
 }
 
