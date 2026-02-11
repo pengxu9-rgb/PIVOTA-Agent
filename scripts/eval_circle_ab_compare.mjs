@@ -352,6 +352,19 @@ function metricDelta(offValue, onValue) {
   return round3(Number(onValue) - Number(offValue));
 }
 
+function pickFailReason(row) {
+  if (!row || typeof row !== 'object') return null;
+  if (row.fail_reason != null && String(row.fail_reason).trim()) return String(row.fail_reason);
+  if (row.reason != null && String(row.reason).trim()) return String(row.reason);
+  return null;
+}
+
+function numberOrZero(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return n;
+}
+
 function joinSampleRows({ offRows, onRows }) {
   const offMap = new Map();
   const onMap = new Map();
@@ -380,6 +393,12 @@ function joinSampleRows({ offRows, onRows }) {
 
     const offMetrics = moduleStatsFromSample(off);
     const onMetrics = moduleStatsFromSample(on);
+    const offGtStats = off && off.gt_stats && typeof off.gt_stats === 'object' ? off.gt_stats : {};
+    const onGtStats = on && on.gt_stats && typeof on.gt_stats === 'object' ? on.gt_stats : {};
+    const offPredStats = off && off.pred_stats && typeof off.pred_stats === 'object' ? off.pred_stats : {};
+    const onPredStats = on && on.pred_stats && typeof on.pred_stats === 'object' ? on.pred_stats : {};
+    const offFailReason = pickFailReason(off);
+    const onFailReason = pickFailReason(on);
 
     joined.push({
       dataset,
@@ -388,10 +407,16 @@ function joinSampleRows({ offRows, onRows }) {
       status_on: on && on.ok ? 'ok' : 'failed',
       weak_label_only_off: Boolean(off && off.weak_label_only),
       weak_label_only_on: Boolean(on && on.weak_label_only),
-      reason_off: off && off.reason ? String(off.reason) : null,
-      reason_on: on && on.reason ? String(on.reason) : null,
+      fail_reason_off: offFailReason,
+      fail_reason_on: onFailReason,
       skinmask_reason_off: off && off.skinmask_reason ? String(off.skinmask_reason) : null,
       skinmask_reason_on: on && on.skinmask_reason ? String(on.skinmask_reason) : null,
+      gt_skin_pixels_off: numberOrZero(offGtStats.skin_pixels),
+      gt_skin_pixels_on: numberOrZero(onGtStats.skin_pixels),
+      pred_module_count_off: numberOrZero(offPredStats.module_count),
+      pred_module_count_on: numberOrZero(onPredStats.module_count),
+      pred_skin_pixels_est_off: numberOrZero(offPredStats.pred_skin_pixels_est),
+      pred_skin_pixels_est_on: numberOrZero(onPredStats.pred_skin_pixels_est),
       off: offMetrics,
       on: onMetrics,
       delta: {
@@ -428,6 +453,14 @@ function regressionTopRows(joinedRows, limit = 50) {
       on_leakage: row.on.leakage_mean,
       off_miou: row.off.module_miou_mean,
       on_miou: row.on.module_miou_mean,
+      fail_reason_off: row.fail_reason_off || null,
+      fail_reason_on: row.fail_reason_on || null,
+      gt_skin_pixels_off: numberOrZero(row.gt_skin_pixels_off),
+      gt_skin_pixels_on: numberOrZero(row.gt_skin_pixels_on),
+      pred_module_count_off: numberOrZero(row.pred_module_count_off),
+      pred_module_count_on: numberOrZero(row.pred_module_count_on),
+      pred_skin_pixels_est_off: numberOrZero(row.pred_skin_pixels_est_off),
+      pred_skin_pixels_est_on: numberOrZero(row.pred_skin_pixels_est_on),
       score: round3(leakageUp + miouDown),
     });
   }
@@ -441,6 +474,17 @@ function regressionTopRows(joinedRows, limit = 50) {
   });
 
   return regressions.slice(0, Math.max(0, Math.min(limit, regressions.length)));
+}
+
+function failReasonRate(rows, reasonToken) {
+  const list = Array.isArray(rows) ? rows : [];
+  const total = list.length;
+  if (!total) return 0;
+  const count = list.reduce((acc, row) => {
+    const token = pickFailReason(row);
+    return acc + (token === reasonToken ? 1 : 0);
+  }, 0);
+  return round3(count / total);
 }
 
 function compareModuleCsv(offRows, onRows) {
@@ -522,15 +566,24 @@ function writeJsonl(filePath, rows) {
   fs.writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
 }
 
-function overallMetricTable(basePayload, onPayload) {
+function overallMetricTable(basePayload, onPayload, offRows, onRows) {
   const metrics = [
     { label: 'module_mIoU', field: 'module_miou_mean' },
     { label: 'leakage_mean', field: 'leakage_mean' },
-    { label: 'roi_too_small_rate', field: 'skin_roi_too_small_rate' },
-    { label: 'face_detect_fail_rate', field: 'face_detect_fail_rate' },
+    { label: 'PRED_MODULES_MISSING_rate', custom: true },
   ];
 
-  return metrics.map(({ label, field }) => {
+  return metrics.map(({ label, field, custom }) => {
+    if (custom) {
+      const offValue = failReasonRate(offRows, 'PRED_MODULES_MISSING');
+      const onValue = failReasonRate(onRows, 'PRED_MODULES_MISSING');
+      return {
+        metric: label,
+        off: offValue,
+        on: onValue,
+        delta: metricDelta(offValue, onValue),
+      };
+    }
     const offValue = Number(basePayload && basePayload[field]);
     const onValue = Number(onPayload && onPayload[field]);
     return {
@@ -552,6 +605,7 @@ function renderMd({
   mdPath,
   csvPath,
   jsonlPath,
+  showTopRegressions,
 }) {
   const lines = [];
   lines.push('# Eval Circle AB Compare');
@@ -572,20 +626,27 @@ function renderMd({
   }
   lines.push('');
 
-  lines.push('## Top 50 Regressions');
-  lines.push('');
-  lines.push('| rank | dataset | sample_hash | leakage_off | leakage_on | leakage_delta | miou_off | miou_on | miou_delta | roi_delta |');
-  lines.push('|---:|---|---|---:|---:|---:|---:|---:|---:|---:|');
-  if (topRows.length) {
-    topRows.forEach((row, index) => {
-      lines.push(
-        `| ${index + 1} | ${row.dataset} | ${row.sample_hash} | ${row.off_leakage} | ${row.on_leakage} | ${row.leakage_delta} | ${row.off_miou} | ${row.on_miou} | ${row.miou_delta} | ${row.roi_delta ?? 'n/a'} |`,
-      );
-    });
+  if (showTopRegressions) {
+    lines.push('## Top 20 Regression Samples');
+    lines.push('');
+    lines.push('| rank | dataset | sample_hash | fail_reason_off | fail_reason_on | gt_skin_pixels_off | gt_skin_pixels_on | pred_module_count_off | pred_module_count_on | pred_skin_pixels_est_off | pred_skin_pixels_est_on | leakage_delta | miou_delta |');
+    lines.push('|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|');
+    if (topRows.length) {
+      topRows.forEach((row, index) => {
+        lines.push(
+          `| ${index + 1} | ${row.dataset} | ${row.sample_hash} | ${row.fail_reason_off || '-'} | ${row.fail_reason_on || '-'} | ${row.gt_skin_pixels_off} | ${row.gt_skin_pixels_on} | ${row.pred_module_count_off} | ${row.pred_module_count_on} | ${row.pred_skin_pixels_est_off} | ${row.pred_skin_pixels_est_on} | ${row.leakage_delta} | ${row.miou_delta} |`,
+        );
+      });
+    } else {
+      lines.push('| 1 | n/a | n/a | - | - | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |');
+    }
+    lines.push('');
   } else {
-    lines.push('| 1 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |');
+    lines.push('## Top 20 Regression Samples');
+    lines.push('');
+    lines.push('- Skipped (enabled only when `skinmask_on.leakage_mean > 0.3`).');
+    lines.push('');
   }
-  lines.push('');
 
   lines.push('## Artifacts');
   lines.push('');
@@ -641,8 +702,9 @@ async function main() {
 
   const joinedRows = joinSampleRows({ offRows, onRows });
   const moduleCompareRows = compareModuleCsv(offCsvRows, onCsvRows);
-  const topRows = regressionTopRows(joinedRows, 50);
-  const overallRows = overallMetricTable(offPayload, onPayload);
+  const showTopRegressions = Number(onPayload && onPayload.leakage_mean) > 0.3;
+  const topRows = regressionTopRows(joinedRows, showTopRegressions ? 20 : 0);
+  const overallRows = overallMetricTable(offPayload, onPayload, offRows, onRows);
 
   const mdPath = path.join(reportDir, `eval_circle_ab_${runKey}.md`);
   const csvPath = path.join(reportDir, `eval_circle_ab_${runKey}.csv`);
@@ -658,6 +720,7 @@ async function main() {
     mdPath,
     csvPath,
     jsonlPath,
+    showTopRegressions,
   });
 
   await fsp.writeFile(mdPath, md, 'utf8');
