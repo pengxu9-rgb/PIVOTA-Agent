@@ -414,7 +414,7 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
   );
 });
 
-test('UUID-only sku keeps product_ref hint and avoids duplicated brand in resolve query', async () => {
+test('UUID-only sku does not send product_ref hint and avoids duplicated brand in resolve query', async () => {
   await withEnv(
     {
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
@@ -452,7 +452,7 @@ test('UUID-only sku keeps product_ref hint and avoids duplicated brand in resolv
 
         assert.ok(capturedBody);
         assert.equal(capturedBody.query, 'The Ordinary Niacinamide 10% + Zinc 1%');
-        assert.equal(capturedBody?.hints?.product_ref?.product_id, 'c231aaaa-8b00-4145-a704-684931049303');
+        assert.equal(capturedBody?.hints?.product_ref, undefined);
         const aliases = Array.isArray(capturedBody?.hints?.aliases) ? capturedBody.hints.aliases : [];
         assert.equal(aliases.some((v) => String(v).toLowerCase().includes('the ordinary the ordinary')), false);
         assert.equal(enriched?.metadata?.pdp_open_path, 'external');
