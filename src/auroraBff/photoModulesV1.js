@@ -27,6 +27,47 @@ const MODULE_BOXES = Object.freeze({
   under_eye_left: { x: 0.18, y: 0.24, w: 0.24, h: 0.13 },
   under_eye_right: { x: 0.58, y: 0.24, w: 0.24, h: 0.13 },
 });
+const FACE_OVAL_POLYGON = Object.freeze({
+  points: [
+    { x: 0.5, y: 0.06 },
+    { x: 0.64, y: 0.1 },
+    { x: 0.75, y: 0.2 },
+    { x: 0.82, y: 0.35 },
+    { x: 0.84, y: 0.5 },
+    { x: 0.8, y: 0.66 },
+    { x: 0.72, y: 0.8 },
+    { x: 0.62, y: 0.9 },
+    { x: 0.5, y: 0.95 },
+    { x: 0.38, y: 0.9 },
+    { x: 0.28, y: 0.8 },
+    { x: 0.2, y: 0.66 },
+    { x: 0.16, y: 0.5 },
+    { x: 0.18, y: 0.35 },
+    { x: 0.25, y: 0.2 },
+    { x: 0.36, y: 0.1 },
+  ],
+  closed: true,
+});
+
+function parseEnvBoolean(value, fallback = false) {
+  if (value == null) return fallback;
+  const token = String(value).trim().toLowerCase();
+  if (!token) return fallback;
+  if (['1', 'true', 'yes', 'on', 'y'].includes(token)) return true;
+  if (['0', 'false', 'no', 'off', 'n'].includes(token)) return false;
+  return fallback;
+}
+
+function parseEnvNumber(value, fallback, min = -Infinity, max = Infinity) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+const FACE_OVAL_CLIP_ENABLED = parseEnvBoolean(process.env.DIAG_FACE_OVAL_CLIP, true);
+const MODULE_SHRINK_CHIN = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHIN, 0.8, 0.5, 1);
+const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOREHEAD, 0.88, 0.5, 1);
+const MODULE_SHRINK_CHEEK = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHEEK, 0.9, 0.5, 1);
 
 const SUPPORTED_ISSUES = new Set(['redness', 'shine', 'texture', 'tone', 'acne']);
 const MODULE_SKIN_INTERSECTION_MIN_PIXELS = Math.max(
@@ -1166,6 +1207,32 @@ function maskBoundingBox(mask, gridSize) {
   return sanitized.ok ? sanitized.bbox : null;
 }
 
+function moduleShrinkScale(moduleId) {
+  const token = String(moduleId || '').trim().toLowerCase();
+  if (token === 'chin') return MODULE_SHRINK_CHIN;
+  if (token === 'forehead') return MODULE_SHRINK_FOREHEAD;
+  if (token === 'left_cheek' || token === 'right_cheek') return MODULE_SHRINK_CHEEK;
+  return 1;
+}
+
+function shrinkModuleBox(boxRaw, scale) {
+  const sanitized = sanitizeBBox(boxRaw);
+  if (!sanitized.ok || !sanitized.bbox) return null;
+  if (!Number.isFinite(Number(scale)) || Number(scale) >= 0.999) return sanitized.bbox;
+  const box = sanitized.bbox;
+  const factor = Math.max(0.5, Math.min(1, Number(scale)));
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  const shrunkRaw = {
+    x: cx - (box.w * factor) / 2,
+    y: cy - (box.h * factor) / 2,
+    w: box.w * factor,
+    h: box.h * factor,
+  };
+  const shrunk = sanitizeBBox(shrunkRaw);
+  return shrunk.ok ? shrunk.bbox : sanitized.bbox;
+}
+
 function attachModuleMasks({
   modules,
   regions,
@@ -1177,6 +1244,13 @@ function attachModuleMasks({
   const safeRegions = Array.isArray(regions) ? regions : [];
   const activeModuleBoxes = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
   const moduleIds = Object.keys(activeModuleBoxes);
+  const effectiveModuleBoxes = {};
+  for (const moduleId of moduleIds) {
+    const baseBox = activeModuleBoxes[moduleId];
+    const scale = moduleShrinkScale(moduleId);
+    const adjusted = shrinkModuleBox(baseBox, scale);
+    if (adjusted) effectiveModuleBoxes[moduleId] = adjusted;
+  }
   const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
 
   const regionMaskMap = new Map();
@@ -1187,6 +1261,7 @@ function attachModuleMasks({
   }
 
   const skinMaskNorm = decodeSkinMaskToGrid(skinMask, targetGrid);
+  const faceOvalMask = FACE_OVAL_CLIP_ENABLED ? polygonNormToMask(FACE_OVAL_POLYGON, targetGrid, targetGrid) : null;
   const skinMaskPositiveRatio = skinMask && Number.isFinite(Number(skinMask.positive_ratio))
     ? Number(skinMask.positive_ratio)
     : skinMaskNorm
@@ -1203,6 +1278,8 @@ function attachModuleMasks({
     const modulePayload = moduleRow && typeof moduleRow === 'object' ? { ...moduleRow } : {};
     const moduleId = String(modulePayload.module_id || '').trim();
     if (!moduleId || !moduleIds.includes(moduleId)) return modulePayload;
+    const moduleBaseBox = effectiveModuleBoxes[moduleId] || activeModuleBoxes[moduleId] || MODULE_BOXES[moduleId];
+    const modulePolygonMask = moduleBaseBox ? bboxNormToMask(moduleBaseBox, targetGrid, targetGrid) : createMask(targetGrid, targetGrid, 0);
 
     const moduleMask = createMask(targetGrid, targetGrid, 0);
     const evidenceIds = collectEvidenceRegionIds(modulePayload);
@@ -1211,23 +1288,32 @@ function attachModuleMasks({
       if (regionMask) orMaskInto(moduleMask, regionMask);
     }
 
-    if (!countOnes(moduleMask) && modulePayload.box && typeof modulePayload.box === 'object') {
-      const fallbackMask = bboxNormToMask(modulePayload.box, targetGrid, targetGrid);
-      orMaskInto(moduleMask, fallbackMask);
-    }
-
-    if (!countOnes(moduleMask)) {
-      const fallbackBox = activeModuleBoxes[moduleId] || MODULE_BOXES[moduleId];
-      if (fallbackBox) {
-        const fallbackMask = bboxNormToMask(fallbackBox, targetGrid, targetGrid);
-        orMaskInto(moduleMask, fallbackMask);
+    if (countOnes(moduleMask) && countOnes(modulePolygonMask)) {
+      const constrained = andMasks(moduleMask, modulePolygonMask);
+      if (countOnes(constrained)) {
+        moduleMask.set(constrained);
+      } else {
+        moduleMask.set(modulePolygonMask);
       }
     }
 
+    if (!countOnes(moduleMask) && countOnes(modulePolygonMask)) {
+      moduleMask.set(modulePolygonMask);
+    }
+
     let finalMask = moduleMask;
+    if (faceOvalMask) {
+      const clippedMask = andMasks(finalMask, faceOvalMask);
+      if (countOnes(clippedMask)) {
+        finalMask = clippedMask;
+      } else if (countOnes(modulePolygonMask)) {
+        finalMask = andMasks(modulePolygonMask, faceOvalMask);
+      }
+    }
+
     if (skinMaskNorm && skinMaskReliable) {
-      const intersected = andMasks(moduleMask, skinMaskNorm);
-      const modulePixels = countOnes(moduleMask);
+      const intersected = andMasks(finalMask, skinMaskNorm);
+      const modulePixels = countOnes(finalMask);
       const intersectedPixels = countOnes(intersected);
       const keepThreshold = Math.max(
         MODULE_SKIN_INTERSECTION_MIN_PIXELS,
@@ -1241,7 +1327,7 @@ function attachModuleMasks({
       }
     }
 
-    const box = maskBoundingBox(finalMask, targetGrid) || modulePayload.box || activeModuleBoxes[moduleId] || null;
+    const box = maskBoundingBox(finalMask, targetGrid) || modulePayload.box || moduleBaseBox || null;
     return {
       ...modulePayload,
       ...(box ? { box } : {}),

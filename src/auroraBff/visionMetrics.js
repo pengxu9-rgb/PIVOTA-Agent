@@ -62,6 +62,18 @@ const skinmaskInferLatency = {
 let clarificationIdNormalizedEmptyCount = 0;
 const catalogAvailabilityShortCircuitCounter = new Map();
 const repeatedClarifyFieldCounter = new Map();
+const clarificationPresentCounter = new Map();
+const clarificationQuestionFilteredCounter = new Map();
+let clarificationAllQuestionsFilteredCount = 0;
+const clarificationSchemaInvalidCounter = new Map();
+let clarificationFlowV2StartedCount = 0;
+const pendingClarificationStepCounter = new Map();
+let pendingClarificationCompletedCount = 0;
+const pendingClarificationAbandonedCounter = new Map();
+const clarificationHistorySentCounter = new Map();
+const auroraChatSkippedCounter = new Map();
+const pendingClarificationUpgradedCounter = new Map();
+const pendingClarificationTruncatedCounter = new Map();
 const profileContextMissingCounter = new Map();
 const sessionPatchProfileEmittedCounter = new Map();
 const upstreamCallsCounter = new Map();
@@ -206,6 +218,57 @@ function normalizeClarifyField(field) {
   return cleanMetricToken(field, 'unknown');
 }
 
+function normalizeClarificationPresentFlag(present) {
+  return present ? 'true' : 'false';
+}
+
+function normalizeClarificationSchemaInvalidReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizePendingClarificationStepIndex(stepIndex) {
+  const n = Number(stepIndex);
+  if (!Number.isFinite(n) || n <= 0) return '1';
+  return String(Math.max(1, Math.min(32, Math.trunc(n))));
+}
+
+function normalizePendingClarificationAbandonReason(reason) {
+  const token = cleanMetricToken(reason, 'error');
+  if (token === 'free_text' || token === 'ttl' || token === 'missing_state' || token === 'error') return token;
+  return 'error';
+}
+
+function normalizeClarificationHistoryCount(count) {
+  const n = Number(count);
+  if (!Number.isFinite(n) || n < 0) return '0';
+  return String(Math.max(0, Math.min(5, Math.trunc(n))));
+}
+
+function normalizeAuroraChatSkippedReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizePendingClarificationUpgradeFrom(from) {
+  const token = cleanMetricToken(from, 'legacy');
+  if (token === 'legacy') return token;
+  return 'legacy';
+}
+
+function normalizePendingClarificationTruncatedField(field) {
+  const token = cleanMetricToken(field, 'unknown');
+  if (
+    token === 'resume_user_text' ||
+    token === 'question' ||
+    token === 'option' ||
+    token === 'queue' ||
+    token === 'options' ||
+    token === 'history'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
 function normalizeProfileContextSide(side) {
   const token = cleanMetricToken(side, 'unknown');
   if (token === 'frontend' || token === 'backend') return token;
@@ -337,6 +400,90 @@ function recordCatalogAvailabilityShortCircuit({ brandId, reason } = {}) {
 
 function recordRepeatedClarifyField({ field } = {}) {
   incCounter(repeatedClarifyFieldCounter, { field: normalizeClarifyField(field) }, 1);
+}
+
+function recordClarificationPresent({ present } = {}) {
+  incCounter(
+    clarificationPresentCounter,
+    { present: normalizeClarificationPresentFlag(Boolean(present)) },
+    1,
+  );
+}
+
+function recordClarificationQuestionFiltered({ field } = {}) {
+  incCounter(
+    clarificationQuestionFilteredCounter,
+    { field: normalizeClarifyField(field) },
+    1,
+  );
+}
+
+function recordClarificationAllQuestionsFiltered() {
+  clarificationAllQuestionsFilteredCount += 1;
+}
+
+function recordClarificationSchemaInvalid({ reason } = {}) {
+  incCounter(
+    clarificationSchemaInvalidCounter,
+    { reason: normalizeClarificationSchemaInvalidReason(reason) },
+    1,
+  );
+}
+
+function recordClarificationFlowV2Started() {
+  clarificationFlowV2StartedCount += 1;
+}
+
+function recordPendingClarificationStep({ stepIndex } = {}) {
+  incCounter(
+    pendingClarificationStepCounter,
+    { step_index: normalizePendingClarificationStepIndex(stepIndex) },
+    1,
+  );
+}
+
+function recordPendingClarificationCompleted() {
+  pendingClarificationCompletedCount += 1;
+}
+
+function recordPendingClarificationAbandoned({ reason } = {}) {
+  incCounter(
+    pendingClarificationAbandonedCounter,
+    { reason: normalizePendingClarificationAbandonReason(reason) },
+    1,
+  );
+}
+
+function recordClarificationHistorySent({ count } = {}) {
+  incCounter(
+    clarificationHistorySentCounter,
+    { count: normalizeClarificationHistoryCount(count) },
+    1,
+  );
+}
+
+function recordAuroraChatSkipped({ reason } = {}) {
+  incCounter(
+    auroraChatSkippedCounter,
+    { reason: normalizeAuroraChatSkippedReason(reason) },
+    1,
+  );
+}
+
+function recordPendingClarificationUpgraded({ from } = {}) {
+  incCounter(
+    pendingClarificationUpgradedCounter,
+    { from: normalizePendingClarificationUpgradeFrom(from) },
+    1,
+  );
+}
+
+function recordPendingClarificationTruncated({ field } = {}) {
+  incCounter(
+    pendingClarificationTruncatedCounter,
+    { field: normalizePendingClarificationTruncatedField(field) },
+    1,
+  );
 }
 
 function recordProfileContextMissing({ side } = {}) {
@@ -910,6 +1057,54 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE repeated_clarify_field_total counter');
   renderCounter(lines, 'repeated_clarify_field_total', repeatedClarifyFieldCounter);
 
+  lines.push('# HELP clarification_present_total Total number of chat turns where upstream clarification object is present=true|false.');
+  lines.push('# TYPE clarification_present_total counter');
+  renderCounter(lines, 'clarification_present_total', clarificationPresentCounter);
+
+  lines.push('# HELP clarification_question_filtered_total Total number of clarification questions filtered because profile field is already known.');
+  lines.push('# TYPE clarification_question_filtered_total counter');
+  renderCounter(lines, 'clarification_question_filtered_total', clarificationQuestionFilteredCounter);
+
+  lines.push('# HELP clarification_all_questions_filtered_total Total number of turns where all clarification questions were filtered out.');
+  lines.push('# TYPE clarification_all_questions_filtered_total counter');
+  lines.push(`clarification_all_questions_filtered_total ${clarificationAllQuestionsFilteredCount}`);
+
+  lines.push('# HELP clarification_schema_invalid_total Total number of clarification payload validation failures by reason.');
+  lines.push('# TYPE clarification_schema_invalid_total counter');
+  renderCounter(lines, 'clarification_schema_invalid_total', clarificationSchemaInvalidCounter);
+
+  lines.push('# HELP clarification_flow_v2_started_total Total number of turns that started pending_clarification Flow V2.');
+  lines.push('# TYPE clarification_flow_v2_started_total counter');
+  lines.push(`clarification_flow_v2_started_total ${clarificationFlowV2StartedCount}`);
+
+  lines.push('# HELP pending_clarification_step_total Total number of pending clarification local-step responses by step index.');
+  lines.push('# TYPE pending_clarification_step_total counter');
+  renderCounter(lines, 'pending_clarification_step_total', pendingClarificationStepCounter);
+
+  lines.push('# HELP pending_clarification_completed_total Total number of completed pending clarification flows.');
+  lines.push('# TYPE pending_clarification_completed_total counter');
+  lines.push(`pending_clarification_completed_total ${pendingClarificationCompletedCount}`);
+
+  lines.push('# HELP pending_clarification_abandoned_total Total number of abandoned pending clarification flows by reason.');
+  lines.push('# TYPE pending_clarification_abandoned_total counter');
+  renderCounter(lines, 'pending_clarification_abandoned_total', pendingClarificationAbandonedCounter);
+
+  lines.push('# HELP clarification_history_sent_total Total number of upstream calls that included clarification_history context.');
+  lines.push('# TYPE clarification_history_sent_total counter');
+  renderCounter(lines, 'clarification_history_sent_total', clarificationHistorySentCounter);
+
+  lines.push('# HELP aurora_chat_skipped_total Total number of chat turns that skipped upstream by reason.');
+  lines.push('# TYPE aurora_chat_skipped_total counter');
+  renderCounter(lines, 'aurora_chat_skipped_total', auroraChatSkippedCounter);
+
+  lines.push('# HELP pending_clarification_upgraded_total Total number of pending_clarification payloads upgraded from legacy shape.');
+  lines.push('# TYPE pending_clarification_upgraded_total counter');
+  renderCounter(lines, 'pending_clarification_upgraded_total', pendingClarificationUpgradedCounter);
+
+  lines.push('# HELP pending_clarification_truncated_total Total number of pending_clarification truncation/capping events by field.');
+  lines.push('# TYPE pending_clarification_truncated_total counter');
+  renderCounter(lines, 'pending_clarification_truncated_total', pendingClarificationTruncatedCounter);
+
   lines.push('# HELP profile_context_missing_total Total number of requests missing profile context from frontend session or backend storage.');
   lines.push('# TYPE profile_context_missing_total counter');
   renderCounter(lines, 'profile_context_missing_total', profileContextMissingCounter);
@@ -1026,6 +1221,18 @@ function resetVisionMetrics() {
   clarificationIdNormalizedEmptyCount = 0;
   catalogAvailabilityShortCircuitCounter.clear();
   repeatedClarifyFieldCounter.clear();
+  clarificationPresentCounter.clear();
+  clarificationQuestionFilteredCounter.clear();
+  clarificationAllQuestionsFilteredCount = 0;
+  clarificationSchemaInvalidCounter.clear();
+  clarificationFlowV2StartedCount = 0;
+  pendingClarificationStepCounter.clear();
+  pendingClarificationCompletedCount = 0;
+  pendingClarificationAbandonedCounter.clear();
+  clarificationHistorySentCounter.clear();
+  auroraChatSkippedCounter.clear();
+  pendingClarificationUpgradedCounter.clear();
+  pendingClarificationTruncatedCounter.clear();
   profileContextMissingCounter.clear();
   sessionPatchProfileEmittedCounter.clear();
   upstreamCallsCounter.clear();
@@ -1080,6 +1287,18 @@ function snapshotVisionMetrics() {
     clarificationIdNormalizedEmptyCount,
     catalogAvailabilityShortCircuits: Array.from(catalogAvailabilityShortCircuitCounter.entries()),
     repeatedClarifyFields: Array.from(repeatedClarifyFieldCounter.entries()),
+    clarificationPresent: Array.from(clarificationPresentCounter.entries()),
+    clarificationQuestionFiltered: Array.from(clarificationQuestionFilteredCounter.entries()),
+    clarificationAllQuestionsFilteredCount,
+    clarificationSchemaInvalid: Array.from(clarificationSchemaInvalidCounter.entries()),
+    clarificationFlowV2StartedCount,
+    pendingClarificationStep: Array.from(pendingClarificationStepCounter.entries()),
+    pendingClarificationCompletedCount,
+    pendingClarificationAbandoned: Array.from(pendingClarificationAbandonedCounter.entries()),
+    clarificationHistorySent: Array.from(clarificationHistorySentCounter.entries()),
+    auroraChatSkipped: Array.from(auroraChatSkippedCounter.entries()),
+    pendingClarificationUpgraded: Array.from(pendingClarificationUpgradedCounter.entries()),
+    pendingClarificationTruncated: Array.from(pendingClarificationTruncatedCounter.entries()),
     profileContextMissing: Array.from(profileContextMissingCounter.entries()),
     sessionPatchProfileEmitted: Array.from(sessionPatchProfileEmittedCounter.entries()),
     upstreamCalls: Array.from(upstreamCallsCounter.entries()),
@@ -1095,6 +1314,18 @@ module.exports = {
   recordClarificationIdNormalizedEmpty,
   recordCatalogAvailabilityShortCircuit,
   recordRepeatedClarifyField,
+  recordClarificationPresent,
+  recordClarificationQuestionFiltered,
+  recordClarificationAllQuestionsFiltered,
+  recordClarificationSchemaInvalid,
+  recordClarificationFlowV2Started,
+  recordPendingClarificationStep,
+  recordPendingClarificationCompleted,
+  recordPendingClarificationAbandoned,
+  recordClarificationHistorySent,
+  recordAuroraChatSkipped,
+  recordPendingClarificationUpgraded,
+  recordPendingClarificationTruncated,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,

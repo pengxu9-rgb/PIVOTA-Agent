@@ -17,6 +17,7 @@ const { normalizeRecoGenerate } = require('../src/auroraBff/normalize');
 const { simulateConflicts } = require('../src/auroraBff/routineRules');
 const { buildConflictHeatmapV1 } = require('../src/auroraBff/conflictHeatmapV1');
 const { auroraChat } = require('../src/auroraBff/auroraDecisionClient');
+const { resetVisionMetrics, snapshotVisionMetrics } = require('../src/auroraBff/visionMetrics');
 const { createStageProfiler } = require('../src/auroraBff/skinAnalysisProfiling');
 const { should_call_llm: shouldCallLlm } = require('../src/auroraBff/skinLlmPolicy');
 const { getDiagRolloutDecision, hashToBucket0to99 } = require('../src/auroraBff/diagRollout');
@@ -49,6 +50,156 @@ function withEnv(patch, fn) {
     throw err;
   }
 }
+
+function loadRouteInternals() {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  const { __internal } = require('../src/auroraBff/routes');
+  return { moduleId, __internal };
+}
+
+function getLabeledCounterValue(entries, expectedLabels) {
+  const list = Array.isArray(entries) ? entries : [];
+  for (const item of list) {
+    if (!Array.isArray(item) || item.length < 2) continue;
+    const [key, value] = item;
+    let labels = null;
+    try {
+      labels = JSON.parse(key);
+    } catch (_err) {
+      labels = null;
+    }
+    if (!labels || typeof labels !== 'object') continue;
+    let matched = true;
+    for (const [k, v] of Object.entries(expectedLabels || {})) {
+      if (String(labels[k]) !== String(v)) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return Number(value) || 0;
+  }
+  return 0;
+}
+
+function getUpstreamCallTotal(entries, { path, status } = {}) {
+  const list = Array.isArray(entries) ? entries : [];
+  let total = 0;
+  for (const item of list) {
+    if (!Array.isArray(item) || item.length < 2) continue;
+    const [key, value] = item;
+    let labels = null;
+    try {
+      labels = JSON.parse(key);
+    } catch (_err) {
+      labels = null;
+    }
+    if (!labels || typeof labels !== 'object') continue;
+    if (path != null && String(labels.path) !== String(path)) continue;
+    if (status != null && String(labels.status) !== String(status)) continue;
+    total += Number(value) || 0;
+  }
+  return total;
+}
+
+test('normalizeClarificationField: maps common skinType ids (ASCII/CN) to canonical field', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    assert.equal(__internal.normalizeClarificationField('skin_type'), 'skinType');
+    assert.equal(__internal.normalizeClarificationField('皮肤类型'), 'skinType');
+    assert.equal(__internal.normalizeClarificationField('肤质:油皮'), 'skinType');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('normalizeClarificationField: never returns empty; falls back to stable hash + emits metric', () => {
+  resetVisionMetrics();
+
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out1 = __internal.normalizeClarificationField('!!!');
+    const out2 = __internal.normalizeClarificationField('');
+    const out3 = __internal.normalizeClarificationField(null);
+
+    for (const out of [out1, out2, out3]) {
+      assert.equal(typeof out, 'string');
+      assert.ok(out.length > 0);
+      assert.match(out, /^cid_[a-z0-9]+$/);
+    }
+  } finally {
+    delete require.cache[moduleId];
+  }
+
+  const snap = snapshotVisionMetrics();
+  assert.ok(Number(snap.clarificationIdNormalizedEmptyCount) >= 3);
+});
+
+test('detectBrandAvailabilityIntent: detects Winona availability intent (CN/EN/mixed) and rejects generic diagnosis', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const cn = __internal.detectBrandAvailabilityIntent('有没有薇诺娜的产品', 'CN');
+    assert.ok(cn);
+    assert.equal(cn.intent, 'availability');
+    assert.equal(cn.brand_id, 'brand_winona');
+
+    const en = __internal.detectBrandAvailabilityIntent('Winona 有货吗？', 'CN');
+    assert.ok(en);
+    assert.equal(en.intent, 'availability');
+    assert.equal(en.brand_id, 'brand_winona');
+
+    const mixed = __internal.detectBrandAvailabilityIntent('请问薇诺娜/Winona', 'CN');
+    assert.ok(mixed);
+    assert.equal(mixed.intent, 'availability');
+    assert.equal(mixed.brand_id, 'brand_winona');
+
+    assert.equal(__internal.detectBrandAvailabilityIntent('我脸很红怎么办', 'CN'), null);
+    assert.equal(__internal.detectBrandAvailabilityIntent('我皮肤很干怎么办', 'CN'), null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('/v1/chat: brand availability query short-circuits to commerce cards (no auroraChat, no diagnosis intake)', async () => {
+  resetVisionMetrics();
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await supertest(app)
+    .post('/v1/chat')
+    .set({ 'X-Aurora-UID': 'test_uid_brand_availability', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' })
+    .send({
+      message: '有没有薇诺娜的产品',
+      session: { state: 'idle', profile: { skinType: 'oily' } },
+      language: 'CN',
+    })
+    .expect(200);
+
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+  assert.ok(types.includes('product_parse'));
+  assert.ok(types.includes('offers_resolved'));
+  assert.equal(types.includes('diagnosis_gate'), false);
+
+  const assistant = String(resp.body?.assistant_message?.content || '');
+  assert.equal(/油皮|干皮|混合|皮肤类型|肤质|skin type|barrier|屏障|目标|goal/i.test(assistant), false);
+
+  const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+  assert.ok(events.some((e) => e && e.event_name === 'catalog_availability_shortcircuit'));
+
+  const snap = snapshotVisionMetrics();
+  const auroraChatCalls = (Array.isArray(snap.upstreamCalls) ? snap.upstreamCalls : []).filter(([key]) => {
+    try {
+      return JSON.parse(key).path === 'aurora_chat';
+    } catch (_err) {
+      return false;
+    }
+  });
+  assert.equal(auroraChatCalls.length, 0);
+});
 
 test('Emotional preamble: strips mismatched CN greeting when language is EN', async () => {
   const moduleId = require.resolve('../src/auroraBff/routes');
@@ -1601,6 +1752,456 @@ test('/v1/chat: session.profile snapshot is included in upstream prefix (prevent
 
   const content = String(resp.body?.assistant_message?.content || '');
   assert.ok(content.includes('"skinType":"oily"'));
+});
+
+test('/v1/chat: known skinType filters upstream skin_type clarification question (no chips emitted)', async () => {
+  resetVisionMetrics();
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await supertest(app)
+    .post('/v1/chat')
+    .set({ 'X-Aurora-UID': 'test_uid_clar_filter_skin_only', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+    .send({
+      message: 'CLARIFICATION_FILTER_SKINTYPE_ONLY_TEST',
+      session: { state: 'idle', profile: { skinType: 'oily' } },
+      language: 'EN',
+    })
+    .expect(200);
+
+  const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+  assert.equal(chips.length, 0);
+  assert.equal(chips.some((c) => String(c?.chip_id || '').startsWith('chip.clarify.skin_type.')), false);
+
+  const snap = snapshotVisionMetrics();
+  assert.equal(getLabeledCounterValue(snap.clarificationPresent, { present: 'true' }), 1);
+  assert.equal(getLabeledCounterValue(snap.clarificationQuestionFiltered, { field: 'skintype' }), 1);
+  assert.equal(Number(snap.clarificationAllQuestionsFilteredCount || 0), 1);
+});
+
+test('/v1/chat: when first clarification question is filtered, BFF uses next remaining clarification question', async () => {
+  resetVisionMetrics();
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await supertest(app)
+    .post('/v1/chat')
+    .set({ 'X-Aurora-UID': 'test_uid_clar_filter_next', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+    .send({
+      message: 'CLARIFICATION_FILTER_SKINTYPE_NEXT_TEST',
+      session: { state: 'idle', profile: { skinType: 'oily' } },
+      language: 'EN',
+    })
+    .expect(200);
+
+  const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+  assert.ok(chips.length > 0);
+  assert.ok(chips.some((c) => String(c?.chip_id || '').startsWith('chip.clarify.next.')));
+  assert.equal(chips.some((c) => String(c?.chip_id || '').startsWith('chip.clarify.skin_type.')), false);
+
+  const snap = snapshotVisionMetrics();
+  assert.equal(getLabeledCounterValue(snap.clarificationPresent, { present: 'true' }), 1);
+  assert.equal(getLabeledCounterValue(snap.clarificationQuestionFiltered, { field: 'skintype' }), 1);
+  assert.equal(Number(snap.clarificationAllQuestionsFilteredCount || 0), 0);
+});
+
+test('/v1/chat: invalid upstream clarification shape does not throw and emits no chips', async () => {
+  resetVisionMetrics();
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await supertest(app)
+    .post('/v1/chat')
+    .set({ 'X-Aurora-UID': 'test_uid_clar_invalid_shape', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+    .send({
+      message: 'CLARIFICATION_FILTER_INVALID_OPTIONS_TEST',
+      session: { state: 'idle' },
+      language: 'EN',
+    })
+    .expect(200);
+
+  const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+  assert.equal(chips.length, 0);
+
+  const snap = snapshotVisionMetrics();
+  assert.equal(getLabeledCounterValue(snap.clarificationPresent, { present: 'true' }), 1);
+  assert.equal(getLabeledCounterValue(snap.clarificationSchemaInvalid, { reason: 'question_options_not_array' }), 1);
+});
+
+test('/v1/chat: clarification flow v2 advances local steps then resumes upstream once with root message + history', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp1 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_v2_start', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const chips1 = Array.isArray(resp1.body?.suggested_chips) ? resp1.body.suggested_chips : [];
+        assert.ok(chips1.length > 0);
+        assert.ok(chips1.some((c) => String(c?.chip_id || '').startsWith('chip.clarify.skin_type.')));
+
+        const pending1 = resp1.body?.session_patch?.state?.pending_clarification;
+        assert.ok(pending1);
+        assert.equal(pending1.resume_user_text, 'CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST');
+        assert.equal(Array.isArray(pending1.queue), true);
+        assert.equal(pending1.queue.length, 1);
+        assert.equal(String(pending1.queue[0]?.id || ''), 'goals');
+        assert.equal(Array.isArray(pending1.history), true);
+        assert.equal(pending1.history.length, 0);
+
+        const chip1 = chips1[0];
+        const resp2 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_v2_start', 'X-Trace-ID': 'test_trace2', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip1.chip_id,
+              kind: 'chip',
+              data: chip1.data,
+            },
+            session: { state: { pending_clarification: pending1 } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const chips2 = Array.isArray(resp2.body?.suggested_chips) ? resp2.body.suggested_chips : [];
+        assert.ok(chips2.length > 0);
+        assert.ok(chips2.some((c) => String(c?.chip_id || '').startsWith('chip.clarify.goals.')));
+        const cards2 = Array.isArray(resp2.body?.cards) ? resp2.body.cards : [];
+        assert.equal(cards2.length, 0);
+
+        const pending2 = resp2.body?.session_patch?.state?.pending_clarification;
+        assert.ok(pending2);
+        assert.equal(Array.isArray(pending2.history), true);
+        assert.equal(pending2.history.length, 1);
+        assert.equal(String(pending2.history[0]?.question_id || ''), 'skin_type');
+
+        const snapAfterStep = snapshotVisionMetrics();
+        assert.equal(getUpstreamCallTotal(snapAfterStep.upstreamCalls, { path: 'aurora_chat' }), 1);
+        assert.equal(getLabeledCounterValue(snapAfterStep.auroraChatSkipped, { reason: 'pending_clarification_step' }), 1);
+        assert.equal(getLabeledCounterValue(snapAfterStep.pendingClarificationStep, { step_index: '1' }), 1);
+
+        const chip2 = chips2[0];
+        const resp3 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_v2_start', 'X-Trace-ID': 'test_trace3', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip2.chip_id,
+              kind: 'chip',
+              data: chip2.data,
+            },
+            session: { state: { pending_clarification: pending2 } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const text3 = String(resp3.body?.assistant_message?.content || '');
+        assert.match(text3, /history context/i);
+        assert.equal(resp3.body?.session_patch?.state?.pending_clarification, null);
+
+        const snap = snapshotVisionMetrics();
+        assert.equal(getUpstreamCallTotal(snap.upstreamCalls, { path: 'aurora_chat' }), 2);
+        assert.equal(Number(snap.pendingClarificationCompletedCount || 0), 1);
+        assert.equal(getLabeledCounterValue(snap.clarificationHistorySent, { count: '2' }), 1);
+        assert.equal(Number(snap.clarificationFlowV2StartedCount || 0), 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: pending clarification is abandoned on free text and upstream is called with pending cleared', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const start = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_v2_free_text', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const pending = start.body?.session_patch?.state?.pending_clarification;
+        assert.ok(pending);
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_v2_free_text', 'X-Trace-ID': 'test_trace2', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_FREE_TEXT_CONTINUE_TEST',
+            session: { state: { pending_clarification: pending } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        assert.equal(resp.body?.session_patch?.state?.pending_clarification, null);
+        const text = String(resp.body?.assistant_message?.content || '');
+        assert.match(text, /free text after pending clarification abandon/i);
+
+        const snap = snapshotVisionMetrics();
+        assert.equal(getUpstreamCallTotal(snap.upstreamCalls, { path: 'aurora_chat' }), 2);
+        assert.equal(getLabeledCounterValue(snap.pendingClarificationAbandoned, { reason: 'free_text' }), 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: pending clarification TTL expiry abandons state and continues upstream', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const stalePending = {
+          created_at_ms: Date.now() - (11 * 60 * 1000),
+          resume_user_text: 'CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST',
+          queue: [
+            {
+              id: 'goals',
+              question: 'What is your top goal now?',
+              options: ['Acne control', 'Barrier repair', 'Brightening'],
+            },
+          ],
+          current: { id: 'skin_type', question: 'Which skin type fits you best?' },
+          history: [],
+        };
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_v2_ttl', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_TTL_TEST',
+            action: {
+              action_id: 'chip.clarify.skin_type.Oily',
+              kind: 'chip',
+              data: {
+                clarification_id: 'skin_type',
+                clarification_question_id: 'skin_type',
+                clarification_step: 1,
+                reply_text: 'Oily',
+              },
+            },
+            session: { state: { pending_clarification: stalePending } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const text = String(resp.body?.assistant_message?.content || '');
+        assert.match(text, /ttl fallback to upstream/i);
+        assert.equal(resp.body?.session_patch?.state?.pending_clarification, null);
+
+        const snap = snapshotVisionMetrics();
+        assert.equal(getUpstreamCallTotal(snap.upstreamCalls, { path: 'aurora_chat' }), 1);
+        assert.equal(getLabeledCounterValue(snap.pendingClarificationAbandoned, { reason: 'ttl' }), 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: legacy pending_clarification upgrades to v1 and continues local step flow', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const legacyPending = {
+          created_at_ms: Date.now(),
+          resume_user_text: 'CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST',
+          current: { id: 'skin_type', question: 'Which skin type fits you best?' },
+          queue: [
+            {
+              id: 'goals',
+              question: 'What is your top goal now?',
+              options: ['Acne control', 'Barrier repair', 'Brightening'],
+            },
+          ],
+          history: [],
+        };
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_legacy_upgrade', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: 'chip.clarify.skin_type.Oily',
+              kind: 'chip',
+              data: {
+                clarification_id: 'skin_type',
+                clarification_question_id: 'skin_type',
+                clarification_step: 1,
+                reply_text: 'Oily',
+              },
+            },
+            session: { state: { pending_clarification: legacyPending } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const pending = resp.body?.session_patch?.state?.pending_clarification;
+        assert.ok(pending);
+        assert.equal(Number(pending.v), 1);
+        assert.match(String(pending.flow_id || ''), /^pc_[a-z0-9]+$/i);
+        assert.equal(Number(pending.step_index), 1);
+        assert.equal(String(pending.current?.id || ''), 'goals');
+        assert.equal(String(pending.current?.norm_id || ''), 'goals');
+        assert.equal(Array.isArray(pending.history), true);
+        assert.equal(pending.history.length, 1);
+        assert.equal(String(pending.history[0]?.question_id || ''), 'skin_type');
+        assert.equal(String(pending.history[0]?.norm_id || ''), 'skinType');
+
+        const snap = snapshotVisionMetrics();
+        assert.equal(getLabeledCounterValue(snap.pendingClarificationUpgraded, { from: 'legacy' }), 1);
+        assert.equal(getUpstreamCallTotal(snap.upstreamCalls, { path: 'aurora_chat' }), 0);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: pending_clarification v1 emission is bounded and truncation metrics are recorded', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const overlongMessage = `CLARIFICATION_FLOW_V2_TRUNCATION_TEST ${'R'.repeat(1000)}`;
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_truncation', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: overlongMessage,
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const pending = resp.body?.session_patch?.state?.pending_clarification;
+        assert.ok(pending);
+        assert.equal(Number(pending.v), 1);
+        assert.match(String(pending.flow_id || ''), /^pc_[a-z0-9]+$/i);
+        assert.ok(String(pending.resume_user_text || '').length <= 800);
+        assert.ok(Array.isArray(pending.queue));
+        assert.ok(pending.queue.length <= 5);
+
+        for (const q of pending.queue) {
+          assert.ok(String(q?.question || '').length <= 200);
+          assert.ok(Array.isArray(q?.options));
+          assert.ok(q.options.length <= 8);
+          assert.ok(typeof q?.norm_id === 'string' && q.norm_id.length > 0);
+          for (const opt of q.options) {
+            assert.ok(String(opt || '').length <= 80);
+          }
+        }
+
+        const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+        assert.ok(chips.length <= 8);
+        for (const chip of chips) {
+          assert.ok(String(chip?.label || '').length <= 80);
+        }
+
+        const snap = snapshotVisionMetrics();
+        assert.ok(getLabeledCounterValue(snap.pendingClarificationTruncated, { field: 'resume_user_text' }) >= 1);
+        assert.ok(getLabeledCounterValue(snap.pendingClarificationTruncated, { field: 'question' }) >= 1);
+        assert.ok(getLabeledCounterValue(snap.pendingClarificationTruncated, { field: 'option' }) >= 1);
+        assert.ok(getLabeledCounterValue(snap.pendingClarificationTruncated, { field: 'queue' }) >= 1);
+        assert.ok(getLabeledCounterValue(snap.pendingClarificationTruncated, { field: 'options' }) >= 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
 });
 
 test('/v1/chat: Routine alternatives cover AM + PM', async () => {

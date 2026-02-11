@@ -34,8 +34,14 @@ const {
 } = require('../src/auroraBff/evalAdapters/common/metrics');
 const {
   validateModuleBoxes,
-  applyModelBoxCalibration,
 } = require('../src/auroraBff/evalAdapters/common/circlePriorModel');
+const {
+  PRED_MODULES_MISSING_REASON_DETAILS,
+  normalizePredModulesMissingReasonDetail,
+  ensureModulesForPayload,
+  inferPredModulesMissingReasonDetail,
+  safeApplyCalibration,
+} = require('./eval_circle_local_fallback.cjs');
 const {
   faceCropFromSkinBBoxNorm,
   deriveGtModulesFromSkinMask,
@@ -49,6 +55,7 @@ const DEFAULT_CACHE_DIR = path.join('datasets_cache', 'external');
 const DEFAULT_DATASETS = ['lapa', 'celebamaskhq', 'fasseg'];
 const DEFAULT_REPORT_DIR = 'reports';
 const DEFAULT_GRID_SIZE = 128;
+const MODULE_MASK_GRID_SIZE = 64;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MARKET = 'EU';
@@ -63,6 +70,21 @@ const DEFAULT_MAX_FAIL_RATE = Number(process.env.EVAL_MAX_FAIL_RATE || 0.05);
 const DEFAULT_MAX_LEAKAGE = Number(process.env.EVAL_MAX_LEAKAGE || 0.1);
 const DEFAULT_MAX_SKIN_ROI_TOO_SMALL = Number(process.env.EVAL_MAX_SKIN_ROI_TOO_SMALL || 0.2);
 const DEFAULT_SKIN_ROI_MIN_PIXELS = Number(process.env.EVAL_SKIN_ROI_MIN_PIXELS || process.env.DIAG_SKINMASK_MIN_PIXELS || 8);
+const DEFAULT_SKINMASK_NO_EFFECT_STREAK = Number(process.env.EVAL_SKINMASK_NO_EFFECT_STREAK || 10);
+
+const FAIL_REASONS = Object.freeze({
+  NO_INDEX: 'NO_INDEX',
+  IMAGE_READ_FAIL: 'IMAGE_READ_FAIL',
+  FACE_DETECT_FAIL: 'FACE_DETECT_FAIL',
+  LANDMARK_FAIL: 'LANDMARK_FAIL',
+  PRED_MODULES_MISSING: 'PRED_MODULES_MISSING',
+  GT_MISSING: 'GT_MISSING',
+  GT_SKIN_EMPTY: 'GT_SKIN_EMPTY',
+  PRED_SKIN_EMPTY: 'PRED_SKIN_EMPTY',
+  MODULES_EMPTY: 'MODULES_EMPTY',
+  METRIC_SKIP: 'METRIC_SKIP',
+  UNKNOWN: 'UNKNOWN',
+});
 
 function nowRunKey() {
   const d = new Date();
@@ -87,6 +109,176 @@ function round3(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 1000) / 1000;
+}
+
+function defaultGtStats() {
+  return {
+    has_gt: false,
+    skin_pixels: 0,
+    label_values_sample: [],
+    gt_kind: 'none',
+  };
+}
+
+function defaultPredStats() {
+  return {
+    has_pred_modules: false,
+    module_count: 0,
+    pred_skin_pixels_est: 0,
+    skinmask_pixels_est: 0,
+  };
+}
+
+function defaultMetricStats() {
+  return {
+    modules_scored: 0,
+    miou_mean: 0,
+    coverage_mean: 0,
+    leakage_mean: 0,
+  };
+}
+
+function createBaseEvalRow({ dataset, sampleHash, sampleId }) {
+  return {
+    ok: false,
+    dataset: String(dataset || 'unknown'),
+    sample_hash: String(sampleHash || ''),
+    sample_id: String(sampleId || ''),
+    fail_reason: FAIL_REASONS.UNKNOWN,
+    reason_detail: null,
+    gt_stats: defaultGtStats(),
+    pred_stats: defaultPredStats(),
+    metric_stats: defaultMetricStats(),
+    degraded_reason: null,
+    weak_label_only: false,
+    note: null,
+  };
+}
+
+function normalizeFailReason(input) {
+  const token = String(input || '').trim().toUpperCase();
+  const known = Object.values(FAIL_REASONS);
+  return known.includes(token) ? token : FAIL_REASONS.UNKNOWN;
+}
+
+function finalizeEvalRow(inputRow) {
+  const row = inputRow && typeof inputRow === 'object' ? { ...inputRow } : createBaseEvalRow({});
+  const gtStats = row.gt_stats && typeof row.gt_stats === 'object' ? row.gt_stats : defaultGtStats();
+  const predStats = row.pred_stats && typeof row.pred_stats === 'object' ? row.pred_stats : defaultPredStats();
+  const metricStats = row.metric_stats && typeof row.metric_stats === 'object' ? row.metric_stats : defaultMetricStats();
+
+  const modulesScored = Number(metricStats.modules_scored || 0);
+  metricStats.modules_scored = Number.isFinite(modulesScored) ? Math.max(0, Math.trunc(modulesScored)) : 0;
+  metricStats.miou_mean = round3(metricStats.miou_mean || 0);
+  metricStats.coverage_mean = round3(metricStats.coverage_mean || 0);
+  metricStats.leakage_mean = round3(metricStats.leakage_mean || 0);
+  gtStats.skin_pixels = Number.isFinite(Number(gtStats.skin_pixels)) ? Math.max(0, Number(gtStats.skin_pixels)) : 0;
+  predStats.module_count = Number.isFinite(Number(predStats.module_count)) ? Math.max(0, Number(predStats.module_count)) : 0;
+  predStats.pred_skin_pixels_est = Number.isFinite(Number(predStats.pred_skin_pixels_est))
+    ? Math.max(0, Number(predStats.pred_skin_pixels_est))
+    : 0;
+  predStats.skinmask_pixels_est = Number.isFinite(Number(predStats.skinmask_pixels_est))
+    ? Math.max(0, Number(predStats.skinmask_pixels_est))
+    : 0;
+
+  row.gt_stats = gtStats;
+  row.pred_stats = predStats;
+  row.metric_stats = metricStats;
+
+  if (metricStats.modules_scored > 0) {
+    row.ok = true;
+    row.fail_reason = null;
+    row.reason_detail = null;
+    return row;
+  }
+
+  row.ok = false;
+  const currentReason = normalizeFailReason(row.fail_reason);
+  if (currentReason !== FAIL_REASONS.UNKNOWN) {
+    row.fail_reason = currentReason;
+    row.reason_detail =
+      currentReason === FAIL_REASONS.PRED_MODULES_MISSING
+        ? normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason)
+        : null;
+    return row;
+  }
+  if (!predStats.has_pred_modules || predStats.module_count <= 0) {
+    row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
+    row.reason_detail = normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason);
+    return row;
+  }
+  if (!gtStats.has_gt) {
+    row.fail_reason = FAIL_REASONS.GT_MISSING;
+    row.reason_detail = null;
+    return row;
+  }
+  if (gtStats.skin_pixels <= 0) {
+    row.fail_reason = FAIL_REASONS.GT_SKIN_EMPTY;
+    row.reason_detail = null;
+    return row;
+  }
+  if (predStats.pred_skin_pixels_est <= 0) {
+    row.fail_reason = FAIL_REASONS.PRED_SKIN_EMPTY;
+    row.reason_detail = null;
+    return row;
+  }
+  row.fail_reason = FAIL_REASONS.MODULES_EMPTY;
+  row.reason_detail = null;
+  return row;
+}
+
+function mapPredictionFailureReason(rawReason) {
+  const token = String(rawReason || '').toLowerCase();
+  if (!token) return FAIL_REASONS.UNKNOWN;
+  if (token.includes('dataset_index_missing') || token.includes('dataset_root_not_found')) return FAIL_REASONS.NO_INDEX;
+  if (token.includes('face')) return FAIL_REASONS.FACE_DETECT_FAIL;
+  if (token.includes('landmark')) return FAIL_REASONS.LANDMARK_FAIL;
+  if (token.includes('photo_modules') || token.includes('modules_missing')) return FAIL_REASONS.PRED_MODULES_MISSING;
+  return FAIL_REASONS.UNKNOWN;
+}
+
+function topFailReasons(rows) {
+  const counts = new Map();
+  const total = Array.isArray(rows) ? rows.length : 0;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || row.ok) continue;
+    const reason = normalizeFailReason(row.fail_reason);
+    counts.set(reason, (counts.get(reason) || 0) + 1);
+  }
+  const out = Array.from(counts.entries()).map(([reason, count]) => ({
+    reason,
+    count,
+    pct: total > 0 ? round3(count / total) : 0,
+  }));
+  out.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.reason.localeCompare(b.reason);
+  });
+  return out;
+}
+
+function predModulesMissingBreakdown(rows) {
+  const counts = new Map();
+  const allRows = Array.isArray(rows) ? rows : [];
+  const missingRows = allRows.filter((row) => row && !row.ok && normalizeFailReason(row.fail_reason) === FAIL_REASONS.PRED_MODULES_MISSING);
+  const totalMissing = missingRows.length;
+  for (const row of missingRows) {
+    const detail = normalizePredModulesMissingReasonDetail(row.reason_detail || row.degraded_reason);
+    counts.set(detail, (counts.get(detail) || 0) + 1);
+  }
+  const out = Array.from(counts.entries()).map(([reasonDetail, count]) => ({
+    reason_detail: reasonDetail,
+    count,
+    pct_of_missing: totalMissing > 0 ? round3(count / totalMissing) : 0,
+  }));
+  out.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.reason_detail.localeCompare(b.reason_detail);
+  });
+  return {
+    total_missing: totalMissing,
+    rows: out,
+  };
 }
 
 function parseBoolean(value, fallback = false) {
@@ -129,6 +321,13 @@ function parseArgs(argv) {
     circle_model_min_pixels: parseNumber(process.env.CIRCLE_MODEL_MIN_PIXELS, DEFAULT_CIRCLE_MODEL_MIN_PIXELS, 1, 1024),
     skinmask_enabled: parseBoolean(process.env.DIAG_SKINMASK_ENABLED, DEFAULT_SKINMASK_ENABLED),
     skinmask_model_path: process.env.DIAG_SKINMASK_MODEL_PATH || DEFAULT_SKINMASK_MODEL_PATH,
+    sample_seed: String(process.env.EVAL_SAMPLE_SEED || process.env.SAMPLE_SEED || ''),
+    skinmask_no_effect_streak: parseNumber(
+      process.env.EVAL_SKINMASK_NO_EFFECT_STREAK,
+      DEFAULT_SKINMASK_NO_EFFECT_STREAK,
+      1,
+      1000,
+    ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -224,6 +423,16 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--sample_seed' && next) {
+      out.sample_seed = String(next);
+      i += 1;
+      continue;
+    }
+    if (token === '--skinmask_no_effect_streak' && next) {
+      out.skinmask_no_effect_streak = parseNumber(next, out.skinmask_no_effect_streak, 1, 1000);
+      i += 1;
+      continue;
+    }
     if (token === '--eval_max_skin_roi_too_small' && next) {
       out.eval_max_skin_roi_too_small = parseNumber(next, out.eval_max_skin_roi_too_small, 0, 1);
       i += 1;
@@ -250,6 +459,8 @@ function parseArgs(argv) {
   out.skinmask_enabled = Boolean(out.skinmask_enabled);
   const skinmaskModelToken = String(out.skinmask_model_path || '').trim();
   out.skinmask_model_path = ['none', 'off', 'false'].includes(skinmaskModelToken.toLowerCase()) ? '' : skinmaskModelToken;
+  out.sample_seed = String(out.sample_seed || '').trim();
+  out.skinmask_no_effect_streak = Math.max(1, Math.trunc(out.skinmask_no_effect_streak));
   out.skin_roi_min_pixels = Math.max(1, Math.trunc(out.skin_roi_min_pixels));
   return out;
 }
@@ -633,6 +844,26 @@ async function callApiPrediction({
   };
 }
 
+function normalizeQualityGradeToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'pass' || token === 'degraded' || token === 'fail') return token;
+  return 'unknown';
+}
+
+function fallbackFaceCropFromDiagnosisInternal(diagnosisInternal) {
+  const internal = diagnosisInternal && typeof diagnosisInternal === 'object' ? diagnosisInternal : {};
+  const existing = internal.face_crop && typeof internal.face_crop === 'object' ? internal.face_crop : null;
+  if (existing && existing.bbox_px && typeof existing.bbox_px === 'object') return existing;
+  const origW = Math.max(1, Math.trunc(Number(internal.orig_size_px && internal.orig_size_px.w) || 1));
+  const origH = Math.max(1, Math.trunc(Number(internal.orig_size_px && internal.orig_size_px.h) || 1));
+  return {
+    coord_space: 'orig_px_v1',
+    bbox_px: { x: 0, y: 0, w: origW, h: origH },
+    orig_size_px: { w: origW, h: origH },
+    render_size_px_hint: { w: Math.max(1, Math.min(origW, 512)), h: Math.max(1, Math.min(origH, 512)) },
+  };
+}
+
 async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEnabled, skinmaskModelPath }) {
   const diagnosis = await runSkinDiagnosisV1({
     imageBuffer,
@@ -649,6 +880,8 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
       diagnosisInternal: diagnosis && diagnosis.internal ? diagnosis.internal : null,
       metrics: null,
       skinmask_reason: null,
+      degraded_reason: null,
+      reason_detail: null,
     };
   }
 
@@ -658,6 +891,7 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
   });
 
   let skinMask = null;
+  let skinmaskPixelsEst = 0;
   let skinmaskReason = skinmaskEnabled ? 'model_path_missing' : 'disabled';
   if (skinmaskEnabled && skinmaskModelPath) {
     try {
@@ -668,6 +902,9 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
       });
       if (inferred && inferred.ok) {
         skinMask = inferred;
+        skinmaskPixelsEst = Number.isFinite(Number(inferred.positive_pixels))
+          ? Math.max(0, Math.trunc(Number(inferred.positive_pixels)))
+          : 0;
         skinmaskReason = 'ok';
       } else {
         skinmaskReason = inferred && inferred.reason ? inferred.reason : 'inference_failed';
@@ -677,39 +914,62 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
     }
   }
 
-  const built = buildPhotoModulesCard({
-    requestId: sampleToken,
-    analysis,
-    usedPhotos: true,
-    photoQuality: diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null,
-    photoNotice: null,
-    diagnosisInternal: diagnosis.internal || null,
-    profileSummary: null,
-    language: String(lang || 'en').toLowerCase().startsWith('zh') ? 'CN' : 'EN',
-    ingredientRecEnabled: false,
-    productRecEnabled: false,
-    skinMask,
-  });
-  if (!built || !built.card || !built.card.payload) {
-    return {
-      ok: false,
-      reason: 'local_photo_modules_missing',
-      payload: null,
-      quality: diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null,
+  const quality = diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null;
+  const qualityGrade = normalizeQualityGradeToken(quality && quality.grade);
+  let built = null;
+  let localReasonDetail = null;
+  try {
+    built = buildPhotoModulesCard({
+      requestId: sampleToken,
+      analysis,
+      usedPhotos: true,
+      photoQuality: quality,
+      photoNotice: null,
       diagnosisInternal: diagnosis.internal || null,
-      metrics: null,
-      skinmask_reason: skinmaskReason,
-    };
+      profileSummary: null,
+      language: String(lang || 'en').toLowerCase().startsWith('zh') ? 'CN' : 'EN',
+      ingredientRecEnabled: false,
+      productRecEnabled: false,
+      skinMask,
+    });
+  } catch (_error) {
+    localReasonDetail = PRED_MODULES_MISSING_REASON_DETAILS.MODULEIZER_EXCEPTION;
   }
+
+  const payloadFromBuilder =
+    built && built.card && built.card.payload && typeof built.card.payload === 'object'
+      ? built.card.payload
+      : {
+          used_photos: true,
+          quality_grade: qualityGrade,
+          face_crop: fallbackFaceCropFromDiagnosisInternal(diagnosis.internal || null),
+          regions: [],
+          modules: [],
+        };
+
+  if (!localReasonDetail && (qualityGrade === 'fail' || qualityGrade === 'unknown')) {
+    localReasonDetail = PRED_MODULES_MISSING_REASON_DETAILS.QUALITY_GATED;
+  }
+  if (!localReasonDetail && (!Array.isArray(payloadFromBuilder.modules) || payloadFromBuilder.modules.length <= 0)) {
+    localReasonDetail = PRED_MODULES_MISSING_REASON_DETAILS.MODULEIZER_EXCEPTION;
+  }
+  const ensured = ensureModulesForPayload(payloadFromBuilder, {
+    gridSize: MODULE_MASK_GRID_SIZE,
+    moduleBoxes: MODULE_BOXES,
+    degradedReason: localReasonDetail,
+  });
 
   return {
     ok: true,
     reason: null,
-    payload: built.card.payload,
-    quality: diagnosis.diagnosis && diagnosis.diagnosis.quality ? diagnosis.diagnosis.quality : null,
+    payload: ensured.payload,
+    quality,
     diagnosisInternal: diagnosis.internal || null,
-    metrics: built.metrics || null,
+    metrics: built && built.metrics ? built.metrics : null,
     skinmask_reason: skinmaskReason,
+    skinmask_pixels_est: skinmaskPixelsEst,
+    degraded_reason: ensured.degradedReason || null,
+    reason_detail: ensured.degradedReason || null,
   };
 }
 
@@ -728,7 +988,17 @@ async function runWithConcurrency(items, concurrency, worker) {
       try {
         results[index] = await worker(items[index], index);
       } catch (error) {
-        results[index] = { ok: false, reason: String(error && error.message ? error.message : error) };
+        const item = items[index] || {};
+        const fallbackHash = hashId(`${item && item.dataset ? item.dataset : 'unknown'}:${index}:worker_error`);
+        results[index] = finalizeEvalRow({
+          ...createBaseEvalRow({
+            dataset: item && item.dataset ? item.dataset : 'unknown',
+            sampleHash: fallbackHash,
+            sampleId: item && item.sample && item.sample.sample_id ? item.sample.sample_id : `worker_error_${index}`,
+          }),
+          fail_reason: FAIL_REASONS.UNKNOWN,
+          note: String(error && error.message ? error.message : error),
+        });
       }
     }
   }
@@ -810,7 +1080,10 @@ function renderMarkdown({
   jsonlPath,
   csvPath,
   weakRows,
+  failReasonRows,
+  predMissingBreakdown,
   softWarnings,
+  hardWarnings,
 }) {
   const total = sampleRows.length;
   const okRows = sampleRows.filter((row) => row && row.ok);
@@ -878,6 +1151,38 @@ function renderMarkdown({
     lines.push('');
   }
 
+  if (hardWarnings.length) {
+    lines.push('## Hard Warnings');
+    lines.push('');
+    for (const warning of hardWarnings) lines.push(`- ${warning}`);
+    lines.push('');
+  }
+
+  lines.push('## Top Fail Reasons');
+  lines.push('');
+  lines.push('| fail_reason | count | pct_of_total |');
+  lines.push('|---|---:|---:|');
+  for (const row of failReasonRows) {
+    lines.push(`| ${row.reason} | ${row.count} | ${row.pct} |`);
+  }
+  if (!failReasonRows.length) {
+    lines.push('| - | 0 | 0 |');
+  }
+  lines.push('');
+
+  lines.push('## PRED_MODULES_MISSING breakdown');
+  lines.push('');
+  lines.push('| reason_detail | count | pct_of_missing |');
+  lines.push('|---|---:|---:|');
+  if (predMissingBreakdown && Array.isArray(predMissingBreakdown.rows) && predMissingBreakdown.rows.length) {
+    for (const row of predMissingBreakdown.rows) {
+      lines.push(`| ${row.reason_detail} | ${row.count} | ${row.pct_of_missing} |`);
+    }
+  } else {
+    lines.push('| - | 0 | 0 |');
+  }
+  lines.push('');
+
   lines.push('## Per-Module Summary');
   lines.push('');
   lines.push('| dataset | module | samples | mIoU mean | p50 | p90 | coverage mean | leakage mean | roi_too_small_rate |');
@@ -912,11 +1217,56 @@ function renderMarkdown({
   return `${lines.join('\n')}\n`;
 }
 
+function detectSkinmaskNoEffect(sampleRows, args) {
+  const rows = Array.isArray(sampleRows) ? sampleRows : [];
+  if (!args || !args.skinmask_enabled) {
+    return {
+      enabled: false,
+      triggered: false,
+      threshold: Number(args && args.skinmask_no_effect_streak ? args.skinmask_no_effect_streak : 0),
+      longest_streak: 0,
+      checked_samples: 0,
+      trigger_sample_hash: null,
+    };
+  }
+  const threshold = Math.max(1, Math.trunc(Number(args.skinmask_no_effect_streak || DEFAULT_SKINMASK_NO_EFFECT_STREAK)));
+  let checkedSamples = 0;
+  let currentStreak = 0;
+  let longestStreak = 0;
+  let triggerSampleHash = null;
+  let triggered = false;
+  for (const row of rows) {
+    if (!row || row.weak_label_only) continue;
+    checkedSamples += 1;
+    const predStats = row.pred_stats && typeof row.pred_stats === 'object' ? row.pred_stats : {};
+    const pixels = Number(predStats.skinmask_pixels_est);
+    if (!Number.isFinite(pixels) || pixels <= 0) {
+      currentStreak += 1;
+      if (currentStreak > longestStreak) longestStreak = currentStreak;
+      if (!triggered && currentStreak >= threshold) {
+        triggered = true;
+        triggerSampleHash = row.sample_hash || null;
+      }
+    } else {
+      currentStreak = 0;
+    }
+  }
+  return {
+    enabled: true,
+    triggered,
+    threshold,
+    longest_streak: longestStreak,
+    checked_samples: checkedSamples,
+    trigger_sample_hash: triggerSampleHash,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = process.cwd();
   const cache = normalizeCacheDirs(args.cache_dir);
   const runKey = nowRunKey();
+  const sampleSeed = args.sample_seed || runKey;
   const circleModel = await resolveCircleModelBoxes(args.circle_model_path);
   const activeModuleBoxes = circleModel.moduleBoxes;
   const resolvedModuleIds = moduleIds(activeModuleBoxes);
@@ -931,35 +1281,84 @@ async function main() {
   if (args.emit_debug_overlays) await ensureDir(debugDir);
 
   const allSamples = [];
+  const seedRows = [];
   for (const dataset of args.datasets) {
     const adapter = getAdapter(dataset);
     if (!adapter) throw new Error(`adapter_not_found:${dataset}`);
-    const loaded = await adapter.loadSamples({
-      repoRoot,
-      cacheExternalDir: cache.cacheExternalDir,
-      cacheRootDir: cache.cacheRootDir,
-      limit: args.limit || undefined,
-      shuffle: args.shuffle,
-      seed: runKey,
-    });
-    for (const sample of loaded.samples || []) {
-      allSamples.push({
-        dataset,
-        adapter,
-        sample,
+    try {
+      const loaded = await adapter.loadSamples({
+        repoRoot,
+        cacheExternalDir: cache.cacheExternalDir,
+        cacheRootDir: cache.cacheRootDir,
+        limit: args.limit || undefined,
+        shuffle: args.shuffle,
+        seed: sampleSeed,
       });
+      for (const sample of loaded.samples || []) {
+        allSamples.push({
+          dataset,
+          adapter,
+          sample,
+        });
+      }
+    } catch (error) {
+      const detail = String(error && error.message ? error.message : error);
+      seedRows.push(finalizeEvalRow({
+        ...createBaseEvalRow({
+          dataset,
+          sampleHash: hashId(`${dataset}:NO_INDEX:${runKey}`),
+          sampleId: `${dataset}:no_index`,
+        }),
+        fail_reason: FAIL_REASONS.NO_INDEX,
+        note: detail,
+      }));
     }
   }
 
-  if (!allSamples.length) {
+  if (!allSamples.length && !seedRows.length) {
     throw new Error('no_samples_found_after_prepare');
   }
 
-  const sampleRows = await runWithConcurrency(allSamples, args.concurrency, async (entry, index) => {
-    const evalSample = entry.adapter.toEvalSample(entry.sample);
-    const imageBuffer = await fsp.readFile(evalSample.image_bytes_path);
-    const normalizedImageBuffer = await normalizeImageForPrediction(imageBuffer);
+  const runtimeRows = await runWithConcurrency(allSamples, args.concurrency, async (entry, index) => {
+    let evalSample = null;
+    try {
+      evalSample = entry.adapter.toEvalSample(entry.sample);
+    } catch (error) {
+      return finalizeEvalRow({
+        ...createBaseEvalRow({
+          dataset: entry.dataset,
+          sampleHash: hashId(`${entry.dataset}:EVAL_SAMPLE:${index}`),
+          sampleId: `eval_sample_error_${index}`,
+        }),
+        fail_reason: FAIL_REASONS.UNKNOWN,
+        note: String(error && error.message ? error.message : error),
+      });
+    }
+
     const sampleHash = hashId(`${entry.dataset}:${evalSample.sample_id}:${index}`);
+    const row = createBaseEvalRow({
+      dataset: entry.dataset,
+      sampleHash,
+      sampleId: evalSample.sample_id,
+    });
+    row.source_mode = args.base_url ? 'api' : 'local';
+    row.gt_stats = {
+      ...row.gt_stats,
+      has_gt: Boolean(evalSample && Array.isArray(evalSample.gt_masks) && evalSample.gt_masks.length),
+      gt_kind: evalSample && Array.isArray(evalSample.gt_masks) && evalSample.gt_masks[0]
+        ? String(evalSample.gt_masks[0].kind || 'segmentation')
+        : 'none',
+    };
+
+    let imageBuffer;
+    try {
+      imageBuffer = await fsp.readFile(evalSample.image_bytes_path);
+    } catch (error) {
+      row.fail_reason = FAIL_REASONS.IMAGE_READ_FAIL;
+      row.note = String(error && error.message ? error.message : error);
+      return finalizeEvalRow(row);
+    }
+    const normalizedImageBuffer = await normalizeImageForPrediction(imageBuffer);
 
     const prediction = args.base_url
       ? await callApiPrediction({
@@ -978,33 +1377,90 @@ async function main() {
           skinmaskEnabled: args.skinmask_enabled,
           skinmaskModelPath: args.skinmask_model_path,
         });
+    row.skinmask_reason = prediction.skinmask_reason || null;
+    row.degraded_reason = prediction.degraded_reason
+      ? normalizePredModulesMissingReasonDetail(prediction.degraded_reason)
+      : null;
 
     if (!prediction.ok || !prediction.payload) {
-      return {
-        ok: false,
-        dataset: entry.dataset,
-        sample_hash: sampleHash,
-        sample_id: evalSample.sample_id,
-      reason: prediction.reason || 'prediction_failed',
-      skinmask_reason: prediction.skinmask_reason || null,
+      row.fail_reason = mapPredictionFailureReason(prediction.reason);
+      row.note = prediction.reason || 'prediction_failed';
+      if (row.fail_reason === FAIL_REASONS.PRED_MODULES_MISSING) {
+        row.reason_detail = inferPredModulesMissingReasonDetail({
+          reasonDetail: prediction.reason_detail,
+          degradedReason: prediction.degraded_reason,
+          predictionReason: prediction.reason,
+          qualityGrade: prediction.quality && prediction.quality.grade,
+          circleModelEnabled: circleModel.meta.enabled,
+        });
+      }
+      return finalizeEvalRow(row);
+    }
+
+    const ensuredPayload = ensureModulesForPayload(prediction.payload, {
+      gridSize: args.grid_size,
+      moduleBoxes: MODULE_BOXES,
+      degradedReason: prediction.reason_detail || prediction.degraded_reason,
+    });
+    const payload = ensuredPayload.payload;
+    if (ensuredPayload.fallbackUsed) {
+      row.degraded_reason = normalizePredModulesMissingReasonDetail(ensuredPayload.degradedReason);
+      row.note = row.note || 'fallback_modules_applied';
+    }
+    row.pred_stats = {
+      has_pred_modules: Boolean(Array.isArray(payload.modules) && payload.modules.length),
+      module_count: Array.isArray(payload.modules) ? payload.modules.length : 0,
+      pred_skin_pixels_est: 0,
+      skinmask_pixels_est:
+        args.skinmask_enabled && Number.isFinite(Number(prediction.skinmask_pixels_est))
+          ? Math.max(0, Math.trunc(Number(prediction.skinmask_pixels_est)))
+          : 0,
     };
+    if (!row.pred_stats.has_pred_modules) {
+      row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
+      row.note = 'photo_modules_v1 missing modules';
+      row.reason_detail = inferPredModulesMissingReasonDetail({
+        reasonDetail: prediction.reason_detail,
+        degradedReason: row.degraded_reason,
+        predictionReason: prediction.reason || 'local_photo_modules_missing',
+        qualityGrade: payload && payload.quality_grade,
+        circleModelEnabled: circleModel.meta.enabled,
+      });
+      row.quality_grade = String(payload && payload.quality_grade ? payload.quality_grade : '');
+      return finalizeEvalRow(row);
     }
 
     const gtSkin = await entry.adapter.buildSkinMask(evalSample);
     if (!gtSkin || !gtSkin.ok || !(gtSkin.mask instanceof Uint8Array)) {
-      return {
-        ok: true,
-        weak_label_only: true,
-        dataset: entry.dataset,
-        sample_hash: sampleHash,
-        sample_id: evalSample.sample_id,
-        reason: gtSkin && gtSkin.reason ? gtSkin.reason : 'weak_label_only',
-        note: gtSkin && gtSkin.note ? gtSkin.note : null,
-        lesion_count_weak: gtSkin && Number.isFinite(Number(gtSkin.lesion_count_weak)) ? Number(gtSkin.lesion_count_weak) : null,
+      row.fail_reason = FAIL_REASONS.GT_MISSING;
+      row.weak_label_only = Boolean(gtSkin && gtSkin.weak_label);
+      row.note = gtSkin && gtSkin.note
+        ? String(gtSkin.note)
+        : (entry.dataset === 'celebamaskhq' ? 'NEED_MASK_MERGE_ADAPTER' : 'gt_missing');
+      row.lesion_count_weak = gtSkin && Number.isFinite(Number(gtSkin.lesion_count_weak))
+        ? Number(gtSkin.lesion_count_weak)
+        : null;
+      row.gt_stats = {
+        ...row.gt_stats,
+        has_gt: false,
+        gt_kind: row.weak_label_only ? 'weak' : row.gt_stats.gt_kind,
       };
+      return finalizeEvalRow(row);
     }
 
-    const payload = prediction.payload;
+    const gtSkinPixels = countOnes(gtSkin.mask);
+    row.gt_stats = {
+      has_gt: true,
+      skin_pixels: gtSkinPixels,
+      label_values_sample: gtSkinPixels > 0 ? [0, 1] : [0],
+      gt_kind: 'segmentation',
+    };
+    if (!gtSkinPixels) {
+      row.fail_reason = FAIL_REASONS.GT_SKIN_EMPTY;
+      row.note = 'gt_skin_pixels_zero';
+      return finalizeEvalRow(row);
+    }
+
     const fallbackSkinBbox = skinMaskBoundingNorm(gtSkin.mask, gtSkin.width, gtSkin.height);
     const fallbackFaceCrop = faceCropFromSkinBBoxNorm({
       skinBboxNorm: fallbackSkinBbox,
@@ -1045,19 +1501,29 @@ async function main() {
     const gtModuleMasks = decodeGtModuleMasks(derivedGt, args.grid_size, activeModuleBoxes);
     const gtSkinMaskNorm = decodeRleBinary(derivedGt.skin_mask_rle_norm, args.grid_size * args.grid_size);
     const predicted = moduleMasksFromCardPayload(payload, args.grid_size, activeModuleBoxes);
+    const predUnionMask = createMask(args.grid_size, args.grid_size, 0);
+    const circlePriorMissing = Boolean(args.circle_model_calibration && !circleModel.meta.enabled);
+    if (circlePriorMissing && !row.degraded_reason) {
+      row.degraded_reason = PRED_MODULES_MISSING_REASON_DETAILS.CIRCLE_PRIOR_MISSING;
+    }
+    let calibrationFailed = false;
 
     const moduleScores = [];
     for (const moduleId of resolvedModuleIds) {
-      const predMaskRaw = predicted.moduleMasks[moduleId];
-      const predMask = circleModel.meta.enabled && args.circle_model_calibration
-        ? applyModelBoxCalibration({
-            moduleId,
-            predMask: predMaskRaw,
-            gridSize: args.grid_size,
-            modelBoxes: activeModuleBoxes,
-            minPixels: args.circle_model_min_pixels,
-          })
-        : predMaskRaw;
+      const predMaskRaw = predicted.moduleMasks[moduleId] || createMask(args.grid_size, args.grid_size, 0);
+      let predMask = predMaskRaw;
+      if (circleModel.meta.enabled && args.circle_model_calibration) {
+        const calibrated = safeApplyCalibration({
+          moduleId,
+          predMaskRaw,
+          gridSize: args.grid_size,
+          modelBoxes: activeModuleBoxes,
+          minPixels: args.circle_model_min_pixels,
+        });
+        predMask = calibrated.mask || predMaskRaw;
+        if (calibrated.failed) calibrationFailed = true;
+      }
+      orMaskInto(predUnionMask, predMask);
       const gtMask = gtModuleMasks[moduleId];
       const gtPixels = countOnes(gtMask);
       if (!gtPixels) continue;
@@ -1073,38 +1539,52 @@ async function main() {
         roi_too_small: roiTooSmall,
       });
     }
+    if (calibrationFailed && !row.degraded_reason) {
+      row.degraded_reason = PRED_MODULES_MISSING_REASON_DETAILS.CALIBRATION_FAIL;
+    }
+
+    const predSkinPixels = countOnes(predUnionMask);
+    row.pred_stats.pred_skin_pixels_est = predSkinPixels;
+    if (predSkinPixels <= 0) {
+      row.fail_reason = FAIL_REASONS.PRED_SKIN_EMPTY;
+    }
 
     const geometryDropRows = Array.isArray(prediction.metrics && prediction.metrics.geometryDropCounts)
       ? prediction.metrics.geometryDropCounts
       : [];
-    const dropped = geometryDropRows.reduce((acc, row) => acc + Number(row && row.count ? row.count : 0), 0);
+    const dropped = geometryDropRows.reduce((acc, metricRow) => acc + Number(metricRow && metricRow.count ? metricRow.count : 0), 0);
     const geometrySanitizeDropRate = round3(dropped / Math.max(1, dropped + Number(predicted.regionsCount || 0)));
+    const sanitizerDropped = Number(predicted.regionsCount || 0) > 0 && Number(predicted.invalidRegionCount || 0) >= Number(predicted.regionsCount || 0);
+    if (sanitizerDropped && !row.degraded_reason) {
+      row.degraded_reason = PRED_MODULES_MISSING_REASON_DETAILS.SANITIZER_DROPPED;
+    }
     const faceDetectOk = Boolean(payload && payload.face_crop && payload.face_crop.bbox_px);
 
-    const row = {
-      ok: true,
-      dataset: entry.dataset,
-      sample_hash: sampleHash,
-      sample_id: evalSample.sample_id,
-      module_scores: moduleScores,
-      quality_grade: String(payload && payload.quality_grade ? payload.quality_grade : ''),
-      regions_count: Number(predicted.regionsCount || 0),
-      invalid_region_count: Number(predicted.invalidRegionCount || 0),
-      face_detect_ok: faceDetectOk,
-      landmark_ok: faceDetectOk,
-      geometry_sanitize_drop_rate: Number.isFinite(geometrySanitizeDropRate) ? geometrySanitizeDropRate : null,
-      skin_roi_too_small_count: moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length,
-      skin_roi_evaluated_count: moduleScores.length,
-      skin_roi_too_small_rate: round3(
-        moduleScores.length
-          ? moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length / moduleScores.length
-          : 0,
-      ),
-      weak_label_only: false,
-      derived_gt_path: toPosix(path.relative(repoRoot, derivedPath)),
-      source_mode: args.base_url ? 'api' : 'local',
-      skinmask_reason: prediction.skinmask_reason || null,
+    row.module_scores = moduleScores;
+    row.quality_grade = String(payload && payload.quality_grade ? payload.quality_grade : '');
+    row.regions_count = Number(predicted.regionsCount || 0);
+    row.invalid_region_count = Number(predicted.invalidRegionCount || 0);
+    row.face_detect_ok = faceDetectOk;
+    row.landmark_ok = faceDetectOk;
+    row.geometry_sanitize_drop_rate = Number.isFinite(geometrySanitizeDropRate) ? geometrySanitizeDropRate : null;
+    row.skin_roi_too_small_count = moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length;
+    row.skin_roi_evaluated_count = moduleScores.length;
+    row.skin_roi_too_small_rate = round3(
+      moduleScores.length
+        ? moduleScores.filter((moduleScore) => moduleScore.roi_too_small).length / moduleScores.length
+        : 0,
+    );
+    row.weak_label_only = false;
+    row.derived_gt_path = toPosix(path.relative(repoRoot, derivedPath));
+    row.metric_stats = {
+      modules_scored: moduleScores.length,
+      miou_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.iou || 0)))),
+      coverage_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.coverage || 0)))),
+      leakage_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.leakage || 0)))),
     };
+    if (!moduleScores.length && row.fail_reason === FAIL_REASONS.UNKNOWN) {
+      row.fail_reason = FAIL_REASONS.METRIC_SKIP;
+    }
 
     if (args.emit_debug_overlays) {
       const debugPath = path.join(debugDir, `${entry.dataset}_${sampleHash}.json`);
@@ -1124,8 +1604,10 @@ async function main() {
       row.debug_path = toPosix(path.relative(repoRoot, debugPath));
     }
 
-    return row;
+    return finalizeEvalRow(row);
   });
+
+  const sampleRows = [...seedRows, ...runtimeRows].map((row) => finalizeEvalRow(row));
 
   writeJsonl(jsonlPath, sampleRows);
 
@@ -1173,6 +1655,7 @@ async function main() {
   const skinRoiTooSmallRate = skinRoiEvaluatedCount > 0 ? skinRoiTooSmallCount / skinRoiEvaluatedCount : 0;
 
   const softWarnings = [];
+  const hardWarnings = [];
   if (miouMean < args.eval_min_miou) {
     softWarnings.push(`module_mIoU ${round3(miouMean)} < threshold ${args.eval_min_miou}`);
   }
@@ -1187,6 +1670,14 @@ async function main() {
       `skin_roi_too_small_rate ${round3(skinRoiTooSmallRate)} > threshold ${args.eval_max_skin_roi_too_small}`,
     );
   }
+  const skinmaskNoEffect = detectSkinmaskNoEffect(sampleRows, args);
+  if (skinmaskNoEffect.enabled && skinmaskNoEffect.triggered) {
+    hardWarnings.push(
+      `WARNING: SKINMASK_NO_EFFECT (consecutive_zero_skinmask_pixels_est >= ${skinmaskNoEffect.threshold}, longest_streak=${skinmaskNoEffect.longest_streak}, checked_samples=${skinmaskNoEffect.checked_samples}, trigger_sample_hash=${skinmaskNoEffect.trigger_sample_hash || 'n/a'})`,
+    );
+  }
+  const failReasonRows = topFailReasons(sampleRows);
+  const predMissingBreakdown = predModulesMissingBreakdown(sampleRows);
 
   const markdown = renderMarkdown({
     args,
@@ -1197,7 +1688,10 @@ async function main() {
     jsonlPath,
     csvPath,
     weakRows,
+    failReasonRows,
+    predMissingBreakdown,
     softWarnings,
+    hardWarnings,
   });
   writeText(mdPath, markdown);
 
@@ -1213,11 +1707,17 @@ async function main() {
     circle_model_enabled: circleModel.meta.enabled,
     circle_model_path: circleModel.meta.path || '',
     circle_model_calibration: args.circle_model_calibration,
+    sample_seed: sampleSeed,
     module_miou_mean: round3(miouMean),
     leakage_mean: round3(leakageMean),
     skin_roi_too_small_rate: round3(skinRoiTooSmallRate),
     face_detect_fail_rate: round3(faceDetectFailRate),
+    fail_reasons: failReasonRows,
+    pred_modules_missing_breakdown: predMissingBreakdown,
+    skinmask_no_effect: skinmaskNoEffect,
+    summary_rows: summaryRows.length,
     soft_warnings: softWarnings,
+    hard_warnings: hardWarnings,
     artifacts: {
       jsonl: toPosix(path.relative(repoRoot, jsonlPath)),
       csv: toPosix(path.relative(repoRoot, csvPath)),
@@ -1225,6 +1725,9 @@ async function main() {
     },
   };
   process.stdout.write(`${JSON.stringify(payload)}\n`);
+  if (skinmaskNoEffect.enabled && skinmaskNoEffect.triggered) {
+    process.exitCode = 2;
+  }
 }
 
 main().catch((error) => {

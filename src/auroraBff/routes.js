@@ -29,6 +29,18 @@ const {
   recordClarificationIdNormalizedEmpty,
   recordCatalogAvailabilityShortCircuit,
   recordRepeatedClarifyField,
+  recordClarificationPresent,
+  recordClarificationQuestionFiltered,
+  recordClarificationAllQuestionsFiltered,
+  recordClarificationSchemaInvalid,
+  recordClarificationFlowV2Started,
+  recordPendingClarificationStep,
+  recordPendingClarificationCompleted,
+  recordPendingClarificationAbandoned,
+  recordClarificationHistorySent,
+  recordAuroraChatSkipped,
+  recordPendingClarificationUpgraded,
+  recordPendingClarificationTruncated,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
@@ -155,6 +167,31 @@ const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || pr
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
 const CONFLICT_HEATMAP_V1_ENABLED = String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
+const AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_FAST_PATH || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_CLARIFICATION_FILTER_KNOWN_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CLARIFICATION_FILTER_KNOWN || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CLARIFICATION_FLOW_V2 || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
@@ -494,6 +531,117 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
     logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: reco catalog search failed');
     return { ok: false, products: [], reason: 'upstream_error' };
   }
+}
+
+const CATALOG_BRANDS = {
+  brand_winona: {
+    brand_id: 'brand_winona',
+    aliases: ['薇诺娜', 'winona', 'wei nuo na'],
+    name: { CN: '薇诺娜', EN: 'Winona' },
+  },
+};
+
+function escapeRegExp(text) {
+  return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildLooseAsciiAliasRegex(alias) {
+  const tokens = String(alias || '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (!tokens.length) return null;
+  const sep = '(?:[\\s\\p{P}_-])*';
+  const body = tokens.map((t) => escapeRegExp(t)).join(sep);
+  return new RegExp(`(?<![a-z0-9])${body}(?![a-z0-9])`, 'iu');
+}
+
+function detectBrandAvailabilityIntent(message, lang) {
+  const raw = String(message || '').trim();
+  if (!raw) return null;
+
+  // Exclude obvious non-commerce asks.
+  if (looksLikeDiagnosisStart(raw)) return null;
+  if (looksLikeSuitabilityRequest(raw)) return null;
+
+  const text = raw.normalize('NFKC');
+  const lowered = text.toLowerCase();
+
+  const availabilityHint =
+    /(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|能买|购买|下单|链接|渠道|旗舰|自营|店|请问|\?)/.test(text) ||
+    /\b(in stock|available|availability|where (can i|to) buy|do you have|have any|buy|purchase|link)\b/i.test(lowered);
+
+  for (const brand of Object.values(CATALOG_BRANDS)) {
+    const aliases = Array.isArray(brand.aliases) ? brand.aliases : [];
+    let matchedAlias = '';
+    for (const alias of aliases) {
+      const a = String(alias || '').trim();
+      if (!a) continue;
+      if (/[\u4e00-\u9fff]/.test(a)) {
+        if (text.includes(a)) {
+          matchedAlias = a;
+          break;
+        }
+        continue;
+      }
+
+      const re = buildLooseAsciiAliasRegex(a);
+      if (re && re.test(lowered)) {
+        matchedAlias = a;
+        break;
+      }
+    }
+
+    if (!matchedAlias) continue;
+
+    const bareBrandQuery = lowered.replace(/[\s\p{P}_-]+/gu, '').length <= 18;
+    if (!availabilityHint && !bareBrandQuery) continue;
+
+    const brandName = lang === 'CN' ? brand?.name?.CN || '' : brand?.name?.EN || '';
+    return {
+      intent: 'availability',
+      brand_id: brand.brand_id,
+      brand_name: brandName || String(matchedAlias || '').trim(),
+      matched_alias: matchedAlias,
+      reason: availabilityHint ? 'availability_hint' : 'bare_brand_query',
+    };
+  }
+
+  return null;
+}
+
+function buildBrandPlaceholderProduct({ brandId, brandName, lang } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const brand = String(brandName || '').trim() || (isCn ? '未知品牌' : 'Unknown brand');
+  const skuId = String(brandId || '').trim() || `brand_${stableHashBase36(brand).slice(0, 10)}`;
+  const name = isCn ? `${brand}（品牌）` : `${brand} (brand)`;
+  return {
+    product_id: `brand:${skuId}`,
+    sku_id: skuId,
+    brand,
+    name,
+    display_name: name,
+    image_url: '',
+    category: isCn ? '品牌' : 'Brand',
+  };
+}
+
+function applyCommerceMedicalClaimGuard(text, lang) {
+  const input = String(text || '');
+  if (!input.trim()) return input;
+  const lowered = input.toLowerCase();
+  const hit =
+    /(治愈|疗效|治疗|药用|处方|皮炎|湿疹|激素)/.test(input) ||
+    /\b(cure|treat|heals?|prescription|steroid|dermatitis|eczema)\b/i.test(lowered);
+  if (!hit) return input;
+
+  recordClaimsViolation({ reason: 'commerce_medical_blacklist' });
+  return lang === 'CN'
+    ? '我可以帮你查商品信息/成分/购买渠道，但不提供医疗诊断或治疗建议；如果你有皮炎、湿疹等情况，建议线下就医。你想查哪个品牌/单品？'
+    : "I can help with product info/ingredients/where to buy, but I can't provide medical diagnosis or treatment advice. If you suspect dermatitis/eczema, please see a clinician. Which brand or product are you looking for?";
 }
 
 function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
@@ -3253,6 +3401,431 @@ function normalizeClarificationField(raw) {
   if (/(sensit|敏感程度|敏感性)/.test(haystack)) return 'sensitivity';
   if (/(skin|肤质|皮肤类型|油皮|干皮|混合|中性|oily|dry|combo|combination|mixed|normal)/.test(haystack)) return 'skinType';
   return norm;
+}
+
+const FILTERABLE_CLARIFICATION_FIELDS = new Set(['skinType', 'sensitivity', 'barrierStatus', 'goals', 'budgetTier']);
+
+function hasKnownClarificationFieldValue(profileSummary, field) {
+  if (!field || !profileSummary || typeof profileSummary !== 'object') return false;
+  const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+  if (field === 'skinType') {
+    const v = norm(profileSummary.skinType);
+    return Boolean(v && v !== 'unknown');
+  }
+  if (field === 'sensitivity') {
+    const v = norm(profileSummary.sensitivity);
+    return Boolean(v && v !== 'unknown');
+  }
+  if (field === 'barrierStatus') {
+    const v = norm(profileSummary.barrierStatus);
+    return Boolean(v && v !== 'unknown');
+  }
+  if (field === 'goals') {
+    const goals = Array.isArray(profileSummary.goals) ? profileSummary.goals : [];
+    return goals.some((g) => norm(g));
+  }
+  if (field === 'budgetTier') {
+    const v = norm(profileSummary.budgetTier);
+    return Boolean(v && v !== 'unknown');
+  }
+  return false;
+}
+
+function filterClarificationQuestionsForChips({ clarification, profileSummary, filterKnown } = {}) {
+  if (!clarification || typeof clarification !== 'object') return [];
+
+  const rawQuestions = clarification.questions;
+  if (!Array.isArray(rawQuestions)) {
+    recordClarificationSchemaInvalid({ reason: 'questions_not_array' });
+    return [];
+  }
+
+  const questions = [];
+  let filteredKnownCount = 0;
+  let validQuestionCount = 0;
+  for (const rawQuestion of rawQuestions) {
+    if (!rawQuestion || typeof rawQuestion !== 'object' || Array.isArray(rawQuestion)) {
+      recordClarificationSchemaInvalid({ reason: 'question_not_object' });
+      continue;
+    }
+
+    const qidRaw = typeof rawQuestion.id === 'string' ? rawQuestion.id.trim() : '';
+    const qid = qidRaw || 'clarify';
+    if (!qidRaw) {
+      recordClarificationSchemaInvalid({ reason: 'question_id_missing' });
+    }
+
+    if (!Array.isArray(rawQuestion.options)) {
+      recordClarificationSchemaInvalid({ reason: 'question_options_not_array' });
+      continue;
+    }
+
+    let hasInvalidOptionType = false;
+    const options = [];
+    for (const rawOption of rawQuestion.options) {
+      if (typeof rawOption !== 'string') {
+        hasInvalidOptionType = true;
+        continue;
+      }
+      const option = rawOption.trim();
+      if (option) options.push(option);
+    }
+    if (hasInvalidOptionType) {
+      recordClarificationSchemaInvalid({ reason: 'question_option_non_string' });
+    }
+    if (!options.length) {
+      recordClarificationSchemaInvalid({ reason: 'question_options_empty' });
+      continue;
+    }
+    const question = typeof rawQuestion.question === 'string' ? rawQuestion.question.trim() : '';
+
+    validQuestionCount += 1;
+    const field = normalizeClarificationField(qid);
+    const shouldFilterKnown =
+      Boolean(filterKnown) &&
+      FILTERABLE_CLARIFICATION_FIELDS.has(field) &&
+      hasKnownClarificationFieldValue(profileSummary, field);
+    if (shouldFilterKnown) {
+      filteredKnownCount += 1;
+      recordClarificationQuestionFiltered({ field });
+      // Keep existing observability for repeated asks, even when we filter the chips.
+      recordRepeatedClarifyField({ field });
+      continue;
+    }
+
+    questions.push({ id: qid, question, options });
+  }
+
+  if (Boolean(filterKnown) && validQuestionCount > 0 && filteredKnownCount > 0 && questions.length === 0) {
+    recordClarificationAllQuestionsFiltered();
+  }
+
+  return questions;
+}
+
+const PENDING_CLARIFICATION_SCHEMA_V1 = 1;
+const PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT = 800;
+const PENDING_CLARIFICATION_MAX_QUEUE = 5;
+const PENDING_CLARIFICATION_MAX_OPTIONS = 8;
+const PENDING_CLARIFICATION_MAX_QUESTION = 200;
+const PENDING_CLARIFICATION_MAX_OPTION = 80;
+const PENDING_CLARIFICATION_MAX_HISTORY = 6;
+
+function makeFlowId() {
+  const rand = crypto.randomBytes(6).toString('hex').slice(0, 12);
+  return `pc_${rand || Math.random().toString(36).slice(2, 10)}`;
+}
+
+function truncate(value, maxChars) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return { value: '', truncated: false };
+  if (text.length <= maxChars) return { value: text, truncated: false };
+  return { value: text.slice(0, maxChars), truncated: true };
+}
+
+function capArray(items, maxCount) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length <= maxCount) return { values: list, dropped: 0 };
+  return { values: list.slice(0, maxCount), dropped: list.length - maxCount };
+}
+
+function normalizePendingClarificationId(rawId) {
+  const idRaw = typeof rawId === 'string' ? rawId.trim() : '';
+  const id = idRaw || 'clarify';
+  const normId = normalizeClarificationField(id);
+  return { id, norm_id: normId };
+}
+
+function recordPendingClarificationTruncationFields(fields) {
+  for (const field of Array.from(fields || [])) {
+    recordPendingClarificationTruncated({ field });
+  }
+}
+
+function normalizeClarificationQuestionForPending(rawQuestion, { recordTruncationMetrics = true, truncationFields } = {}) {
+  if (!rawQuestion || typeof rawQuestion !== 'object' || Array.isArray(rawQuestion)) return null;
+  if (!Array.isArray(rawQuestion.options)) return null;
+
+  const localTruncationFields = new Set();
+  const idInfo = normalizePendingClarificationId(rawQuestion.id);
+  const questionTextRaw = typeof rawQuestion.question === 'string' ? rawQuestion.question.trim() : '';
+  const questionTrimmed = truncate(questionTextRaw, PENDING_CLARIFICATION_MAX_QUESTION);
+  if (questionTrimmed.truncated) localTruncationFields.add('question');
+
+  const options = [];
+  for (const rawOption of rawQuestion.options) {
+    if (typeof rawOption !== 'string') continue;
+    const optionText = rawOption.trim();
+    if (!optionText) continue;
+    const optionTrimmed = truncate(optionText, PENDING_CLARIFICATION_MAX_OPTION);
+    if (optionTrimmed.truncated) localTruncationFields.add('option');
+    options.push(optionTrimmed.value);
+  }
+  if (!options.length) return null;
+
+  const cappedOptions = capArray(options, PENDING_CLARIFICATION_MAX_OPTIONS);
+  if (cappedOptions.dropped > 0) localTruncationFields.add('options');
+
+  for (const field of Array.from(localTruncationFields)) {
+    if (truncationFields && truncationFields.add) truncationFields.add(field);
+  }
+  if (recordTruncationMetrics && localTruncationFields.size > 0) {
+    recordPendingClarificationTruncationFields(localTruncationFields);
+  }
+
+  return {
+    id: idInfo.id,
+    norm_id: idInfo.norm_id,
+    question: questionTrimmed.value,
+    options: cappedOptions.values,
+  };
+}
+
+function isClarifyChipAction(action, { actionId, clarificationId } = {}) {
+  const id =
+    typeof actionId === 'string'
+      ? actionId.trim()
+      : typeof action === 'string'
+        ? action.trim()
+        : action && typeof action === 'object' && typeof action.action_id === 'string'
+          ? action.action_id.trim()
+          : '';
+  if (id.toLowerCase().startsWith('chip.clarify.')) return true;
+  if (parseClarificationIdFromActionId(id)) return true;
+  return Boolean(typeof clarificationId === 'string' && clarificationId.trim());
+}
+
+function hasPendingClarificationStateHint(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return false;
+  const data = action.data && typeof action.data === 'object' ? action.data : null;
+  if (!data) return false;
+  if (Object.prototype.hasOwnProperty.call(data, 'clarification_step')) return true;
+  if (typeof data.clarification_question_id === 'string' && data.clarification_question_id.trim()) return true;
+  if (typeof data.clarificationQuestionId === 'string' && data.clarificationQuestionId.trim()) return true;
+  return false;
+}
+
+function extractClarificationQuestionIdFromAction(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return '';
+  const data = action.data && typeof action.data === 'object' ? action.data : null;
+  if (!data) return '';
+  const raw =
+    (typeof data.clarification_question_id === 'string' && data.clarification_question_id) ||
+    (typeof data.clarificationQuestionId === 'string' && data.clarificationQuestionId) ||
+    '';
+  return String(raw || '').trim();
+}
+
+function sanitizePendingClarification(rawPending, { recordMetrics = true } = {}) {
+  if (!rawPending || typeof rawPending !== 'object' || Array.isArray(rawPending)) return null;
+  const truncationFields = new Set();
+
+  const createdAtRaw = Number(rawPending.created_at_ms);
+  if (!Number.isFinite(createdAtRaw) || createdAtRaw <= 0) return null;
+  const createdAtMs = Math.trunc(createdAtRaw);
+
+  const resumeTextRaw = typeof rawPending.resume_user_text === 'string' ? rawPending.resume_user_text.trim() : '';
+  if (!resumeTextRaw) return null;
+  const resumeText = truncate(resumeTextRaw, PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT);
+  if (resumeText.truncated) truncationFields.add('resume_user_text');
+
+  const flowIdRaw = typeof rawPending.flow_id === 'string' ? rawPending.flow_id.trim() : '';
+  const flowId = /^pc_[a-z0-9]+$/i.test(flowIdRaw) ? flowIdRaw.slice(0, 32) : makeFlowId();
+
+  const resumeUserHashRaw = typeof rawPending.resume_user_hash === 'string' ? rawPending.resume_user_hash.trim() : '';
+  const resumeUserHashSafe = (resumeUserHashRaw || stableHashBase36(resumeText.value).slice(0, 20))
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 24);
+
+  if (!Array.isArray(rawPending.queue)) return null;
+  const normalizedQueue = [];
+  for (const rawQuestion of rawPending.queue) {
+    const normalized = normalizeClarificationQuestionForPending(rawQuestion, {
+      recordTruncationMetrics: false,
+      truncationFields,
+    });
+    if (normalized) normalizedQueue.push(normalized);
+  }
+  if (normalizedQueue.length < rawPending.queue.length) truncationFields.add('queue');
+  const cappedQueue = capArray(normalizedQueue, PENDING_CLARIFICATION_MAX_QUEUE);
+  if (cappedQueue.dropped > 0) truncationFields.add('queue');
+
+  let current = null;
+  if (rawPending.current && typeof rawPending.current === 'object' && !Array.isArray(rawPending.current)) {
+    const currentIdRaw = typeof rawPending.current.id === 'string' ? rawPending.current.id.trim() : '';
+    if (currentIdRaw) {
+      const currentIdInfo = normalizePendingClarificationId(currentIdRaw);
+      current = { id: currentIdInfo.id, norm_id: currentIdInfo.norm_id };
+    }
+  }
+
+  const historyRaw = Array.isArray(rawPending.history) ? rawPending.history : [];
+  if (!Array.isArray(rawPending.history) && rawPending.history != null) {
+    truncationFields.add('history');
+  }
+  const normalizedHistory = [];
+  for (const entry of historyRaw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const questionIdRaw = typeof entry.question_id === 'string' ? entry.question_id.trim() : '';
+    const optionRaw = typeof entry.option === 'string' ? entry.option.trim() : '';
+    const tsMsRaw = Number(entry.ts_ms);
+    if (!questionIdRaw || !optionRaw || !Number.isFinite(tsMsRaw) || tsMsRaw <= 0) continue;
+
+    const questionIdInfo = normalizePendingClarificationId(questionIdRaw);
+    const optionTrimmed = truncate(optionRaw, PENDING_CLARIFICATION_MAX_OPTION);
+    if (optionTrimmed.truncated) truncationFields.add('option');
+
+    normalizedHistory.push({
+      question_id: questionIdInfo.id,
+      norm_id:
+        typeof entry.norm_id === 'string' && entry.norm_id.trim()
+          ? entry.norm_id.trim().slice(0, 80)
+          : questionIdInfo.norm_id,
+      option: optionTrimmed.value,
+      ts_ms: Math.trunc(tsMsRaw),
+    });
+  }
+  if (normalizedHistory.length < historyRaw.length) truncationFields.add('history');
+  let history = normalizedHistory;
+  if (normalizedHistory.length > PENDING_CLARIFICATION_MAX_HISTORY) {
+    history = normalizedHistory.slice(-PENDING_CLARIFICATION_MAX_HISTORY);
+    truncationFields.add('history');
+  }
+
+  const canonical = {
+    v: PENDING_CLARIFICATION_SCHEMA_V1,
+    flow_id: flowId,
+    created_at_ms: createdAtMs,
+    resume_user_text: resumeText.value,
+    ...(resumeUserHashSafe ? { resume_user_hash: resumeUserHashSafe } : {}),
+    step_index: history.length,
+    ...(current ? { current } : {}),
+    queue: cappedQueue.values,
+    history,
+  };
+
+  const upgraded = Number(rawPending.v) !== PENDING_CLARIFICATION_SCHEMA_V1;
+  if (recordMetrics) {
+    if (upgraded) recordPendingClarificationUpgraded({ from: 'legacy' });
+    if (truncationFields.size > 0) recordPendingClarificationTruncationFields(truncationFields);
+  }
+
+  return { pending: canonical, upgraded };
+}
+
+function getPendingClarification(session) {
+  const s = session && typeof session === 'object' ? session : null;
+  if (!s) return null;
+  const state = s.state && typeof s.state === 'object' && !Array.isArray(s.state) ? s.state : null;
+  if (!state) return null;
+  const raw = state.pending_clarification;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return sanitizePendingClarification(raw, { recordMetrics: true });
+}
+
+function emitPendingClarificationPatch(sessionPatch, pendingOrNull) {
+  if (!sessionPatch || typeof sessionPatch !== 'object') return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.pending_clarification = pendingOrNull || null;
+  sessionPatch.state = state;
+}
+
+function buildChipsForQuestion(question, { stepIndex } = {}) {
+  const q = normalizeClarificationQuestionForPending(question);
+  if (!q) return [];
+  const qid = String(q.id || 'clarify').trim() || 'clarify';
+  const step = Number.isFinite(Number(stepIndex)) ? Math.max(1, Math.trunc(Number(stepIndex))) : 1;
+  return q.options.slice(0, 8).map((option) => ({
+    chip_id: `chip.clarify.${qid}.${option.trim().slice(0, 40).replace(/\s+/g, '_')}`,
+    label: option,
+    kind: 'quick_reply',
+    data: {
+      reply_text: option,
+      clarification_id: qid,
+      clarification_question_id: qid,
+      clarification_norm_id: String(q.norm_id || ''),
+      clarification_step: step,
+    },
+  }));
+}
+
+function advancePendingClarification(pending, selectedOption, selectedQuestionId) {
+  const nowMs = Date.now();
+  const option = typeof selectedOption === 'string' ? selectedOption.trim() : '';
+  const currentId =
+    (typeof selectedQuestionId === 'string' && selectedQuestionId.trim()) ||
+    (pending && pending.current && typeof pending.current.id === 'string' && pending.current.id.trim()) ||
+    'clarify';
+  const currentIdInfo = normalizePendingClarificationId(currentId);
+  const optionTrimmed = truncate(option || '(empty)', PENDING_CLARIFICATION_MAX_OPTION);
+  if (optionTrimmed.truncated) {
+    recordPendingClarificationTruncated({ field: 'option' });
+  }
+  const entry = {
+    question_id: currentIdInfo.id,
+    norm_id: currentIdInfo.norm_id,
+    option: optionTrimmed.value || '(empty)',
+    ts_ms: nowMs,
+  };
+
+  const history = Array.isArray(pending && pending.history) ? [...pending.history, entry] : [entry];
+  const queue = Array.isArray(pending && pending.queue) ? pending.queue : [];
+  const historyState = sanitizePendingClarification(
+    {
+      v: PENDING_CLARIFICATION_SCHEMA_V1,
+      flow_id: pending && typeof pending.flow_id === 'string' ? pending.flow_id : makeFlowId(),
+      created_at_ms: Number(pending && pending.created_at_ms) || nowMs,
+      resume_user_text: typeof pending?.resume_user_text === 'string' ? pending.resume_user_text : '(no message)',
+      ...(pending && typeof pending.resume_user_hash === 'string' ? { resume_user_hash: pending.resume_user_hash } : {}),
+      step_index: history.length,
+      ...(pending && pending.current ? { current: pending.current } : {}),
+      queue,
+      history,
+    },
+    { recordMetrics: true },
+  );
+  const boundedHistory = historyState ? historyState.pending.history : history.slice(-PENDING_CLARIFICATION_MAX_HISTORY);
+  if (!queue.length) {
+    return { nextPending: null, nextQuestion: null, history: boundedHistory };
+  }
+
+  const nextQuestion = normalizeClarificationQuestionForPending(queue[0], { recordTruncationMetrics: true });
+  if (!nextQuestion) return { nextPending: null, nextQuestion: null, history: boundedHistory };
+  const nextPendingState = sanitizePendingClarification(
+    {
+      v: PENDING_CLARIFICATION_SCHEMA_V1,
+      flow_id: pending && typeof pending.flow_id === 'string' ? pending.flow_id : makeFlowId(),
+      created_at_ms: Number(pending && pending.created_at_ms) || nowMs,
+      resume_user_text: typeof pending?.resume_user_text === 'string' ? pending.resume_user_text : '(no message)',
+      ...(pending && typeof pending.resume_user_hash === 'string' ? { resume_user_hash: pending.resume_user_hash } : {}),
+      step_index: boundedHistory.length,
+      current: { id: nextQuestion.id, norm_id: nextQuestion.norm_id },
+      queue: queue.slice(1),
+      history: boundedHistory,
+    },
+    { recordMetrics: true },
+  );
+  if (!nextPendingState || !nextPendingState.pending) {
+    return { nextPending: null, nextQuestion: null, history: boundedHistory };
+  }
+  return { nextPending: nextPendingState.pending, nextQuestion, history: nextPendingState.pending.history };
+}
+
+function compactClarificationHistory(history) {
+  const out = [];
+  const list = Array.isArray(history) ? history : [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const questionId = typeof item.question_id === 'string' ? item.question_id.trim() : '';
+    const option = typeof item.option === 'string' ? item.option.trim() : '';
+    if (!questionId || !option) continue;
+    out.push({
+      question_id: questionId.slice(0, 120),
+      option: option.slice(0, 120),
+    });
+    if (out.length >= 5) break;
+  }
+  return out;
 }
 
 function isUnsureToken(raw) {
@@ -10113,16 +10686,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Best-effort context injection.
       let profile = null;
       let recentLogs = [];
+      let storageContextLoadFailed = false;
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
       } catch (err) {
+        storageContextLoadFailed = true;
         logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
+      }
+      if (storageContextLoadFailed) {
+        recordProfileContextMissing({ side: 'backend' });
       }
 
       // If the client already has a profile snapshot (for example, cached from bootstrap or a local quick-profile flow),
       // use it as an additional best-effort context source so we don't re-ask for already-known fields when DB reads fail.
       const profilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
+      if (!profilePatchFromSession) {
+        recordProfileContextMissing({ side: 'frontend' });
+      }
       if (profilePatchFromSession) {
         profile = { ...(profile || {}), ...profilePatchFromSession };
       }
@@ -10292,6 +10873,117 @@ function mountAuroraBffRoutes(app, { logger }) {
         // static state-machine map, but are still explicit recommendation interactions.
         recoInteractionAllowed;
 
+      let upstreamMessage = message;
+      let clarificationHistoryForUpstream = null;
+      let pendingClarificationPatchOverride = undefined;
+      let forceUpstreamAfterPendingAbandon = false;
+      const clarifyChipAction = isClarifyChipAction(parsed.data.action, { actionId, clarificationId });
+      const sessionStateRaw =
+        parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+          ? parsed.data.session.state
+          : null;
+      const hasRawPendingClarification =
+        sessionStateRaw &&
+        typeof sessionStateRaw === 'object' &&
+        !Array.isArray(sessionStateRaw) &&
+        Object.prototype.hasOwnProperty.call(sessionStateRaw, 'pending_clarification');
+      const pendingClarificationState = getPendingClarification(parsed.data.session);
+      const pendingClarification = pendingClarificationState ? pendingClarificationState.pending : null;
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        pendingClarificationState &&
+        pendingClarificationState.upgraded &&
+        pendingClarificationPatchOverride === undefined
+      ) {
+        pendingClarificationPatchOverride = pendingClarification;
+      }
+      if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED && hasRawPendingClarification && !pendingClarification) {
+        recordPendingClarificationAbandoned({ reason: 'error' });
+      }
+
+      let pendingClarificationExpired = false;
+      if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED && pendingClarification) {
+        const ageMs = Date.now() - Number(pendingClarification.created_at_ms || 0);
+        if (!Number.isFinite(ageMs) || ageMs > PENDING_CLARIFICATION_TTL_MS) {
+          pendingClarificationExpired = true;
+          pendingClarificationPatchOverride = null;
+          if (clarifyChipAction) forceUpstreamAfterPendingAbandon = true;
+          recordPendingClarificationAbandoned({ reason: 'ttl' });
+        }
+      }
+
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        pendingClarification &&
+        !pendingClarificationExpired &&
+        !clarifyChipAction &&
+        message
+      ) {
+        pendingClarificationPatchOverride = null;
+        recordPendingClarificationAbandoned({ reason: 'free_text' });
+      }
+
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        !pendingClarification &&
+        clarifyChipAction &&
+        hasPendingClarificationStateHint(parsed.data.action)
+      ) {
+        recordPendingClarificationAbandoned({ reason: 'missing_state' });
+      }
+
+      if (
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+        pendingClarification &&
+        !pendingClarificationExpired &&
+        clarifyChipAction
+      ) {
+        const selectedOption = actionReplyText || parseClarificationReplyFromActionId(actionId);
+        const selectedQuestionId =
+          extractClarificationQuestionIdFromAction(parsed.data.action) ||
+          (pendingClarification.current && pendingClarification.current.id) ||
+          (typeof clarificationId === 'string' ? clarificationId.trim() : '') ||
+          parseClarificationIdFromActionId(actionId);
+        const { nextPending, nextQuestion, history } = advancePendingClarification(
+          pendingClarification,
+          selectedOption,
+          selectedQuestionId,
+        );
+
+        if (nextPending && nextQuestion) {
+          const profileSummaryForPatch = summarizeProfileForContext(profile);
+          const sessionPatch = {};
+          emitPendingClarificationPatch(sessionPatch, nextPending);
+          if (profileSummaryForPatch) {
+            sessionPatch.profile = profileSummaryForPatch;
+            recordSessionPatchProfileEmitted({ changed: Boolean(appliedProfilePatch) });
+          }
+          const nextStepIndex = Array.isArray(nextPending.history) ? nextPending.history.length + 1 : 1;
+          const chips = buildChipsForQuestion(nextQuestion, { stepIndex: nextStepIndex });
+          recordAuroraChatSkipped({ reason: 'pending_clarification_step' });
+          recordPendingClarificationStep({ stepIndex: Array.isArray(nextPending.history) ? nextPending.history.length : 1 });
+
+          const questionText = String(nextQuestion.question || '').trim() ||
+            (ctx.lang === 'CN' ? '再补充一个信息就好。' : 'One more quick question.');
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(questionText),
+            suggested_chips: chips,
+            cards: [],
+            session_patch: sessionPatch,
+            events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'pending_clarification_step' })],
+          });
+          return res.json(envelope);
+        }
+
+        pendingClarificationPatchOverride = null;
+        upstreamMessage = pendingClarification.resume_user_text || upstreamMessage || message;
+        if (AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED) {
+          clarificationHistoryForUpstream = compactClarificationHistory(history);
+        }
+        forceUpstreamAfterPendingAbandon = true;
+        recordPendingClarificationCompleted();
+      }
+
       // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
       let nextStateOverride = null;
 
@@ -10311,6 +11003,104 @@ function mountAuroraBffRoutes(app, { logger }) {
             nextStateOverride = allowRecoCards ? 'S7_PRODUCT_RECO' : 'idle';
           }
           ctx.state = nextStateOverride || 'idle';
+        }
+      }
+
+      // Brand availability short-circuit: route "有没有某品牌的产品/有货吗/哪里买" to catalog lookup (no diagnosis intake).
+      if (
+        AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED &&
+        message &&
+        (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
+      ) {
+        const availabilityIntent = detectBrandAvailabilityIntent(message, ctx.lang);
+        if (availabilityIntent) {
+          recordCatalogAvailabilityShortCircuit({ brandId: availabilityIntent.brand_id, reason: availabilityIntent.reason });
+
+          const brandProduct = buildBrandPlaceholderProduct({
+            brandId: availabilityIntent.brand_id,
+            brandName: availabilityIntent.brand_name,
+            lang: ctx.lang,
+          });
+
+          let catalogResult = { ok: false, products: [], reason: 'unknown' };
+          if (PIVOTA_BACKEND_BASE_URL) {
+            catalogResult = await searchPivotaBackendProducts({
+              query: availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
+              limit: 8,
+              logger,
+            });
+          } else {
+            catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
+          }
+
+          const products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
+          const offersItems = (products.length ? products : [brandProduct])
+            .slice(0, 8)
+            .map((product) => ({ product, offer: null }));
+
+          const marketRaw = profile && typeof profile.region === 'string' ? profile.region.trim() : '';
+          const market = marketRaw ? marketRaw.slice(0, 8).toUpperCase() : 'US';
+
+          const hasResults = products.length > 0;
+          const assistantRaw =
+            ctx.lang === 'CN'
+              ? hasResults
+                ? `我在商品库里找到了「${availabilityIntent.brand_name || '该品牌'}」的相关商品（见下方卡片）。你想查官方旗舰/自营，还是某个具体单品名？`
+                : `我可以帮你查商品库，但当前没能拉到「${availabilityIntent.brand_name || '该品牌'}」的商品列表。你想查的是官方旗舰/自营，还是某个具体单品名？`
+              : hasResults
+                ? `I found ${products.length} items for "${availabilityIntent.brand_name || 'this brand'}" (see the cards below). Are you looking for an official store, major retailers, or a specific product name?`
+                : `I can help check our catalog, but I couldn't fetch items for "${availabilityIntent.brand_name || 'this brand'}" right now. Are you looking for an official store, major retailers, or a specific product name?`;
+
+          const assistantText = applyCommerceMedicalClaimGuard(assistantRaw, ctx.lang);
+
+          const profileSummary = summarizeProfileForContext(profile);
+          const sessionPatch = {
+            ...(nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {}),
+            ...(profileSummary ? { profile: profileSummary } : {}),
+          };
+          if (profileSummary) {
+            recordSessionPatchProfileEmitted({ changed: Boolean(appliedProfilePatch) });
+          }
+
+          const fieldMissing = [];
+          if (!hasResults && catalogResult.reason) {
+            fieldMissing.push({ field: 'catalog.products', reason: String(catalogResult.reason).slice(0, 60) });
+          }
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `parse_${ctx.request_id}`,
+                type: 'product_parse',
+                payload: {
+                  product: brandProduct,
+                  confidence: 1,
+                  missing_info: [],
+                  intent: 'availability',
+                  brand_id: availabilityIntent.brand_id,
+                  brand_name: availabilityIntent.brand_name,
+                },
+              },
+              {
+                card_id: `offers_${ctx.request_id}`,
+                type: 'offers_resolved',
+                payload: { items: offersItems, market },
+                ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
+              },
+            ],
+            session_patch: sessionPatch,
+            events: [
+              makeEvent(ctx, 'catalog_availability_shortcircuit', {
+                brand_id: availabilityIntent.brand_id,
+                reason: availabilityIntent.reason,
+                ok: Boolean(hasResults),
+                count: products.length,
+              }),
+            ],
+          });
+          return res.json(envelope);
         }
       }
 
@@ -10748,11 +11538,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.json(envelope);
       }
 
-      const budgetClarificationAction = isBudgetClarificationAction(actionId, clarificationId);
+      const budgetClarificationAction =
+        !forceUpstreamAfterPendingAbandon && isBudgetClarificationAction(actionId, clarificationId);
       const budgetChipCanContinueReco =
         budgetClarificationAction &&
         ctx.state === 'S6_BUDGET';
       const profileClarificationAction =
+        !forceUpstreamAfterPendingAbandon &&
         Boolean(appliedProfilePatch && Object.keys(appliedProfilePatch).length > 0) &&
         (String(actionId || '').trim().toLowerCase().startsWith('chip.clarify.') || Boolean(clarificationId));
       const budgetChipOutOfFlow =
@@ -10815,6 +11607,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
       const wantsProductRecommendations =
+        !forceUpstreamAfterPendingAbandon &&
         allowRecoCards &&
         !looksLikeIngredientScienceIntent(message, parsed.data.action) &&
         !looksLikeRoutineRequest(message, parsed.data.action) &&
@@ -10956,27 +11749,31 @@ function mountAuroraBffRoutes(app, { logger }) {
         looksLikeWeatherOrEnvironmentQuestion(message) ||
         looksLikeRecommendationRequest(message);
 
-      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
-        const inDiagnosisFlow =
-          String(agentState || '').startsWith('DIAG_') ||
-          String(ctx.state || '').startsWith('S2_') ||
-          String(ctx.state || '').startsWith('S3_') ||
-          profileClarificationAction;
+	      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
+	        const inDiagnosisFlow =
+	          String(agentState || '').startsWith('DIAG_') ||
+	          String(ctx.state || '').startsWith('S2_') ||
+	          String(ctx.state || '').startsWith('S3_') ||
+	          profileClarificationAction;
 
-        const { score, missing } = profileCompleteness(profile);
+	        const { score, missing } = profileCompleteness(profile);
 
-        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
-        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
+	        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+	        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
+	        const profileSummaryForPatch = summarizeProfileForContext(profile);
+	        if (profileSummaryForPatch) {
+	          recordSessionPatchProfileEmitted({ changed: true });
+	        }
 
-        if (inDiagnosisFlow && missingCore.length) {
-          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
-          const chips = buildDiagnosisChips(ctx.lang, missingCore);
-          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+	        if (inDiagnosisFlow && missingCore.length) {
+	          const prompt = buildDiagnosisPrompt(ctx.lang, missingCore);
+	          const chips = buildDiagnosisChips(ctx.lang, missingCore);
+	          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(prompt),
-            suggested_chips: chips,
-            cards: [
+	          const envelope = buildEnvelope(ctx, {
+	            assistant_message: makeChatAssistantMessage(prompt),
+	            suggested_chips: chips,
+	            cards: [
               {
                 card_id: `diag_${ctx.request_id}`,
                 type: 'diagnosis_gate',
@@ -10989,7 +11786,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             ],
-            session_patch: nextState ? { next_state: nextState, profile: summarizeProfileForContext(profile) } : { profile: summarizeProfileForContext(profile) },
+            session_patch: nextState
+              ? { next_state: nextState, profile: profileSummaryForPatch }
+              : { profile: profileSummaryForPatch },
             events: [
               makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) }),
               makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_progress' }),
@@ -11034,7 +11833,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: { profile: summarizeProfileForContext(profile) },
             },
           ],
-          session_patch: { profile: summarizeProfileForContext(profile) },
+          session_patch: { profile: profileSummaryForPatch },
           events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) })],
         });
         return res.json(envelope);
@@ -11042,6 +11841,10 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let upstream = null;
       const profileSummary = summarizeProfileForContext(profile);
+      const historyForPrefix = Array.isArray(clarificationHistoryForUpstream) ? clarificationHistoryForUpstream : [];
+      if (historyForPrefix.length) {
+        recordClarificationHistorySent({ count: historyForPrefix.length });
+      }
       const prefix = buildContextPrefix({
         profile: profileSummary,
         recentLogs,
@@ -11051,8 +11854,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         trigger_source: ctx.trigger_source,
         action_id: parsed.data.action && typeof parsed.data.action === 'object' ? parsed.data.action.action_id : null,
         clarification_id: clarificationId,
+        ...(historyForPrefix.length ? { clarification_history: historyForPrefix } : {}),
       });
-      const query = `${prefix}${message || '(no message)'}`;
+      const query = `${prefix}${upstreamMessage || '(no message)'}`;
+      const upstreamStartedAt = Date.now();
       try {
         upstream = await auroraChat({
           baseUrl: AURORA_DECISION_BASE_URL,
@@ -11064,10 +11869,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
           ...(upstreamMessages && upstreamMessages.length ? { messages: upstreamMessages } : {}),
         });
+        recordUpstreamCall({ path: 'aurora_chat', status: 'ok' });
       } catch (err) {
+        recordUpstreamCall({ path: 'aurora_chat', status: 'error' });
         if (err.code !== 'AURORA_NOT_CONFIGURED') {
           logger?.warn({ err: err.message }, 'aurora bff: aurora upstream failed');
         }
+      } finally {
+        observeUpstreamLatency({ path: 'aurora_chat', latencyMs: Date.now() - upstreamStartedAt });
       }
 
       const answer = upstream && typeof upstream.answer === 'string'
@@ -11115,28 +11924,58 @@ function mountAuroraBffRoutes(app, { logger }) {
       const clarification = upstream && upstream.clarification && typeof upstream.clarification === 'object'
         ? upstream.clarification
         : null;
+      recordClarificationPresent({ present: Boolean(clarification) });
 
+      const clarificationQuestions = filterClarificationQuestionsForChips({
+        clarification,
+        profileSummary,
+        filterKnown: AURORA_CHAT_CLARIFICATION_FILTER_KNOWN_ENABLED,
+      });
+
+      let pendingClarificationFromUpstream = null;
       const suggestedChips = [];
-      if (clarification && Array.isArray(clarification.questions) && clarification.questions[0]) {
-        const q0 = clarification.questions[0];
-        const qid = q0 && typeof q0.id === 'string' ? q0.id : 'clarify';
-        const options = q0 && Array.isArray(q0.options) ? q0.options : [];
-        for (const opt of options.slice(0, 8)) {
-          if (typeof opt !== 'string' || !opt.trim()) continue;
-          suggestedChips.push({
-            chip_id: `chip.clarify.${qid}.${opt.trim().slice(0, 40).replace(/\s+/g, '_')}`,
-            label: opt.trim(),
-            kind: 'quick_reply',
-            data: { reply_text: opt.trim(), clarification_id: qid },
-          });
+      if (clarificationQuestions[0]) {
+        const q0 = clarificationQuestions[0];
+        const qid = String(q0.id || 'clarify').trim() || 'clarify';
+        const repeatedField = (() => {
+          const field = normalizeClarificationField(qid);
+          return hasKnownClarificationFieldValue(profileSummary, field) ? field : null;
+        })();
+        if (repeatedField) recordRepeatedClarifyField({ field: repeatedField });
+
+        if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED && clarificationQuestions.length > 1) {
+          const resumeUserText = String(upstreamMessage || message || '(no message)').trim() || '(no message)';
+          const seededPending = sanitizePendingClarification(
+            {
+              v: PENDING_CLARIFICATION_SCHEMA_V1,
+              flow_id: makeFlowId(),
+              created_at_ms: Date.now(),
+              resume_user_text: resumeUserText,
+              step_index: 0,
+              current: { id: qid },
+              queue: clarificationQuestions.slice(1).map((q) => ({
+                id: String(q.id || 'clarify'),
+                question: String(q.question || ''),
+                options: Array.isArray(q.options) ? q.options : [],
+              })),
+              history: [],
+            },
+            { recordMetrics: true },
+          );
+          if (seededPending && seededPending.pending && seededPending.pending.queue.length > 0) {
+            pendingClarificationFromUpstream = seededPending.pending;
+            recordClarificationFlowV2Started();
+          }
         }
+        suggestedChips.push(...buildChipsForQuestion(q0, { stepIndex: 1 }));
       }
 
       const contextRaw = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
       const derivedCards = [];
       let heatmapImpressionEvent = null;
+      const responseIntentMessage = upstreamMessage || message;
       const envStressActionRequested = typeof actionId === 'string' && /env[_-]?stress|environment[_-]?stress|weather|itinerary/i.test(actionId);
-      const looksEnv = looksLikeWeatherOrEnvironmentQuestion(message);
+      const looksEnv = looksLikeWeatherOrEnvironmentQuestion(responseIntentMessage);
       const wantsEnvStressCard = Boolean(debugUpstream) || envStressActionRequested || looksEnv;
 
       const isEnvStressCard = (card) => {
@@ -11162,7 +12001,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         envStressUi = buildEnvStressUiModelFromUpstream(envStressRaw, { language: ctx.lang });
       }
       if (!envStressUi && (envStressActionRequested || looksEnv)) {
-        envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
+        envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message: responseIntentMessage, language: ctx.lang });
       }
       if (envStressUi && wantsEnvStressCard) {
         derivedCards.push({
@@ -11180,7 +12019,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null;
         const wantsConflictCards =
           Boolean(debugUpstream) ||
-          looksLikeCompatibilityOrConflictQuestion(message) ||
+          looksLikeCompatibilityOrConflictQuestion(responseIntentMessage) ||
           (typeof actionId === 'string' && /(routine|compat|conflict|heatmap)/i.test(actionId)) ||
           (conflictDetector && conflictDetector.safe === false) ||
           (Array.isArray(conflictDetector && conflictDetector.conflicts) && conflictDetector.conflicts.length > 0);
@@ -11497,7 +12336,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       };
 
       if (
-        looksLikeSuitabilityRequest(message) &&
+        looksLikeSuitabilityRequest(responseIntentMessage) &&
         anchorFromContext &&
         !derivedCards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis') &&
         !cards.some((c) => String(c?.type || '').toLowerCase() === 'product_analysis')
@@ -11516,7 +12355,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Fit-check fallback: if user asks suitability but upstream did not provide a renderable
       // `product_analysis` card, run a dedicated deep-scan to guarantee actionable output.
       const wantsSuitabilityFallback =
-        looksLikeSuitabilityRequest(message);
+        looksLikeSuitabilityRequest(responseIntentMessage);
 
       const hasProductAnalysisCard = (arr) =>
         Array.isArray(arr) &&
@@ -11532,7 +12371,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       ) {
         const productInput =
           anchorProductUrl ||
-          extractProductInputFromFitCheckText(message) ||
+          extractProductInputFromFitCheckText(responseIntentMessage) ||
           '';
 
         if (productInput) {
@@ -11776,7 +12615,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const routeHintFromCards = inferRouteFromCards(routeCards);
       const routeHintFromMessage =
         !routeHintFromCards
-          ? inferRouteFromMessageIntent(message, { allowRecoCards: allowRecs })
+          ? inferRouteFromMessageIntent(responseIntentMessage, { allowRecoCards: allowRecs })
           : null;
       const routeHint = resolveRouteHint(routeHintFromCards, routeHintFromMessage);
       if (routeHint && routeHint.route) {
@@ -11798,6 +12637,22 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
 
       const cardsForEnvelope = !debugUpstream ? stripInternalRefsDeep(cards) : cards;
+      const shouldEchoProfile =
+        Boolean(profileSummary) &&
+        (Boolean(appliedProfilePatch) || !profilePatchFromSession);
+      const sessionPatch = {};
+      if (nextStateOverride && stateChangeAllowed(ctx.trigger_source)) {
+        sessionPatch.next_state = nextStateOverride;
+      }
+      if (shouldEchoProfile) {
+        sessionPatch.profile = profileSummary;
+        recordSessionPatchProfileEmitted({ changed: Boolean(appliedProfilePatch) });
+      }
+      if (pendingClarificationPatchOverride !== undefined) {
+        emitPendingClarificationPatch(sessionPatch, pendingClarificationPatchOverride);
+      } else if (pendingClarificationFromUpstream) {
+        emitPendingClarificationPatch(sessionPatch, pendingClarificationFromUpstream);
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeChatAssistantMessage(safeAnswer, 'markdown'),
@@ -11823,7 +12678,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? [{ card_id: `gate_${ctx.request_id}`, type: 'gate_notice', payload: {}, field_missing: fieldMissing }]
             : []),
         ],
-        session_patch: nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+        session_patch: sessionPatch,
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'chat_reply' }),
           ...(allowRecs ? [makeEvent(ctx, 'recos_requested', { explicit: true })] : []),
@@ -11847,6 +12702,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 }
 
 const __internal = {
+  normalizeClarificationField,
+  detectBrandAvailabilityIntent,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
