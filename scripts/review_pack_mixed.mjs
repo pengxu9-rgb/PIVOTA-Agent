@@ -928,9 +928,32 @@ function parseModuleGuardPixelDiffs(input) {
       before_pixels: Math.max(0, Math.trunc(safeNumber(row.before_pixels, 0))),
       after_pixels: Math.max(0, Math.trunc(safeNumber(row.after_pixels, 0))),
       threshold: Math.max(0, Math.trunc(safeNumber(row.threshold, 0))),
+      guard_method: String(row.guard_method || '').trim() || 'unknown',
+      dilation_iters: Math.max(0, Math.trunc(safeNumber(row.dilation_iters, 0))),
     });
   }
   return out;
+}
+
+function computeMinModuleStats(modulePixelsMap) {
+  const normalized = sanitizeModulePixelsMap(modulePixelsMap);
+  const entries = Object.entries(normalized).filter(([, pixels]) => Number.isFinite(Number(pixels)));
+  if (!entries.length) {
+    return {
+      min_module_id: null,
+      min_module_pixels: 0,
+    };
+  }
+  entries.sort((left, right) => {
+    const leftPixels = Math.max(0, Math.trunc(safeNumber(left[1], 0)));
+    const rightPixels = Math.max(0, Math.trunc(safeNumber(right[1], 0)));
+    if (leftPixels !== rightPixels) return leftPixels - rightPixels;
+    return String(left[0]).localeCompare(String(right[0]));
+  });
+  return {
+    min_module_id: String(entries[0][0]),
+    min_module_pixels: Math.max(0, Math.trunc(safeNumber(entries[0][1], 0))),
+  };
 }
 
 function parseDegradedReasons(photoPayload) {
@@ -1571,7 +1594,7 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
     };
   }
 
-  const rows = await runPool(sampleInfo.samples, args.concurrency, async (sample) => {
+  const rowsRaw = await runPool(sampleInfo.samples, args.concurrency, async (sample) => {
     const filePath = sample && sample.file_path ? String(sample.file_path) : '';
     const ext = fileExtToken(filePath);
     const sampleHashSeed = String(sample && sample.sample_hash ? sample.sample_hash : '').trim();
@@ -2024,9 +2047,19 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
     return row;
   });
 
+  const rows = rowsRaw.map((row) => {
+    const current = row && typeof row === 'object' ? { ...row } : {};
+    const minStats = computeMinModuleStats(current.module_pixels_map);
+    if (current.min_module_id == null) current.min_module_id = minStats.min_module_id;
+    if (!Number.isFinite(Number(current.min_module_pixels))) current.min_module_pixels = minStats.min_module_pixels;
+    current.min_module_pixels = Math.max(0, Math.trunc(safeNumber(current.min_module_pixels, 0)));
+    return current;
+  });
+
   const failMap = new Map();
   const dataAccessMap = new Map();
   const decodeFailureMap = new Map();
+  const decodeConversionMap = new Map();
   const decodeExamples = [];
   let heicMismatchCount = 0;
   let convertSuccessCount = 0;
@@ -2039,7 +2072,14 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
   const failRows = rows.filter((row) => !row.ok);
   for (const row of rows) {
     if (isHeicMismatch(row.ext_from_path, row.magic_type)) heicMismatchCount += 1;
-    if (row.heic_conversion_status === 'SUCCESS') convertSuccessCount += 1;
+    if (row.heic_conversion_status === 'SUCCESS') {
+      convertSuccessCount += 1;
+      const extToken = String(row.ext_from_path || row.decode_ext || '').trim().toLowerCase() || '-';
+      const magicToken = String(row.magic_type || row.decode_magic || '').trim().toLowerCase() || '-';
+      const containerHint = String(row.container_hint || '').trim().toLowerCase() || '-';
+      const convertKey = `${extToken}|${magicToken}|${containerHint}`;
+      decodeConversionMap.set(convertKey, (decodeConversionMap.get(convertKey) || 0) + 1);
+    }
     if (row.heic_conversion_status === 'FAIL') convertFailCount += 1;
   }
   for (const row of failRows) {
@@ -2120,6 +2160,12 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
           return { ext, magic_type, reason_detail, count };
         })
         .sort((a, b) => b.count - a.count || a.ext.localeCompare(b.ext) || a.magic_type.localeCompare(b.magic_type) || a.reason_detail.localeCompare(b.reason_detail)),
+      decode_conversions_breakdown: Array.from(decodeConversionMap.entries())
+        .map(([token, convert_count]) => {
+          const [ext, magic_type, container_hint] = String(token).split('|');
+          return { ext, magic_type, container_hint, convert_count };
+        })
+        .sort((a, b) => b.convert_count - a.convert_count || a.ext.localeCompare(b.ext) || a.magic_type.localeCompare(b.magic_type) || a.container_hint.localeCompare(b.container_hint)),
       decode_error_examples: decodeExamples,
       heic_mismatch_count: heicMismatchCount,
       convert_success_count: convertSuccessCount,
@@ -2208,6 +2254,8 @@ function toFassegRow(row) {
     quality_grade: row && row.quality_grade ? String(row.quality_grade) : null,
     modules_count: safeNumber(row && row.pred_stats && row.pred_stats.module_count, 0),
     module_pixels_min: safeNumber(metricStats.module_pixels_min, 0),
+    min_module_id: null,
+    min_module_pixels: safeNumber(metricStats.module_pixels_min, 0),
     empty_module_rate: round3(safeNumber(metricStats.empty_module_rate, 0)),
     module_pixels_map: {},
     under_eye_left_pixels: 0,
@@ -2295,14 +2343,21 @@ function runFassegEval({ args, runDir, chosenGroup }) {
   if (useRemoteForFassegEval && args.base_url) cli.push('--base_url', args.base_url);
   if (args.token) cli.push('--token', args.token);
 
+  const childEnv = {
+    ...process.env,
+    TOKEN: args.token || process.env.TOKEN || '',
+    EVAL_TOKEN: args.token || process.env.EVAL_TOKEN || '',
+  };
+  if (!useRemoteForFassegEval) {
+    childEnv.BASE = '';
+    childEnv.BASE_URL = '';
+    childEnv.EVAL_BASE_URL = '';
+    childEnv.EVAL_BASE = '';
+  }
   const result = spawnSync(process.execPath, cli, {
     cwd: path.resolve('.'),
     encoding: 'utf8',
-    env: {
-      ...process.env,
-      TOKEN: args.token || process.env.TOKEN || '',
-      EVAL_TOKEN: args.token || process.env.EVAL_TOKEN || '',
-    },
+    env: childEnv,
   });
   const payload = parseLastJsonLine(result.stdout);
   payload.eval_exit_code = Number.isFinite(Number(result.status)) ? Number(result.status) : 0;
@@ -2472,6 +2527,8 @@ function renderMd({
         before_pixels: Math.max(0, Math.trunc(safeNumber(diff.before_pixels, 0))),
         after_pixels: Math.max(0, Math.trunc(safeNumber(diff.after_pixels, 0))),
         threshold: Math.max(0, Math.trunc(safeNumber(diff.threshold, 0))),
+        guard_method: String(diff.guard_method || '').trim() || 'unknown',
+        dilation_iters: Math.max(0, Math.trunc(safeNumber(diff.dilation_iters, 0))),
       });
     }
   }
@@ -2545,6 +2602,16 @@ function renderMd({
   ]
     .filter((row) => safeNumber(row.count, 0) > 0)
     .sort((a, b) => safeNumber(b.count, 0) - safeNumber(a.count, 0) || String(a.source).localeCompare(String(b.source)));
+  const failuresBySource = mixedRows
+    .filter((row) => !row.ok)
+    .reduce((acc, row) => {
+      const source = String(row.source || row.dataset || 'unknown').trim() || 'unknown';
+      const failReason = String(row.fail_reason || 'UNKNOWN').trim() || 'UNKNOWN';
+      const reasonDetail = String(row.reason_detail || '-').trim() || '-';
+      const key = `${source}|${failReason}|${reasonDetail}`;
+      acc.set(key, (acc.get(key) || 0) + 1);
+      return acc;
+    }, new Map());
   const decodeFailureBreakdown = [
     ...((internalResult.summary && internalResult.summary.decode_failures_breakdown) || []).map((row) => ({ source: 'internal', ...row })),
     ...((lapaResult.summary && lapaResult.summary.decode_failures_breakdown) || []).map((row) => ({ source: 'lapa', ...row })),
@@ -2552,6 +2619,13 @@ function renderMd({
   ]
     .filter((row) => safeNumber(row.count, 0) > 0)
     .sort((a, b) => safeNumber(b.count, 0) - safeNumber(a.count, 0) || String(a.source).localeCompare(String(b.source)));
+  const decodeConversionsBreakdown = [
+    ...((internalResult.summary && internalResult.summary.decode_conversions_breakdown) || []).map((row) => ({ source: 'internal', ...row })),
+    ...((lapaResult.summary && lapaResult.summary.decode_conversions_breakdown) || []).map((row) => ({ source: 'lapa', ...row })),
+    ...((celebaResult.summary && celebaResult.summary.decode_conversions_breakdown) || []).map((row) => ({ source: 'celebamaskhq', ...row })),
+  ]
+    .filter((row) => safeNumber(row.convert_count, 0) > 0)
+    .sort((a, b) => safeNumber(b.convert_count, 0) - safeNumber(a.convert_count, 0) || String(a.source).localeCompare(String(b.source)));
   const heicMismatchCount = safeNumber(internalResult.summary.heic_mismatch_count, 0)
     + safeNumber(lapaResult.summary.heic_mismatch_count, 0)
     + safeNumber(celebaResult.summary.heic_mismatch_count, 0);
@@ -2566,6 +2640,27 @@ function renderMd({
     ...((lapaResult.summary && lapaResult.summary.decode_error_examples) || []).map((row) => ({ source: 'lapa', ...row })),
     ...((celebaResult.summary && celebaResult.summary.decode_error_examples) || []).map((row) => ({ source: 'celebamaskhq', ...row })),
   ].slice(0, 5);
+  const localOkForMinModule = localRows
+    .filter((row) => row && row.ok === true)
+    .filter((row) => safeNumber(row.module_pixels_min, 0) > 0);
+  const minModuleDistribution = localOkForMinModule.reduce((acc, row) => {
+    const source = String(row.source || row.dataset || 'unknown').trim() || 'unknown';
+    const moduleId = String(row.min_module_id || 'unknown').trim() || 'unknown';
+    if (!acc.has(source)) acc.set(source, { total: 0, modules: new Map() });
+    const group = acc.get(source);
+    group.total += 1;
+    group.modules.set(moduleId, (group.modules.get(moduleId) || 0) + 1);
+    return acc;
+  }, new Map());
+  const lowMinPixelRows = [...localOkForMinModule]
+    .sort((a, b) => {
+      const minDiff = safeNumber(a.min_module_pixels, 0) - safeNumber(b.min_module_pixels, 0);
+      if (minDiff !== 0) return minDiff;
+      const riskDiff = safeNumber(b.risk_score, 0) - safeNumber(a.risk_score, 0);
+      if (Math.abs(riskDiff) > 1e-9) return riskDiff;
+      return String(a.sample_hash || '').localeCompare(String(b.sample_hash || ''));
+    })
+    .slice(0, 20);
   const lines = [];
   lines.push('# Mixed Review Pack');
   lines.push('');
@@ -2629,6 +2724,24 @@ function renderMd({
   lines.push(`| lapa | ${lapaResult.summary.samples_total} | ${lapaResult.summary.samples_failed} | ${lapaResult.summary.module_pixels_min_p50} | ${lapaResult.summary.face_detect_fail_rate} | ${lapaResult.summary.landmark_fail_rate} |`);
   lines.push(`| celebamaskhq | ${celebaResult.summary.samples_total} | ${celebaResult.summary.samples_failed} | ${celebaResult.summary.module_pixels_min_p50} | ${celebaResult.summary.face_detect_fail_rate} | ${celebaResult.summary.landmark_fail_rate} |`);
   lines.push('');
+  lines.push('### Failures breakdown by source');
+  lines.push('');
+  lines.push('| source | fail_reason | reason_detail | count |');
+  lines.push('|---|---|---|---:|');
+  if (failuresBySource.size > 0) {
+    const rows = Array.from(failuresBySource.entries())
+      .map(([token, count]) => {
+        const [source, failReason, reasonDetail] = String(token).split('|');
+        return { source, failReason, reasonDetail, count: Math.trunc(safeNumber(count, 0)) };
+      })
+      .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source) || a.failReason.localeCompare(b.failReason) || a.reasonDetail.localeCompare(b.reasonDetail));
+    for (const row of rows) {
+      lines.push(`| ${row.source} | ${row.failReason} | ${row.reasonDetail} | ${row.count} |`);
+    }
+  } else {
+    lines.push('| - | - | - | 0 |');
+  }
+  lines.push('');
   lines.push('### Data access failures');
   lines.push('');
   lines.push('| source | reason_detail | count |');
@@ -2652,6 +2765,18 @@ function renderMd({
   if (decodeFailureBreakdown.length) {
     for (const row of decodeFailureBreakdown) {
       lines.push(`| ${row.source} | ${row.ext || '-'} | ${row.magic_type || '-'} | ${row.reason_detail || '-'} | ${Math.trunc(safeNumber(row.count, 0))} |`);
+    }
+  } else {
+    lines.push('| - | - | - | - | 0 |');
+  }
+  lines.push('');
+  lines.push('### Decode conversions breakdown');
+  lines.push('');
+  lines.push('| source | ext | magic_type | container_hint | convert_count |');
+  lines.push('|---|---|---|---|---:|');
+  if (decodeConversionsBreakdown.length) {
+    for (const row of decodeConversionsBreakdown) {
+      lines.push(`| ${row.source} | ${row.ext || '-'} | ${row.magic_type || '-'} | ${row.container_hint || '-'} | ${Math.trunc(safeNumber(row.convert_count, 0))} |`);
     }
   } else {
     lines.push('| - | - | - | - | 0 |');
@@ -2711,17 +2836,57 @@ function renderMd({
     lines.push('| - | 0 |');
   }
   lines.push('');
-  lines.push('| source | sample_hash | module_id | before_pixels | after_pixels | threshold |');
-  lines.push('|---|---|---|---:|---:|---:|');
+  lines.push('| source | sample_hash | module_id | before_pixels | after_pixels | threshold | guard_method | dilation_iters |');
+  lines.push('|---|---|---|---:|---:|---:|---|---:|');
   if (localGuardDiffRows.length) {
     const rows = [...localGuardDiffRows]
       .sort((a, b) => (a.after_pixels - b.after_pixels) || (a.before_pixels - b.before_pixels) || a.sample_hash.localeCompare(b.sample_hash))
       .slice(0, 20);
     for (const row of rows) {
-      lines.push(`| ${row.source} | ${row.sample_hash} | ${row.module_id} | ${row.before_pixels} | ${row.after_pixels} | ${row.threshold} |`);
+      lines.push(`| ${row.source} | ${row.sample_hash} | ${row.module_id} | ${row.before_pixels} | ${row.after_pixels} | ${row.threshold} | ${row.guard_method || '-'} | ${Math.trunc(safeNumber(row.dilation_iters, 0))} |`);
     }
   } else {
-    lines.push('| - | - | - | 0 | 0 | 0 |');
+    lines.push('| - | - | - | 0 | 0 | 0 | - | 0 |');
+  }
+  lines.push('');
+  lines.push('### Min-module distribution');
+  lines.push('');
+  lines.push('| source | min_module_id | count | pct_of_source_ok |');
+  lines.push('|---|---|---:|---:|');
+  if (minModuleDistribution.size > 0) {
+    const rows = [];
+    for (const [source, payload] of minModuleDistribution.entries()) {
+      const total = Math.max(1, Math.trunc(safeNumber(payload.total, 0)));
+      for (const [moduleId, count] of payload.modules.entries()) {
+        rows.push({
+          source,
+          moduleId,
+          count: Math.trunc(safeNumber(count, 0)),
+          pct: round3(ratio(count, total)),
+        });
+      }
+    }
+    rows
+      .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source) || a.moduleId.localeCompare(b.moduleId))
+      .forEach((row) => {
+        lines.push(`| ${row.source} | ${row.moduleId} | ${row.count} | ${row.pct} |`);
+      });
+  } else {
+    lines.push('| - | - | 0 | 0 |');
+  }
+  lines.push('');
+  lines.push('### Top 20 low-min-pixels samples');
+  lines.push('');
+  lines.push('| rank | source | sample_hash | min_module_id | min_module_pixels | risk_score | chin_outside_oval_ratio | nose_outside_oval_ratio | chin_bottom_band_ratio | nose_side_band_ratio |');
+  lines.push('|---:|---|---|---|---:|---:|---:|---:|---:|---:|');
+  if (lowMinPixelRows.length) {
+    lowMinPixelRows.forEach((row, index) => {
+      lines.push(
+        `| ${index + 1} | ${row.source} | ${row.sample_hash} | ${row.min_module_id || '-'} | ${Math.trunc(safeNumber(row.min_module_pixels, 0))} | ${round3(row.risk_score)} | ${row.chin_outside_oval_ratio == null ? '' : round3(row.chin_outside_oval_ratio)} | ${row.nose_outside_oval_ratio == null ? '' : round3(row.nose_outside_oval_ratio)} | ${row.chin_bottom_band_ratio == null ? '' : round3(row.chin_bottom_band_ratio)} | ${row.nose_side_band_ratio == null ? '' : round3(row.nose_side_band_ratio)} |`,
+      );
+    });
+  } else {
+    lines.push('| - | - | - | - | 0 | 0 | 0 | 0 | 0 | 0 |');
   }
   lines.push('');
   lines.push('### Top 20 Risk Samples (heuristic)');
@@ -2781,6 +2946,8 @@ async function writeCsv(filePath, rows) {
     'quality_grade',
     'modules_count',
     'module_pixels_min',
+    'min_module_id',
+    'min_module_pixels',
     'under_eye_left_pixels',
     'under_eye_right_pixels',
     'module_guard_triggered',
