@@ -279,6 +279,11 @@ test('photo modules card: face oval clip enabled keeps module mask pixels <= dis
       DIAG_MODULE_SHRINK_CHEEK: '1',
       DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '0',
       DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
+      DIAG_MODULE_MIN_PIXELS_UNDER_EYE: '1',
+      DIAG_MODULE_MIN_PIXELS_FOREHEAD: '1',
+      DIAG_MODULE_MIN_PIXELS_CHIN: '1',
+      DIAG_MODULE_MIN_PIXELS_CHEEK: '1',
+      DIAG_MODULE_MIN_PIXELS_DEFAULT: '1',
     },
     () => {
       const offLoaded = loadPhotoModulesBuilder();
@@ -305,6 +310,11 @@ test('photo modules card: face oval clip enabled keeps module mask pixels <= dis
           DIAG_MODULE_SHRINK_CHEEK: '1',
           DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO: '0',
           DIAG_FACE_OVAL_CLIP_MIN_PIXELS: '1',
+          DIAG_MODULE_MIN_PIXELS_UNDER_EYE: '1',
+          DIAG_MODULE_MIN_PIXELS_FOREHEAD: '1',
+          DIAG_MODULE_MIN_PIXELS_CHIN: '1',
+          DIAG_MODULE_MIN_PIXELS_CHEEK: '1',
+          DIAG_MODULE_MIN_PIXELS_DEFAULT: '1',
         },
         () => {
           const onLoaded = loadPhotoModulesBuilder();
