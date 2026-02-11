@@ -2,6 +2,67 @@ const axios = require('axios');
 const { withClient } = require('../db');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const LATIN_STOPWORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'by',
+  'can',
+  'could',
+  'did',
+  'do',
+  'does',
+  'for',
+  'from',
+  'have',
+  'i',
+  'in',
+  'is',
+  'it',
+  'of',
+  'on',
+  'or',
+  'please',
+  'should',
+  'the',
+  'this',
+  'to',
+  'want',
+  'with',
+  'would',
+  'you',
+  'your',
+  // High-frequency commerce wrappers that are not useful for product identity.
+  'any',
+  'available',
+  'buy',
+  'find',
+  'in-stock',
+  'instock',
+  'need',
+  'product',
+  'products',
+  'sell',
+  'selling',
+  'stock',
+]);
+const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
+const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
+const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
+
+function compactNoSpaces(s) {
+  return String(s || '').replace(/\s+/g, '');
+}
+
+function stripCommonCjkQueryAffixes(compact) {
+  const s = String(compact || '');
+  if (!s) return '';
+  return s.replace(CJK_QUERY_PREFIX_RE, '').replace(CJK_QUERY_SUFFIX_RE, '');
+}
 
 function sleep(ms) {
   const delay = Math.max(0, Number(ms) || 0);
@@ -133,33 +194,6 @@ function tokenizeNormalizedResolverQuery(normalized) {
   const parts = s.split(/\s+/g).filter(Boolean);
   if (!parts.length) return [];
 
-  const stop = new Set([
-    'a',
-    'an',
-    'and',
-    'are',
-    'as',
-    'at',
-    'be',
-    'by',
-    'for',
-    'from',
-    'have',
-    'i',
-    'in',
-    'is',
-    'it',
-    'of',
-    'on',
-    'or',
-    'the',
-    'this',
-    'to',
-    'with',
-    'you',
-    'your',
-  ]);
-
   const out = [];
   const seen = new Set();
   for (const tok of parts) {
@@ -169,7 +203,7 @@ function tokenizeNormalizedResolverQuery(normalized) {
     const isNumeric = /^[0-9]+$/.test(t);
     const isLatin = /^[a-z0-9]+$/.test(t);
     if (isLatin && !isNumeric) {
-      if (stop.has(t)) continue;
+      if (LATIN_STOPWORDS.has(t)) continue;
       if (t.length < 2) continue;
     }
 
@@ -233,7 +267,12 @@ function computeTokenOverlapScore(queryTokens, candidateText) {
 
   const tokens = tokenizeNormalizedResolverQuery(blob);
   if (tokens.length === 0) return 0;
-  const tokenSet = new Set(tokens);
+  return computeTokenOverlapScoreFromTokenSet(queryTokens, new Set(tokens));
+}
+
+function computeTokenOverlapScoreFromTokenSet(queryTokens, tokenSet) {
+  if (!Array.isArray(queryTokens) || queryTokens.length === 0) return 0;
+  if (!tokenSet || typeof tokenSet.size !== 'number' || tokenSet.size <= 0) return 0;
 
   let common = 0;
   for (const t of queryTokens) {
@@ -250,18 +289,32 @@ function computeTokenOverlapScore(queryTokens, candidateText) {
 }
 
 function computeCandidateTextScore({ normalizedQuery, queryTokens, product }) {
+  if (!normalizedQuery) return { score: 0, reason: 'empty_query' };
+
   const title = getCandidateTitle(product);
+  const normTitle = normalizeTextForResolver(title);
+  if (normTitle && normTitle === normalizedQuery) return { score: 1, reason: 'exact_title' };
+  if (normTitle && normTitle.includes(normalizedQuery)) return { score: 0.95, reason: 'title_contains_query' };
+
   const brand = getCandidateBrand(product);
   const combined = `${brand} ${title}`.trim();
   const normCombined = normalizeTextForResolver(combined);
-  const normTitle = normalizeTextForResolver(title);
-
-  if (!normalizedQuery) return 0;
-  if (normTitle && normTitle === normalizedQuery) return { score: 1, reason: 'exact_title' };
-  if (normTitle && normTitle.includes(normalizedQuery)) return { score: 0.95, reason: 'title_contains_query' };
   if (normCombined && normCombined.includes(normalizedQuery)) return { score: 0.9, reason: 'brand_title_contains_query' };
 
-  const score = computeTokenOverlapScore(queryTokens, combined);
+  // CJK queries often come without whitespace tokenization (e.g. "有没有薇诺娜修护乳").
+  // If we have Han characters, fall back to compact containment (strip common question affixes).
+  if (normCombined && (HAS_HAN_RE.test(normalizedQuery) || HAS_HAN_RE.test(normCombined))) {
+    const compactQuery = stripCommonCjkQueryAffixes(compactNoSpaces(normalizedQuery));
+    if (compactQuery && compactQuery.length >= 2) {
+      const compactCandidate = compactNoSpaces(normCombined);
+      if (compactCandidate && compactCandidate.includes(compactQuery)) {
+        return { score: 0.9, reason: 'cjk_compact_contains_query' };
+      }
+    }
+  }
+
+  const tokens = tokenizeNormalizedResolverQuery(normCombined);
+  const score = computeTokenOverlapScoreFromTokenSet(queryTokens, new Set(tokens));
   return { score, reason: 'token_overlap' };
 }
 
@@ -293,9 +346,18 @@ function computeOrderablePenalty(product) {
 }
 
 function scoreAndRankCandidates({ query, lang, products, options }) {
-  const normalizedQuery = normalizeTextForResolver(query);
-  const queryTokens = tokenizeNormalizedResolverQuery(normalizedQuery);
-  const preferMerchants = Array.isArray(options?.prefer_merchants) ? options.prefer_merchants : [];
+  const opt = options && typeof options === 'object' ? options : {};
+  const normalizedQuery =
+    typeof opt.normalized_query === 'string' && opt.normalized_query.trim()
+      ? String(opt.normalized_query).trim()
+      : normalizeTextForResolver(query);
+  const queryTokens =
+    Array.isArray(opt.query_tokens) && opt.query_tokens.length
+      ? opt.query_tokens
+      : tokenizeNormalizedResolverQuery(normalizedQuery);
+
+  const preferMerchantsRaw = Array.isArray(opt.prefer_merchants) ? opt.prefer_merchants : [];
+  const preferMerchantsSet = new Set(preferMerchantsRaw.map((m) => String(m || '').trim()).filter(Boolean));
   const allowExternalSeed = options?.allow_external_seed === true;
 
   const scored = [];
@@ -306,7 +368,7 @@ function scoreAndRankCandidates({ query, lang, products, options }) {
     if (!ref) continue;
 
     const base = computeCandidateTextScore({ normalizedQuery, queryTokens, product: p });
-    const isPreferredMerchant = preferMerchants.includes(ref.merchant_id);
+    const isPreferredMerchant = Boolean(ref.merchant_id && preferMerchantsSet.has(ref.merchant_id));
     const merchantBoost = isPreferredMerchant ? 0.18 : 0;
     const invBoost = computeInventoryBoost(p);
     const orderablePenalty = computeOrderablePenalty(p);
@@ -609,15 +671,31 @@ function dedupeByProductRef(candidates) {
   return out;
 }
 
-async function resolveProductRef({
-  query,
-  lang,
-  hints,
-  options,
-  pivotaApiBase,
-  pivotaApiKey,
-  checkoutToken,
-}) {
+function createProductGroundingResolver(deps = {}) {
+  const fetchProductsCache =
+    typeof deps.fetchCandidatesViaProductsCache === 'function'
+      ? deps.fetchCandidatesViaProductsCache
+      : fetchCandidatesViaProductsCache;
+  const fetchAgentSearch =
+    typeof deps.fetchCandidatesViaAgentSearch === 'function'
+      ? deps.fetchCandidatesViaAgentSearch
+      : fetchCandidatesViaAgentSearch;
+  const rankCandidates =
+    typeof deps.scoreAndRankCandidates === 'function' ? deps.scoreAndRankCandidates : scoreAndRankCandidates;
+  const decide =
+    typeof deps.resolveFromRankedCandidates === 'function'
+      ? deps.resolveFromRankedCandidates
+      : resolveFromRankedCandidates;
+
+  return async function resolveProductRef({
+    query,
+    lang,
+    hints,
+    options,
+    pivotaApiBase,
+    pivotaApiKey,
+    checkoutToken,
+  }) {
   const startMs = Date.now();
   const timeoutMs = clampInt(options?.timeout_ms, { min: 100, max: 15000, fallback: 1600 });
   const deadlineMs = startMs + timeoutMs;
@@ -694,7 +772,7 @@ async function resolveProductRef({
   // 1) Prefer: products_cache (merchant inventory) for prefer_merchants.
   const scopedCacheTimeout = stageTimeout({ capMs: 650, reserveMs: 900, floorMs: 60 });
   if (preferMerchants.length > 0 && scopedCacheTimeout >= 60) {
-    const cacheResp = await fetchCandidatesViaProductsCache({
+    const cacheResp = await fetchProductsCache({
       merchantIds: preferMerchants,
       query: q,
       limit,
@@ -717,7 +795,7 @@ async function resolveProductRef({
   const scopedUpstreamTimeout = stageTimeout({ capMs: 900, reserveMs: 850, floorMs: 80 });
   if (products.length === 0 && preferMerchants.length > 0 && scopedUpstreamTimeout >= 80) {
     const scopedRetries = scopedUpstreamTimeout >= 700 ? upstreamRetries : 0;
-    const upstreamScoped = await fetchCandidatesViaAgentSearch({
+    const upstreamScoped = await fetchAgentSearch({
       pivotaApiBase,
       pivotaApiKey,
       checkoutToken,
@@ -756,7 +834,7 @@ async function resolveProductRef({
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     products.length < Math.max(6, Math.min(14, limit));
   if (shouldTryGlobalCache) {
-    const cacheGlobal = await fetchCandidatesViaProductsCache({
+    const cacheGlobal = await fetchProductsCache({
       query: q,
       limit: Math.max(limit, 24),
       timeoutMs: globalCacheTimeout,
@@ -779,7 +857,7 @@ async function resolveProductRef({
     products.length < Math.max(6, Math.min(14, limit));
   if (shouldTryGlobal) {
     const globalRetries = globalUpstreamTimeout >= 900 ? upstreamRetries : 0;
-    const upstreamGlobal = await fetchCandidatesViaAgentSearch({
+    const upstreamGlobal = await fetchAgentSearch({
       pivotaApiBase,
       pivotaApiKey,
       checkoutToken,
@@ -810,17 +888,23 @@ async function resolveProductRef({
     }
   }
 
-  const { scored, normalized_query } = scoreAndRankCandidates({
+  const { scored, normalized_query } = rankCandidates({
     query: q,
     lang,
     products,
-    options: { ...options, prefer_merchants: preferMerchants, allow_external_seed: allowExternalSeed },
+    options: {
+      ...options,
+      prefer_merchants: preferMerchants,
+      allow_external_seed: allowExternalSeed,
+      normalized_query: normalizedQuery,
+      query_tokens: queryTokens,
+    },
   });
 
   const unique = dedupeByProductRef(scored);
   const topN = unique.slice(0, clampInt(options?.candidates_limit, { min: 1, max: 12, fallback: 6 }));
 
-  const decision = resolveFromRankedCandidates({
+  const decision = decide({
     ranked: unique,
     options,
   });
@@ -849,10 +933,14 @@ async function resolveProductRef({
       ...(allowExternalSeed ? { allow_external_seed: true } : {}),
     },
   };
+  };
 }
+
+const resolveProductRef = createProductGroundingResolver();
 
 module.exports = {
   resolveProductRef,
+  createProductGroundingResolver,
   _internals: {
     normalizeTextForResolver,
     tokenizeNormalizedResolverQuery,
@@ -863,5 +951,6 @@ module.exports = {
     extractResolverHints,
     fetchCandidatesViaProductsCache,
     fetchCandidatesViaAgentSearch,
+    computeTokenOverlapScoreFromTokenSet,
   },
 };

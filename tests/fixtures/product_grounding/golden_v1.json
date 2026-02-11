@@ -1,0 +1,93 @@
+{
+  "schema_version": "pivota.product_grounding.golden.v1",
+  "cases": [
+    {
+      "id": "winona_moisturizer_en",
+      "query": "Do you have Winona moisturizer?",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m1", "product_id": "p_winona_moist_50", "vendor": "Winona", "title": "Winona Moisturizer 50ml" },
+        { "merchant_id": "m1", "product_id": "p_winona_cleanser_80", "vendor": "Winona", "title": "Winona Gentle Cleanser 80ml" },
+        { "merchant_id": "m2", "product_id": "p_cerave_lotion_473", "vendor": "CeraVe", "title": "CeraVe Moisturizing Lotion 473ml" },
+        { "merchant_id": "m2", "product_id": "p_cerave_cleanser_355", "vendor": "CeraVe", "title": "CeraVe Hydrating Cleanser 355ml" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m1", "product_id": "p_winona_moist_50" } }
+    },
+    {
+      "id": "winona_cn",
+      "query": "有没有薇诺娜修护乳？",
+      "lang": "cn",
+      "candidates": [
+        { "merchant_id": "m1", "product_id": "p_winona_moist_cn", "vendor": "薇诺娜", "title": "薇诺娜 修护乳 50ml" },
+        { "merchant_id": "m1", "product_id": "p_winona_sunscreen_cn", "vendor": "薇诺娜", "title": "薇诺娜 防晒乳 SPF50 50ml" },
+        { "merchant_id": "m3", "product_id": "p_lrp_cicaplast", "vendor": "La Roche-Posay", "title": "La Roche-Posay Cicaplast Baume B5 40ml" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m1", "product_id": "p_winona_moist_cn" } }
+    },
+    {
+      "id": "lrp_spf50",
+      "query": "La Roche-Posay SPF 50 sunscreen",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m3", "product_id": "p_lrp_anthelios_spf50", "vendor": "La Roche-Posay", "title": "La Roche-Posay Anthelios SPF 50" },
+        { "merchant_id": "m3", "product_id": "p_lrp_toleriane", "vendor": "La Roche-Posay", "title": "La Roche-Posay Toleriane Hydrating Cleanser" },
+        { "merchant_id": "m4", "product_id": "p_biore_spf50", "vendor": "Biore", "title": "Biore UV Aqua Rich SPF50" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m3", "product_id": "p_lrp_anthelios_spf50" } }
+    },
+    {
+      "id": "ordinary_niacinamide_symbols",
+      "query": "The Ordinary Niacinamide 10% + Zinc 1%",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m5", "product_id": "p_to_niacinamide", "vendor": "The Ordinary", "title": "Niacinamide 10% + Zinc 1%" },
+        { "merchant_id": "m5", "product_id": "p_to_hyaluronic", "vendor": "The Ordinary", "title": "Hyaluronic Acid 2% + B5" },
+        { "merchant_id": "m6", "product_id": "p_paulas_niacinamide", "vendor": "Paula's Choice", "title": "10% Niacinamide Booster" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m5", "product_id": "p_to_niacinamide" } }
+    },
+    {
+      "id": "ordinary_niacinamide_fullwidth",
+      "query": "Niacinamide 10％ ＋ Zinc 1％",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m5", "product_id": "p_to_niacinamide", "vendor": "The Ordinary", "title": "Niacinamide 10% + Zinc 1%" },
+        { "merchant_id": "m6", "product_id": "p_paulas_niacinamide", "vendor": "Paula's Choice", "title": "10% Niacinamide Booster" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m5", "product_id": "p_to_niacinamide" } }
+    },
+    {
+      "id": "sk2_essence",
+      "query": "SK-II Facial Treatment Essence 230ml",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m7", "product_id": "p_sk2_essence_230", "vendor": "SK-II", "title": "Facial Treatment Essence 230ml" },
+        { "merchant_id": "m7", "product_id": "p_sk2_essence_75", "vendor": "SK-II", "title": "Facial Treatment Essence 75ml" },
+        { "merchant_id": "m8", "product_id": "p_shiseido_essence", "vendor": "Shiseido", "title": "Ultimune Power Infusing Concentrate 50ml" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m7", "product_id": "p_sk2_essence_230" } }
+    },
+    {
+      "id": "cerave_cleanser",
+      "query": "cerave hydrating cleanser 355ml",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m2", "product_id": "p_cerave_cleanser_355", "vendor": "CeraVe", "title": "CeraVe Hydrating Cleanser 355ml" },
+        { "merchant_id": "m2", "product_id": "p_cerave_cleanser_473", "vendor": "CeraVe", "title": "CeraVe Hydrating Cleanser 473ml" },
+        { "merchant_id": "m3", "product_id": "p_lrp_toleriane", "vendor": "La Roche-Posay", "title": "La Roche-Posay Toleriane Hydrating Cleanser" }
+      ],
+      "expect": { "resolved": true, "product_ref": { "merchant_id": "m2", "product_id": "p_cerave_cleanser_355" } }
+    },
+    {
+      "id": "unresolved_low_confidence",
+      "query": "some completely unknown product name xyz",
+      "lang": "en",
+      "candidates": [
+        { "merchant_id": "m2", "product_id": "p_cerave_cleanser_355", "vendor": "CeraVe", "title": "CeraVe Hydrating Cleanser 355ml" },
+        { "merchant_id": "m7", "product_id": "p_sk2_essence_230", "vendor": "SK-II", "title": "Facial Treatment Essence 230ml" }
+      ],
+      "expect": { "resolved": false, "product_ref": null }
+    }
+  ]
+}
+
