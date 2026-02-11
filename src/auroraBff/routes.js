@@ -5574,7 +5574,7 @@ function buildProductInputText(inputObj, url) {
   const sku = typeof o.sku_id === 'string' ? o.sku_id.trim() : typeof o.skuId === 'string' ? o.skuId.trim() : '';
   const pid = typeof o.product_id === 'string' ? o.product_id.trim() : typeof o.productId === 'string' ? o.productId.trim() : '';
   const bestName = display || name;
-  if (brand && bestName) return `${brand} ${bestName}`.trim();
+  if (brand && bestName) return joinBrandAndName(brand, bestName);
   if (bestName) return bestName;
   if (sku) return sku;
   if (pid) return pid;
@@ -5587,6 +5587,17 @@ function pickFirstTrimmed(...values) {
     if (s) return s;
   }
   return '';
+}
+
+function joinBrandAndName(brandRaw, nameRaw) {
+  const brand = String(brandRaw || '').trim();
+  const name = String(nameRaw || '').trim();
+  if (!brand) return name;
+  if (!name) return brand;
+  const brandLower = brand.toLowerCase();
+  const nameLower = name.toLowerCase();
+  if (nameLower === brandLower || nameLower.startsWith(`${brandLower} `)) return name;
+  return `${brand} ${name}`.trim();
 }
 
 function isUuidLikeString(value) {
@@ -5710,12 +5721,12 @@ function buildRecoResolveHints({ base, skuCandidate, rawProductId, rawMerchantId
 
   pushAlias(displayName);
   pushAlias(name);
-  if (brand && displayName) pushAlias(`${brand} ${displayName}`);
-  if (brand && name) pushAlias(`${brand} ${name}`);
+  if (brand && displayName) pushAlias(joinBrandAndName(brand, displayName));
+  if (brand && name) pushAlias(joinBrandAndName(brand, name));
   pushAlias(base?.title);
 
   const hints = {};
-  if (rawProductId && !isUuidLikeString(rawProductId)) {
+  if (rawProductId) {
     hints.product_ref = {
       product_id: rawProductId,
       ...(rawMerchantId ? { merchant_id: rawMerchantId } : {}),
@@ -5828,6 +5839,14 @@ function withRecoPdpMetadata(base, {
   }
   if (nextSku && canonicalProductRef) {
     nextSku.canonical_product_ref = canonicalProductRef;
+    nextSku.product_id = canonicalProductRef.product_id;
+    nextSku.productId = canonicalProductRef.product_id;
+    nextSku.sku_id = canonicalProductRef.product_id;
+    nextSku.skuId = canonicalProductRef.product_id;
+    if (canonicalProductRef.merchant_id) {
+      nextSku.merchant_id = canonicalProductRef.merchant_id;
+      nextSku.merchantId = canonicalProductRef.merchant_id;
+    }
   }
 
   if (nextMode === 'group' && subject) {
