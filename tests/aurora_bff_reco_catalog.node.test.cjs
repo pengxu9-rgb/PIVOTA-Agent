@@ -414,6 +414,87 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
   );
 });
 
+test('UUID-only sku keeps product_ref hint and avoids duplicated brand in resolve query', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let capturedBody = null;
+      axios.post = async (url, body) => {
+        if (!String(url).includes('/agent/v1/products/resolve')) throw new Error(`Unexpected axios.post: ${url}`);
+        capturedBody = body;
+        return {
+          status: 200,
+          data: {
+            resolved: false,
+            product_ref: null,
+            reason: 'no_candidates',
+            reason_code: 'no_candidates',
+            candidates: [],
+          },
+        };
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
+          sku: {
+            brand: 'The Ordinary',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            product_id: 'c231aaaa-8b00-4145-a704-684931049303',
+            sku_id: 'c231aaaa-8b00-4145-a704-684931049303',
+          },
+        }, { logger: null });
+
+        assert.ok(capturedBody);
+        assert.equal(capturedBody.query, 'The Ordinary Niacinamide 10% + Zinc 1%');
+        assert.equal(capturedBody?.hints?.product_ref?.product_id, 'c231aaaa-8b00-4145-a704-684931049303');
+        const aliases = Array.isArray(capturedBody?.hints?.aliases) ? capturedBody.hints.aliases : [];
+        assert.equal(aliases.some((v) => String(v).toLowerCase().includes('the ordinary the ordinary')), false);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'external');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Internal canonical product ref rewrites sku identifiers for PDP compatibility', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+    },
+    async () => {
+      const { __internal } = loadRoutesFresh();
+      const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
+        sku: {
+          brand: 'The Ordinary',
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          product_id: 'c231aaaa-8b00-4145-a704-684931049303',
+          sku_id: 'c231aaaa-8b00-4145-a704-684931049303',
+          canonical_product_ref: {
+            product_id: '9886499864904',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+          },
+        },
+      }, { logger: null });
+
+      assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+      assert.equal(enriched?.metadata?.pdp_open_mode, 'ref');
+      assert.equal(enriched?.pdp_open?.path, 'ref');
+      assert.equal(enriched?.pdp_open?.product_ref?.product_id, '9886499864904');
+      assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'merch_efbc46b4619cfbdf');
+      assert.equal(enriched?.sku?.product_id, '9886499864904');
+      assert.equal(enriched?.sku?.sku_id, '9886499864904');
+      assert.equal(enriched?.sku?.merchant_id, 'merch_efbc46b4619cfbdf');
+    },
+  );
+});
+
 test('Offers resolve db_error: canonical ref still keeps internal PDP open contract', async () => {
   await withEnv(
     {

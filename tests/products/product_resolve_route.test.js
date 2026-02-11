@@ -283,7 +283,7 @@ describe('POST /agent/v1/products/resolve', () => {
         resolved: true,
         reason: 'stable_alias_ref',
         product_ref: {
-          product_id: 'prod_the_ordinary_niacinamide_10_zinc_1',
+          product_id: '9886499864904',
           merchant_id: 'merch_efbc46b4619cfbdf',
         },
       }),
@@ -317,7 +317,7 @@ describe('POST /agent/v1/products/resolve', () => {
         resolved: true,
         reason: 'stable_alias_ref',
         product_ref: {
-          product_id: 'prod_winona_soothing_repair_serum',
+          product_id: '9886500749640',
           merchant_id: 'merch_efbc46b4619cfbdf',
         },
       }),
@@ -335,7 +335,7 @@ describe('POST /agent/v1/products/resolve', () => {
     );
   });
 
-  test('does not short-circuit opaque hints.product_ref for uuid query; returns no_candidates reason_code', async () => {
+  test('resolves stable alias when hints.product_ref is opaque uuid and alias is known', async () => {
     const app = require('../../src/server');
     const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
     const hintedMerchantId = 'merch_efbc46b4619cfbdf';
@@ -363,21 +363,27 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.status).toBe(200);
     expect(resp.body).toEqual(
       expect.objectContaining({
-        resolved: false,
-        product_ref: null,
-        reason: 'no_candidates',
-        reason_code: 'no_candidates',
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886499864904',
+          merchant_id: hintedMerchantId,
+        },
       }),
     );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_from_hints: true,
         original_query: 'e7c90e06-8673-4c97-835d-074a26ab2162',
-        resolve_reason_code: 'no_candidates',
+        stable_alias_match_id: 'the_ordinary_niacinamide_10_zinc_1',
         sources: expect.arrayContaining([
           expect.objectContaining({
             source: 'hints_product_ref',
             reason: 'opaque_hint_requires_lookup',
+          }),
+          expect.objectContaining({
+            source: 'stable_alias_ref',
+            ok: true,
           }),
         ]),
       }),
@@ -423,7 +429,7 @@ describe('POST /agent/v1/products/resolve', () => {
     );
   });
 
-  test('does not resolve opaque hints.product_ref product_id without merchant_id', async () => {
+  test('resolves known alias even when opaque hints.product_ref has no merchant_id', async () => {
     const app = require('../../src/server');
     const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
 
@@ -447,14 +453,17 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.status).toBe(200);
     expect(resp.body).toEqual(
       expect.objectContaining({
-        resolved: false,
-        reason: 'no_candidates',
-        product_ref: null,
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
       }),
     );
   });
 
-  test('does not infer opaque hints.product_ref from prefer_merchant; returns no_candidates reason_code', async () => {
+  test('resolves known alias with prefer_merchant even when hints.product_ref is opaque', async () => {
     const app = require('../../src/server');
     const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
     const preferMerchant = 'merch_efbc46b4619cfbdf';
@@ -480,18 +489,21 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.status).toBe(200);
     expect(resp.body).toEqual(
       expect.objectContaining({
-        resolved: false,
-        product_ref: null,
-        reason: 'no_candidates',
-        reason_code: 'no_candidates',
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886499864904',
+          merchant_id: preferMerchant,
+        },
       }),
     );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_from_hints: true,
-        resolve_reason_code: 'no_candidates',
+        stable_alias_match_id: 'the_ordinary_niacinamide_10_zinc_1',
         sources: expect.arrayContaining([
           expect.objectContaining({ source: 'hints_product_ref', reason: 'opaque_hint_requires_lookup' }),
+          expect.objectContaining({ source: 'stable_alias_ref', ok: true }),
         ]),
       }),
     );

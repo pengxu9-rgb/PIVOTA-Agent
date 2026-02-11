@@ -65,7 +65,7 @@ include_hints = include_hints_raw not in ("0", "false", "no", "off")
 stable_hints = {
     "the ordinary niacinamide 10% + zinc 1%": {
         "product_ref": {
-            "product_id": "prod_the_ordinary_niacinamide_10_zinc_1",
+            "product_id": "9886499864904",
             "merchant_id": "merch_efbc46b4619cfbdf",
         },
         "aliases": ["The Ordinary Niacinamide 10% + Zinc 1%"],
@@ -74,7 +74,7 @@ stable_hints = {
     },
     "winona soothing repair serum": {
         "product_ref": {
-            "product_id": "prod_winona_soothing_repair_serum",
+            "product_id": "9886500749640",
             "merchant_id": "merch_efbc46b4619cfbdf",
         },
         "aliases": ["Winona Soothing Repair Serum"],

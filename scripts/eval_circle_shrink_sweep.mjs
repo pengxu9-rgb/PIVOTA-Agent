@@ -299,7 +299,8 @@ function parsePerModule(csvRows) {
     if (dataset !== 'fasseg' || !moduleId) continue;
     map.set(moduleId, {
       miou_mean: safeNumber(row.miou_mean, NaN),
-      leakage_mean: safeNumber(row.leakage_mean, NaN),
+      leakage_bg_mean: safeNumber(row.leakage_bg_mean, safeNumber(row.leakage_mean, NaN)),
+      leakage_non_skin_mean: safeNumber(row.leakage_non_skin_mean, safeNumber(row.leakage_mean, NaN)),
       coverage_mean: safeNumber(row.coverage_mean, NaN),
     });
   }
@@ -312,8 +313,19 @@ function parsePerModule(csvRows) {
     miou_mean: round3(
       mean([pick('left_cheek', 'miou_mean'), pick('right_cheek', 'miou_mean')].filter((value) => Number.isFinite(value))),
     ),
-    leakage_mean: round3(
-      mean([pick('left_cheek', 'leakage_mean'), pick('right_cheek', 'leakage_mean')].filter((value) => Number.isFinite(value))),
+    leakage_bg_mean: round3(
+      mean(
+        [pick('left_cheek', 'leakage_bg_mean'), pick('right_cheek', 'leakage_bg_mean')].filter((value) =>
+          Number.isFinite(value),
+        ),
+      ),
+    ),
+    leakage_non_skin_mean: round3(
+      mean(
+        [pick('left_cheek', 'leakage_non_skin_mean'), pick('right_cheek', 'leakage_non_skin_mean')].filter((value) =>
+          Number.isFinite(value),
+        ),
+      ),
     ),
     coverage_mean: round3(
       mean([pick('left_cheek', 'coverage_mean'), pick('right_cheek', 'coverage_mean')].filter((value) => Number.isFinite(value))),
@@ -322,12 +334,14 @@ function parsePerModule(csvRows) {
   return {
     chin: {
       miou_mean: pick('chin', 'miou_mean'),
-      leakage_mean: pick('chin', 'leakage_mean'),
+      leakage_bg_mean: pick('chin', 'leakage_bg_mean'),
+      leakage_non_skin_mean: pick('chin', 'leakage_non_skin_mean'),
       coverage_mean: pick('chin', 'coverage_mean'),
     },
     forehead: {
       miou_mean: pick('forehead', 'miou_mean'),
-      leakage_mean: pick('forehead', 'leakage_mean'),
+      leakage_bg_mean: pick('forehead', 'leakage_bg_mean'),
+      leakage_non_skin_mean: pick('forehead', 'leakage_non_skin_mean'),
       coverage_mean: pick('forehead', 'coverage_mean'),
     },
     cheeks,
@@ -335,10 +349,10 @@ function parsePerModule(csvRows) {
 }
 
 function isDominated(candidate, other) {
-  const betterOrEqualLeakage = safeNumber(other.leakage_mean, Infinity) <= safeNumber(candidate.leakage_mean, Infinity);
+  const betterOrEqualLeakage = safeNumber(other.leakage_bg_mean, Infinity) <= safeNumber(candidate.leakage_bg_mean, Infinity);
   const betterOrEqualMiou = safeNumber(other.module_miou_mean, -Infinity) >= safeNumber(candidate.module_miou_mean, -Infinity);
   const strictlyBetter =
-    safeNumber(other.leakage_mean, Infinity) < safeNumber(candidate.leakage_mean, Infinity) ||
+    safeNumber(other.leakage_bg_mean, Infinity) < safeNumber(candidate.leakage_bg_mean, Infinity) ||
     safeNumber(other.module_miou_mean, -Infinity) > safeNumber(candidate.module_miou_mean, -Infinity);
   return betterOrEqualLeakage && betterOrEqualMiou && strictlyBetter;
 }
@@ -350,8 +364,8 @@ function paretoFrontier(rows) {
     if (!dominated) out.push(row);
   }
   out.sort((a, b) => {
-    if (safeNumber(a.leakage_mean) !== safeNumber(b.leakage_mean)) {
-      return safeNumber(a.leakage_mean) - safeNumber(b.leakage_mean);
+    if (safeNumber(a.leakage_bg_mean) !== safeNumber(b.leakage_bg_mean)) {
+      return safeNumber(a.leakage_bg_mean) - safeNumber(b.leakage_bg_mean);
     }
     return safeNumber(b.module_miou_mean) - safeNumber(a.module_miou_mean);
   });
@@ -359,7 +373,7 @@ function paretoFrontier(rows) {
 }
 
 function scoreRow(row, baseline) {
-  const leakageGain = safeNumber(baseline.leakage_mean) - safeNumber(row.leakage_mean);
+  const leakageGain = safeNumber(baseline.leakage_bg_mean) - safeNumber(row.leakage_bg_mean);
   const miouGain = safeNumber(row.module_miou_mean) - safeNumber(baseline.module_miou_mean);
   return leakageGain * 1.0 + miouGain * 0.5;
 }
@@ -399,30 +413,30 @@ function renderMd({
     lines.push('## DoD Check');
     lines.push('');
     lines.push('- status: NOT_MET');
-    lines.push('- target: leakage_delta <= -0.10 and mIoU_delta >= -0.02 (vs baseline)');
+    lines.push('- target: leakage_bg_delta <= -0.10 and mIoU_delta >= -0.02 (vs baseline)');
     lines.push('');
   }
 
   lines.push('## Sweep Summary');
   lines.push('');
-  lines.push('| group | chin | forehead | cheek | under_eye | nose | module_mIoU_mean | leakage_mean | coverage_mean | leakage_delta_vs_baseline | mIoU_delta_vs_baseline | target_met |');
-  lines.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|');
+  lines.push('| group | chin | forehead | cheek | under_eye | nose | module_mIoU_mean | leakage_bg_mean | leakage_non_skin_mean | coverage_mean | leakage_bg_delta_vs_baseline | mIoU_delta_vs_baseline | target_met |');
+  lines.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|');
   for (const row of rows) {
     lines.push(
-      `| ${row.group_id} | ${row.shrink.chin} | ${row.shrink.forehead} | ${row.shrink.cheek} | ${row.shrink.underEye} | ${row.shrink.nose} | ${row.module_miou_mean} | ${row.leakage_mean} | ${row.coverage_mean} | ${row.leakage_delta_vs_baseline} | ${row.miou_delta_vs_baseline} | ${row.target_met ? 'yes' : 'no'} |`,
+      `| ${row.group_id} | ${row.shrink.chin} | ${row.shrink.forehead} | ${row.shrink.cheek} | ${row.shrink.underEye} | ${row.shrink.nose} | ${row.module_miou_mean} | ${row.leakage_bg_mean} | ${row.leakage_non_skin_mean} | ${row.coverage_mean} | ${row.leakage_bg_delta_vs_baseline} | ${row.miou_delta_vs_baseline} | ${row.target_met ? 'yes' : 'no'} |`,
     );
   }
   lines.push('');
 
   lines.push('## Per-Module Tradeoff (chin / forehead / cheeks)');
   lines.push('');
-  lines.push('| group | module | mIoU | leakage | coverage |');
-  lines.push('|---|---|---:|---:|---:|');
+  lines.push('| group | module | mIoU | leakage_bg | leakage_non_skin | coverage |');
+  lines.push('|---|---|---:|---:|---:|---:|');
   for (const row of rows) {
     for (const moduleName of ['chin', 'forehead', 'cheeks']) {
       const moduleRow = row.modules[moduleName] || {};
       lines.push(
-        `| ${row.group_id} | ${moduleName} | ${moduleRow.miou_mean ?? 'n/a'} | ${moduleRow.leakage_mean ?? 'n/a'} | ${moduleRow.coverage_mean ?? 'n/a'} |`,
+        `| ${row.group_id} | ${moduleName} | ${moduleRow.miou_mean ?? 'n/a'} | ${moduleRow.leakage_bg_mean ?? 'n/a'} | ${moduleRow.leakage_non_skin_mean ?? 'n/a'} | ${moduleRow.coverage_mean ?? 'n/a'} |`,
       );
     }
   }
@@ -430,11 +444,11 @@ function renderMd({
 
   lines.push('## Pareto Frontier');
   lines.push('');
-  lines.push('| rank | group | module_mIoU_mean | leakage_mean | score_vs_baseline |');
-  lines.push('|---:|---|---:|---:|---:|');
+  lines.push('| rank | group | module_mIoU_mean | leakage_bg_mean | leakage_non_skin_mean | score_vs_baseline |');
+  lines.push('|---:|---|---:|---:|---:|---:|');
   paretoRows.forEach((row, index) => {
     lines.push(
-      `| ${index + 1} | ${row.group_id} | ${row.module_miou_mean} | ${row.leakage_mean} | ${row.score_vs_baseline} |`,
+      `| ${index + 1} | ${row.group_id} | ${row.module_miou_mean} | ${row.leakage_bg_mean} | ${row.leakage_non_skin_mean} | ${row.score_vs_baseline} |`,
     );
   });
   lines.push('');
@@ -572,6 +586,10 @@ async function main() {
         nose: group.nose,
       },
       module_miou_mean: round3(safeNumber(payload.module_miou_mean, 0)),
+      leakage_bg_mean: round3(safeNumber(payload.leakage_bg_mean, safeNumber(payload.leakage_mean, 0))),
+      leakage_non_skin_mean: round3(
+        safeNumber(payload.leakage_non_skin_mean, safeNumber(payload.leakage_mean, 0)),
+      ),
       leakage_mean: round3(safeNumber(payload.leakage_mean, 0)),
       coverage_mean: round3(safeNumber(payload.coverage_mean, coverageFromCsv)),
       samples_ok: safeNumber(payload.samples_ok, 0),
@@ -583,9 +601,11 @@ async function main() {
 
   const baseline = groupRows.find((row) => row.group_id === 'baseline') || groupRows[0];
   for (const row of groupRows) {
-    row.leakage_delta_vs_baseline = round3(row.leakage_mean - baseline.leakage_mean);
+    row.leakage_bg_delta_vs_baseline = round3(row.leakage_bg_mean - baseline.leakage_bg_mean);
+    row.leakage_non_skin_delta_vs_baseline = round3(row.leakage_non_skin_mean - baseline.leakage_non_skin_mean);
+    row.leakage_delta_vs_baseline = row.leakage_bg_delta_vs_baseline;
     row.miou_delta_vs_baseline = round3(row.module_miou_mean - baseline.module_miou_mean);
-    row.target_met = row.leakage_delta_vs_baseline <= -0.1 && row.miou_delta_vs_baseline >= -0.02;
+    row.target_met = row.leakage_bg_delta_vs_baseline <= -0.1 && row.miou_delta_vs_baseline >= -0.02;
     row.score_vs_baseline = round3(scoreRow(row, baseline));
   }
 
@@ -594,7 +614,7 @@ async function main() {
     .sort((a, b) => {
       if (a.group_id === baseline.group_id) return -1;
       if (b.group_id === baseline.group_id) return 1;
-      if (a.leakage_mean !== b.leakage_mean) return a.leakage_mean - b.leakage_mean;
+      if (a.leakage_bg_mean !== b.leakage_bg_mean) return a.leakage_bg_mean - b.leakage_bg_mean;
       return b.module_miou_mean - a.module_miou_mean;
     });
   const paretoRows = paretoFrontier(groupRows).map((row) => ({
@@ -634,8 +654,12 @@ async function main() {
     'nose',
     'value',
     'module_miou_mean',
+    'leakage_bg_mean',
+    'leakage_non_skin_mean',
     'leakage_mean',
     'coverage_mean',
+    'leakage_bg_delta_vs_baseline',
+    'leakage_non_skin_delta_vs_baseline',
     'leakage_delta_vs_baseline',
     'miou_delta_vs_baseline',
     'target_met',
@@ -655,8 +679,12 @@ async function main() {
       nose: row.shrink.nose,
       value: '',
       module_miou_mean: row.module_miou_mean,
+      leakage_bg_mean: row.leakage_bg_mean,
+      leakage_non_skin_mean: row.leakage_non_skin_mean,
       leakage_mean: row.leakage_mean,
       coverage_mean: row.coverage_mean,
+      leakage_bg_delta_vs_baseline: row.leakage_bg_delta_vs_baseline,
+      leakage_non_skin_delta_vs_baseline: row.leakage_non_skin_delta_vs_baseline,
       leakage_delta_vs_baseline: row.leakage_delta_vs_baseline,
       miou_delta_vs_baseline: row.miou_delta_vs_baseline,
       target_met: row.target_met ? 'yes' : 'no',
@@ -676,8 +704,12 @@ async function main() {
         nose: row.shrink.nose,
         value: '',
         module_miou_mean: stats.miou_mean ?? '',
-        leakage_mean: stats.leakage_mean ?? '',
+        leakage_bg_mean: stats.leakage_bg_mean ?? '',
+        leakage_non_skin_mean: stats.leakage_non_skin_mean ?? '',
+        leakage_mean: stats.leakage_non_skin_mean ?? '',
         coverage_mean: stats.coverage_mean ?? '',
+        leakage_bg_delta_vs_baseline: '',
+        leakage_non_skin_delta_vs_baseline: '',
         leakage_delta_vs_baseline: '',
         miou_delta_vs_baseline: '',
         target_met: '',
@@ -710,6 +742,8 @@ async function main() {
       group_id: row.group_id,
       score_vs_baseline: row.score_vs_baseline,
       module_miou_mean: row.module_miou_mean,
+      leakage_bg_mean: row.leakage_bg_mean,
+      leakage_non_skin_mean: row.leakage_non_skin_mean,
       leakage_mean: row.leakage_mean,
     })),
   ];
@@ -724,6 +758,8 @@ async function main() {
       group_id: row.group_id,
       shrink: row.shrink,
       module_miou_mean: row.module_miou_mean,
+      leakage_bg_mean: row.leakage_bg_mean,
+      leakage_non_skin_mean: row.leakage_non_skin_mean,
       leakage_mean: row.leakage_mean,
       score_vs_baseline: row.score_vs_baseline,
     })),

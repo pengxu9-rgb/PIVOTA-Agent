@@ -46,6 +46,7 @@ const {
   safeApplyCalibration,
 } = require('./eval_circle_local_fallback.cjs');
 const {
+  normalizeFaceCropBox,
   faceCropFromSkinBBoxNorm,
   deriveGtModulesFromSkinMask,
   saveDerivedGt,
@@ -58,6 +59,7 @@ const DEFAULT_CACHE_DIR = path.join('datasets_cache', 'external');
 const DEFAULT_DATASETS = ['lapa', 'celebamaskhq', 'fasseg'];
 const DEFAULT_REPORT_DIR = 'reports';
 const DEFAULT_GRID_SIZE = 128;
+const DEFAULT_SCORE_GRID_SIZE = Number(process.env.EVAL_SCORE_GRID_SIZE || 256);
 const MODULE_MASK_GRID_SIZE = 64;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -65,6 +67,9 @@ const DEFAULT_MARKET = 'EU';
 const DEFAULT_LANG = 'en';
 const DEFAULT_CIRCLE_MODEL_PATH = path.join('model_registry', 'circle_prior_latest.json');
 const DEFAULT_CIRCLE_MODEL_MIN_PIXELS = Number(process.env.CIRCLE_MODEL_MIN_PIXELS || 24);
+const DEFAULT_CIRCLE_MODEL_EXCLUDED_MODULES = String(
+  process.env.CIRCLE_MODEL_EXCLUDED_MODULES || 'under_eye_left,under_eye_right',
+);
 const DEFAULT_SKINMASK_ENABLED = String(process.env.DIAG_SKINMASK_ENABLED || '').trim().toLowerCase() === 'true';
 const DEFAULT_SKINMASK_MODEL_PATH = process.env.DIAG_SKINMASK_MODEL_PATH || path.join('artifacts', 'skinmask_v2.onnx');
 
@@ -72,6 +77,7 @@ const DEFAULT_MIN_MIOU = Number(process.env.EVAL_MIN_MIOU || 0.65);
 const DEFAULT_MAX_FAIL_RATE = Number(process.env.EVAL_MAX_FAIL_RATE || 0.05);
 const DEFAULT_MAX_LEAKAGE = Number(process.env.EVAL_MAX_LEAKAGE || 0.1);
 const DEFAULT_MAX_LEAKAGE_BG = Number(process.env.EVAL_MAX_LEAKAGE_BG || process.env.EVAL_MAX_LEAKAGE || 0.1);
+const DEFAULT_MAX_EMPTY_MODULE_RATE = Number(process.env.EVAL_MAX_EMPTY_MODULE_RATE || 0.01);
 const DEFAULT_MAX_SKIN_ROI_TOO_SMALL = Number(process.env.EVAL_MAX_SKIN_ROI_TOO_SMALL || 0.2);
 const DEFAULT_SKIN_ROI_MIN_PIXELS = Number(process.env.EVAL_SKIN_ROI_MIN_PIXELS || process.env.DIAG_SKINMASK_MIN_PIXELS || 8);
 const DEFAULT_SKINMASK_NO_EFFECT_STREAK = Number(process.env.EVAL_SKINMASK_NO_EFFECT_STREAK || 10);
@@ -115,6 +121,23 @@ function round3(value) {
   return Math.round(n * 1000) / 1000;
 }
 
+function parseModuleList(raw) {
+  const known = new Set(Object.keys(MODULE_BOXES || {}));
+  const values = String(raw || '')
+    .split(',')
+    .map((token) => String(token || '').trim())
+    .filter(Boolean);
+  const deduped = [];
+  const seen = new Set();
+  for (const token of values) {
+    if (!known.has(token)) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    deduped.push(token);
+  }
+  return deduped;
+}
+
 function defaultGtStats() {
   return {
     has_gt: false,
@@ -140,14 +163,19 @@ function defaultMetricStats() {
     coverage_mean: 0,
     leakage_non_skin_mean: 0,
     leakage_bg_mean: 0,
+    leakage_hair_mean: 0,
     leakage_mean: 0,
+    module_pixels_min: 0,
+    empty_module_rate: 0,
   };
 }
 
 function createBaseEvalRow({ dataset, sampleHash, sampleId }) {
+  const datasetName = String(dataset || 'unknown');
   return {
     ok: false,
-    dataset: String(dataset || 'unknown'),
+    dataset: datasetName,
+    dataset_eval_mode: datasetEvalMode(datasetName),
     sample_hash: String(sampleHash || ''),
     sample_id: String(sampleId || ''),
     fail_reason: FAIL_REASONS.UNKNOWN,
@@ -185,7 +213,15 @@ function finalizeEvalRow(inputRow) {
     : Number(metricStats.leakage_mean || 0);
   metricStats.leakage_non_skin_mean = round3(leakageNonSkinRaw);
   metricStats.leakage_bg_mean = round3(leakageBgRaw);
+  const leakageHairRaw = Number.isFinite(Number(metricStats.leakage_hair_mean))
+    ? Number(metricStats.leakage_hair_mean)
+    : 0;
+  metricStats.leakage_hair_mean = round3(leakageHairRaw);
   metricStats.leakage_mean = metricStats.leakage_non_skin_mean;
+  metricStats.module_pixels_min = Number.isFinite(Number(metricStats.module_pixels_min))
+    ? Math.max(0, Math.trunc(Number(metricStats.module_pixels_min)))
+    : 0;
+  metricStats.empty_module_rate = round3(Number.isFinite(Number(metricStats.empty_module_rate)) ? Number(metricStats.empty_module_rate) : 0);
   gtStats.skin_pixels = Number.isFinite(Number(gtStats.skin_pixels)) ? Math.max(0, Number(gtStats.skin_pixels)) : 0;
   predStats.module_count = Number.isFinite(Number(predStats.module_count)) ? Math.max(0, Number(predStats.module_count)) : 0;
   predStats.pred_skin_pixels_est = Number.isFinite(Number(predStats.pred_skin_pixels_est))
@@ -295,6 +331,12 @@ function predModulesMissingBreakdown(rows) {
   };
 }
 
+function datasetEvalMode(datasetName) {
+  const token = String(datasetName || '').trim().toLowerCase();
+  if (token === 'fasseg') return 'segmentation_only';
+  return 'full';
+}
+
 function parseBoolean(value, fallback = false) {
   if (value == null) return fallback;
   const token = String(value).trim().toLowerCase();
@@ -325,15 +367,18 @@ function parseArgs(argv) {
     token: String(process.env.TOKEN || process.env.API_TOKEN || ''),
     report_dir: process.env.REPORT_DIR || DEFAULT_REPORT_DIR,
     grid_size: parseNumber(process.env.GT_GRID_SIZE, DEFAULT_GRID_SIZE, 64, 512),
+    score_grid_size: parseNumber(process.env.EVAL_SCORE_GRID_SIZE, DEFAULT_SCORE_GRID_SIZE, 64, 512),
     eval_min_miou: parseNumber(process.env.EVAL_MIN_MIOU, DEFAULT_MIN_MIOU, 0, 1),
     eval_max_fail_rate: parseNumber(process.env.EVAL_MAX_FAIL_RATE, DEFAULT_MAX_FAIL_RATE, 0, 1),
     eval_max_leakage: parseNumber(process.env.EVAL_MAX_LEAKAGE, DEFAULT_MAX_LEAKAGE, 0, 1),
     eval_max_leakage_bg: parseNumber(process.env.EVAL_MAX_LEAKAGE_BG, DEFAULT_MAX_LEAKAGE_BG, 0, 1),
+    eval_max_empty_module_rate: parseNumber(process.env.EVAL_MAX_EMPTY_MODULE_RATE, DEFAULT_MAX_EMPTY_MODULE_RATE, 0, 1),
     eval_max_skin_roi_too_small: parseNumber(process.env.EVAL_MAX_SKIN_ROI_TOO_SMALL, DEFAULT_MAX_SKIN_ROI_TOO_SMALL, 0, 1),
     skin_roi_min_pixels: parseNumber(process.env.EVAL_SKIN_ROI_MIN_PIXELS, DEFAULT_SKIN_ROI_MIN_PIXELS, 1, 4096),
     circle_model_path: process.env.CIRCLE_MODEL_PATH || DEFAULT_CIRCLE_MODEL_PATH,
     circle_model_calibration: parseBoolean(process.env.CIRCLE_MODEL_CALIBRATION, true),
     circle_model_min_pixels: parseNumber(process.env.CIRCLE_MODEL_MIN_PIXELS, DEFAULT_CIRCLE_MODEL_MIN_PIXELS, 1, 1024),
+    circle_model_excluded_modules: DEFAULT_CIRCLE_MODEL_EXCLUDED_MODULES,
     skinmask_enabled: parseBoolean(process.env.DIAG_SKINMASK_ENABLED, DEFAULT_SKINMASK_ENABLED),
     skinmask_model_path: process.env.DIAG_SKINMASK_MODEL_PATH || DEFAULT_SKINMASK_MODEL_PATH,
     sample_seed: String(process.env.EVAL_SAMPLE_SEED || process.env.SAMPLE_SEED || ''),
@@ -411,6 +456,11 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--score_grid_size' && next) {
+      out.score_grid_size = parseNumber(next, out.score_grid_size, 64, 512);
+      i += 1;
+      continue;
+    }
     if (token === '--circle_model_path' && next) {
       out.circle_model_path = String(next);
       i += 1;
@@ -418,6 +468,11 @@ function parseArgs(argv) {
     }
     if (token === '--circle_model_min_pixels' && next) {
       out.circle_model_min_pixels = parseNumber(next, out.circle_model_min_pixels, 1, 1024);
+      i += 1;
+      continue;
+    }
+    if (token === '--circle_model_excluded_modules' && next) {
+      out.circle_model_excluded_modules = String(next || '');
       i += 1;
       continue;
     }
@@ -458,6 +513,11 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--eval_max_empty_module_rate' && next) {
+      out.eval_max_empty_module_rate = parseNumber(next, out.eval_max_empty_module_rate, 0, 1);
+      i += 1;
+      continue;
+    }
     if (token === '--skin_roi_min_pixels' && next) {
       out.skin_roi_min_pixels = parseNumber(next, out.skin_roi_min_pixels, 1, 4096);
       i += 1;
@@ -471,9 +531,11 @@ function parseArgs(argv) {
   out.limit = Math.max(0, Math.trunc(out.limit));
   out.timeout_ms = Math.max(1000, Math.trunc(out.timeout_ms));
   out.grid_size = Math.max(64, Math.trunc(out.grid_size));
+  out.score_grid_size = Math.max(out.grid_size, Math.trunc(out.score_grid_size));
   out.lang = String(out.lang || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
   out.market = String(out.market || 'EU').toUpperCase();
   out.circle_model_min_pixels = Math.max(1, Math.trunc(out.circle_model_min_pixels));
+  out.circle_model_excluded_modules = parseModuleList(out.circle_model_excluded_modules);
   const circleModelToken = String(out.circle_model_path || '').trim();
   out.circle_model_path = ['none', 'off', 'false'].includes(circleModelToken.toLowerCase()) ? '' : circleModelToken;
   out.skinmask_enabled = Boolean(out.skinmask_enabled);
@@ -725,7 +787,76 @@ function decodeGtModuleMasks(derivedGt, gridSize, activeModuleBoxes) {
   return out;
 }
 
-async function resolveCircleModelBoxes(modelPathInput) {
+function normalizeBox(boxRaw, fallback = null) {
+  const fallbackBox = fallback && typeof fallback === 'object' ? fallback : null;
+  const source = boxRaw && typeof boxRaw === 'object' ? boxRaw : fallbackBox;
+  if (!source || typeof source !== 'object') return null;
+  const x = clamp01(Number(source.x));
+  const y = clamp01(Number(source.y));
+  const w = Math.max(0.02, Math.min(1, Number(source.w)));
+  const h = Math.max(0.02, Math.min(1, Number(source.h)));
+  const xClamped = Math.max(0, Math.min(1 - 0.02, x));
+  const yClamped = Math.max(0, Math.min(1 - 0.02, y));
+  return {
+    x: xClamped,
+    y: yClamped,
+    w: Math.max(0.02, Math.min(1 - xClamped, w)),
+    h: Math.max(0.02, Math.min(1 - yClamped, h)),
+  };
+}
+
+function boxIou(boxA, boxB) {
+  const a = normalizeBox(boxA);
+  const b = normalizeBox(boxB);
+  if (!a || !b) return 0;
+  const ax1 = a.x + a.w;
+  const ay1 = a.y + a.h;
+  const bx1 = b.x + b.w;
+  const by1 = b.y + b.h;
+  const x0 = Math.max(a.x, b.x);
+  const y0 = Math.max(a.y, b.y);
+  const x1 = Math.min(ax1, bx1);
+  const y1 = Math.min(ay1, by1);
+  const inter = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+  const union = a.w * a.h + b.w * b.h - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function reconcileCircleModuleBoxes(moduleBoxesRaw, fallbackBoxesRaw = MODULE_BOXES, excludedModules = []) {
+  const fallbackBoxes = validateModuleBoxes(fallbackBoxesRaw);
+  const candidateBoxes = validateModuleBoxes(moduleBoxesRaw || fallbackBoxes);
+  const merged = {};
+  const revertedModules = [];
+  const excluded = new Set(parseModuleList(excludedModules));
+  const excludedApplied = [];
+  for (const moduleId of Object.keys(fallbackBoxes)) {
+    if (excluded.has(moduleId)) {
+      merged[moduleId] = normalizeBox(fallbackBoxes[moduleId], fallbackBoxes[moduleId]);
+      excludedApplied.push(moduleId);
+      continue;
+    }
+    const candidate = normalizeBox(candidateBoxes[moduleId], fallbackBoxes[moduleId]);
+    const fallback = normalizeBox(fallbackBoxes[moduleId], fallbackBoxes[moduleId]);
+    const iou = boxIou(candidate, fallback);
+    const candidateCenterX = candidate.x + candidate.w / 2;
+    const candidateCenterY = candidate.y + candidate.h / 2;
+    const fallbackCenterX = fallback.x + fallback.w / 2;
+    const fallbackCenterY = fallback.y + fallback.h / 2;
+    const drifted = iou < 0.1
+      || Math.abs(candidateCenterX - fallbackCenterX) > 0.2
+      || Math.abs(candidateCenterY - fallbackCenterY) > 0.2;
+    if (drifted) {
+      merged[moduleId] = fallback;
+      revertedModules.push(moduleId);
+    } else {
+      merged[moduleId] = candidate;
+    }
+  }
+  return { moduleBoxes: merged, revertedModules, excludedModules: excludedApplied };
+}
+
+async function resolveCircleModelBoxes(modelPathInput, options = {}) {
+  const excludedModules = parseModuleList(options.excludedModules || []);
   const fallback = validateModuleBoxes(MODULE_BOXES);
   const modelPath = String(modelPathInput || '').trim();
   if (!modelPath) {
@@ -735,6 +866,8 @@ async function resolveCircleModelBoxes(modelPathInput) {
         enabled: false,
         path: '',
         reason: 'disabled',
+        reverted_modules: [],
+        excluded_modules: excludedModules,
       },
     };
   }
@@ -747,6 +880,8 @@ async function resolveCircleModelBoxes(modelPathInput) {
         enabled: false,
         path: toPosix(path.relative(process.cwd(), resolvedPath)),
         reason: 'not_found',
+        reverted_modules: [],
+        excluded_modules: excludedModules,
       },
     };
   }
@@ -760,17 +895,21 @@ async function resolveCircleModelBoxes(modelPathInput) {
         enabled: false,
         path: toPosix(path.relative(process.cwd(), resolvedPath)),
         reason: 'invalid_json',
+        reverted_modules: [],
+        excluded_modules: excludedModules,
       },
     };
   }
-  const moduleBoxes = validateModuleBoxes(payload && payload.module_boxes);
+  const reconciled = reconcileCircleModuleBoxes(payload && payload.module_boxes, fallback, excludedModules);
   return {
-    moduleBoxes,
+    moduleBoxes: reconciled.moduleBoxes,
     meta: {
       enabled: true,
       path: toPosix(path.relative(process.cwd(), resolvedPath)),
       schema_version: payload && payload.schema_version ? String(payload.schema_version) : '',
       generated_at: payload && payload.generated_at ? String(payload.generated_at) : '',
+      reverted_modules: reconciled.revertedModules,
+      excluded_modules: reconciled.excludedModules,
     },
   };
 }
@@ -1075,9 +1214,13 @@ function makeSummaryRows(sampleRows) {
     const coverages = rows.map((row) => Number(row.coverage || 0));
     const leakagesNonSkin = rows.map((row) => Number(row.leakage_non_skin ?? row.leakage ?? 0));
     const leakagesBg = rows.map((row) => Number(row.leakage_bg ?? row.leakage_non_skin ?? row.leakage ?? 0));
+    const leakagesHair = rows.map((row) => Number(row.leakage_hair ?? 0));
+    const predPixels = rows.map((row) => Number(row.pred_pixels || 0));
     const tooSmall = rows.map((row) => (row && row.roi_too_small ? 1 : 0));
+    const datasetEvalModeValue = String(rows[0] && rows[0].dataset_eval_mode ? rows[0].dataset_eval_mode : datasetEvalMode(dataset));
     out.push({
       dataset,
+      dataset_eval_mode: datasetEvalModeValue,
       module_id: moduleId,
       samples: rows.length,
       miou_mean: round3(mean(ious)),
@@ -1086,7 +1229,10 @@ function makeSummaryRows(sampleRows) {
       coverage_mean: round3(mean(coverages)),
       leakage_non_skin_mean: round3(mean(leakagesNonSkin)),
       leakage_bg_mean: round3(mean(leakagesBg)),
+      leakage_hair_mean: round3(mean(leakagesHair)),
       leakage_mean: round3(mean(leakagesNonSkin)),
+      module_pixels_min: predPixels.length ? Math.max(0, Math.trunc(Math.min(...predPixels))) : 0,
+      empty_module_rate: round3(mean(predPixels.map((value) => (value <= 0 ? 1 : 0)))),
       roi_too_small_rate: round3(mean(tooSmall)),
     });
   }
@@ -1100,6 +1246,7 @@ function makeSummaryRows(sampleRows) {
 function makeCsv(rows) {
   const headers = [
     'dataset',
+    'dataset_eval_mode',
     'module_id',
     'samples',
     'miou_mean',
@@ -1108,7 +1255,10 @@ function makeCsv(rows) {
     'coverage_mean',
     'leakage_non_skin_mean',
     'leakage_bg_mean',
+    'leakage_hair_mean',
     'leakage_mean',
+    'module_pixels_min',
+    'empty_module_rate',
     'roi_too_small_rate',
   ];
   const lines = [headers.join(',')];
@@ -1139,7 +1289,9 @@ function renderMarkdown({
   const landmarkFails = okRows.filter((row) => row.landmark_ok === false).length;
   const leakageNonSkinValues = [];
   const leakageBgValues = [];
+  const leakageHairValues = [];
   const miouValues = [];
+  const modulePredPixels = [];
   const dropRates = [];
   let roiTooSmallCount = 0;
   let roiEvalCount = 0;
@@ -1148,7 +1300,9 @@ function renderMarkdown({
       for (const moduleScore of row.module_scores) {
         leakageNonSkinValues.push(Number(moduleScore.leakage_non_skin ?? moduleScore.leakage ?? 0));
         leakageBgValues.push(Number(moduleScore.leakage_bg ?? moduleScore.leakage_non_skin ?? moduleScore.leakage ?? 0));
+        leakageHairValues.push(Number(moduleScore.leakage_hair ?? 0));
         miouValues.push(Number(moduleScore.iou || 0));
+        modulePredPixels.push(Math.max(0, Number(moduleScore.pred_pixels || 0)));
       }
     }
     if (Number.isFinite(Number(row.skin_roi_too_small_count))) {
@@ -1162,6 +1316,7 @@ function renderMarkdown({
     }
   }
   const skinRoiTooSmallRate = roiEvalCount > 0 ? roiTooSmallCount / roiEvalCount : 0;
+  const segmentationOnlyRun = args.datasets.every((dataset) => datasetEvalMode(dataset) === 'segmentation_only');
 
   const lines = [];
   lines.push('# Circle Accuracy Evaluation');
@@ -1170,11 +1325,16 @@ function renderMarkdown({
   lines.push(`- generated_at: ${new Date().toISOString()}`);
   lines.push(`- mode: ${args.base_url ? 'api' : 'local'}`);
   lines.push(`- datasets: ${args.datasets.join(', ')}`);
+  lines.push(`- dataset_eval_mode: ${args.datasets.map((dataset) => `${dataset}:${datasetEvalMode(dataset)}`).join(', ')}`);
   lines.push(`- circle_model_enabled: ${circleModelMeta.enabled ? 'true' : 'false'}`);
   lines.push(`- circle_model_path: ${circleModelMeta.path || 'n/a'}`);
+  lines.push(`- circle_model_reverted_modules: ${Array.isArray(circleModelMeta.reverted_modules) && circleModelMeta.reverted_modules.length ? circleModelMeta.reverted_modules.join(', ') : 'none'}`);
+  lines.push(`- circle_model_reverted_module_count: ${Array.isArray(circleModelMeta.reverted_modules) ? circleModelMeta.reverted_modules.length : 0}`);
+  lines.push(`- circle_model_excluded_modules: ${Array.isArray(circleModelMeta.excluded_modules) && circleModelMeta.excluded_modules.length ? circleModelMeta.excluded_modules.join(', ') : 'none'}`);
   lines.push(`- circle_model_calibration: ${args.circle_model_calibration ? 'true' : 'false'}`);
   lines.push(`- skinmask_enabled: ${args.skinmask_enabled ? 'true' : 'false'}`);
   lines.push(`- skinmask_model_path: ${args.skinmask_enabled ? (args.skinmask_model_path || 'missing') : 'n/a'}`);
+  lines.push(`- score_grid_size: ${args.score_grid_size}`);
   lines.push(`- samples_total: ${total}`);
   lines.push(`- samples_ok: ${okRows.length}`);
   lines.push(`- samples_failed: ${failedRows.length}`);
@@ -1183,14 +1343,18 @@ function renderMarkdown({
   lines.push(`- module_mIoU_mean: ${round3(mean(miouValues))}`);
   lines.push(`- leakage_non_skin_mean: ${round3(mean(leakageNonSkinValues))}`);
   lines.push(`- leakage_bg_mean: ${round3(mean(leakageBgValues))}`);
+  lines.push(`- leakage_hair_mean: ${round3(mean(leakageHairValues))}`);
+  lines.push(`- empty_module_rate: ${round3(mean(modulePredPixels.map((value) => (value <= 0 ? 1 : 0))) || 0)}`);
+  lines.push(`- module_pixels_min: ${modulePredPixels.length ? Math.max(0, Math.trunc(Math.min(...modulePredPixels))) : 0}`);
   lines.push(`- skin_roi_too_small_rate: ${round3(skinRoiTooSmallRate)}`);
   lines.push(`- geometry_sanitize_drop_rate_mean: ${dropRates.length ? round3(mean(dropRates)) : 'n/a'}`);
   lines.push('');
   lines.push('## Thresholds (soft gate)');
   lines.push('');
-  lines.push(`- module_mIoU >= ${args.eval_min_miou}`);
+  lines.push(`- module_mIoU >= ${args.eval_min_miou}${segmentationOnlyRun ? ' (observation only for segmentation_only datasets)' : ''}`);
   lines.push(`- face_detect_fail_rate <= ${args.eval_max_fail_rate}`);
   lines.push(`- leakage_bg_mean <= ${args.eval_max_leakage_bg}`);
+  lines.push(`- empty_module_rate <= ${args.eval_max_empty_module_rate}`);
   lines.push(`- leakage_non_skin_mean (observation only)`);
   lines.push(`- skin_roi_too_small_rate <= ${args.eval_max_skin_roi_too_small} (pred_pixels < ${args.skin_roi_min_pixels})`);
   lines.push('');
@@ -1236,11 +1400,11 @@ function renderMarkdown({
 
   lines.push('## Per-Module Summary');
   lines.push('');
-  lines.push('| dataset | module | samples | mIoU mean | p50 | p90 | coverage mean | leakage_non_skin mean | leakage_bg mean | roi_too_small_rate |');
-  lines.push('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|');
+  lines.push('| dataset | mode | module | samples | mIoU mean | p50 | p90 | coverage mean | leakage_non_skin mean | leakage_bg mean | leakage_hair mean | module_pixels_min | empty_module_rate | roi_too_small_rate |');
+  lines.push('|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
   for (const row of summaryRows) {
     lines.push(
-      `| ${row.dataset} | ${row.module_id} | ${row.samples} | ${row.miou_mean} | ${row.miou_p50} | ${row.miou_p90} | ${row.coverage_mean} | ${row.leakage_non_skin_mean} | ${row.leakage_bg_mean} | ${row.roi_too_small_rate} |`,
+      `| ${row.dataset} | ${row.dataset_eval_mode || datasetEvalMode(row.dataset)} | ${row.module_id} | ${row.samples} | ${row.miou_mean} | ${row.miou_p50} | ${row.miou_p90} | ${row.coverage_mean} | ${row.leakage_non_skin_mean} | ${row.leakage_bg_mean} | ${row.leakage_hair_mean} | ${row.module_pixels_min} | ${row.empty_module_rate} | ${row.roi_too_small_rate} |`,
     );
   }
   lines.push('');
@@ -1318,7 +1482,9 @@ async function main() {
   const cache = normalizeCacheDirs(args.cache_dir);
   const runKey = nowRunKey();
   const sampleSeed = args.sample_seed || runKey;
-  const circleModel = await resolveCircleModelBoxes(args.circle_model_path);
+  const circleModel = await resolveCircleModelBoxes(args.circle_model_path, {
+    excludedModules: args.circle_model_excluded_modules,
+  });
   const activeModuleBoxes = circleModel.moduleBoxes;
   const resolvedModuleIds = moduleIds(activeModuleBoxes);
   const reportDir = path.resolve(args.report_dir || DEFAULT_REPORT_DIR);
@@ -1371,6 +1537,8 @@ async function main() {
   }
 
   const runtimeRows = await runWithConcurrency(allSamples, args.concurrency, async (entry, index) => {
+    const rowDatasetEvalMode = datasetEvalMode(entry.dataset);
+    const scoreGridSize = Math.max(args.grid_size, args.score_grid_size || args.grid_size);
     let evalSample = null;
     try {
       evalSample = entry.adapter.toEvalSample(entry.sample);
@@ -1392,6 +1560,8 @@ async function main() {
       sampleHash,
       sampleId: evalSample.sample_id,
     });
+    row.dataset_eval_mode = rowDatasetEvalMode;
+    row.score_grid_size = scoreGridSize;
     row.source_mode = args.base_url ? 'api' : 'local';
     row.gt_stats = {
       ...row.gt_stats,
@@ -1449,7 +1619,7 @@ async function main() {
     }
 
     const ensuredPayload = ensureModulesForPayload(prediction.payload, {
-      gridSize: args.grid_size,
+      gridSize: scoreGridSize,
       moduleBoxes: MODULE_BOXES,
       degradedReason: prediction.reason_detail || prediction.degraded_reason,
     });
@@ -1462,6 +1632,12 @@ async function main() {
       has_pred_modules: Boolean(Array.isArray(payload.modules) && payload.modules.length),
       module_count: Array.isArray(payload.modules) ? payload.modules.length : 0,
       pred_skin_pixels_est: 0,
+      circle_model_reverted_modules: Array.isArray(circleModel.meta && circleModel.meta.reverted_modules)
+        ? circleModel.meta.reverted_modules.slice()
+        : [],
+      circle_model_excluded_modules: Array.isArray(circleModel.meta && circleModel.meta.excluded_modules)
+        ? circleModel.meta.excluded_modules.slice()
+        : [],
       skinmask_pixels_est:
         args.skinmask_enabled && Number.isFinite(Number(prediction.skinmask_pixels_est))
           ? Math.max(0, Math.trunc(Number(prediction.skinmask_pixels_est)))
@@ -1528,12 +1704,25 @@ async function main() {
       imageHeight: gtSkin.height,
       marginScale: 1.2,
     });
+    const payloadFaceCrop = payload && typeof payload === 'object' && payload.face_crop && typeof payload.face_crop === 'object'
+      ? payload.face_crop
+      : null;
+    const payloadFaceCropNormalized = payloadFaceCrop
+      ? normalizeFaceCropBox(payloadFaceCrop, gtSkin.width, gtSkin.height)
+      : null;
+    const usePayloadFaceCrop = Boolean(
+      payloadFaceCropNormalized
+        && Number(payloadFaceCropNormalized.w) > 1
+        && Number(payloadFaceCropNormalized.h) > 1,
+    );
+    const scoringFaceCrop = usePayloadFaceCrop ? payloadFaceCropNormalized : fallbackFaceCrop;
     const resolvedFaceCrop = {
       coord_space: 'orig_px_v1',
-      bbox_px: fallbackFaceCrop,
+      bbox_px: scoringFaceCrop,
       orig_size_px: { w: gtSkin.width, h: gtSkin.height },
       render_size_px_hint: { w: 512, h: 512 },
     };
+    row.gt_stats.face_crop_source = usePayloadFaceCrop ? 'payload_face_crop' : 'skin_bbox_fallback';
 
     const derivedGt = deriveGtModulesFromSkinMask({
       skinMaskImage: {
@@ -1544,7 +1733,7 @@ async function main() {
       imageWidth: gtSkin.width,
       imageHeight: gtSkin.height,
       faceCropBox: resolvedFaceCrop,
-      gridSize: args.grid_size,
+      gridSize: scoreGridSize,
       moduleIds: resolvedModuleIds,
       moduleBoxes: activeModuleBoxes,
     });
@@ -1558,21 +1747,34 @@ async function main() {
     };
     const derivedPath = saveDerivedGt(cache.cacheRootDir, entry.dataset, evalSample.sample_id, derivedPayload);
 
-    const gtModuleMasks = decodeGtModuleMasks(derivedGt, args.grid_size, activeModuleBoxes);
-    const gtSkinMaskNorm = decodeRleBinary(derivedGt.skin_mask_rle_norm, args.grid_size * args.grid_size);
+    const gtModuleMasks = decodeGtModuleMasks(derivedGt, scoreGridSize, activeModuleBoxes);
+    const gtSkinMaskNorm = decodeRleBinary(derivedGt.skin_mask_rle_norm, scoreGridSize * scoreGridSize);
     const gtBackgroundMaskNorm = gtBackgroundMaskImage
       ? cropMaskToNorm(
           gtBackgroundMaskImage,
           gtSkin.width,
           gtSkin.height,
           resolvedFaceCrop.bbox_px,
-          args.grid_size,
-          args.grid_size,
+          scoreGridSize,
+          scoreGridSize,
         )
       : invertBinaryMask(gtSkinMaskNorm);
-    const predicted = moduleMasksFromCardPayload(payload, args.grid_size, activeModuleBoxes);
-    const predUnionMask = createMask(args.grid_size, args.grid_size, 0);
+    const gtHairMaskNorm = gtHairMaskImage
+      ? cropMaskToNorm(
+          gtHairMaskImage,
+          gtSkin.width,
+          gtSkin.height,
+          resolvedFaceCrop.bbox_px,
+          scoreGridSize,
+          scoreGridSize,
+        )
+      : createMask(scoreGridSize, scoreGridSize, 0);
+    const predicted = moduleMasksFromCardPayload(payload, scoreGridSize, activeModuleBoxes);
+    const predUnionMask = createMask(scoreGridSize, scoreGridSize, 0);
     const circlePriorMissing = Boolean(args.circle_model_calibration && !circleModel.meta.enabled);
+    const circleCalibrationExcluded = new Set(
+      Array.isArray(circleModel.meta && circleModel.meta.excluded_modules) ? circleModel.meta.excluded_modules : [],
+    );
     if (circlePriorMissing && !row.degraded_reason) {
       row.degraded_reason = PRED_MODULES_MISSING_REASON_DETAILS.CIRCLE_PRIOR_MISSING;
     }
@@ -1582,7 +1784,7 @@ async function main() {
     for (const moduleId of resolvedModuleIds) {
       const predMaskRaw = predicted.moduleMasks[moduleId] || createMask(args.grid_size, args.grid_size, 0);
       let predMask = predMaskRaw;
-      if (circleModel.meta.enabled && args.circle_model_calibration) {
+      if (circleModel.meta.enabled && args.circle_model_calibration && !circleCalibrationExcluded.has(moduleId)) {
         const calibrated = safeApplyCalibration({
           moduleId,
           predMaskRaw,
@@ -1601,10 +1803,12 @@ async function main() {
       const roiTooSmall = predPixels < args.skin_roi_min_pixels;
       moduleScores.push({
         module_id: moduleId,
+        dataset_eval_mode: rowDatasetEvalMode,
         iou: round3(iouScore(predMask, gtMask)),
         coverage: round3(coverageScore(predMask, gtMask)),
         leakage_non_skin: round3(leakageScore(predMask, gtSkinMaskNorm)),
         leakage_bg: round3(leakageAgainstMask(predMask, gtBackgroundMaskNorm)),
+        leakage_hair: round3(leakageAgainstMask(predMask, gtHairMaskNorm)),
         leakage: round3(leakageScore(predMask, gtSkinMaskNorm)),
         pred_pixels: predPixels,
         gt_pixels: gtPixels,
@@ -1654,7 +1858,16 @@ async function main() {
       coverage_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.coverage || 0)))),
       leakage_non_skin_mean: round3(mean(moduleScores.map((moduleScore) => Number((moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0)))),
       leakage_bg_mean: round3(mean(moduleScores.map((moduleScore) => Number((moduleScore.leakage_bg ?? moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0)))),
+      leakage_hair_mean: round3(mean(moduleScores.map((moduleScore) => Number(moduleScore.leakage_hair || 0)))),
       leakage_mean: round3(mean(moduleScores.map((moduleScore) => Number((moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0)))),
+      module_pixels_min: moduleScores.length
+        ? Math.max(0, Math.trunc(Math.min(...moduleScores.map((moduleScore) => Number(moduleScore.pred_pixels || 0)))))
+        : 0,
+      empty_module_rate: round3(
+        moduleScores.length
+          ? moduleScores.filter((moduleScore) => Number(moduleScore.pred_pixels || 0) <= 0).length / moduleScores.length
+          : 0,
+      ),
     };
     if (!moduleScores.length && row.fail_reason === FAIL_REASONS.UNKNOWN) {
       row.fail_reason = FAIL_REASONS.METRIC_SKIP;
@@ -1712,6 +1925,8 @@ async function main() {
   const miouValues = [];
   const leakageNonSkinValues = [];
   const leakageBgValues = [];
+  const leakageHairValues = [];
+  const modulePredPixels = [];
   let skinRoiTooSmallCount = 0;
   let skinRoiEvaluatedCount = 0;
   for (const row of okRows) {
@@ -1719,6 +1934,8 @@ async function main() {
       miouValues.push(Number(moduleScore.iou || 0));
       leakageNonSkinValues.push(Number((moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0));
       leakageBgValues.push(Number((moduleScore.leakage_bg ?? moduleScore.leakage_non_skin ?? moduleScore.leakage) || 0));
+      leakageHairValues.push(Number(moduleScore.leakage_hair || 0));
+      modulePredPixels.push(Math.max(0, Number(moduleScore.pred_pixels || 0)));
     }
     skinRoiTooSmallCount += Number(row.skin_roi_too_small_count || 0);
     skinRoiEvaluatedCount += Number(row.skin_roi_evaluated_count || 0);
@@ -1729,11 +1946,17 @@ async function main() {
   const miouMean = mean(miouValues);
   const leakageNonSkinMean = mean(leakageNonSkinValues);
   const leakageBgMean = mean(leakageBgValues);
+  const leakageHairMean = mean(leakageHairValues);
+  const emptyModuleRate = modulePredPixels.length
+    ? mean(modulePredPixels.map((value) => (value <= 0 ? 1 : 0)))
+    : 0;
+  const modulePixelsMin = modulePredPixels.length ? Math.max(0, Math.trunc(Math.min(...modulePredPixels))) : 0;
   const skinRoiTooSmallRate = skinRoiEvaluatedCount > 0 ? skinRoiTooSmallCount / skinRoiEvaluatedCount : 0;
+  const segmentationOnlyRun = args.datasets.every((dataset) => datasetEvalMode(dataset) === 'segmentation_only');
 
   const softWarnings = [];
   const hardWarnings = [];
-  if (miouMean < args.eval_min_miou) {
+  if (!segmentationOnlyRun && miouMean < args.eval_min_miou) {
     softWarnings.push(`module_mIoU ${round3(miouMean)} < threshold ${args.eval_min_miou}`);
   }
   if (faceDetectFailRate > args.eval_max_fail_rate) {
@@ -1744,6 +1967,9 @@ async function main() {
   }
   if (leakageNonSkinMean > args.eval_max_leakage) {
     softWarnings.push(`leakage_non_skin_mean ${round3(leakageNonSkinMean)} > observation ${args.eval_max_leakage}`);
+  }
+  if (emptyModuleRate > args.eval_max_empty_module_rate) {
+    hardWarnings.push(`empty_module_rate ${round3(emptyModuleRate)} > threshold ${args.eval_max_empty_module_rate}`);
   }
   if (skinRoiTooSmallRate > args.eval_max_skin_roi_too_small) {
     softWarnings.push(
@@ -1786,12 +2012,18 @@ async function main() {
     weak_label_samples: sampleRows.filter((row) => row && row.weak_label_only).length,
     circle_model_enabled: circleModel.meta.enabled,
     circle_model_path: circleModel.meta.path || '',
+    circle_model_reverted_modules: Array.isArray(circleModel.meta.reverted_modules) ? circleModel.meta.reverted_modules : [],
     circle_model_calibration: args.circle_model_calibration,
+    score_grid_size: args.score_grid_size,
     sample_seed: sampleSeed,
     module_miou_mean: round3(miouMean),
     leakage_non_skin_mean: round3(leakageNonSkinMean),
     leakage_bg_mean: round3(leakageBgMean),
+    leakage_hair_mean: round3(leakageHairMean),
     leakage_mean: round3(leakageNonSkinMean),
+    empty_module_rate: round3(emptyModuleRate),
+    module_pixels_min: modulePixelsMin,
+    dataset_eval_mode: segmentationOnlyRun ? 'segmentation_only' : 'full',
     skin_roi_too_small_rate: round3(skinRoiTooSmallRate),
     face_detect_fail_rate: round3(faceDetectFailRate),
     fail_reasons: failReasonRows,
@@ -1808,6 +2040,9 @@ async function main() {
   };
   process.stdout.write(`${JSON.stringify(payload)}\n`);
   if (skinmaskNoEffect.enabled && skinmaskNoEffect.triggered) {
+    process.exitCode = 2;
+  }
+  if (hardWarnings.length) {
     process.exitCode = 2;
   }
 }

@@ -46,7 +46,12 @@ function defaultMetricStats() {
     modules_scored: 0,
     miou_mean: 0,
     coverage_mean: 0,
+    leakage_non_skin_mean: 0,
+    leakage_bg_mean: 0,
+    leakage_hair_mean: 0,
     leakage_mean: 0,
+    module_pixels_min: 0,
+    empty_module_rate: 0,
   };
 }
 
@@ -83,7 +88,22 @@ function finalizeEvalRow(inputRow) {
   metricStats.modules_scored = Number.isFinite(modulesScored) ? Math.max(0, Math.trunc(modulesScored)) : 0;
   metricStats.miou_mean = round3(metricStats.miou_mean || 0);
   metricStats.coverage_mean = round3(metricStats.coverage_mean || 0);
+  metricStats.leakage_non_skin_mean = round3(Number.isFinite(Number(metricStats.leakage_non_skin_mean))
+    ? Number(metricStats.leakage_non_skin_mean)
+    : Number(metricStats.leakage_mean || 0));
+  metricStats.leakage_bg_mean = round3(Number.isFinite(Number(metricStats.leakage_bg_mean))
+    ? Number(metricStats.leakage_bg_mean)
+    : Number(metricStats.leakage_mean || 0));
+  metricStats.leakage_hair_mean = round3(Number.isFinite(Number(metricStats.leakage_hair_mean))
+    ? Number(metricStats.leakage_hair_mean)
+    : 0);
   metricStats.leakage_mean = round3(metricStats.leakage_mean || 0);
+  metricStats.module_pixels_min = Number.isFinite(Number(metricStats.module_pixels_min))
+    ? Math.max(0, Number(metricStats.module_pixels_min))
+    : 0;
+  metricStats.empty_module_rate = round3(Number.isFinite(Number(metricStats.empty_module_rate))
+    ? Number(metricStats.empty_module_rate)
+    : 0);
   gtStats.skin_pixels = Number.isFinite(Number(gtStats.skin_pixels)) ? Math.max(0, Number(gtStats.skin_pixels)) : 0;
   predStats.module_count = Number.isFinite(Number(predStats.module_count)) ? Math.max(0, Number(predStats.module_count)) : 0;
   predStats.pred_skin_pixels_est = Number.isFinite(Number(predStats.pred_skin_pixels_est))
