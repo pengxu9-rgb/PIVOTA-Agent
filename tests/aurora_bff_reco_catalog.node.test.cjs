@@ -244,6 +244,8 @@ test('The Ordinary recommendation: pdp_open path is direct internal (group), no 
         assert.ok(first?.pdp_open?.get_pdp_v2_payload?.subject?.id);
         assert.equal(Boolean(first?.pdp_open?.external), false);
         assert.ok(first?.pdp_open?.subject?.product_group_id || first?.pdp_open?.product_ref);
+        assert.equal(typeof first?.metadata?.time_to_pdp_ms, 'number');
+        assert.ok(first?.metadata?.time_to_pdp_ms >= 0);
         assert.equal(stats?.group, 1);
         assert.equal(stats?.external, 0);
         assert.equal(resolveCalls, 0);
@@ -315,6 +317,8 @@ test('Winona recommendation: pdp_open path is direct internal (ref), no fallback
         assert.ok(first?.pdp_open?.get_pdp_v2_payload?.product_ref?.product_id);
         assert.equal(Boolean(first?.pdp_open?.external), false);
         assert.ok(first?.pdp_open?.subject?.product_group_id || first?.pdp_open?.product_ref);
+        assert.equal(typeof first?.metadata?.time_to_pdp_ms, 'number');
+        assert.ok(first?.metadata?.time_to_pdp_ms >= 0);
         assert.equal(stats?.ref, 1);
         assert.equal(stats?.external, 0);
         assert.equal(resolveCalls, 0);
@@ -385,6 +389,9 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
         assert.equal(first?.metadata?.pdp_open_mode, 'external');
         assert.equal(first?.metadata?.resolve_reason_code, 'no_candidates');
         assert.equal(first?.metadata?.pdp_open_fail_reason, 'no_candidates');
+        assert.equal(first?.metadata?.resolve_fail_reason, 'no_candidates');
+        assert.equal(typeof first?.metadata?.time_to_pdp_ms, 'number');
+        assert.ok(first?.metadata?.time_to_pdp_ms >= 0);
         assert.equal(first?.pdp_open?.path, 'external');
         assert.equal(first?.pdp_open?.external?.provider, 'google');
         assert.equal(first?.pdp_open?.external?.target, '_blank');
@@ -396,6 +403,9 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
         assert.equal(stats?.external, 1);
         assert.equal(stats?.group, 0);
         assert.equal(stats?.ref, 0);
+        const cardMeta = getRecoCard(resp.body)?.payload?.metadata || {};
+        assert.equal(cardMeta?.resolve_fail_reason_counts?.no_candidates, 1);
+        assert.equal(cardMeta?.time_to_pdp_ms_stats?.count, 1);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -472,6 +482,9 @@ test('Offers resolve db_error: canonical ref still keeps internal PDP open contr
         assert.equal(first?.metadata?.pdp_open_path, 'internal');
         assert.equal(first?.metadata?.pdp_open_mode, 'ref');
         assert.equal(first?.metadata?.pdp_open_fail_reason, 'db_error');
+        assert.equal(first?.metadata?.resolve_fail_reason, 'db_error');
+        assert.equal(typeof first?.metadata?.time_to_pdp_ms, 'number');
+        assert.ok(first?.metadata?.time_to_pdp_ms >= 0);
         assert.equal(first?.pdp_open?.path, 'ref');
         assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_to_niacinamide');
         assert.equal(first?.pdp_open?.product_ref?.merchant_id, 'mid_to');
@@ -479,9 +492,11 @@ test('Offers resolve db_error: canonical ref still keeps internal PDP open contr
 
         const pdpStats = card?.payload?.metadata?.pdp_open_path_stats || {};
         const failStats = card?.payload?.metadata?.fail_reason_counts || {};
+        const pdpLatencyStats = card?.payload?.metadata?.time_to_pdp_ms_stats || {};
         assert.equal(pdpStats.internal, 1);
         assert.equal(pdpStats.external, 0);
         assert.equal(failStats.db_error, 1);
+        assert.equal(pdpLatencyStats.count, 1);
       } finally {
         axios.post = originalPost;
       }

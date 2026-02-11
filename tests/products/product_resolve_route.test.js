@@ -225,7 +225,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('filters external_seed by default', async () => {
-    const queryText = 'Winona Soothing Repair Serum';
+    const queryText = 'Unknown External Seed Product';
 
     nock('http://pivota.test')
       .persist()
@@ -261,6 +261,78 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.body.product_ref).toBeNull();
     expect(resp.body.reason).toBe('no_candidates');
     expect(resp.body.candidates).toEqual([]);
+  });
+
+  test('resolves known stable products without hints (The Ordinary + Winona)', async () => {
+    const app = require('../../src/server');
+
+    const ordinaryResp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        lang: 'en',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(ordinaryResp.status).toBe(200);
+    expect(ordinaryResp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: 'prod_the_ordinary_niacinamide_10_zinc_1',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+    expect(ordinaryResp.body.metadata).toEqual(
+      expect.objectContaining({
+        stable_alias_match_id: 'the_ordinary_niacinamide_10_zinc_1',
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'stable_alias_ref',
+            ok: true,
+          }),
+        ]),
+      }),
+    );
+
+    const winonaResp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'Winona Soothing Repair Serum',
+        lang: 'en',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(winonaResp.status).toBe(200);
+    expect(winonaResp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: 'prod_winona_soothing_repair_serum',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+    expect(winonaResp.body.metadata).toEqual(
+      expect.objectContaining({
+        stable_alias_match_id: 'winona_soothing_repair_serum',
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'stable_alias_ref',
+            ok: true,
+          }),
+        ]),
+      }),
+    );
   });
 
   test('does not short-circuit opaque hints.product_ref for uuid query; returns no_candidates reason_code', async () => {

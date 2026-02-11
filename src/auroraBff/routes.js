@@ -554,7 +554,7 @@ function normalizeRecoCatalogProduct(raw) {
       product_id: out.product_id,
       merchant_id: out.merchant_id,
     },
-    { requireMerchant: true },
+    { requireMerchant: true, allowOpaqueProductId: false },
   );
   if (canonicalProductRef) out.canonical_product_ref = canonicalProductRef;
 
@@ -5593,12 +5593,13 @@ function isUuidLikeString(value) {
   return typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 }
 
-function normalizeCanonicalProductRef(input, { requireMerchant = true } = {}) {
+function normalizeCanonicalProductRef(input, { requireMerchant = true, allowOpaqueProductId = true } = {}) {
   const ref = input && typeof input === 'object' && !Array.isArray(input) ? input : null;
   if (!ref) return null;
   const productId = pickFirstTrimmed(ref.product_id, ref.productId);
   const merchantId = pickFirstTrimmed(ref.merchant_id, ref.merchantId);
   if (!productId) return null;
+  if (!allowOpaqueProductId && isUuidLikeString(productId)) return null;
   if (requireMerchant && !merchantId) return null;
   return {
     product_id: productId,
@@ -5656,7 +5657,7 @@ function extractRecoPdpDirectKeys(base, skuCandidate) {
 
   let directProductRef = null;
   for (const refRaw of canonicalRefCandidates) {
-    const ref = normalizeCanonicalProductRef(refRaw, { requireMerchant: true });
+    const ref = normalizeCanonicalProductRef(refRaw, { requireMerchant: true, allowOpaqueProductId: false });
     if (ref) {
       directProductRef = ref;
       break;
@@ -5682,7 +5683,7 @@ function extractRecoPdpDirectKeys(base, skuCandidate) {
         product_id: rawProductId,
         merchant_id: rawMerchantId,
       },
-      { requireMerchant: true },
+      { requireMerchant: true, allowOpaqueProductId: false },
     );
     if (fallbackRef) directProductRef = fallbackRef;
   }
@@ -5714,7 +5715,7 @@ function buildRecoResolveHints({ base, skuCandidate, rawProductId, rawMerchantId
   pushAlias(base?.title);
 
   const hints = {};
-  if (rawProductId) {
+  if (rawProductId && !isUuidLikeString(rawProductId)) {
     hints.product_ref = {
       product_id: rawProductId,
       ...(rawMerchantId ? { merchant_id: rawMerchantId } : {}),
@@ -5790,6 +5791,7 @@ function withRecoPdpMetadata(base, {
   resolveReasonCode = null,
   resolveAttempted = false,
   resolvedViaQuery = null,
+  timeToPdpMs = null,
 }) {
   const nextMode = normalizePdpOpenMode(path, 'external');
   const nextPath = nextMode === 'external' ? 'external' : 'internal';
@@ -5798,12 +5800,23 @@ function withRecoPdpMetadata(base, {
     resolveReasonCode != null && resolveReasonCode !== ''
       ? normalizeResolveReasonCode(resolveReasonCode)
       : null;
+  const normalizedTimeToPdp =
+    Number.isFinite(Number(timeToPdpMs)) && Number(timeToPdpMs) >= 0
+      ? Math.max(0, Math.round(Number(timeToPdpMs)))
+      : null;
   const nextMetadata = {
     ...metadataBase,
     pdp_open_path: nextPath,
     pdp_open_mode: nextMode,
     ...(resolveAttempted ? { pdp_open_resolve_attempted: true } : {}),
-    ...(normalizedFailReason ? { resolve_reason_code: normalizedFailReason, pdp_open_fail_reason: normalizedFailReason } : {}),
+    ...(normalizedFailReason
+      ? {
+          resolve_reason_code: normalizedFailReason,
+          pdp_open_fail_reason: normalizedFailReason,
+          resolve_fail_reason: normalizedFailReason,
+        }
+      : {}),
+    ...(normalizedTimeToPdp != null ? { time_to_pdp_ms: normalizedTimeToPdp } : {}),
   };
 
   const nextSku =
@@ -5867,6 +5880,8 @@ function withRecoPdpMetadata(base, {
 }
 
 async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
+  const startedAt = Date.now();
+  const elapsedMs = () => Math.max(0, Date.now() - startedAt);
   const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
   if (!base) return item;
 
@@ -5897,6 +5912,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
       path: 'group',
       subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
       canonicalProductRef: directProductRef,
+      timeToPdpMs: elapsedMs(),
     });
   }
 
@@ -5904,6 +5920,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     return withRecoPdpMetadata(base, {
       path: 'ref',
       canonicalProductRef: directProductRef,
+      timeToPdpMs: elapsedMs(),
     });
   }
 
@@ -5926,6 +5943,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
       queryText,
       resolveReasonCode: 'no_candidates',
       resolveAttempted: false,
+      timeToPdpMs: elapsedMs(),
     });
   }
 
@@ -5937,6 +5955,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
       queryText,
       resolveReasonCode: 'no_candidates',
       resolveAttempted: false,
+      timeToPdpMs: elapsedMs(),
     });
   }
 
@@ -5970,13 +5989,17 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     resolveError = err;
   }
 
-  const resolvedProductRef = normalizeCanonicalProductRef(resolveBody?.product_ref, { requireMerchant: true });
+  const resolvedProductRef = normalizeCanonicalProductRef(resolveBody?.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
   if (resolveStatus === 200 && resolveBody?.resolved === true && resolvedProductRef) {
     return withRecoPdpMetadata(base, {
       path: 'resolve',
       canonicalProductRef: resolvedProductRef,
       resolveAttempted: true,
       resolvedViaQuery: queryText,
+      timeToPdpMs: elapsedMs(),
     });
   }
 
@@ -6002,6 +6025,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     queryText,
     resolveReasonCode: reasonCode,
     resolveAttempted: true,
+    timeToPdpMs: elapsedMs(),
   });
 }
 
@@ -6019,6 +6043,51 @@ function tallyPdpOpenPathStats(recommendations) {
     }
   }
   return stats;
+}
+
+function tallyResolveFailReasonCounts(recommendations) {
+  const counts = { db_error: 0, upstream_timeout: 0, no_candidates: 0 };
+  for (const item of Array.isArray(recommendations) ? recommendations : []) {
+    const code = normalizeResolveReasonCode(
+      item?.metadata?.pdp_open_fail_reason ||
+        item?.metadata?.resolve_reason_code ||
+        item?.metadata?.resolve_fail_reason ||
+        item?.pdp_open?.resolve_reason_code,
+      '',
+    );
+    if (code === 'db_error' || code === 'upstream_timeout' || code === 'no_candidates') {
+      counts[code] += 1;
+    }
+  }
+  return counts;
+}
+
+function summarizeTimeToPdpStats(items) {
+  const values = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const raw = item?.metadata?.time_to_pdp_ms;
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0) continue;
+    values.push(Math.round(num));
+  }
+  values.sort((a, b) => a - b);
+
+  if (!values.length) {
+    return { count: 0, mean: 0, p50: 0, p90: 0, max: 0 };
+  }
+
+  const pickPercentile = (p) => {
+    const idx = Math.min(values.length - 1, Math.max(0, Math.ceil(values.length * p) - 1));
+    return values[idx];
+  };
+  const sum = values.reduce((acc, v) => acc + v, 0);
+  return {
+    count: values.length,
+    mean: Math.round(sum / values.length),
+    p50: pickPercentile(0.5),
+    p90: pickPercentile(0.9),
+    max: values[values.length - 1],
+  };
 }
 
 function mapOfferResolveFailureCode({ responseBody, statusCode, error } = {}) {
@@ -6054,7 +6123,7 @@ function mapOfferResolveFailureCode({ responseBody, statusCode, error } = {}) {
   return 'no_candidates';
 }
 
-function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAttempted = false } = {}) {
+function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAttempted = false, timeToPdpMs = null } = {}) {
   const base = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
   const product = base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? { ...base.product } : {};
   const offer = base.offer && typeof base.offer === 'object' && !Array.isArray(base.offer) ? { ...base.offer } : base.offer;
@@ -6065,9 +6134,14 @@ function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAtt
   const { subjectProductGroupId, directProductRef } = extractRecoPdpDirectKeys(product, product);
 
   const metadataBase = isPlainObject(base.metadata) ? { ...base.metadata } : {};
+  const normalizedTimeToPdp =
+    Number.isFinite(Number(timeToPdpMs)) && Number(timeToPdpMs) >= 0
+      ? Math.max(0, Math.round(Number(timeToPdpMs)))
+      : null;
   const metadata = {
     ...metadataBase,
     ...(resolveAttempted ? { offer_resolve_attempted: true } : {}),
+    ...(normalizedTimeToPdp != null ? { time_to_pdp_ms: normalizedTimeToPdp } : {}),
   };
 
   if (subjectProductGroupId) {
@@ -6083,6 +6157,7 @@ function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAtt
     if (failReason) {
       metadata.pdp_open_fail_reason = failReason;
       metadata.resolve_reason_code = failReason;
+      metadata.resolve_fail_reason = failReason;
     }
     return {
       ...base,
@@ -6104,6 +6179,7 @@ function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAtt
     if (failReason) {
       metadata.pdp_open_fail_reason = failReason;
       metadata.resolve_reason_code = failReason;
+      metadata.resolve_fail_reason = failReason;
     }
     return {
       ...base,
@@ -6129,6 +6205,7 @@ function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAtt
   if (failReason) {
     metadata.pdp_open_fail_reason = failReason;
     metadata.resolve_reason_code = failReason;
+    metadata.resolve_fail_reason = failReason;
   }
 
   return {
@@ -6165,7 +6242,11 @@ function summarizeOfferPdpOpen(items) {
       failReasonCounts[failReason] += 1;
     }
   }
-  return { path_stats: stats, fail_reason_counts: failReasonCounts };
+  return {
+    path_stats: stats,
+    fail_reason_counts: failReasonCounts,
+    time_to_pdp_ms_stats: summarizeTimeToPdpStats(items),
+  };
 }
 
 async function enrichRecommendationsWithPdpOpenContract({ recommendations, logger } = {}) {
@@ -6174,6 +6255,8 @@ async function enrichRecommendationsWithPdpOpenContract({ recommendations, logge
     return {
       recommendations: recos,
       path_stats: { group: 0, ref: 0, resolve: 0, external: 0 },
+      fail_reason_counts: { db_error: 0, upstream_timeout: 0, no_candidates: 0 },
+      time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
     };
   }
 
@@ -6188,6 +6271,8 @@ async function enrichRecommendationsWithPdpOpenContract({ recommendations, logge
   return {
     recommendations: normalized,
     path_stats: tallyPdpOpenPathStats(normalized),
+    fail_reason_counts: tallyResolveFailReasonCounts(normalized),
+    time_to_pdp_ms_stats: summarizeTimeToPdpStats(normalized),
   };
 }
 
@@ -6218,7 +6303,6 @@ function coerceRecoItemForUi(item, { lang } = {}) {
     (skuCandidate && typeof skuCandidate.productId === 'string' ? skuCandidate.productId : null) ||
     (typeof base.product_id === 'string' ? base.product_id : null) ||
     (typeof base.productId === 'string' ? base.productId : null) ||
-    skuId ||
     null;
 
   const brand =
@@ -6873,6 +6957,8 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
     metadata: {
       ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
       pdp_open_path_stats: pdpOpenOut.path_stats,
+      resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+      time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
     },
   };
 
@@ -7142,6 +7228,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     metadata: {
       ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
       pdp_open_path_stats: pdpOpenOut.path_stats,
+      resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+      time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
     },
   };
 
@@ -11329,6 +11417,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const fieldMissing = [];
 
       for (const item of items) {
+        const itemStartedAt = Date.now();
+        const itemElapsedMs = () => Math.max(0, Date.now() - itemStartedAt);
         const product = item.product;
         const offer = item.offer;
         const url = offer && (offer.affiliate_url || offer.affiliateUrl || offer.url);
@@ -11337,18 +11427,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           const nextItem = applyOfferItemPdpOpenContract({
             product: { ...product, image_url: product.image_url || 'https://img.example.com/mock.jpg' },
             offer: { ...offer, price: typeof offer.price === 'number' && offer.price > 0 ? offer.price : 12.34, currency: offer.currency || 'USD' },
-          });
+          }, { timeToPdpMs: itemElapsedMs() });
           resolved.push(nextItem);
           continue;
         }
 
         if (!url) {
-          resolved.push(applyOfferItemPdpOpenContract(item));
+          resolved.push(applyOfferItemPdpOpenContract(item, { timeToPdpMs: itemElapsedMs() }));
           fieldMissing.push({ field: 'offer.affiliate_url', reason: 'missing_affiliate_url' });
           continue;
         }
         if (!PIVOTA_BACKEND_BASE_URL) {
-          resolved.push(applyOfferItemPdpOpenContract(item));
+          resolved.push(applyOfferItemPdpOpenContract(item, { timeToPdpMs: itemElapsedMs() }));
           fieldMissing.push({ field: 'offer.snapshot', reason: 'pivota_backend_not_configured' });
           continue;
         }
@@ -11364,7 +11454,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               responseBody: resp?.data,
               statusCode: resp?.status,
             });
-            resolved.push(applyOfferItemPdpOpenContract(item, { failReasonCode: failReason, resolveAttempted: true }));
+            resolved.push(
+              applyOfferItemPdpOpenContract(item, {
+                failReasonCode: failReason,
+                resolveAttempted: true,
+                timeToPdpMs: itemElapsedMs(),
+              }),
+            );
             fieldMissing.push({
               field: 'offer.snapshot',
               reason: failReason === 'db_error' ? 'external_offer_resolve_db_error' : 'external_offer_resolve_failed',
@@ -11387,12 +11483,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           resolved.push(
             applyOfferItemPdpOpenContract(
               { ...item, product: patchedProduct, offer: patchedOffer },
-              { resolveAttempted: true },
+              { resolveAttempted: true, timeToPdpMs: itemElapsedMs() },
             ),
           );
         } catch (err) {
           const failReason = mapOfferResolveFailureCode({ error: err });
-          resolved.push(applyOfferItemPdpOpenContract(item, { failReasonCode: failReason, resolveAttempted: true }));
+          resolved.push(
+            applyOfferItemPdpOpenContract(item, {
+              failReasonCode: failReason,
+              resolveAttempted: true,
+              timeToPdpMs: itemElapsedMs(),
+            }),
+          );
           fieldMissing.push({
             field: 'offer.snapshot',
             reason: failReason === 'db_error' ? 'external_offer_resolve_db_error' : 'external_offer_resolve_timeout_or_network',
@@ -11415,6 +11517,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               metadata: {
                 pdp_open_path_stats: offersPdpMeta.path_stats,
                 fail_reason_counts: offersPdpMeta.fail_reason_counts,
+                time_to_pdp_ms_stats: offersPdpMeta.time_to_pdp_ms_stats,
               },
             },
             ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
@@ -11427,6 +11530,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             market,
             pdp_open_path_stats: offersPdpMeta.path_stats,
             fail_reason_counts: offersPdpMeta.fail_reason_counts,
+            time_to_pdp_ms_stats: offersPdpMeta.time_to_pdp_ms_stats,
           }),
         ],
       });
@@ -11867,7 +11971,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
           const offersItems = (products.length ? products : [brandProduct])
             .slice(0, 8)
-            .map((product) => applyOfferItemPdpOpenContract({ product, offer: null }));
+            .map((product) => applyOfferItemPdpOpenContract({ product, offer: null }, { timeToPdpMs: 0 }));
           const offersPdpMeta = summarizeOfferPdpOpen(offersItems);
 
           const marketRaw = profile && typeof profile.region === 'string' ? profile.region.trim() : '';
@@ -11924,6 +12028,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   metadata: {
                     pdp_open_path_stats: offersPdpMeta.path_stats,
                     fail_reason_counts: offersPdpMeta.fail_reason_counts,
+                    time_to_pdp_ms_stats: offersPdpMeta.time_to_pdp_ms_stats,
                   },
                 },
                 ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
