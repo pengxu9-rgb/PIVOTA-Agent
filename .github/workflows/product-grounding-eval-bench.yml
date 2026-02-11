@@ -1,0 +1,73 @@
+name: Product Grounding Eval + Bench
+
+on:
+  pull_request:
+    paths:
+      - "src/services/productGroundingResolver.js"
+      - "scripts/bench-product-grounding.cjs"
+      - "tests/product_grounding_eval.node.test.cjs"
+      - "tests/fixtures/product_grounding/**"
+      - "docs/product_grounding_resolver.md"
+      - ".github/workflows/product-grounding-eval-bench.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: product-grounding-eval-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval_and_bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Product grounding golden eval
+        run: node --test tests/product_grounding_eval.node.test.cjs
+
+      - name: Bench x3 and summarize median
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP_BENCH="${RUNNER_TEMP}/product_grounding_bench.jsonl"
+          : > "$TMP_BENCH"
+          for i in 1 2 3; do
+            echo "Bench run $i"
+            node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30 | tail -n 1 >> "$TMP_BENCH"
+          done
+
+          node -e '
+            const fs = require("fs");
+            const lines = fs.readFileSync(process.argv[1], "utf8").trim().split(/\n+/).filter(Boolean);
+            const rows = lines.map((l) => JSON.parse(l).summary);
+            const median = (arr) => {
+              const xs = [...arr].sort((a, b) => a - b);
+              const mid = Math.floor(xs.length / 2);
+              return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+            };
+            const p50 = median(rows.map((r) => Number(r.p50_ms || 0)));
+            const p95 = median(rows.map((r) => Number(r.p95_ms || 0)));
+            const thr = median(rows.map((r) => Number(r.throughput_ops_per_sec || 0)));
+            const md = [
+              "## Product Grounding Bench (median of 3 runs)",
+              "",
+              "Command: `node scripts/bench-product-grounding.cjs --repeat 200 --candidates 350 --warmup-repeat 30`",
+              "",
+              "| metric | median |",
+              "|---|---:|",
+              `| p50_ms | ${p50.toFixed(4)} |`,
+              `| p95_ms | ${p95.toFixed(4)} |`,
+              `| throughput_ops_per_sec | ${thr.toFixed(2)} |`,
+            ].join("\n");
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${md}\n`);
+            console.log(md);
+          ' "$TMP_BENCH"

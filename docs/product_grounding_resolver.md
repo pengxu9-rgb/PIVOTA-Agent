@@ -152,6 +152,13 @@ Environment-based scoring switch:
 Artifact policy:
 - Do not commit benchmark/eval outputs (`reports/`, `outputs/`, ad-hoc JSON files).
 
+## CI Automation
+
+- `.github/workflows/product-grounding-eval-bench.yml`
+  - runs `node --test tests/product_grounding_eval.node.test.cjs`
+  - runs bench 3 times with `--repeat 200 --candidates 350 --warmup-repeat 30`
+  - publishes median `p50_ms`, `p95_ms`, `throughput_ops_per_sec` in workflow summary
+
 ## Extensibility hooks (DI)
 
 For testing/experiments, `src/services/productGroundingResolver.js` exposes:
