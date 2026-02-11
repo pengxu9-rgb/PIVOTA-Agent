@@ -1291,6 +1291,27 @@ function parseQueryStringArray(value) {
     .filter(Boolean);
 }
 
+function extractSearchQueryText(rawQuery) {
+  const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
+  const raw =
+    firstQueryParamValue(query.query) ??
+    firstQueryParamValue(query.q) ??
+    firstQueryParamValue(query.keyword) ??
+    firstQueryParamValue(query.text);
+  return String(raw || '').trim();
+}
+
+function normalizeSearchQueryParams(rawQuery) {
+  const queryParams =
+    rawQuery && typeof rawQuery === 'object' && !Array.isArray(rawQuery) ? { ...rawQuery } : {};
+  const queryText = extractSearchQueryText(queryParams);
+  const hasQuery = String(firstQueryParamValue(queryParams.query) || '').trim().length > 0;
+  if (queryText && !hasQuery) {
+    queryParams.query = queryText;
+  }
+  return { queryText, queryParams };
+}
+
 function extractSearchProductId(product) {
   if (!product || typeof product !== 'object') return '';
   const raw =
@@ -1384,7 +1405,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const search = {};
 
-  const textQuery = String(firstQueryParamValue(query.query) || '').trim();
+  const textQuery = extractSearchQueryText(query);
   if (!textQuery) return null;
   search.query = textQuery;
 
@@ -1476,7 +1497,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
 
 async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
-  const queryText = String(firstQueryParamValue(query.query) || '').trim();
+  const queryText = extractSearchQueryText(query);
   if (!queryText) return null;
 
   const lang = String(firstQueryParamValue(query.lang) || 'en').trim().toLowerCase() || 'en';
@@ -1486,24 +1507,19 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }
     merchantId,
     ...merchantIds,
   ]);
-
-  const timeoutMs = Math.max(
-    800,
-    Math.min(getUpstreamTimeoutMs('find_products_multi'), Number(process.env.PROXY_SEARCH_RESOLVE_TIMEOUT_MS || 2200)),
-  );
+  const searchAllMerchants = parseQueryBoolean(query.search_all_merchants || query.searchAllMerchants);
+  const resolveOptions = {
+    ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+    ...(searchAllMerchants !== undefined ? { search_all_merchants: searchAllMerchants } : {}),
+  };
 
   let resolved = null;
   try {
     resolved = await resolveProductRef({
       query: queryText,
       lang,
-      hints: { title: queryText, aliases: [queryText] },
-      options: {
-        ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
-        search_all_merchants: true,
-        upstream_retries: 0,
-        timeout_ms: timeoutMs,
-      },
+      hints: null,
+      options: resolveOptions,
       pivotaApiBase: PIVOTA_API_BASE,
       pivotaApiKey: PIVOTA_API_KEY,
       checkoutToken,
@@ -4577,12 +4593,13 @@ async function proxyAgentSearchToBackend(req, res) {
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
 
   const url = `${PIVOTA_API_BASE}${req.path}`;
+  const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
 
   try {
     const resp = await axios({
       method: 'GET',
       url,
-      params: req.query,
+      params: queryParams,
       headers: {
         ...(checkoutToken
           ? { 'X-Checkout-Token': checkoutToken }
@@ -4596,17 +4613,16 @@ async function proxyAgentSearchToBackend(req, res) {
     });
 
     const normalized = normalizeAgentProductsListResponse(resp.data, {
-      limit: parseQueryNumber(req.query?.limit ?? req.query?.page_size),
-      offset: parseQueryNumber(req.query?.offset),
+      limit: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size),
+      offset: parseQueryNumber(queryParams?.offset),
     });
-    const queryText = String(firstQueryParamValue(req.query?.query) || '').trim();
     const primaryUsableCount = countUsableSearchProducts(normalized?.products);
     const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
 
     if (shouldFallback) {
       try {
         const fallback = await queryFindProductsMultiFallback({
-          queryParams: req.query,
+          queryParams,
           checkoutToken,
           reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
         });
@@ -4628,7 +4644,7 @@ async function proxyAgentSearchToBackend(req, res) {
 
       try {
         const resolverFallback = await queryResolveSearchFallback({
-          queryParams: req.query,
+          queryParams,
           checkoutToken,
           reason: 'resolver_after_primary',
         });
@@ -4655,11 +4671,10 @@ async function proxyAgentSearchToBackend(req, res) {
       }),
     );
   } catch (err) {
-    const queryText = String(firstQueryParamValue(req.query?.query) || '').trim();
     if (queryText) {
       try {
         const fallback = await queryFindProductsMultiFallback({
-          queryParams: req.query,
+          queryParams,
           checkoutToken,
           reason: 'primary_request_failed',
         });
@@ -4677,7 +4692,7 @@ async function proxyAgentSearchToBackend(req, res) {
 
       try {
         const resolverFallback = await queryResolveSearchFallback({
-          queryParams: req.query,
+          queryParams,
           checkoutToken,
           reason: 'resolver_after_exception',
         });
