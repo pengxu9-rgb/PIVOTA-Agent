@@ -237,7 +237,8 @@ test('The Ordinary recommendation: pdp_open path is direct internal (group), no 
         const first = recos[0];
         const stats = getRecoPathStats(resp.body);
 
-        assert.equal(first?.metadata?.pdp_open_path, 'group');
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'group');
         assert.equal(first?.pdp_open?.path, 'group');
         assert.equal(first?.pdp_open?.subject?.product_group_id, 'pg_to_niacinamide');
         assert.ok(first?.pdp_open?.get_pdp_v2_payload?.subject?.id);
@@ -306,7 +307,8 @@ test('Winona recommendation: pdp_open path is direct internal (ref), no fallback
         const first = recos[0];
         const stats = getRecoPathStats(resp.body);
 
-        assert.equal(first?.metadata?.pdp_open_path, 'ref');
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
         assert.equal(first?.pdp_open?.path, 'ref');
         assert.equal(first?.pdp_open?.product_ref?.merchant_id, 'mid_winona');
         assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_winona_repair');
@@ -380,7 +382,9 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
         assert.equal(resolveCalls, 1);
         assert.ok(lastResolveBody && typeof lastResolveBody.query === 'string' && lastResolveBody.query.length > 0);
         assert.equal(first?.metadata?.pdp_open_path, 'external');
+        assert.equal(first?.metadata?.pdp_open_mode, 'external');
         assert.equal(first?.metadata?.resolve_reason_code, 'no_candidates');
+        assert.equal(first?.metadata?.pdp_open_fail_reason, 'no_candidates');
         assert.equal(first?.pdp_open?.path, 'external');
         assert.equal(first?.pdp_open?.external?.provider, 'google');
         assert.equal(first?.pdp_open?.external?.target, '_blank');
@@ -394,6 +398,91 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
         assert.equal(stats?.ref, 0);
       } finally {
         axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Offers resolve db_error: canonical ref still keeps internal PDP open contract', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      axios.post = async (url) => {
+        if (!String(url).includes('/api/offers/external/resolve')) {
+          throw new Error(`Unexpected axios.post: ${url}`);
+        }
+        return {
+          status: 503,
+          data: {
+            ok: false,
+            reason_code: 'db_error',
+            reason: 'products_cache_missing',
+          },
+        };
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/offers/resolve', {
+          headers: { 'X-Aurora-UID': 'test_uid_offer_resolve_db_error' },
+          body: {
+            market: 'US',
+            items: [
+              {
+                product: {
+                  product_id: 'prod_to_niacinamide',
+                  merchant_id: 'mid_to',
+                  canonical_product_ref: {
+                    product_id: 'prod_to_niacinamide',
+                    merchant_id: 'mid_to',
+                  },
+                  name: 'Niacinamide 10% + Zinc 1%',
+                  brand: 'The Ordinary',
+                },
+                offer: {
+                  affiliate_url: 'https://example.com/p/ordinary-niacinamide',
+                  price: 10.9,
+                  currency: 'USD',
+                },
+              },
+            ],
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const card = cards.find((c) => c && c.type === 'offers_resolved');
+        assert.ok(card);
+        const items = Array.isArray(card?.payload?.items) ? card.payload.items : [];
+        assert.equal(items.length, 1);
+        const first = items[0];
+
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(first?.metadata?.pdp_open_fail_reason, 'db_error');
+        assert.equal(first?.pdp_open?.path, 'ref');
+        assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_to_niacinamide');
+        assert.equal(first?.pdp_open?.product_ref?.merchant_id, 'mid_to');
+        assert.equal(first?.pdp_open?.external, undefined);
+
+        const pdpStats = card?.payload?.metadata?.pdp_open_path_stats || {};
+        const failStats = card?.payload?.metadata?.fail_reason_counts || {};
+        assert.equal(pdpStats.internal, 1);
+        assert.equal(pdpStats.external, 0);
+        assert.equal(failStats.db_error, 1);
+      } finally {
         axios.post = originalPost;
       }
     },

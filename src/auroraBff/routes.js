@@ -5731,6 +5731,19 @@ function normalizeResolveReasonCode(raw, fallback = 'no_candidates') {
   return fallback;
 }
 
+function normalizePdpOpenMode(raw, fallback = 'external') {
+  const mode = String(raw || '').trim().toLowerCase();
+  if (mode === 'group' || mode === 'ref' || mode === 'resolve' || mode === 'external') return mode;
+  return fallback;
+}
+
+function normalizePdpOpenPath(raw, fallback = 'external') {
+  const path = String(raw || '').trim().toLowerCase();
+  if (path === 'internal' || path === 'external') return path;
+  if (path === 'group' || path === 'ref' || path === 'resolve') return 'internal';
+  return fallback;
+}
+
 function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
   const explicit = normalizeResolveReasonCode(
     resolveBody?.reason_code || resolveBody?.reasonCode || resolveBody?.metadata?.resolve_reason_code,
@@ -5778,14 +5791,19 @@ function withRecoPdpMetadata(base, {
   resolveAttempted = false,
   resolvedViaQuery = null,
 }) {
-  const normalizedPath = String(path || '').trim().toLowerCase();
-  const nextPath = normalizedPath || 'external';
+  const nextMode = normalizePdpOpenMode(path, 'external');
+  const nextPath = nextMode === 'external' ? 'external' : 'internal';
   const metadataBase = isPlainObject(base?.metadata) ? { ...base.metadata } : {};
+  const normalizedFailReason =
+    resolveReasonCode != null && resolveReasonCode !== ''
+      ? normalizeResolveReasonCode(resolveReasonCode)
+      : null;
   const nextMetadata = {
     ...metadataBase,
     pdp_open_path: nextPath,
+    pdp_open_mode: nextMode,
     ...(resolveAttempted ? { pdp_open_resolve_attempted: true } : {}),
-    ...(resolveReasonCode ? { resolve_reason_code: normalizeResolveReasonCode(resolveReasonCode) } : {}),
+    ...(normalizedFailReason ? { resolve_reason_code: normalizedFailReason, pdp_open_fail_reason: normalizedFailReason } : {}),
   };
 
   const nextSku =
@@ -5799,7 +5817,7 @@ function withRecoPdpMetadata(base, {
     nextSku.canonical_product_ref = canonicalProductRef;
   }
 
-  if (nextPath === 'group' && subject) {
+  if (nextMode === 'group' && subject) {
     const productGroupId = String(subject.product_group_id || subject.id || '').trim();
     const normalizedSubject = { type: 'product_group', id: productGroupId, product_group_id: productGroupId };
     return {
@@ -5815,14 +5833,14 @@ function withRecoPdpMetadata(base, {
     };
   }
 
-  if ((nextPath === 'ref' || nextPath === 'resolve') && canonicalProductRef) {
+  if ((nextMode === 'ref' || nextMode === 'resolve') && canonicalProductRef) {
     return {
       ...base,
       ...(nextSku ? { sku: nextSku } : {}),
       canonical_product_ref: canonicalProductRef,
       metadata: nextMetadata,
       pdp_open: {
-        path: nextPath,
+        path: nextMode,
         product_ref: canonicalProductRef,
         get_pdp_v2_payload: { product_ref: canonicalProductRef },
         ...(resolvedViaQuery ? { resolved_via_query: resolvedViaQuery } : {}),
@@ -5843,7 +5861,7 @@ function withRecoPdpMetadata(base, {
         url: externalUrl,
         query: String(queryText || '').trim() || null,
       },
-      ...(resolveReasonCode ? { resolve_reason_code: normalizeResolveReasonCode(resolveReasonCode) } : {}),
+      ...(normalizedFailReason ? { resolve_reason_code: normalizedFailReason } : {}),
     },
   };
 }
@@ -5891,7 +5909,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
 
   const queryText =
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
-    pickFirstTrimmed(displayName, name, brand, base.step);
+    pickFirstTrimmed(displayName, name, brand);
   const hints = buildRecoResolveHints({
     base,
     skuCandidate,
@@ -5969,7 +5987,13 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   });
   if (resolveError) {
     logger?.warn(
-      { err: resolveError?.message || String(resolveError), query: queryText.slice(0, 120), resolve_reason_code: reasonCode },
+      {
+        err: resolveError?.message || String(resolveError),
+        query: queryText.slice(0, 120),
+        pdp_open_path: 'external',
+        fail_reason: reasonCode,
+        resolve_reason_code: reasonCode,
+      },
       'aurora bff: reco pdp resolve failed; using external fallback',
     );
   }
@@ -5984,14 +6008,164 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
 function tallyPdpOpenPathStats(recommendations) {
   const stats = { group: 0, ref: 0, resolve: 0, external: 0 };
   for (const item of Array.isArray(recommendations) ? recommendations : []) {
-    const path = String(item?.metadata?.pdp_open_path || item?.pdp_open?.path || '').trim().toLowerCase();
-    if (path === 'group' || path === 'ref' || path === 'resolve' || path === 'external') {
-      stats[path] += 1;
+    const mode = normalizePdpOpenMode(
+      item?.pdp_open?.path || item?.metadata?.pdp_open_mode || item?.metadata?.pdp_open_path,
+      'external',
+    );
+    if (mode === 'group' || mode === 'ref' || mode === 'resolve' || mode === 'external') {
+      stats[mode] += 1;
     } else {
       stats.external += 1;
     }
   }
   return stats;
+}
+
+function mapOfferResolveFailureCode({ responseBody, statusCode, error } = {}) {
+  const explicit = normalizeResolveReasonCode(
+    responseBody?.reason_code || responseBody?.reasonCode || responseBody?.metadata?.reason_code || responseBody?.metadata?.resolve_reason_code,
+    '',
+  );
+  if (explicit) return explicit;
+
+  const reason = String(
+    responseBody?.reason ||
+      responseBody?.error ||
+      responseBody?.code ||
+      responseBody?.message ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (reason.startsWith('db_') || reason.includes('database') || reason.includes('postgres')) return 'db_error';
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
+  if (reason === 'no_candidates' || reason === 'not_found' || reason === 'not_found_in_cache') return 'no_candidates';
+
+  const status = Number(statusCode || 0);
+  if (status >= 500 || status === 429 || status === 408) return 'upstream_timeout';
+
+  const errText = String(error?.code || error?.message || error || '').trim().toLowerCase();
+  if (errText.includes('timeout') || errText.includes('econnaborted') || errText.includes('etimedout')) {
+    return 'upstream_timeout';
+  }
+  if (errText.includes('db_') || errText.includes('database') || errText.includes('postgres')) {
+    return 'db_error';
+  }
+  return 'no_candidates';
+}
+
+function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAttempted = false } = {}) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+  const product = base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? { ...base.product } : {};
+  const offer = base.offer && typeof base.offer === 'object' && !Array.isArray(base.offer) ? { ...base.offer } : base.offer;
+  const failReason =
+    failReasonCode != null && failReasonCode !== ''
+      ? normalizeResolveReasonCode(failReasonCode)
+      : null;
+  const { subjectProductGroupId, directProductRef } = extractRecoPdpDirectKeys(product, product);
+
+  const metadataBase = isPlainObject(base.metadata) ? { ...base.metadata } : {};
+  const metadata = {
+    ...metadataBase,
+    ...(resolveAttempted ? { offer_resolve_attempted: true } : {}),
+  };
+
+  if (subjectProductGroupId) {
+    const subject = {
+      type: 'product_group',
+      id: subjectProductGroupId,
+      product_group_id: subjectProductGroupId,
+    };
+    product.product_group_id = subjectProductGroupId;
+    if (directProductRef) product.canonical_product_ref = directProductRef;
+    metadata.pdp_open_path = 'internal';
+    metadata.pdp_open_mode = 'group';
+    if (failReason) {
+      metadata.pdp_open_fail_reason = failReason;
+      metadata.resolve_reason_code = failReason;
+    }
+    return {
+      ...base,
+      product,
+      ...(offer && typeof offer === 'object' ? { offer } : {}),
+      metadata,
+      pdp_open: {
+        path: 'group',
+        subject,
+        get_pdp_v2_payload: { subject: { type: 'product_group', id: subjectProductGroupId } },
+      },
+    };
+  }
+
+  if (directProductRef) {
+    product.canonical_product_ref = directProductRef;
+    metadata.pdp_open_path = 'internal';
+    metadata.pdp_open_mode = 'ref';
+    if (failReason) {
+      metadata.pdp_open_fail_reason = failReason;
+      metadata.resolve_reason_code = failReason;
+    }
+    return {
+      ...base,
+      product,
+      ...(offer && typeof offer === 'object' ? { offer } : {}),
+      metadata,
+      pdp_open: {
+        path: 'ref',
+        product_ref: directProductRef,
+        get_pdp_v2_payload: { product_ref: directProductRef },
+      },
+    };
+  }
+
+  const offerUrl =
+    (offer && typeof offer === 'object' && typeof offer.affiliate_url === 'string' && offer.affiliate_url.trim()) ||
+    (offer && typeof offer === 'object' && typeof offer.affiliateUrl === 'string' && offer.affiliateUrl.trim()) ||
+    (offer && typeof offer === 'object' && typeof offer.url === 'string' && offer.url.trim()) ||
+    '';
+  const queryText = buildProductInputText(product, offerUrl) || pickFirstTrimmed(product.display_name, product.name, product.brand);
+  metadata.pdp_open_path = 'external';
+  metadata.pdp_open_mode = 'external';
+  if (failReason) {
+    metadata.pdp_open_fail_reason = failReason;
+    metadata.resolve_reason_code = failReason;
+  }
+
+  return {
+    ...base,
+    product,
+    ...(offer && typeof offer === 'object' ? { offer } : {}),
+    metadata,
+    pdp_open: {
+      path: 'external',
+      external: {
+        provider: 'google',
+        target: '_blank',
+        url: buildExternalGoogleSearchUrl(queryText),
+        query: queryText || null,
+      },
+      ...(failReason ? { resolve_reason_code: failReason } : {}),
+    },
+  };
+}
+
+function summarizeOfferPdpOpen(items) {
+  const stats = { internal: 0, external: 0 };
+  const failReasonCounts = { db_error: 0, upstream_timeout: 0, no_candidates: 0 };
+  for (const item of Array.isArray(items) ? items : []) {
+    const path = normalizePdpOpenPath(item?.metadata?.pdp_open_path || item?.pdp_open?.path, 'external');
+    if (path === 'internal') stats.internal += 1;
+    else stats.external += 1;
+
+    const failReason = normalizeResolveReasonCode(
+      item?.metadata?.pdp_open_fail_reason || item?.metadata?.resolve_reason_code || item?.pdp_open?.resolve_reason_code,
+      '',
+    );
+    if (failReason === 'db_error' || failReason === 'upstream_timeout' || failReason === 'no_candidates') {
+      failReasonCounts[failReason] += 1;
+    }
+  }
+  return { path_stats: stats, fail_reason_counts: failReasonCounts };
 }
 
 async function enrichRecommendationsWithPdpOpenContract({ recommendations, logger } = {}) {
@@ -11160,20 +11334,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         const url = offer && (offer.affiliate_url || offer.affiliateUrl || offer.url);
 
         if (USE_AURORA_BFF_MOCK) {
-          resolved.push({
+          const nextItem = applyOfferItemPdpOpenContract({
             product: { ...product, image_url: product.image_url || 'https://img.example.com/mock.jpg' },
             offer: { ...offer, price: typeof offer.price === 'number' && offer.price > 0 ? offer.price : 12.34, currency: offer.currency || 'USD' },
           });
+          resolved.push(nextItem);
           continue;
         }
 
         if (!url) {
-          resolved.push(item);
+          resolved.push(applyOfferItemPdpOpenContract(item));
           fieldMissing.push({ field: 'offer.affiliate_url', reason: 'missing_affiliate_url' });
           continue;
         }
         if (!PIVOTA_BACKEND_BASE_URL) {
-          resolved.push(item);
+          resolved.push(applyOfferItemPdpOpenContract(item));
           fieldMissing.push({ field: 'offer.snapshot', reason: 'pivota_backend_not_configured' });
           continue;
         }
@@ -11185,8 +11360,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             { timeout: 12000, validateStatus: () => true },
           );
           if (resp.status !== 200 || !resp.data || !resp.data.ok || !resp.data.offer) {
-            resolved.push(item);
-            fieldMissing.push({ field: 'offer.snapshot', reason: 'external_offer_resolve_failed' });
+            const failReason = mapOfferResolveFailureCode({
+              responseBody: resp?.data,
+              statusCode: resp?.status,
+            });
+            resolved.push(applyOfferItemPdpOpenContract(item, { failReasonCode: failReason, resolveAttempted: true }));
+            fieldMissing.push({
+              field: 'offer.snapshot',
+              reason: failReason === 'db_error' ? 'external_offer_resolve_db_error' : 'external_offer_resolve_failed',
+            });
             continue;
           }
           const snap = resp.data.offer;
@@ -11202,12 +11384,23 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           if (snap.canonicalUrl) patchedOffer.affiliate_url = snap.canonicalUrl;
 
-          resolved.push({ product: patchedProduct, offer: patchedOffer });
+          resolved.push(
+            applyOfferItemPdpOpenContract(
+              { ...item, product: patchedProduct, offer: patchedOffer },
+              { resolveAttempted: true },
+            ),
+          );
         } catch (err) {
-          resolved.push(item);
-          fieldMissing.push({ field: 'offer.snapshot', reason: 'external_offer_resolve_timeout_or_network' });
+          const failReason = mapOfferResolveFailureCode({ error: err });
+          resolved.push(applyOfferItemPdpOpenContract(item, { failReasonCode: failReason, resolveAttempted: true }));
+          fieldMissing.push({
+            field: 'offer.snapshot',
+            reason: failReason === 'db_error' ? 'external_offer_resolve_db_error' : 'external_offer_resolve_timeout_or_network',
+          });
         }
       }
+
+      const offersPdpMeta = summarizeOfferPdpOpen(resolved);
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -11216,12 +11409,26 @@ function mountAuroraBffRoutes(app, { logger }) {
           {
             card_id: `offers_${ctx.request_id}`,
             type: 'offers_resolved',
-            payload: { items: resolved, market },
+            payload: {
+              items: resolved,
+              market,
+              metadata: {
+                pdp_open_path_stats: offersPdpMeta.path_stats,
+                fail_reason_counts: offersPdpMeta.fail_reason_counts,
+              },
+            },
             ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'offers_resolved', { count: resolved.length, market })],
+        events: [
+          makeEvent(ctx, 'offers_resolved', {
+            count: resolved.length,
+            market,
+            pdp_open_path_stats: offersPdpMeta.path_stats,
+            fail_reason_counts: offersPdpMeta.fail_reason_counts,
+          }),
+        ],
       });
       return res.json(envelope);
     } catch (err) {
@@ -11660,7 +11867,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           const products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
           const offersItems = (products.length ? products : [brandProduct])
             .slice(0, 8)
-            .map((product) => ({ product, offer: null }));
+            .map((product) => applyOfferItemPdpOpenContract({ product, offer: null }));
+          const offersPdpMeta = summarizeOfferPdpOpen(offersItems);
 
           const marketRaw = profile && typeof profile.region === 'string' ? profile.region.trim() : '';
           const market = marketRaw ? marketRaw.slice(0, 8).toUpperCase() : 'US';
@@ -11710,7 +11918,14 @@ function mountAuroraBffRoutes(app, { logger }) {
               {
                 card_id: `offers_${ctx.request_id}`,
                 type: 'offers_resolved',
-                payload: { items: offersItems, market },
+                payload: {
+                  items: offersItems,
+                  market,
+                  metadata: {
+                    pdp_open_path_stats: offersPdpMeta.path_stats,
+                    fail_reason_counts: offersPdpMeta.fail_reason_counts,
+                  },
+                },
                 ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
               },
             ],
