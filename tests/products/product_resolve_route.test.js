@@ -263,7 +263,7 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.body.candidates).toEqual([]);
   });
 
-  test('resolves known stable products without hints (The Ordinary + Winona)', async () => {
+  test('resolves known stable products without hints (The Ordinary + Winona + IPSA)', async () => {
     const app = require('../../src/server');
 
     const ordinaryResp = await request(app)
@@ -325,6 +325,40 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(winonaResp.body.metadata).toEqual(
       expect.objectContaining({
         stable_alias_match_id: 'winona_soothing_repair_serum',
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'stable_alias_ref',
+            ok: true,
+          }),
+        ]),
+      }),
+    );
+
+    const ipsaResp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'IPSA Time Reset Aqua',
+        lang: 'en',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(ipsaResp.status).toBe(200);
+    expect(ipsaResp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886500127048',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+    expect(ipsaResp.body.metadata).toEqual(
+      expect.objectContaining({
+        stable_alias_match_id: 'ipsa_time_reset_aqua',
         sources: expect.arrayContaining([
           expect.objectContaining({
             source: 'stable_alias_ref',

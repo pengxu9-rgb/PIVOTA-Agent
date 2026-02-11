@@ -82,6 +82,20 @@ const KNOWN_STABLE_PRODUCT_REFS = [
       '薇诺娜修护精华',
     ],
   },
+  {
+    id: 'ipsa_time_reset_aqua',
+    product_ref: {
+      product_id: '9886500127048',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+    },
+    title: 'IPSA Time Reset Aqua',
+    aliases: [
+      'IPSA Time Reset Aqua',
+      'ipsa time reset aqua',
+      'Time Reset Aqua',
+      'ipsa reset aqua',
+    ],
+  },
 ];
 
 function compactNoSpaces(s) {
@@ -1007,7 +1021,7 @@ function createProductGroundingResolver(deps = {}) {
   }
 
   // 3) Optional: global products_cache fallback (avoids network timeouts).
-  const globalCacheTimeout = stageTimeout({ capMs: 850, reserveMs: 300, floorMs: 60 });
+  const globalCacheTimeout = stageTimeout({ capMs: 1500, reserveMs: 300, floorMs: 80 });
   const shouldTryGlobalCache =
     globalCacheTimeout >= 60 &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&

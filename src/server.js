@@ -1511,6 +1511,8 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }
   const resolveOptions = {
     ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
     ...(searchAllMerchants !== undefined ? { search_all_merchants: searchAllMerchants } : {}),
+    timeout_ms: 3200,
+    upstream_retries: 0,
   };
 
   let resolved = null;
