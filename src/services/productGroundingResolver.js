@@ -57,7 +57,7 @@ const KNOWN_STABLE_PRODUCT_REFS = [
   {
     id: 'the_ordinary_niacinamide_10_zinc_1',
     product_ref: {
-      product_id: 'prod_the_ordinary_niacinamide_10_zinc_1',
+      product_id: '9886499864904',
       merchant_id: 'merch_efbc46b4619cfbdf',
     },
     title: 'The Ordinary Niacinamide 10% + Zinc 1%',
@@ -71,7 +71,7 @@ const KNOWN_STABLE_PRODUCT_REFS = [
   {
     id: 'winona_soothing_repair_serum',
     product_ref: {
-      product_id: 'prod_winona_soothing_repair_serum',
+      product_id: '9886500749640',
       merchant_id: 'merch_efbc46b4619cfbdf',
     },
     title: 'Winona Soothing Repair Serum',
@@ -1093,10 +1093,13 @@ function createProductGroundingResolver(deps = {}) {
     options,
   });
 
+  const hasAliasHints = Array.isArray(hintData.aliases) && hintData.aliases.length > 0;
   const shouldTryStableAliasFallback =
     !decision.resolved &&
-    !hintData.product_ref &&
-    (!Array.isArray(hintData.aliases) || hintData.aliases.length === 0);
+    (
+      (!hintData.product_ref && !hasAliasHints) ||
+      opaqueHintProductId
+    );
   const stableAliasMatch = shouldTryStableAliasFallback
     ? resolveKnownStableProductRef({
         query: q,
