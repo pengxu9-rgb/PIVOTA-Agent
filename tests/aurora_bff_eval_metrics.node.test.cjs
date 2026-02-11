@@ -69,3 +69,21 @@ test('polygon to mask conversion produces positive area', () => {
   const positives = Array.from(mask).reduce((acc, value) => acc + (value ? 1 : 0), 0);
   assert.equal(positives > 0, true);
 });
+
+test('thin under-eye-like polygon keeps positive pixels at 128 grid', () => {
+  const mask = polygonNormToMask(
+    {
+      points: [
+        { x: 0.2, y: 0.24 },
+        { x: 0.42, y: 0.24 },
+        { x: 0.42, y: 0.27 },
+        { x: 0.2, y: 0.27 },
+      ],
+      closed: true,
+    },
+    128,
+    128,
+  );
+  const positives = Array.from(mask).reduce((acc, value) => acc + (value ? 1 : 0), 0);
+  assert.equal(positives > 0, true);
+});

@@ -24,8 +24,8 @@ const MODULE_BOXES = Object.freeze({
   right_cheek: { x: 0.58, y: 0.34, w: 0.34, h: 0.3 },
   nose: { x: 0.42, y: 0.32, w: 0.16, h: 0.32 },
   chin: { x: 0.33, y: 0.67, w: 0.34, h: 0.26 },
-  under_eye_left: { x: 0.18, y: 0.24, w: 0.24, h: 0.13 },
-  under_eye_right: { x: 0.58, y: 0.24, w: 0.24, h: 0.13 },
+  under_eye_left: { x: 0.16, y: 0.31, w: 0.26, h: 0.11 },
+  under_eye_right: { x: 0.58, y: 0.31, w: 0.26, h: 0.11 },
 });
 const FACE_OVAL_POLYGON = Object.freeze({
   points: [
@@ -65,11 +65,33 @@ function parseEnvNumber(value, fallback, min = -Infinity, max = Infinity) {
 }
 
 const FACE_OVAL_CLIP_ENABLED = parseEnvBoolean(process.env.DIAG_FACE_OVAL_CLIP, true);
-const MODULE_SHRINK_CHIN = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHIN, 0.8, 0.5, 1);
-const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOREHEAD, 0.88, 0.5, 1);
-const MODULE_SHRINK_CHEEK = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHEEK, 0.9, 0.5, 1);
-const MODULE_SHRINK_UNDER_EYE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_UNDER_EYE, 0.95, 0.5, 1);
-const MODULE_SHRINK_NOSE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_NOSE, 0.95, 0.5, 1);
+const MODULE_SHRINK_CHIN = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHIN, 0.55, 0.4, 1);
+const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOREHEAD, 0.45, 0.3, 1);
+const MODULE_SHRINK_CHEEK = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHEEK, 0.65, 0.4, 1);
+const MODULE_SHRINK_UNDER_EYE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_UNDER_EYE, 0.5, 0.35, 1);
+const MODULE_SHRINK_NOSE = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_NOSE, 0.45, 0.3, 1);
+const FOREHEAD_BAND_RATIO = parseEnvNumber(process.env.DIAG_FOREHEAD_BAND_RATIO, 0.25, 0.15, 0.95);
+const FOREHEAD_BROW_LINE_Y = parseEnvNumber(process.env.DIAG_FOREHEAD_BROW_LINE_Y, 0.38, 0.22, 0.6);
+const NOSE_GUARD_MAX_WIDTH = parseEnvNumber(process.env.DIAG_NOSE_GUARD_MAX_WIDTH, 0.07, 0.05, 0.35);
+const NOSE_GUARD_X_CENTER = parseEnvNumber(process.env.DIAG_NOSE_GUARD_X_CENTER, 0.5, 0.35, 0.65);
+const NOSE_GUARD_Y_TOP = parseEnvNumber(process.env.DIAG_NOSE_GUARD_Y_TOP, 0.4, 0.12, 0.65);
+const NOSE_GUARD_Y_BOTTOM = parseEnvNumber(process.env.DIAG_NOSE_GUARD_Y_BOTTOM, 0.56, 0.25, 0.95);
+const NOSE_GUARD_WING_HALF_WIDTH_RATIO = parseEnvNumber(
+  process.env.DIAG_NOSE_GUARD_WING_HALF_WIDTH_RATIO,
+  0.18,
+  0.08,
+  0.45,
+);
+const NOSE_GUARD_WING_MARGIN = parseEnvNumber(process.env.DIAG_NOSE_GUARD_WING_MARGIN, 0.012, 0.003, 0.08);
+const CHIN_GUARD_X_MIN = parseEnvNumber(process.env.DIAG_CHIN_GUARD_X_MIN, 0.36, 0.05, 0.5);
+const CHIN_GUARD_X_MAX = parseEnvNumber(process.env.DIAG_CHIN_GUARD_X_MAX, 0.64, 0.5, 0.95);
+const CHIN_GUARD_Y_MIN = parseEnvNumber(process.env.DIAG_CHIN_GUARD_Y_MIN, 0.6, 0.4, 0.9);
+const CHIN_GUARD_Y_MAX = parseEnvNumber(process.env.DIAG_CHIN_GUARD_Y_MAX, 0.72, 0.55, 0.99);
+const CHIN_GUARD_JAWLINE_Y_MAX = parseEnvNumber(process.env.DIAG_CHIN_GUARD_JAWLINE_Y_MAX, 0.76, 0.58, 0.96);
+const CHIN_GUARD_ELLIPSE_CX = parseEnvNumber(process.env.DIAG_CHIN_GUARD_ELLIPSE_CX, 0.5, 0.25, 0.75);
+const CHIN_GUARD_ELLIPSE_CY = parseEnvNumber(process.env.DIAG_CHIN_GUARD_ELLIPSE_CY, 0.71, 0.56, 0.9);
+const CHIN_GUARD_ELLIPSE_RX = parseEnvNumber(process.env.DIAG_CHIN_GUARD_ELLIPSE_RX, 0.12, 0.05, 0.32);
+const CHIN_GUARD_ELLIPSE_RY = parseEnvNumber(process.env.DIAG_CHIN_GUARD_ELLIPSE_RY, 0.09, 0.04, 0.25);
 const FACE_OVAL_CLIP_MIN_PIXELS = Math.max(
   1,
   Math.min(512, Math.trunc(Number(process.env.DIAG_FACE_OVAL_CLIP_MIN_PIXELS || 8) || 8)),
@@ -1227,6 +1249,24 @@ function moduleShrinkScale(moduleId) {
   return 1;
 }
 
+function intersectBoxes(boxA, boxB) {
+  const a = sanitizeBBox(boxA);
+  const b = sanitizeBBox(boxB);
+  if (!a.ok || !a.bbox || !b.ok || !b.bbox) return null;
+  const x0 = Math.max(a.bbox.x, b.bbox.x);
+  const y0 = Math.max(a.bbox.y, b.bbox.y);
+  const x1 = Math.min(a.bbox.x + a.bbox.w, b.bbox.x + b.bbox.w);
+  const y1 = Math.min(a.bbox.y + a.bbox.h, b.bbox.y + b.bbox.h);
+  const raw = {
+    x: x0,
+    y: y0,
+    w: Math.max(0, x1 - x0),
+    h: Math.max(0, y1 - y0),
+  };
+  const out = sanitizeBBox(raw);
+  return out.ok ? out.bbox : null;
+}
+
 function shrinkModuleBox(boxRaw, scale) {
   const sanitized = sanitizeBBox(boxRaw);
   if (!sanitized.ok || !sanitized.bbox) return null;
@@ -1245,6 +1285,211 @@ function shrinkModuleBox(boxRaw, scale) {
   return shrunk.ok ? shrunk.bbox : sanitized.bbox;
 }
 
+function ellipseNormToMask({ cx, cy, rx, ry } = {}, gridSize) {
+  const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
+  const mask = createMask(targetGrid, targetGrid, 0);
+  const safeCx = clamp01(Number(cx));
+  const safeCy = clamp01(Number(cy));
+  const safeRx = Math.max(0.01, Math.min(0.45, Number(rx) || 0.01));
+  const safeRy = Math.max(0.01, Math.min(0.45, Number(ry) || 0.01));
+  for (let y = 0; y < targetGrid; y += 1) {
+    const py = (y + 0.5) / targetGrid;
+    const dy = (py - safeCy) / safeRy;
+    for (let x = 0; x < targetGrid; x += 1) {
+      const px = (x + 0.5) / targetGrid;
+      const dx = (px - safeCx) / safeRx;
+      if (dx * dx + dy * dy <= 1) {
+        mask[y * targetGrid + x] = 1;
+      }
+    }
+  }
+  return mask;
+}
+
+function buildChinGuardMask({ targetGrid, moduleBox, faceOvalMask, boxScale = 1 } = {}) {
+  const yMax = Math.min(CHIN_GUARD_Y_MAX, CHIN_GUARD_JAWLINE_Y_MAX);
+  const bandRaw = {
+    x: CHIN_GUARD_X_MIN,
+    y: CHIN_GUARD_Y_MIN,
+    w: Math.max(0.01, CHIN_GUARD_X_MAX - CHIN_GUARD_X_MIN),
+    h: Math.max(0.01, yMax - CHIN_GUARD_Y_MIN),
+  };
+  const band = sanitizeBBox(bandRaw);
+  if (!band.ok || !band.bbox) return null;
+  let mask = bboxNormToMask(band.bbox, targetGrid, targetGrid);
+  const ellipseMask = ellipseNormToMask(
+    {
+      cx: CHIN_GUARD_ELLIPSE_CX,
+      cy: CHIN_GUARD_ELLIPSE_CY,
+      rx: CHIN_GUARD_ELLIPSE_RX,
+      ry: CHIN_GUARD_ELLIPSE_RY,
+    },
+    targetGrid,
+  );
+  mask = andMasks(mask, ellipseMask);
+  if (moduleBox) {
+    const scaledBox = Number(boxScale) < 0.999 ? shrinkModuleBox(moduleBox, boxScale) : moduleBox;
+    const localBox = sanitizeBBox(scaledBox);
+    if (localBox.ok && localBox.bbox) {
+      mask = andMasks(mask, bboxNormToMask(localBox.bbox, targetGrid, targetGrid));
+    }
+  }
+  if (faceOvalMask) {
+    mask = andMasks(mask, faceOvalMask);
+  }
+  return countOnes(mask) > 0 ? mask : null;
+}
+
+function buildNoseGuardMask({ targetGrid, moduleBox, faceOvalMask, boxScale = 1 } = {}) {
+  const scaledBox = Number(boxScale) < 0.999 ? shrinkModuleBox(moduleBox, boxScale) : moduleBox;
+  const sanitized = sanitizeBBox(scaledBox);
+  const sourceBox = sanitized.ok && sanitized.bbox
+    ? sanitized.bbox
+    : { x: NOSE_GUARD_X_CENTER - NOSE_GUARD_MAX_WIDTH / 2, y: NOSE_GUARD_Y_TOP, w: NOSE_GUARD_MAX_WIDTH, h: Math.max(0.01, NOSE_GUARD_Y_BOTTOM - NOSE_GUARD_Y_TOP) };
+  const centerX = sourceBox.x + sourceBox.w / 2;
+  const wingHalfWidth = Math.max(
+    0.01,
+    Math.min(NOSE_GUARD_MAX_WIDTH / 2, sourceBox.w * NOSE_GUARD_WING_HALF_WIDTH_RATIO),
+  );
+  const guardRaw = {
+    x: centerX - wingHalfWidth - NOSE_GUARD_WING_MARGIN,
+    y: NOSE_GUARD_Y_TOP,
+    w: (wingHalfWidth + NOSE_GUARD_WING_MARGIN) * 2,
+    h: Math.max(0.01, NOSE_GUARD_Y_BOTTOM - NOSE_GUARD_Y_TOP),
+  };
+  const guard = sanitizeBBox(guardRaw);
+  if (!guard.ok || !guard.bbox) return null;
+  let mask = bboxNormToMask(guard.bbox, targetGrid, targetGrid);
+  if (faceOvalMask) {
+    mask = andMasks(mask, faceOvalMask);
+  }
+  return countOnes(mask) > 0 ? mask : null;
+}
+
+function applyModuleGuards(moduleId, boxRaw) {
+  const baseSanitized = sanitizeBBox(boxRaw);
+  if (!baseSanitized.ok || !baseSanitized.bbox) {
+    return {
+      box: null,
+      chinGuardApplied: false,
+      noseGuardApplied: false,
+      foreheadBandApplied: false,
+    };
+  }
+  let box = baseSanitized.bbox;
+  let chinGuardApplied = false;
+  let noseGuardApplied = false;
+  let foreheadBandApplied = false;
+  if (moduleId === 'chin') {
+    const yMax = Math.min(CHIN_GUARD_Y_MAX, CHIN_GUARD_JAWLINE_Y_MAX);
+    const chinGuard = {
+      x: CHIN_GUARD_X_MIN,
+      y: CHIN_GUARD_Y_MIN,
+      w: Math.max(0.01, CHIN_GUARD_X_MAX - CHIN_GUARD_X_MIN),
+      h: Math.max(0.01, yMax - CHIN_GUARD_Y_MIN),
+    };
+    const guarded = intersectBoxes(box, chinGuard);
+    if (guarded) {
+      box = guarded;
+      chinGuardApplied = true;
+    }
+  }
+
+  if (moduleId === 'nose') {
+    const sourceCenterX = box.x + box.w / 2;
+    const centerX = clamp01(Number.isFinite(sourceCenterX) ? sourceCenterX : NOSE_GUARD_X_CENTER);
+    const wingHalfWidth = Math.max(
+      0.01,
+      Math.min(NOSE_GUARD_MAX_WIDTH / 2, box.w * NOSE_GUARD_WING_HALF_WIDTH_RATIO),
+    );
+    const width = (wingHalfWidth + NOSE_GUARD_WING_MARGIN) * 2;
+    const guardXMin = centerX - width / 2;
+    const guard = {
+      x: guardXMin,
+      y: NOSE_GUARD_Y_TOP,
+      w: width,
+      h: Math.max(0.01, NOSE_GUARD_Y_BOTTOM - NOSE_GUARD_Y_TOP),
+    };
+    const guarded = intersectBoxes(box, guard);
+    if (guarded) {
+      box = guarded;
+      noseGuardApplied = true;
+    }
+  }
+
+  if (moduleId === 'forehead') {
+    const ovalTopY = Math.min(...FACE_OVAL_POLYGON.points.map((point) => Number(point.y || 0)));
+    const clampedBrowY = Math.max(ovalTopY + 0.02, FOREHEAD_BROW_LINE_Y);
+    const bandTop = clampedBrowY - (clampedBrowY - ovalTopY) * FOREHEAD_BAND_RATIO;
+    const foreheadBand = {
+      x: box.x,
+      y: bandTop,
+      w: box.w,
+      h: Math.max(0.02, clampedBrowY - bandTop),
+    };
+    const guarded = intersectBoxes(box, foreheadBand);
+    if (guarded) {
+      box = guarded;
+      foreheadBandApplied = true;
+    }
+  }
+
+  return {
+    box,
+    chinGuardApplied,
+    noseGuardApplied,
+    foreheadBandApplied,
+  };
+}
+
+function buildFaceOvalClipFallbackMask({
+  moduleId,
+  moduleBox,
+  targetGrid,
+  faceOvalMask,
+  baselinePixels,
+} = {}) {
+  if (!moduleBox || !faceOvalMask) return { mask: null, reason: null, pixels: 0 };
+  const strictModule = moduleId === 'chin' || moduleId === 'nose';
+  const shrinkFactors = strictModule ? [0.82, 0.74, 0.66, 0.58, 0.5] : [0.92, 0.86, 0.8, 0.74];
+  let bestMask = null;
+  let bestPixels = 0;
+  let bestReason = null;
+  for (const factor of shrinkFactors) {
+    const shrunkBox = shrinkModuleBox(moduleBox, factor);
+    if (!shrunkBox) continue;
+    const shrunkMask = bboxNormToMask(shrunkBox, targetGrid, targetGrid);
+    const clipped = andMasks(shrunkMask, faceOvalMask);
+    const clippedPixels = countOnes(clipped);
+    if (clippedPixels > bestPixels) {
+      bestMask = clipped;
+      bestPixels = clippedPixels;
+      bestReason = `SHRINK_${round3(factor)}`;
+    }
+    if (clippedPixels >= FACE_OVAL_CLIP_MIN_PIXELS) {
+      return {
+        mask: clipped,
+        reason: `SHRINK_${round3(factor)}`,
+        pixels: clippedPixels,
+      };
+    }
+  }
+  const clippedBaseline = andMasks(bboxNormToMask(moduleBox, targetGrid, targetGrid), faceOvalMask);
+  const clippedBaselinePixels = countOnes(clippedBaseline);
+  if (strictModule) {
+    return {
+      mask: bestMask || clippedBaseline,
+      reason: bestReason || 'STRICT_CLIPPED_BASELINE',
+      pixels: bestMask ? bestPixels : clippedBaselinePixels,
+    };
+  }
+  return {
+    mask: clippedBaseline,
+    reason: baselinePixels > 0 ? 'CLIPPED_BASELINE' : 'EMPTY_BASELINE',
+    pixels: clippedBaselinePixels,
+  };
+}
+
 function attachModuleMasks({
   modules,
   regions,
@@ -1259,12 +1504,21 @@ function attachModuleMasks({
   const moduleIds = Object.keys(activeModuleBoxes);
   const effectiveModuleBoxes = {};
   const shrinkFactorsUsed = {};
+  let chinGuardApplied = false;
+  let noseGuardApplied = false;
+  let chinHardGuardApplied = false;
+  let noseHardGuardApplied = false;
+  let foreheadBandApplied = false;
   for (const moduleId of moduleIds) {
     const baseBox = activeModuleBoxes[moduleId];
     const scale = moduleShrinkScale(moduleId);
     shrinkFactorsUsed[moduleId] = round3(scale);
     const adjusted = shrinkModuleBox(baseBox, scale);
-    if (adjusted) effectiveModuleBoxes[moduleId] = adjusted;
+    const guarded = applyModuleGuards(moduleId, adjusted || baseBox);
+    if (guarded.box) effectiveModuleBoxes[moduleId] = guarded.box;
+    chinGuardApplied = chinGuardApplied || guarded.chinGuardApplied;
+    noseGuardApplied = noseGuardApplied || guarded.noseGuardApplied;
+    foreheadBandApplied = foreheadBandApplied || guarded.foreheadBandApplied;
   }
   const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
 
@@ -1292,6 +1546,7 @@ function attachModuleMasks({
   let refinedModules = 0;
   let fallbackSkippedModules = 0;
   let faceOvalClipFallbackModules = 0;
+  const faceOvalClipFallbackReasons = [];
   const degradedReasons = new Set();
 
   const modulesOut = safeModules.map((moduleRow) => {
@@ -1323,7 +1578,31 @@ function attachModuleMasks({
 
     let finalMask = moduleMask;
     let moduleDegradedReason = null;
+
+    if (moduleId === 'chin') {
+      const chinGuardMask = buildChinGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask });
+      if (chinGuardMask) {
+        const constrained = andMasks(finalMask, chinGuardMask);
+        if (countOnes(constrained) > 0) {
+          finalMask = constrained;
+          chinHardGuardApplied = true;
+          chinGuardApplied = true;
+        }
+      }
+    } else if (moduleId === 'nose') {
+      const noseGuardMask = buildNoseGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask });
+      if (noseGuardMask) {
+        const constrained = andMasks(finalMask, noseGuardMask);
+        if (countOnes(constrained) > 0) {
+          finalMask = constrained;
+          noseHardGuardApplied = true;
+          noseGuardApplied = true;
+        }
+      }
+    }
+
     if (faceOvalMask) {
+      const strictModule = moduleId === 'chin' || moduleId === 'nose';
       const baselineMask = countOnes(modulePolygonMask) ? modulePolygonMask : finalMask;
       const baselinePixels = countOnes(baselineMask);
       const clippedMask = andMasks(finalMask, faceOvalMask);
@@ -1332,13 +1611,54 @@ function attachModuleMasks({
         FACE_OVAL_CLIP_MIN_PIXELS,
         Math.trunc(Math.max(1, baselinePixels) * FACE_OVAL_CLIP_MIN_KEEP_RATIO),
       );
-      if (clippedPixels >= clipKeepThreshold) {
+      if (clippedPixels >= clipKeepThreshold || (strictModule && clippedPixels > 0)) {
         finalMask = clippedMask;
-      } else if (baselinePixels) {
-        finalMask = baselineMask;
-        moduleDegradedReason = 'FACE_OVAL_CLIP_TOO_SMALL';
-        faceOvalClipFallbackModules += 1;
-        degradedReasons.add(moduleDegradedReason);
+      } else if (baselinePixels || countOnes(clippedMask)) {
+        if (strictModule) {
+          const strictScales = [0.92, 0.84, 0.76, 0.68];
+          let strictBestMask = null;
+          let strictBestPixels = 0;
+          let strictReason = null;
+          for (const scale of strictScales) {
+            const strictMask = moduleId === 'chin'
+              ? buildChinGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask, boxScale: scale })
+              : buildNoseGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask, boxScale: scale });
+            const strictPixels = countOnes(strictMask || createMask(targetGrid, targetGrid, 0));
+            if (strictPixels > 0 && strictPixels > strictBestPixels) {
+              strictBestMask = strictMask;
+              strictBestPixels = strictPixels;
+              strictReason = `STRICT_GUARD_SHRINK_${round3(scale)}`;
+            }
+            if (strictPixels >= FACE_OVAL_CLIP_MIN_PIXELS) {
+              strictBestMask = strictMask;
+              strictBestPixels = strictPixels;
+              strictReason = `STRICT_GUARD_SHRINK_${round3(scale)}`;
+              break;
+            }
+          }
+          if (strictBestMask && strictBestPixels > 0) {
+            finalMask = strictBestMask;
+            moduleDegradedReason = 'FACE_OVAL_CLIP_TOO_SMALL';
+            faceOvalClipFallbackModules += 1;
+            if (strictReason) faceOvalClipFallbackReasons.push(String(strictReason));
+            degradedReasons.add(moduleDegradedReason);
+          } else {
+            finalMask = clippedMask;
+          }
+        } else {
+          const fallbackMask = buildFaceOvalClipFallbackMask({
+            moduleId,
+            moduleBox: moduleBaseBox,
+            targetGrid,
+            faceOvalMask,
+            baselinePixels,
+          });
+          finalMask = fallbackMask.mask || clippedMask;
+          moduleDegradedReason = 'FACE_OVAL_CLIP_TOO_SMALL';
+          faceOvalClipFallbackModules += 1;
+          if (fallbackMask.reason) faceOvalClipFallbackReasons.push(String(fallbackMask.reason));
+          degradedReasons.add(moduleDegradedReason);
+        }
       }
     }
 
@@ -1379,7 +1699,15 @@ function attachModuleMasks({
     skinmask_positive_ratio: Number.isFinite(skinMaskPositiveRatio) ? round3(skinMaskPositiveRatio) : null,
     face_oval_clip_enabled: Boolean(faceOvalMask),
     face_oval_clip_fallback_modules: faceOvalClipFallbackModules,
+    face_oval_clip_fallback_reason:
+      faceOvalClipFallbackReasons.length > 0 ? String(faceOvalClipFallbackReasons[0]) : null,
     shrink_factors_used: shrinkFactorsUsed,
+    chin_guard_applied: chinGuardApplied,
+    nose_guard_applied: noseGuardApplied,
+    chin_hard_guard_applied: chinHardGuardApplied,
+    nose_hard_guard_applied: noseHardGuardApplied,
+    forehead_band_ratio_used: round3(FOREHEAD_BAND_RATIO),
+    forehead_band_applied: foreheadBandApplied,
     degraded_reasons: Array.from(degradedReasons),
   };
 }
@@ -1491,7 +1819,14 @@ function buildPhotoModulesCard({
       skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
       face_oval_clip_enabled: moduleMaskBuild.face_oval_clip_enabled,
       face_oval_clip_fallback_modules: moduleMaskBuild.face_oval_clip_fallback_modules,
+      clip_fallback_reason: moduleMaskBuild.face_oval_clip_fallback_reason,
       shrink_factors_used: moduleMaskBuild.shrink_factors_used,
+      chin_guard_applied: moduleMaskBuild.chin_guard_applied,
+      chin_hard_guard_applied: moduleMaskBuild.chin_hard_guard_applied,
+      nose_guard_applied: moduleMaskBuild.nose_guard_applied,
+      nose_hard_guard_applied: moduleMaskBuild.nose_hard_guard_applied,
+      forehead_band_ratio_used: moduleMaskBuild.forehead_band_ratio_used,
+      forehead_band_applied: moduleMaskBuild.forehead_band_applied,
       degraded_reasons: moduleMaskBuild.degraded_reasons,
     };
   }

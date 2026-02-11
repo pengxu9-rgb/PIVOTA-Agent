@@ -379,6 +379,7 @@ test('photo modules card: face oval clip too small falls back and marks degraded
       assert.equal(Array.isArray(payload.degraded_reasons), true);
       assert.equal(payload.degraded_reasons.includes('FACE_OVAL_CLIP_TOO_SMALL'), true);
       assert.equal(payload.degraded_reason, 'FACE_OVAL_CLIP_TOO_SMALL');
+      assert.ok(payload.internal_debug == null || typeof payload.internal_debug.clip_fallback_reason === 'string' || payload.internal_debug.clip_fallback_reason == null);
 
       const modules = Array.isArray(payload.modules) ? payload.modules : [];
       const degradedCount = modules.filter((moduleRow) => moduleRow && moduleRow.degraded_reason === 'FACE_OVAL_CLIP_TOO_SMALL').length;
@@ -422,5 +423,9 @@ test('photo modules card: internal_debug includes shrink_factors_used for all mo
       assert.equal(factors.under_eye_left, 0.95);
       assert.equal(factors.under_eye_right, 0.95);
       assert.equal(factors.nose, 0.95);
+      assert.equal(typeof payload.internal_debug.chin_guard_applied, 'boolean');
+      assert.equal(typeof payload.internal_debug.nose_guard_applied, 'boolean');
+      assert.equal(typeof payload.internal_debug.forehead_band_applied, 'boolean');
+      assert.equal(Number.isFinite(Number(payload.internal_debug.forehead_band_ratio_used)), true);
     },
   ));

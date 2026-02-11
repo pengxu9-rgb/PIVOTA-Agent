@@ -145,6 +145,16 @@ function validateModuleBoxes(rawBoxes, defaults = cloneDefaultBoxes()) {
   return out;
 }
 
+function intersectBoxesNorm(boxA, boxB) {
+  if (!boxA || !boxB) return null;
+  const x0 = Math.max(Number(boxA.x) || 0, Number(boxB.x) || 0);
+  const y0 = Math.max(Number(boxA.y) || 0, Number(boxB.y) || 0);
+  const x1 = Math.min((Number(boxA.x) || 0) + (Number(boxA.w) || 0), (Number(boxB.x) || 0) + (Number(boxB.w) || 0));
+  const y1 = Math.min((Number(boxA.y) || 0) + (Number(boxA.h) || 0), (Number(boxB.y) || 0) + (Number(boxB.h) || 0));
+  if (x1 <= x0 || y1 <= y0) return null;
+  return sanitizeBox({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, boxB);
+}
+
 function applyModelBoxCalibration({
   moduleId,
   predMask,
@@ -155,7 +165,18 @@ function applyModelBoxCalibration({
   if (!(predMask instanceof Uint8Array)) return predMask;
   const box = modelBoxes && modelBoxes[moduleId];
   if (!box) return predMask;
-  const boxMask = bboxNormToMask(box, gridSize, gridSize);
+  const defaultBox = MODULE_BOXES[moduleId] || null;
+  const intersectedBox = intersectBoxesNorm(box, defaultBox);
+  const calibrationBox = intersectedBox || box;
+  if (defaultBox && intersectedBox) {
+    const defaultArea = Math.max(1e-6, Number(defaultBox.w) * Number(defaultBox.h));
+    const intersectionArea = Math.max(0, Number(intersectedBox.w) * Number(intersectedBox.h));
+    const overlapRatio = intersectionArea / defaultArea;
+    if (!Number.isFinite(overlapRatio) || overlapRatio < 0.15) {
+      return predMask;
+    }
+  }
+  const boxMask = bboxNormToMask(calibrationBox, gridSize, gridSize);
   const filtered = andMasks(predMask, boxMask);
   if (countOnes(filtered) >= Math.max(1, Number(minPixels) || 24)) return filtered;
   return predMask;
@@ -169,4 +190,3 @@ module.exports = {
   validateModuleBoxes,
   applyModelBoxCalibration,
 };
-
