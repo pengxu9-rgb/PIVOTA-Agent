@@ -42,6 +42,13 @@ const DEFAULT_MATRIX_BASELINE_GROUP = 'c0_k0';
 const DEFAULT_CIRCLE_MODEL_PATH = path.join('model_registry', 'circle_prior_latest.json');
 const DEFAULT_CIRCLE_MODEL_MIN_PIXELS = 24;
 const RUN_MODES = new Set(['auto', 'local', 'remote']);
+const DEFAULT_OUTSIDE_TOUCH_THRESHOLD = 0.02;
+const DEFAULT_BAND_TOUCH_THRESHOLD = 0.08;
+const DEFAULT_CHIN_BOTTOM_BAND_RATIO = 0.03;
+const DEFAULT_NOSE_SIDE_BAND_RATIO = 0.03;
+const DEFAULT_RISK_PIXELS_MIN_THRESH = 120;
+const DEFAULT_RISK_INNER_OVAL_SCALE = 0.94;
+const DEFAULT_GOLD_BUCKET_TOPN = 20;
 const FACE_OVAL_POLYGON = Object.freeze([
   { x: 0.5, y: 0.06 },
   { x: 0.64, y: 0.1 },
@@ -87,6 +94,16 @@ function percentile(values, p = 0.5) {
   if (!valid.length) return 0;
   const rank = Math.max(0, Math.min(valid.length - 1, Math.floor((valid.length - 1) * p)));
   return valid[rank];
+}
+
+function stddev(values) {
+  const valid = Array.isArray(values)
+    ? values.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+    : [];
+  if (!valid.length) return 0;
+  const avg = mean(valid);
+  const variance = valid.reduce((acc, value) => acc + ((value - avg) ** 2), 0) / valid.length;
+  return Math.sqrt(Math.max(0, variance));
 }
 
 function parseBoolean(value, fallback = false) {
@@ -154,6 +171,68 @@ function classifySampleLoadReason(error) {
     return 'LOCAL_FILE_NOT_READY';
   }
   return 'LOCAL_FILE_NOT_READY';
+}
+
+function fileExtToken(filePath) {
+  return String(path.extname(String(filePath || '')) || '')
+    .trim()
+    .toLowerCase();
+}
+
+function detectMagicType(inputBuffer) {
+  if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length < 12) return 'unknown';
+  if (inputBuffer.length >= 3 && inputBuffer[0] === 0xff && inputBuffer[1] === 0xd8 && inputBuffer[2] === 0xff) {
+    return 'jpg';
+  }
+  if (
+    inputBuffer.length >= 8
+    && inputBuffer[0] === 0x89
+    && inputBuffer[1] === 0x50
+    && inputBuffer[2] === 0x4e
+    && inputBuffer[3] === 0x47
+    && inputBuffer[4] === 0x0d
+    && inputBuffer[5] === 0x0a
+    && inputBuffer[6] === 0x1a
+    && inputBuffer[7] === 0x0a
+  ) {
+    return 'png';
+  }
+  const riff = inputBuffer.toString('ascii', 0, 4);
+  const webp = inputBuffer.toString('ascii', 8, 12);
+  if (riff === 'RIFF' && webp === 'WEBP') return 'webp';
+  const ftyp = inputBuffer.toString('ascii', 4, 8);
+  if (ftyp === 'ftyp') {
+    const brand = inputBuffer.toString('ascii', 8, 12).toLowerCase();
+    if (['heic', 'heif', 'heix', 'hevc', 'heis', 'heim', 'mif1', 'msf1'].includes(brand)) {
+      return 'heic';
+    }
+    return 'isobmff';
+  }
+  return 'unknown';
+}
+
+function classifyDecodeFailure({ error, ext, magicType }) {
+  const code = String(error && error.code ? error.code : '').trim().toLowerCase();
+  const message = String(error && error.message ? error.message : error || '').toLowerCase();
+  const extToken = String(ext || '').trim().toLowerCase();
+  const magic = String(magicType || '').trim().toLowerCase();
+  const maybeHeic = magic === 'heic' || extToken === '.heic' || extToken === '.heif';
+  if (maybeHeic && (code.includes('heic') || message.includes('heic') || message.includes('heif') || code === 'unsupported_image_format')) {
+    return {
+      reason_detail: 'HEIC_UNSUPPORTED',
+      error_code: code || 'HEIC_UNSUPPORTED',
+    };
+  }
+  if (maybeHeic && message.includes('unsupported image format')) {
+    return {
+      reason_detail: 'HEIC_UNSUPPORTED',
+      error_code: code || 'HEIC_UNSUPPORTED',
+    };
+  }
+  return {
+    reason_detail: 'DECODE_FAIL',
+    error_code: code || 'DECODE_FAIL',
+  };
 }
 
 function inferIndexDatasetBySource(source) {
@@ -278,6 +357,13 @@ function parseArgs(argv) {
     eval_grid_size: parseNumber(process.env.EVAL_GRID_SIZE, 128, 64, 512),
     eval_shuffle: parseBoolean(process.env.EVAL_SHUFFLE || process.env.SHUFFLE, false),
     run_mode: RUN_MODES.has(runModeToken) ? runModeToken : 'auto',
+    outside_touch_threshold: parseNumber(process.env.RISK_OUTSIDE_TOUCH_THRESHOLD, DEFAULT_OUTSIDE_TOUCH_THRESHOLD, 0, 1),
+    band_touch_threshold: parseNumber(process.env.RISK_BAND_TOUCH_THRESHOLD, DEFAULT_BAND_TOUCH_THRESHOLD, 0, 1),
+    chin_bottom_band_ratio: parseNumber(process.env.RISK_CHIN_BOTTOM_BAND_RATIO, DEFAULT_CHIN_BOTTOM_BAND_RATIO, 0.001, 0.5),
+    nose_side_band_ratio: parseNumber(process.env.RISK_NOSE_SIDE_BAND_RATIO, DEFAULT_NOSE_SIDE_BAND_RATIO, 0.001, 0.5),
+    risk_pixels_min_thresh: parseNumber(process.env.RISK_PIXELS_MIN_THRESH, DEFAULT_RISK_PIXELS_MIN_THRESH, 1, 4096),
+    risk_inner_oval_scale: parseNumber(process.env.RISK_INNER_OVAL_SCALE, DEFAULT_RISK_INNER_OVAL_SCALE, 0.7, 1),
+    gold_bucket_topn: parseNumber(process.env.REVIEW_GOLD_BUCKET_TOPN, DEFAULT_GOLD_BUCKET_TOPN, 1, 200),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -417,6 +503,13 @@ function parseArgs(argv) {
   out.circle_model_min_pixels = Math.max(1, Math.trunc(out.circle_model_min_pixels));
   out.report_dir = String(out.report_dir || DEFAULT_REPORT_DIR).trim() || DEFAULT_REPORT_DIR;
   out.run_mode = RUN_MODES.has(out.run_mode) ? out.run_mode : 'auto';
+  out.outside_touch_threshold = parseNumber(out.outside_touch_threshold, DEFAULT_OUTSIDE_TOUCH_THRESHOLD, 0, 1);
+  out.band_touch_threshold = parseNumber(out.band_touch_threshold, DEFAULT_BAND_TOUCH_THRESHOLD, 0, 1);
+  out.chin_bottom_band_ratio = parseNumber(out.chin_bottom_band_ratio, DEFAULT_CHIN_BOTTOM_BAND_RATIO, 0.001, 0.5);
+  out.nose_side_band_ratio = parseNumber(out.nose_side_band_ratio, DEFAULT_NOSE_SIDE_BAND_RATIO, 0.001, 0.5);
+  out.risk_pixels_min_thresh = Math.max(1, Math.trunc(parseNumber(out.risk_pixels_min_thresh, DEFAULT_RISK_PIXELS_MIN_THRESH, 1, 4096)));
+  out.risk_inner_oval_scale = parseNumber(out.risk_inner_oval_scale, DEFAULT_RISK_INNER_OVAL_SCALE, 0.7, 1);
+  out.gold_bucket_topn = Math.max(1, Math.trunc(parseNumber(out.gold_bucket_topn, DEFAULT_GOLD_BUCKET_TOPN, 1, 200)));
   return out;
 }
 
@@ -450,11 +543,19 @@ function polygonToMask(points, gridSize) {
   );
 }
 
-function getFaceOvalMask(gridSize) {
+function getFaceOvalMask(gridSize, scale = 1) {
   const grid = Math.max(32, Math.min(256, Math.trunc(Number(gridSize) || 64)));
-  if (OVAL_MASK_CACHE.has(grid)) return OVAL_MASK_CACHE.get(grid);
-  const mask = polygonToMask(FACE_OVAL_POLYGON, grid);
-  OVAL_MASK_CACHE.set(grid, mask);
+  const safeScale = parseNumber(scale, 1, 0.7, 1.2);
+  const cacheKey = `${grid}:${safeScale.toFixed(3)}`;
+  if (OVAL_MASK_CACHE.has(cacheKey)) return OVAL_MASK_CACHE.get(cacheKey);
+  const points = safeScale === 1
+    ? FACE_OVAL_POLYGON
+    : FACE_OVAL_POLYGON.map((point) => ({
+        x: 0.5 + ((safeScale) * (safeNumber(point.x, 0.5) - 0.5)),
+        y: 0.5 + ((safeScale) * (safeNumber(point.y, 0.5) - 0.5)),
+      }));
+  const mask = polygonToMask(points, grid);
+  OVAL_MASK_CACHE.set(cacheKey, mask);
   return mask;
 }
 
@@ -517,19 +618,70 @@ function leakageBgProxy(moduleMask, faceOvalMask) {
   };
 }
 
-function summarizeModules(modules) {
+function summarizeModules(modules, options = {}) {
+  const outsideTouchThreshold = parseNumber(
+    options.outside_touch_threshold,
+    DEFAULT_OUTSIDE_TOUCH_THRESHOLD,
+    0,
+    1,
+  );
+  const bandTouchThreshold = parseNumber(
+    options.band_touch_threshold,
+    DEFAULT_BAND_TOUCH_THRESHOLD,
+    0,
+    1,
+  );
+  const chinBottomBandRatio = parseNumber(
+    options.chin_bottom_band_ratio,
+    DEFAULT_CHIN_BOTTOM_BAND_RATIO,
+    0.001,
+    0.5,
+  );
+  const noseSideBandRatio = parseNumber(
+    options.nose_side_band_ratio,
+    DEFAULT_NOSE_SIDE_BAND_RATIO,
+    0.001,
+    0.5,
+  );
+  const innerOvalScale = parseNumber(
+    options.risk_inner_oval_scale,
+    DEFAULT_RISK_INNER_OVAL_SCALE,
+    0.7,
+    1,
+  );
   const rows = [];
   for (const module of Array.isArray(modules) ? modules : []) {
     const decoded = decodeModuleMask(module);
     if (!decoded) continue;
-    const faceOvalMask = getFaceOvalMask(decoded.grid);
+    const faceOvalMask = getFaceOvalMask(decoded.grid, 1);
+    const riskInnerOvalMask = getFaceOvalMask(decoded.grid, innerOvalScale);
     const leak = leakageBgProxy(decoded.mask, faceOvalMask);
     const bboxNorm = maskBoundingBoxNorm(decoded.mask, decoded.grid);
+    const modulePixels = Math.max(0, Math.trunc(leak.module_pixels));
+    let outsidePixels = 0;
+    let bottomBandPixels = 0;
+    let sideBandPixels = 0;
+    const bottomBandStart = Math.max(0, decoded.grid - Math.max(1, Math.trunc(decoded.grid * chinBottomBandRatio)));
+    const sideBandWidth = Math.max(1, Math.trunc(decoded.grid * noseSideBandRatio));
+    for (let i = 0; i < decoded.mask.length; i += 1) {
+      if (!decoded.mask[i]) continue;
+      const y = Math.trunc(i / decoded.grid);
+      const x = i - (y * decoded.grid);
+      if (!riskInnerOvalMask[i]) outsidePixels += 1;
+      if (y >= bottomBandStart) bottomBandPixels += 1;
+      if (x < sideBandWidth || x >= (decoded.grid - sideBandWidth)) sideBandPixels += 1;
+    }
+    const outsideRatio = modulePixels > 0 ? round3(ratio(outsidePixels, modulePixels)) : null;
+    const bottomBandRatio = modulePixels > 0 ? round3(ratio(bottomBandPixels, modulePixels)) : null;
+    const sideBandRatio = modulePixels > 0 ? round3(ratio(sideBandPixels, modulePixels)) : null;
     rows.push({
       module_id: String(module && module.module_id ? module.module_id : '').trim() || 'unknown',
       leakage_bg: leak.leakage_bg,
-      module_pixels: leak.module_pixels,
+      module_pixels: modulePixels,
       bbox_norm: bboxNorm,
+      outside_oval_ratio: outsideRatio,
+      bottom_band_ratio: bottomBandRatio,
+      side_band_ratio: sideBandRatio,
     });
   }
   const chin = rows.find((row) => row.module_id === 'chin') || null;
@@ -539,11 +691,15 @@ function summarizeModules(modules) {
     .filter((value) => Number.isFinite(value));
   const modulePixels = rows.map((row) => safeNumber(row.module_pixels, 0));
   const emptyCount = modulePixels.filter((value) => value <= 0).length;
-  const chinTouchesBottom = Boolean(chin && chin.bbox_norm && Number(chin.bbox_norm.max_y) >= 0.88);
+  const chinOutsideRatio = chin ? safeNumber(chin.outside_oval_ratio, 0) : null;
+  const noseOutsideRatio = nose ? safeNumber(nose.outside_oval_ratio, 0) : null;
+  const chinBottomBand = chin ? safeNumber(chin.bottom_band_ratio, 0) : null;
+  const noseSideBand = nose ? safeNumber(nose.side_band_ratio, 0) : null;
+  const chinTouchesBottom = Boolean(
+    chin && chinOutsideRatio > outsideTouchThreshold && chinBottomBand > bandTouchThreshold,
+  );
   const noseTouchesSide = Boolean(
-    nose &&
-      nose.bbox_norm &&
-      (Number(nose.bbox_norm.min_x) <= 0.22 || Number(nose.bbox_norm.max_x) >= 0.78),
+    nose && noseOutsideRatio > outsideTouchThreshold && noseSideBand > bandTouchThreshold,
   );
   return {
     modules_count: rows.length,
@@ -553,6 +709,10 @@ function summarizeModules(modules) {
     chin_leakage_bg: chin ? safeNumber(chin.leakage_bg, null) : null,
     nose_leakage_bg: nose ? safeNumber(nose.leakage_bg, null) : null,
     leakage_bg_mean: leakageValues.length ? round3(mean(leakageValues)) : null,
+    chin_outside_oval_ratio: chinOutsideRatio,
+    nose_outside_oval_ratio: noseOutsideRatio,
+    chin_bottom_band_ratio: chinBottomBand,
+    nose_side_band_ratio: noseSideBand,
     chin_touches_oval_bottom: chinTouchesBottom,
     nose_touches_oval_side: noseTouchesSide,
   };
@@ -654,6 +814,13 @@ async function analyzePhotoViaApi({
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
+      chin_outside_oval_ratio: null,
+      nose_outside_oval_ratio: null,
+      chin_bottom_band_ratio: null,
+      nose_side_band_ratio: null,
+      leakage_bg_est_mean: null,
+      chin_leakage_bg_est: null,
+      nose_leakage_bg_est: null,
       chin_touches_oval_bottom: false,
       nose_touches_oval_side: false,
       note: String(response && response.error && response.error.message ? response.error.message : '').slice(0, 180),
@@ -680,6 +847,13 @@ async function analyzePhotoViaApi({
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
+      chin_outside_oval_ratio: null,
+      nose_outside_oval_ratio: null,
+      chin_bottom_band_ratio: null,
+      nose_side_band_ratio: null,
+      leakage_bg_est_mean: null,
+      chin_leakage_bg_est: null,
+      nose_leakage_bg_est: null,
       chin_touches_oval_bottom: false,
       nose_touches_oval_side: false,
       note: '',
@@ -691,7 +865,7 @@ async function analyzePhotoViaApi({
 
   const photoPayload = photoCard.payload;
   const modules = Array.isArray(photoPayload.modules) ? photoPayload.modules : [];
-  const moduleSummary = summarizeModules(modules);
+  const moduleSummary = summarizeModules(modules, args);
   const degradedReasons = parseDegradedReasons(photoPayload);
   const revertedModules = parseRevertedModules([
     photoPayload,
@@ -716,9 +890,16 @@ async function analyzePhotoViaApi({
     modules_count: moduleSummary.modules_count,
     module_pixels_min: moduleSummary.module_pixels_min,
     empty_module_rate: moduleSummary.empty_module_rate,
-    chin_leakage_bg: moduleSummary.chin_leakage_bg,
-    nose_leakage_bg: moduleSummary.nose_leakage_bg,
-    leakage_bg_mean: moduleSummary.leakage_bg_mean,
+    chin_leakage_bg: null,
+    nose_leakage_bg: null,
+    leakage_bg_mean: null,
+    chin_outside_oval_ratio: moduleSummary.chin_outside_oval_ratio,
+    nose_outside_oval_ratio: moduleSummary.nose_outside_oval_ratio,
+    chin_bottom_band_ratio: moduleSummary.chin_bottom_band_ratio,
+    nose_side_band_ratio: moduleSummary.nose_side_band_ratio,
+    leakage_bg_est_mean: moduleSummary.leakage_bg_mean,
+    chin_leakage_bg_est: moduleSummary.chin_leakage_bg,
+    nose_leakage_bg_est: moduleSummary.nose_leakage_bg,
     chin_touches_oval_bottom: moduleSummary.chin_touches_oval_bottom,
     nose_touches_oval_side: moduleSummary.nose_touches_oval_side,
     module_rows: moduleSummary.module_rows,
@@ -778,6 +959,13 @@ async function analyzePhotoViaLocal({
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
+      chin_outside_oval_ratio: null,
+      nose_outside_oval_ratio: null,
+      chin_bottom_band_ratio: null,
+      nose_side_band_ratio: null,
+      leakage_bg_est_mean: null,
+      chin_leakage_bg_est: null,
+      nose_leakage_bg_est: null,
       chin_touches_oval_bottom: false,
       nose_touches_oval_side: false,
       note: String(error && error.message ? error.message : error).slice(0, 180),
@@ -803,6 +991,13 @@ async function analyzePhotoViaLocal({
       chin_leakage_bg: null,
       nose_leakage_bg: null,
       leakage_bg_mean: null,
+      chin_outside_oval_ratio: null,
+      nose_outside_oval_ratio: null,
+      chin_bottom_band_ratio: null,
+      nose_side_band_ratio: null,
+      leakage_bg_est_mean: null,
+      chin_leakage_bg_est: null,
+      nose_leakage_bg_est: null,
       chin_touches_oval_bottom: false,
       nose_touches_oval_side: false,
       note: String(diagnosis && diagnosis.reason ? diagnosis.reason : 'diagnosis_failed').slice(0, 180),
@@ -864,7 +1059,7 @@ async function analyzePhotoViaLocal({
   });
   const payload = ensured && ensured.payload && typeof ensured.payload === 'object' ? ensured.payload : payloadFromBuilder;
   const modules = Array.isArray(payload.modules) ? payload.modules : [];
-  const moduleSummary = summarizeModules(modules);
+  const moduleSummary = summarizeModules(modules, args);
   const degradedReasons = parseDegradedReasons(payload);
   if (ensured && ensured.degradedReason && !degradedReasons.includes(ensured.degradedReason)) {
     degradedReasons.push(ensured.degradedReason);
@@ -880,9 +1075,16 @@ async function analyzePhotoViaLocal({
     modules_count: moduleSummary.modules_count,
     module_pixels_min: moduleSummary.module_pixels_min,
     empty_module_rate: moduleSummary.empty_module_rate,
-    chin_leakage_bg: moduleSummary.chin_leakage_bg,
-    nose_leakage_bg: moduleSummary.nose_leakage_bg,
-    leakage_bg_mean: moduleSummary.leakage_bg_mean,
+    chin_leakage_bg: null,
+    nose_leakage_bg: null,
+    leakage_bg_mean: null,
+    chin_outside_oval_ratio: moduleSummary.chin_outside_oval_ratio,
+    nose_outside_oval_ratio: moduleSummary.nose_outside_oval_ratio,
+    chin_bottom_band_ratio: moduleSummary.chin_bottom_band_ratio,
+    nose_side_band_ratio: moduleSummary.nose_side_band_ratio,
+    leakage_bg_est_mean: moduleSummary.leakage_bg_mean,
+    chin_leakage_bg_est: moduleSummary.chin_leakage_bg,
+    nose_leakage_bg_est: moduleSummary.nose_leakage_bg,
     chin_touches_oval_bottom: moduleSummary.chin_touches_oval_bottom,
     nose_touches_oval_side: moduleSummary.nose_touches_oval_side,
     module_rows: moduleSummary.module_rows,
@@ -1031,18 +1233,18 @@ async function collectSampleFiles({ dirPath, limit, seed, source, cacheDir }) {
   };
 }
 
-function computeRiskScore(row) {
-  const leakageMax = Math.max(
-    safeNumber(row.nose_leakage_bg, 0),
-    safeNumber(row.chin_leakage_bg, 0),
-    safeNumber(row.leakage_bg_mean, 0),
+function computeRiskScore(row, options = {}) {
+  const pixelThreshold = Math.max(
+    1,
+    Math.trunc(parseNumber(options.risk_pixels_min_thresh, DEFAULT_RISK_PIXELS_MIN_THRESH, 1, 4096)),
   );
-  let score = leakageMax * 2;
-  if (safeNumber(row.module_pixels_min, 0) <= 120) score += 2;
-  else if (safeNumber(row.module_pixels_min, 0) <= 256) score += 1;
-  if (row.chin_touches_oval_bottom) score += 2;
-  if (row.nose_touches_oval_side) score += 2;
-  if (!row.ok) score += 1.5;
+  let score = 0;
+  score += 2 * safeNumber(row.chin_outside_oval_ratio, 0);
+  score += 2 * safeNumber(row.nose_outside_oval_ratio, 0);
+  score += safeNumber(row.chin_bottom_band_ratio, 0);
+  score += safeNumber(row.nose_side_band_ratio, 0);
+  if (safeNumber(row.module_pixels_min, 0) < pixelThreshold) score += 0.5;
+  if (!row.ok) score += 1;
   return round3(score);
 }
 
@@ -1077,23 +1279,36 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
 
   const rows = await runPool(sampleInfo.samples, args.concurrency, async (sample) => {
     const filePath = sample && sample.file_path ? String(sample.file_path) : '';
+    const ext = fileExtToken(filePath);
     const sampleHashSeed = String(sample && sample.sample_hash ? sample.sample_hash : '').trim();
     if (sample && sample.reason_detail) {
       const preloadRow = {
         source,
         dataset: source,
+        pipeline_mode_used: String(sample.preload_note || '').includes('http_path_forbidden') ? 'remote' : 'local',
         sample_hash: sampleHashSeed || sha256Hex(`preload_fail:${source}:${filePath}`).slice(0, 20),
         ok: false,
         fail_reason: 'SAMPLE_LOAD_FAIL',
         reason_detail: String(sample.reason_detail || 'LOCAL_FILE_NOT_FOUND'),
+        decode_ext: ext || null,
+        decode_magic: null,
+        decode_error_code: null,
         status_code: 0,
         quality_grade: null,
         modules_count: 0,
         module_pixels_min: 0,
         empty_module_rate: 1,
         leakage_bg_mean: null,
+        leakage_bg_est_mean: null,
         chin_leakage_bg: null,
         nose_leakage_bg: null,
+        chin_leakage_bg_est: null,
+        nose_leakage_bg_est: null,
+        chin_outside_oval_ratio: null,
+        nose_outside_oval_ratio: null,
+        chin_bottom_band_ratio: null,
+        nose_side_band_ratio: null,
+        leakage_hair_mean: null,
         chin_touches_oval_bottom: false,
         nose_touches_oval_side: false,
         degraded_reasons: [],
@@ -1102,7 +1317,7 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         landmark_ok: null,
         note: String(sample.preload_note || '').slice(0, 120),
       };
-      preloadRow.risk_score = computeRiskScore(preloadRow);
+      preloadRow.risk_score = computeRiskScore(preloadRow, args);
       return preloadRow;
     }
 
@@ -1113,18 +1328,30 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
       const readFailRow = {
         source,
         dataset: source,
+        pipeline_mode_used: 'local',
         sample_hash: sampleHashSeed || sha256Hex(`read_fail:${source}:${String(filePath || '')}`).slice(0, 20),
         ok: false,
         fail_reason: 'SAMPLE_LOAD_FAIL',
         reason_detail: classifySampleLoadReason(error),
+        decode_ext: ext || null,
+        decode_magic: null,
+        decode_error_code: String(error && error.code ? error.code : '').trim().toUpperCase() || null,
         status_code: 0,
         quality_grade: null,
         modules_count: 0,
         module_pixels_min: 0,
         empty_module_rate: 1,
         leakage_bg_mean: null,
+        leakage_bg_est_mean: null,
         chin_leakage_bg: null,
         nose_leakage_bg: null,
+        chin_leakage_bg_est: null,
+        nose_leakage_bg_est: null,
+        chin_outside_oval_ratio: null,
+        nose_outside_oval_ratio: null,
+        chin_bottom_band_ratio: null,
+        nose_side_band_ratio: null,
+        leakage_hair_mean: null,
         chin_touches_oval_bottom: false,
         nose_touches_oval_side: false,
         degraded_reasons: [],
@@ -1133,36 +1360,50 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         landmark_ok: null,
         note: String(error && error.message ? error.message : error).slice(0, 120),
       };
-      readFailRow.risk_score = computeRiskScore(readFailRow);
+      readFailRow.risk_score = computeRiskScore(readFailRow, args);
       return readFailRow;
     }
 
     let preprocessed;
     let sampleHash = sampleHashSeed || sha256Hex(rawBuffer).slice(0, 20);
+    const magicType = detectMagicType(rawBuffer);
     try {
       preprocessed = await preprocessPhotoBuffer({
         inputBuffer: rawBuffer,
-        extension: path.extname(filePath),
+        extension: ext,
         sanitize: true,
         maxEdge: args.max_edge,
       });
       sampleHash = sha256Hex(preprocessed.buffer).slice(0, 20);
     } catch (error) {
+      const decoded = classifyDecodeFailure({ error, ext, magicType });
       const decodeFailRow = {
         source,
         dataset: source,
+        pipeline_mode_used: 'local',
         sample_hash: sampleHash,
         ok: false,
         fail_reason: 'SAMPLE_LOAD_FAIL',
-        reason_detail: 'DECODE_FAIL',
+        reason_detail: decoded.reason_detail,
+        decode_ext: ext || null,
+        decode_magic: magicType || 'unknown',
+        decode_error_code: decoded.error_code,
         status_code: 0,
         quality_grade: null,
         modules_count: 0,
         module_pixels_min: 0,
         empty_module_rate: 1,
         leakage_bg_mean: null,
+        leakage_bg_est_mean: null,
         chin_leakage_bg: null,
         nose_leakage_bg: null,
+        chin_leakage_bg_est: null,
+        nose_leakage_bg_est: null,
+        chin_outside_oval_ratio: null,
+        nose_outside_oval_ratio: null,
+        chin_bottom_band_ratio: null,
+        nose_side_band_ratio: null,
+        leakage_hair_mean: null,
         chin_touches_oval_bottom: false,
         nose_touches_oval_side: false,
         degraded_reasons: [],
@@ -1171,7 +1412,7 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         landmark_ok: null,
         note: String(error && error.message ? error.message : error).slice(0, 120),
       };
-      decodeFailRow.risk_score = computeRiskScore(decodeFailRow);
+      decodeFailRow.risk_score = computeRiskScore(decodeFailRow, args);
       return decodeFailRow;
     }
 
@@ -1212,8 +1453,16 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
         chin_leakage_bg: null,
         nose_leakage_bg: null,
         leakage_bg_mean: null,
+        leakage_bg_est_mean: null,
+        chin_leakage_bg_est: null,
+        nose_leakage_bg_est: null,
+        chin_outside_oval_ratio: null,
+        nose_outside_oval_ratio: null,
+        chin_bottom_band_ratio: null,
+        nose_side_band_ratio: null,
         chin_touches_oval_bottom: false,
         nose_touches_oval_side: false,
+        leakage_hair_mean: null,
         quality_grade: null,
         note: 'analyze_exception',
         face_detect_ok: null,
@@ -1230,14 +1479,25 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
       ok: Boolean(result.ok),
       fail_reason: result.fail_reason || null,
       reason_detail: result.reason_detail || null,
+      decode_ext: ext || null,
+      decode_magic: magicType || null,
+      decode_error_code: null,
       status_code: safeNumber(result.status_code, 0),
       quality_grade: result.quality_grade || null,
       modules_count: safeNumber(result.modules_count, 0),
       module_pixels_min: safeNumber(result.module_pixels_min, 0),
       empty_module_rate: round3(safeNumber(result.empty_module_rate, 1)),
-      leakage_bg_mean: result.leakage_bg_mean == null ? null : round3(result.leakage_bg_mean),
-      chin_leakage_bg: result.chin_leakage_bg == null ? null : round3(result.chin_leakage_bg),
-      nose_leakage_bg: result.nose_leakage_bg == null ? null : round3(result.nose_leakage_bg),
+      leakage_bg_mean: null,
+      leakage_bg_est_mean: result.leakage_bg_est_mean == null ? null : round3(result.leakage_bg_est_mean),
+      leakage_hair_mean: null,
+      chin_leakage_bg: null,
+      nose_leakage_bg: null,
+      chin_leakage_bg_est: result.chin_leakage_bg_est == null ? null : round3(result.chin_leakage_bg_est),
+      nose_leakage_bg_est: result.nose_leakage_bg_est == null ? null : round3(result.nose_leakage_bg_est),
+      chin_outside_oval_ratio: result.chin_outside_oval_ratio == null ? null : round3(result.chin_outside_oval_ratio),
+      nose_outside_oval_ratio: result.nose_outside_oval_ratio == null ? null : round3(result.nose_outside_oval_ratio),
+      chin_bottom_band_ratio: result.chin_bottom_band_ratio == null ? null : round3(result.chin_bottom_band_ratio),
+      nose_side_band_ratio: result.nose_side_band_ratio == null ? null : round3(result.nose_side_band_ratio),
       chin_touches_oval_bottom: Boolean(result.chin_touches_oval_bottom),
       nose_touches_oval_side: Boolean(result.nose_touches_oval_side),
       degraded_reasons: Array.isArray(result.degraded_reasons) ? result.degraded_reasons : [],
@@ -1248,12 +1508,31 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
       integration_status: result.integration_status || (pipelineMode === 'remote' ? 'ok' : 'n/a'),
       integration_fail_reason: result.integration_fail_reason || null,
     };
-    row.risk_score = computeRiskScore(row);
+    if (source !== 'fasseg' && row.ok) {
+      const estLeak = safeNumber(row.leakage_bg_est_mean, 0);
+      if (
+        estLeak > 0
+        && safeNumber(row.chin_outside_oval_ratio, 0) <= 0
+        && safeNumber(row.nose_outside_oval_ratio, 0) <= 0
+      ) {
+        row.chin_outside_oval_ratio = round3(estLeak * 0.7);
+        row.nose_outside_oval_ratio = round3(estLeak);
+        row.chin_bottom_band_ratio = round3(Math.max(safeNumber(row.chin_bottom_band_ratio, 0), estLeak * 0.35));
+        row.nose_side_band_ratio = round3(Math.max(safeNumber(row.nose_side_band_ratio, 0), estLeak * 0.35));
+      }
+      row.chin_touches_oval_bottom = safeNumber(row.chin_outside_oval_ratio, 0) > args.outside_touch_threshold
+        && safeNumber(row.chin_bottom_band_ratio, 0) > args.band_touch_threshold;
+      row.nose_touches_oval_side = safeNumber(row.nose_outside_oval_ratio, 0) > args.outside_touch_threshold
+        && safeNumber(row.nose_side_band_ratio, 0) > args.band_touch_threshold;
+    }
+    row.risk_score = computeRiskScore(row, args);
     return row;
   });
 
   const failMap = new Map();
   const dataAccessMap = new Map();
+  const decodeFailureMap = new Map();
+  const decodeExamples = [];
   const integrationFailMap = new Map();
   const revertMap = new Map();
   const okRows = rows.filter((row) => row.ok);
@@ -1264,6 +1543,17 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
     if (key === 'SAMPLE_LOAD_FAIL') {
       const detail = String(row.reason_detail || 'UNKNOWN');
       dataAccessMap.set(detail, (dataAccessMap.get(detail) || 0) + 1);
+      const extToken = String(row.decode_ext || '').trim().toLowerCase() || '-';
+      const decodeKey = `${extToken}|${detail}`;
+      decodeFailureMap.set(decodeKey, (decodeFailureMap.get(decodeKey) || 0) + 1);
+      if (decodeExamples.length < 5 && (detail === 'HEIC_UNSUPPORTED' || detail === 'DECODE_FAIL')) {
+        decodeExamples.push({
+          sample_hash: String(row.sample_hash || '').trim(),
+          ext: extToken,
+          reason_detail: detail,
+          error_code: String(row.decode_error_code || '').trim() || '-',
+        });
+      }
     }
     if (String(row.pipeline_mode_used || '') === 'remote') {
       const integrationKey = String(row.integration_fail_reason || row.fail_reason || 'UNKNOWN');
@@ -1297,6 +1587,13 @@ async function runPipelineSource({ source, config, args, chosenGroup }) {
       data_access_failures: Array.from(dataAccessMap.entries())
         .map(([reason_detail, count]) => ({ reason_detail, count }))
         .sort((a, b) => b.count - a.count || a.reason_detail.localeCompare(b.reason_detail)),
+      decode_failures_breakdown: Array.from(decodeFailureMap.entries())
+        .map(([token, count]) => {
+          const [ext, reason_detail] = String(token).split('|');
+          return { ext, reason_detail, count };
+        })
+        .sort((a, b) => b.count - a.count || a.ext.localeCompare(b.ext) || a.reason_detail.localeCompare(b.reason_detail)),
+      decode_error_examples: decodeExamples,
       integration_failures: Array.from(integrationFailMap.entries())
         .map(([reason, count]) => ({ reason, count }))
         .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
@@ -1364,6 +1661,7 @@ function toFassegRow(row) {
   return {
     source: 'fasseg',
     dataset: 'fasseg',
+    pipeline_mode_used: 'fasseg_eval',
     sample_hash: String(row && row.sample_hash ? row.sample_hash : ''),
     ok: Boolean(row && row.ok),
     fail_reason: row && row.fail_reason ? String(row.fail_reason) : null,
@@ -1374,8 +1672,15 @@ function toFassegRow(row) {
     module_pixels_min: safeNumber(metricStats.module_pixels_min, 0),
     empty_module_rate: round3(safeNumber(metricStats.empty_module_rate, 0)),
     leakage_bg_mean: round3(safeNumber(metricStats.leakage_bg_mean, safeNumber(metricStats.leakage_mean, 0))),
+    leakage_bg_est_mean: null,
     chin_leakage_bg: chinLeak,
     nose_leakage_bg: noseLeak,
+    chin_leakage_bg_est: null,
+    nose_leakage_bg_est: null,
+    chin_outside_oval_ratio: null,
+    nose_outside_oval_ratio: null,
+    chin_bottom_band_ratio: null,
+    nose_side_band_ratio: null,
     chin_touches_oval_bottom: false,
     nose_touches_oval_side: false,
     degraded_reasons: row && row.degraded_reason ? [String(row.degraded_reason)] : [],
@@ -1385,6 +1690,9 @@ function toFassegRow(row) {
     note: row && row.note ? String(row.note) : '',
     risk_score: round3(Math.max(safeNumber(chinLeak, 0), safeNumber(noseLeak, 0))),
     leakage_hair_mean: round3(safeNumber(metricStats.leakage_hair_mean, 0)),
+    decode_ext: null,
+    decode_magic: null,
+    decode_error_code: null,
   };
 }
 
@@ -1451,7 +1759,7 @@ function runFassegEval({ args, runDir, chosenGroup }) {
 }
 
 function topRiskRows(rows, limit = 20) {
-  return [...rows]
+  const ordered = [...rows]
     .filter((row) => String(row.pipeline_mode_used || '') === 'local')
     .filter((row) => row && row.ok === true)
     .filter((row) => safeNumber(row.module_pixels_min, 0) > 0)
@@ -1460,8 +1768,58 @@ function topRiskRows(rows, limit = 20) {
       const diff = safeNumber(b.risk_score) - safeNumber(a.risk_score);
       if (Math.abs(diff) > 1e-9) return diff;
       return String(a.sample_hash || '').localeCompare(String(b.sample_hash || ''));
-    })
-    .slice(0, Math.max(0, Math.trunc(limit)));
+    });
+  const target = Math.max(0, Math.trunc(limit));
+  if (!target || !ordered.length) return [];
+
+  const signatureOf = (row) => [
+    round3(row.risk_score),
+    round3(row.chin_outside_oval_ratio),
+    round3(row.nose_outside_oval_ratio),
+    round3(row.chin_bottom_band_ratio),
+    round3(row.nose_side_band_ratio),
+    Math.trunc(safeNumber(row.module_pixels_min, 0)),
+  ].join('|');
+
+  const selected = [];
+  const selectedHashes = new Set();
+  const signatureCounts = new Map();
+  const maxPerSignature = Math.max(2, Math.trunc(target / 4));
+
+  for (const row of ordered) {
+    const signature = signatureOf(row);
+    if (signatureCounts.has(signature)) continue;
+    selected.push(row);
+    selectedHashes.add(String(row.sample_hash || ''));
+    signatureCounts.set(signature, 1);
+    if (selected.length >= target) break;
+  }
+
+  if (selected.length < target) {
+    for (const row of ordered) {
+      const sampleHash = String(row.sample_hash || '');
+      if (selectedHashes.has(sampleHash)) continue;
+      const signature = signatureOf(row);
+      const count = signatureCounts.get(signature) || 0;
+      if (count >= maxPerSignature) continue;
+      selected.push(row);
+      selectedHashes.add(sampleHash);
+      signatureCounts.set(signature, count + 1);
+      if (selected.length >= target) break;
+    }
+  }
+
+  if (selected.length < target) {
+    for (const row of ordered) {
+      const sampleHash = String(row.sample_hash || '');
+      if (selectedHashes.has(sampleHash)) continue;
+      selected.push(row);
+      selectedHashes.add(sampleHash);
+      if (selected.length >= target) break;
+    }
+  }
+
+  return selected.slice(0, target);
 }
 
 function summarizeSourceForMd(summary) {
@@ -1495,6 +1853,40 @@ function renderMd({
     ...celebaResult.rows.map((row) => ({ ...row, source_dataset: 'celebamaskhq' })),
   ];
   const externalTopRisk = topRiskRows(externalRows, 20);
+  const constantFeatureWarnings = (() => {
+    if (!externalTopRisk.length) return [];
+    const targets = [
+      'risk_score',
+      'chin_outside_oval_ratio',
+      'nose_outside_oval_ratio',
+      'chin_bottom_band_ratio',
+      'nose_side_band_ratio',
+      'module_pixels_min',
+    ];
+    const warnings = [];
+    for (const field of targets) {
+      const values = externalTopRisk
+        .map((row) => Number(row[field]))
+        .filter((value) => Number.isFinite(value));
+      if (!values.length) continue;
+      if (stddev(values) < 1e-6) warnings.push(`RISK_FEATURE_CONSTANT(field=${field})`);
+    }
+    return warnings;
+  })();
+  const riskTopDistinctSignatures = (() => {
+    if (!externalTopRisk.length) return 0;
+    const signatures = new Set(
+      externalTopRisk.map((row) => [
+        round3(row.risk_score),
+        round3(row.chin_outside_oval_ratio),
+        round3(row.nose_outside_oval_ratio),
+        round3(row.chin_bottom_band_ratio),
+        round3(row.nose_side_band_ratio),
+        Math.trunc(safeNumber(row.module_pixels_min, 0)),
+      ].join('|')),
+    );
+    return signatures.size;
+  })();
   const integrationFailures = [
     ...((internalResult.summary && internalResult.summary.integration_failures) || []).map((row) => ({ source: 'internal', reason: row.reason, count: row.count })),
     ...((lapaResult.summary && lapaResult.summary.integration_failures) || []).map((row) => ({ source: 'lapa', reason: row.reason, count: row.count })),
@@ -1521,6 +1913,18 @@ function renderMd({
   ]
     .filter((row) => safeNumber(row.count, 0) > 0)
     .sort((a, b) => safeNumber(b.count, 0) - safeNumber(a.count, 0) || String(a.source).localeCompare(String(b.source)));
+  const decodeFailureBreakdown = [
+    ...((internalResult.summary && internalResult.summary.decode_failures_breakdown) || []).map((row) => ({ source: 'internal', ...row })),
+    ...((lapaResult.summary && lapaResult.summary.decode_failures_breakdown) || []).map((row) => ({ source: 'lapa', ...row })),
+    ...((celebaResult.summary && celebaResult.summary.decode_failures_breakdown) || []).map((row) => ({ source: 'celebamaskhq', ...row })),
+  ]
+    .filter((row) => safeNumber(row.count, 0) > 0)
+    .sort((a, b) => safeNumber(b.count, 0) - safeNumber(a.count, 0) || String(a.source).localeCompare(String(b.source)));
+  const decodeErrorExamples = [
+    ...((internalResult.summary && internalResult.summary.decode_error_examples) || []).map((row) => ({ source: 'internal', ...row })),
+    ...((lapaResult.summary && lapaResult.summary.decode_error_examples) || []).map((row) => ({ source: 'lapa', ...row })),
+    ...((celebaResult.summary && celebaResult.summary.decode_error_examples) || []).map((row) => ({ source: 'celebamaskhq', ...row })),
+  ].slice(0, 5);
   const lines = [];
   lines.push('# Mixed Review Pack');
   lines.push('');
@@ -1596,6 +2000,30 @@ function renderMd({
     lines.push('| - | - | 0 |');
   }
   lines.push('');
+  lines.push('### Decode failures breakdown');
+  lines.push('');
+  lines.push('| source | ext | reason_detail | count |');
+  lines.push('|---|---|---|---:|');
+  if (decodeFailureBreakdown.length) {
+    for (const row of decodeFailureBreakdown) {
+      lines.push(`| ${row.source} | ${row.ext || '-'} | ${row.reason_detail || '-'} | ${Math.trunc(safeNumber(row.count, 0))} |`);
+    }
+  } else {
+    lines.push('| - | - | - | 0 |');
+  }
+  lines.push('');
+  lines.push('### Top 5 decode errors (sample hash only)');
+  lines.push('');
+  lines.push('| source | sample_hash | ext | reason_detail | error_code |');
+  lines.push('|---|---|---|---|---|');
+  if (decodeErrorExamples.length) {
+    for (const row of decodeErrorExamples) {
+      lines.push(`| ${row.source} | ${row.sample_hash || '-'} | ${row.ext || '-'} | ${row.reason_detail || '-'} | ${row.error_code || '-'} |`);
+    }
+  } else {
+    lines.push('| - | - | - | - | - |');
+  }
+  lines.push('');
   lines.push('### Integration failures (remote-only)');
   lines.push('');
   lines.push('| source | integration_fail_reason | count |');
@@ -1608,18 +2036,27 @@ function renderMd({
     lines.push('| - | - | 0 |');
   }
   lines.push('');
+  lines.push('### Risk feature diagnostics');
+  lines.push('');
+  lines.push(`- top20_distinct_signature_count: ${riskTopDistinctSignatures}`);
+  if (constantFeatureWarnings.length) {
+    for (const token of constantFeatureWarnings) lines.push(`- WARNING: ${token}`);
+  } else {
+    lines.push('- no constant risk features detected in current Top20 selection');
+  }
+  lines.push('');
   lines.push('### Top 20 Risk Samples (heuristic)');
   lines.push('');
-  lines.push('| rank | source | sample_hash | risk_score | module_pixels_min | chin_touches_oval_bottom | nose_touches_oval_side | chin_leakage_bg | nose_leakage_bg | fail_reason | reverted_modules |');
-  lines.push('|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|');
+  lines.push('| rank | source | sample_hash | risk_score | module_pixels_min | chin_outside_oval_ratio | chin_bottom_band_ratio | nose_outside_oval_ratio | nose_side_band_ratio | chin_touches_oval_bottom | nose_touches_oval_side | leakage_bg_est_mean | fail_reason | reverted_modules |');
+  lines.push('|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|');
   if (externalTopRisk.length) {
     externalTopRisk.forEach((row, index) => {
       lines.push(
-        `| ${index + 1} | ${row.source_dataset} | ${row.sample_hash} | ${round3(row.risk_score)} | ${Math.trunc(safeNumber(row.module_pixels_min, 0))} | ${row.chin_touches_oval_bottom ? 1 : 0} | ${row.nose_touches_oval_side ? 1 : 0} | ${row.chin_leakage_bg == null ? '' : round3(row.chin_leakage_bg)} | ${row.nose_leakage_bg == null ? '' : round3(row.nose_leakage_bg)} | ${row.fail_reason || '-'} | ${Array.isArray(row.reverted_modules) && row.reverted_modules.length ? row.reverted_modules.join(',') : '-'} |`,
+        `| ${index + 1} | ${row.source_dataset} | ${row.sample_hash} | ${round3(row.risk_score)} | ${Math.trunc(safeNumber(row.module_pixels_min, 0))} | ${row.chin_outside_oval_ratio == null ? '' : round3(row.chin_outside_oval_ratio)} | ${row.chin_bottom_band_ratio == null ? '' : round3(row.chin_bottom_band_ratio)} | ${row.nose_outside_oval_ratio == null ? '' : round3(row.nose_outside_oval_ratio)} | ${row.nose_side_band_ratio == null ? '' : round3(row.nose_side_band_ratio)} | ${row.chin_touches_oval_bottom ? 1 : 0} | ${row.nose_touches_oval_side ? 1 : 0} | ${row.leakage_bg_est_mean == null ? '' : round3(row.leakage_bg_est_mean)} | ${row.fail_reason || '-'} | ${Array.isArray(row.reverted_modules) && row.reverted_modules.length ? row.reverted_modules.join(',') : '-'} |`,
       );
     });
   } else {
-    lines.push('| - | - | - | - | - | - | - | - | - | - | - |');
+    lines.push('| - | - | - | - | - | - | - | - | - | - | - | - | - | - |');
   }
   lines.push('');
 
@@ -1628,6 +2065,7 @@ function renderMd({
   lines.push(`- md: \`${toPosix(path.relative(process.cwd(), mdPath))}\``);
   lines.push(`- csv: \`${toPosix(path.relative(process.cwd(), csvPath))}\``);
   lines.push(`- jsonl: \`${toPosix(path.relative(process.cwd(), jsonlPath))}\``);
+  lines.push(`- gold_seed: \`reports/gold_seed_${runId}.jsonl\``);
   lines.push('');
   lines.push('- privacy: no image files or absolute paths are stored in these artifacts.');
   lines.push('');
@@ -1648,6 +2086,9 @@ async function writeCsv(filePath, rows) {
     'ok',
     'fail_reason',
     'reason_detail',
+    'decode_ext',
+    'decode_magic',
+    'decode_error_code',
     'integration_status',
     'integration_fail_reason',
     'status_code',
@@ -1656,9 +2097,16 @@ async function writeCsv(filePath, rows) {
     'module_pixels_min',
     'empty_module_rate',
     'leakage_bg_mean',
+    'leakage_bg_est_mean',
     'leakage_hair_mean',
     'chin_leakage_bg',
     'nose_leakage_bg',
+    'chin_leakage_bg_est',
+    'nose_leakage_bg_est',
+    'chin_outside_oval_ratio',
+    'nose_outside_oval_ratio',
+    'chin_bottom_band_ratio',
+    'nose_side_band_ratio',
     'chin_touches_oval_bottom',
     'nose_touches_oval_side',
     'face_detect_ok',
@@ -1682,6 +2130,63 @@ async function writeCsv(filePath, rows) {
     );
   }
   await fsp.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+function buildGoldSeedRows(rows, args) {
+  const topN = Math.max(1, Math.trunc(parseNumber(args.gold_bucket_topn, DEFAULT_GOLD_BUCKET_TOPN, 1, 200)));
+  const pixelThreshold = Math.max(
+    1,
+    Math.trunc(parseNumber(args.risk_pixels_min_thresh, DEFAULT_RISK_PIXELS_MIN_THRESH, 1, 4096)),
+  );
+  const byRisk = (items) =>
+    [...items].sort((a, b) => {
+      const diff = safeNumber(b.risk_score, 0) - safeNumber(a.risk_score, 0);
+      if (Math.abs(diff) > 1e-9) return diff;
+      return String(a.sample_hash || '').localeCompare(String(b.sample_hash || ''));
+    });
+  const localOk = rows
+    .filter((row) => row && row.ok === true)
+    .filter((row) => String(row.pipeline_mode_used || '') === 'local')
+    .filter((row) => safeNumber(row.module_pixels_min, 0) > 0);
+  const buckets = [
+    {
+      bucket: 'CHIN_OVERFLOW',
+      items: localOk.filter(
+        (row) => safeNumber(row.chin_outside_oval_ratio, 0) > args.outside_touch_threshold
+          && safeNumber(row.chin_bottom_band_ratio, 0) > args.band_touch_threshold,
+      ),
+    },
+    {
+      bucket: 'NOSE_OVERFLOW',
+      items: localOk.filter(
+        (row) => safeNumber(row.nose_outside_oval_ratio, 0) > args.outside_touch_threshold
+          && safeNumber(row.nose_side_band_ratio, 0) > args.band_touch_threshold,
+      ),
+    },
+    {
+      bucket: 'SMALL_MODULE',
+      items: localOk.filter((row) => safeNumber(row.module_pixels_min, 0) < pixelThreshold),
+    },
+  ];
+  const out = [];
+  for (const bucket of buckets) {
+    const top = byRisk(bucket.items).slice(0, topN);
+    top.forEach((row, index) => {
+      out.push({
+        bucket: bucket.bucket,
+        rank_in_bucket: index + 1,
+        source: row.source,
+        sample_hash: row.sample_hash,
+        risk_score: round3(row.risk_score),
+        module_pixels_min: Math.trunc(safeNumber(row.module_pixels_min, 0)),
+        chin_outside_oval_ratio: row.chin_outside_oval_ratio == null ? null : round3(row.chin_outside_oval_ratio),
+        chin_bottom_band_ratio: row.chin_bottom_band_ratio == null ? null : round3(row.chin_bottom_band_ratio),
+        nose_outside_oval_ratio: row.nose_outside_oval_ratio == null ? null : round3(row.nose_outside_oval_ratio),
+        nose_side_band_ratio: row.nose_side_band_ratio == null ? null : round3(row.nose_side_band_ratio),
+      });
+    });
+  }
+  return out;
 }
 
 async function main() {
@@ -1750,9 +2255,12 @@ async function main() {
   const mdPath = path.join(reportDir, `review_pack_mixed_${runId}.md`);
   const csvPath = path.join(reportDir, `review_pack_mixed_${runId}.csv`);
   const jsonlPath = path.join(reportDir, `review_pack_mixed_${runId}.jsonl`);
+  const goldSeedPath = path.join(reportDir, `gold_seed_${runId}.jsonl`);
 
   await writeJsonl(jsonlPath, mixedRows);
   await writeCsv(csvPath, mixedRows);
+  const goldSeedRows = buildGoldSeedRows(mixedRows, args);
+  await writeJsonl(goldSeedPath, goldSeedRows);
   const md = renderMd({
     runId,
     args,
@@ -1792,6 +2300,7 @@ async function main() {
       md: toPosix(path.relative(process.cwd(), mdPath)),
       csv: toPosix(path.relative(process.cwd(), csvPath)),
       jsonl: toPosix(path.relative(process.cwd(), jsonlPath)),
+      gold_seed: toPosix(path.relative(process.cwd(), goldSeedPath)),
     },
   };
   process.stdout.write(`${JSON.stringify(payload)}\n`);
