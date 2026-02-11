@@ -1944,6 +1944,168 @@ test('/v1/chat: clarification flow v2 advances local steps then resumes upstream
   );
 });
 
+test('/v1/chat: clarification flow v2 resume injects resume prefix when enabled', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+      AURORA_CHAT_RESUME_PREFIX_V1: 'true',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp1 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_on', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending1 = resp1.body?.session_patch?.state?.pending_clarification;
+        const chip1 = Array.isArray(resp1.body?.suggested_chips) ? resp1.body.suggested_chips[0] : null;
+        assert.ok(pending1);
+        assert.ok(chip1);
+
+        const resp2 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_on', 'X-Trace-ID': 'test_trace2', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip1.chip_id,
+              kind: 'chip',
+              data: chip1.data,
+            },
+            session: { state: { pending_clarification: pending1 } },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending2 = resp2.body?.session_patch?.state?.pending_clarification;
+        const chip2 = Array.isArray(resp2.body?.suggested_chips) ? resp2.body.suggested_chips[0] : null;
+        assert.ok(pending2);
+        assert.ok(chip2);
+
+        const resp3 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_on', 'X-Trace-ID': 'test_trace3', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip2.chip_id,
+              kind: 'chip',
+              data: chip2.data,
+            },
+            session: { state: { pending_clarification: pending2 } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const resumeQuery = String(resp3.body?.assistant_message?.content || '');
+        assert.match(resumeQuery, /\[RESUME CONTEXT\]/i);
+        assert.match(resumeQuery, /Original user request:\s*"CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST"/i);
+        assert.match(resumeQuery, /Clarification answers \(in order\):/i);
+        assert.match(resumeQuery, /- skin_type:/i);
+        assert.match(resumeQuery, /Instruction:\s*Do not ask for these clarifications again\./i);
+
+        const snap = snapshotVisionMetrics();
+        assert.equal(getLabeledCounterValue(snap.resumePrefixInjected, { enabled: 'true' }), 1);
+        assert.equal(getLabeledCounterValue(snap.resumePrefixHistoryItems, { count: '2' }), 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/chat: resume prefix is absent when AURORA_CHAT_RESUME_PREFIX_V1=false while history context is still sent', async () => {
+  resetVisionMetrics();
+  await withEnv(
+    {
+      AURORA_CHAT_CLARIFICATION_FLOW_V2: 'true',
+      AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT: 'true',
+      AURORA_CHAT_CLARIFICATION_FILTER_KNOWN: 'true',
+      AURORA_CHAT_RESUME_PREFIX_V1: 'false',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp1 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_off', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            message: 'CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending1 = resp1.body?.session_patch?.state?.pending_clarification;
+        const chip1 = Array.isArray(resp1.body?.suggested_chips) ? resp1.body.suggested_chips[0] : null;
+        assert.ok(pending1);
+        assert.ok(chip1);
+
+        const resp2 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_off', 'X-Trace-ID': 'test_trace2', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip1.chip_id,
+              kind: 'chip',
+              data: chip1.data,
+            },
+            session: { state: { pending_clarification: pending1 } },
+            language: 'EN',
+          })
+          .expect(200);
+        const pending2 = resp2.body?.session_patch?.state?.pending_clarification;
+        const chip2 = Array.isArray(resp2.body?.suggested_chips) ? resp2.body.suggested_chips[0] : null;
+        assert.ok(pending2);
+        assert.ok(chip2);
+
+        const resp3 = await supertest(app)
+          .post('/v1/chat')
+          .set({ 'X-Aurora-UID': 'test_uid_clar_flow_resume_prefix_off', 'X-Trace-ID': 'test_trace3', 'X-Brief-ID': 'test_brief', 'X-Lang': 'EN' })
+          .send({
+            action: {
+              action_id: chip2.chip_id,
+              kind: 'chip',
+              data: chip2.data,
+            },
+            session: { state: { pending_clarification: pending2 } },
+            language: 'EN',
+          })
+          .expect(200);
+
+        const resumeQuery = String(resp3.body?.assistant_message?.content || '');
+        assert.doesNotMatch(resumeQuery, /\[RESUME CONTEXT\]/i);
+        assert.match(resumeQuery, /clarification_history/i);
+
+        const snap = snapshotVisionMetrics();
+        assert.equal(getLabeledCounterValue(snap.resumePrefixInjected, { enabled: 'false' }), 1);
+        assert.equal(getLabeledCounterValue(snap.resumePrefixHistoryItems, { count: '0' }), 1);
+        assert.equal(getLabeledCounterValue(snap.clarificationHistorySent, { count: '2' }), 1);
+      } finally {
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: pending clarification is abandoned on free text and upstream is called with pending cleared', async () => {
   resetVisionMetrics();
   await withEnv(

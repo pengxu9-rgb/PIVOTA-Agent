@@ -60,6 +60,53 @@ function buildContextPrefix({ profile, recentLogs, ...meta } = {}) {
   return lines.length ? `${lines.join('\n')}\n\n` : '';
 }
 
+function truncateText(value, maxChars) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars);
+}
+
+function normalizeResumeHistory(history) {
+  if (!Array.isArray(history)) return [];
+  const out = [];
+  for (const item of history) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const qid = truncateText(item.question_id, 80);
+    const option = truncateText(item.option, 60);
+    if (!qid || !option) continue;
+    out.push({ question_id: qid, option });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+function buildResumeContextPrefix(resumeContext) {
+  if (!resumeContext || typeof resumeContext !== 'object' || Array.isArray(resumeContext)) return '';
+  if (resumeContext.enabled === false) return '';
+
+  const resumeText = truncateText(resumeContext.resume_user_text, 300) || '(no message)';
+  const flowId = truncateText(resumeContext.flow_id, 40);
+  const includeHistory = resumeContext.include_history !== false;
+  const history = includeHistory ? normalizeResumeHistory(resumeContext.clarification_history) : [];
+
+  const lines = ['[RESUME CONTEXT]'];
+  if (flowId) lines.push(`Flow: ${flowId}`);
+  lines.push(`Original user request: "${resumeText}"`);
+  if (history.length) {
+    lines.push('Clarification answers (in order):');
+    for (const item of history) {
+      lines.push(`- ${item.question_id}: ${item.option}`);
+    }
+  } else {
+    lines.push('Clarifications were answered via UI; proceed without asking again.');
+  }
+  lines.push(
+    'Instruction: Do not ask for these clarifications again. Continue answering the original request using the provided answers and profile.',
+  );
+  return `${lines.join('\n')}\n\n`;
+}
+
 function normalizeMockInput(input) {
   if (typeof input === 'string') return { query: input, anchor_product_id: null, messages: [] };
   if (!input || typeof input !== 'object') return { query: '', anchor_product_id: null, messages: [] };
@@ -108,6 +155,31 @@ function mockAuroraChat(input) {
       intent: 'clarify',
       cards: [],
       clarification: { questions },
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return { answer: q, intent: 'chat', cards: [] };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
     };
   }
 
@@ -889,8 +961,12 @@ async function auroraChat({
   messages,
   debug,
   allow_recommendations,
+  resume_context,
 } = {}) {
-  if (USE_AURORA_MOCK) return mockAuroraChat({ query, anchor_product_id, messages });
+  const queryText = String(query || '');
+  const resumePrefix = buildResumeContextPrefix(resume_context);
+  const finalQuery = resumePrefix ? `${resumePrefix}${queryText}` : queryText;
+  if (USE_AURORA_MOCK) return mockAuroraChat({ query: finalQuery, anchor_product_id, messages });
   const base = normalizeBaseUrl(baseUrl);
   if (!base) {
     const err = new Error('AURORA_DECISION_BASE_URL not configured');
@@ -898,7 +974,7 @@ async function auroraChat({
     throw err;
   }
   const url = `${base}/api/chat`;
-  const payload = { query };
+  const payload = { query: finalQuery };
   if (llm_provider) payload.llm_provider = llm_provider;
   if (llm_model) payload.llm_model = llm_model;
   if (anchor_product_id) payload.anchor_product_id = anchor_product_id;

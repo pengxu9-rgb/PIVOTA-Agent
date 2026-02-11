@@ -41,6 +41,8 @@ const {
   recordAuroraChatSkipped,
   recordPendingClarificationUpgraded,
   recordPendingClarificationTruncated,
+  recordResumePrefixInjected,
+  recordResumePrefixHistoryItems,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
@@ -187,6 +189,12 @@ const AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED = (() => {
 })();
 const AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_RESUME_PREFIX_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_RESUME_PREFIX_V1 || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -10875,6 +10883,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let upstreamMessage = message;
       let clarificationHistoryForUpstream = null;
+      let resumeContextForUpstream = null;
       let pendingClarificationPatchOverride = undefined;
       let forceUpstreamAfterPendingAbandon = false;
       const clarifyChipAction = isClarifyChipAction(parsed.data.action, { actionId, clarificationId });
@@ -10977,9 +10986,19 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         pendingClarificationPatchOverride = null;
         upstreamMessage = pendingClarification.resume_user_text || upstreamMessage || message;
+        const compactHistory = compactClarificationHistory(history);
         if (AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED) {
-          clarificationHistoryForUpstream = compactClarificationHistory(history);
+          clarificationHistoryForUpstream = compactHistory;
         }
+        resumeContextForUpstream = {
+          flow_id:
+            pendingClarification && typeof pendingClarification.flow_id === 'string'
+              ? pendingClarification.flow_id
+              : null,
+          resume_user_text: upstreamMessage || pendingClarification.resume_user_text || message || '(no message)',
+          clarification_history: compactHistory,
+          include_history: AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED,
+        };
         forceUpstreamAfterPendingAbandon = true;
         recordPendingClarificationCompleted();
       }
@@ -11857,6 +11876,29 @@ function mountAuroraBffRoutes(app, { logger }) {
         ...(historyForPrefix.length ? { clarification_history: historyForPrefix } : {}),
       });
       const query = `${prefix}${upstreamMessage || '(no message)'}`;
+      const isResumeUpstreamCall = Boolean(
+        AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
+          forceUpstreamAfterPendingAbandon &&
+          resumeContextForUpstream &&
+          typeof resumeContextForUpstream === 'object',
+      );
+      const resumeContextForCall = isResumeUpstreamCall
+        ? {
+            ...resumeContextForUpstream,
+            enabled: AURORA_CHAT_RESUME_PREFIX_V1_ENABLED,
+          }
+        : null;
+      if (isResumeUpstreamCall) {
+        const resumePrefixHistoryCount =
+          AURORA_CHAT_RESUME_PREFIX_V1_ENABLED &&
+          resumeContextForCall &&
+          resumeContextForCall.include_history !== false &&
+          Array.isArray(resumeContextForCall.clarification_history)
+            ? Math.min(6, resumeContextForCall.clarification_history.length)
+            : 0;
+        recordResumePrefixInjected({ enabled: AURORA_CHAT_RESUME_PREFIX_V1_ENABLED });
+        recordResumePrefixHistoryItems({ count: resumePrefixHistoryCount });
+      }
       const upstreamStartedAt = Date.now();
       try {
         upstream = await auroraChat({
@@ -11868,6 +11910,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
           ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
           ...(upstreamMessages && upstreamMessages.length ? { messages: upstreamMessages } : {}),
+          ...(isResumeUpstreamCall && resumeContextForCall ? { resume_context: resumeContextForCall } : {}),
         });
         recordUpstreamCall({ path: 'aurora_chat', status: 'ok' });
       } catch (err) {

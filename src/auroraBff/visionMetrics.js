@@ -74,6 +74,8 @@ const clarificationHistorySentCounter = new Map();
 const auroraChatSkippedCounter = new Map();
 const pendingClarificationUpgradedCounter = new Map();
 const pendingClarificationTruncatedCounter = new Map();
+const resumePrefixInjectedCounter = new Map();
+const resumePrefixHistoryItemsCounter = new Map();
 const profileContextMissingCounter = new Map();
 const sessionPatchProfileEmittedCounter = new Map();
 const upstreamCallsCounter = new Map();
@@ -267,6 +269,16 @@ function normalizePendingClarificationTruncatedField(field) {
     return token;
   }
   return 'unknown';
+}
+
+function normalizeResumePrefixEnabledFlag(enabled) {
+  return enabled ? 'true' : 'false';
+}
+
+function normalizeResumePrefixHistoryItemsCount(count) {
+  const n = Number(count);
+  if (!Number.isFinite(n) || n < 0) return '0';
+  return String(Math.max(0, Math.min(6, Math.trunc(n))));
 }
 
 function normalizeProfileContextSide(side) {
@@ -482,6 +494,22 @@ function recordPendingClarificationTruncated({ field } = {}) {
   incCounter(
     pendingClarificationTruncatedCounter,
     { field: normalizePendingClarificationTruncatedField(field) },
+    1,
+  );
+}
+
+function recordResumePrefixInjected({ enabled } = {}) {
+  incCounter(
+    resumePrefixInjectedCounter,
+    { enabled: normalizeResumePrefixEnabledFlag(Boolean(enabled)) },
+    1,
+  );
+}
+
+function recordResumePrefixHistoryItems({ count } = {}) {
+  incCounter(
+    resumePrefixHistoryItemsCounter,
+    { count: normalizeResumePrefixHistoryItemsCount(count) },
     1,
   );
 }
@@ -1105,6 +1133,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE pending_clarification_truncated_total counter');
   renderCounter(lines, 'pending_clarification_truncated_total', pendingClarificationTruncatedCounter);
 
+  lines.push('# HELP resume_prefix_injected_total Total number of resume-upstream calls where resume prefix injection is enabled=true|false.');
+  lines.push('# TYPE resume_prefix_injected_total counter');
+  renderCounter(lines, 'resume_prefix_injected_total', resumePrefixInjectedCounter);
+
+  lines.push('# HELP resume_prefix_history_items_total Total number of history items included in resume prefix blocks by count.');
+  lines.push('# TYPE resume_prefix_history_items_total counter');
+  renderCounter(lines, 'resume_prefix_history_items_total', resumePrefixHistoryItemsCounter);
+
   lines.push('# HELP profile_context_missing_total Total number of requests missing profile context from frontend session or backend storage.');
   lines.push('# TYPE profile_context_missing_total counter');
   renderCounter(lines, 'profile_context_missing_total', profileContextMissingCounter);
@@ -1233,6 +1269,8 @@ function resetVisionMetrics() {
   auroraChatSkippedCounter.clear();
   pendingClarificationUpgradedCounter.clear();
   pendingClarificationTruncatedCounter.clear();
+  resumePrefixInjectedCounter.clear();
+  resumePrefixHistoryItemsCounter.clear();
   profileContextMissingCounter.clear();
   sessionPatchProfileEmittedCounter.clear();
   upstreamCallsCounter.clear();
@@ -1299,6 +1337,8 @@ function snapshotVisionMetrics() {
     auroraChatSkipped: Array.from(auroraChatSkippedCounter.entries()),
     pendingClarificationUpgraded: Array.from(pendingClarificationUpgradedCounter.entries()),
     pendingClarificationTruncated: Array.from(pendingClarificationTruncatedCounter.entries()),
+    resumePrefixInjected: Array.from(resumePrefixInjectedCounter.entries()),
+    resumePrefixHistoryItems: Array.from(resumePrefixHistoryItemsCounter.entries()),
     profileContextMissing: Array.from(profileContextMissingCounter.entries()),
     sessionPatchProfileEmitted: Array.from(sessionPatchProfileEmittedCounter.entries()),
     upstreamCalls: Array.from(upstreamCallsCounter.entries()),
@@ -1326,6 +1366,8 @@ module.exports = {
   recordAuroraChatSkipped,
   recordPendingClarificationUpgraded,
   recordPendingClarificationTruncated,
+  recordResumePrefixInjected,
+  recordResumePrefixHistoryItems,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
