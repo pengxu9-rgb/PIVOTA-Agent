@@ -117,3 +117,47 @@ Outputs:
 ```bash
 make train-calibrator CAL_TRAIN_SAMPLES=artifacts/calibration_train_samples.ndjson
 ```
+
+## Gold Round1 Pack (review_pack_mixed-driven)
+Use this workflow for the first manual labeling round directly from mixed review outputs.
+
+1. Build deterministic round1 tasks and local image pack:
+```bash
+make gold-round1-pack \
+  RUN_ID=20260211_105639451 \
+  REVIEW_JSONL=reports/review_pack_mixed_20260211_105639451.jsonl \
+  LIMIT_INTERNAL=38 \
+  LIMIT_DATASET_LAPA=50 \
+  LIMIT_DATASET_CELEBA=50
+```
+Outputs:
+- `artifacts/gold_round1_<run_id>/images/**` (jpg-only pack)
+- `artifacts/gold_round1_<run_id>/label_studio_tasks.json`
+- `artifacts/gold_round1_<run_id>/manifest.json`
+- `reports/gold_round1_pack_<run_id>.md`
+- `reports/lapa_local_fail_triage_<run_id>.md`
+
+2. Import into local Label Studio:
+- Label config: `label_studio/project_oval_skin.xml`
+- Task JSON: `artifacts/gold_round1_<run_id>/label_studio_tasks.json`
+
+3. Evaluate exported annotations end-to-end:
+```bash
+make eval-gold-round1 \
+  RUN_ID=20260211_105639451 \
+  GOLD_EXPORT_JSON=/absolute/path/to/label_studio_export.json
+```
+Outputs:
+- `artifacts/gold_round1_<run_id>/gold_labels.ndjson`
+- `reports/eval_gold_<run_id>.md`
+- `reports/eval_gold_<run_id>.csv`
+- `reports/eval_gold_<run_id>.jsonl`
+- `artifacts/gold_round1_<run_id>/calibration_train_samples.ndjson`
+
+4. Triage one failed sample (local pipeline):
+```bash
+node scripts/triage_one_sample.mjs \
+  --source lapa \
+  --sample_hash <sample_hash> \
+  --review_jsonl reports/review_pack_mixed_<run_id>.jsonl
+```

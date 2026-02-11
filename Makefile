@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-label-import eval-gold train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-round1-pack gold-label-import eval-gold eval-gold-round1 train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -55,6 +55,9 @@ GOLD_SEED_TASKS_OUT ?= artifacts/gold_seed_tasks_labelstudio.json
 GOLD_SEED_MANIFEST_OUT ?= artifacts/gold_seed_manifest.json
 REVIEW_MD ?=
 REVIEW_JSONL ?=
+RUN_ID ?=
+GOLD_EXPORT_JSON ?=
+OUT_ROOT ?=
 GOLD_IMPORT_IN ?=
 GOLD_IMPORT_OUT ?= artifacts/gold_labels.ndjson
 GOLD_IMPORT_QA_STATUS ?= approved
@@ -194,11 +197,20 @@ gold-label-sample:
 gold-seed-pack:
 	node scripts/gold_seed_pack.mjs --limit "$(GOLD_SEED_LIMIT)" --buckets "$(GOLD_SEED_BUCKETS)" --bucket_min "$(GOLD_SEED_BUCKET_MIN)" --source_min "$(GOLD_SEED_SOURCE_MIN)" --tasks_out "$(GOLD_SEED_TASKS_OUT)" --manifest_out "$(GOLD_SEED_MANIFEST_OUT)" --report_dir "$(EVAL_REPORT_DIR)" --cache_dir "$(CACHE_DIR)" --internal_dir "$(if $(INTERNAL_DIR),$(INTERNAL_DIR),$(HOME)/Desktop/Aurora/internal test photos)" --lapa_dir "$(if $(LAPA_DIR),$(LAPA_DIR),$(HOME)/Desktop/Aurora/datasets_raw/LaPa DB)" --celeba_dir "$(if $(CELEBA_DIR),$(CELEBA_DIR),$(HOME)/Desktop/Aurora/datasets_raw/CelebAMask-HQ(1)/CelebAMask-HQ/CelebA-HQ-img)" $(if $(REVIEW_MD),--review_md "$(REVIEW_MD)",) $(if $(REVIEW_JSONL),--review_jsonl "$(REVIEW_JSONL)",) $(if $(GOLD_SEED),--seed "$(GOLD_SEED)",)
 
+gold-round1-pack:
+	node scripts/gold_round1_pack.mjs --run_id "$(RUN_ID)" --review_jsonl "$(REVIEW_JSONL)" --report_dir "$(EVAL_REPORT_DIR)" --internal_dir "$(if $(INTERNAL_DIR),$(INTERNAL_DIR),$(HOME)/Desktop/Aurora/internal test photos)" --cache_dir "$(CACHE_DIR)" --lapa_dir "$(if $(LAPA_DIR),$(LAPA_DIR),$(HOME)/Desktop/Aurora/datasets_raw/LaPa DB)" --celeba_dir "$(if $(CELEBA_DIR),$(CELEBA_DIR),$(HOME)/Desktop/Aurora/datasets_raw/CelebAMask-HQ(1)/CelebAMask-HQ/CelebA-HQ-img)" --limit_internal "$(if $(LIMIT_INTERNAL),$(LIMIT_INTERNAL),38)" --limit_lapa "$(if $(LIMIT_DATASET_LAPA),$(LIMIT_DATASET_LAPA),50)" --limit_celeba "$(if $(LIMIT_DATASET_CELEBA),$(LIMIT_DATASET_CELEBA),50)" --top_risk "$(if $(TOP_RISK),$(TOP_RISK),30)" --random_count "$(if $(RANDOM_COUNT),$(RANDOM_COUNT),20)" --guard_untriggered_min_ratio "$(if $(GUARD_UNTRIGGERED_MIN_RATIO),$(GUARD_UNTRIGGERED_MIN_RATIO),0.3)" --seed "$(if $(GOLD_ROUND1_SEED),$(GOLD_ROUND1_SEED),gold_round1_seed_v1)" --convert_heic "$(if $(CONVERT_HEIC),$(CONVERT_HEIC),true)" $(if $(OUT_ROOT),--out_root "$(OUT_ROOT)",) $(if $(HEIC_CONVERT_CMD),--heic_convert_cmd "$(HEIC_CONVERT_CMD)",)
+
 gold-label-import:
 	node scripts/gold_label_import.mjs --in "$(GOLD_IMPORT_IN)" --out "$(GOLD_IMPORT_OUT)" --qa_status "$(GOLD_IMPORT_QA_STATUS)" $(if $(GOLD_IMPORT_ANNOTATOR),--annotator "$(GOLD_IMPORT_ANNOTATOR)",)
 
 eval-gold:
 	node scripts/eval_gold.mjs --gold_labels "$(EVAL_GOLD_LABELS)" --report_dir "$(EVAL_REPORT_DIR)" --grid_size "$(EVAL_GOLD_GRID)" --calibration_out "$(EVAL_GOLD_CAL_TRAIN_OUT)" $(if $(EVAL_GOLD_PRED_JSONL),--pred_jsonl "$(EVAL_GOLD_PRED_JSONL)",)
+
+eval-gold-round1:
+	@test -n "$(RUN_ID)" || (echo "RUN_ID is required, e.g. RUN_ID=20260211_105639451" && exit 2)
+	@test -n "$(GOLD_EXPORT_JSON)" || (echo "GOLD_EXPORT_JSON is required, e.g. /absolute/path/label_studio_export.json" && exit 2)
+	node scripts/gold_label_import.mjs --in "$(GOLD_EXPORT_JSON)" --out "artifacts/gold_round1_$(RUN_ID)/gold_labels.ndjson" --qa_status "$(GOLD_IMPORT_QA_STATUS)" $(if $(GOLD_IMPORT_ANNOTATOR),--annotator "$(GOLD_IMPORT_ANNOTATOR)",)
+	node scripts/eval_gold.mjs --gold_labels "artifacts/gold_round1_$(RUN_ID)/gold_labels.ndjson" --report_dir "$(EVAL_REPORT_DIR)" --grid_size "$(EVAL_GOLD_GRID)" --calibration_out "artifacts/gold_round1_$(RUN_ID)/calibration_train_samples.ndjson" $(if $(EVAL_GOLD_PRED_JSONL),--pred_jsonl "$(EVAL_GOLD_PRED_JSONL)",)
 
 train-calibrator:
 	node scripts/train_calibrator.js --modelOutputs $(CAL_MODEL_OUTPUTS) --goldLabels $(CAL_GOLD_LABELS) --outDir $(CAL_OUT_DIR) --aliasPath $(CAL_ALIAS_PATH) --iouThreshold $(CAL_IOU) --minGroupSamples $(CAL_MIN_GROUP_SAMPLES) $(if $(CAL_TRAIN_SAMPLES),--trainSamples $(CAL_TRAIN_SAMPLES),)
