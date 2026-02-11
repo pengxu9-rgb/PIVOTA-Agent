@@ -89,6 +89,41 @@ function normalizeInputSize(value, fallback = DEFAULT_INPUT_SIZE) {
   return Math.max(128, Math.min(1024, Math.trunc(n)));
 }
 
+function summarizeChwStats(chw, width, height) {
+  if (!(chw instanceof Float32Array)) return null;
+  const h = Math.max(1, Math.trunc(Number(height) || 1));
+  const w = Math.max(1, Math.trunc(Number(width) || 1));
+  const plane = h * w;
+  if (chw.length < plane * 3) return null;
+  const channels = [];
+  for (let c = 0; c < 3; c += 1) {
+    const base = c * plane;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    let sum = 0;
+    let sumSq = 0;
+    for (let i = 0; i < plane; i += 1) {
+      const value = Number(chw[base + i] || 0);
+      if (value < min) min = value;
+      if (value > max) max = value;
+      sum += value;
+      sumSq += value * value;
+    }
+    const mean = sum / plane;
+    const variance = Math.max(0, sumSq / plane - mean * mean);
+    channels.push({
+      min,
+      max,
+      mean,
+      std: Math.sqrt(variance),
+    });
+  }
+  return {
+    shape: [1, 3, h, w],
+    channels,
+  };
+}
+
 function clampBoxToImage(box, width, height) {
   const x = Math.max(0, Math.min(width - 1, Math.trunc(Number(box.x) || 0)));
   const y = Math.max(0, Math.min(height - 1, Math.trunc(Number(box.y) || 0)));
@@ -316,6 +351,8 @@ function logitsToSkinHeatmap(logitsTensor, schema, thresholdValue) {
   );
   const scoreThreshold = Math.max(0.05, Math.min(0.95, Number(thresholdValue || DEFAULT_THRESHOLD)));
   const sigmoid = (v) => 1 / (1 + Math.exp(-Math.max(-40, Math.min(40, v))));
+  let skinProbSum = 0;
+  const pixelCount = Math.max(1, h * w);
 
   if (channelsFirst) {
     for (let y = 0; y < h; y += 1) {
@@ -323,11 +360,14 @@ function logitsToSkinHeatmap(logitsTensor, schema, thresholdValue) {
         const pixelBase = y * w + x;
         if (outputType === 'sigmoid') {
           const raw = Number(data[safeSkinClassId * h * w + pixelBase] || 0);
-          out[pixelBase] = sigmoid(raw);
+          const probability = sigmoid(raw);
+          out[pixelBase] = probability;
+          skinProbSum += probability;
           continue;
         }
         let maxLogit = Number.NEGATIVE_INFINITY;
         let maxClass = 0;
+        let skinLogit = Number(data[safeSkinClassId * h * w + pixelBase] || 0);
         for (let c = 0; c < channels; c += 1) {
           const value = Number(data[c * h * w + pixelBase] || 0);
           if (value > maxLogit) {
@@ -335,6 +375,14 @@ function logitsToSkinHeatmap(logitsTensor, schema, thresholdValue) {
             maxClass = c;
           }
         }
+        let expSum = 0;
+        for (let c = 0; c < channels; c += 1) {
+          const value = Number(data[c * h * w + pixelBase] || 0);
+          expSum += Math.exp(Math.max(-40, Math.min(40, value - maxLogit)));
+        }
+        const skinExp = Math.exp(Math.max(-40, Math.min(40, skinLogit - maxLogit)));
+        const skinProb = expSum > 0 ? skinExp / expSum : 0;
+        skinProbSum += skinProb;
         out[pixelBase] = maxClass === safeSkinClassId ? 1 : 0;
       }
     }
@@ -344,11 +392,14 @@ function logitsToSkinHeatmap(logitsTensor, schema, thresholdValue) {
         const pixelBase = y * w + x;
         if (outputType === 'sigmoid') {
           const raw = Number(data[pixelBase * channels + safeSkinClassId] || 0);
-          out[pixelBase] = sigmoid(raw);
+          const probability = sigmoid(raw);
+          out[pixelBase] = probability;
+          skinProbSum += probability;
           continue;
         }
         let maxLogit = Number.NEGATIVE_INFINITY;
         let maxClass = 0;
+        let skinLogit = Number(data[pixelBase * channels + safeSkinClassId] || 0);
         for (let c = 0; c < channels; c += 1) {
           const value = Number(data[pixelBase * channels + c] || 0);
           if (value > maxLogit) {
@@ -356,12 +407,26 @@ function logitsToSkinHeatmap(logitsTensor, schema, thresholdValue) {
             maxClass = c;
           }
         }
+        let expSum = 0;
+        for (let c = 0; c < channels; c += 1) {
+          const value = Number(data[pixelBase * channels + c] || 0);
+          expSum += Math.exp(Math.max(-40, Math.min(40, value - maxLogit)));
+        }
+        const skinExp = Math.exp(Math.max(-40, Math.min(40, skinLogit - maxLogit)));
+        const skinProb = expSum > 0 ? skinExp / expSum : 0;
+        skinProbSum += skinProb;
         out[pixelBase] = maxClass === safeSkinClassId ? 1 : 0;
       }
     }
   }
 
-  return { heatmap: out, width: w, height: h, threshold: scoreThreshold };
+  return {
+    heatmap: out,
+    width: w,
+    height: h,
+    threshold: scoreThreshold,
+    skin_prob_mean: skinProbSum / pixelCount,
+  };
 }
 
 function maskBoundingNorm(mask, gridSize) {
@@ -397,6 +462,7 @@ async function inferSkinMaskOnFaceCrop({
   threshold,
   skinClassId,
   allowPriorFallback = true,
+  includeDebugStats = false,
 } = {}) {
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
     return { ok: false, reason: 'image_buffer_missing' };
@@ -497,6 +563,7 @@ async function inferSkinMaskOnFaceCrop({
     chw[size + i] = (source[1] - inputMean[1]) / inputStd[1];
     chw[size * 2 + i] = (source[2] - inputMean[2]) / inputStd[2];
   }
+  const inputTensorStats = includeDebugStats ? summarizeChwStats(chw, targetInputW, targetInputH) : null;
 
   const inputName = Array.isArray(session.inputNames) && session.inputNames[0] ? session.inputNames[0] : 'pixel_values';
   const outputName = Array.isArray(session.outputNames) && session.outputNames[0] ? session.outputNames[0] : null;
@@ -587,7 +654,14 @@ async function inferSkinMaskOnFaceCrop({
     mask_rle_norm: encodeRleBinary(skinMask),
     positive_pixels: positivePixels,
     positive_ratio: positivePixels / (targetGrid * targetGrid),
+    skin_prob_mean: Number.isFinite(Number(logitsMask.skin_prob_mean)) ? Number(logitsMask.skin_prob_mean) : null,
     bbox: maskBoundingNorm(skinMask, targetGrid),
+    ...(includeDebugStats
+      ? {
+          input_tensor_stats: inputTensorStats,
+          face_crop_px: { ...faceBox },
+        }
+      : {}),
   };
 }
 

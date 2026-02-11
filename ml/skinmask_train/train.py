@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from transformers import AutoImageProcessor, SegformerForSemanticSegmentation, get_linear_schedule_with_warmup
+from transformers import SegformerForSemanticSegmentation, get_linear_schedule_with_warmup
 
 from .augment import build_eval_transform, build_train_augment
 from .datasets import (
@@ -27,6 +27,7 @@ from .datasets import (
     to_device,
 )
 from .label_map import CLASS_TO_ID, ID_TO_CLASS, IGNORE_INDEX, UNIFIED_CLASSES
+from .preprocess import create_train_image_processor
 
 
 def now_key() -> str:
@@ -204,9 +205,7 @@ def main() -> None:
     train_dataset = MultiDatasetSegDataset(train_records, transform=build_train_augment(args.image_size))
     val_dataset = MultiDatasetSegDataset(val_records, transform=build_eval_transform(args.image_size)) if val_records else None
 
-    image_processor = AutoImageProcessor.from_pretrained(args.backbone_name)
-    if hasattr(image_processor, "do_reduce_labels"):
-        image_processor.do_reduce_labels = False
+    image_processor = create_train_image_processor(args.backbone_name)
     collate_fn = partial(collate_for_segformer, image_processor=image_processor)
 
     train_loader = DataLoader(

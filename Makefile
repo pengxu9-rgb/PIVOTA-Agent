@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit train-circle-prior eval-circle eval-circle-fasseg eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-circle-ab bench-skinmask
+.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-label-import train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit train-circle-prior eval-circle eval-circle-fasseg eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -268,5 +268,8 @@ eval-circle-fasseg-matrix:
 
 bench-skinmask:
 	node scripts/bench_skinmask.mjs --onnx "$(ONNX)" --cache_dir "$(CACHE_DIR)" --datasets "$(DATASETS)" --iterations "$(BENCH_ITERS)" --warmup "$(BENCH_WARMUP)" --timeout_ms "$(BENCH_TIMEOUT_MS)" --report_dir "$(EVAL_REPORT_DIR)" $(if $(BENCH_IMAGE),--input_image "$(BENCH_IMAGE)",) $(if $(filter true,$(BENCH_STRICT)),--strict,)
+
+debug-skinmask-preproc:
+	node scripts/debug_skinmask_preproc_consistency.mjs --cache_dir "$(CACHE_DIR)" --report_dir "$(EVAL_REPORT_DIR)" --onnx "$(if $(ONNX),$(ONNX),artifacts/skinmask_v1.onnx)" --limit "$(if $(LIMIT),$(LIMIT),20)" --grid_size "$(EVAL_GRID_SIZE)" --timeout_ms "$(EVAL_TIMEOUT_MS)" --backbone_name "$(SKINMASK_BACKBONE)" $(if $(EVAL_SAMPLE_SEED),--seed "$(EVAL_SAMPLE_SEED)",) $(if $(filter true,$(EVAL_SHUFFLE)),--shuffle,)
 
 eval-datasets: datasets-prepare datasets-audit eval-circle
