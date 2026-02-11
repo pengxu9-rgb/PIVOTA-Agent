@@ -66,6 +66,8 @@ const KNOWN_STABLE_PRODUCT_REFS = [
       'Niacinamide 10% + Zinc 1%',
       'the ordinary niacinamide 10 zinc 1',
       'niacinamide 10 zinc 1',
+      'c231aaaa-8b00-4145-a704-684931049303',
+      'c231aaaa8b004145a704684931049303',
     ],
   },
   {
@@ -80,6 +82,8 @@ const KNOWN_STABLE_PRODUCT_REFS = [
       'winona soothing repair serum',
       '薇诺娜 舒缓 修护 精华',
       '薇诺娜修护精华',
+      'a39dd7a3-5d80-4cb3-82e1-3bf2707f65fc',
+      'a39dd7a35d804cb382e13bf2707f65fc',
     ],
   },
   {
@@ -94,6 +98,8 @@ const KNOWN_STABLE_PRODUCT_REFS = [
       'ipsa time reset aqua',
       'Time Reset Aqua',
       'ipsa reset aqua',
+      'e7c90e06-8673-4c97-835d-074a26ab2162',
+      'e7c90e0686734c97835d074a26ab2162',
     ],
   },
 ];
@@ -172,10 +178,8 @@ function buildKnownStableAliasEntries() {
 const KNOWN_STABLE_ALIAS_ENTRIES = buildKnownStableAliasEntries();
 
 function resolveKnownStableProductRef({ query, normalizedQuery, queryTokens }) {
-  const raw = String(query || '').trim();
   const normalized = String(normalizedQuery || '').trim();
   if (!normalized || !Array.isArray(queryTokens) || queryTokens.length === 0) return null;
-  if (isUuidLike(raw)) return null;
 
   const compactQuery = compactNoSpaces(normalized);
   let best = null;
@@ -949,6 +953,55 @@ function createProductGroundingResolver(deps = {}) {
     sources.push({ source: 'hints_product_ref', ok: false, reason: 'opaque_hint_requires_lookup' });
   }
 
+  const enableStableAliasShortCircuit =
+    options?.stable_alias_short_circuit === true || options?.stableAliasShortCircuit === true;
+  if (enableStableAliasShortCircuit) {
+    // Fast path: known stable aliases should not depend on cache/upstream availability.
+    const stableAliasEarly = resolveKnownStableProductRef({
+      query: q,
+      normalizedQuery,
+      queryTokens,
+    });
+    if (stableAliasEarly) {
+      const latencyMs = Date.now() - startMs;
+      const resolvedRef = {
+        product_id: stableAliasEarly.product_ref.product_id,
+        merchant_id: stableAliasEarly.product_ref.merchant_id,
+      };
+      sources.push({
+        source: 'stable_alias_ref',
+        ok: true,
+        count: 1,
+        reason: stableAliasEarly.reason || 'stable_alias_match',
+      });
+      return {
+        resolved: true,
+        product_ref: resolvedRef,
+        confidence: Number(stableAliasEarly.score || 0.95),
+        reason: 'stable_alias_match',
+        reason_code: 'stable_alias_match',
+        candidates: [
+          {
+            product_ref: resolvedRef,
+            title: stableAliasEarly.title || q,
+            score: Number(stableAliasEarly.score || 0.95),
+            reason: stableAliasEarly.reason || 'stable_alias_match',
+          },
+        ],
+        normalized_query: normalizedQuery,
+        metadata: {
+          lang: String(lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
+          timeout_ms: timeoutMs,
+          latency_ms: latencyMs,
+          sources,
+          stable_alias_short_circuit: true,
+          ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+          ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
+        },
+      };
+    }
+  }
+
   function remainingMs() {
     return Math.max(0, deadlineMs - Date.now());
   }
@@ -1107,13 +1160,11 @@ function createProductGroundingResolver(deps = {}) {
     options,
   });
 
-  const hasAliasHints = Array.isArray(hintData.aliases) && hintData.aliases.length > 0;
-  const shouldTryStableAliasFallback =
-    !decision.resolved &&
-    (
-      (!hintData.product_ref && !hasAliasHints) ||
-      opaqueHintProductId
-    );
+  const allowStableAliasForUuid =
+    options?.allow_stable_alias_for_uuid === true || options?.allowStableAliasForUuid === true;
+  const allowStableAliasFallback =
+    !isUuidLike(rawQuery) || Boolean(hintedRefProductId) || allowStableAliasForUuid;
+  const shouldTryStableAliasFallback = !decision.resolved && allowStableAliasFallback;
   const stableAliasMatch = shouldTryStableAliasFallback
     ? resolveKnownStableProductRef({
         query: q,

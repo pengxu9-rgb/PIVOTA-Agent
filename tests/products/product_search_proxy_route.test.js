@@ -41,7 +41,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     else process.env.DATABASE_URL = prevEnv.DATABASE_URL;
   });
 
-  test('uses find_products_multi fallback when primary search returns unusable shell rows', async () => {
+  test('prefers resolver fallback when primary search returns unusable shell rows', async () => {
     const queryText = 'The Ordinary Niacinamide 10% + Zinc 1%';
     nock('http://pivota.test')
       .get('/agent/v1/products/search')
@@ -114,7 +114,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       expect.objectContaining({
         proxy_search_fallback: expect.objectContaining({
           applied: true,
-          reason: 'empty_or_unusable_primary',
+          reason: 'resolver_after_primary',
         }),
       }),
     );
