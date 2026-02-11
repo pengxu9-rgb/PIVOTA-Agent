@@ -11,6 +11,11 @@ const LATIN_STOPWORDS = new Set([
   'at',
   'be',
   'by',
+  'can',
+  'could',
+  'did',
+  'do',
+  'does',
   'for',
   'from',
   'have',
@@ -21,67 +26,42 @@ const LATIN_STOPWORDS = new Set([
   'of',
   'on',
   'or',
+  'please',
+  'should',
   'the',
   'this',
   'to',
+  'want',
   'with',
+  'would',
   'you',
   'your',
-]);
-const SUPPORTED_SCORING_VERSIONS = new Set(['v1', 'v2']);
-const DEFAULT_SCORING_VERSION = normalizeScoringVersion(
-  process.env.PRODUCT_GROUNDING_SCORING_VERSION || process.env.AURORA_PRODUCT_GROUNDING_SCORING_VERSION,
-  'v1',
-);
-const V2_QUERY_NOISE_TOKENS = new Set([
+  // High-frequency commerce wrappers that are not useful for product identity.
   'any',
   'available',
   'buy',
-  'can',
-  'could',
-  'did',
-  'do',
-  'does',
   'find',
-  'in',
+  'in-stock',
   'instock',
   'need',
-  'please',
   'product',
   'products',
   'sell',
   'selling',
   'stock',
-  'where',
-  'with',
 ]);
 const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
 const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
 const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
-const NUMERIC_ONLY_RE = /^\d+(?:\.\d+)?$/;
-const NUMERIC_WITH_UNIT_RE = /^(\d+(?:\.\d+)?)(ml|l|g|kg|oz)$/i;
-const SPF_COMPACT_RE = /^spf(\d{1,3})$/i;
-const ALNUM_MODEL_RE = /^(?=.*[a-z])(?=.*\d)[a-z0-9]{4,16}$/i;
-const V2_BRAND_ALIAS_RULES = [
-  { canonical: 'la roche posay', aliases: ['la roche posay', 'larocheposay', 'lrp', '理肤泉'] },
-  { canonical: 'sk ii', aliases: ['sk ii', 'sk2', 'skii', '神仙水'] },
-  { canonical: 'the ordinary', aliases: ['the ordinary', 'ordinary', 'to'] },
-  { canonical: 'paulas choice', aliases: ['paulas choice', 'paulaschoice', '宝拉珍选'] },
-  { canonical: 'cerave', aliases: ['cerave', 'cera ve', '适乐肤'] },
-  { canonical: 'winona', aliases: ['winona', '薇诺娜', 'wei nuo na'] },
-];
-let V2_BRAND_ALIAS_INDEX = null;
 
-function normalizeScoringVersion(raw, fallback = 'v1') {
-  const normalized = String(raw || '').trim().toLowerCase();
-  if (SUPPORTED_SCORING_VERSIONS.has(normalized)) return normalized;
-  return fallback;
+function compactNoSpaces(s) {
+  return String(s || '').replace(/\s+/g, '');
 }
 
-function resolveScoringVersionFromOptions(options, fallback = DEFAULT_SCORING_VERSION) {
-  const opt = options && typeof options === 'object' ? options : {};
-  const raw = opt.scoring_version ?? opt.scoringVersion ?? fallback;
-  return normalizeScoringVersion(raw, fallback);
+function stripCommonCjkQueryAffixes(compact) {
+  const s = String(compact || '');
+  if (!s) return '';
+  return s.replace(CJK_QUERY_PREFIX_RE, '').replace(CJK_QUERY_SUFFIX_RE, '');
 }
 
 function sleep(ms) {
@@ -236,179 +216,6 @@ function tokenizeNormalizedResolverQuery(normalized) {
   return out;
 }
 
-function compactNoSpaces(s) {
-  return String(s || '').replace(/\s+/g, '');
-}
-
-function stripCommonCjkQueryAffixes(compact) {
-  const s = String(compact || '');
-  if (!s) return '';
-  return s.replace(CJK_QUERY_PREFIX_RE, '').replace(CJK_QUERY_SUFFIX_RE, '').replace(/的/g, '');
-}
-
-function buildV2BrandAliasIndex() {
-  return V2_BRAND_ALIAS_RULES.map((rule) => {
-    const canonical = normalizeTextForResolver(rule.canonical);
-    const aliases = (Array.isArray(rule.aliases) ? rule.aliases : [])
-      .map((alias) => normalizeTextForResolver(alias))
-      .filter(Boolean);
-    return { canonical, aliases };
-  }).filter((entry) => entry.canonical && entry.aliases.length > 0);
-}
-
-function getV2BrandAliasIndex() {
-  if (V2_BRAND_ALIAS_INDEX) return V2_BRAND_ALIAS_INDEX;
-  V2_BRAND_ALIAS_INDEX = buildV2BrandAliasIndex();
-  return V2_BRAND_ALIAS_INDEX;
-}
-
-function collectCanonicalBrandsFromText(normalizedText) {
-  const text = String(normalizedText || '').trim();
-  if (!text) return new Set();
-
-  const tokens = new Set(tokenizeNormalizedResolverQuery(text));
-  const compactText = compactNoSpaces(text);
-  const padded = ` ${text} `;
-  const out = new Set();
-  for (const rule of getV2BrandAliasIndex()) {
-    for (const alias of rule.aliases) {
-      if (!alias) continue;
-      const aliasHasHan = HAS_HAN_RE.test(alias);
-      if (alias.includes(' ')) {
-        if (padded.includes(` ${alias} `)) {
-          out.add(rule.canonical);
-          break;
-        }
-      } else if (
-        tokens.has(alias) ||
-        (aliasHasHan && (text.includes(alias) || compactText.includes(compactNoSpaces(alias))))
-      ) {
-        out.add(rule.canonical);
-        break;
-      }
-    }
-  }
-  return out;
-}
-
-function normalizeNumericValue(value) {
-  if (!Number.isFinite(value)) return '';
-  const rounded = Math.round(value * 1000) / 1000;
-  return Number.isInteger(rounded) ? String(Math.trunc(rounded)) : String(rounded);
-}
-
-function extractNumericSignalsFromTokens(tokens) {
-  const signal = {
-    volume: new Set(),
-    spf: new Set(),
-    percent: new Set(),
-    model: new Set(),
-  };
-  const list = Array.isArray(tokens) ? tokens : [];
-  for (let i = 0; i < list.length; i += 1) {
-    const token = String(list[i] || '').trim().toLowerCase();
-    if (!token) continue;
-
-    const compactSpf = token.match(SPF_COMPACT_RE);
-    if (compactSpf && compactSpf[1]) {
-      signal.spf.add(compactSpf[1]);
-      continue;
-    }
-
-    if (token === 'spf' && i + 1 < list.length) {
-      const maybeSpf = String(list[i + 1] || '').trim().toLowerCase();
-      if (NUMERIC_ONLY_RE.test(maybeSpf)) {
-        signal.spf.add(normalizeNumericValue(Number(maybeSpf)));
-      }
-      continue;
-    }
-
-    const unitMatch = token.match(NUMERIC_WITH_UNIT_RE);
-    if (unitMatch) {
-      signal.volume.add(`${normalizeNumericValue(Number(unitMatch[1]))}${unitMatch[2].toLowerCase()}`);
-      continue;
-    }
-
-    if (NUMERIC_ONLY_RE.test(token)) {
-      const numeric = normalizeNumericValue(Number(token));
-      if (i + 1 < list.length && String(list[i + 1] || '').trim().toLowerCase() === 'percent') {
-        signal.percent.add(numeric);
-      }
-      continue;
-    }
-
-    if (ALNUM_MODEL_RE.test(token)) {
-      signal.model.add(token);
-      const prevToken = i > 0 ? String(list[i - 1] || '').trim().toLowerCase() : '';
-      if (/^[a-z]{1,4}$/.test(prevToken) && /^\d+[a-z]/.test(token)) {
-        const merged = `${prevToken}${token}`;
-        if (ALNUM_MODEL_RE.test(merged)) {
-          signal.model.add(merged);
-        }
-      }
-    }
-  }
-  return signal;
-}
-
-function countSetIntersection(setA, setB) {
-  if (!setA || !setB || setA.size <= 0 || setB.size <= 0) return 0;
-  let count = 0;
-  for (const v of setA) {
-    if (setB.has(v)) count += 1;
-  }
-  return count;
-}
-
-function clamp01(v) {
-  if (!Number.isFinite(v)) return 0;
-  if (v <= 0) return 0;
-  if (v >= 1) return 1;
-  return v;
-}
-
-function buildV2QueryContext({ normalizedQuery, queryTokens }) {
-  const baseTokens = Array.isArray(queryTokens) ? queryTokens : [];
-  const filteredTokens = baseTokens.filter((token) => !V2_QUERY_NOISE_TOKENS.has(String(token || '').trim().toLowerCase()));
-  const effectiveTokens = filteredTokens.length ? filteredTokens : baseTokens;
-
-  const compactQuery = compactNoSpaces(normalizedQuery);
-  const strippedCompactQuery = HAS_HAN_RE.test(compactQuery) ? stripCommonCjkQueryAffixes(compactQuery) : compactQuery;
-  const effectiveCompactQuery = String(strippedCompactQuery || compactQuery || '').trim();
-
-  const tokenSet = new Set(effectiveTokens);
-  return {
-    normalizedQuery,
-    queryTokens: effectiveTokens,
-    queryTokenSet: tokenSet,
-    queryCompact: effectiveCompactQuery,
-    queryNumericSignals: extractNumericSignalsFromTokens(effectiveTokens),
-    queryCanonicalBrands: collectCanonicalBrandsFromText(normalizedQuery),
-  };
-}
-
-function buildV2CandidateProfile(product) {
-  const title = getCandidateTitle(product);
-  const brand = getCandidateBrand(product);
-  const combined = `${brand} ${title}`.trim();
-
-  const normalizedTitle = normalizeTextForResolver(title);
-  const normalizedBrand = normalizeTextForResolver(brand);
-  const normalizedCombined = normalizeTextForResolver(combined);
-  const tokenList = tokenizeNormalizedResolverQuery(normalizedCombined);
-  const tokenSet = new Set(tokenList);
-
-  return {
-    normalizedTitle,
-    normalizedBrand,
-    normalizedCombined,
-    compactCombined: compactNoSpaces(normalizedCombined),
-    tokenSet,
-    numericSignals: extractNumericSignalsFromTokens(tokenList),
-    canonicalBrands: collectCanonicalBrandsFromText(`${normalizedBrand} ${normalizedCombined}`.trim()),
-  };
-}
-
 function isExternalProduct(product) {
   const mid = String(product?.merchant_id || product?.merchantId || '').trim();
   if (mid === EXTERNAL_SEED_MERCHANT_ID) return true;
@@ -481,8 +288,8 @@ function computeTokenOverlapScoreFromTokenSet(queryTokens, tokenSet) {
   return Math.max(f1, recall * 0.9);
 }
 
-function computeCandidateTextScoreV1({ normalizedQuery, queryTokens, product }) {
-  if (!normalizedQuery) return 0;
+function computeCandidateTextScore({ normalizedQuery, queryTokens, product }) {
+  if (!normalizedQuery) return { score: 0, reason: 'empty_query' };
 
   const title = getCandidateTitle(product);
   const normTitle = normalizeTextForResolver(title);
@@ -494,120 +301,21 @@ function computeCandidateTextScoreV1({ normalizedQuery, queryTokens, product }) 
   const normCombined = normalizeTextForResolver(combined);
   if (normCombined && normCombined.includes(normalizedQuery)) return { score: 0.9, reason: 'brand_title_contains_query' };
 
+  // CJK queries often come without whitespace tokenization (e.g. "有没有薇诺娜修护乳").
+  // If we have Han characters, fall back to compact containment (strip common question affixes).
+  if (normCombined && (HAS_HAN_RE.test(normalizedQuery) || HAS_HAN_RE.test(normCombined))) {
+    const compactQuery = stripCommonCjkQueryAffixes(compactNoSpaces(normalizedQuery));
+    if (compactQuery && compactQuery.length >= 2) {
+      const compactCandidate = compactNoSpaces(normCombined);
+      if (compactCandidate && compactCandidate.includes(compactQuery)) {
+        return { score: 0.9, reason: 'cjk_compact_contains_query' };
+      }
+    }
+  }
+
   const tokens = tokenizeNormalizedResolverQuery(normCombined);
   const score = computeTokenOverlapScoreFromTokenSet(queryTokens, new Set(tokens));
   return { score, reason: 'token_overlap' };
-}
-
-function scoreNumericSignalsV2(querySignals, candidateSignals) {
-  const specs = [
-    { key: 'volume', match: 0.18, mismatch: -0.22, missing: -0.04 },
-    { key: 'spf', match: 0.14, mismatch: -0.16, missing: -0.03 },
-    { key: 'percent', match: 0.1, mismatch: -0.12, missing: -0.02 },
-    { key: 'model', match: 0.08, mismatch: -0.1, missing: 0 },
-  ];
-  let delta = 0;
-  let signal = 0;
-  let matched = 0;
-  for (const spec of specs) {
-    const querySet = querySignals?.[spec.key];
-    if (!querySet || querySet.size <= 0) continue;
-    const candidateSet = candidateSignals?.[spec.key];
-    if (!candidateSet || candidateSet.size <= 0) {
-      delta += spec.missing;
-      signal += spec.missing;
-      continue;
-    }
-    const common = countSetIntersection(querySet, candidateSet);
-    if (common > 0) {
-      delta += spec.match;
-      signal += spec.match;
-      matched += 1;
-      continue;
-    }
-    delta += spec.mismatch;
-    signal += spec.mismatch;
-  }
-  return { delta, signal, matched };
-}
-
-function computeCandidateTextScoreV2({ queryContext, candidateProfile }) {
-  const normalizedQuery = String(queryContext?.normalizedQuery || '').trim();
-  if (!normalizedQuery) return { score: 0, reason: 'empty_query', signal_score: 0 };
-
-  if (candidateProfile.normalizedTitle && candidateProfile.normalizedTitle === normalizedQuery) {
-    return { score: 1, reason: 'exact_title_v2', signal_score: 1 };
-  }
-  if (candidateProfile.normalizedCombined && candidateProfile.normalizedCombined === normalizedQuery) {
-    return { score: 1, reason: 'exact_combined_v2', signal_score: 1 };
-  }
-
-  let score = computeTokenOverlapScoreFromTokenSet(queryContext.queryTokens, candidateProfile.tokenSet);
-  let signalScore = 0;
-  let reason = 'token_overlap_v2';
-
-  const commonTokens = countSetIntersection(queryContext.queryTokenSet, candidateProfile.tokenSet);
-  if (candidateProfile.normalizedTitle && candidateProfile.normalizedTitle.includes(normalizedQuery) && normalizedQuery.length >= 4) {
-    score = Math.max(score, 0.9);
-    signalScore += 0.25;
-    reason = 'title_contains_query_v2';
-  } else if (
-    candidateProfile.normalizedCombined &&
-    candidateProfile.normalizedCombined.includes(normalizedQuery) &&
-    normalizedQuery.length >= 4
-  ) {
-    score = Math.max(score, 0.84);
-    signalScore += 0.2;
-    reason = 'combined_contains_query_v2';
-  }
-
-  if (
-    queryContext.queryCompact.length >= 2 &&
-    candidateProfile.compactCombined &&
-    candidateProfile.compactCombined.includes(queryContext.queryCompact)
-  ) {
-    score = Math.max(score, 0.82);
-    signalScore += 0.18;
-    reason = 'compact_contains_query_v2';
-  }
-
-  const numeric = scoreNumericSignalsV2(queryContext.queryNumericSignals, candidateProfile.numericSignals);
-  score += numeric.delta;
-  signalScore += numeric.signal;
-
-  if (queryContext.queryCanonicalBrands.size > 0) {
-    const matchedBrands = countSetIntersection(queryContext.queryCanonicalBrands, candidateProfile.canonicalBrands);
-    if (matchedBrands > 0) {
-      score += 0.14;
-      signalScore += 0.14;
-    } else if (candidateProfile.canonicalBrands.size > 0) {
-      score -= 0.06;
-      signalScore -= 0.06;
-    }
-  }
-
-  if (queryContext.queryTokens.length >= 3 && commonTokens <= 1) {
-    score -= 0.1;
-    signalScore -= 0.1;
-  } else if (queryContext.queryTokens.length >= 2 && commonTokens === 0) {
-    score -= 0.18;
-    signalScore -= 0.18;
-  }
-
-  if (
-    queryContext.queryTokens.length <= 1 &&
-    commonTokens === 0 &&
-    !(queryContext.queryCompact && candidateProfile.compactCombined.includes(queryContext.queryCompact))
-  ) {
-    score -= 0.08;
-    signalScore -= 0.08;
-  }
-
-  return {
-    score: clamp01(score),
-    reason,
-    signal_score: signalScore,
-  };
 }
 
 function computeInventoryBoost(product) {
@@ -637,15 +345,8 @@ function computeOrderablePenalty(product) {
   return v ? 0 : -0.25;
 }
 
-function productRefSortKey(ref) {
-  const merchant = String(ref?.merchant_id || '').trim();
-  const product = String(ref?.product_id || '').trim();
-  return `${merchant}::${product}`;
-}
-
 function scoreAndRankCandidates({ query, lang, products, options }) {
   const opt = options && typeof options === 'object' ? options : {};
-  const scoringVersion = resolveScoringVersionFromOptions(opt, DEFAULT_SCORING_VERSION);
   const normalizedQuery =
     typeof opt.normalized_query === 'string' && opt.normalized_query.trim()
       ? String(opt.normalized_query).trim()
@@ -658,7 +359,6 @@ function scoreAndRankCandidates({ query, lang, products, options }) {
   const preferMerchantsRaw = Array.isArray(opt.prefer_merchants) ? opt.prefer_merchants : [];
   const preferMerchantsSet = new Set(preferMerchantsRaw.map((m) => String(m || '').trim()).filter(Boolean));
   const allowExternalSeed = options?.allow_external_seed === true;
-  const v2QueryContext = scoringVersion === 'v2' ? buildV2QueryContext({ normalizedQuery, queryTokens }) : null;
 
   const scored = [];
   for (const p of products || []) {
@@ -667,21 +367,13 @@ function scoreAndRankCandidates({ query, lang, products, options }) {
     const ref = extractProductRef(p);
     if (!ref) continue;
 
-    const base =
-      scoringVersion === 'v2'
-        ? computeCandidateTextScoreV2({
-            queryContext: v2QueryContext,
-            candidateProfile: buildV2CandidateProfile(p),
-          })
-        : computeCandidateTextScoreV1({ normalizedQuery, queryTokens, product: p });
+    const base = computeCandidateTextScore({ normalizedQuery, queryTokens, product: p });
     const isPreferredMerchant = Boolean(ref.merchant_id && preferMerchantsSet.has(ref.merchant_id));
     const merchantBoost = isPreferredMerchant ? 0.18 : 0;
     const invBoost = computeInventoryBoost(p);
     const orderablePenalty = computeOrderablePenalty(p);
-    const signalScore = Number(base.signal_score || 0);
 
-    const rankScore =
-      base.score + merchantBoost + invBoost + orderablePenalty + (scoringVersion === 'v2' ? signalScore * 0.02 : 0);
+    const rankScore = base.score + merchantBoost + invBoost + orderablePenalty;
     let final = rankScore;
     if (final < 0) final = 0;
     if (final > 1) final = 1;
@@ -694,46 +386,27 @@ function scoreAndRankCandidates({ query, lang, products, options }) {
       score: Number(final.toFixed(4)),
       _rank_score: Number(rankScore.toFixed(6)),
       _preferred_merchant: isPreferredMerchant,
-      _signal_score: Number(signalScore.toFixed(6)),
-      _ref_sort_key: productRefSortKey(ref),
       score_reason: base.reason,
       _raw: p,
     });
   }
 
-  if (scoringVersion === 'v2') {
-    scored.sort((a, b) => {
-      const ds = (b._rank_score || 0) - (a._rank_score || 0);
-      if (ds) return ds;
-      const ss = (b._signal_score || 0) - (a._signal_score || 0);
-      if (ss) return ss;
-      const dp = (b._preferred_merchant ? 1 : 0) - (a._preferred_merchant ? 1 : 0);
-      if (dp) return dp;
-      const dscore = (b.score || 0) - (a.score || 0);
-      if (dscore) return dscore;
-      return String(a._ref_sort_key || '').localeCompare(String(b._ref_sort_key || ''));
-    });
-  } else {
-    scored.sort((a, b) => {
-      const ds = (b._rank_score || 0) - (a._rank_score || 0);
-      if (ds) return ds;
-      const dp = (b._preferred_merchant ? 1 : 0) - (a._preferred_merchant ? 1 : 0);
-      if (dp) return dp;
-      return (b.score || 0) - (a.score || 0);
-    });
-  }
+  scored.sort((a, b) => {
+    const ds = (b._rank_score || 0) - (a._rank_score || 0);
+    if (ds) return ds;
+    const dp = (b._preferred_merchant ? 1 : 0) - (a._preferred_merchant ? 1 : 0);
+    if (dp) return dp;
+    return (b.score || 0) - (a.score || 0);
+  });
   return {
     normalized_query: normalizedQuery,
     query_tokens: queryTokens,
-    scoring_version: scoringVersion,
     scored,
   };
 }
 
 function resolveFromRankedCandidates({ ranked, options }) {
-  const scoringVersion = resolveScoringVersionFromOptions(options, DEFAULT_SCORING_VERSION);
-  const defaultThreshold = scoringVersion === 'v2' ? 0.68 : 0.72;
-  const threshold = typeof options?.min_confidence === 'number' ? options.min_confidence : defaultThreshold;
+  const threshold = typeof options?.min_confidence === 'number' ? options.min_confidence : 0.72;
   const top = Array.isArray(ranked) ? ranked[0] : null;
   if (!top) {
     return {
@@ -1013,10 +686,6 @@ function createProductGroundingResolver(deps = {}) {
     typeof deps.resolveFromRankedCandidates === 'function'
       ? deps.resolveFromRankedCandidates
       : resolveFromRankedCandidates;
-  const defaultScoringVersion = normalizeScoringVersion(
-    deps.defaultScoringVersion || deps.default_scoring_version || DEFAULT_SCORING_VERSION,
-    DEFAULT_SCORING_VERSION,
-  );
 
   return async function resolveProductRef({
     query,
@@ -1027,105 +696,106 @@ function createProductGroundingResolver(deps = {}) {
     pivotaApiKey,
     checkoutToken,
   }) {
-    const startMs = Date.now();
-    const scoringVersion = resolveScoringVersionFromOptions(options, defaultScoringVersion);
-    const timeoutMs = clampInt(options?.timeout_ms, { min: 100, max: 15000, fallback: 1600 });
-    const deadlineMs = startMs + timeoutMs;
+  const startMs = Date.now();
+  const timeoutMs = clampInt(options?.timeout_ms, { min: 100, max: 15000, fallback: 1600 });
+  const deadlineMs = startMs + timeoutMs;
 
-    const rawQuery = String(query || '').trim();
-    const hintData = extractResolverHints(hints);
-    const hintedQuery = hintData.aliases[0] || '';
-    const q = isUuidLike(rawQuery) && hintedQuery ? hintedQuery : rawQuery;
-    const normalizedQuery = normalizeTextForResolver(q);
-    const queryTokens = tokenizeNormalizedResolverQuery(normalizedQuery);
-    if (!normalizedQuery || queryTokens.length === 0) {
-      return {
-        resolved: false,
-        product_ref: null,
-        confidence: 0,
-        reason: 'empty_query',
-        candidates: [],
-        normalized_query: normalizedQuery,
-        scoring_version: scoringVersion,
-      };
-    }
+  const rawQuery = String(query || '').trim();
+  const hintData = extractResolverHints(hints);
+  const hintedQuery = hintData.aliases[0] || '';
+  const q =
+    isUuidLike(rawQuery) && hintedQuery
+      ? hintedQuery
+      : rawQuery;
+  const normalizedQuery = normalizeTextForResolver(q);
+  const queryTokens = tokenizeNormalizedResolverQuery(normalizedQuery);
+  if (!normalizedQuery || queryTokens.length === 0) {
+    return {
+      resolved: false,
+      product_ref: null,
+      confidence: 0,
+      reason: 'empty_query',
+      candidates: [],
+      normalized_query: normalizedQuery,
+    };
+  }
 
-    const preferMerchantsRaw =
+  const preferMerchantsRaw =
     options?.prefer_merchants ||
     options?.preferMerchants ||
     options?.prefer_merchant_ids ||
     options?.preferMerchantIds ||
     [];
-    const preferMerchantsList = Array.isArray(preferMerchantsRaw)
+  const preferMerchantsList = Array.isArray(preferMerchantsRaw)
     ? preferMerchantsRaw
     : typeof preferMerchantsRaw === 'string' && preferMerchantsRaw.trim()
       ? [preferMerchantsRaw.trim()]
       : [];
-    const preferMerchants = Array.from(
+  const preferMerchants = Array.from(
     new Set(preferMerchantsList.map((m) => String(m || '').trim()).filter(Boolean)),
   ).slice(0, 20);
-    const allowExternalSeed = options?.allow_external_seed === true || options?.allowExternalSeed === true;
-    const searchAllMerchants =
+  const allowExternalSeed = options?.allow_external_seed === true || options?.allowExternalSeed === true;
+  const searchAllMerchants =
     options?.search_all_merchants === true || options?.searchAllMerchants === true || (!preferMerchants.length && options?.search_all_merchants !== false);
-    const limit = clampInt(options?.limit, { min: 1, max: 50, fallback: 20 });
-    const upstreamRetries = clampInt(options?.upstream_retries, { min: 0, max: 3, fallback: 1 });
-    const upstreamRetryBackoffMs = clampInt(options?.upstream_retry_backoff_ms, { min: 25, max: 1000, fallback: 90 });
+  const limit = clampInt(options?.limit, { min: 1, max: 50, fallback: 20 });
+  const upstreamRetries = clampInt(options?.upstream_retries, { min: 0, max: 3, fallback: 1 });
+  const upstreamRetryBackoffMs = clampInt(options?.upstream_retry_backoff_ms, { min: 25, max: 1000, fallback: 90 });
 
-    const products = [];
-    const sources = [];
-    let scopedCacheFailedInfra = false;
+  const products = [];
+  const sources = [];
+  let scopedCacheFailedInfra = false;
 
-    if (hintData.product_ref && (hintedQuery || isUuidLike(rawQuery))) {
-      products.push({
-        product_id: hintData.product_ref.product_id,
-        merchant_id: hintData.product_ref.merchant_id,
-        title: hintedQuery || rawQuery,
-        ...(hintData.brand ? { brand: hintData.brand } : {}),
-        source: 'hint_product_ref',
-      });
-      sources.push({ source: 'hints_product_ref', ok: true, count: 1 });
-    }
+  if (hintData.product_ref && (hintedQuery || isUuidLike(rawQuery))) {
+    products.push({
+      product_id: hintData.product_ref.product_id,
+      merchant_id: hintData.product_ref.merchant_id,
+      title: hintedQuery || rawQuery,
+      ...(hintData.brand ? { brand: hintData.brand } : {}),
+      source: 'hint_product_ref',
+    });
+    sources.push({ source: 'hints_product_ref', ok: true, count: 1 });
+  }
 
-    function remainingMs() {
-      return Math.max(0, deadlineMs - Date.now());
-    }
+  function remainingMs() {
+    return Math.max(0, deadlineMs - Date.now());
+  }
 
-    function stageTimeout({ capMs, reserveMs = 0, floorMs = 50 }) {
-      const remaining = remainingMs();
-      if (remaining <= floorMs) return 0;
-      const keep = Math.max(0, Number(reserveMs) || 0);
-      const cap = Math.max(floorMs, Number(capMs) || floorMs);
-      const budgeted = Math.max(floorMs, remaining - keep);
-      return Math.max(floorMs, Math.min(cap, budgeted));
-    }
+  function stageTimeout({ capMs, reserveMs = 0, floorMs = 50 }) {
+    const remaining = remainingMs();
+    if (remaining <= floorMs) return 0;
+    const keep = Math.max(0, Number(reserveMs) || 0);
+    const cap = Math.max(floorMs, Number(capMs) || floorMs);
+    const budgeted = Math.max(floorMs, remaining - keep);
+    return Math.max(floorMs, Math.min(cap, budgeted));
+  }
 
   // 1) Prefer: products_cache (merchant inventory) for prefer_merchants.
-    const scopedCacheTimeout = stageTimeout({ capMs: 650, reserveMs: 900, floorMs: 60 });
-    if (preferMerchants.length > 0 && scopedCacheTimeout >= 60) {
-      const cacheResp = await fetchProductsCache({
+  const scopedCacheTimeout = stageTimeout({ capMs: 650, reserveMs: 900, floorMs: 60 });
+  if (preferMerchants.length > 0 && scopedCacheTimeout >= 60) {
+    const cacheResp = await fetchProductsCache({
       merchantIds: preferMerchants,
       query: q,
       limit,
       timeoutMs: scopedCacheTimeout,
       searchAllMerchants: false,
     });
-      if (cacheResp.ok && Array.isArray(cacheResp.products) && cacheResp.products.length) {
-        products.push(...cacheResp.products);
-        sources.push({ source: 'products_cache', ok: true, count: cacheResp.products.length });
-      } else {
-        const reason = String(cacheResp.reason || 'no_results');
-        if (reason === 'db_error' || reason === 'db_not_configured' || reason === 'products_cache_missing') {
-          scopedCacheFailedInfra = true;
-        }
-        sources.push({ source: 'products_cache', ok: false, reason: cacheResp.reason || 'no_results' });
+    if (cacheResp.ok && Array.isArray(cacheResp.products) && cacheResp.products.length) {
+      products.push(...cacheResp.products);
+      sources.push({ source: 'products_cache', ok: true, count: cacheResp.products.length });
+    } else {
+      const reason = String(cacheResp.reason || 'no_results');
+      if (reason === 'db_error' || reason === 'db_not_configured' || reason === 'products_cache_missing') {
+        scopedCacheFailedInfra = true;
       }
+      sources.push({ source: 'products_cache', ok: false, reason: cacheResp.reason || 'no_results' });
     }
+  }
 
   // 2) Fallback: agent search scoped to prefer_merchants (fast).
-    const scopedUpstreamTimeout = stageTimeout({ capMs: 900, reserveMs: 850, floorMs: 80 });
-    if (products.length === 0 && preferMerchants.length > 0 && scopedUpstreamTimeout >= 80) {
-      const scopedRetries = scopedUpstreamTimeout >= 700 ? upstreamRetries : 0;
-      const upstreamScoped = await fetchAgentSearch({
+  const scopedUpstreamTimeout = stageTimeout({ capMs: 900, reserveMs: 850, floorMs: 80 });
+  if (products.length === 0 && preferMerchants.length > 0 && scopedUpstreamTimeout >= 80) {
+    const scopedRetries = scopedUpstreamTimeout >= 700 ? upstreamRetries : 0;
+    const upstreamScoped = await fetchAgentSearch({
       pivotaApiBase,
       pivotaApiKey,
       checkoutToken,
@@ -1137,57 +807,57 @@ function createProductGroundingResolver(deps = {}) {
       maxRetries: scopedRetries,
       retryBackoffMs: upstreamRetryBackoffMs,
     });
-      if (upstreamScoped.ok && Array.isArray(upstreamScoped.products) && upstreamScoped.products.length) {
-        products.push(...upstreamScoped.products);
-        sources.push({
-          source: 'agent_search_scoped',
-          ok: true,
-          count: upstreamScoped.products.length,
-          attempts: upstreamScoped.attempts || 1,
-        });
-      } else {
-        sources.push({
-          source: 'agent_search_scoped',
-          ok: false,
-          reason: upstreamScoped.reason || 'no_results',
-          ...(upstreamScoped.status ? { status: upstreamScoped.status } : {}),
-          attempts: upstreamScoped.attempts || 1,
-        });
-      }
+    if (upstreamScoped.ok && Array.isArray(upstreamScoped.products) && upstreamScoped.products.length) {
+      products.push(...upstreamScoped.products);
+      sources.push({
+        source: 'agent_search_scoped',
+        ok: true,
+        count: upstreamScoped.products.length,
+        attempts: upstreamScoped.attempts || 1,
+      });
+    } else {
+      sources.push({
+        source: 'agent_search_scoped',
+        ok: false,
+        reason: upstreamScoped.reason || 'no_results',
+        ...(upstreamScoped.status ? { status: upstreamScoped.status } : {}),
+        attempts: upstreamScoped.attempts || 1,
+      });
     }
+  }
 
   // 3) Optional: global products_cache fallback (avoids network timeouts).
-    const globalCacheTimeout = stageTimeout({ capMs: 850, reserveMs: 300, floorMs: 60 });
-    const shouldTryGlobalCache =
+  const globalCacheTimeout = stageTimeout({ capMs: 850, reserveMs: 300, floorMs: 60 });
+  const shouldTryGlobalCache =
     globalCacheTimeout >= 60 &&
     !scopedCacheFailedInfra &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     products.length < Math.max(6, Math.min(14, limit));
-    if (shouldTryGlobalCache) {
-      const cacheGlobal = await fetchProductsCache({
+  if (shouldTryGlobalCache) {
+    const cacheGlobal = await fetchProductsCache({
       query: q,
       limit: Math.max(limit, 24),
       timeoutMs: globalCacheTimeout,
       searchAllMerchants: true,
     });
-      if (cacheGlobal.ok && Array.isArray(cacheGlobal.products) && cacheGlobal.products.length) {
-        products.push(...cacheGlobal.products);
-        sources.push({ source: 'products_cache_global', ok: true, count: cacheGlobal.products.length });
-      } else {
-        sources.push({ source: 'products_cache_global', ok: false, reason: cacheGlobal.reason || 'no_results' });
-      }
+    if (cacheGlobal.ok && Array.isArray(cacheGlobal.products) && cacheGlobal.products.length) {
+      products.push(...cacheGlobal.products);
+      sources.push({ source: 'products_cache_global', ok: true, count: cacheGlobal.products.length });
+    } else {
+      sources.push({ source: 'products_cache_global', ok: false, reason: cacheGlobal.reason || 'no_results' });
     }
+  }
 
   // 4) Optional: global agent search (no external_seed by default).
-    const globalUpstreamTimeout = stageTimeout({ capMs: 1400, reserveMs: 0, floorMs: 120 });
-    const shouldTryGlobal =
+  const globalUpstreamTimeout = stageTimeout({ capMs: 1400, reserveMs: 0, floorMs: 120 });
+  const shouldTryGlobal =
     globalUpstreamTimeout >= 120 &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     // Avoid a second network call when we already have plenty of candidates.
     products.length < Math.max(6, Math.min(14, limit));
-    if (shouldTryGlobal) {
-      const globalRetries = globalUpstreamTimeout >= 900 ? upstreamRetries : 0;
-      const upstreamGlobal = await fetchAgentSearch({
+  if (shouldTryGlobal) {
+    const globalRetries = globalUpstreamTimeout >= 900 ? upstreamRetries : 0;
+    const upstreamGlobal = await fetchAgentSearch({
       pivotaApiBase,
       pivotaApiKey,
       checkoutToken,
@@ -1199,78 +869,70 @@ function createProductGroundingResolver(deps = {}) {
       maxRetries: globalRetries,
       retryBackoffMs: upstreamRetryBackoffMs,
     });
-      if (upstreamGlobal.ok && Array.isArray(upstreamGlobal.products) && upstreamGlobal.products.length) {
-        products.push(...upstreamGlobal.products);
-        sources.push({
-          source: 'agent_search_global',
-          ok: true,
-          count: upstreamGlobal.products.length,
-          attempts: upstreamGlobal.attempts || 1,
-        });
-      } else {
-        sources.push({
-          source: 'agent_search_global',
-          ok: false,
-          reason: upstreamGlobal.reason || 'no_results',
-          ...(upstreamGlobal.status ? { status: upstreamGlobal.status } : {}),
-          attempts: upstreamGlobal.attempts || 1,
-        });
-      }
+    if (upstreamGlobal.ok && Array.isArray(upstreamGlobal.products) && upstreamGlobal.products.length) {
+      products.push(...upstreamGlobal.products);
+      sources.push({
+        source: 'agent_search_global',
+        ok: true,
+        count: upstreamGlobal.products.length,
+        attempts: upstreamGlobal.attempts || 1,
+      });
+    } else {
+      sources.push({
+        source: 'agent_search_global',
+        ok: false,
+        reason: upstreamGlobal.reason || 'no_results',
+        ...(upstreamGlobal.status ? { status: upstreamGlobal.status } : {}),
+        attempts: upstreamGlobal.attempts || 1,
+      });
     }
+  }
 
-    const rankOptions = {
+  const { scored, normalized_query } = rankCandidates({
+    query: q,
+    lang,
+    products,
+    options: {
       ...options,
-      scoring_version: scoringVersion,
       prefer_merchants: preferMerchants,
       allow_external_seed: allowExternalSeed,
       normalized_query: normalizedQuery,
       query_tokens: queryTokens,
-    };
+    },
+  });
 
-    const { scored, normalized_query } = rankCandidates({
-      query: q,
-      lang,
-      products,
-      options: rankOptions,
-    });
+  const unique = dedupeByProductRef(scored);
+  const topN = unique.slice(0, clampInt(options?.candidates_limit, { min: 1, max: 12, fallback: 6 }));
 
-    const unique = dedupeByProductRef(scored);
-    const topN = unique.slice(0, clampInt(options?.candidates_limit, { min: 1, max: 12, fallback: 6 }));
+  const decision = decide({
+    ranked: unique,
+    options,
+  });
 
-    const decision = decide({
-      ranked: unique,
-      options: {
-        ...options,
-        scoring_version: scoringVersion,
-      },
-    });
+  const latencyMs = Date.now() - startMs;
 
-    const latencyMs = Date.now() - startMs;
-
-    return {
-      resolved: decision.resolved,
-      product_ref: decision.product_ref,
-      confidence: decision.confidence,
-      reason: decision.reason,
-      candidates: topN.map((c) => ({
-        product_ref: c.product_ref,
-        title: c.title,
-        score: c.score,
-        ...(c.merchant_name ? { merchant_name: c.merchant_name } : {}),
-      })),
-      normalized_query,
-      scoring_version: scoringVersion,
-      metadata: {
-        lang: String(lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
-        timeout_ms: timeoutMs,
-        latency_ms: latencyMs,
-        scoring_version: scoringVersion,
-        sources,
-        ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
-        ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
-        ...(allowExternalSeed ? { allow_external_seed: true } : {}),
-      },
-    };
+  return {
+    resolved: decision.resolved,
+    product_ref: decision.product_ref,
+    confidence: decision.confidence,
+    reason: decision.reason,
+    candidates: topN.map((c) => ({
+      product_ref: c.product_ref,
+      title: c.title,
+      score: c.score,
+      ...(c.merchant_name ? { merchant_name: c.merchant_name } : {}),
+    })),
+    normalized_query,
+    metadata: {
+      lang: String(lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
+      timeout_ms: timeoutMs,
+      latency_ms: latencyMs,
+      sources,
+      ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
+      ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+      ...(allowExternalSeed ? { allow_external_seed: true } : {}),
+    },
+  };
   };
 }
 

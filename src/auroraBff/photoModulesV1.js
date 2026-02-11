@@ -68,6 +68,14 @@ const FACE_OVAL_CLIP_ENABLED = parseEnvBoolean(process.env.DIAG_FACE_OVAL_CLIP, 
 const MODULE_SHRINK_CHIN = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHIN, 0.8, 0.5, 1);
 const MODULE_SHRINK_FOREHEAD = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_FOREHEAD, 0.88, 0.5, 1);
 const MODULE_SHRINK_CHEEK = parseEnvNumber(process.env.DIAG_MODULE_SHRINK_CHEEK, 0.9, 0.5, 1);
+const FACE_OVAL_CLIP_MIN_PIXELS = Math.max(
+  1,
+  Math.min(512, Math.trunc(Number(process.env.DIAG_FACE_OVAL_CLIP_MIN_PIXELS || 8) || 8)),
+);
+const FACE_OVAL_CLIP_MIN_KEEP_RATIO = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_FACE_OVAL_CLIP_MIN_KEEP_RATIO || 0.25)),
+);
 
 const SUPPORTED_ISSUES = new Set(['redness', 'shine', 'texture', 'tone', 'acne']);
 const MODULE_SKIN_INTERSECTION_MIN_PIXELS = Math.max(
@@ -1239,6 +1247,7 @@ function attachModuleMasks({
   skinMask,
   moduleBoxes,
   gridSize,
+  allowFaceOvalClip,
 } = {}) {
   const safeModules = Array.isArray(modules) ? modules : [];
   const safeRegions = Array.isArray(regions) ? regions : [];
@@ -1261,7 +1270,10 @@ function attachModuleMasks({
   }
 
   const skinMaskNorm = decodeSkinMaskToGrid(skinMask, targetGrid);
-  const faceOvalMask = FACE_OVAL_CLIP_ENABLED ? polygonNormToMask(FACE_OVAL_POLYGON, targetGrid, targetGrid) : null;
+  const faceOvalMask =
+    FACE_OVAL_CLIP_ENABLED && allowFaceOvalClip !== false
+      ? polygonNormToMask(FACE_OVAL_POLYGON, targetGrid, targetGrid)
+      : null;
   const skinMaskPositiveRatio = skinMask && Number.isFinite(Number(skinMask.positive_ratio))
     ? Number(skinMask.positive_ratio)
     : skinMaskNorm
@@ -1273,6 +1285,8 @@ function attachModuleMasks({
     skinMaskPositiveRatio <= MODULE_SKIN_POSITIVE_RATIO_MAX;
   let refinedModules = 0;
   let fallbackSkippedModules = 0;
+  let faceOvalClipFallbackModules = 0;
+  const degradedReasons = new Set();
 
   const modulesOut = safeModules.map((moduleRow) => {
     const modulePayload = moduleRow && typeof moduleRow === 'object' ? { ...moduleRow } : {};
@@ -1302,12 +1316,23 @@ function attachModuleMasks({
     }
 
     let finalMask = moduleMask;
+    let moduleDegradedReason = null;
     if (faceOvalMask) {
+      const baselineMask = countOnes(modulePolygonMask) ? modulePolygonMask : finalMask;
+      const baselinePixels = countOnes(baselineMask);
       const clippedMask = andMasks(finalMask, faceOvalMask);
-      if (countOnes(clippedMask)) {
+      const clippedPixels = countOnes(clippedMask);
+      const clipKeepThreshold = Math.max(
+        FACE_OVAL_CLIP_MIN_PIXELS,
+        Math.trunc(Math.max(1, baselinePixels) * FACE_OVAL_CLIP_MIN_KEEP_RATIO),
+      );
+      if (clippedPixels >= clipKeepThreshold) {
         finalMask = clippedMask;
-      } else if (countOnes(modulePolygonMask)) {
-        finalMask = andMasks(modulePolygonMask, faceOvalMask);
+      } else if (baselinePixels) {
+        finalMask = baselineMask;
+        moduleDegradedReason = 'FACE_OVAL_CLIP_TOO_SMALL';
+        faceOvalClipFallbackModules += 1;
+        degradedReasons.add(moduleDegradedReason);
       }
     }
 
@@ -1330,6 +1355,7 @@ function attachModuleMasks({
     const box = maskBoundingBox(finalMask, targetGrid) || modulePayload.box || moduleBaseBox || null;
     return {
       ...modulePayload,
+      ...(moduleDegradedReason ? { degraded_reason: moduleDegradedReason } : {}),
       ...(box ? { box } : {}),
       ...(evidenceIds.size ? { evidence_region_ids: Array.from(evidenceIds) } : {}),
       mask_grid: targetGrid,
@@ -1345,6 +1371,9 @@ function attachModuleMasks({
     skinmask_available: Boolean(skinMaskNorm),
     skinmask_reliable: Boolean(skinMaskReliable),
     skinmask_positive_ratio: Number.isFinite(skinMaskPositiveRatio) ? round3(skinMaskPositiveRatio) : null,
+    face_oval_clip_enabled: Boolean(faceOvalMask),
+    face_oval_clip_fallback_modules: faceOvalClipFallbackModules,
+    degraded_reasons: Array.from(degradedReasons),
   };
 }
 
@@ -1387,6 +1416,14 @@ function buildPhotoModulesCard({
   const faceCrop = normalizeFaceCropFromInternal(diagnosisInternal);
   const regionBuild = buildRegionsFromFindings({ findings, qualityFlags });
   const regions = regionBuild.regions;
+  const allowFaceOvalClip = Boolean(
+    diagnosisInternal &&
+      typeof diagnosisInternal === 'object' &&
+      diagnosisInternal.face_crop &&
+      typeof diagnosisInternal.face_crop === 'object' &&
+      diagnosisInternal.face_crop.bbox_px &&
+      typeof diagnosisInternal.face_crop.bbox_px === 'object',
+  );
 
   const modulesBuild = buildModules({
     regions,
@@ -1410,6 +1447,7 @@ function buildPhotoModulesCard({
     skinMask,
     moduleBoxes: MODULE_BOXES,
     gridSize: MODULE_MASK_GRID_SIZE,
+    allowFaceOvalClip,
   });
 
   const payload = {
@@ -1419,6 +1457,9 @@ function buildPhotoModulesCard({
     face_crop: faceCrop,
     regions,
     modules: moduleMaskBuild.modules,
+    ...(Array.isArray(moduleMaskBuild.degraded_reasons) && moduleMaskBuild.degraded_reasons.length
+      ? { degraded_reason: moduleMaskBuild.degraded_reasons[0], degraded_reasons: moduleMaskBuild.degraded_reasons }
+      : {}),
     disclaimers: {
       non_medical: true,
       seek_care_triggers: [
@@ -1441,6 +1482,9 @@ function buildPhotoModulesCard({
       skinmask_grid: moduleMaskBuild.skinmask_grid,
       skinmask_reliable: moduleMaskBuild.skinmask_reliable,
       skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
+      face_oval_clip_enabled: moduleMaskBuild.face_oval_clip_enabled,
+      face_oval_clip_fallback_modules: moduleMaskBuild.face_oval_clip_fallback_modules,
+      degraded_reasons: moduleMaskBuild.degraded_reasons,
     };
   }
 

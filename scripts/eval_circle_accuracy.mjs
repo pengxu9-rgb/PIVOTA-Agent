@@ -63,7 +63,7 @@ const DEFAULT_LANG = 'en';
 const DEFAULT_CIRCLE_MODEL_PATH = path.join('model_registry', 'circle_prior_latest.json');
 const DEFAULT_CIRCLE_MODEL_MIN_PIXELS = Number(process.env.CIRCLE_MODEL_MIN_PIXELS || 24);
 const DEFAULT_SKINMASK_ENABLED = String(process.env.DIAG_SKINMASK_ENABLED || '').trim().toLowerCase() === 'true';
-const DEFAULT_SKINMASK_MODEL_PATH = process.env.DIAG_SKINMASK_MODEL_PATH || path.join('artifacts', 'skinmask_v1.onnx');
+const DEFAULT_SKINMASK_MODEL_PATH = process.env.DIAG_SKINMASK_MODEL_PATH || path.join('artifacts', 'skinmask_v2.onnx');
 
 const DEFAULT_MIN_MIOU = Number(process.env.EVAL_MIN_MIOU || 0.65);
 const DEFAULT_MAX_FAIL_RATE = Number(process.env.EVAL_MAX_FAIL_RATE || 0.05);
