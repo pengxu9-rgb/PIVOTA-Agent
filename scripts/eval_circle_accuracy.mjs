@@ -70,6 +70,7 @@ const DEFAULT_MAX_FAIL_RATE = Number(process.env.EVAL_MAX_FAIL_RATE || 0.05);
 const DEFAULT_MAX_LEAKAGE = Number(process.env.EVAL_MAX_LEAKAGE || 0.1);
 const DEFAULT_MAX_SKIN_ROI_TOO_SMALL = Number(process.env.EVAL_MAX_SKIN_ROI_TOO_SMALL || 0.2);
 const DEFAULT_SKIN_ROI_MIN_PIXELS = Number(process.env.EVAL_SKIN_ROI_MIN_PIXELS || process.env.DIAG_SKINMASK_MIN_PIXELS || 8);
+const DEFAULT_SKINMASK_NO_EFFECT_STREAK = Number(process.env.EVAL_SKINMASK_NO_EFFECT_STREAK || 10);
 
 const FAIL_REASONS = Object.freeze({
   NO_INDEX: 'NO_INDEX',
@@ -124,6 +125,7 @@ function defaultPredStats() {
     has_pred_modules: false,
     module_count: 0,
     pred_skin_pixels_est: 0,
+    skinmask_pixels_est: 0,
   };
 }
 
@@ -174,6 +176,9 @@ function finalizeEvalRow(inputRow) {
   predStats.module_count = Number.isFinite(Number(predStats.module_count)) ? Math.max(0, Number(predStats.module_count)) : 0;
   predStats.pred_skin_pixels_est = Number.isFinite(Number(predStats.pred_skin_pixels_est))
     ? Math.max(0, Number(predStats.pred_skin_pixels_est))
+    : 0;
+  predStats.skinmask_pixels_est = Number.isFinite(Number(predStats.skinmask_pixels_est))
+    ? Math.max(0, Number(predStats.skinmask_pixels_est))
     : 0;
 
   row.gt_stats = gtStats;
@@ -316,6 +321,13 @@ function parseArgs(argv) {
     circle_model_min_pixels: parseNumber(process.env.CIRCLE_MODEL_MIN_PIXELS, DEFAULT_CIRCLE_MODEL_MIN_PIXELS, 1, 1024),
     skinmask_enabled: parseBoolean(process.env.DIAG_SKINMASK_ENABLED, DEFAULT_SKINMASK_ENABLED),
     skinmask_model_path: process.env.DIAG_SKINMASK_MODEL_PATH || DEFAULT_SKINMASK_MODEL_PATH,
+    sample_seed: String(process.env.EVAL_SAMPLE_SEED || process.env.SAMPLE_SEED || ''),
+    skinmask_no_effect_streak: parseNumber(
+      process.env.EVAL_SKINMASK_NO_EFFECT_STREAK,
+      DEFAULT_SKINMASK_NO_EFFECT_STREAK,
+      1,
+      1000,
+    ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -411,6 +423,16 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--sample_seed' && next) {
+      out.sample_seed = String(next);
+      i += 1;
+      continue;
+    }
+    if (token === '--skinmask_no_effect_streak' && next) {
+      out.skinmask_no_effect_streak = parseNumber(next, out.skinmask_no_effect_streak, 1, 1000);
+      i += 1;
+      continue;
+    }
     if (token === '--eval_max_skin_roi_too_small' && next) {
       out.eval_max_skin_roi_too_small = parseNumber(next, out.eval_max_skin_roi_too_small, 0, 1);
       i += 1;
@@ -437,6 +459,8 @@ function parseArgs(argv) {
   out.skinmask_enabled = Boolean(out.skinmask_enabled);
   const skinmaskModelToken = String(out.skinmask_model_path || '').trim();
   out.skinmask_model_path = ['none', 'off', 'false'].includes(skinmaskModelToken.toLowerCase()) ? '' : skinmaskModelToken;
+  out.sample_seed = String(out.sample_seed || '').trim();
+  out.skinmask_no_effect_streak = Math.max(1, Math.trunc(out.skinmask_no_effect_streak));
   out.skin_roi_min_pixels = Math.max(1, Math.trunc(out.skin_roi_min_pixels));
   return out;
 }
@@ -867,6 +891,7 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
   });
 
   let skinMask = null;
+  let skinmaskPixelsEst = 0;
   let skinmaskReason = skinmaskEnabled ? 'model_path_missing' : 'disabled';
   if (skinmaskEnabled && skinmaskModelPath) {
     try {
@@ -877,6 +902,9 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
       });
       if (inferred && inferred.ok) {
         skinMask = inferred;
+        skinmaskPixelsEst = Number.isFinite(Number(inferred.positive_pixels))
+          ? Math.max(0, Math.trunc(Number(inferred.positive_pixels)))
+          : 0;
         skinmaskReason = 'ok';
       } else {
         skinmaskReason = inferred && inferred.reason ? inferred.reason : 'inference_failed';
@@ -939,6 +967,7 @@ async function callLocalPrediction({ imageBuffer, sampleToken, lang, skinmaskEna
     diagnosisInternal: diagnosis.internal || null,
     metrics: built && built.metrics ? built.metrics : null,
     skinmask_reason: skinmaskReason,
+    skinmask_pixels_est: skinmaskPixelsEst,
     degraded_reason: ensured.degradedReason || null,
     reason_detail: ensured.degradedReason || null,
   };
@@ -1054,6 +1083,7 @@ function renderMarkdown({
   failReasonRows,
   predMissingBreakdown,
   softWarnings,
+  hardWarnings,
 }) {
   const total = sampleRows.length;
   const okRows = sampleRows.filter((row) => row && row.ok);
@@ -1121,6 +1151,13 @@ function renderMarkdown({
     lines.push('');
   }
 
+  if (hardWarnings.length) {
+    lines.push('## Hard Warnings');
+    lines.push('');
+    for (const warning of hardWarnings) lines.push(`- ${warning}`);
+    lines.push('');
+  }
+
   lines.push('## Top Fail Reasons');
   lines.push('');
   lines.push('| fail_reason | count | pct_of_total |');
@@ -1180,11 +1217,56 @@ function renderMarkdown({
   return `${lines.join('\n')}\n`;
 }
 
+function detectSkinmaskNoEffect(sampleRows, args) {
+  const rows = Array.isArray(sampleRows) ? sampleRows : [];
+  if (!args || !args.skinmask_enabled) {
+    return {
+      enabled: false,
+      triggered: false,
+      threshold: Number(args && args.skinmask_no_effect_streak ? args.skinmask_no_effect_streak : 0),
+      longest_streak: 0,
+      checked_samples: 0,
+      trigger_sample_hash: null,
+    };
+  }
+  const threshold = Math.max(1, Math.trunc(Number(args.skinmask_no_effect_streak || DEFAULT_SKINMASK_NO_EFFECT_STREAK)));
+  let checkedSamples = 0;
+  let currentStreak = 0;
+  let longestStreak = 0;
+  let triggerSampleHash = null;
+  let triggered = false;
+  for (const row of rows) {
+    if (!row || row.weak_label_only) continue;
+    checkedSamples += 1;
+    const predStats = row.pred_stats && typeof row.pred_stats === 'object' ? row.pred_stats : {};
+    const pixels = Number(predStats.skinmask_pixels_est);
+    if (!Number.isFinite(pixels) || pixels <= 0) {
+      currentStreak += 1;
+      if (currentStreak > longestStreak) longestStreak = currentStreak;
+      if (!triggered && currentStreak >= threshold) {
+        triggered = true;
+        triggerSampleHash = row.sample_hash || null;
+      }
+    } else {
+      currentStreak = 0;
+    }
+  }
+  return {
+    enabled: true,
+    triggered,
+    threshold,
+    longest_streak: longestStreak,
+    checked_samples: checkedSamples,
+    trigger_sample_hash: triggerSampleHash,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = process.cwd();
   const cache = normalizeCacheDirs(args.cache_dir);
   const runKey = nowRunKey();
+  const sampleSeed = args.sample_seed || runKey;
   const circleModel = await resolveCircleModelBoxes(args.circle_model_path);
   const activeModuleBoxes = circleModel.moduleBoxes;
   const resolvedModuleIds = moduleIds(activeModuleBoxes);
@@ -1210,7 +1292,7 @@ async function main() {
         cacheRootDir: cache.cacheRootDir,
         limit: args.limit || undefined,
         shuffle: args.shuffle,
-        seed: runKey,
+        seed: sampleSeed,
       });
       for (const sample of loaded.samples || []) {
         allSamples.push({
@@ -1329,6 +1411,10 @@ async function main() {
       has_pred_modules: Boolean(Array.isArray(payload.modules) && payload.modules.length),
       module_count: Array.isArray(payload.modules) ? payload.modules.length : 0,
       pred_skin_pixels_est: 0,
+      skinmask_pixels_est:
+        args.skinmask_enabled && Number.isFinite(Number(prediction.skinmask_pixels_est))
+          ? Math.max(0, Math.trunc(Number(prediction.skinmask_pixels_est)))
+          : 0,
     };
     if (!row.pred_stats.has_pred_modules) {
       row.fail_reason = FAIL_REASONS.PRED_MODULES_MISSING;
@@ -1569,6 +1655,7 @@ async function main() {
   const skinRoiTooSmallRate = skinRoiEvaluatedCount > 0 ? skinRoiTooSmallCount / skinRoiEvaluatedCount : 0;
 
   const softWarnings = [];
+  const hardWarnings = [];
   if (miouMean < args.eval_min_miou) {
     softWarnings.push(`module_mIoU ${round3(miouMean)} < threshold ${args.eval_min_miou}`);
   }
@@ -1581,6 +1668,12 @@ async function main() {
   if (skinRoiTooSmallRate > args.eval_max_skin_roi_too_small) {
     softWarnings.push(
       `skin_roi_too_small_rate ${round3(skinRoiTooSmallRate)} > threshold ${args.eval_max_skin_roi_too_small}`,
+    );
+  }
+  const skinmaskNoEffect = detectSkinmaskNoEffect(sampleRows, args);
+  if (skinmaskNoEffect.enabled && skinmaskNoEffect.triggered) {
+    hardWarnings.push(
+      `WARNING: SKINMASK_NO_EFFECT (consecutive_zero_skinmask_pixels_est >= ${skinmaskNoEffect.threshold}, longest_streak=${skinmaskNoEffect.longest_streak}, checked_samples=${skinmaskNoEffect.checked_samples}, trigger_sample_hash=${skinmaskNoEffect.trigger_sample_hash || 'n/a'})`,
     );
   }
   const failReasonRows = topFailReasons(sampleRows);
@@ -1598,6 +1691,7 @@ async function main() {
     failReasonRows,
     predMissingBreakdown,
     softWarnings,
+    hardWarnings,
   });
   writeText(mdPath, markdown);
 
@@ -1613,14 +1707,17 @@ async function main() {
     circle_model_enabled: circleModel.meta.enabled,
     circle_model_path: circleModel.meta.path || '',
     circle_model_calibration: args.circle_model_calibration,
+    sample_seed: sampleSeed,
     module_miou_mean: round3(miouMean),
     leakage_mean: round3(leakageMean),
     skin_roi_too_small_rate: round3(skinRoiTooSmallRate),
     face_detect_fail_rate: round3(faceDetectFailRate),
     fail_reasons: failReasonRows,
     pred_modules_missing_breakdown: predMissingBreakdown,
+    skinmask_no_effect: skinmaskNoEffect,
     summary_rows: summaryRows.length,
     soft_warnings: softWarnings,
+    hard_warnings: hardWarnings,
     artifacts: {
       jsonl: toPosix(path.relative(repoRoot, jsonlPath)),
       csv: toPosix(path.relative(repoRoot, csvPath)),
@@ -1628,6 +1725,9 @@ async function main() {
     },
   };
   process.stdout.write(`${JSON.stringify(payload)}\n`);
+  if (skinmaskNoEffect.enabled && skinmaskNoEffect.triggered) {
+    process.exitCode = 2;
+  }
 }
 
 main().catch((error) => {
