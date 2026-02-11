@@ -349,6 +349,19 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
   return Math.max(1, Math.min(4, v));
 })();
 
+const RECO_PDP_RESOLVE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_RESOLVE_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 1800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
+  return Math.max(300, Math.min(6000, v));
+})();
+
 const DUPE_DEEPSCAN_CACHE_MAX = (() => {
   const n = Number(process.env.AURORA_BFF_DUPE_DEEPSCAN_CACHE_MAX || 80);
   const v = Number.isFinite(n) ? Math.trunc(n) : 80;
@@ -507,6 +520,17 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.skuId === 'string' && base.skuId) ||
     '';
 
+  const productGroupId =
+    (typeof base.product_group_id === 'string' && base.product_group_id) ||
+    (typeof base.productGroupId === 'string' && base.productGroupId) ||
+    (base.subject &&
+    typeof base.subject === 'object' &&
+    !Array.isArray(base.subject) &&
+    typeof base.subject.product_group_id === 'string'
+      ? base.subject.product_group_id
+      : '') ||
+    '';
+
   const imageUrl =
     (typeof base.image_url === 'string' && base.image_url) ||
     (typeof base.imageUrl === 'string' && base.imageUrl) ||
@@ -517,12 +541,22 @@ function normalizeRecoCatalogProduct(raw) {
   const out = {
     product_id: String(productId || '').trim(),
     merchant_id: String(merchantId || '').trim() || null,
+    ...(String(productGroupId || '').trim() ? { product_group_id: String(productGroupId).trim() } : {}),
     ...(String(skuId || '').trim() ? { sku_id: String(skuId).trim() } : {}),
     ...(String(brand || '').trim() ? { brand: String(brand).trim() } : {}),
     ...(String(name || '').trim() ? { name: String(name).trim() } : {}),
     ...(String(displayName || '').trim() ? { display_name: String(displayName).trim() } : {}),
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
   };
+
+  const canonicalProductRef = normalizeCanonicalProductRef(
+    {
+      product_id: out.product_id,
+      merchant_id: out.merchant_id,
+    },
+    { requireMerchant: true, allowOpaqueProductId: false },
+  );
+  if (canonicalProductRef) out.canonical_product_ref = canonicalProductRef;
 
   return out.product_id ? out : null;
 }
@@ -5547,6 +5581,701 @@ function buildProductInputText(inputObj, url) {
   return null;
 }
 
+function pickFirstTrimmed(...values) {
+  for (const raw of values) {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    if (s) return s;
+  }
+  return '';
+}
+
+function isUuidLikeString(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+function normalizeCanonicalProductRef(input, { requireMerchant = true, allowOpaqueProductId = true } = {}) {
+  const ref = input && typeof input === 'object' && !Array.isArray(input) ? input : null;
+  if (!ref) return null;
+  const productId = pickFirstTrimmed(ref.product_id, ref.productId);
+  const merchantId = pickFirstTrimmed(ref.merchant_id, ref.merchantId);
+  if (!productId) return null;
+  if (!allowOpaqueProductId && isUuidLikeString(productId)) return null;
+  if (requireMerchant && !merchantId) return null;
+  return {
+    product_id: productId,
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+  };
+}
+
+function extractRecoPdpDirectKeys(base, skuCandidate) {
+  const candidates = [base, skuCandidate].filter((v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v));
+  const subjectCandidates = [];
+  for (const source of candidates) {
+    if (source.subject && typeof source.subject === 'object' && !Array.isArray(source.subject)) {
+      subjectCandidates.push(source.subject);
+    }
+  }
+
+  let subjectProductGroupId = '';
+  for (const subject of subjectCandidates) {
+    const type = pickFirstTrimmed(subject.type).toLowerCase();
+    const asId = pickFirstTrimmed(subject.id);
+    const asPgid = pickFirstTrimmed(subject.product_group_id, subject.productGroupId);
+    if (type === 'product_group' && asId) {
+      subjectProductGroupId = asId;
+      break;
+    }
+    if (asPgid) {
+      subjectProductGroupId = asPgid;
+      break;
+    }
+  }
+
+  if (!subjectProductGroupId) {
+    subjectProductGroupId = pickFirstTrimmed(
+      base?.product_group_id,
+      base?.productGroupId,
+      skuCandidate?.product_group_id,
+      skuCandidate?.productGroupId,
+      base?.pdp_open?.subject?.product_group_id,
+      base?.pdp_open?.subject?.id,
+      base?.pdpOpen?.subject?.product_group_id,
+      base?.pdpOpen?.subject?.id,
+    );
+  }
+
+  const canonicalRefCandidates = [
+    base?.canonical_product_ref,
+    base?.canonicalProductRef,
+    skuCandidate?.canonical_product_ref,
+    skuCandidate?.canonicalProductRef,
+    base?.product_ref,
+    base?.productRef,
+    skuCandidate?.product_ref,
+    skuCandidate?.productRef,
+  ];
+
+  let directProductRef = null;
+  for (const refRaw of canonicalRefCandidates) {
+    const ref = normalizeCanonicalProductRef(refRaw, { requireMerchant: true, allowOpaqueProductId: false });
+    if (ref) {
+      directProductRef = ref;
+      break;
+    }
+  }
+
+  const rawProductId = pickFirstTrimmed(
+    skuCandidate?.product_id,
+    skuCandidate?.productId,
+    base?.product_id,
+    base?.productId,
+  );
+  const rawMerchantId = pickFirstTrimmed(
+    skuCandidate?.merchant_id,
+    skuCandidate?.merchantId,
+    base?.merchant_id,
+    base?.merchantId,
+  );
+
+  if (!directProductRef) {
+    const fallbackRef = normalizeCanonicalProductRef(
+      {
+        product_id: rawProductId,
+        merchant_id: rawMerchantId,
+      },
+      { requireMerchant: true, allowOpaqueProductId: false },
+    );
+    if (fallbackRef) directProductRef = fallbackRef;
+  }
+
+  return {
+    subjectProductGroupId,
+    directProductRef,
+    rawProductId,
+    rawMerchantId,
+  };
+}
+
+function buildRecoResolveHints({ base, skuCandidate, rawProductId, rawMerchantId, brand, name, displayName }) {
+  const aliases = [];
+  const seen = new Set();
+  const pushAlias = (value) => {
+    const s = String(value || '').trim();
+    if (!s) return;
+    const key = s.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    aliases.push(s);
+  };
+
+  pushAlias(displayName);
+  pushAlias(name);
+  if (brand && displayName) pushAlias(`${brand} ${displayName}`);
+  if (brand && name) pushAlias(`${brand} ${name}`);
+  pushAlias(base?.title);
+
+  const hints = {};
+  if (rawProductId && !isUuidLikeString(rawProductId)) {
+    hints.product_ref = {
+      product_id: rawProductId,
+      ...(rawMerchantId ? { merchant_id: rawMerchantId } : {}),
+    };
+  }
+  if (brand) hints.brand = brand;
+  if (aliases.length) hints.aliases = aliases.slice(0, 8);
+  return hints;
+}
+
+function normalizeResolveReasonCode(raw, fallback = 'no_candidates') {
+  const code = String(raw || '').trim().toLowerCase();
+  if (code === 'db_error' || code === 'upstream_timeout' || code === 'no_candidates') return code;
+  return fallback;
+}
+
+function normalizePdpOpenMode(raw, fallback = 'external') {
+  const mode = String(raw || '').trim().toLowerCase();
+  if (mode === 'group' || mode === 'ref' || mode === 'resolve' || mode === 'external') return mode;
+  return fallback;
+}
+
+function normalizePdpOpenPath(raw, fallback = 'external') {
+  const path = String(raw || '').trim().toLowerCase();
+  if (path === 'internal' || path === 'external') return path;
+  if (path === 'group' || path === 'ref' || path === 'resolve') return 'internal';
+  return fallback;
+}
+
+function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
+  const explicit = normalizeResolveReasonCode(
+    resolveBody?.reason_code || resolveBody?.reasonCode || resolveBody?.metadata?.resolve_reason_code,
+    '',
+  );
+  if (explicit) return explicit;
+
+  const reason = String(resolveBody?.reason || '').trim().toLowerCase();
+  if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return 'no_candidates';
+  if (reason.startsWith('db_') || reason === 'products_cache_missing') return 'db_error';
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
+
+  const sources = Array.isArray(resolveBody?.metadata?.sources) ? resolveBody.metadata.sources : [];
+  const sourceReasons = sources
+    .map((item) => String(item && item.reason ? item.reason : '').trim().toLowerCase())
+    .filter(Boolean);
+  if (sourceReasons.some((r) => r.startsWith('db_') || r === 'products_cache_missing')) return 'db_error';
+  if (sourceReasons.some((r) => r.includes('timeout') || r.startsWith('upstream_'))) return 'upstream_timeout';
+
+  const status = Number(statusCode || 0);
+  if (status >= 500 || status === 429) return 'upstream_timeout';
+
+  const errText = String(error?.code || error?.message || error || '').trim().toLowerCase();
+  if (errText.includes('timeout') || errText.includes('econnaborted') || errText.includes('etimedout')) {
+    return 'upstream_timeout';
+  }
+  if (errText.includes('db_') || errText.includes('database') || errText.includes('postgres')) {
+    return 'db_error';
+  }
+  return 'no_candidates';
+}
+
+function buildExternalGoogleSearchUrl(query) {
+  const q = String(query || '').trim();
+  if (!q) return 'https://www.google.com/';
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
+
+function withRecoPdpMetadata(base, {
+  path,
+  subject = null,
+  canonicalProductRef = null,
+  queryText = '',
+  resolveReasonCode = null,
+  resolveAttempted = false,
+  resolvedViaQuery = null,
+  timeToPdpMs = null,
+}) {
+  const nextMode = normalizePdpOpenMode(path, 'external');
+  const nextPath = nextMode === 'external' ? 'external' : 'internal';
+  const metadataBase = isPlainObject(base?.metadata) ? { ...base.metadata } : {};
+  const normalizedFailReason =
+    resolveReasonCode != null && resolveReasonCode !== ''
+      ? normalizeResolveReasonCode(resolveReasonCode)
+      : null;
+  const normalizedTimeToPdp =
+    Number.isFinite(Number(timeToPdpMs)) && Number(timeToPdpMs) >= 0
+      ? Math.max(0, Math.round(Number(timeToPdpMs)))
+      : null;
+  const nextMetadata = {
+    ...metadataBase,
+    pdp_open_path: nextPath,
+    pdp_open_mode: nextMode,
+    ...(resolveAttempted ? { pdp_open_resolve_attempted: true } : {}),
+    ...(normalizedFailReason
+      ? {
+          resolve_reason_code: normalizedFailReason,
+          pdp_open_fail_reason: normalizedFailReason,
+          resolve_fail_reason: normalizedFailReason,
+        }
+      : {}),
+    ...(normalizedTimeToPdp != null ? { time_to_pdp_ms: normalizedTimeToPdp } : {}),
+  };
+
+  const nextSku =
+    base && base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+      ? { ...base.sku }
+      : null;
+  if (nextSku && subject?.product_group_id) {
+    nextSku.product_group_id = String(subject.product_group_id);
+  }
+  if (nextSku && canonicalProductRef) {
+    nextSku.canonical_product_ref = canonicalProductRef;
+  }
+
+  if (nextMode === 'group' && subject) {
+    const productGroupId = String(subject.product_group_id || subject.id || '').trim();
+    const normalizedSubject = { type: 'product_group', id: productGroupId, product_group_id: productGroupId };
+    return {
+      ...base,
+      ...(nextSku ? { sku: nextSku } : {}),
+      subject: normalizedSubject,
+      metadata: nextMetadata,
+      pdp_open: {
+        path: 'group',
+        subject: normalizedSubject,
+        get_pdp_v2_payload: { subject: { type: 'product_group', id: productGroupId } },
+      },
+    };
+  }
+
+  if ((nextMode === 'ref' || nextMode === 'resolve') && canonicalProductRef) {
+    return {
+      ...base,
+      ...(nextSku ? { sku: nextSku } : {}),
+      canonical_product_ref: canonicalProductRef,
+      metadata: nextMetadata,
+      pdp_open: {
+        path: nextMode,
+        product_ref: canonicalProductRef,
+        get_pdp_v2_payload: { product_ref: canonicalProductRef },
+        ...(resolvedViaQuery ? { resolved_via_query: resolvedViaQuery } : {}),
+      },
+    };
+  }
+
+  const externalUrl = buildExternalGoogleSearchUrl(queryText);
+  return {
+    ...base,
+    ...(nextSku ? { sku: nextSku } : {}),
+    metadata: nextMetadata,
+    pdp_open: {
+      path: 'external',
+      external: {
+        provider: 'google',
+        target: '_blank',
+        url: externalUrl,
+        query: String(queryText || '').trim() || null,
+      },
+      ...(normalizedFailReason ? { resolve_reason_code: normalizedFailReason } : {}),
+    },
+  };
+}
+
+async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
+  const startedAt = Date.now();
+  const elapsedMs = () => Math.max(0, Date.now() - startedAt);
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+  if (!base) return item;
+
+  const skuCandidate =
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+      ? base.sku
+      : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+        ? base.product
+        : null;
+
+  const brand = pickFirstTrimmed(skuCandidate?.brand, base.brand);
+  const name = pickFirstTrimmed(skuCandidate?.name, base.name);
+  const displayName = pickFirstTrimmed(
+    skuCandidate?.display_name,
+    skuCandidate?.displayName,
+    base.display_name,
+    base.displayName,
+    name,
+  );
+
+  const { subjectProductGroupId, directProductRef, rawProductId, rawMerchantId } = extractRecoPdpDirectKeys(
+    base,
+    skuCandidate,
+  );
+
+  if (subjectProductGroupId) {
+    return withRecoPdpMetadata(base, {
+      path: 'group',
+      subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
+      canonicalProductRef: directProductRef,
+      timeToPdpMs: elapsedMs(),
+    });
+  }
+
+  if (directProductRef) {
+    return withRecoPdpMetadata(base, {
+      path: 'ref',
+      canonicalProductRef: directProductRef,
+      timeToPdpMs: elapsedMs(),
+    });
+  }
+
+  const queryText =
+    buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
+    pickFirstTrimmed(displayName, name, brand);
+  const hints = buildRecoResolveHints({
+    base,
+    skuCandidate,
+    rawProductId,
+    rawMerchantId,
+    brand,
+    name,
+    displayName,
+  });
+
+  if (!RECO_PDP_RESOLVE_ENABLED || !PIVOTA_BACKEND_BASE_URL || !queryText) {
+    return withRecoPdpMetadata(base, {
+      path: 'external',
+      queryText,
+      resolveReasonCode: 'no_candidates',
+      resolveAttempted: false,
+      timeToPdpMs: elapsedMs(),
+    });
+  }
+
+  // Avoid opaque UUID-only lookups; they frequently produce unstable cross-merchant misses.
+  const isOpaqueUuidOnlyQuery = isUuidLikeString(queryText) && (!hints.aliases || hints.aliases.length === 0);
+  if (isOpaqueUuidOnlyQuery) {
+    return withRecoPdpMetadata(base, {
+      path: 'external',
+      queryText,
+      resolveReasonCode: 'no_candidates',
+      resolveAttempted: false,
+      timeToPdpMs: elapsedMs(),
+    });
+  }
+
+  let resolveBody = null;
+  let resolveStatus = 0;
+  let resolveError = null;
+  try {
+    const resp = await axios.post(
+      `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`,
+      {
+        query: queryText,
+        lang: 'en',
+        hints,
+        options: {
+          search_all_merchants: true,
+          timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+          upstream_retries: 0,
+          ...(rawMerchantId ? { prefer_merchants: [rawMerchantId] } : {}),
+        },
+        caller: 'aurora_chatbox',
+      },
+      {
+        headers: buildPivotaBackendAgentHeaders(),
+        timeout: RECO_PDP_RESOLVE_TIMEOUT_MS,
+        validateStatus: () => true,
+      },
+    );
+    resolveBody = resp && typeof resp.data === 'object' ? resp.data : null;
+    resolveStatus = Number(resp?.status || 0);
+  } catch (err) {
+    resolveError = err;
+  }
+
+  const resolvedProductRef = normalizeCanonicalProductRef(resolveBody?.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (resolveStatus === 200 && resolveBody?.resolved === true && resolvedProductRef) {
+    return withRecoPdpMetadata(base, {
+      path: 'resolve',
+      canonicalProductRef: resolvedProductRef,
+      resolveAttempted: true,
+      resolvedViaQuery: queryText,
+      timeToPdpMs: elapsedMs(),
+    });
+  }
+
+  const reasonCode = mapResolveFailureCode({
+    resolveBody,
+    statusCode: resolveStatus,
+    error: resolveError,
+  });
+  if (resolveError) {
+    logger?.warn(
+      {
+        err: resolveError?.message || String(resolveError),
+        query: queryText.slice(0, 120),
+        pdp_open_path: 'external',
+        fail_reason: reasonCode,
+        resolve_reason_code: reasonCode,
+      },
+      'aurora bff: reco pdp resolve failed; using external fallback',
+    );
+  }
+  return withRecoPdpMetadata(base, {
+    path: 'external',
+    queryText,
+    resolveReasonCode: reasonCode,
+    resolveAttempted: true,
+    timeToPdpMs: elapsedMs(),
+  });
+}
+
+function tallyPdpOpenPathStats(recommendations) {
+  const stats = { group: 0, ref: 0, resolve: 0, external: 0 };
+  for (const item of Array.isArray(recommendations) ? recommendations : []) {
+    const mode = normalizePdpOpenMode(
+      item?.pdp_open?.path || item?.metadata?.pdp_open_mode || item?.metadata?.pdp_open_path,
+      'external',
+    );
+    if (mode === 'group' || mode === 'ref' || mode === 'resolve' || mode === 'external') {
+      stats[mode] += 1;
+    } else {
+      stats.external += 1;
+    }
+  }
+  return stats;
+}
+
+function tallyResolveFailReasonCounts(recommendations) {
+  const counts = { db_error: 0, upstream_timeout: 0, no_candidates: 0 };
+  for (const item of Array.isArray(recommendations) ? recommendations : []) {
+    const code = normalizeResolveReasonCode(
+      item?.metadata?.pdp_open_fail_reason ||
+        item?.metadata?.resolve_reason_code ||
+        item?.metadata?.resolve_fail_reason ||
+        item?.pdp_open?.resolve_reason_code,
+      '',
+    );
+    if (code === 'db_error' || code === 'upstream_timeout' || code === 'no_candidates') {
+      counts[code] += 1;
+    }
+  }
+  return counts;
+}
+
+function summarizeTimeToPdpStats(items) {
+  const values = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const raw = item?.metadata?.time_to_pdp_ms;
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0) continue;
+    values.push(Math.round(num));
+  }
+  values.sort((a, b) => a - b);
+
+  if (!values.length) {
+    return { count: 0, mean: 0, p50: 0, p90: 0, max: 0 };
+  }
+
+  const pickPercentile = (p) => {
+    const idx = Math.min(values.length - 1, Math.max(0, Math.ceil(values.length * p) - 1));
+    return values[idx];
+  };
+  const sum = values.reduce((acc, v) => acc + v, 0);
+  return {
+    count: values.length,
+    mean: Math.round(sum / values.length),
+    p50: pickPercentile(0.5),
+    p90: pickPercentile(0.9),
+    max: values[values.length - 1],
+  };
+}
+
+function mapOfferResolveFailureCode({ responseBody, statusCode, error } = {}) {
+  const explicit = normalizeResolveReasonCode(
+    responseBody?.reason_code || responseBody?.reasonCode || responseBody?.metadata?.reason_code || responseBody?.metadata?.resolve_reason_code,
+    '',
+  );
+  if (explicit) return explicit;
+
+  const reason = String(
+    responseBody?.reason ||
+      responseBody?.error ||
+      responseBody?.code ||
+      responseBody?.message ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (reason.startsWith('db_') || reason.includes('database') || reason.includes('postgres')) return 'db_error';
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
+  if (reason === 'no_candidates' || reason === 'not_found' || reason === 'not_found_in_cache') return 'no_candidates';
+
+  const status = Number(statusCode || 0);
+  if (status >= 500 || status === 429 || status === 408) return 'upstream_timeout';
+
+  const errText = String(error?.code || error?.message || error || '').trim().toLowerCase();
+  if (errText.includes('timeout') || errText.includes('econnaborted') || errText.includes('etimedout')) {
+    return 'upstream_timeout';
+  }
+  if (errText.includes('db_') || errText.includes('database') || errText.includes('postgres')) {
+    return 'db_error';
+  }
+  return 'no_candidates';
+}
+
+function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAttempted = false, timeToPdpMs = null } = {}) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+  const product = base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? { ...base.product } : {};
+  const offer = base.offer && typeof base.offer === 'object' && !Array.isArray(base.offer) ? { ...base.offer } : base.offer;
+  const failReason =
+    failReasonCode != null && failReasonCode !== ''
+      ? normalizeResolveReasonCode(failReasonCode)
+      : null;
+  const { subjectProductGroupId, directProductRef } = extractRecoPdpDirectKeys(product, product);
+
+  const metadataBase = isPlainObject(base.metadata) ? { ...base.metadata } : {};
+  const normalizedTimeToPdp =
+    Number.isFinite(Number(timeToPdpMs)) && Number(timeToPdpMs) >= 0
+      ? Math.max(0, Math.round(Number(timeToPdpMs)))
+      : null;
+  const metadata = {
+    ...metadataBase,
+    ...(resolveAttempted ? { offer_resolve_attempted: true } : {}),
+    ...(normalizedTimeToPdp != null ? { time_to_pdp_ms: normalizedTimeToPdp } : {}),
+  };
+
+  if (subjectProductGroupId) {
+    const subject = {
+      type: 'product_group',
+      id: subjectProductGroupId,
+      product_group_id: subjectProductGroupId,
+    };
+    product.product_group_id = subjectProductGroupId;
+    if (directProductRef) product.canonical_product_ref = directProductRef;
+    metadata.pdp_open_path = 'internal';
+    metadata.pdp_open_mode = 'group';
+    if (failReason) {
+      metadata.pdp_open_fail_reason = failReason;
+      metadata.resolve_reason_code = failReason;
+      metadata.resolve_fail_reason = failReason;
+    }
+    return {
+      ...base,
+      product,
+      ...(offer && typeof offer === 'object' ? { offer } : {}),
+      metadata,
+      pdp_open: {
+        path: 'group',
+        subject,
+        get_pdp_v2_payload: { subject: { type: 'product_group', id: subjectProductGroupId } },
+      },
+    };
+  }
+
+  if (directProductRef) {
+    product.canonical_product_ref = directProductRef;
+    metadata.pdp_open_path = 'internal';
+    metadata.pdp_open_mode = 'ref';
+    if (failReason) {
+      metadata.pdp_open_fail_reason = failReason;
+      metadata.resolve_reason_code = failReason;
+      metadata.resolve_fail_reason = failReason;
+    }
+    return {
+      ...base,
+      product,
+      ...(offer && typeof offer === 'object' ? { offer } : {}),
+      metadata,
+      pdp_open: {
+        path: 'ref',
+        product_ref: directProductRef,
+        get_pdp_v2_payload: { product_ref: directProductRef },
+      },
+    };
+  }
+
+  const offerUrl =
+    (offer && typeof offer === 'object' && typeof offer.affiliate_url === 'string' && offer.affiliate_url.trim()) ||
+    (offer && typeof offer === 'object' && typeof offer.affiliateUrl === 'string' && offer.affiliateUrl.trim()) ||
+    (offer && typeof offer === 'object' && typeof offer.url === 'string' && offer.url.trim()) ||
+    '';
+  const queryText = buildProductInputText(product, offerUrl) || pickFirstTrimmed(product.display_name, product.name, product.brand);
+  metadata.pdp_open_path = 'external';
+  metadata.pdp_open_mode = 'external';
+  if (failReason) {
+    metadata.pdp_open_fail_reason = failReason;
+    metadata.resolve_reason_code = failReason;
+    metadata.resolve_fail_reason = failReason;
+  }
+
+  return {
+    ...base,
+    product,
+    ...(offer && typeof offer === 'object' ? { offer } : {}),
+    metadata,
+    pdp_open: {
+      path: 'external',
+      external: {
+        provider: 'google',
+        target: '_blank',
+        url: buildExternalGoogleSearchUrl(queryText),
+        query: queryText || null,
+      },
+      ...(failReason ? { resolve_reason_code: failReason } : {}),
+    },
+  };
+}
+
+function summarizeOfferPdpOpen(items) {
+  const stats = { internal: 0, external: 0 };
+  const failReasonCounts = { db_error: 0, upstream_timeout: 0, no_candidates: 0 };
+  for (const item of Array.isArray(items) ? items : []) {
+    const path = normalizePdpOpenPath(item?.metadata?.pdp_open_path || item?.pdp_open?.path, 'external');
+    if (path === 'internal') stats.internal += 1;
+    else stats.external += 1;
+
+    const failReason = normalizeResolveReasonCode(
+      item?.metadata?.pdp_open_fail_reason || item?.metadata?.resolve_reason_code || item?.pdp_open?.resolve_reason_code,
+      '',
+    );
+    if (failReason === 'db_error' || failReason === 'upstream_timeout' || failReason === 'no_candidates') {
+      failReasonCounts[failReason] += 1;
+    }
+  }
+  return {
+    path_stats: stats,
+    fail_reason_counts: failReasonCounts,
+    time_to_pdp_ms_stats: summarizeTimeToPdpStats(items),
+  };
+}
+
+async function enrichRecommendationsWithPdpOpenContract({ recommendations, logger } = {}) {
+  const recos = Array.isArray(recommendations) ? recommendations : [];
+  if (!recos.length) {
+    return {
+      recommendations: recos,
+      path_stats: { group: 0, ref: 0, resolve: 0, external: 0 },
+      fail_reason_counts: { db_error: 0, upstream_timeout: 0, no_candidates: 0 },
+      time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
+    };
+  }
+
+  const enriched = await mapWithConcurrency(recos, 3, async (item) =>
+    enrichRecoItemWithPdpOpenContract(item, { logger }),
+  );
+  const normalized = enriched.map((item, idx) => {
+    if (item && typeof item === 'object' && !Array.isArray(item)) return item;
+    return recos[idx];
+  });
+
+  return {
+    recommendations: normalized,
+    path_stats: tallyPdpOpenPathStats(normalized),
+    fail_reason_counts: tallyResolveFailReasonCounts(normalized),
+    time_to_pdp_ms_stats: summarizeTimeToPdpStats(normalized),
+  };
+}
+
 function coerceRecoItemForUi(item, { lang } = {}) {
   const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
   if (!base) return item;
@@ -5574,7 +6303,6 @@ function coerceRecoItemForUi(item, { lang } = {}) {
     (skuCandidate && typeof skuCandidate.productId === 'string' ? skuCandidate.productId : null) ||
     (typeof base.product_id === 'string' ? base.product_id : null) ||
     (typeof base.productId === 'string' ? base.productId : null) ||
-    skuId ||
     null;
 
   const brand =
@@ -6219,6 +6947,21 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
     norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
   }
 
+  const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+    recommendations: norm.payload.recommendations,
+    logger,
+  });
+  norm.payload = {
+    ...norm.payload,
+    recommendations: pdpOpenOut.recommendations,
+    metadata: {
+      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+      pdp_open_path_stats: pdpOpenOut.path_stats,
+      resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+      time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+    },
+  };
+
   const suggestedChips = [];
   const nextActions = upstream && Array.isArray(upstream.next_actions) ? upstream.next_actions : [];
   if ((!norm.payload.recommendations || norm.payload.recommendations.length === 0) && nextActions.length) {
@@ -6474,6 +7217,21 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       return { ...base, reasons: pickReasons(reasonsRaw) };
     });
   }
+
+  const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
+    recommendations: norm.payload.recommendations,
+    logger,
+  });
+  norm.payload = {
+    ...norm.payload,
+    recommendations: pdpOpenOut.recommendations,
+    metadata: {
+      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+      pdp_open_path_stats: pdpOpenOut.path_stats,
+      resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+      time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+    },
+  };
 
   return { norm, upstreamDebug, alternativesDebug };
 }
@@ -10659,25 +11417,28 @@ function mountAuroraBffRoutes(app, { logger }) {
       const fieldMissing = [];
 
       for (const item of items) {
+        const itemStartedAt = Date.now();
+        const itemElapsedMs = () => Math.max(0, Date.now() - itemStartedAt);
         const product = item.product;
         const offer = item.offer;
         const url = offer && (offer.affiliate_url || offer.affiliateUrl || offer.url);
 
         if (USE_AURORA_BFF_MOCK) {
-          resolved.push({
+          const nextItem = applyOfferItemPdpOpenContract({
             product: { ...product, image_url: product.image_url || 'https://img.example.com/mock.jpg' },
             offer: { ...offer, price: typeof offer.price === 'number' && offer.price > 0 ? offer.price : 12.34, currency: offer.currency || 'USD' },
-          });
+          }, { timeToPdpMs: itemElapsedMs() });
+          resolved.push(nextItem);
           continue;
         }
 
         if (!url) {
-          resolved.push(item);
+          resolved.push(applyOfferItemPdpOpenContract(item, { timeToPdpMs: itemElapsedMs() }));
           fieldMissing.push({ field: 'offer.affiliate_url', reason: 'missing_affiliate_url' });
           continue;
         }
         if (!PIVOTA_BACKEND_BASE_URL) {
-          resolved.push(item);
+          resolved.push(applyOfferItemPdpOpenContract(item, { timeToPdpMs: itemElapsedMs() }));
           fieldMissing.push({ field: 'offer.snapshot', reason: 'pivota_backend_not_configured' });
           continue;
         }
@@ -10689,8 +11450,21 @@ function mountAuroraBffRoutes(app, { logger }) {
             { timeout: 12000, validateStatus: () => true },
           );
           if (resp.status !== 200 || !resp.data || !resp.data.ok || !resp.data.offer) {
-            resolved.push(item);
-            fieldMissing.push({ field: 'offer.snapshot', reason: 'external_offer_resolve_failed' });
+            const failReason = mapOfferResolveFailureCode({
+              responseBody: resp?.data,
+              statusCode: resp?.status,
+            });
+            resolved.push(
+              applyOfferItemPdpOpenContract(item, {
+                failReasonCode: failReason,
+                resolveAttempted: true,
+                timeToPdpMs: itemElapsedMs(),
+              }),
+            );
+            fieldMissing.push({
+              field: 'offer.snapshot',
+              reason: failReason === 'db_error' ? 'external_offer_resolve_db_error' : 'external_offer_resolve_failed',
+            });
             continue;
           }
           const snap = resp.data.offer;
@@ -10706,12 +11480,29 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           if (snap.canonicalUrl) patchedOffer.affiliate_url = snap.canonicalUrl;
 
-          resolved.push({ product: patchedProduct, offer: patchedOffer });
+          resolved.push(
+            applyOfferItemPdpOpenContract(
+              { ...item, product: patchedProduct, offer: patchedOffer },
+              { resolveAttempted: true, timeToPdpMs: itemElapsedMs() },
+            ),
+          );
         } catch (err) {
-          resolved.push(item);
-          fieldMissing.push({ field: 'offer.snapshot', reason: 'external_offer_resolve_timeout_or_network' });
+          const failReason = mapOfferResolveFailureCode({ error: err });
+          resolved.push(
+            applyOfferItemPdpOpenContract(item, {
+              failReasonCode: failReason,
+              resolveAttempted: true,
+              timeToPdpMs: itemElapsedMs(),
+            }),
+          );
+          fieldMissing.push({
+            field: 'offer.snapshot',
+            reason: failReason === 'db_error' ? 'external_offer_resolve_db_error' : 'external_offer_resolve_timeout_or_network',
+          });
         }
       }
+
+      const offersPdpMeta = summarizeOfferPdpOpen(resolved);
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -10720,12 +11511,28 @@ function mountAuroraBffRoutes(app, { logger }) {
           {
             card_id: `offers_${ctx.request_id}`,
             type: 'offers_resolved',
-            payload: { items: resolved, market },
+            payload: {
+              items: resolved,
+              market,
+              metadata: {
+                pdp_open_path_stats: offersPdpMeta.path_stats,
+                fail_reason_counts: offersPdpMeta.fail_reason_counts,
+                time_to_pdp_ms_stats: offersPdpMeta.time_to_pdp_ms_stats,
+              },
+            },
             ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'offers_resolved', { count: resolved.length, market })],
+        events: [
+          makeEvent(ctx, 'offers_resolved', {
+            count: resolved.length,
+            market,
+            pdp_open_path_stats: offersPdpMeta.path_stats,
+            fail_reason_counts: offersPdpMeta.fail_reason_counts,
+            time_to_pdp_ms_stats: offersPdpMeta.time_to_pdp_ms_stats,
+          }),
+        ],
       });
       return res.json(envelope);
     } catch (err) {
@@ -11164,7 +11971,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           const products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
           const offersItems = (products.length ? products : [brandProduct])
             .slice(0, 8)
-            .map((product) => ({ product, offer: null }));
+            .map((product) => applyOfferItemPdpOpenContract({ product, offer: null }, { timeToPdpMs: 0 }));
+          const offersPdpMeta = summarizeOfferPdpOpen(offersItems);
 
           const marketRaw = profile && typeof profile.region === 'string' ? profile.region.trim() : '';
           const market = marketRaw ? marketRaw.slice(0, 8).toUpperCase() : 'US';
@@ -11214,7 +12022,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               {
                 card_id: `offers_${ctx.request_id}`,
                 type: 'offers_resolved',
-                payload: { items: offersItems, market },
+                payload: {
+                  items: offersItems,
+                  market,
+                  metadata: {
+                    pdp_open_path_stats: offersPdpMeta.path_stats,
+                    fail_reason_counts: offersPdpMeta.fail_reason_counts,
+                    time_to_pdp_ms_stats: offersPdpMeta.time_to_pdp_ms_stats,
+                  },
+                },
                 ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
               },
             ],
@@ -12890,6 +13706,8 @@ const __internal = {
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,
   looksLikeGreetingAlready,
+  enrichRecoItemWithPdpOpenContract,
+  enrichRecommendationsWithPdpOpenContract,
   maybeInferSkinMaskForPhotoModules,
   __setInferSkinMaskOnFaceCropForTest(fn) {
     inferSkinMaskOnFaceCropImpl = typeof fn === 'function' ? fn : inferSkinMaskOnFaceCrop;

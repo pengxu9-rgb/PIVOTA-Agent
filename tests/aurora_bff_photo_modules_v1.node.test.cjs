@@ -385,6 +385,7 @@ test('photo modules card: face oval clip too small falls back and marks degraded
       assert.ok(degradedCount > 0, 'expected at least one module with FACE_OVAL_CLIP_TOO_SMALL');
     },
   ));
+
 test('photo modules card: internal_debug includes shrink_factors_used for all modules', () =>
   withEnv(
     {

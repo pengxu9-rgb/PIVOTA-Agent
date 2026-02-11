@@ -17,6 +17,8 @@ const DEFAULT_LANG = 'en';
 const DEFAULT_SAMPLE_SEED = 'fasseg_matrix_seed_v1';
 const DEFAULT_CIRCLE_MODEL_MIN_PIXELS = 24;
 const DEFAULT_REGRESSION_DELTA = 0.02;
+const DEFAULT_MODULE_REGRESSION_DELTA = 0.03;
+const DEFAULT_SCORE_TIE_DELTA = 0.005;
 const DEFAULT_BASELINE_GROUP = 'c1_k1';
 
 function nowKey() {
@@ -95,6 +97,18 @@ function parseArgs(argv) {
       0,
       1,
     ),
+    module_regression_delta_threshold: parseNumber(
+      process.env.EVAL_MATRIX_MODULE_REGRESSION_DELTA,
+      DEFAULT_MODULE_REGRESSION_DELTA,
+      0,
+      1,
+    ),
+    score_tie_delta_threshold: parseNumber(
+      process.env.EVAL_MATRIX_SCORE_TIE_DELTA,
+      DEFAULT_SCORE_TIE_DELTA,
+      0,
+      1,
+    ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -160,6 +174,16 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--module_regression_delta' && next) {
+      out.module_regression_delta_threshold = parseNumber(next, out.module_regression_delta_threshold, 0, 1);
+      i += 1;
+      continue;
+    }
+    if (token === '--score_tie_delta' && next) {
+      out.score_tie_delta_threshold = parseNumber(next, out.score_tie_delta_threshold, 0, 1);
+      i += 1;
+      continue;
+    }
     if (token === '--base_url' && next) {
       out.base_url = String(next);
       i += 1;
@@ -185,6 +209,14 @@ function parseArgs(argv) {
   out.base_url = String(out.base_url || '').trim();
   out.token = String(out.token || '').trim();
   out.regression_delta_threshold = Math.max(0, Number(out.regression_delta_threshold || DEFAULT_REGRESSION_DELTA));
+  out.module_regression_delta_threshold = Math.max(
+    0,
+    Number(out.module_regression_delta_threshold || DEFAULT_MODULE_REGRESSION_DELTA),
+  );
+  out.score_tie_delta_threshold = Math.max(
+    0,
+    Number(out.score_tie_delta_threshold || DEFAULT_SCORE_TIE_DELTA),
+  );
   const modelToken = String(out.circle_model_path || '').trim();
   out.circle_model_path = ['none', 'off', 'false'].includes(modelToken.toLowerCase())
     ? DEFAULT_CIRCLE_MODEL_PATH
@@ -385,33 +417,37 @@ function moduleMetric(rows, moduleId, field) {
   return Number.isFinite(value) ? round3(value) : null;
 }
 
-function computeRegressionDriverRows(groupMap) {
+function computeRegressionDriverRows(groupMap, thresholds) {
   const c0k0 = groupMap.c0_k0;
   const c0k1 = groupMap.c0_k1;
   const c1k0 = groupMap.c1_k0;
   const c1k1 = groupMap.c1_k1;
-  return [
-    {
-      factor: 'circle',
-      context: 'calibration=0',
-      delta_leakage: round3(safeNumber(c1k0.leakage_mean) - safeNumber(c0k0.leakage_mean)),
-    },
-    {
-      factor: 'circle',
-      context: 'calibration=1',
-      delta_leakage: round3(safeNumber(c1k1.leakage_mean) - safeNumber(c0k1.leakage_mean)),
-    },
-    {
-      factor: 'calibration',
-      context: 'circle=0',
-      delta_leakage: round3(safeNumber(c0k1.leakage_mean) - safeNumber(c0k0.leakage_mean)),
-    },
-    {
-      factor: 'calibration',
-      context: 'circle=1',
-      delta_leakage: round3(safeNumber(c1k1.leakage_mean) - safeNumber(c1k0.leakage_mean)),
-    },
+  const pairs = [
+    { factor: 'circle', context: 'calibration=0', off: c0k0, on: c1k0 },
+    { factor: 'circle', context: 'calibration=1', off: c0k1, on: c1k1 },
+    { factor: 'calibration', context: 'circle=0', off: c0k0, on: c0k1 },
+    { factor: 'calibration', context: 'circle=1', off: c1k0, on: c1k1 },
   ];
+  return pairs.map((pair) => {
+    const leakageBgDelta = round3(safeNumber(pair.on.leakage_bg_mean) - safeNumber(pair.off.leakage_bg_mean));
+    const chinDelta = round3(safeNumber(pair.on.chin_leakage_bg) - safeNumber(pair.off.chin_leakage_bg));
+    const noseDelta = round3(safeNumber(pair.on.nose_leakage_bg) - safeNumber(pair.off.nose_leakage_bg));
+    const flags = [];
+    if (leakageBgDelta > thresholds.global) flags.push(`leakage_bg+>${round3(thresholds.global)}`);
+    if (chinDelta > thresholds.module) flags.push(`chin_bg+>${round3(thresholds.module)}`);
+    if (noseDelta > thresholds.module) flags.push(`nose_bg+>${round3(thresholds.module)}`);
+    const maxDelta = Math.max(leakageBgDelta, chinDelta, noseDelta);
+    return {
+      factor: pair.factor,
+      context: pair.context,
+      leakage_bg_delta: leakageBgDelta,
+      chin_leakage_bg_delta: chinDelta,
+      nose_leakage_bg_delta: noseDelta,
+      max_delta: round3(maxDelta),
+      is_driver: flags.length > 0,
+      reason: flags.length ? flags.join(', ') : 'ok',
+    };
+  });
 }
 
 function computeCoverageMean(jsonlRows, csvRows) {
@@ -450,12 +486,12 @@ function computeSampleSetConsistency(groups, jsonlByGroup) {
 function buildModuleTable(csvByGroup, groupIds) {
   const trackedModules = [
     { module: 'chin', type: 'single', left: 'chin', right: 'chin' },
-    { module: 'forehead', type: 'single', left: 'forehead', right: 'forehead' },
-    { module: 'cheeks', type: 'avg', left: 'left_cheek', right: 'right_cheek' },
+    { module: 'nose', type: 'single', left: 'nose', right: 'nose' },
   ];
   const trackedMetrics = [
+    { key: 'leakage_bg_mean', label: 'leakage_bg', higher_is_better: false },
+    { key: 'leakage_hair_mean', label: 'leakage_hair', higher_is_better: false },
     { key: 'miou_mean', label: 'mIoU', higher_is_better: true },
-    { key: 'leakage_mean', label: 'leakage', higher_is_better: false },
     { key: 'coverage_mean', label: 'coverage', higher_is_better: true },
   ];
   const rows = [];
@@ -497,52 +533,148 @@ function markBestGroup(moduleRow, groupIds) {
 
 function computeDeltasForGroup(groupMap, baselineGroupId) {
   const baseline = groupMap[baselineGroupId] || {};
-  const baselineLeakage = safeNumber(baseline.leakage_mean);
+  const baselineLeakageBg = safeNumber(baseline.leakage_bg_mean);
+  const baselineLeakageHair = safeNumber(baseline.leakage_hair_mean);
   const baselineMiou = safeNumber(baseline.module_miou_mean);
   const baselineCoverage = safeNumber(baseline.coverage_mean);
+  const baselineEmptyRate = safeNumber(baseline.empty_module_rate);
   const out = {};
   for (const [groupId, item] of Object.entries(groupMap)) {
     out[groupId] = {
-      leakage_delta_vs_baseline: round3(safeNumber(item.leakage_mean) - baselineLeakage),
+      leakage_bg_delta_vs_baseline: round3(safeNumber(item.leakage_bg_mean) - baselineLeakageBg),
+      leakage_hair_delta_vs_baseline: round3(safeNumber(item.leakage_hair_mean) - baselineLeakageHair),
       miou_delta_vs_baseline: round3(safeNumber(item.module_miou_mean) - baselineMiou),
       coverage_delta_vs_baseline: round3(safeNumber(item.coverage_mean) - baselineCoverage),
+      empty_module_rate_delta_vs_baseline: round3(safeNumber(item.empty_module_rate) - baselineEmptyRate),
+      chin_leakage_bg_delta_vs_baseline: round3(safeNumber(item.chin_leakage_bg) - safeNumber(baseline.chin_leakage_bg)),
+      nose_leakage_bg_delta_vs_baseline: round3(safeNumber(item.nose_leakage_bg) - safeNumber(baseline.nose_leakage_bg)),
     };
   }
   return out;
 }
 
-function findRecommendation(groups, groupMap, baselineGroupId) {
+function groupScore(row) {
+  return (
+    (4 * safeNumber(row.nose_leakage_bg)) +
+    (3 * safeNumber(row.chin_leakage_bg)) +
+    (2 * safeNumber(row.leakage_bg_mean)) -
+    (0.5 * safeNumber(row.coverage_mean))
+  );
+}
+
+function compareByScoreThenRisk(a, b, tieDelta) {
+  const scoreDelta = safeNumber(a.score) - safeNumber(b.score);
+  if (Math.abs(scoreDelta) >= tieDelta) return scoreDelta;
+  if (Boolean(a.circle_enabled) !== Boolean(b.circle_enabled)) {
+    return a.circle_enabled ? 1 : -1;
+  }
+  if (Boolean(a.calibration_enabled) !== Boolean(b.calibration_enabled)) {
+    return a.calibration_enabled ? 1 : -1;
+  }
+  return String(a.group_id).localeCompare(String(b.group_id));
+}
+
+function findRecommendation(groups, groupMap, baselineGroupId, driverRows, thresholds) {
   const baseline = groupMap[baselineGroupId];
   if (!baseline) return null;
-  const candidates = groups
-    .filter((group) => group.id !== baselineGroupId)
-    .map((group) => {
-      const item = groupMap[group.id];
-      const leakageDelta = safeNumber(item.leakage_mean) - safeNumber(baseline.leakage_mean);
-      const miouDelta = safeNumber(item.module_miou_mean) - safeNumber(baseline.module_miou_mean);
-      const qualifies = leakageDelta <= -0.15 || miouDelta >= 0.05;
-      const score = (-leakageDelta / 0.15) + (miouDelta / 0.05);
-      return {
-        group_id: group.id,
-        circle_enabled: group.circle_enabled,
-        calibration_enabled: group.calibration_enabled,
-        leakage_delta_vs_baseline: round3(leakageDelta),
-        miou_delta_vs_baseline: round3(miouDelta),
-        qualifies,
-        score,
-      };
-    })
-    .filter((item) => item.qualifies)
-    .sort((a, b) => b.score - a.score);
-  return candidates.length ? candidates[0] : null;
+  const hardGatePass = (row) =>
+    safeNumber(row.leakage_bg_mean) <= 0.1 && safeNumber(row.empty_module_rate) <= 0.01;
+
+  const candidatesAll = groups.map((group) => {
+    const row = groupMap[group.id] || {};
+    return {
+      group_id: group.id,
+      circle_enabled: group.circle_enabled,
+      calibration_enabled: group.calibration_enabled,
+      hard_gate_pass: hardGatePass(row),
+      score: round3(groupScore(row)),
+      leakage_bg_mean: round3(row.leakage_bg_mean),
+      leakage_hair_mean: round3(row.leakage_hair_mean),
+      chin_leakage_bg: round3(row.chin_leakage_bg),
+      nose_leakage_bg: round3(row.nose_leakage_bg),
+      coverage_mean: round3(row.coverage_mean),
+      module_miou_mean: round3(row.module_miou_mean),
+      empty_module_rate: round3(row.empty_module_rate),
+    };
+  });
+
+  const gated = candidatesAll.filter((item) => item.hard_gate_pass);
+  const pool = gated.length ? gated : candidatesAll;
+  pool.sort((a, b) => compareByScoreThenRisk(a, b, thresholds.score_tie_delta));
+
+  const chosen = pool[0];
+  const runnerUp = pool[1] || null;
+  const reasons = [];
+  reasons.push(gated.length ? 'selected from hard-gate passing groups' : 'no hard-gate passing group; fallback to all groups');
+  if (driverRows.some((row) => row.is_driver)) {
+    reasons.push('regression driver(s) detected; chosen group minimizes weighted risk score');
+  } else {
+    reasons.push('no regression driver above thresholds');
+  }
+  if (runnerUp && Math.abs(safeNumber(runnerUp.score) - safeNumber(chosen.score)) < thresholds.score_tie_delta) {
+    reasons.push(`score tie < ${round3(thresholds.score_tie_delta)} resolved by preferring circle=0`);
+  }
+
+  const chosenRow = groupMap[chosen.group_id] || baseline;
+  const runnerRow = runnerUp ? groupMap[runnerUp.group_id] || null : null;
+  const runnerDelta = runnerUp ? round3(safeNumber(runnerUp.score) - safeNumber(chosen.score)) : null;
+
+  return {
+    ...chosen,
+    reasons,
+    runner_up: runnerUp
+      ? {
+          group_id: runnerUp.group_id,
+          circle_enabled: runnerUp.circle_enabled,
+          calibration_enabled: runnerUp.calibration_enabled,
+          score: runnerUp.score,
+          score_delta_vs_chosen: runnerDelta,
+        }
+      : null,
+    chosen_score: chosen.score,
+    score_delta_runner_up: runnerDelta,
+    leakage_bg_delta_vs_baseline: round3(safeNumber(chosenRow.leakage_bg_mean) - safeNumber(baseline.leakage_bg_mean)),
+    leakage_hair_delta_vs_baseline: round3(safeNumber(chosenRow.leakage_hair_mean) - safeNumber(baseline.leakage_hair_mean)),
+    chin_leakage_bg_delta_vs_baseline: round3(safeNumber(chosenRow.chin_leakage_bg) - safeNumber(baseline.chin_leakage_bg)),
+    nose_leakage_bg_delta_vs_baseline: round3(safeNumber(chosenRow.nose_leakage_bg) - safeNumber(baseline.nose_leakage_bg)),
+    miou_delta_vs_baseline: round3(safeNumber(chosenRow.module_miou_mean) - safeNumber(baseline.module_miou_mean)),
+    empty_module_rate_delta_vs_baseline: round3(safeNumber(chosenRow.empty_module_rate) - safeNumber(baseline.empty_module_rate)),
+    runner_up_leakage_bg_delta_vs_baseline: runnerRow
+      ? round3(safeNumber(runnerRow.leakage_bg_mean) - safeNumber(baseline.leakage_bg_mean))
+      : null,
+    triggered_driver_count: driverRows.filter((row) => row.is_driver).length,
+  };
+}
+
+function computeCircleImpact(groupMap) {
+  const offRows = [groupMap.c0_k0, groupMap.c0_k1].filter(Boolean);
+  const onRows = [groupMap.c1_k0, groupMap.c1_k1].filter(Boolean);
+  const avg = (rows, key) => round3(mean(rows.map((row) => safeNumber(row[key], NaN))));
+  const off = {
+    nose_leakage_bg: avg(offRows, 'nose_leakage_bg'),
+    nose_coverage: avg(offRows, 'nose_coverage_mean'),
+    nose_miou: avg(offRows, 'nose_miou_mean'),
+  };
+  const on = {
+    nose_leakage_bg: avg(onRows, 'nose_leakage_bg'),
+    nose_coverage: avg(onRows, 'nose_coverage_mean'),
+    nose_miou: avg(onRows, 'nose_miou_mean'),
+  };
+  const deltas = {
+    nose_leakage_bg: round3(safeNumber(on.nose_leakage_bg) - safeNumber(off.nose_leakage_bg)),
+    nose_coverage: round3(safeNumber(on.nose_coverage) - safeNumber(off.nose_coverage)),
+    nose_miou: round3(safeNumber(on.nose_miou) - safeNumber(off.nose_miou)),
+  };
+  const worsened = deltas.nose_leakage_bg > 0 && (deltas.nose_coverage < 0 || deltas.nose_miou < 0);
+  return { off, on, deltas, worsened };
 }
 
 function findMaxRegressionDriver(driverRows) {
   const positiveRows = driverRows
-    .map((row) => ({ ...row, delta_leakage: safeNumber(row.delta_leakage) }))
-    .filter((row) => row.delta_leakage > 0);
+    .map((row) => ({ ...row, max_delta: safeNumber(row.max_delta) }))
+    .filter((row) => row.is_driver && row.max_delta > 0);
   if (!positiveRows.length) return null;
-  positiveRows.sort((a, b) => b.delta_leakage - a.delta_leakage);
+  positiveRows.sort((a, b) => b.max_delta - a.max_delta);
   return positiveRows[0];
 }
 
@@ -555,9 +687,12 @@ function renderMd({
   driverRows,
   maxRegressionDriver,
   recommendation,
+  circleImpact,
   deltasByGroup,
   sampleSetConsistent,
-  regressionThreshold,
+  regressionThresholdGlobal,
+  regressionThresholdModule,
+  scoreTieDeltaThreshold,
   mdPath,
   csvPath,
   jsonlPath,
@@ -571,36 +706,66 @@ function renderMd({
   lines.push(`- sample_seed: ${args.sample_seed}`);
   lines.push(`- limit: ${args.limit}`);
   lines.push(`- circle_model_path: ${args.circle_model_path}`);
-  lines.push(`- regression_delta_threshold: ${round3(regressionThreshold)}`);
+  lines.push(`- regression_bg_threshold: ${round3(regressionThresholdGlobal)}`);
+  lines.push(`- regression_module_threshold: ${round3(regressionThresholdModule)}`);
+  lines.push(`- score_tie_delta_threshold: ${round3(scoreTieDeltaThreshold)}`);
   lines.push(`- sample_set_consistent: ${sampleSetConsistent ? 'true' : 'false'}`);
   lines.push(`- baseline_group: ${DEFAULT_BASELINE_GROUP}`);
   lines.push('');
 
+  lines.push('## Recommended defaults');
+  lines.push('');
   if (recommendation) {
-    lines.push('## Recommended default flags for internal test');
-    lines.push('');
     lines.push(
       `- group: \`${recommendation.group_id}\` (circle=${recommendation.circle_enabled ? 1 : 0}, calibration=${recommendation.calibration_enabled ? 1 : 0})`,
     );
-    lines.push(`- leakage_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.leakage_delta_vs_baseline}`);
-    lines.push(`- mIoU_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.miou_delta_vs_baseline}`);
-    lines.push('');
+    lines.push(`- chosen_score: ${round3(recommendation.chosen_score)}`);
+    if (recommendation.runner_up) {
+      lines.push(
+        `- runner_up: \`${recommendation.runner_up.group_id}\` (circle=${recommendation.runner_up.circle_enabled ? 1 : 0}, calibration=${recommendation.runner_up.calibration_enabled ? 1 : 0}, score=${round3(recommendation.runner_up.score)}, delta=${round3(recommendation.runner_up.score_delta_vs_chosen)})`,
+      );
+    } else {
+      lines.push('- runner_up: n/a');
+    }
+    lines.push(`- reasons: ${recommendation.reasons.join('; ')}`);
+    lines.push(`- leakage_bg_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.leakage_bg_delta_vs_baseline}`);
+    lines.push(`- chin_leakage_bg_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.chin_leakage_bg_delta_vs_baseline}`);
+    lines.push(`- nose_leakage_bg_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.nose_leakage_bg_delta_vs_baseline}`);
+    lines.push(`- empty_module_rate_delta_vs_${DEFAULT_BASELINE_GROUP}: ${recommendation.empty_module_rate_delta_vs_baseline}`);
+  } else {
+    lines.push('- recommendation: unavailable');
   }
+  lines.push('');
 
   lines.push('## Group Summary');
   lines.push('');
-  lines.push('| group | circle_enabled | calibration_enabled | module_mIoU_mean | leakage_mean | coverage_mean | samples_ok | samples_total | leakage_delta_vs_baseline | mIoU_delta_vs_baseline |');
-  lines.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+  lines.push('| group | circle_enabled | calibration_enabled | module_mIoU_mean | leakage_bg_mean | leakage_hair_mean | coverage_mean | empty_module_rate | module_pixels_min | chin_leakage_bg | nose_leakage_bg | samples_ok | samples_total | leakage_bg_delta_vs_baseline |');
+  lines.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
   for (const group of groups) {
     const row = groupMap[group.id];
     const delta = deltasByGroup[group.id] || {};
     lines.push(
-      `| ${group.id} | ${group.circle_enabled ? 1 : 0} | ${group.calibration_enabled ? 1 : 0} | ${round3(row.module_miou_mean)} | ${round3(row.leakage_mean)} | ${round3(row.coverage_mean)} | ${row.samples_ok} | ${row.samples_total} | ${round3(delta.leakage_delta_vs_baseline)} | ${round3(delta.miou_delta_vs_baseline)} |`,
+      `| ${group.id} | ${group.circle_enabled ? 1 : 0} | ${group.calibration_enabled ? 1 : 0} | ${round3(row.module_miou_mean)} | ${round3(row.leakage_bg_mean)} | ${round3(row.leakage_hair_mean)} | ${round3(row.coverage_mean)} | ${round3(row.empty_module_rate)} | ${Math.trunc(safeNumber(row.module_pixels_min, 0))} | ${round3(row.chin_leakage_bg)} | ${round3(row.nose_leakage_bg)} | ${row.samples_ok} | ${row.samples_total} | ${round3(delta.leakage_bg_delta_vs_baseline)} |`,
     );
   }
   lines.push('');
 
-  lines.push('## Per-Module Compare (chin / forehead / cheeks)');
+  lines.push('## Nose Impact (circle=1 vs circle=0)');
+  lines.push('');
+  lines.push('| metric | circle_off_avg | circle_on_avg | delta_on_minus_off | verdict |');
+  lines.push('|---|---:|---:|---:|---|');
+  lines.push(`| nose_leakage_bg | ${round3(circleImpact.off.nose_leakage_bg)} | ${round3(circleImpact.on.nose_leakage_bg)} | ${round3(circleImpact.deltas.nose_leakage_bg)} | ${circleImpact.deltas.nose_leakage_bg > 0 ? 'worse' : 'better_or_equal'} |`);
+  lines.push(`| nose_coverage | ${round3(circleImpact.off.nose_coverage)} | ${round3(circleImpact.on.nose_coverage)} | ${round3(circleImpact.deltas.nose_coverage)} | ${circleImpact.deltas.nose_coverage < 0 ? 'worse' : 'better_or_equal'} |`);
+  lines.push(`| nose_mIoU | ${round3(circleImpact.off.nose_miou)} | ${round3(circleImpact.on.nose_miou)} | ${round3(circleImpact.deltas.nose_miou)} | ${circleImpact.deltas.nose_miou < 0 ? 'worse' : 'better_or_equal'} |`);
+  lines.push('');
+  if (circleImpact.worsened) {
+    lines.push('- recommendation_note: segmentation_only dataset shows nose regression with circle=1; prefer circle=0 for internal tests.');
+  } else {
+    lines.push('- recommendation_note: no clear nose regression from circle switch under current matrix run.');
+  }
+  lines.push('');
+
+  lines.push('## Per-Module Compare (chin / nose focus)');
   lines.push('');
   lines.push('| module | metric | c0_k0 | c0_k1 | c1_k0 | c1_k1 | best_group |');
   lines.push('|---|---|---:|---:|---:|---:|---|');
@@ -612,14 +777,13 @@ function renderMd({
   }
   lines.push('');
 
-  lines.push('## Driver Analysis (Leakage Delta)');
+  lines.push('## Driver Analysis (Segmentation gate)');
   lines.push('');
-  lines.push('| factor | context | leakage_delta | verdict |');
-  lines.push('|---|---|---:|---|');
+  lines.push('| factor | context | leakage_bg_delta | chin_leakage_bg_delta | nose_leakage_bg_delta | max_delta | verdict | reason |');
+  lines.push('|---|---|---:|---:|---:|---:|---|---|');
   for (const row of driverRows) {
-    const isDriver = Number(row.delta_leakage || 0) > regressionThreshold;
     lines.push(
-      `| ${row.factor} | ${row.context} | ${round3(row.delta_leakage)} | ${isDriver ? 'REGRESSION DRIVER' : 'ok'} |`,
+      `| ${row.factor} | ${row.context} | ${round3(row.leakage_bg_delta)} | ${round3(row.chin_leakage_bg_delta)} | ${round3(row.nose_leakage_bg_delta)} | ${round3(row.max_delta)} | ${row.is_driver ? 'REGRESSION DRIVER' : 'ok'} | ${row.reason} |`,
     );
   }
   lines.push('');
@@ -628,7 +792,7 @@ function renderMd({
     lines.push('## Max Regression Driver');
     lines.push('');
     lines.push(
-      `- factor: ${maxRegressionDriver.factor}, context: ${maxRegressionDriver.context}, leakage_delta=${round3(maxRegressionDriver.delta_leakage)}`,
+      `- factor: ${maxRegressionDriver.factor}, context: ${maxRegressionDriver.context}, max_delta=${round3(maxRegressionDriver.max_delta)}, reason=${maxRegressionDriver.reason}`,
     );
     lines.push('');
   }
@@ -697,29 +861,44 @@ async function main() {
     jsonlByGroup[group.id] = await readJsonlRows(payload.artifacts.jsonl);
   }
 
-  const moduleTable = buildModuleTable(
-    csvByGroup,
-    groups.map((group) => group.id),
-  );
-
   const groupMap = {};
   for (const group of groups) {
     const payload = groupPayloads[group.id];
+    const csvRows = csvByGroup[group.id];
     groupMap[group.id] = {
       ...payload,
+      dataset_eval_mode: String(payload.dataset_eval_mode || 'unknown'),
       module_miou_mean: safeNumber(payload.module_miou_mean, 0),
-      leakage_mean: safeNumber(payload.leakage_mean, 0),
+      leakage_bg_mean: safeNumber(payload.leakage_bg_mean, safeNumber(payload.leakage_mean, 0)),
+      leakage_hair_mean: safeNumber(payload.leakage_hair_mean, 0),
       coverage_mean: computeCoverageMean(jsonlByGroup[group.id], csvByGroup[group.id]),
+      empty_module_rate: safeNumber(payload.empty_module_rate, 0),
+      module_pixels_min: safeNumber(payload.module_pixels_min, 0),
+      chin_leakage_bg: safeNumber(moduleMetric(csvRows, 'chin', 'leakage_bg_mean'), 0),
+      nose_leakage_bg: safeNumber(moduleMetric(csvRows, 'nose', 'leakage_bg_mean'), 0),
+      nose_coverage_mean: safeNumber(moduleMetric(csvRows, 'nose', 'coverage_mean'), 0),
+      nose_miou_mean: safeNumber(moduleMetric(csvRows, 'nose', 'miou_mean'), 0),
       samples_ok: safeNumber(payload.samples_ok, 0),
       samples_total: safeNumber(payload.samples_total, 0),
     };
   }
 
+  const moduleTable = buildModuleTable(
+    csvByGroup,
+    groups.map((group) => group.id),
+  );
+
   const sampleSetConsistent = computeSampleSetConsistency(groups, jsonlByGroup);
-  const driverRows = computeRegressionDriverRows(groupMap);
+  const driverRows = computeRegressionDriverRows(groupMap, {
+    global: args.regression_delta_threshold,
+    module: args.module_regression_delta_threshold,
+  });
   const maxRegressionDriver = findMaxRegressionDriver(driverRows);
   const deltasByGroup = computeDeltasForGroup(groupMap, DEFAULT_BASELINE_GROUP);
-  const recommendation = findRecommendation(groups, groupMap, DEFAULT_BASELINE_GROUP);
+  const recommendation = findRecommendation(groups, groupMap, DEFAULT_BASELINE_GROUP, driverRows, {
+    score_tie_delta: args.score_tie_delta_threshold,
+  });
+  const circleImpact = computeCircleImpact(groupMap);
 
   const mdPath = path.join(reportDir, `eval_circle_matrix_${runKey}.md`);
   const csvPath = path.join(reportDir, `eval_circle_matrix_${runKey}.csv`);
@@ -733,9 +912,12 @@ async function main() {
     driverRows,
     maxRegressionDriver,
     recommendation,
+    circleImpact,
     deltasByGroup,
     sampleSetConsistent,
-    regressionThreshold: args.regression_delta_threshold,
+    regressionThresholdGlobal: args.regression_delta_threshold,
+    regressionThresholdModule: args.module_regression_delta_threshold,
+    scoreTieDeltaThreshold: args.score_tie_delta_threshold,
     mdPath,
     csvPath,
     jsonlPath,
@@ -752,13 +934,20 @@ async function main() {
     'value',
     'delta_vs_baseline',
     'module_miou_mean',
-    'leakage_mean',
+    'leakage_bg_mean',
+    'leakage_hair_mean',
     'coverage_mean',
+    'empty_module_rate',
+    'module_pixels_min',
+    'chin_leakage_bg',
+    'nose_leakage_bg',
     'samples_ok',
     'samples_total',
     'factor',
     'context',
-    'leakage_delta',
+    'leakage_bg_delta',
+    'chin_leakage_bg_delta',
+    'nose_leakage_bg_delta',
     'verdict',
     'note',
   ];
@@ -776,13 +965,20 @@ async function main() {
       value: '',
       delta_vs_baseline: '',
       module_miou_mean: round3(summary.module_miou_mean),
-      leakage_mean: round3(summary.leakage_mean),
+      leakage_bg_mean: round3(summary.leakage_bg_mean),
+      leakage_hair_mean: round3(summary.leakage_hair_mean),
       coverage_mean: round3(summary.coverage_mean),
+      empty_module_rate: round3(summary.empty_module_rate),
+      module_pixels_min: Math.trunc(safeNumber(summary.module_pixels_min, 0)),
+      chin_leakage_bg: round3(summary.chin_leakage_bg),
+      nose_leakage_bg: round3(summary.nose_leakage_bg),
       samples_ok: summary.samples_ok,
       samples_total: summary.samples_total,
       factor: '',
       context: '',
-      leakage_delta: round3(delta.leakage_delta_vs_baseline),
+      leakage_bg_delta: round3(delta.leakage_bg_delta_vs_baseline),
+      chin_leakage_bg_delta: round3(delta.chin_leakage_bg_delta_vs_baseline),
+      nose_leakage_bg_delta: round3(delta.nose_leakage_bg_delta_vs_baseline),
       verdict: '',
       note: '',
     });
@@ -802,13 +998,20 @@ async function main() {
         value: value == null ? '' : round3(value),
         delta_vs_baseline: value == null || baselineValue == null ? '' : round3(safeNumber(value) - safeNumber(baselineValue)),
         module_miou_mean: '',
-        leakage_mean: '',
+        leakage_bg_mean: '',
+        leakage_hair_mean: '',
         coverage_mean: '',
+        empty_module_rate: '',
+        module_pixels_min: '',
+        chin_leakage_bg: '',
+        nose_leakage_bg: '',
         samples_ok: '',
         samples_total: '',
         factor: '',
         context: '',
-        leakage_delta: '',
+        leakage_bg_delta: '',
+        chin_leakage_bg_delta: '',
+        nose_leakage_bg_delta: '',
         verdict: '',
         note: '',
       });
@@ -816,26 +1019,32 @@ async function main() {
   }
 
   for (const row of driverRows) {
-    const isDriver = safeNumber(row.delta_leakage, 0) > args.regression_delta_threshold;
     csvRows.push({
       section: 'driver',
       group: '-',
       module: '-',
-      metric: 'leakage_delta',
+      metric: 'segmentation_gate_delta',
       circle_enabled: '',
       calibration_enabled: '',
       value: '',
       delta_vs_baseline: '',
       module_miou_mean: '',
-      leakage_mean: '',
+      leakage_bg_mean: '',
+      leakage_hair_mean: '',
       coverage_mean: '',
+      empty_module_rate: '',
+      module_pixels_min: '',
+      chin_leakage_bg: '',
+      nose_leakage_bg: '',
       samples_ok: '',
       samples_total: '',
       factor: row.factor,
       context: row.context,
-      leakage_delta: round3(row.delta_leakage),
-      verdict: isDriver ? 'REGRESSION DRIVER' : 'ok',
-      note: '',
+      leakage_bg_delta: round3(row.leakage_bg_delta),
+      chin_leakage_bg_delta: round3(row.chin_leakage_bg_delta),
+      nose_leakage_bg_delta: round3(row.nose_leakage_bg_delta),
+      verdict: row.is_driver ? 'REGRESSION DRIVER' : 'ok',
+      note: row.reason,
     });
   }
 
@@ -850,15 +1059,22 @@ async function main() {
       value: '',
       delta_vs_baseline: '',
       module_miou_mean: '',
-      leakage_mean: recommendation.leakage_delta_vs_baseline,
+      leakage_bg_mean: recommendation.leakage_bg_delta_vs_baseline,
+      leakage_hair_mean: recommendation.leakage_hair_delta_vs_baseline,
       coverage_mean: '',
+      empty_module_rate: recommendation.empty_module_rate_delta_vs_baseline,
+      module_pixels_min: '',
+      chin_leakage_bg: recommendation.chin_leakage_bg_delta_vs_baseline,
+      nose_leakage_bg: recommendation.nose_leakage_bg_delta_vs_baseline,
       samples_ok: '',
       samples_total: '',
       factor: '',
       context: '',
-      leakage_delta: recommendation.leakage_delta_vs_baseline,
+      leakage_bg_delta: recommendation.leakage_bg_delta_vs_baseline,
+      chin_leakage_bg_delta: recommendation.chin_leakage_bg_delta_vs_baseline,
+      nose_leakage_bg_delta: recommendation.nose_leakage_bg_delta_vs_baseline,
       verdict: 'RECOMMENDED',
-      note: `miou_delta=${recommendation.miou_delta_vs_baseline}`,
+      note: `score=${round3(recommendation.chosen_score)}; runner_up=${recommendation.runner_up ? `${recommendation.runner_up.group_id}:${round3(recommendation.runner_up.score)}` : 'n/a'}; reasons=${recommendation.reasons.join('; ')}`,
     });
   }
 
@@ -875,18 +1091,26 @@ async function main() {
       baseline_group: DEFAULT_BASELINE_GROUP,
       sample_set_consistent: sampleSetConsistent,
       circle_model_path: args.circle_model_path,
-      regression_delta_threshold: round3(args.regression_delta_threshold),
+      regression_bg_threshold: round3(args.regression_delta_threshold),
+      regression_module_threshold: round3(args.module_regression_delta_threshold),
       recommendation: recommendation || null,
       max_regression_driver: maxRegressionDriver || null,
+      circle_impact: circleImpact,
     },
     ...groups.map((group) => ({
       section: 'group',
       group: group.id,
       circle_enabled: group.circle_enabled,
       calibration_enabled: group.calibration_enabled,
+      dataset_eval_mode: groupMap[group.id].dataset_eval_mode,
       module_miou_mean: round3(groupMap[group.id].module_miou_mean),
-      leakage_mean: round3(groupMap[group.id].leakage_mean),
+      leakage_bg_mean: round3(groupMap[group.id].leakage_bg_mean),
+      leakage_hair_mean: round3(groupMap[group.id].leakage_hair_mean),
       coverage_mean: round3(groupMap[group.id].coverage_mean),
+      empty_module_rate: round3(groupMap[group.id].empty_module_rate),
+      module_pixels_min: Math.trunc(safeNumber(groupMap[group.id].module_pixels_min, 0)),
+      chin_leakage_bg: round3(groupMap[group.id].chin_leakage_bg),
+      nose_leakage_bg: round3(groupMap[group.id].nose_leakage_bg),
       samples_ok: groupMap[group.id].samples_ok,
       samples_total: groupMap[group.id].samples_total,
       delta_vs_baseline: deltasByGroup[group.id],
@@ -904,9 +1128,17 @@ async function main() {
       section: 'driver',
       factor: row.factor,
       context: row.context,
-      leakage_delta: round3(row.delta_leakage),
-      verdict: safeNumber(row.delta_leakage, 0) > args.regression_delta_threshold ? 'REGRESSION DRIVER' : 'ok',
+      leakage_bg_delta: round3(row.leakage_bg_delta),
+      chin_leakage_bg_delta: round3(row.chin_leakage_bg_delta),
+      nose_leakage_bg_delta: round3(row.nose_leakage_bg_delta),
+      max_delta: round3(row.max_delta),
+      verdict: row.is_driver ? 'REGRESSION DRIVER' : 'ok',
+      reason: row.reason,
     })),
+    {
+      section: 'circle_impact',
+      ...circleImpact,
+    },
   ];
   await writeJsonlRows(jsonlPath, jsonlRows);
 
@@ -918,13 +1150,20 @@ async function main() {
     baseline_group: DEFAULT_BASELINE_GROUP,
     recommendation: recommendation || null,
     max_regression_driver: maxRegressionDriver || null,
+    circle_impact: circleImpact,
     groups: groups.map((group) => ({
       id: group.id,
       circle_enabled: group.circle_enabled,
       calibration_enabled: group.calibration_enabled,
+      dataset_eval_mode: groupMap[group.id].dataset_eval_mode,
       module_miou_mean: round3(groupMap[group.id].module_miou_mean),
-      leakage_mean: round3(groupMap[group.id].leakage_mean),
+      leakage_bg_mean: round3(groupMap[group.id].leakage_bg_mean),
+      leakage_hair_mean: round3(groupMap[group.id].leakage_hair_mean),
       coverage_mean: round3(groupMap[group.id].coverage_mean),
+      empty_module_rate: round3(groupMap[group.id].empty_module_rate),
+      module_pixels_min: Math.trunc(safeNumber(groupMap[group.id].module_pixels_min, 0)),
+      chin_leakage_bg: round3(groupMap[group.id].chin_leakage_bg),
+      nose_leakage_bg: round3(groupMap[group.id].nose_leakage_bg),
       samples_ok: groupMap[group.id].samples_ok,
       samples_total: groupMap[group.id].samples_total,
       delta_vs_baseline: deltasByGroup[group.id],

@@ -53,6 +53,36 @@ const LATIN_STOPWORDS = new Set([
 const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
 const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
 const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
+const KNOWN_STABLE_PRODUCT_REFS = [
+  {
+    id: 'the_ordinary_niacinamide_10_zinc_1',
+    product_ref: {
+      product_id: 'prod_the_ordinary_niacinamide_10_zinc_1',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+    },
+    title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    aliases: [
+      'The Ordinary Niacinamide 10% + Zinc 1%',
+      'Niacinamide 10% + Zinc 1%',
+      'the ordinary niacinamide 10 zinc 1',
+      'niacinamide 10 zinc 1',
+    ],
+  },
+  {
+    id: 'winona_soothing_repair_serum',
+    product_ref: {
+      product_id: 'prod_winona_soothing_repair_serum',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+    },
+    title: 'Winona Soothing Repair Serum',
+    aliases: [
+      'Winona Soothing Repair Serum',
+      'winona soothing repair serum',
+      '薇诺娜 舒缓 修护 精华',
+      '薇诺娜修护精华',
+    ],
+  },
+];
 
 function compactNoSpaces(s) {
   return String(s || '').replace(/\s+/g, '');
@@ -88,6 +118,106 @@ function firstNonEmptyString(...values) {
 
 function isUuidLike(value) {
   return typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+function buildKnownStableAliasEntries() {
+  const out = [];
+  for (const item of KNOWN_STABLE_PRODUCT_REFS) {
+    if (!item || typeof item !== 'object') continue;
+    const id = String(item.id || '').trim();
+    const title = String(item.title || '').trim();
+    const productRef =
+      item.product_ref && typeof item.product_ref === 'object'
+        ? {
+            product_id: String(item.product_ref.product_id || '').trim(),
+            merchant_id: String(item.product_ref.merchant_id || '').trim(),
+          }
+        : null;
+    if (!id || !productRef?.product_id || !productRef?.merchant_id) continue;
+    const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+    for (const alias of aliases) {
+      const normalized = normalizeTextForResolver(alias);
+      if (!normalized) continue;
+      const tokens = tokenizeNormalizedResolverQuery(normalized);
+      if (!tokens.length) continue;
+      out.push({
+        id,
+        alias: String(alias || '').trim(),
+        title: title || String(alias || '').trim(),
+        product_ref: productRef,
+        normalized,
+        compact: compactNoSpaces(normalized),
+        token_set: new Set(tokens),
+        token_count: tokens.length,
+      });
+    }
+  }
+  return out;
+}
+
+const KNOWN_STABLE_ALIAS_ENTRIES = buildKnownStableAliasEntries();
+
+function resolveKnownStableProductRef({ query, normalizedQuery, queryTokens }) {
+  const raw = String(query || '').trim();
+  const normalized = String(normalizedQuery || '').trim();
+  if (!normalized || !Array.isArray(queryTokens) || queryTokens.length === 0) return null;
+  if (isUuidLike(raw)) return null;
+
+  const compactQuery = compactNoSpaces(normalized);
+  let best = null;
+
+  for (const entry of KNOWN_STABLE_ALIAS_ENTRIES) {
+    let score = 0;
+    let reason = '';
+
+    if (normalized === entry.normalized || compactQuery === entry.compact) {
+      score = 1;
+      reason = 'alias_exact';
+    } else if (normalized.includes(entry.normalized) || entry.normalized.includes(normalized)) {
+      const a = normalized.length;
+      const b = entry.normalized.length;
+      const ratio = Math.min(a, b) / Math.max(a, b);
+      if (ratio >= 0.72) {
+        score = 0.97;
+        reason = 'alias_contains';
+      }
+    }
+
+    if (!score) {
+      const overlap = computeTokenOverlapScoreFromTokenSet(queryTokens, entry.token_set);
+      if (overlap >= 0.88) {
+        score = Number(Math.min(overlap, 0.95).toFixed(4));
+        reason = 'alias_token_overlap';
+      }
+    }
+
+    if (!score) continue;
+
+    if (reason === 'alias_token_overlap') {
+      let common = 0;
+      for (const t of queryTokens) {
+        if (entry.token_set.has(t)) common += 1;
+      }
+      if (common < Math.min(3, entry.token_count)) continue;
+    }
+
+    if (!best || score > best.score) {
+      best = { ...entry, score, reason };
+    }
+  }
+
+  if (!best) return null;
+  return {
+    id: best.id,
+    title: best.title,
+    matched_alias: best.alias,
+    product_ref: {
+      product_id: best.product_ref.product_id,
+      merchant_id: best.product_ref.merchant_id,
+    },
+    score: best.score,
+    reason: best.reason,
+  };
 }
 
 function extractResolverHints(hints) {
@@ -648,10 +778,21 @@ async function fetchCandidatesViaProductsCache({
 
     return { ok: true, products: products.slice(0, fetchLimit), reason: null };
   } catch (err) {
-    const code = String(err?.code || '');
+    const code = String(err?.code || '').toUpperCase();
+    const msg = String(err?.message || err || '').toLowerCase();
     // 42P01: undefined_table
-    if (code === '42P01') return { ok: false, products: [], reason: 'products_cache_missing' };
-    return { ok: false, products: [], reason: 'db_error' };
+    if (code === '42P01') return { ok: false, products: [], reason: 'products_cache_missing', error_code: code };
+    // 57014: query_canceled (often statement_timeout)
+    if (code === '57014' || /statement timeout|canceling statement due to statement timeout|query canceled/.test(msg)) {
+      return { ok: false, products: [], reason: 'db_query_timeout', error_code: code || '57014' };
+    }
+    // 42703: undefined_column
+    if (code === '42703') return { ok: false, products: [], reason: 'db_schema_mismatch', error_code: code };
+    // 28P01: invalid_password
+    if (code === '28P01') return { ok: false, products: [], reason: 'db_auth_failed', error_code: code };
+    // 08xxx: connection exceptions
+    if (code.startsWith('08')) return { ok: false, products: [], reason: 'db_unreachable', error_code: code };
+    return { ok: false, products: [], reason: 'db_error', error_code: code || null };
   }
 }
 
@@ -745,17 +886,13 @@ function createProductGroundingResolver(deps = {}) {
   const sources = [];
   const hintedRefProductId = String(hintData.product_ref?.product_id || '').trim();
   const hintedRefMerchantId = String(hintData.product_ref?.merchant_id || '').trim();
-  const inferredHintMerchantId =
-    hintedRefMerchantId ||
-    (isUuidLike(hintedRefProductId) && preferMerchants.length === 1 ? preferMerchants[0] : '');
-  const canUseHintProductRef =
-    Boolean(hintedRefProductId) &&
-    (Boolean(inferredHintMerchantId) || !isUuidLike(hintedRefProductId));
+  const opaqueHintProductId = Boolean(hintedRefProductId) && isUuidLike(hintedRefProductId);
+  const canUseHintProductRef = Boolean(hintedRefProductId) && !opaqueHintProductId;
 
   if (canUseHintProductRef && (hintedQuery || isUuidLike(rawQuery))) {
     const resolvedHintRef = {
       product_id: hintData.product_ref.product_id,
-      ...(inferredHintMerchantId ? { merchant_id: inferredHintMerchantId } : {}),
+      ...(hintedRefMerchantId ? { merchant_id: hintedRefMerchantId } : {}),
     };
     products.push({
       product_id: resolvedHintRef.product_id,
@@ -768,7 +905,6 @@ function createProductGroundingResolver(deps = {}) {
       source: 'hints_product_ref',
       ok: true,
       count: 1,
-      ...(hintedRefMerchantId ? {} : inferredHintMerchantId ? { merchant_inferred: true } : {}),
     });
     const latencyMs = Date.now() - startMs;
     return {
@@ -794,6 +930,9 @@ function createProductGroundingResolver(deps = {}) {
         hint_short_circuit: true,
       },
     };
+  }
+  if (opaqueHintProductId) {
+    sources.push({ source: 'hints_product_ref', ok: false, reason: 'opaque_hint_requires_lookup' });
   }
 
   function remainingMs() {
@@ -823,7 +962,12 @@ function createProductGroundingResolver(deps = {}) {
       products.push(...cacheResp.products);
       sources.push({ source: 'products_cache', ok: true, count: cacheResp.products.length });
     } else {
-      sources.push({ source: 'products_cache', ok: false, reason: cacheResp.reason || 'no_results' });
+      sources.push({
+        source: 'products_cache',
+        ok: false,
+        reason: cacheResp.reason || 'no_results',
+        ...(cacheResp.error_code ? { error_code: cacheResp.error_code } : {}),
+      });
     }
   }
 
@@ -879,7 +1023,12 @@ function createProductGroundingResolver(deps = {}) {
       products.push(...cacheGlobal.products);
       sources.push({ source: 'products_cache_global', ok: true, count: cacheGlobal.products.length });
     } else {
-      sources.push({ source: 'products_cache_global', ok: false, reason: cacheGlobal.reason || 'no_results' });
+      sources.push({
+        source: 'products_cache_global',
+        ok: false,
+        reason: cacheGlobal.reason || 'no_results',
+        ...(cacheGlobal.error_code ? { error_code: cacheGlobal.error_code } : {}),
+      });
     }
   }
 
@@ -943,6 +1092,52 @@ function createProductGroundingResolver(deps = {}) {
     ranked: unique,
     options,
   });
+
+  const shouldTryStableAliasFallback =
+    !decision.resolved &&
+    !hintData.product_ref &&
+    (!Array.isArray(hintData.aliases) || hintData.aliases.length === 0);
+  const stableAliasMatch = shouldTryStableAliasFallback
+    ? resolveKnownStableProductRef({
+        query: q,
+        normalizedQuery,
+        queryTokens,
+      })
+    : null;
+  if (stableAliasMatch) {
+    sources.push({
+      source: 'stable_alias_ref',
+      ok: true,
+      match_id: stableAliasMatch.id,
+      score: stableAliasMatch.score,
+      match_reason: stableAliasMatch.reason,
+    });
+    const latencyMs = Date.now() - startMs;
+    return {
+      resolved: true,
+      product_ref: stableAliasMatch.product_ref,
+      confidence: stableAliasMatch.score,
+      reason: 'stable_alias_ref',
+      candidates: [
+        {
+          product_ref: stableAliasMatch.product_ref,
+          title: stableAliasMatch.title || q,
+          score: stableAliasMatch.score,
+        },
+      ],
+      normalized_query: normalizedQuery,
+      metadata: {
+        lang: String(lang || '').toLowerCase() === 'cn' ? 'cn' : 'en',
+        timeout_ms: timeoutMs,
+        latency_ms: latencyMs,
+        sources,
+        stable_alias_match_id: stableAliasMatch.id,
+        stable_alias_match_query: stableAliasMatch.matched_alias,
+        ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
+        ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+      },
+    };
+  }
 
   const latencyMs = Date.now() - startMs;
 

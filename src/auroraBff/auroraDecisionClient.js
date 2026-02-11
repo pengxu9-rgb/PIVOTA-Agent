@@ -110,6 +110,7 @@ function normalizeKnownProfileFields(fields) {
 
   return Object.keys(out).length ? out : null;
 }
+
 function buildResumeContextPrefix(resumeContext) {
   if (!resumeContext || typeof resumeContext !== 'object' || Array.isArray(resumeContext)) return '';
   if (resumeContext.enabled === false) return '';
@@ -297,6 +298,7 @@ function mockAuroraChat(input) {
       cards: [],
     };
   }
+
   if (/CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST/i.test(q)) {
     if (/clarification_history/i.test(q)) {
       return {
