@@ -43,6 +43,8 @@ const {
   recordPendingClarificationTruncated,
   recordResumePrefixInjected,
   recordResumePrefixHistoryItems,
+  recordResumeResponseMode,
+  recordResumePlaintextReaskDetected,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
@@ -199,6 +201,18 @@ const AURORA_CHAT_RESUME_PREFIX_V1_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_CHAT_RESUME_PREFIX_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_RESUME_PREFIX_V2 || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_RESUME_PROBE_METRICS_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_RESUME_PROBE_METRICS || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
@@ -294,7 +308,7 @@ const DIAG_OVERLAY_MODE = (() => {
 const DIAG_INGREDIENT_REC = String(process.env.DIAG_INGREDIENT_REC || 'true').toLowerCase() !== 'false';
 const DIAG_PRODUCT_REC = String(process.env.DIAG_PRODUCT_REC || '').toLowerCase() === 'true';
 const DIAG_SKINMASK_ENABLED = String(process.env.DIAG_SKINMASK_ENABLED || '').toLowerCase() === 'true';
-const DIAG_SKINMASK_MODEL_PATH = String(process.env.DIAG_SKINMASK_MODEL_PATH || 'artifacts/skinmask_v1.onnx').trim();
+const DIAG_SKINMASK_MODEL_PATH = String(process.env.DIAG_SKINMASK_MODEL_PATH || 'artifacts/skinmask_v2.onnx').trim();
 const DIAG_SKINMASK_TIMEOUT_MS = (() => {
   const n = Number(process.env.DIAG_SKINMASK_TIMEOUT_MS || 1200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
@@ -3412,6 +3426,35 @@ function normalizeClarificationField(raw) {
 }
 
 const FILTERABLE_CLARIFICATION_FIELDS = new Set(['skinType', 'sensitivity', 'barrierStatus', 'goals', 'budgetTier']);
+const RESUME_KNOWN_PROFILE_FIELDS = Object.freeze(['skinType', 'sensitivity', 'barrierStatus', 'goals', 'budgetTier']);
+const RESUME_PREFIX_KNOWN_FIELD_MAX_VALUE = 40;
+const RESUME_PREFIX_KNOWN_GOALS_MAX_ITEMS = 5;
+
+const RESUME_REASK_PATTERNS = Object.freeze({
+  skinType: [
+    /what(?:'s| is)\s+your\s+skin\s+type/i,
+    /which\s+skin\s+type/i,
+    /(?:你的|您).{0,8}(?:肤质|皮肤类型).{0,8}(?:是|属于|吗|\?|？)/i,
+  ],
+  barrierStatus: [
+    /is\s+your\s+barrier\s+(?:stable|healthy|ok)/i,
+    /do\s+you\s+have\s+stinging(?:\/|\s+or\s+)redness/i,
+    /stinging\/redness/i,
+    /(?:屏障).{0,12}(?:稳定|刺痛|泛红|受损).{0,6}(?:吗|\?|？)/i,
+  ],
+  goals: [
+    /what(?:'s| is)\s+your\s+(?:main|top)\s+goal/i,
+    /what\s+is\s+your\s+goal/i,
+    /(?:你的|您).{0,8}(?:主要|首要|最想).{0,8}(?:目标|诉求).{0,6}(?:是|吗|\?|？)/i,
+  ],
+});
+
+function truncateResumeKnownValue(raw) {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text || isUnsureToken(text)) return '';
+  if (text.length <= RESUME_PREFIX_KNOWN_FIELD_MAX_VALUE) return text;
+  return text.slice(0, RESUME_PREFIX_KNOWN_FIELD_MAX_VALUE);
+}
 
 function hasKnownClarificationFieldValue(profileSummary, field) {
   if (!field || !profileSummary || typeof profileSummary !== 'object') return false;
@@ -3437,6 +3480,69 @@ function hasKnownClarificationFieldValue(profileSummary, field) {
     return Boolean(v && v !== 'unknown');
   }
   return false;
+}
+
+function buildResumeKnownProfileFields(profileSummary) {
+  if (!profileSummary || typeof profileSummary !== 'object') return null;
+  const out = {};
+
+  if (hasKnownClarificationFieldValue(profileSummary, 'skinType')) {
+    const skinType = truncateResumeKnownValue(profileSummary.skinType);
+    if (skinType) out.skinType = skinType;
+  }
+
+  if (hasKnownClarificationFieldValue(profileSummary, 'sensitivity')) {
+    const sensitivity = truncateResumeKnownValue(profileSummary.sensitivity);
+    if (sensitivity) out.sensitivity = sensitivity;
+  }
+
+  if (hasKnownClarificationFieldValue(profileSummary, 'barrierStatus')) {
+    const barrierStatus = truncateResumeKnownValue(profileSummary.barrierStatus);
+    if (barrierStatus) out.barrierStatus = barrierStatus;
+  }
+
+  if (hasKnownClarificationFieldValue(profileSummary, 'goals')) {
+    const goals = (Array.isArray(profileSummary.goals) ? profileSummary.goals : [])
+      .map((g) => truncateResumeKnownValue(g))
+      .filter(Boolean)
+      .slice(0, RESUME_PREFIX_KNOWN_GOALS_MAX_ITEMS);
+    if (goals.length) out.goals = goals;
+  }
+
+  if (hasKnownClarificationFieldValue(profileSummary, 'budgetTier')) {
+    const budgetTier = truncateResumeKnownValue(profileSummary.budgetTier);
+    if (budgetTier) out.budgetTier = budgetTier;
+  }
+
+  return Object.keys(out).length ? out : null;
+}
+
+function classifyResumeResponseMode(answerText) {
+  const text = String(answerText || '').trim();
+  if (!text) return 'mixed';
+  const leading = text.slice(0, 400);
+  const leadingNorm = leading.replace(/\s+/g, ' ').trim();
+  const questionMarks = (text.match(/[?？]/g) || []).length;
+  const startsWithIntakePrompt = /^(before i can|before i recommend|i need a quick skin profile)/i.test(leadingNorm);
+  const numberedQuestionLines = (leading.match(/(?:^|\n)\s*\d+\s*[\)\.:\uff1a]/g) || []).length >= 2;
+  if (questionMarks >= 2 || startsWithIntakePrompt || numberedQuestionLines) return 'question';
+
+  const answerLike = /(am\/pm|routine|plan|onboarding|ingredient|buying criteria|方案|步骤|早晚|建议|计划)/i.test(text);
+  if (answerLike && questionMarks <= 1) return 'answer';
+  return 'mixed';
+}
+
+function detectResumePlaintextReaskFields(answerText, knownProfileFields) {
+  const text = String(answerText || '');
+  if (!text || !knownProfileFields || typeof knownProfileFields !== 'object') return [];
+  const detected = [];
+  for (const field of RESUME_KNOWN_PROFILE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(knownProfileFields, field)) continue;
+    const patterns = RESUME_REASK_PATTERNS[field];
+    if (!Array.isArray(patterns) || !patterns.length) continue;
+    if (patterns.some((pattern) => pattern.test(text))) detected.push(field);
+  }
+  return detected;
 }
 
 function filterClarificationQuestionsForChips({ clarification, profileSummary, filterKnown } = {}) {
@@ -10990,6 +11096,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED) {
           clarificationHistoryForUpstream = compactHistory;
         }
+        const profileSummaryForResume = summarizeProfileForContext(profile);
+        const knownProfileFieldsForResume = buildResumeKnownProfileFields(profileSummaryForResume);
         resumeContextForUpstream = {
           flow_id:
             pendingClarification && typeof pendingClarification.flow_id === 'string'
@@ -10998,6 +11106,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           resume_user_text: upstreamMessage || pendingClarification.resume_user_text || message || '(no message)',
           clarification_history: compactHistory,
           include_history: AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED,
+          ...(knownProfileFieldsForResume ? { known_profile_fields: knownProfileFieldsForResume } : {}),
         };
         forceUpstreamAfterPendingAbandon = true;
         recordPendingClarificationCompleted();
@@ -11882,21 +11991,26 @@ function mountAuroraBffRoutes(app, { logger }) {
           resumeContextForUpstream &&
           typeof resumeContextForUpstream === 'object',
       );
+      const resumePrefixEnabledForCall = Boolean(
+        isResumeUpstreamCall &&
+          (AURORA_CHAT_RESUME_PREFIX_V2_ENABLED || AURORA_CHAT_RESUME_PREFIX_V1_ENABLED),
+      );
       const resumeContextForCall = isResumeUpstreamCall
         ? {
             ...resumeContextForUpstream,
-            enabled: AURORA_CHAT_RESUME_PREFIX_V1_ENABLED,
+            enabled: resumePrefixEnabledForCall,
+            template_version: AURORA_CHAT_RESUME_PREFIX_V2_ENABLED ? 'v2' : 'v1',
           }
         : null;
       if (isResumeUpstreamCall) {
         const resumePrefixHistoryCount =
-          AURORA_CHAT_RESUME_PREFIX_V1_ENABLED &&
+          resumePrefixEnabledForCall &&
           resumeContextForCall &&
           resumeContextForCall.include_history !== false &&
           Array.isArray(resumeContextForCall.clarification_history)
             ? Math.min(6, resumeContextForCall.clarification_history.length)
             : 0;
-        recordResumePrefixInjected({ enabled: AURORA_CHAT_RESUME_PREFIX_V1_ENABLED });
+        recordResumePrefixInjected({ enabled: resumePrefixEnabledForCall });
         recordResumePrefixHistoryItems({ count: resumePrefixHistoryCount });
       }
       const upstreamStartedAt = Date.now();
@@ -11927,6 +12041,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         : ctx.lang === 'CN'
           ? '（我已收到。Aurora 上游暂不可用或未配置，当前仅能提供门控与记忆能力。）'
           : '(Received. Aurora upstream is unavailable or not configured; returning a gated/memory-aware fallback response.)';
+
+      if (isResumeUpstreamCall && AURORA_CHAT_RESUME_PROBE_METRICS_ENABLED) {
+        const resumeMode = classifyResumeResponseMode(answer);
+        recordResumeResponseMode({ mode: resumeMode });
+        const knownProfileFieldsForProbe = buildResumeKnownProfileFields(profileSummary);
+        const reaskFields = detectResumePlaintextReaskFields(answer, knownProfileFieldsForProbe);
+        for (const field of reaskFields) {
+          recordResumePlaintextReaskDetected({ field });
+        }
+      }
 
       const rawCards = upstream && Array.isArray(upstream.cards) ? upstream.cards : [];
       const allowRecs = allowRecoCards;

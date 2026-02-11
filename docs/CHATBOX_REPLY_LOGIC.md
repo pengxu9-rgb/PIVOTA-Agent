@@ -164,6 +164,14 @@ Notes:
 - BFF still accepts legacy pending state (no `v/flow_id/step_index/norm_id`) and upgrades it in-place on next turn.
 - Payload is bounded to control cost and drift:
   - `resume_user_text<=800`, `queue<=5`, `question<=200`, `options<=8`, `option<=80`, `history<=6`.
+- On final resume upstream call, BFF can inject a bounded resume prefix:
+  - V1: `AURORA_CHAT_RESUME_PREFIX_V1=true` (default)
+  - V2 authoritative template: `AURORA_CHAT_RESUME_PREFIX_V2=true` (default `false`)
+    - includes original request, answered clarifications, and known profile fields (`skinType/sensitivity/barrierStatus/goals/budgetTier`)
+    - explicit instruction: do not restart intake; ask at most one new non-duplicate question if strictly necessary.
+- Resume-only probe metrics (detection only, no output rewriting):
+  - enable/disable: `AURORA_CHAT_RESUME_PROBE_METRICS` (default `true`)
+  - metrics: `resume_response_mode_total{mode}`, `resume_plaintext_reask_detected_total{field}`.
 
 ---
 
