@@ -362,6 +362,12 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
   return Math.max(300, Math.min(6000, v));
 })();
 
+const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 1400);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
+  return Math.max(300, Math.min(6000, v));
+})();
+
 const DUPE_DEEPSCAN_CACHE_MAX = (() => {
   const n = Number(process.env.AURORA_BFF_DUPE_DEEPSCAN_CACHE_MAX || 80);
   const v = Number.isFinite(n) ? Math.trunc(n) : 80;
@@ -5792,6 +5798,173 @@ function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
   return 'no_candidates';
 }
 
+function extractCanonicalFromOffersResolveBody(body) {
+  const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : null;
+  const mapping = payload && payload.mapping && typeof payload.mapping === 'object' && !Array.isArray(payload.mapping)
+    ? payload.mapping
+    : null;
+  let canonicalProductGroupId = pickFirstTrimmed(
+    mapping?.canonical_product_group_id,
+    mapping?.canonicalProductGroupId,
+    mapping?.canonical_product_group?.id,
+    mapping?.canonical_product_group?.product_group_id,
+  );
+
+  const canonicalRefCandidates = [
+    mapping?.canonical_ref,
+    mapping?.canonical_product_ref,
+    payload?.canonical_product_ref,
+  ];
+  let canonicalProductRef = null;
+  for (const candidate of canonicalRefCandidates) {
+    const normalized = normalizeCanonicalProductRef(candidate, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (normalized) {
+      canonicalProductRef = normalized;
+      break;
+    }
+  }
+
+  if (!canonicalProductRef) {
+    const canonicalProduct =
+      mapping?.canonical_product && typeof mapping.canonical_product === 'object' && !Array.isArray(mapping.canonical_product)
+        ? mapping.canonical_product
+        : null;
+    const fallbackRef = normalizeCanonicalProductRef(
+      {
+        product_id: pickFirstTrimmed(canonicalProduct?.product_id, canonicalProduct?.id),
+        merchant_id: pickFirstTrimmed(
+          canonicalProduct?.merchant_id,
+          canonicalProduct?.merchantId,
+          canonicalProduct?.merchant?.merchant_id,
+        ),
+      },
+      { requireMerchant: true, allowOpaqueProductId: false },
+    );
+    if (fallbackRef) canonicalProductRef = fallbackRef;
+  }
+
+  const pdpTargets = [
+    payload?.pdp_target?.v1,
+    payload?.pdpTarget?.v1,
+    mapping?.pdp_target?.v1,
+    mapping?.pdpTarget?.v1,
+  ].filter((candidate) => Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate));
+
+  for (const target of pdpTargets) {
+    if (!canonicalProductGroupId) {
+      const fromSubject = pickFirstTrimmed(
+        target?.subject?.product_group_id,
+        target?.subject?.productGroupId,
+        target?.subject?.id,
+        target?.product_group_id,
+        target?.productGroupId,
+      );
+      if (fromSubject) canonicalProductGroupId = fromSubject;
+    }
+
+    if (!canonicalProductRef) {
+      const fromTargetRef =
+        normalizeCanonicalProductRef(target?.canonical_product_ref, {
+          requireMerchant: true,
+          allowOpaqueProductId: false,
+        }) ||
+        normalizeCanonicalProductRef(target?.product_ref, {
+          requireMerchant: true,
+          allowOpaqueProductId: false,
+        });
+      if (fromTargetRef) canonicalProductRef = fromTargetRef;
+    }
+  }
+
+  return { canonicalProductRef, canonicalProductGroupId };
+}
+
+async function resolveRecoPdpByStableIds({
+  productId,
+  skuId,
+  logger,
+} = {}) {
+  const normalizedProductId = String(productId || '').trim();
+  const normalizedSkuId = String(skuId || '').trim();
+  if (!PIVOTA_BACKEND_BASE_URL || (!normalizedProductId && !normalizedSkuId)) {
+    return { ok: false, reasonCode: 'no_candidates' };
+  }
+
+  let responseBody = null;
+  let statusCode = 0;
+  let responseError = null;
+  try {
+    const resolvePayload = {
+      product: {
+        ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
+        ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+      },
+      ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
+      ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+    };
+    const resp = await axios.post(
+      `${PIVOTA_BACKEND_BASE_URL}/agent/shop/v1/invoke`,
+      {
+        operation: 'offers.resolve',
+        payload: resolvePayload,
+      },
+      {
+        headers: buildPivotaBackendAgentHeaders(),
+        timeout: RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS,
+        validateStatus: () => true,
+      },
+    );
+    responseBody = resp && typeof resp.data === 'object' ? resp.data : null;
+    statusCode = Number(resp?.status || 0);
+  } catch (err) {
+    responseError = err;
+  }
+
+  if (statusCode === 200 && responseBody && String(responseBody.status || '').trim().toLowerCase() === 'success') {
+    const { canonicalProductRef, canonicalProductGroupId } = extractCanonicalFromOffersResolveBody(responseBody);
+    if (canonicalProductGroupId || canonicalProductRef) {
+      return {
+        ok: true,
+        canonicalProductGroupId,
+        canonicalProductRef,
+      };
+    }
+  }
+
+  const reasonCode = mapOfferResolveFailureCode({
+    responseBody,
+    statusCode,
+    error: responseError,
+  });
+  if (!responseError) {
+    logger?.warn(
+      {
+        status_code: statusCode || null,
+        product_id: normalizedProductId || null,
+        sku_id: normalizedSkuId || null,
+        reason_code: reasonCode,
+        response_status: responseBody?.status || null,
+      },
+      'aurora bff: reco stable-id offers.resolve unresolved',
+    );
+  }
+  if (responseError) {
+    logger?.warn(
+      {
+        err: responseError?.message || String(responseError),
+        product_id: normalizedProductId || null,
+        sku_id: normalizedSkuId || null,
+        reason_code: reasonCode,
+      },
+      'aurora bff: reco stable-id offers.resolve failed',
+    );
+  }
+  return { ok: false, reasonCode };
+}
+
 function buildExternalGoogleSearchUrl(query) {
   const q = String(query || '').trim();
   if (!q) return 'https://www.google.com/';
@@ -5947,6 +6120,51 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     });
   }
 
+  const stableProductId = pickFirstTrimmed(
+    rawProductId,
+    skuCandidate?.product_id,
+    skuCandidate?.productId,
+    base?.product_id,
+    base?.productId,
+  );
+  const stableSkuId = pickFirstTrimmed(
+    skuCandidate?.sku_id,
+    skuCandidate?.skuId,
+    base?.sku_id,
+    base?.skuId,
+    stableProductId,
+  );
+  let stableResolveReasonCode = null;
+  if (RECO_PDP_RESOLVE_ENABLED && PIVOTA_BACKEND_BASE_URL && (stableProductId || stableSkuId)) {
+    const stableResolved = await resolveRecoPdpByStableIds({
+      productId: stableProductId,
+      skuId: stableSkuId,
+      logger,
+    });
+    if (stableResolved.ok && stableResolved.canonicalProductGroupId) {
+      return withRecoPdpMetadata(base, {
+        path: 'group',
+        subject: {
+          type: 'product_group',
+          id: stableResolved.canonicalProductGroupId,
+          product_group_id: stableResolved.canonicalProductGroupId,
+        },
+        canonicalProductRef: stableResolved.canonicalProductRef || null,
+        resolveAttempted: true,
+        timeToPdpMs: elapsedMs(),
+      });
+    }
+    if (stableResolved.ok && stableResolved.canonicalProductRef) {
+      return withRecoPdpMetadata(base, {
+        path: 'ref',
+        canonicalProductRef: stableResolved.canonicalProductRef,
+        resolveAttempted: true,
+        timeToPdpMs: elapsedMs(),
+      });
+    }
+    stableResolveReasonCode = stableResolved.reasonCode || null;
+  }
+
   const queryText =
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
     pickFirstTrimmed(displayName, name, brand);
@@ -5964,7 +6182,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     return withRecoPdpMetadata(base, {
       path: 'external',
       queryText,
-      resolveReasonCode: 'no_candidates',
+      resolveReasonCode: stableResolveReasonCode || 'no_candidates',
       resolveAttempted: false,
       timeToPdpMs: elapsedMs(),
     });
@@ -5976,7 +6194,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     return withRecoPdpMetadata(base, {
       path: 'external',
       queryText,
-      resolveReasonCode: 'no_candidates',
+      resolveReasonCode: stableResolveReasonCode || 'no_candidates',
       resolveAttempted: false,
       timeToPdpMs: elapsedMs(),
     });
