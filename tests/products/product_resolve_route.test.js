@@ -573,6 +573,61 @@ describe('POST /agent/v1/products/resolve', () => {
     );
   });
 
+  test('forwards stable alias resolve options from body.options', async () => {
+    const app = require('../../src/server');
+    const uuidQuery = 'c231aaaa-8b00-4145-a704-684931049303';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: uuidQuery,
+        lang: 'en',
+        options: {
+          stable_alias_short_circuit: true,
+          allow_stable_alias_for_uuid: true,
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        product_ref: {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        stable_alias_short_circuit: true,
+      }),
+    );
+  });
+
+  test('defaults aurora caller to uuid-stable-alias resolution without explicit options', async () => {
+    const app = require('../../src/server');
+    const uuidQuery = 'c231aaaa-8b00-4145-a704-684931049303';
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: uuidQuery,
+        lang: 'en',
+        caller: 'aurora_chatbox',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.resolved).toBe(true);
+    expect(['stable_alias_match', 'stable_alias_ref']).toContain(resp.body.reason);
+    expect(resp.body.product_ref).toEqual({
+      product_id: '9886499864904',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+    });
+  });
+
   test('rejects missing query', async () => {
     const app = require('../../src/server');
     const resp = await request(app).post('/agent/v1/products/resolve').send({ lang: 'en' });

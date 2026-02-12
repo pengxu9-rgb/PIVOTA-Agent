@@ -4934,6 +4934,10 @@ function pickResolveOptions(raw) {
     ...(o.upstreamRetries !== undefined ? { upstream_retries: o.upstreamRetries } : {}),
     ...(o.upstream_retry_backoff_ms !== undefined ? { upstream_retry_backoff_ms: o.upstream_retry_backoff_ms } : {}),
     ...(o.upstreamRetryBackoffMs !== undefined ? { upstream_retry_backoff_ms: o.upstreamRetryBackoffMs } : {}),
+    ...(o.stable_alias_short_circuit !== undefined ? { stable_alias_short_circuit: o.stable_alias_short_circuit } : {}),
+    ...(o.stableAliasShortCircuit !== undefined ? { stable_alias_short_circuit: o.stableAliasShortCircuit } : {}),
+    ...(o.allow_stable_alias_for_uuid !== undefined ? { allow_stable_alias_for_uuid: o.allow_stable_alias_for_uuid } : {}),
+    ...(o.allowStableAliasForUuid !== undefined ? { allow_stable_alias_for_uuid: o.allowStableAliasForUuid } : {}),
   };
 }
 
@@ -4978,7 +4982,14 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const queryText = String(body.query || '').trim();
+  const queryText = String(
+    body.query ||
+      body.product_id ||
+      body.productId ||
+      body.sku_id ||
+      body.skuId ||
+      '',
+  ).trim();
   const lang = normalizeResolveLang(body.lang);
   let options = pickResolveOptions(body.options);
   const hints = body.hints && typeof body.hints === 'object' && !Array.isArray(body.hints) ? body.hints : null;
@@ -4998,6 +5009,14 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
   const origin = String(req.headers.origin || '').trim();
   const shouldDefaultPreferMerchants =
     callerHint === 'aurora_chatbox' || callerHint === 'aurora-chatbox' || hasAuroraUid || origin === 'https://aurora.pivota.cc';
+  if (shouldDefaultPreferMerchants) {
+    if (options.stable_alias_short_circuit === undefined) {
+      options = { ...options, stable_alias_short_circuit: true };
+    }
+    if (options.allow_stable_alias_for_uuid === undefined) {
+      options = { ...options, allow_stable_alias_for_uuid: true };
+    }
+  }
   const preferMerchantsRaw = options?.prefer_merchants;
   const hasPreferMerchants =
     (Array.isArray(preferMerchantsRaw) && preferMerchantsRaw.length > 0) ||
