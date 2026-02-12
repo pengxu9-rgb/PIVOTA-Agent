@@ -368,6 +368,28 @@ const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
   return Math.max(300, Math.min(6000, v));
 })();
 
+const RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED = (() => {
+  const fallbackDefault = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED || fallbackDefault)
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_PDP_LOCAL_INVOKE_BASE_URL = (() => {
+  const explicit = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL || '').trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const rawPort = String(process.env.PORT || '3000').trim();
+  const normalizedPort = /^\d+$/.test(rawPort) ? rawPort : '3000';
+  return `http://127.0.0.1:${normalizedPort}`;
+})();
+
+const RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  return Math.max(250, Math.min(4000, v));
+})();
+
 const DUPE_DEEPSCAN_CACHE_MAX = (() => {
   const n = Number(process.env.AURORA_BFF_DUPE_DEEPSCAN_CACHE_MAX || 80);
   const v = Number.isFinite(n) ? Math.trunc(n) : 80;
@@ -5896,6 +5918,7 @@ async function resolveRecoPdpByStableIds({
   let responseBody = null;
   let statusCode = 0;
   let responseError = null;
+  const primaryInvokeUrl = `${String(PIVOTA_BACKEND_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
   try {
     const resolvePayload = {
       product: {
@@ -5906,7 +5929,7 @@ async function resolveRecoPdpByStableIds({
       ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
     };
     const resp = await axios.post(
-      `${PIVOTA_BACKEND_BASE_URL}/agent/shop/v1/invoke`,
+      primaryInvokeUrl,
       {
         operation: 'offers.resolve',
         payload: resolvePayload,
@@ -5934,11 +5957,88 @@ async function resolveRecoPdpByStableIds({
     }
   }
 
-  const reasonCode = mapOfferResolveFailureCode({
+  let reasonCode = mapOfferResolveFailureCode({
     responseBody,
     statusCode,
     error: responseError,
   });
+
+  const localInvokeUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
+  if (
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
+    localInvokeUrl &&
+    localInvokeUrl !== primaryInvokeUrl
+  ) {
+    let localBody = null;
+    let localStatusCode = 0;
+    let localError = null;
+    try {
+      const resp = await axios.post(
+        localInvokeUrl,
+        {
+          operation: 'offers.resolve',
+          payload: {
+            product: {
+              ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
+              ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+            },
+            ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
+            ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+          },
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS,
+          validateStatus: () => true,
+        },
+      );
+      localBody = resp && typeof resp.data === 'object' ? resp.data : null;
+      localStatusCode = Number(resp?.status || 0);
+    } catch (err) {
+      localError = err;
+    }
+
+    if (localStatusCode === 200 && localBody && String(localBody.status || '').trim().toLowerCase() === 'success') {
+      const { canonicalProductRef, canonicalProductGroupId } = extractCanonicalFromOffersResolveBody(localBody);
+      if (canonicalProductGroupId || canonicalProductRef) {
+        logger?.info(
+          {
+            product_id: normalizedProductId || null,
+            sku_id: normalizedSkuId || null,
+            primary_reason_code: reasonCode,
+            local_status_code: localStatusCode,
+          },
+          'aurora bff: reco stable-id resolved via local invoke fallback',
+        );
+        return {
+          ok: true,
+          canonicalProductGroupId,
+          canonicalProductRef,
+        };
+      }
+    }
+
+    const localReasonCode = mapOfferResolveFailureCode({
+      responseBody: localBody,
+      statusCode: localStatusCode,
+      error: localError,
+    });
+    logger?.warn(
+      {
+        product_id: normalizedProductId || null,
+        sku_id: normalizedSkuId || null,
+        primary_reason_code: reasonCode,
+        local_reason_code: localReasonCode,
+        local_status_code: localStatusCode || null,
+        local_err: localError ? localError.message || String(localError) : null,
+      },
+      'aurora bff: reco stable-id local invoke fallback unresolved',
+    );
+    if (reasonCode === 'no_candidates' && localReasonCode && localReasonCode !== 'no_candidates') {
+      reasonCode = localReasonCode;
+    }
+  }
+
   if (!responseError) {
     logger?.warn(
       {

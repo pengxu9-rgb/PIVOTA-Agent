@@ -185,11 +185,11 @@ function getUpstreamTimeoutMs(operation) {
 
 const PROXY_SEARCH_FALLBACK_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
-  Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 4000),
+  Math.max(6500, Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 10000)),
 );
 const PROXY_SEARCH_RESOLVER_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
-  1800,
+  2600,
 );
 const PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
@@ -197,8 +197,12 @@ const PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS = parseTimeoutMs(
 );
 const PROXY_SEARCH_RESOLVER_DETAIL_ENABLED =
   String(process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED || '').toLowerCase() === 'true';
+const PROXY_SEARCH_RESOLVER_FIRST_ENABLED = (() => {
+  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED || defaultValue).toLowerCase() === 'true';
+})();
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
-  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || '').toLowerCase() === 'true';
+  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'true').toLowerCase() === 'true';
 
 const OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = parseTimeoutMs(
   process.env.OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
@@ -1366,6 +1370,10 @@ function buildProxySearchSoftFallbackResponse({
   return withProxySearchFallbackMetadata(normalized, {
     applied: true,
     reason: reason || 'error_soft_fallback',
+    route: route || null,
+    upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
+    upstream_error_code: upstreamCode ? String(upstreamCode) : null,
+    upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
   });
 }
 
@@ -1731,6 +1739,22 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }
       reason: reason || 'resolver_fallback',
     }),
   };
+}
+
+function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
+  if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
+  if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
+  if (!String(queryText || '').trim()) return false;
+
+  const source = String(metadata?.source || '').trim().toLowerCase();
+  if (source === 'creator-agent-ui' || source === 'creator_agent_ui') return false;
+  if (!source) return true;
+  return (
+    source === 'shopping_agent' ||
+    source === 'shopping-agent-ui' ||
+    source === 'aurora_chatbox' ||
+    source === 'aurora_bff'
+  );
 }
 
 function normalizeAgentProductDetailResponse(raw) {
@@ -4743,6 +4767,37 @@ async function proxyAgentSearchToBackend(req, res) {
 
   const url = `${PIVOTA_API_BASE}${req.path}`;
   const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
+  const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
+  const resolverFirstMetadata = source ? { source } : null;
+
+  if (
+    shouldUseResolverFirstSearch({
+      operation: 'find_products_multi',
+      metadata: resolverFirstMetadata,
+      queryText,
+    })
+  ) {
+    try {
+      const resolverFirst = await queryResolveSearchFallback({
+        queryParams,
+        checkoutToken,
+        reason: 'resolver_first',
+      });
+      if (
+        resolverFirst &&
+        resolverFirst.status >= 200 &&
+        resolverFirst.status < 300 &&
+        resolverFirst.usableCount > 0
+      ) {
+        return res.status(resolverFirst.status).json(resolverFirst.data);
+      }
+    } catch (resolverErr) {
+      logger.warn(
+        { err: resolverErr?.message || String(resolverErr) },
+        'proxy agent search resolver-first failed; falling back to upstream',
+      );
+    }
+  }
 
   try {
     const resp = await axios({
@@ -9087,9 +9142,29 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         // Expected payload shape:
         // { offers: { product: { sku_id?, product_id? }, limit?, market?, tool? } }
         const offersPayload = payload.offers || payload || {};
+        const offersProduct =
+          offersPayload && typeof offersPayload.product === 'object' && !Array.isArray(offersPayload.product)
+            ? { ...offersPayload.product }
+            : {};
+        const productId = String(
+          offersProduct.product_id || offersProduct.productId || offersPayload.product_id || offersPayload.productId || '',
+        ).trim();
+        const skuId = String(
+          offersProduct.sku_id || offersProduct.skuId || offersPayload.sku_id || offersPayload.skuId || '',
+        ).trim();
+        const normalizedOffersPayload = {
+          ...offersPayload,
+          product: {
+            ...offersProduct,
+            ...(productId ? { product_id: productId } : {}),
+            ...(skuId ? { sku_id: skuId } : {}),
+          },
+          ...(productId ? { product_id: productId } : {}),
+          ...(skuId ? { sku_id: skuId } : {}),
+        };
         requestBody = {
           operation: 'offers.resolve',
-          payload: offersPayload,
+          payload: normalizedOffersPayload,
           metadata,
         };
         break;
@@ -9120,6 +9195,37 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     };
 
     let response;
+    const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+    const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
+    const resolverQueryParams = resolverQueryText ? { ...queryParams, query: resolverQueryText } : queryParams;
+    if (
+      shouldUseResolverFirstSearch({
+        operation,
+        metadata,
+        queryText: resolverQueryText,
+      })
+    ) {
+      try {
+        const resolverFirst = await queryResolveSearchFallback({
+          queryParams: resolverQueryParams,
+          checkoutToken,
+          reason: 'resolver_first',
+        });
+        if (
+          resolverFirst &&
+          resolverFirst.status >= 200 &&
+          resolverFirst.status < 300 &&
+          resolverFirst.usableCount > 0
+        ) {
+          response = { status: resolverFirst.status, data: resolverFirst.data };
+        }
+      } catch (resolverErr) {
+        logger.warn(
+          { err: resolverErr?.message || String(resolverErr), operation },
+          `${operation} resolver-first failed; falling back to upstream`,
+        );
+      }
+    }
     try {
       if (
         operation === 'get_product_detail' &&
@@ -9275,18 +9381,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
 
       if (!response && (operation === 'find_products' || operation === 'find_products_multi')) {
-        const queryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+        const queryText = resolverQueryText || searchQueryText;
+        const upstreamStatus = err?.response?.status || null;
+        const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
         if (queryText) {
           const fallbackReason =
-            err?.response?.status
-              ? `upstream_status_${err.response.status}`
+            upstreamStatus
+              ? `upstream_status_${upstreamStatus}`
               : err?.code === 'ECONNABORTED'
                 ? 'upstream_timeout'
                 : 'upstream_exception';
 
           try {
             const resolverFallback = await queryResolveSearchFallback({
-              queryParams,
+              queryParams: resolverQueryParams,
               checkoutToken,
               reason: 'resolver_after_exception',
             });
@@ -9296,7 +9404,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               resolverFallback.status < 300 &&
               resolverFallback.usableCount > 0
             ) {
-              response = { status: resolverFallback.status, data: resolverFallback.data };
+              response = {
+                status: resolverFallback.status,
+                data: withProxySearchFallbackMetadata(resolverFallback.data, {
+                  applied: true,
+                  reason: 'resolver_after_exception',
+                  route: 'invoke_exception_resolver',
+                  upstream_status: upstreamStatus,
+                  upstream_error_code: upstreamCode || err?.code || null,
+                  upstream_error_message: upstreamMessage || err?.message || null,
+                }),
+              };
             }
           } catch (resolverErr) {
             logger.warn(
@@ -9308,7 +9426,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (!response && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED) {
             try {
               const fallback = await queryFindProductsMultiFallback({
-                queryParams,
+                queryParams: resolverQueryParams,
                 checkoutToken,
                 reason: fallbackReason,
               });
@@ -9319,7 +9437,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 fallback.usableCount > 0 &&
                 isProxySearchFallbackRelevant(fallback.data, queryText)
               ) {
-                response = { status: fallback.status, data: fallback.data };
+                response = {
+                  status: fallback.status,
+                  data: withProxySearchFallbackMetadata(fallback.data, {
+                    applied: true,
+                    reason: fallbackReason,
+                    route: 'invoke_exception_fallback_invoke',
+                    upstream_status: upstreamStatus,
+                    upstream_error_code: upstreamCode || err?.code || null,
+                    upstream_error_message: upstreamMessage || err?.message || null,
+                  }),
+                };
               }
             } catch (fallbackErr) {
               logger.warn(
@@ -9330,45 +9458,26 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         }
         if (!response) {
-          const { code: softCode, message: softMessage } = extractUpstreamErrorCode(err);
           logger.warn(
             {
               operation,
-              upstream_status: err?.response?.status || null,
+              upstream_status: upstreamStatus,
               upstream_code: err?.code || null,
-              soft_code: softCode || null,
-              soft_message: softMessage || null,
+              soft_code: upstreamCode || null,
+              soft_message: upstreamMessage || null,
             },
             `${operation} upstream failed; returning soft fallback empty payload`,
           );
           response = {
             status: 200,
-            data: withProxySearchFallbackMetadata(
-              normalizeAgentProductsListResponse(
-                {
-                  status: 'success',
-                  success: true,
-                  products: [],
-                  total: 0,
-                  page: 1,
-                  page_size: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size) || 0,
-                  reply: 'Search is temporarily unavailable. Please retry shortly.',
-                  metadata: {
-                    query_source: 'agent_products_error_fallback',
-                    upstream_error_code: softCode || null,
-                    upstream_error_message: softMessage || null,
-                  },
-                },
-                {
-                  limit: queryParams?.limit,
-                  offset: queryParams?.offset,
-                },
-              ),
-              {
-                applied: true,
-                reason: 'error_soft_fallback',
-              },
-            ),
+            data: buildProxySearchSoftFallbackResponse({
+              queryParams,
+              reason: 'error_soft_fallback',
+              upstreamStatus,
+              upstreamCode: upstreamCode || err?.code || null,
+              upstreamMessage: upstreamMessage || err?.message || null,
+              route: 'invoke_exception',
+            }),
           };
         }
       }
@@ -9397,7 +9506,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     }
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
-      const queryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+      const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
 
@@ -9406,7 +9515,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
         try {
           const resolverFallback = await queryResolveSearchFallback({
-            queryParams,
+            queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
             checkoutToken,
             reason: 'resolver_after_primary',
           });
@@ -9429,7 +9538,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         if (!replacedByFallback && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED) {
           try {
             const fallback = await queryFindProductsMultiFallback({
-              queryParams,
+              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               checkoutToken,
               reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
             });
