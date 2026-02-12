@@ -1332,6 +1332,43 @@ function withProxySearchFallbackMetadata(body, patch) {
   return { ...body, metadata };
 }
 
+function buildProxySearchSoftFallbackResponse({
+  queryParams,
+  reason,
+  upstreamStatus = null,
+  upstreamCode = null,
+  upstreamMessage = null,
+  route = null,
+  reply = 'Search is temporarily unavailable. Please retry shortly.',
+}) {
+  const normalized = normalizeAgentProductsListResponse(
+    {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+      page: 1,
+      page_size: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size) || 0,
+      reply,
+      metadata: {
+        query_source: 'agent_products_error_fallback',
+        upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
+        upstream_error_code: upstreamCode ? String(upstreamCode) : null,
+        upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
+        fallback_route: route || null,
+      },
+    },
+    {
+      limit: queryParams?.limit,
+      offset: queryParams?.offset,
+    },
+  );
+  return withProxySearchFallbackMetadata(normalized, {
+    applied: true,
+    reason: reason || 'error_soft_fallback',
+  });
+}
+
 function firstQueryParamValue(value) {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -4776,6 +4813,17 @@ async function proxyAgentSearchToBackend(req, res) {
       }
     }
 
+    if (Number(resp.status) >= 500) {
+      return res.status(200).json(
+        buildProxySearchSoftFallbackResponse({
+          queryParams,
+          reason: 'primary_status_5xx',
+          upstreamStatus: resp.status,
+          route: 'proxy_search_primary_status',
+        }),
+      );
+    }
+
     return res.status(resp.status).json(
       withProxySearchFallbackMetadata(normalized, {
         applied: false,
@@ -4829,7 +4877,19 @@ async function proxyAgentSearchToBackend(req, res) {
     }
 
     const { code, message, data } = extractUpstreamErrorCode(err);
-    const statusCode = err?.response?.status || err?.status || 500;
+    const statusCode = err?.response?.status || err?.status || (err?.code === 'ECONNABORTED' ? 504 : 500);
+    if (queryText) {
+      return res.status(200).json(
+        buildProxySearchSoftFallbackResponse({
+          queryParams,
+          reason: err?.code === 'ECONNABORTED' ? 'primary_timeout' : 'primary_exception',
+          upstreamStatus: statusCode,
+          upstreamCode: code || err?.code || null,
+          upstreamMessage: message || err?.message || null,
+          route: 'proxy_search_exception',
+        }),
+      );
+    }
     return res.status(statusCode).json({
       error: code || 'FAILED_TO_PROXY_AGENT_SEARCH',
       message: message || 'Failed to proxy agent search request',
@@ -9671,6 +9731,31 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     return res.status(response.status).json(enriched);
 
 	  } catch (err) {
+	    if (operation === 'find_products' || operation === 'find_products_multi') {
+	      const { code, message } = extractUpstreamErrorCode(err);
+	      const upstreamStatus =
+	        err?.response?.status || err?.status || (err?.code === 'ECONNABORTED' ? 504 : 502);
+	      logger.warn(
+	        {
+	          gateway_request_id: gatewayRequestId,
+	          operation,
+	          upstream_status: upstreamStatus,
+	          upstream_code: code || err?.code || null,
+	          upstream_message: message || err?.message || null,
+	        },
+	        'search operation failed in invoke outer catch; returning soft fallback',
+	      );
+	      return res.status(200).json(
+	        buildProxySearchSoftFallbackResponse({
+	          queryParams,
+	          reason: err?.code === 'ECONNABORTED' ? 'invoke_outer_timeout' : 'invoke_outer_exception',
+	          upstreamStatus,
+	          upstreamCode: code || err?.code || null,
+	          upstreamMessage: message || err?.message || null,
+	          route: 'invoke_outer_catch',
+	        }),
+	      );
+	    }
 	    if (err.response) {
 	      const upstreamStatus = err.response.status || 502;
 	      const upstreamRequestId =
