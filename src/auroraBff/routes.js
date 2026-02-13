@@ -363,8 +363,8 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 1400);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
   return Math.max(300, Math.min(6000, v));
 })();
 
