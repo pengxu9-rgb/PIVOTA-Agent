@@ -216,6 +216,32 @@ const AURORA_CHAT_RESUME_PROBE_METRICS_ENABLED = (() => {
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
+const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 2600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
+  return Math.max(400, Math.min(12000, v));
+})();
+const RECO_CATALOG_SEARCH_CONCURRENCY = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_CONCURRENCY || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(4, v));
+})();
+const RECO_CATALOG_FAIL_FAST_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const RECO_CATALOG_FAIL_FAST_THRESHOLD = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(8, v));
+})();
+const RECO_CATALOG_FAIL_FAST_COOLDOWN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS || 90000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
+  return Math.max(3000, Math.min(300000, v));
+})();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
   process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
     process.env.PIVOTA_BACKEND_API_KEY ||
@@ -347,6 +373,18 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_CONCURRENCY || 2);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
+})();
+
+const RECO_UPSTREAM_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 12000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 12000;
+  return Math.max(3000, Math.min(22000, v));
+})();
+
+const RECO_ROUTINE_UPSTREAM_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_ROUTINE_TIMEOUT_MS || 16000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 16000;
+  return Math.max(3000, Math.min(22000, v));
 })();
 
 const RECO_PDP_RESOLVE_ENABLED = (() => {
@@ -589,10 +627,49 @@ function normalizeRecoCatalogProduct(raw) {
   return out.product_id ? out : null;
 }
 
+const recoCatalogFailFastState = {
+  consecutive_failures: 0,
+  open_until_ms: 0,
+  last_reason: null,
+  last_failed_at: 0,
+};
+
+function getRecoCatalogFailFastSnapshot(nowMs = Date.now()) {
+  const openUntilMs = Number(recoCatalogFailFastState.open_until_ms || 0);
+  const open = RECO_CATALOG_FAIL_FAST_ENABLED && nowMs < openUntilMs;
+  return {
+    enabled: RECO_CATALOG_FAIL_FAST_ENABLED,
+    open,
+    open_until_ms: open ? openUntilMs : 0,
+    consecutive_failures: Number(recoCatalogFailFastState.consecutive_failures || 0),
+    last_reason: recoCatalogFailFastState.last_reason || null,
+    cooldown_ms: RECO_CATALOG_FAIL_FAST_COOLDOWN_MS,
+    threshold: RECO_CATALOG_FAIL_FAST_THRESHOLD,
+  };
+}
+
+function markRecoCatalogFailFastSuccess() {
+  recoCatalogFailFastState.consecutive_failures = 0;
+  recoCatalogFailFastState.open_until_ms = 0;
+  recoCatalogFailFastState.last_reason = null;
+  recoCatalogFailFastState.last_failed_at = 0;
+}
+
+function markRecoCatalogFailFastFailure(reason, nowMs = Date.now()) {
+  if (!RECO_CATALOG_FAIL_FAST_ENABLED) return;
+  recoCatalogFailFastState.consecutive_failures = Number(recoCatalogFailFastState.consecutive_failures || 0) + 1;
+  recoCatalogFailFastState.last_reason = reason || 'unknown';
+  recoCatalogFailFastState.last_failed_at = nowMs;
+  if (recoCatalogFailFastState.consecutive_failures >= RECO_CATALOG_FAIL_FAST_THRESHOLD) {
+    recoCatalogFailFastState.open_until_ms = nowMs + RECO_CATALOG_FAIL_FAST_COOLDOWN_MS;
+  }
+}
+
 async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
+  const startedAt = Date.now();
   const q = String(query || '').trim();
-  if (!q) return { ok: false, products: [], reason: 'query_missing' };
-  if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], reason: 'pivota_backend_not_configured' };
+  if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
+  if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
 
   try {
     const resp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`, {
@@ -604,16 +681,40 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
         offset: 0,
       },
       headers: buildPivotaBackendAgentHeaders(),
-      timeout: 12000,
+      timeout: RECO_CATALOG_SEARCH_TIMEOUT_MS,
     });
 
     const rawList = extractAgentProductsFromSearchResponse(resp && resp.data ? resp.data : null);
     const products = rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
 
-    return { ok: true, products };
+    return {
+      ok: true,
+      products,
+      reason: products.length ? null : 'empty',
+      status_code: Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null,
+      latency_ms: Date.now() - startedAt,
+    };
   } catch (err) {
-    logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: reco catalog search failed');
-    return { ok: false, products: [], reason: 'upstream_error' };
+    const statusCode = Number.isFinite(Number(err?.response?.status)) ? Math.trunc(Number(err.response.status)) : null;
+    const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
+    const errMessage = err && err.message ? err.message : String(err);
+    const timeoutHit = errCode === 'ECONNABORTED' || (typeof errMessage === 'string' && /timeout/i.test(errMessage));
+    let reason = 'upstream_error';
+    if (timeoutHit || statusCode === 504 || statusCode === 408) reason = 'upstream_timeout';
+    else if (statusCode === 404) reason = 'not_found';
+    else if (statusCode === 429) reason = 'rate_limited';
+    logger?.warn(
+      { reason, status_code: statusCode, code: errCode || null, err: errMessage },
+      'aurora bff: reco catalog search failed',
+    );
+    return {
+      ok: false,
+      products: [],
+      reason,
+      status_code: statusCode,
+      error_code: errCode || null,
+      latency_ms: Date.now() - startedAt,
+    };
   }
 }
 
@@ -765,13 +866,34 @@ function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
 }
 
 async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger } = {}) {
-  if (!RECO_CATALOG_GROUNDED_ENABLED) return null;
-  if (!PIVOTA_BACKEND_BASE_URL) return null;
+  const startedAt = Date.now();
+  const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
+  const debugInfo = {
+    enabled: RECO_CATALOG_GROUNDED_ENABLED,
+    search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+    search_concurrency: RECO_CATALOG_SEARCH_CONCURRENCY,
+    fail_fast: failFastBefore,
+  };
+
+  if (!RECO_CATALOG_GROUNDED_ENABLED) {
+    return { structured: null, debug: { ...debugInfo, skipped_reason: 'disabled', total_ms: Date.now() - startedAt } };
+  }
+  if (!PIVOTA_BACKEND_BASE_URL) {
+    return {
+      structured: null,
+      debug: { ...debugInfo, skipped_reason: 'pivota_backend_not_configured', total_ms: Date.now() - startedAt },
+    };
+  }
+  if (failFastBefore.open) {
+    return { structured: null, debug: { ...debugInfo, skipped_reason: 'fail_fast_open', total_ms: Date.now() - startedAt } };
+  }
 
   const queries = buildRecoCatalogQueries({ profileSummary, lang: ctx && ctx.lang ? ctx.lang : 'EN' });
-  if (!queries.length) return null;
+  if (!queries.length) {
+    return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
+  }
 
-  const results = await mapWithConcurrency(queries, 3, async (q) => {
+  const results = await mapWithConcurrency(queries, RECO_CATALOG_SEARCH_CONCURRENCY, async (q) => {
     const out = await searchPivotaBackendProducts({ query: q.query, limit: 6, logger });
     return { ...q, ...out };
   });
@@ -799,14 +921,53 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     });
   }
 
-  if (!recos.length) return null;
+  const statusCounts = {};
+  let okCount = 0;
+  let emptyCount = 0;
+  let timeoutCount = 0;
+  for (const r of results) {
+    const reason = String(r?.reason || (r?.ok ? 'ok' : 'unknown')).trim() || 'unknown';
+    statusCounts[reason] = (statusCounts[reason] || 0) + 1;
+    if (r?.ok) okCount += 1;
+    if (r?.ok && (!Array.isArray(r?.products) || r.products.length === 0)) emptyCount += 1;
+    if (reason === 'upstream_timeout') timeoutCount += 1;
+  }
+
+  const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
+  const hasOnlyTransientErrors = results.length > 0 && results.every((r) => !r?.ok && transientReasons.has(String(r?.reason || '')));
+  if (okCount > 0) {
+    markRecoCatalogFailFastSuccess();
+  } else if (hasOnlyTransientErrors) {
+    markRecoCatalogFailFastFailure('all_queries_failed', Date.now());
+  }
+
+  const debugPayload = {
+    ...debugInfo,
+    query_count: queries.length,
+    ok_count: okCount,
+    picked_count: recos.length,
+    total_ms: Date.now() - startedAt,
+    fail_fast_after: getRecoCatalogFailFastSnapshot(Date.now()),
+    ...(debug
+      ? {
+        empty_count: emptyCount,
+        timeout_count: timeoutCount,
+        status_counts: statusCounts,
+      }
+      : {}),
+  };
+
+  if (!recos.length) return { structured: null, debug: debugPayload };
 
   return {
-    recommendations: recos,
-    evidence: null,
-    confidence: 0.9,
-    missing_info: [],
-    warnings: [],
+    structured: {
+      recommendations: recos,
+      evidence: null,
+      confidence: 0.9,
+      missing_info: [],
+      warnings: [],
+    },
+    debug: debugPayload,
   };
 }
 
@@ -7273,7 +7434,7 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     upstream = await auroraChat({
       baseUrl: AURORA_DECISION_BASE_URL,
       query,
-      timeoutMs: Math.max(RECO_ALTERNATIVES_TIMEOUT_MS, 14000),
+      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
       ...(anchor ? { anchor_product_id: anchor } : {}),
     });
   } catch (err) {
@@ -7431,7 +7592,7 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 
   let upstream = null;
   try {
-    upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 22000 });
+    upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: RECO_ROUTINE_UPSTREAM_TIMEOUT_MS });
   } catch (err) {
     if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
       logger?.warn({ err: err.message }, 'aurora bff: routine upstream failed');
@@ -7524,7 +7685,15 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   let upstream = null;
   let contextMeta = {};
 
-  const catalogStructured = await buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger });
+  const catalogOut = await buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger });
+  const catalogStructured =
+    catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
+      ? catalogOut.structured
+      : null;
+  const catalogDebug =
+    catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
+      ? catalogOut.debug
+      : null;
 
   // Prefer: catalog-grounded → explicit JSON (from answer) → routine object (from context) → any structured blob.
   let structured = catalogStructured;
@@ -7541,7 +7710,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       });
 
     try {
-      upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: 22000 });
+      upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: RECO_UPSTREAM_TIMEOUT_MS });
     } catch (err) {
       if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
         logger?.warn({ err: err.message }, 'aurora bff: product reco upstream failed');
@@ -7598,6 +7767,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       extracted_structured_keys:
         structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
       reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
+      reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
+      reco_catalog_debug: catalogDebug,
     }
     : null;
   const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
