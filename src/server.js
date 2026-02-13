@@ -213,6 +213,18 @@ const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
 );
+const PROXY_SEARCH_RESOLVER_CACHE_TTL_MS = Math.max(
+  1000,
+  parseTimeoutMs(process.env.PROXY_SEARCH_RESOLVER_CACHE_TTL_MS, 5 * 60 * 1000),
+);
+const PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS = Math.max(
+  500,
+  parseTimeoutMs(process.env.PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS, 45 * 1000),
+);
+const PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES = Math.max(
+  100,
+  Number(process.env.PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES || 2000) || 2000,
+);
 
 const OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = parseTimeoutMs(
   process.env.OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
@@ -407,6 +419,53 @@ function safeCloneJson(value) {
   } catch {
     return value;
   }
+}
+
+const PROXY_SEARCH_RESOLVER_CACHE = new Map(); // key -> { value, expiresAtMs }
+
+function buildProxySearchResolverCacheKey({
+  queryText,
+  lang,
+  preferMerchants,
+  searchAllMerchants,
+  fetchDetail,
+}) {
+  return JSON.stringify({
+    q: String(queryText || '').trim().toLowerCase(),
+    lang: String(lang || '').trim().toLowerCase() || 'en',
+    prefer_merchants: Array.isArray(preferMerchants)
+      ? preferMerchants.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    search_all_merchants: searchAllMerchants === true ? true : false,
+    fetch_detail: fetchDetail === true,
+  });
+}
+
+function getProxySearchResolverCacheEntry(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return null;
+  const hit = PROXY_SEARCH_RESOLVER_CACHE.get(key);
+  if (!hit) return null;
+  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
+    PROXY_SEARCH_RESOLVER_CACHE.delete(key);
+    return null;
+  }
+  return safeCloneJson(hit.value);
+}
+
+function setProxySearchResolverCacheEntry(cacheKey, value, ttlMs = PROXY_SEARCH_RESOLVER_CACHE_TTL_MS) {
+  const key = String(cacheKey || '');
+  if (!key) return;
+  const ttl = Math.max(500, Number(ttlMs) || PROXY_SEARCH_RESOLVER_CACHE_TTL_MS);
+  while (PROXY_SEARCH_RESOLVER_CACHE.size >= PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES) {
+    const firstKey = PROXY_SEARCH_RESOLVER_CACHE.keys().next().value;
+    if (!firstKey) break;
+    PROXY_SEARCH_RESOLVER_CACHE.delete(firstKey);
+  }
+  PROXY_SEARCH_RESOLVER_CACHE.set(key, {
+    value: safeCloneJson(value),
+    expiresAtMs: Date.now() + ttl,
+  });
 }
 
 // Product-detail cache (avoid repeated slow upstream product fetches).
@@ -1647,6 +1706,15 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     upstream_retries: 0,
     stable_alias_short_circuit: true,
   };
+  const resolverCacheKey = buildProxySearchResolverCacheKey({
+    queryText,
+    lang,
+    preferMerchants,
+    searchAllMerchants,
+    fetchDetail,
+  });
+  const cached = getProxySearchResolverCacheEntry(resolverCacheKey);
+  if (cached) return cached;
 
   let resolved = null;
   try {
@@ -1682,7 +1750,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
         }))
     : [];
   if (!resolvedProductId || !resolvedMerchantId) {
-    return {
+    const missResult = {
       status: 200,
       usableCount: 0,
       data: null,
@@ -1698,6 +1766,12 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
         Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
       resolve_sources: resolveSources,
     };
+    setProxySearchResolverCacheEntry(
+      resolverCacheKey,
+      missResult,
+      PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS,
+    );
+    return missResult;
   }
 
   let detail = null;
@@ -1769,7 +1843,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     },
   });
 
-  return {
+  const successResult = {
     status: 200,
     usableCount: countUsableSearchProducts(normalized?.products),
     resolved: true,
@@ -1788,6 +1862,8 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
       reason: reason || 'resolver_fallback',
     }),
   };
+  setProxySearchResolverCacheEntry(resolverCacheKey, successResult, PROXY_SEARCH_RESOLVER_CACHE_TTL_MS);
+  return successResult;
 }
 
 function isResolverMiss(result) {
