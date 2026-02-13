@@ -1796,28 +1796,12 @@ function isResolverMiss(result) {
 }
 
 function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
-  if (!isResolverMiss(result)) return false;
-  const reason = String(result.resolve_reason || '').trim().toLowerCase();
-  if (!reason) return true;
-  return (
-    reason === 'no_candidates' ||
-    reason === 'low_confidence' ||
-    reason.includes('timeout') ||
-    reason.includes('empty')
-  );
+  return isResolverMiss(result);
 }
 
 function shouldSkipSecondaryFallbackAfterResolverMiss(result) {
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
-  if (!isResolverMiss(result)) return false;
-  const sources = Array.isArray(result.resolve_sources) ? result.resolve_sources : [];
-  if (!sources.length) return true;
-  const hasPositiveSource = sources.some((sourceItem) => {
-    if (!sourceItem || typeof sourceItem !== 'object') return false;
-    if (sourceItem.ok !== true) return false;
-    return Number(sourceItem.count || 0) > 0;
-  });
-  return !hasPositiveSource;
+  return isResolverMiss(result);
 }
 
 function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
