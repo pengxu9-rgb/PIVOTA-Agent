@@ -1617,7 +1617,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   };
 }
 
-async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }) {
+async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, fetchDetail = false }) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
   if (!queryText) return null;
@@ -1663,7 +1663,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason }
   if (!resolvedProductId || !resolvedMerchantId) return null;
 
   let detail = null;
-  if (PROXY_SEARCH_RESOLVER_DETAIL_ENABLED) {
+  if (fetchDetail && PROXY_SEARCH_RESOLVER_DETAIL_ENABLED) {
     try {
       detail = await fetchProductDetailFromUpstream({
         merchantId: resolvedMerchantId,
