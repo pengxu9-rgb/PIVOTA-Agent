@@ -1,0 +1,10 @@
+metric,mean,p50,p90
+skin_iou,0.044,0.012,0.124
+hair_as_skin_rate,0.004,0.001,0.006
+bg_as_skin_rate,0.947,0.985,0.992
+skin_miss_rate,0.619,0.682,0.841
+
+summary,value
+samples_total,10
+samples_ok,10
+samples_failed,0

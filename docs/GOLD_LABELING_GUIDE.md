@@ -1,6 +1,6 @@
 # Gold Labeling Guide (Aurora Skin Diagnosis)
 
-Last updated: 2026-02-09
+Last updated: 2026-02-12
 
 ## Scope
 - This workflow labels **cosmetic skincare signals only**.
@@ -118,30 +118,110 @@ Outputs:
 make train-calibrator CAL_TRAIN_SAMPLES=artifacts/calibration_train_samples.ndjson
 ```
 
-## Gold Round1 Pack (review_pack_mixed-driven)
-Use this workflow for the first manual labeling round directly from mixed review outputs.
+## Gold Round1 Real Pack (review_pack_mixed-driven)
+Use this workflow for the first real manual labeling round directly from mixed review outputs.
 
-1. Build deterministic round1 tasks and local image pack:
+1. Generate runbook (recommended entry):
 ```bash
-make gold-round1-pack \
+make gold-round1-runbook \
+  RUN_ID=20260211_105639451 \
+  REVIEW_JSONL=reports/review_pack_mixed_20260211_105639451.jsonl
+```
+Output:
+- `reports/gold_round1_runbook_<run_id>.md`
+
+2. Build deterministic round1 real tasks:
+```bash
+make gold-round1-real-pack \
   RUN_ID=20260211_105639451 \
   REVIEW_JSONL=reports/review_pack_mixed_20260211_105639451.jsonl \
-  LIMIT_INTERNAL=38 \
-  LIMIT_DATASET_LAPA=50 \
-  LIMIT_DATASET_CELEBA=50
+  LIMIT=200 \
+  OUT=artifacts/gold_round1_real_20260211_105639451
 ```
 Outputs:
-- `artifacts/gold_round1_<run_id>/images/**` (jpg-only pack)
-- `artifacts/gold_round1_<run_id>/label_studio_tasks.json`
-- `artifacts/gold_round1_<run_id>/manifest.json`
-- `reports/gold_round1_pack_<run_id>.md`
-- `reports/lapa_local_fail_triage_<run_id>.md`
+- `artifacts/gold_round1_real_<run_id>/tasks.json`
+- `artifacts/gold_round1_real_<run_id>/manifest.json`
+- `artifacts/gold_round1_real_<run_id>/preview.md`
+- `tasks.json`/`manifest.json` include `double_annotate` (default 10% from top_risk + low_min_pixels)
 
-2. Import into local Label Studio:
+3. Import into local Label Studio:
 - Label config: `label_studio/project_oval_skin.xml`
-- Task JSON: `artifacts/gold_round1_<run_id>/label_studio_tasks.json`
+- Task JSON: `artifacts/gold_round1_real_<run_id>/tasks.json`
+- Double-annotate pool: filter task metadata `double_annotate=true` and assign second annotator.
 
-3. Evaluate exported annotations end-to-end:
+4. Round1 real labeling spec (must follow):
+- Forehead boundary: draw only visible forehead skin; clip away hairline overlap. If uncertain, prefer conservative smaller polygon.
+- Under-eye (`under_eye_left`, `under_eye_right`) is optional weak label:
+  - Draw only the under-eye skin band.
+  - Do not include eyeball/sclera, lashes, eyeliner, or eyebrow shadow.
+  - If band is not confidently visible, skip this module instead of forcing a polygon.
+- Strong GT modules for mIoU: `nose`, `forehead`, `left_cheek`, `right_cheek`, `chin`.
+- Weak metrics only: `under_eye_left`, `under_eye_right`.
+
+5. Import exported annotations:
+```bash
+make gold-label-import \
+  ROUND1_IN=/absolute/path/to/label_studio_export.json \
+  OUT=artifacts/gold_round1_real_20260211_105639451/gold_labels.ndjson
+```
+Outputs:
+- `artifacts/gold_round1_real_<run_id>/gold_labels.ndjson`
+- `reports/gold_import_qc_<run_id>.md`
+- `reports/gold_import_qc_<run_id>.jsonl`
+
+6. Evaluate exported annotations end-to-end:
+```bash
+make eval-gold-round1 \
+  GOLD_LABELS=artifacts/gold_round1_real_20260211_105639451/gold_labels.ndjson \
+  PRED_JSONL=reports/review_pack_mixed_20260211_105639451.jsonl
+```
+Outputs:
+- `reports/eval_gold_<run_id>.md`
+- `reports/eval_gold_<run_id>.csv`
+- `reports/eval_gold_<run_id>.jsonl`
+
+7. Run AB comparison:
+```bash
+make eval-gold-ab \
+  GOLD_LABELS=artifacts/gold_round1_real_20260211_105639451/gold_labels.ndjson \
+  PRED_JSONL=reports/review_pack_mixed_20260211_105639451.jsonl
+```
+Outputs:
+- `reports/eval_gold_ab_<run_id>.md`
+- `reports/eval_gold_ab_<run_id>.json`
+
+8. Run IAA on double-annotate subset:
+```bash
+make eval-gold-iaa \
+  RUN_ID=20260211_105639451 \
+  LS_EXPORT=/absolute/path/to/label_studio_export_round1_20260211_105639451.json
+```
+Outputs:
+- `reports/eval_gold_iaa_<run_id>.md`
+- `reports/eval_gold_iaa_<run_id>.jsonl`
+- `reports/eval_gold_iaa_<run_id>.json`
+
+9. Cross-dataset external contrast (Celeb + LaPa):
+```bash
+make eval-circle-crossset LIMIT=150
+```
+Outputs:
+- `reports/eval_circle_crossset_<run_id>.md`
+- `reports/eval_circle_crossset_<run_id>.json`
+
+10. Release gate report:
+```bash
+make release-gate-circle \
+  RUN_ID=20260211_105639451 \
+  LS_EXPORT=/absolute/path/to/label_studio_export_round1_20260211_105639451.json \
+  REVIEW_JSONL=reports/review_pack_mixed_20260211_105639451.jsonl \
+  LIMIT=150
+```
+Outputs:
+- `reports/RELEASE_GATE_CIRCLE_<run_id>.md`
+- `reports/RELEASE_GATE_CIRCLE_<run_id>.json`
+
+11. Legacy compatibility workflow (optional):
 ```bash
 make eval-gold-round1 \
   RUN_ID=20260211_105639451 \
@@ -154,10 +234,127 @@ Outputs:
 - `reports/eval_gold_<run_id>.jsonl`
 - `artifacts/gold_round1_<run_id>/calibration_train_samples.ndjson`
 
-4. Triage one failed sample (local pipeline):
+## Preference Labeling v1 (A/B Accuracy Preference)
+Use this when pixel-perfect GT is too slow but you still need stable model-selection signals.
+
+When to use preference labeling instead of pixel GT:
+- Use **preference labeling** for fast A/B ranking: “which overlay is more accurate overall/per-module”.
+- Use **pixel GT** for absolute geometry metrics (mIoU, leakage exactness, retraining targets).
+- Recommended loop: preference first for quick variant selection, then pixel GT on contentious/worst buckets.
+
+Recommended annotator instructions (“more accurate” means):
+- Compare A and B on the same photo and choose the one with better module placement and cleaner boundaries.
+- Prioritize strong modules: `nose`, `forehead`, `left_cheek`, `right_cheek`, `chin`.
+- Penalize visible forehead-hair leakage and background absorption.
+- Use `tie` only when both are effectively equal.
+- Use `cannot_tell` when quality/overlay signal is insufficient to judge.
+- Add short `notes` only when there is a clear reason (e.g. “B forehead leaks into hairline”).
+
+Workflow:
 ```bash
-node scripts/triage_one_sample.mjs \
-  --source lapa \
-  --sample_hash <sample_hash> \
-  --review_jsonl reports/review_pack_mixed_<run_id>.jsonl
+# 1) Build deterministic real Round1 A/B pack (baseline vs variant1)
+make preference-round1-real-pack \
+  RUN_ID=<run_id> \
+  INTERNAL_DIR="/absolute/path/to/internal_clean_photos" \
+  REVIEW_PACK_JSONL=reports/review_pack_mixed_<run_id>.jsonl \
+  LIMIT_INTERNAL=60 LIMIT_LAPA=70 LIMIT_CELEBA=70 TARGET_TOTAL=200 \
+  OVERLAP_RATIO=0.25 OVERLAP_MIN=40 \
+  PREFERENCE_MODULE_BOX_MODE=dynamic_skinmask \
+  PREFERENCE_REQUIRE_DYNAMIC_BOXES=true \
+  PREFERENCE_MIN_GEOMETRY_QC_SCORE=0.2 \
+  PREFERENCE_HARD_FILTER_GATE=true \
+  PREFERENCE_HARD_FILTER_REQUIRE_QUALITY_PASS=true \
+  PREFERENCE_HARD_FILTER_MAX_GUARDED_MODULES=1 \
+  PREFERENCE_HARD_FILTER_MIN_MODULE_PIXELS=48 \
+  PREFERENCE_HARD_FILTER_MIN_DYNAMIC_SCORE=0.7
+
+# Visual-separability focused sweep (recommended for cannot_tell-heavy slices):
+make preference-round1-real-pack \
+  RUN_ID=<run_id> \
+  INTERNAL_DIR="/absolute/path/to/internal_clean_photos" \
+  REVIEW_PACK_JSONL=reports/review_pack_mixed_<run_id>.jsonl \
+  TARGET_TOTAL=80 PREFERENCE_MAX_EDGE=768 \
+  PREFERENCE_REQUIRE_DYNAMIC_BOXES=true \
+  OVERLAP_RATIO=0.25 OVERLAP_MIN=40
+
+# Task files for assignment:
+# - tasks_batch_a.json (annotator A)
+# - tasks_batch_b.json (annotator B)
+# - tasks_overlap.json (shared overlap subset)
+# - tasks_all.json (all unique samples, convenience)
+
+# 2) Label in Label Studio with label_studio/project_preference_ab.xml
+# 3) Import Label Studio export
+make preference-label-import \
+  RUN_ID=<run_id> \
+  ROUND1_IN=artifacts/preference_round1_<run_id>/label_studio_export_preference_<run_id>.json \
+  MANIFEST=artifacts/preference_round1_<run_id>/manifest.json \
+  OUT=artifacts/preference_round1_<run_id>/preference_labels.ndjson
+
+# 4) Evaluate preference win-rate + disagreement + IAA
+make eval-preference \
+  RUN_ID=<run_id> \
+  PREFERENCE_LABELS=artifacts/preference_round1_<run_id>/preference_labels.ndjson \
+  MANIFEST=artifacts/preference_round1_<run_id>/manifest.json
+
+# 5) Build adjudication pack for contentious samples
+make preference-adjudication-pack \
+  RUN_ID=<run_id> \
+  EVAL_JSONL=reports/eval_preference_<run_id>.jsonl \
+  MANIFEST=artifacts/preference_round1_<run_id>/manifest.json \
+  OUT=artifacts/preference_round1_<run_id>/adjudication
+
+# 6) Release gate for variant1 vs baseline
+make release-gate-preference \
+  RUN_ID=<run_id> \
+  EVAL_JSONL=reports/eval_preference_<run_id>.jsonl \
+  EVAL_MD=reports/eval_preference_<run_id>.md \
+  MANIFEST=artifacts/preference_round1_<run_id>/manifest.json
+
+# 7) Step 3 finalization: merge adjudication overrides + rerun eval/gate
+make preference-final \
+  RUN_ID=<run_id> \
+  MANIFEST=artifacts/preference_round1_<run_id>/manifest.json \
+  BASE_EXPORTS="artifacts/preference_round1_<run_id>/label_studio_export_batch_a_<run_id>.json,artifacts/preference_round1_<run_id>/label_studio_export_batch_b_<run_id>.json,artifacts/preference_round1_<run_id>/label_studio_export_overlap_<run_id>.json" \
+  ADJ_EXPORTS="artifacts/preference_round1_<run_id>/adjudication/label_studio_export_adjudication_<run_id>.json"
+
+# Optional explicit split commands:
+make preference-import EXPORTS="<base_export_1.json>,<base_export_2.json>" MANIFEST=artifacts/preference_round1_<run_id>/manifest.json OUT=artifacts/preference_round1_<run_id>/final/base_labels.ndjson
+make preference-adjudication-merge BASE=artifacts/preference_round1_<run_id>/final/base_labels.ndjson ADJ=artifacts/preference_round1_<run_id>/final/adjudication_labels.ndjson OUT=artifacts/preference_round1_<run_id>/final/preference_labels_merged.ndjson
+
+# 8) Diagnostics (why wins/disagreement + concrete next actions)
+make preference-diagnostics \
+  RUN_ID=<run_id> \
+  MANIFEST=artifacts/preference_round1_<run_id>/manifest.json \
+  EVAL_JSONL=reports/eval_preference_<run_id>.jsonl \
+  LABELS=artifacts/preference_round1_<run_id>/final/preference_labels_merged.ndjson \
+  CROSSSET_JSONL=reports/eval_circle_crossset_<run_id>.jsonl
 ```
+
+Smoke run recipe (Step2):
+```bash
+make preference-round1-real-pack \
+  RUN_ID=<run_id> \
+  INTERNAL_DIR=<internal_dir> \
+  EXTERNAL_INDEX_LAPA=<lapa_index_jsonl> \
+  EXTERNAL_INDEX_CELEBA=<celeba_index_jsonl> \
+  LIMIT_INTERNAL=5 LIMIT_LAPA=5 LIMIT_CELEBA=5 \
+  TARGET_TOTAL=20 OVERLAP_RATIO=0.3 OVERLAP_MIN=6 \
+  PREFERENCE_MAX_EDGE=768 \
+  MOCK_PIPELINE=true
+```
+
+Expected smoke outputs:
+- `artifacts/preference_round1_<run_id>/tasks_batch_a.json`
+- `artifacts/preference_round1_<run_id>/tasks_batch_b.json`
+- `artifacts/preference_round1_<run_id>/tasks_overlap.json`
+- `artifacts/preference_round1_<run_id>/tasks_all.json`
+- `reports/eval_preference_<run_id>.md`
+- `reports/RELEASE_GATE_PREFERENCE_<run_id>.md`
+- `reports/PREFERENCE_FINAL_<run_id>.md`
+- `reports/preference_diagnostics_<run_id>.md`
+
+Adjudication policy:
+- Include samples with high disagreement, high `cannot_tell`, or risk conflicts (`hair_overlap_est`, `leakage_bg_est_mean`, low `min_module_pixels`).
+- Adjudicator labels only this reduced pack and writes final decision notes.
+- Feed adjudication outcomes back into default-parameter choice before promoting a variant.

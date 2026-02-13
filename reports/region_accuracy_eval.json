@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-02-10T07:43:31.082Z",
+  "model_outputs_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/tmp/diag_pseudo_label_factory/model_outputs.ndjson",
+  "gold_labels_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/tmp/gold_e2e/tmp/diag_pseudo_label_factory/gold_labels.ndjson",
+  "iou_threshold": 0.3,
+  "provider_filter": null,
+  "input_counts": {
+    "model_outputs_total": 1704,
+    "gold_labels_total": 2,
+    "matched_inference_total": 0
+  },
+  "overall": {
+    "samples": 0,
+    "pred_count": 0,
+    "gold_count": 0,
+    "tp": 0,
+    "fp": 0,
+    "fn": 0,
+    "precision": 0,
+    "recall": 0,
+    "f1": 0,
+    "mean_iou": null,
+    "p50_iou": null,
+    "p90_iou": null,
+    "matched_count": 0
+  },
+  "by_type": [],
+  "by_module_proxy": [],
+  "by_provider": [],
+  "rows_for_csv": [
+    {
+      "scope": "overall",
+      "key": "overall",
+      "samples": 0,
+      "pred_count": 0,
+      "gold_count": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0,
+      "mean_iou": null,
+      "p50_iou": null,
+      "p90_iou": null,
+      "matched_count": 0
+    }
+  ]
+}

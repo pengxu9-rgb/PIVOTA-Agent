@@ -1,0 +1,11 @@
+source,dataset,pipeline_mode_used,sample_hash,ok,fail_reason,reason_detail,integration_status,integration_fail_reason,status_code,quality_grade,modules_count,module_pixels_min,empty_module_rate,leakage_bg_mean,leakage_hair_mean,chin_leakage_bg,nose_leakage_bg,chin_touches_oval_bottom,nose_touches_oval_side,face_detect_ok,landmark_ok,risk_score,degraded_reasons,reverted_modules,note
+lapa,lapa,remote,6a06bff9d744fa60aa8f,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+lapa,lapa,remote,2cbec4259cc44bbc335d,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+lapa,lapa,remote,ec260e6e1e81d93b0406,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+lapa,lapa,remote,6543027d6011bbe47017,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+lapa,lapa,remote,b8d5543b63da92e2b3e2,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+celebamaskhq,celebamaskhq,remote,a99ce9ceeff5a2994165,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+celebamaskhq,celebamaskhq,remote,28cc0a4bfb12ffae4252,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+celebamaskhq,celebamaskhq,remote,4eb351e4621d8b3729c3,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+celebamaskhq,celebamaskhq,remote,c19427abb4c9a4ea8c0f,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,
+celebamaskhq,celebamaskhq,remote,516515c118e9896a7f2f,false,NO_PHOTO_MODULES_CARD,,ok,,200,,0,0,1,,,,,false,false,,,3.5,,,

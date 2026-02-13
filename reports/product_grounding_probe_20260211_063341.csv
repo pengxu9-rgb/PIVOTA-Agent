@@ -1,0 +1,9 @@
+query,hinted,resolved,reason,reason_code,confidence,latency_ms,matched_product_id,matched_merchant_id,top_candidate_id,top_candidate_title,sources
+"The Ordinary Niacinamide 10% + Zinc 1%",true,true,"hint_product_ref","",1,0,"prod_the_ordinary_niacinamide_10_zinc_1","merch_efbc46b4619cfbdf","prod_the_ordinary_niacinamide_10_zinc_1","The Ordinary Niacinamide 10% + Zinc 1%","hints_product_ref:ok"
+"CeraVe Hydrating Cleanser",false,false,"no_candidates","",0,2354,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error)"
+"La Roche-Posay Cicaplast Baume B5",false,false,"no_candidates","",0,2410,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error)"
+"Bioderma Sensibio H2O Micellar",false,false,"no_candidates","",0,2352,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error)"
+"Winona Soothing Repair Serum",true,true,"hint_product_ref","",1,0,"prod_winona_soothing_repair_serum","merch_efbc46b4619cfbdf","prod_winona_soothing_repair_serum","Winona Soothing Repair Serum","hints_product_ref:ok"
+"IPSA Time Reset Aqua",false,false,"no_candidates","",0,2351,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error)"
+"SK-II Facial Treatment Essence",false,false,"no_candidates","",0,2349,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error)"
+"Avene Cicalfate+ Restorative Protective Cream",false,false,"no_candidates","",0,2353,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error)"

@@ -1,0 +1,28 @@
+# Product Grounding Probe
+
+- generated_at_utc: 2026-02-11T12:59:22Z
+- base: `https://pivota-agent-production.up.railway.app`
+- lang: `en`
+- timeout_ms: `2200`
+- upstream_retries: `1`
+- include_stable_hints: `false`
+- curl_retry_max: `6`
+- curl_retry_delay_sec: `1`
+- curl_connect_timeout_sec: `5`
+- curl_max_time_sec: `45`
+
+| query | hinted | resolved | reason | reason_code | confidence | latency_ms | matched_product_id | matched_merchant_id | top_candidate | sources |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| The Ordinary Niacinamide 10% + Zinc 1% | false | true | stable_alias_ref | n/a | 1 | 2349 | 9886499864904 | merch_efbc46b4619cfbdf | 9886499864904 (The Ordinary Niacinamide 10% + Zinc 1%) | products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout);stable_alias_ref:ok |
+| Winona Soothing Repair Serum | false | true | stable_alias_ref | n/a | 1 | 2350 | 9886500749640 | merch_efbc46b4619cfbdf | 9886500749640 (Winona Soothing Repair Serum) | products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout);stable_alias_ref:ok |
+| Unknown Product Foo Bar | false | false | no_candidates | no_candidates | 0 | 2350 | n/a | n/a | n/a  | products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout) |
+
+## Summary
+
+- total_queries: 3
+- resolved_queries: 2
+- resolve_rate: 0.667
+
+Artifacts:
+- `reports/product_grounding_probe_20260211_125922.md`
+- `reports/product_grounding_probe_20260211_125922.csv`

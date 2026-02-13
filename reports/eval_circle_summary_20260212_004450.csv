@@ -1,0 +1,8 @@
+dataset,dataset_eval_mode,module_id,samples,miou_mean,miou_p50,miou_p90,coverage_mean,leakage_non_skin_mean,leakage_bg_mean,leakage_hair_mean,leakage_mean,module_pixels_min,empty_module_rate,roi_too_small_rate
+celebamaskhq,parsing_gt,chin,20,0.371,0.372,0.395,0.394,0.012,0.012,0,0.012,2124,0,0
+celebamaskhq,parsing_gt,forehead,20,0.144,0.158,0.189,0.157,0.353,0.049,0.373,0.353,1318,0,0
+celebamaskhq,parsing_gt,left_cheek,20,0.351,0.381,0.414,0.367,0.007,0.002,0.012,0.007,828,0,0
+celebamaskhq,parsing_gt,nose,20,0.139,0.159,0.269,0.18,0,0,0,0,700,0,0
+celebamaskhq,parsing_gt,right_cheek,20,0.391,0.378,0.428,0.407,0.02,0.002,0.022,0.02,1452,0,0
+celebamaskhq,parsing_gt,under_eye_left,20,0,0,0,0,0.014,0,0.038,0.014,1052,0,0
+celebamaskhq,parsing_gt,under_eye_right,20,0,0,0,0,0.012,0,0.016,0.012,1052,0,0

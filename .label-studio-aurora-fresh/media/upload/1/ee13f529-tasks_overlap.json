@@ -1,0 +1,4294 @@
+[
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_0a8908de4f642d4fc996616d",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0a8908de4f642d4fc996616d_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0a8908de4f642d4fc996616d_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0a8908de4f642d4fc996616d_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0a8908de4f642d4fc996616d_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_0a8908de4f642d4fc996616d",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 56,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_0a8908de4f642d4fc996616d",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0a8908de4f642d4fc996616d/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0a8908de4f642d4fc996616d/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0a8908de4f642d4fc996616d/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0a8908de4f642d4fc996616d/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0a8908de4f642d4fc996616d/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0a8908de4f642d4fc996616d/variant1_overlay.png",
+      "overlay_focus_module": "under_eye_right",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 40,
+        "y": 20,
+        "w": 12,
+        "h": 8,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.786,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_0a8908de4f642d4fc996616d",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/16504.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 195,
+          "right_cheek": 182,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 175,
+          "left_cheek": 195,
+          "right_cheek": 182,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_0a8908de4f642d4fc996616d",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/16504.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 195,
+          "right_cheek": 182,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 175,
+          "left_cheek": 195,
+          "right_cheek": 182,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_2c4e08bb73478248a5ca",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2c4e08bb73478248a5ca_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2c4e08bb73478248a5ca_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2c4e08bb73478248a5ca_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2c4e08bb73478248a5ca_B.png",
+      "source": "internal",
+      "sample_hash": "2c4e08bb73478248a5ca",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 10,
+      "adjudication": false,
+      "sample_id": "2c4e08bb73478248a5ca",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2c4e08bb73478248a5ca/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2c4e08bb73478248a5ca/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2c4e08bb73478248a5ca/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2c4e08bb73478248a5ca/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2c4e08bb73478248a5ca/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2c4e08bb73478248a5ca/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 24,
+      "overlay_diff_ratio": 0.125,
+      "overlay_bbox": {
+        "x": 20,
+        "y": 6,
+        "w": 24,
+        "h": 8,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 0.954,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 24,
+        "overlay_diff_ratio": 0.125,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "2c4e08bb73478248a5ca",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9513.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 154,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 24,
+        "overlay_diff_ratio": 0.125,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "2c4e08bb73478248a5ca",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9513.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 154,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 24,
+        "overlay_diff_ratio": 0.125,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_03a0a3c1666df93d46f5",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/03a0a3c1666df93d46f5_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/03a0a3c1666df93d46f5_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/03a0a3c1666df93d46f5_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/03a0a3c1666df93d46f5_B.png",
+      "source": "internal",
+      "sample_hash": "03a0a3c1666df93d46f5",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 23,
+      "adjudication": false,
+      "sample_id": "03a0a3c1666df93d46f5",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/03a0a3c1666df93d46f5/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/03a0a3c1666df93d46f5/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/03a0a3c1666df93d46f5/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/03a0a3c1666df93d46f5/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/03a0a3c1666df93d46f5/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/03a0a3c1666df93d46f5/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.071,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "03a0a3c1666df93d46f5",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9534.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "03a0a3c1666df93d46f5",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9534.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_cd7486b561c92a5e3997",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/cd7486b561c92a5e3997_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/cd7486b561c92a5e3997_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/cd7486b561c92a5e3997_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/cd7486b561c92a5e3997_B.png",
+      "source": "internal",
+      "sample_hash": "cd7486b561c92a5e3997",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 5,
+      "adjudication": false,
+      "sample_id": "cd7486b561c92a5e3997",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/cd7486b561c92a5e3997/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/cd7486b561c92a5e3997/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/cd7486b561c92a5e3997/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/cd7486b561c92a5e3997/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/cd7486b561c92a5e3997/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/cd7486b561c92a5e3997/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.071,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "cd7486b561c92a5e3997",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "IMG_9565.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 156,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 156,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "cd7486b561c92a5e3997",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "IMG_9565.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 156,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 156,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_lapa_lapa_47b96f99409e5ff6e99b65ac",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_47b96f99409e5ff6e99b65ac_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_47b96f99409e5ff6e99b65ac_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_47b96f99409e5ff6e99b65ac_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_47b96f99409e5ff6e99b65ac_B.png",
+      "source": "lapa",
+      "sample_hash": "lapa_47b96f99409e5ff6e99b65ac",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 27,
+      "adjudication": false,
+      "sample_id": "lapa_47b96f99409e5ff6e99b65ac",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_47b96f99409e5ff6e99b65ac/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_47b96f99409e5ff6e99b65ac/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_47b96f99409e5ff6e99b65ac/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_47b96f99409e5ff6e99b65ac/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_47b96f99409e5ff6e99b65ac/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_47b96f99409e5ff6e99b65ac/variant1_overlay.png",
+      "overlay_focus_module": "none",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 0.42,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_47b96f99409e5ff6e99b65ac",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/train/images/HELEN_155338254_1_1.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_47b96f99409e5ff6e99b65ac",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/train/images/HELEN_155338254_1_1.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_9e97ab1f449fa7aaf212",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/9e97ab1f449fa7aaf212_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/9e97ab1f449fa7aaf212_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/9e97ab1f449fa7aaf212_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/9e97ab1f449fa7aaf212_B.png",
+      "source": "internal",
+      "sample_hash": "9e97ab1f449fa7aaf212",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 8,
+      "adjudication": false,
+      "sample_id": "9e97ab1f449fa7aaf212",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/9e97ab1f449fa7aaf212/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/9e97ab1f449fa7aaf212/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/9e97ab1f449fa7aaf212/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/9e97ab1f449fa7aaf212/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/9e97ab1f449fa7aaf212/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/9e97ab1f449fa7aaf212/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.071,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "9e97ab1f449fa7aaf212",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_395338319.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "9e97ab1f449fa7aaf212",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_395338319.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_e952da86529a5f826a6b",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/e952da86529a5f826a6b_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/e952da86529a5f826a6b_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/e952da86529a5f826a6b_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/e952da86529a5f826a6b_B.png",
+      "source": "internal",
+      "sample_hash": "e952da86529a5f826a6b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 15,
+      "adjudication": false,
+      "sample_id": "e952da86529a5f826a6b",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/e952da86529a5f826a6b/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/e952da86529a5f826a6b/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/e952da86529a5f826a6b/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/e952da86529a5f826a6b/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/e952da86529a5f826a6b/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/e952da86529a5f826a6b/variant1_overlay.png",
+      "overlay_focus_module": "under_eye_right",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 40,
+        "y": 20,
+        "w": 12,
+        "h": 8,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.913,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "e952da86529a5f826a6b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "IMG_9546.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 175,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "e952da86529a5f826a6b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "IMG_9546.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 175,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    }
+  },
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_acb9890cbd648391f0bb2680",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_acb9890cbd648391f0bb2680_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_acb9890cbd648391f0bb2680_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_acb9890cbd648391f0bb2680_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_acb9890cbd648391f0bb2680_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_acb9890cbd648391f0bb2680",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 55,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_acb9890cbd648391f0bb2680",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_acb9890cbd648391f0bb2680/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_acb9890cbd648391f0bb2680/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_acb9890cbd648391f0bb2680/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_acb9890cbd648391f0bb2680/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_acb9890cbd648391f0bb2680/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_acb9890cbd648391f0bb2680/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_acb9890cbd648391f0bb2680",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/11612.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 80
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 80
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_acb9890cbd648391f0bb2680",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/11612.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 80
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 80
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_0310391a970e2d07bd4ccce2",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0310391a970e2d07bd4ccce2_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0310391a970e2d07bd4ccce2_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0310391a970e2d07bd4ccce2_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_0310391a970e2d07bd4ccce2_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_0310391a970e2d07bd4ccce2",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 63,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_0310391a970e2d07bd4ccce2",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0310391a970e2d07bd4ccce2/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0310391a970e2d07bd4ccce2/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0310391a970e2d07bd4ccce2/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0310391a970e2d07bd4ccce2/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0310391a970e2d07bd4ccce2/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_0310391a970e2d07bd4ccce2/variant1_overlay.png",
+      "overlay_focus_module": "under_eye_right",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 40,
+        "y": 20,
+        "w": 12,
+        "h": 8,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.786,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_0310391a970e2d07bd4ccce2",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/23120.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 182,
+          "left_cheek": 65,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 182,
+          "left_cheek": 65,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_0310391a970e2d07bd4ccce2",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/23120.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 182,
+          "left_cheek": 65,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 182,
+          "left_cheek": 65,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_5aca29af451c7bf88041",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/5aca29af451c7bf88041_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/5aca29af451c7bf88041_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/5aca29af451c7bf88041_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/5aca29af451c7bf88041_B.png",
+      "source": "internal",
+      "sample_hash": "5aca29af451c7bf88041",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 2,
+      "adjudication": false,
+      "sample_id": "5aca29af451c7bf88041",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/5aca29af451c7bf88041/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/5aca29af451c7bf88041/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/5aca29af451c7bf88041/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/5aca29af451c7bf88041/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/5aca29af451c7bf88041/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/5aca29af451c7bf88041/variant1_overlay.png",
+      "overlay_focus_module": "none",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 0.391,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "5aca29af451c7bf88041",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "IMG_9525.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "5aca29af451c7bf88041",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "IMG_9525.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_88bb850c69bfa201b902",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/88bb850c69bfa201b902_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/88bb850c69bfa201b902_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/88bb850c69bfa201b902_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/88bb850c69bfa201b902_B.png",
+      "source": "internal",
+      "sample_hash": "88bb850c69bfa201b902",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 6,
+      "adjudication": false,
+      "sample_id": "88bb850c69bfa201b902",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/88bb850c69bfa201b902/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/88bb850c69bfa201b902/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/88bb850c69bfa201b902/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/88bb850c69bfa201b902/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/88bb850c69bfa201b902/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/88bb850c69bfa201b902/variant1_overlay.png",
+      "overlay_focus_module": "none",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 0.391,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "88bb850c69bfa201b902",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9550.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "88bb850c69bfa201b902",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9550.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    }
+  },
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_091d02e9e84ef6afa1444be1",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_091d02e9e84ef6afa1444be1_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_091d02e9e84ef6afa1444be1_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_091d02e9e84ef6afa1444be1_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_091d02e9e84ef6afa1444be1_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_091d02e9e84ef6afa1444be1",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 53,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_091d02e9e84ef6afa1444be1",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_091d02e9e84ef6afa1444be1/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_091d02e9e84ef6afa1444be1/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_091d02e9e84ef6afa1444be1/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_091d02e9e84ef6afa1444be1/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_091d02e9e84ef6afa1444be1/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_091d02e9e84ef6afa1444be1/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_091d02e9e84ef6afa1444be1",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/17887.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_091d02e9e84ef6afa1444be1",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/17887.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 156,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_lapa_lapa_aaca1ed5e0aa6f76bbebeb8b",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_aaca1ed5e0aa6f76bbebeb8b_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_aaca1ed5e0aa6f76bbebeb8b_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_aaca1ed5e0aa6f76bbebeb8b_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_aaca1ed5e0aa6f76bbebeb8b_B.png",
+      "source": "lapa",
+      "sample_hash": "lapa_aaca1ed5e0aa6f76bbebeb8b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 35,
+      "adjudication": false,
+      "sample_id": "lapa_aaca1ed5e0aa6f76bbebeb8b",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_aaca1ed5e0aa6f76bbebeb8b/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_aaca1ed5e0aa6f76bbebeb8b/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_aaca1ed5e0aa6f76bbebeb8b/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_aaca1ed5e0aa6f76bbebeb8b/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_aaca1ed5e0aa6f76bbebeb8b/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_aaca1ed5e0aa6f76bbebeb8b/variant1_overlay.png",
+      "overlay_focus_module": "none",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 0.391,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_aaca1ed5e0aa6f76bbebeb8b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/train/images/9503221970_0.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_aaca1ed5e0aa6f76bbebeb8b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/train/images/9503221970_0.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    }
+  },
+  {
+    "id": "pref_lapa_lapa_69a5c3514f736d392ba06447",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_69a5c3514f736d392ba06447_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_69a5c3514f736d392ba06447_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_69a5c3514f736d392ba06447_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_69a5c3514f736d392ba06447_B.png",
+      "source": "lapa",
+      "sample_hash": "lapa_69a5c3514f736d392ba06447",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 51,
+      "adjudication": false,
+      "sample_id": "lapa_69a5c3514f736d392ba06447",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_69a5c3514f736d392ba06447/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_69a5c3514f736d392ba06447/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_69a5c3514f736d392ba06447/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_69a5c3514f736d392ba06447/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_69a5c3514f736d392ba06447/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_69a5c3514f736d392ba06447/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.068,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_69a5c3514f736d392ba06447",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/train/images/HELEN_2185205964_2_1.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 65,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 64,
+          "under_eye_right": 88
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 65,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 64,
+          "under_eye_right": 88
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_69a5c3514f736d392ba06447",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/train/images/HELEN_2185205964_2_1.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 65,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 64,
+          "under_eye_right": 88
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 65,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 64,
+          "under_eye_right": 88
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_lapa_lapa_52e9681ad4e4d16b1eeab509",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_52e9681ad4e4d16b1eeab509_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_52e9681ad4e4d16b1eeab509_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_52e9681ad4e4d16b1eeab509_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_52e9681ad4e4d16b1eeab509_B.png",
+      "source": "lapa",
+      "sample_hash": "lapa_52e9681ad4e4d16b1eeab509",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 50,
+      "adjudication": false,
+      "sample_id": "lapa_52e9681ad4e4d16b1eeab509",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_52e9681ad4e4d16b1eeab509/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_52e9681ad4e4d16b1eeab509/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_52e9681ad4e4d16b1eeab509/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_52e9681ad4e4d16b1eeab509/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_52e9681ad4e4d16b1eeab509/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_52e9681ad4e4d16b1eeab509/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.068,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_52e9681ad4e4d16b1eeab509",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/train/images/LFPW_image_train_0867_0.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 130,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 130,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_52e9681ad4e4d16b1eeab509",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/train/images/LFPW_image_train_0867_0.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 130,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 130,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_lapa_lapa_345b30f472aa4f572b8ddf3b",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_345b30f472aa4f572b8ddf3b_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_345b30f472aa4f572b8ddf3b_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_345b30f472aa4f572b8ddf3b_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_345b30f472aa4f572b8ddf3b_B.png",
+      "source": "lapa",
+      "sample_hash": "lapa_345b30f472aa4f572b8ddf3b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 37,
+      "adjudication": false,
+      "sample_id": "lapa_345b30f472aa4f572b8ddf3b",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_345b30f472aa4f572b8ddf3b/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_345b30f472aa4f572b8ddf3b/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_345b30f472aa4f572b8ddf3b/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_345b30f472aa4f572b8ddf3b/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_345b30f472aa4f572b8ddf3b/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_345b30f472aa4f572b8ddf3b/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.064,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_345b30f472aa4f572b8ddf3b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/test/images/4122483269_1.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 65,
+          "right_cheek": 117,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 70
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 65,
+          "right_cheek": 117,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 70
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_345b30f472aa4f572b8ddf3b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/test/images/4122483269_1.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 65,
+          "right_cheek": 117,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 70
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 65,
+          "right_cheek": 117,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 70
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_lapa_lapa_a3b498b64e0d8909cb4c7887",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_a3b498b64e0d8909cb4c7887_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_a3b498b64e0d8909cb4c7887_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_a3b498b64e0d8909cb4c7887_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_a3b498b64e0d8909cb4c7887_B.png",
+      "source": "lapa",
+      "sample_hash": "lapa_a3b498b64e0d8909cb4c7887",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 43,
+      "adjudication": false,
+      "sample_id": "lapa_a3b498b64e0d8909cb4c7887",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_a3b498b64e0d8909cb4c7887/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_a3b498b64e0d8909cb4c7887/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_a3b498b64e0d8909cb4c7887/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_a3b498b64e0d8909cb4c7887/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_a3b498b64e0d8909cb4c7887/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_a3b498b64e0d8909cb4c7887/variant1_overlay.png",
+      "overlay_focus_module": "none",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 0.419,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_a3b498b64e0d8909cb4c7887",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/train/images/10620337626_4.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_a3b498b64e0d8909cb4c7887",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/train/images/10620337626_4.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 0,
+        "module_pixels_min": 0,
+        "module_pixels_map": {},
+        "module_guard_triggered": false,
+        "guarded_modules": [],
+        "quality_grade": "fail",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "none"
+      }
+    }
+  },
+  {
+    "id": "pref_lapa_lapa_8e9ca20c846942ea1cc3b0dd",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_8e9ca20c846942ea1cc3b0dd_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_8e9ca20c846942ea1cc3b0dd_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_8e9ca20c846942ea1cc3b0dd_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/lapa_8e9ca20c846942ea1cc3b0dd_B.png",
+      "source": "lapa",
+      "sample_hash": "lapa_8e9ca20c846942ea1cc3b0dd",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 45,
+      "adjudication": false,
+      "sample_id": "lapa_8e9ca20c846942ea1cc3b0dd",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_8e9ca20c846942ea1cc3b0dd/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_8e9ca20c846942ea1cc3b0dd/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_8e9ca20c846942ea1cc3b0dd/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_8e9ca20c846942ea1cc3b0dd/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_8e9ca20c846942ea1cc3b0dd/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/lapa_8e9ca20c846942ea1cc3b0dd/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.068,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_8e9ca20c846942ea1cc3b0dd",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/train/images/HELEN_1443377029_1_0.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 65,
+          "right_cheek": 130,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 65,
+          "right_cheek": 130,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "lapa",
+      "sample_hash": "lapa_8e9ca20c846942ea1cc3b0dd",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/train/images/HELEN_1443377029_1_0.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 65,
+          "right_cheek": 130,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 65,
+          "right_cheek": 130,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 72,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_85c37884d65933afaa6e3f5e",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_85c37884d65933afaa6e3f5e_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_85c37884d65933afaa6e3f5e_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_85c37884d65933afaa6e3f5e_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_85c37884d65933afaa6e3f5e_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_85c37884d65933afaa6e3f5e",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 62,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_85c37884d65933afaa6e3f5e",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_85c37884d65933afaa6e3f5e/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_85c37884d65933afaa6e3f5e/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_85c37884d65933afaa6e3f5e/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_85c37884d65933afaa6e3f5e/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_85c37884d65933afaa6e3f5e/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_85c37884d65933afaa6e3f5e/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_85c37884d65933afaa6e3f5e",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/12591.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_85c37884d65933afaa6e3f5e",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/12591.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_a158d9b44564b659b21b",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/a158d9b44564b659b21b_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/a158d9b44564b659b21b_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/a158d9b44564b659b21b_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/a158d9b44564b659b21b_B.png",
+      "source": "internal",
+      "sample_hash": "a158d9b44564b659b21b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 21,
+      "adjudication": false,
+      "sample_id": "a158d9b44564b659b21b",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/a158d9b44564b659b21b/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/a158d9b44564b659b21b/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/a158d9b44564b659b21b/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/a158d9b44564b659b21b/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/a158d9b44564b659b21b/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/a158d9b44564b659b21b/variant1_overlay.png",
+      "overlay_focus_module": "under_eye_right",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 38,
+        "y": 19,
+        "w": 10,
+        "h": 10,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 2.083,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "a158d9b44564b659b21b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9538.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 182,
+          "right_cheek": 78,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 81
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 175,
+          "left_cheek": 182,
+          "right_cheek": 78,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 81
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "a158d9b44564b659b21b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "IMG_9538.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 182,
+          "right_cheek": 78,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 81
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 175,
+          "left_cheek": 182,
+          "right_cheek": 78,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 81
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "forehead",
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    }
+  },
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_5ce3df29bd183e29b7a4ac5e",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_5ce3df29bd183e29b7a4ac5e_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_5ce3df29bd183e29b7a4ac5e_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_5ce3df29bd183e29b7a4ac5e_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_5ce3df29bd183e29b7a4ac5e_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_5ce3df29bd183e29b7a4ac5e",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 65,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_5ce3df29bd183e29b7a4ac5e",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_5ce3df29bd183e29b7a4ac5e/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_5ce3df29bd183e29b7a4ac5e/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_5ce3df29bd183e29b7a4ac5e/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_5ce3df29bd183e29b7a4ac5e/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_5ce3df29bd183e29b7a4ac5e/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_5ce3df29bd183e29b7a4ac5e/variant1_overlay.png",
+      "overlay_focus_module": "under_eye_right",
+      "overlay_diff_pixels": 0,
+      "overlay_diff_ratio": 0,
+      "overlay_bbox": {
+        "x": 40,
+        "y": 20,
+        "w": 12,
+        "h": 8,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.786,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_5ce3df29bd183e29b7a4ac5e",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/10587.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 140,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 147,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_5ce3df29bd183e29b7a4ac5e",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/10587.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 140,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 147,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 0,
+        "overlay_diff_ratio": 0,
+        "overlay_focus_module": "under_eye_right"
+      }
+    }
+  },
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_c218abc267882bf98513e62a",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_c218abc267882bf98513e62a_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_c218abc267882bf98513e62a_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_c218abc267882bf98513e62a_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_c218abc267882bf98513e62a_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_c218abc267882bf98513e62a",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 79,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_c218abc267882bf98513e62a",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_c218abc267882bf98513e62a/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_c218abc267882bf98513e62a/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_c218abc267882bf98513e62a/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_c218abc267882bf98513e62a/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_c218abc267882bf98513e62a/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_c218abc267882bf98513e62a/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_c218abc267882bf98513e62a",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/11349.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 130,
+          "right_cheek": 143,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 130,
+          "right_cheek": 143,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_c218abc267882bf98513e62a",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "source_root/11349.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 130,
+          "right_cheek": 143,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 130,
+          "right_cheek": 143,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_internal_2871d635fb37917ea807",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2871d635fb37917ea807_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2871d635fb37917ea807_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2871d635fb37917ea807_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/2871d635fb37917ea807_B.png",
+      "source": "internal",
+      "sample_hash": "2871d635fb37917ea807",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "rank": 1,
+      "adjudication": false,
+      "sample_id": "2871d635fb37917ea807",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2871d635fb37917ea807/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2871d635fb37917ea807/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2871d635fb37917ea807/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2871d635fb37917ea807/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2871d635fb37917ea807/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/2871d635fb37917ea807/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1.071,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "2871d635fb37917ea807",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "1770790798466.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "internal",
+      "sample_hash": "2871d635fb37917ea807",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "variant",
+      "role_b": "baseline",
+      "image_path_rel": "1770790798466.JPG",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 208,
+          "right_cheek": 208,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 77
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  },
+  {
+    "id": "pref_celebamaskhq_celebamaskhq_545c2c29a045da8358d0d30b",
+    "data": {
+      "image_a": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_545c2c29a045da8358d0d30b_A.png",
+      "image_b": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_545c2c29a045da8358d0d30b_B.png",
+      "image_a_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_545c2c29a045da8358d0d30b_A.png",
+      "image_b_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/images/celebamaskhq_545c2c29a045da8358d0d30b_B.png",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_545c2c29a045da8358d0d30b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "rank": 54,
+      "adjudication": false,
+      "sample_id": "celebamaskhq_545c2c29a045da8358d0d30b",
+      "input_thumb": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_545c2c29a045da8358d0d30b/input_thumb.jpg",
+      "input_thumb_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_545c2c29a045da8358d0d30b/input_thumb.jpg",
+      "baseline_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_545c2c29a045da8358d0d30b/baseline_overlay.png",
+      "baseline_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_545c2c29a045da8358d0d30b/baseline_overlay.png",
+      "variant1_overlay": "file:///Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_545c2c29a045da8358d0d30b/variant1_overlay.png",
+      "variant1_overlay_path": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/artifacts/preference_round1_20260213_102642/bundles/celebamaskhq_545c2c29a045da8358d0d30b/variant1_overlay.png",
+      "overlay_focus_module": "forehead",
+      "overlay_diff_pixels": 21,
+      "overlay_diff_ratio": 0.111,
+      "overlay_bbox": {
+        "x": 22,
+        "y": 4,
+        "w": 21,
+        "h": 9,
+        "grid": 64,
+        "units": "grid"
+      },
+      "overlay_zoom": 1,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "meta": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_545c2c29a045da8358d0d30b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/27553.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 130,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 99
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 130,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 99
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    },
+    "metadata": {
+      "run_id": "20260213_102642",
+      "source": "celebamaskhq",
+      "sample_hash": "celebamaskhq_545c2c29a045da8358d0d30b",
+      "baseline_id": "baseline_default",
+      "variant_id": "variant1_forehead_hair_clip",
+      "role_a": "baseline",
+      "role_b": "variant",
+      "image_path_rel": "source_root/27553.jpg",
+      "risk_score": 0,
+      "min_module_pixels": 0,
+      "leakage_bg_est_mean": null,
+      "hair_overlap_est": null,
+      "module_guard_triggered": false,
+      "guarded_modules": [],
+      "baseline_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 160,
+          "left_cheek": 130,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 99
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "variant_summary": {
+        "modules_count": 7,
+        "module_pixels_min": 44,
+        "module_pixels_map": {
+          "forehead": 168,
+          "left_cheek": 130,
+          "right_cheek": 104,
+          "nose": 44,
+          "chin": 133,
+          "under_eye_left": 77,
+          "under_eye_right": 99
+        },
+        "module_guard_triggered": true,
+        "guarded_modules": [
+          "chin",
+          "under_eye_left",
+          "under_eye_right"
+        ],
+        "quality_grade": "degraded",
+        "reason": null,
+        "ok": true
+      },
+      "adjudication": false,
+      "task_batch": "OVERLAP",
+      "double_annotate": true,
+      "risk_features": {
+        "hair_overlap_est": 0,
+        "leakage_bg_est_mean": 0,
+        "min_module_pixels": 0,
+        "overlay_diff_pixels": 21,
+        "overlay_diff_ratio": 0.111,
+        "overlay_focus_module": "forehead"
+      }
+    }
+  }
+]

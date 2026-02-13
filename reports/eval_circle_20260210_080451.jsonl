@@ -1,0 +1,9 @@
+{"ok":true,"dataset":"lapa","sample_hash":"131d96680c29bfcef4d9","sample_id":"99732d0a3c275adf2f208148","module_scores":[],"quality_grade":"degraded","regions_count":8,"invalid_region_count":0,"face_detect_ok":true,"landmark_ok":true,"geometry_sanitize_drop_rate":0,"weak_label_only":false,"derived_gt_path":"datasets_cache/derived_gt/lapa/99732d0a3c275adf2f208148.json","source_mode":"local"}
+{"ok":false,"dataset":"lapa","sample_hash":"d8d4323c3fd98ebffcf8","sample_id":"d0ab906067779a95f1d21be5","reason":"skin_roi_too_small"}
+{"ok":false,"dataset":"lapa","sample_hash":"373154f54184b3f90d79","sample_id":"1cdd49e5cabb24394c28f946","reason":"skin_roi_too_small"}
+{"ok":false,"dataset":"lapa","sample_hash":"bd614dc874399df64839","sample_id":"9bfbb08f682cb24efcbadd1e","reason":"skin_roi_too_small"}
+{"ok":false,"dataset":"lapa","sample_hash":"b3947f93558999d7dcc6","sample_id":"33fbec31644048919181fa58","reason":"skin_roi_too_small"}
+{"ok":false,"dataset":"lapa","sample_hash":"de1ee63d2a6784581bdc","sample_id":"b89e44584e6e50131c330cd6","reason":"skin_roi_too_small"}
+{"ok":false,"dataset":"lapa","sample_hash":"e5cc43d42f7310769ffc","sample_id":"8d908a744eaeb869a5054a1d","reason":"local_photo_modules_missing"}
+{"ok":false,"dataset":"lapa","sample_hash":"4962dcb811b912e5734b","sample_id":"bad4eda08aafab848af189d4","reason":"skin_roi_too_small"}
+{"ok":false,"dataset":"lapa","sample_hash":"4f7b44c597701da6b382","sample_id":"6b4d86324f49f5c024325997","reason":"local_photo_modules_missing"}

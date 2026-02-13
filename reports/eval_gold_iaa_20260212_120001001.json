@@ -1,0 +1,73 @@
+{
+  "ok": true,
+  "run_id": "20260212_120001001",
+  "comparable_task_pairs": 1,
+  "min_miou_threshold": 0.75,
+  "summary": {
+    "strong_module_miou_a_vs_b_mean": 1,
+    "strong_module_miou_a_vs_b_p50": 1,
+    "strong_module_miou_a_vs_b_p90": 1,
+    "forehead_hair_overlap_diff_abs_mean": 0,
+    "forehead_hair_overlap_diff_abs_p50": 0,
+    "forehead_hair_overlap_diff_abs_p90": 0,
+    "under_eye_band_coverage_diff_abs_mean": 0,
+    "under_eye_band_coverage_diff_abs_p50": 0,
+    "under_eye_band_coverage_diff_abs_p90": 0,
+    "under_eye_leakage_bg_diff_abs_mean": 0,
+    "under_eye_leakage_bg_diff_abs_p50": 0,
+    "under_eye_leakage_bg_diff_abs_p90": 0,
+    "under_eye_leakage_hair_diff_abs_mean": 0,
+    "under_eye_leakage_hair_diff_abs_p50": 0,
+    "under_eye_leakage_hair_diff_abs_p90": 0,
+    "soft_gate_pass": true,
+    "soft_gate_note": "IAA strong_module_mIoU_A_vs_B_mean >= 0.75"
+  },
+  "top_disagreement_tasks": [
+    {
+      "task_key": "101",
+      "task_id": "101",
+      "sample_hash": "round1realhash001",
+      "source": "lapa",
+      "annotator_a": "ann_579d601d4cc2",
+      "annotator_b": "ann_972041fe6502",
+      "strong_scores": [
+        {
+          "module_id": "nose",
+          "iou": 1
+        },
+        {
+          "module_id": "forehead",
+          "iou": 1
+        },
+        {
+          "module_id": "left_cheek",
+          "iou": 1
+        },
+        {
+          "module_id": "right_cheek",
+          "iou": 1
+        },
+        {
+          "module_id": "chin",
+          "iou": 1
+        }
+      ],
+      "strong_module_miou_a_vs_b": 1,
+      "forehead_hair_overlap_a": 0.235,
+      "forehead_hair_overlap_b": 0.235,
+      "forehead_hair_overlap_diff_abs": 0,
+      "under_eye_band_coverage_a": 0.031,
+      "under_eye_band_coverage_b": 0.031,
+      "under_eye_band_coverage_diff_abs": 0,
+      "under_eye_leakage_bg_a": 0,
+      "under_eye_leakage_bg_b": 0,
+      "under_eye_leakage_bg_diff_abs": 0,
+      "under_eye_leakage_hair_a": 0,
+      "under_eye_leakage_hair_b": 0,
+      "under_eye_leakage_hair_diff_abs": 0,
+      "disagreement_score": 0
+    }
+  ],
+  "report_md": "reports/eval_gold_iaa_20260212_120001001.md",
+  "report_jsonl": "reports/eval_gold_iaa_20260212_120001001.jsonl"
+}

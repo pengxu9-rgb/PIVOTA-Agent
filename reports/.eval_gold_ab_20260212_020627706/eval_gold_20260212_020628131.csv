@@ -1,0 +1,5 @@
+source,samples,skin_iou_mean,skin_iou_p50,skin_iou_p90,strong_module_miou_mean_mean,strong_module_miou_mean_p50,strong_module_miou_mean_p90,under_eye_band_coverage_mean_mean,under_eye_band_coverage_mean_p50,under_eye_band_coverage_mean_p90,under_eye_leakage_bg_mean_mean,under_eye_leakage_bg_mean_p50,under_eye_leakage_bg_mean_p90,under_eye_leakage_hair_mean_mean,under_eye_leakage_hair_mean_p50,under_eye_leakage_hair_mean_p90,forehead_hair_overlap_rate_mean,forehead_hair_overlap_rate_p50,forehead_hair_overlap_rate_p90,bg_as_skin_rate_mean,hair_as_skin_rate_mean,skin_miss_rate_mean
+all,20,0.669,0.669,0.669,0.953,0.953,0.953,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0.325
+celebamaskhq,5,0.669,0.669,0.669,0.953,0.953,0.953,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0.325
+internal,10,0.669,0.669,0.669,0.953,0.953,0.953,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0.325
+lapa,5,0.669,0.669,0.669,0.953,0.953,0.953,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0.325

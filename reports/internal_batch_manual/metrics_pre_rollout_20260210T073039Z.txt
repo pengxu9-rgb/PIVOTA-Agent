@@ -1,0 +1,8 @@
+# HELP product_rec_emitted_total Total emitted product recommendations grouped by market and quality grade.
+# TYPE product_rec_emitted_total counter
+# HELP product_rec_suppressed_total Total suppressed product recommendation decisions grouped by reason.
+# TYPE product_rec_suppressed_total counter
+# HELP claims_template_fallback_total Total claims template fallback events grouped by reason.
+# TYPE claims_template_fallback_total counter
+# HELP claims_violation_total Total claims policy violations caught before response output.
+# TYPE claims_violation_total counter

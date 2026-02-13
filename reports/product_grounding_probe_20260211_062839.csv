@@ -1,0 +1,4 @@
+query,hinted,resolved,reason,reason_code,confidence,latency_ms,matched_product_id,matched_merchant_id,top_candidate_id,top_candidate_title,sources
+"The Ordinary Niacinamide 10% + Zinc 1%",false,false,"no_candidates","",0,4502,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error);agent_search_global:fail(upstream_timeout)"
+"Winona Soothing Repair Serum",false,false,"no_candidates","",0,4502,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error);agent_search_global:fail(upstream_timeout)"
+"IPSA Time Reset Aqua",false,false,"no_candidates","",0,4502,"","","","","products_cache:fail(db_error);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_error);agent_search_global:fail(upstream_timeout)"

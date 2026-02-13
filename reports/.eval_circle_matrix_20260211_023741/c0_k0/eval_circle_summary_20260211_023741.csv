@@ -1,0 +1,8 @@
+dataset,module_id,samples,miou_mean,miou_p50,miou_p90,coverage_mean,leakage_mean,roi_too_small_rate
+fasseg,chin,19,0.006,0.003,0.008,1,0.904,0
+fasseg,forehead,19,0.022,0.011,0.053,0.937,0.913,0
+fasseg,left_cheek,19,0.014,0.014,0.025,0.999,0.906,0
+fasseg,nose,19,0.088,0.055,0.081,0.991,0.867,0
+fasseg,right_cheek,19,0.015,0.01,0.021,0.999,0.901,0
+fasseg,under_eye_left,16,0.009,0.004,0.016,1,0.91,0
+fasseg,under_eye_right,14,0.003,0.001,0.007,1,0.918,0

@@ -142,6 +142,15 @@ const MODULE_SKIN_POSITIVE_RATIO_MAX = Math.max(
   MODULE_SKIN_POSITIVE_RATIO_MIN,
   Math.min(1, Number(process.env.DIAG_SKINMASK_POSITIVE_RATIO_MAX || 0.95)),
 );
+const MODULE_BOX_MODE = String(process.env.DIAG_MODULE_BOX_MODE || 'static').trim().toLowerCase();
+const MODULE_DYNAMIC_BLEND_ALPHA = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_MODULE_DYNAMIC_BLEND_ALPHA || 0.85)),
+);
+const MODULE_DYNAMIC_MIN_ACTIVE_PIXELS = Math.max(
+  32,
+  Math.min(4096, Math.trunc(Number(process.env.DIAG_MODULE_DYNAMIC_MIN_ACTIVE_PIXELS || 180) || 180)),
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -960,6 +969,7 @@ function buildModuleIssues({
 function buildModules({
   regions,
   regionMeta,
+  moduleBoxes,
   qualityGrade,
   language,
   profileSummary,
@@ -979,6 +989,7 @@ function buildModules({
   const productRecSuppressedRows = [];
   const claimsTemplateFallbackRows = [];
   const claimsViolationRows = [];
+  const activeModuleBoxes = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
   const lang = normalizeLanguage(language);
   const market = String((profileSummary && profileSummary.region) || (lang === 'CN' ? 'CN' : 'US'))
     .trim()
@@ -989,7 +1000,8 @@ function buildModules({
     contraindications: profileSummary && profileSummary.contraindications,
   });
 
-  for (const [moduleId, moduleBoxRaw] of Object.entries(MODULE_BOXES)) {
+  for (const moduleId of Object.keys(MODULE_BOXES)) {
+    const moduleBoxRaw = activeModuleBoxes[moduleId] || MODULE_BOXES[moduleId];
     const moduleBoxSanitized = sanitizeBBox(moduleBoxRaw);
     if (!moduleBoxSanitized.ok || !moduleBoxSanitized.bbox) continue;
     const moduleBox = moduleBoxSanitized.bbox;
@@ -1216,6 +1228,348 @@ function decodeSkinMaskToGrid(skinMask, gridSize) {
     return bboxNormToMask(skinMask.bbox, targetGrid, targetGrid);
   }
   return null;
+}
+
+function cloneModuleBoxes(moduleBoxes = MODULE_BOXES) {
+  const out = {};
+  for (const moduleId of Object.keys(MODULE_BOXES)) {
+    const raw = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes[moduleId] : null;
+    const sanitized = sanitizeBBox(raw || MODULE_BOXES[moduleId]);
+    out[moduleId] = sanitized.ok ? sanitized.bbox : MODULE_BOXES[moduleId];
+  }
+  return out;
+}
+
+function boxFromEdges(x0, y0, x1, y1, fallbackBox) {
+  const candidate = sanitizeBBox({
+    x: Math.min(Number(x0) || 0, Number(x1) || 0),
+    y: Math.min(Number(y0) || 0, Number(y1) || 0),
+    w: Math.abs((Number(x1) || 0) - (Number(x0) || 0)),
+    h: Math.abs((Number(y1) || 0) - (Number(y0) || 0)),
+  });
+  if (candidate.ok && candidate.bbox) return candidate.bbox;
+  const fallback = sanitizeBBox(fallbackBox);
+  return fallback.ok && fallback.bbox ? fallback.bbox : null;
+}
+
+function blendBox(defaultBox, dynamicBox, alpha = MODULE_DYNAMIC_BLEND_ALPHA) {
+  const base = sanitizeBBox(defaultBox);
+  const dyn = sanitizeBBox(dynamicBox);
+  if (!dyn.ok || !dyn.bbox) return base.ok ? base.bbox : null;
+  if (!base.ok || !base.bbox) return dyn.bbox;
+  const keep = Math.max(0, Math.min(1, Number(alpha) || 0));
+  const mixed = sanitizeBBox({
+    x: (base.bbox.x * (1 - keep)) + (dyn.bbox.x * keep),
+    y: (base.bbox.y * (1 - keep)) + (dyn.bbox.y * keep),
+    w: (base.bbox.w * (1 - keep)) + (dyn.bbox.w * keep),
+    h: (base.bbox.h * (1 - keep)) + (dyn.bbox.h * keep),
+  });
+  return mixed.ok ? mixed.bbox : dyn.bbox;
+}
+
+function findNearestActiveRow(rowCounts, targetRow) {
+  if (!Array.isArray(rowCounts) || !rowCounts.length) return -1;
+  const target = Math.max(0, Math.min(rowCounts.length - 1, Math.trunc(Number(targetRow) || 0)));
+  if (rowCounts[target] > 0) return target;
+  const limit = rowCounts.length;
+  for (let delta = 1; delta < limit; delta += 1) {
+    const up = target - delta;
+    if (up >= 0 && rowCounts[up] > 0) return up;
+    const down = target + delta;
+    if (down < limit && rowCounts[down] > 0) return down;
+  }
+  return -1;
+}
+
+function deriveDynamicModuleBoxesFromSkinMask({
+  skinMaskNorm,
+  targetGrid,
+  fallbackBoxes = MODULE_BOXES,
+} = {}) {
+  const fallback = cloneModuleBoxes(fallbackBoxes);
+  const grid = Math.max(16, Math.min(512, Math.trunc(Number(targetGrid) || MODULE_MASK_GRID_SIZE)));
+  if (!(skinMaskNorm instanceof Uint8Array) || skinMaskNorm.length !== grid * grid) {
+    return {
+      ok: false,
+      module_boxes: fallback,
+      reason: 'skinmask_missing',
+      dynamic_score: 0,
+      diagnostics: null,
+    };
+  }
+
+  const rowCounts = new Array(grid).fill(0);
+  const rowLeft = new Array(grid).fill(grid);
+  const rowRight = new Array(grid).fill(-1);
+  let total = 0;
+  let sumX = 0;
+  for (let y = 0; y < grid; y += 1) {
+    for (let x = 0; x < grid; x += 1) {
+      if (!skinMaskNorm[(y * grid) + x]) continue;
+      rowCounts[y] += 1;
+      total += 1;
+      sumX += (x + 0.5);
+      if (x < rowLeft[y]) rowLeft[y] = x;
+      if (x > rowRight[y]) rowRight[y] = x;
+    }
+  }
+  if (total < MODULE_DYNAMIC_MIN_ACTIVE_PIXELS) {
+    return {
+      ok: false,
+      module_boxes: fallback,
+      reason: 'skinmask_too_sparse',
+      dynamic_score: 0,
+      diagnostics: { active_pixels: total },
+    };
+  }
+
+  let top = -1;
+  let bottom = -1;
+  for (let y = 0; y < grid; y += 1) {
+    if (rowCounts[y] > 0) {
+      if (top < 0) top = y;
+      bottom = y;
+    }
+  }
+  if (top < 0 || bottom <= top) {
+    return {
+      ok: false,
+      module_boxes: fallback,
+      reason: 'skinmask_bbox_invalid',
+      dynamic_score: 0,
+      diagnostics: null,
+    };
+  }
+
+  const faceHeightRows = Math.max(1, bottom - top + 1);
+  if (faceHeightRows < Math.max(16, Math.trunc(grid * 0.22))) {
+    return {
+      ok: false,
+      module_boxes: fallback,
+      reason: 'skinmask_face_height_small',
+      dynamic_score: 0,
+      diagnostics: { top, bottom, face_height_rows: faceHeightRows },
+    };
+  }
+
+  const eyeStart = Math.max(top, Math.min(bottom, Math.trunc(top + (faceHeightRows * 0.24))));
+  const eyeEnd = Math.max(eyeStart, Math.min(bottom, Math.trunc(top + (faceHeightRows * 0.58))));
+  let eyeRow = -1;
+  let eyeScore = Infinity;
+  for (let y = eyeStart; y <= eyeEnd; y += 1) {
+    if (rowCounts[y] <= 0) continue;
+    const prev = y > 0 ? rowCounts[y - 1] : rowCounts[y];
+    const next = y < grid - 1 ? rowCounts[y + 1] : rowCounts[y];
+    const score = prev + rowCounts[y] + next;
+    if (score < eyeScore) {
+      eyeScore = score;
+      eyeRow = y;
+    }
+  }
+  if (eyeRow < 0) eyeRow = Math.trunc(top + (faceHeightRows * 0.42));
+  const eyeRowActive = findNearestActiveRow(rowCounts, eyeRow);
+  if (eyeRowActive < 0) {
+    return {
+      ok: false,
+      module_boxes: fallback,
+      reason: 'skinmask_eye_row_missing',
+      dynamic_score: 0,
+      diagnostics: { top, bottom, eye_row: eyeRow },
+    };
+  }
+
+  const broadStart = Math.max(top, Math.min(bottom, Math.trunc(top + (faceHeightRows * 0.36))));
+  const broadEnd = Math.max(broadStart, Math.min(bottom, Math.trunc(top + (faceHeightRows * 0.8))));
+  let broadRow = eyeRowActive;
+  let broadWidth = -1;
+  for (let y = broadStart; y <= broadEnd; y += 1) {
+    if (rowCounts[y] <= 0) continue;
+    const width = rowRight[y] - rowLeft[y] + 1;
+    if (width > broadWidth) {
+      broadWidth = width;
+      broadRow = y;
+    }
+  }
+  const broadRowActive = findNearestActiveRow(rowCounts, broadRow);
+  if (broadRowActive < 0) {
+    return {
+      ok: false,
+      module_boxes: fallback,
+      reason: 'skinmask_broad_row_missing',
+      dynamic_score: 0,
+      diagnostics: { top, bottom, broad_row: broadRow },
+    };
+  }
+
+  const eyeLeft = rowLeft[eyeRowActive];
+  const eyeRight = rowRight[eyeRowActive];
+  const broadLeft = rowLeft[broadRowActive];
+  const broadRight = rowRight[broadRowActive];
+  const left = Math.max(0, Math.min(eyeLeft, broadLeft));
+  const right = Math.min(grid - 1, Math.max(eyeRight, broadRight));
+  const faceWidthRows = Math.max(1, right - left + 1);
+
+  const topN = top / grid;
+  const bottomN = (bottom + 1) / grid;
+  const faceHeightN = Math.max(0.15, bottomN - topN);
+  const eyeN = (eyeRowActive + 0.5) / grid;
+  const leftN = left / grid;
+  const rightN = (right + 1) / grid;
+  const faceWidthN = Math.max(0.2, rightN - leftN);
+  const centerXN = Math.max(
+    leftN + (faceWidthN * 0.25),
+    Math.min(rightN - (faceWidthN * 0.25), (sumX / Math.max(1, total)) / grid),
+  );
+
+  const dynamic = {};
+  dynamic.forehead = boxFromEdges(
+    leftN + (faceWidthN * 0.16),
+    topN + (faceHeightN * 0.03),
+    rightN - (faceWidthN * 0.16),
+    Math.min(topN + (faceHeightN * 0.24), eyeN - (faceHeightN * 0.04)),
+    fallback.forehead,
+  );
+  dynamic.nose = boxFromEdges(
+    centerXN - (faceWidthN * 0.095),
+    eyeN + (faceHeightN * 0.015),
+    centerXN + (faceWidthN * 0.095),
+    eyeN + (faceHeightN * 0.34),
+    fallback.nose,
+  );
+  dynamic.left_cheek = boxFromEdges(
+    leftN + (faceWidthN * 0.03),
+    eyeN + (faceHeightN * 0.03),
+    centerXN - (faceWidthN * 0.09),
+    eyeN + (faceHeightN * 0.34),
+    fallback.left_cheek,
+  );
+  dynamic.right_cheek = boxFromEdges(
+    centerXN + (faceWidthN * 0.09),
+    eyeN + (faceHeightN * 0.03),
+    rightN - (faceWidthN * 0.03),
+    eyeN + (faceHeightN * 0.34),
+    fallback.right_cheek,
+  );
+  dynamic.under_eye_left = boxFromEdges(
+    leftN + (faceWidthN * 0.1),
+    eyeN - (faceHeightN * 0.02),
+    centerXN - (faceWidthN * 0.13),
+    eyeN + (faceHeightN * 0.1),
+    fallback.under_eye_left,
+  );
+  dynamic.under_eye_right = boxFromEdges(
+    centerXN + (faceWidthN * 0.13),
+    eyeN - (faceHeightN * 0.02),
+    rightN - (faceWidthN * 0.1),
+    eyeN + (faceHeightN * 0.1),
+    fallback.under_eye_right,
+  );
+  dynamic.chin = boxFromEdges(
+    centerXN - (faceWidthN * 0.25),
+    topN + (faceHeightN * 0.66),
+    centerXN + (faceWidthN * 0.25),
+    Math.min(bottomN - (faceHeightN * 0.01), topN + (faceHeightN * 0.92)),
+    fallback.chin,
+  );
+
+  const blended = {};
+  for (const moduleId of Object.keys(fallback)) {
+    blended[moduleId] = blendBox(fallback[moduleId], dynamic[moduleId], MODULE_DYNAMIC_BLEND_ALPHA);
+  }
+
+  const dynamicScore = Math.max(0, Math.min(1, (faceHeightRows / grid) * (faceWidthRows / grid) * 2));
+  return {
+    ok: true,
+    module_boxes: blended,
+    reason: null,
+    dynamic_score: round3(dynamicScore),
+    diagnostics: {
+      active_pixels: total,
+      top_row: top,
+      bottom_row: bottom,
+      eye_row: eyeRowActive,
+      face_height_rows: faceHeightRows,
+      face_width_rows: faceWidthRows,
+      face_center_x: round3(centerXN),
+      blend_alpha: round3(MODULE_DYNAMIC_BLEND_ALPHA),
+    },
+  };
+}
+
+function resolveAdaptiveModuleBoxes({
+  skinMask,
+  gridSize,
+  fallbackBoxes = MODULE_BOXES,
+} = {}) {
+  const fallback = cloneModuleBoxes(fallbackBoxes);
+  const requestedMode = ['dynamic_skinmask', 'auto', 'static'].includes(MODULE_BOX_MODE)
+    ? MODULE_BOX_MODE
+    : 'static';
+  if (requestedMode === 'static') {
+    return {
+      mode: 'static',
+      dynamic_applied: false,
+      dynamic_reason: 'mode_static',
+      dynamic_score: 0,
+      module_boxes: fallback,
+      diagnostics: null,
+    };
+  }
+
+  const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
+  const skinMaskNorm = decodeSkinMaskToGrid(skinMask, targetGrid);
+  const positiveRatio = skinMaskNorm ? (countOnes(skinMaskNorm) / Math.max(1, targetGrid * targetGrid)) : 0;
+  const reliable =
+    Boolean(skinMaskNorm) &&
+    positiveRatio >= MODULE_SKIN_POSITIVE_RATIO_MIN &&
+    positiveRatio <= MODULE_SKIN_POSITIVE_RATIO_MAX;
+
+  if (requestedMode === 'auto' && !reliable) {
+    return {
+      mode: 'auto',
+      dynamic_applied: false,
+      dynamic_reason: 'skinmask_unreliable',
+      dynamic_score: 0,
+      module_boxes: fallback,
+      diagnostics: {
+        skinmask_positive_ratio: round3(positiveRatio),
+        skinmask_reliable: false,
+      },
+    };
+  }
+
+  const dynamic = deriveDynamicModuleBoxesFromSkinMask({
+    skinMaskNorm,
+    targetGrid,
+    fallbackBoxes: fallback,
+  });
+  if (!dynamic.ok || !dynamic.module_boxes) {
+    return {
+      mode: requestedMode,
+      dynamic_applied: false,
+      dynamic_reason: dynamic.reason || 'dynamic_failed',
+      dynamic_score: round3(dynamic.dynamic_score || 0),
+      module_boxes: fallback,
+      diagnostics: {
+        ...(dynamic.diagnostics || {}),
+        skinmask_positive_ratio: round3(positiveRatio),
+        skinmask_reliable: reliable,
+      },
+    };
+  }
+
+  return {
+    mode: requestedMode,
+    dynamic_applied: true,
+    dynamic_reason: null,
+    dynamic_score: round3(dynamic.dynamic_score || 0),
+    module_boxes: dynamic.module_boxes,
+    diagnostics: {
+      ...(dynamic.diagnostics || {}),
+      skinmask_positive_ratio: round3(positiveRatio),
+      skinmask_reliable: reliable,
+    },
+  };
 }
 
 function collectEvidenceRegionIds(moduleRow) {
@@ -1937,6 +2291,12 @@ function buildPhotoModulesCard({
   const faceCrop = normalizeFaceCropFromInternal(diagnosisInternal);
   const regionBuild = buildRegionsFromFindings({ findings, qualityFlags });
   const regions = regionBuild.regions;
+  const moduleBoxResolution = resolveAdaptiveModuleBoxes({
+    skinMask,
+    gridSize: MODULE_MASK_GRID_SIZE,
+    fallbackBoxes: MODULE_BOXES,
+  });
+  const resolvedModuleBoxes = moduleBoxResolution.module_boxes || MODULE_BOXES;
   const allowFaceOvalClip = Boolean(
     diagnosisInternal &&
       typeof diagnosisInternal === 'object' &&
@@ -1949,6 +2309,7 @@ function buildPhotoModulesCard({
   const modulesBuild = buildModules({
     regions,
     regionMeta: regionBuild.regionMeta,
+    moduleBoxes: resolvedModuleBoxes,
     qualityGrade,
     language,
     profileSummary,
@@ -1966,7 +2327,7 @@ function buildPhotoModulesCard({
     modules: modulesBuild.modules,
     regions,
     skinMask,
-    moduleBoxes: MODULE_BOXES,
+    moduleBoxes: resolvedModuleBoxes,
     gridSize: MODULE_MASK_GRID_SIZE,
     allowFaceOvalClip,
   });
@@ -2024,6 +2385,11 @@ function buildPhotoModulesCard({
       module_min_pixels_cheek: moduleMaskBuild.module_min_pixels_cheek,
       module_min_pixels_default: moduleMaskBuild.module_min_pixels_default,
       degraded_reasons: moduleMaskBuild.degraded_reasons,
+      module_box_mode: moduleBoxResolution.mode,
+      module_box_dynamic_applied: moduleBoxResolution.dynamic_applied,
+      module_box_dynamic_reason: moduleBoxResolution.dynamic_reason,
+      module_box_dynamic_score: moduleBoxResolution.dynamic_score,
+      module_box_diagnostics: moduleBoxResolution.diagnostics,
     };
   }
 

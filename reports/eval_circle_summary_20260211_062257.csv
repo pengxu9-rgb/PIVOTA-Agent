@@ -1,0 +1,8 @@
+dataset,dataset_eval_mode,module_id,samples,miou_mean,miou_p50,miou_p90,coverage_mean,leakage_non_skin_mean,leakage_bg_mean,leakage_hair_mean,leakage_mean,module_pixels_min,empty_module_rate,roi_too_small_rate
+fasseg,segmentation_only,chin,80,0.027,0.024,0.042,0.373,0.968,0.562,0.004,0.968,2076,0,0
+fasseg,segmentation_only,forehead,80,0.024,0.014,0.062,0.047,0.935,0.051,0.01,0.935,316,0,0
+fasseg,segmentation_only,left_cheek,80,0.032,0.015,0.077,0.209,0.955,0.032,0.007,0.955,2908,0,0
+fasseg,segmentation_only,nose,80,0.192,0.195,0.26,0.283,0.253,0.218,0.015,0.253,636,0,0
+fasseg,segmentation_only,right_cheek,80,0.027,0.011,0.078,0.214,0.962,0.037,0.005,0.962,2492,0,0
+fasseg,segmentation_only,under_eye_left,75,0.006,0,0.011,0.214,0.993,0.012,0.002,0.993,572,0,0
+fasseg,segmentation_only,under_eye_right,76,0.006,0,0.016,0.224,0.993,0.014,0.002,0.993,572,0,0

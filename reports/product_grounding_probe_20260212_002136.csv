@@ -1,0 +1,3 @@
+query,hinted,resolved,reason,reason_code,confidence,latency_ms,matched_product_id,matched_merchant_id,top_candidate_id,top_candidate_title,sources
+"The Ordinary Niacinamide 10% + Zinc 1%",true,true,"hint_product_ref","",1,0,"9886499864904","merch_efbc46b4619cfbdf","9886499864904","The Ordinary Niacinamide 10% + Zinc 1%","hints_product_ref:ok"
+"Winona Soothing Repair Serum",true,true,"hint_product_ref","",1,0,"9886500749640","merch_efbc46b4619cfbdf","9886500749640","Winona Soothing Repair Serum","hints_product_ref:ok"

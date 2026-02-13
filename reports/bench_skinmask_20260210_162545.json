@@ -1,0 +1,26 @@
+{
+  "schema_version": "aurora.skinmask.bench.v1",
+  "run_key": "20260210_162545",
+  "timestamp_utc": "2026-02-10T16:25:45.826Z",
+  "iterations": 3,
+  "warmup": 1,
+  "timeout_ms": 2000,
+  "grid_size": 64,
+  "dataset_scope": [
+    "fasseg"
+  ],
+  "image_hash_sha1": "cb2b29141d76342b",
+  "model_path": "artifacts/skinmask_v1.onnx",
+  "latency_ms": {
+    "mean": 173.011,
+    "p50": 169.649,
+    "p95": 195.924,
+    "p99": 195.924
+  },
+  "peak_rss_bytes": 482623488,
+  "peak_rss_human": "460.266 MB",
+  "ok_count": 3,
+  "fail_count": 0,
+  "avg_positive_ratio": 0.821,
+  "fallback_counts": {}
+}
