@@ -10,31 +10,6 @@ export function toPosix(input) {
   return String(input || '').replace(/\\/g, '/');
 }
 
-function encodePathForQuery(pathToken) {
-  return String(pathToken || '')
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
-export function toLabelStudioLocalFilesUrl(
-  absPath,
-  { documentRoot = process.env.LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT || process.cwd() } = {},
-) {
-  const resolvedPath = path.resolve(String(absPath || ''));
-  const resolvedRoot = path.resolve(String(documentRoot || process.cwd()));
-  const relRaw = toPosix(path.relative(resolvedRoot, resolvedPath)).replace(/^\.\/+/, '');
-  const rel = String(relRaw || '').trim();
-  if (!rel || rel === '.' || rel === '..' || rel.startsWith('../')) {
-    const error = new Error(`label_studio_path_outside_document_root:${resolvedPath}`);
-    error.code = 'LS_PATH_OUTSIDE_DOCUMENT_ROOT';
-    error.path = resolvedPath;
-    error.document_root = resolvedRoot;
-    throw error;
-  }
-  return `/data/local-files/?d=${encodePathForQuery(rel)}`;
-}
-
 export function fileExtToken(filePath) {
   return String(path.extname(String(filePath || '')) || '')
     .trim()

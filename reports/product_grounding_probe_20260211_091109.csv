@@ -1,5 +1,0 @@
-query,hinted,resolved,reason,reason_code,confidence,latency_ms,matched_product_id,matched_merchant_id,top_candidate_id,top_candidate_title,sources
-"The Ordinary Niacinamide 10% + Zinc 1%",true,true,"hint_product_ref","",1,2,"9886499864904","merch_efbc46b4619cfbdf","9886499864904","The Ordinary Niacinamide 10% + Zinc 1%","hints_product_ref:ok"
-"Winona Soothing Repair Serum",true,true,"hint_product_ref","",1,1,"9886500749640","merch_efbc46b4619cfbdf","9886500749640","Winona Soothing Repair Serum","hints_product_ref:ok"
-"IPSA Time Reset Aqua",false,false,"no_candidates","no_candidates",0,4647,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"
-"CeraVe Hydrating Cleanser",false,false,"no_candidates","no_candidates",0,4395,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"

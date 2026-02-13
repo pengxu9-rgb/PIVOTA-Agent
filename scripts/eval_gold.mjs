@@ -8,7 +8,6 @@ import { runTimestampKey, preprocessPhotoBuffer } from './internal_batch_helpers
 
 const require = createRequire(import.meta.url);
 const {
-  MODULE_BOXES,
   polygonNormToMask,
   decodeRleBinary,
   bboxNormToMask,
@@ -26,9 +25,6 @@ const DEFAULT_GRID_SIZE = 256;
 const DEFAULT_MAX_EDGE = 2048;
 const DEFAULT_CALIBRATION_OUT = path.join('artifacts', 'calibration_train_samples.ndjson');
 const DEFAULT_LANG = 'EN';
-const STRONG_MODULES = Object.freeze(['nose', 'forehead', 'left_cheek', 'right_cheek', 'chin']);
-const WEAK_UNDER_EYE_MODULES = Object.freeze(['under_eye_left', 'under_eye_right']);
-const ALL_MODULES = Object.freeze([...STRONG_MODULES, ...WEAK_UNDER_EYE_MODULES]);
 const FACE_OVAL_POLYGON = Object.freeze([
   { x: 0.5, y: 0.06 },
   { x: 0.64, y: 0.1 },
@@ -90,8 +86,6 @@ function parseArgs(argv) {
     max_edge: process.env.MAX_EDGE || DEFAULT_MAX_EDGE,
     rerun_local: process.env.EVAL_GOLD_RERUN_LOCAL || 'true',
     language: process.env.AURORA_LANG || 'en',
-    under_eye_min_coverage: process.env.EVAL_GOLD_UNDER_EYE_MIN_COVERAGE || '0',
-    forehead_hair_aware_clip: process.env.EVAL_GOLD_FOREHEAD_HAIR_AWARE_CLIP || 'false',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const token = String(argv[i] || '');
@@ -136,16 +130,6 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
-    if (token === '--under_eye_min_coverage' && next) {
-      out.under_eye_min_coverage = String(next);
-      i += 1;
-      continue;
-    }
-    if (token === '--forehead_hair_aware_clip' && next) {
-      out.forehead_hair_aware_clip = String(next);
-      i += 1;
-      continue;
-    }
   }
   out.gold_labels = String(out.gold_labels || '').trim();
   out.pred_jsonl = String(out.pred_jsonl || '').trim();
@@ -155,8 +139,6 @@ function parseArgs(argv) {
   out.max_edge = Math.max(512, Math.min(4096, Math.trunc(parseNumber(out.max_edge, DEFAULT_MAX_EDGE, 512, 4096))));
   out.rerun_local = parseBool(out.rerun_local, true);
   out.language = String(out.language || 'en').trim().toLowerCase().startsWith('zh') ? 'CN' : DEFAULT_LANG;
-  out.under_eye_min_coverage = Math.max(0, Math.min(1, Number(out.under_eye_min_coverage) || 0));
-  out.forehead_hair_aware_clip = parseBool(out.forehead_hair_aware_clip, false);
   return out;
 }
 
@@ -181,12 +163,6 @@ function safeRatio(num, den) {
   return num / den;
 }
 
-function mean(values) {
-  const valid = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
-  if (!valid.length) return null;
-  return valid.reduce((acc, value) => acc + value, 0) / valid.length;
-}
-
 function percentile(values, p = 0.5) {
   const valid = values
     .map((value) => Number(value))
@@ -195,6 +171,12 @@ function percentile(values, p = 0.5) {
   if (!valid.length) return null;
   const rank = Math.max(0, Math.min(valid.length - 1, Math.floor((valid.length - 1) * p)));
   return valid[rank];
+}
+
+function mean(values) {
+  const valid = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (!valid.length) return null;
+  return valid.reduce((acc, value) => acc + value, 0) / valid.length;
 }
 
 function normalizePoints(rawPoints) {
@@ -222,78 +204,11 @@ function normalizePoints(rawPoints) {
   return points.length >= 3 ? points : null;
 }
 
-function resizeMaskNearest(sourceMask, sourceGrid, targetGrid) {
-  const out = new Uint8Array(targetGrid * targetGrid);
-  if (!(sourceMask instanceof Uint8Array)) return out;
-  for (let y = 0; y < targetGrid; y += 1) {
-    const sy = Math.max(0, Math.min(sourceGrid - 1, Math.floor(((y + 0.5) * sourceGrid) / targetGrid)));
-    for (let x = 0; x < targetGrid; x += 1) {
-      const sx = Math.max(0, Math.min(sourceGrid - 1, Math.floor(((x + 0.5) * sourceGrid) / targetGrid)));
-      out[(y * targetGrid) + x] = sourceMask[(sy * sourceGrid) + sx] ? 1 : 0;
-    }
-  }
-  return out;
-}
-
-function staticFaceOvalMask(gridSize) {
-  return polygonNormToMask({ points: FACE_OVAL_POLYGON, closed: true }, gridSize, gridSize);
-}
-
-function emptyMask(gridSize) {
-  return new Uint8Array(gridSize * gridSize);
-}
-
 function polygonMaskFromLabel(label, gridSize) {
   if (!label || typeof label !== 'object') return null;
-  const polygons = Array.isArray(label.polygons_norm) ? label.polygons_norm : null;
-  if (polygons && polygons.length) {
-    const out = emptyMask(gridSize);
-    for (const pointsRaw of polygons) {
-      const points = normalizePoints(pointsRaw);
-      if (!points) continue;
-      const mask = polygonNormToMask({ points, closed: true }, gridSize, gridSize);
-      orMaskInto(out, mask);
-    }
-    return out;
-  }
   const points = normalizePoints(label.points_norm || label.points || label.value?.points);
   if (!points) return null;
   return polygonNormToMask({ points, closed: true }, gridSize, gridSize);
-}
-
-function decodeMaskPayload(payload, gridSize) {
-  if (!payload || typeof payload !== 'object') return null;
-  if (typeof payload.rle_norm === 'string' && payload.rle_norm.trim()) {
-    const srcGrid = Math.max(8, Math.trunc(Number(payload.grid_size || payload.mask_grid || gridSize) || gridSize));
-    const decoded = decodeRleBinary(payload.rle_norm.trim(), srcGrid * srcGrid);
-    if (srcGrid === gridSize) return decoded;
-    return resizeMaskNearest(decoded, srcGrid, gridSize);
-  }
-  if (typeof payload.mask_rle_norm === 'string' && payload.mask_rle_norm.trim()) {
-    const srcGrid = Math.max(8, Math.trunc(Number(payload.mask_grid || payload.grid_size || gridSize) || gridSize));
-    const decoded = decodeRleBinary(payload.mask_rle_norm.trim(), srcGrid * srcGrid);
-    if (srcGrid === gridSize) return decoded;
-    return resizeMaskNearest(decoded, srcGrid, gridSize);
-  }
-  const pointsMask = polygonMaskFromLabel(payload, gridSize);
-  if (pointsMask instanceof Uint8Array) return pointsMask;
-  return null;
-}
-
-function moduleBoxMask(moduleId, gridSize) {
-  const box = MODULE_BOXES && MODULE_BOXES[moduleId] ? MODULE_BOXES[moduleId] : null;
-  if (!box) return null;
-  return bboxNormToMask(box, gridSize, gridSize);
-}
-
-function decodeModuleMask(module, gridSize) {
-  if (!module || typeof module !== 'object') return null;
-  const parsed = decodeMaskPayload(module, gridSize);
-  if (parsed instanceof Uint8Array) return parsed;
-  if (module.box && typeof module.box === 'object') {
-    return bboxNormToMask(module.box, gridSize, gridSize);
-  }
-  return null;
 }
 
 function maskBoundingBox(mask, gridSize) {
@@ -321,30 +236,49 @@ function maskBoundingBox(mask, gridSize) {
   };
 }
 
+function decodeModuleMask(module, gridSize) {
+  if (!module || typeof module !== 'object') return null;
+  const grid = Math.max(8, Math.trunc(Number(module.mask_grid) || gridSize));
+  if (typeof module.mask_rle_norm === 'string' && module.mask_rle_norm.trim()) {
+    const decoded = decodeRleBinary(module.mask_rle_norm.trim(), grid * grid);
+    if (grid === gridSize) return decoded;
+    return resizeMaskNearest(decoded, grid, gridSize);
+  }
+  if (module.box && typeof module.box === 'object') {
+    return bboxNormToMask(module.box, gridSize, gridSize);
+  }
+  return null;
+}
+
+function resizeMaskNearest(sourceMask, sourceGrid, targetGrid) {
+  const out = new Uint8Array(targetGrid * targetGrid);
+  if (!(sourceMask instanceof Uint8Array)) return out;
+  for (let y = 0; y < targetGrid; y += 1) {
+    const sy = Math.max(0, Math.min(sourceGrid - 1, Math.floor(((y + 0.5) * sourceGrid) / targetGrid)));
+    for (let x = 0; x < targetGrid; x += 1) {
+      const sx = Math.max(0, Math.min(sourceGrid - 1, Math.floor(((x + 0.5) * sourceGrid) / targetGrid)));
+      out[(y * targetGrid) + x] = sourceMask[(sy * sourceGrid) + sx] ? 1 : 0;
+    }
+  }
+  return out;
+}
+
 function metricIou(predMask, gtMask) {
   const den = unionCount(predMask, gtMask);
   if (den <= 0) return null;
   return intersectionCount(predMask, gtMask) / den;
 }
 
-function metricCoverage(predMask, gtMask) {
-  const gtPixels = countOnes(gtMask);
-  if (gtPixels <= 0) return null;
-  return intersectionCount(predMask, gtMask) / gtPixels;
-}
-
-function metricLeakageOverPred(predMask, badMask) {
-  const predPixels = countOnes(predMask);
-  if (predPixels <= 0) return null;
-  return intersectionCount(predMask, badMask) / predPixels;
-}
-
 function metricHairAsSkin(predSkin, goldHair) {
-  return metricLeakageOverPred(predSkin, goldHair);
+  const predPixels = countOnes(predSkin);
+  if (predPixels <= 0) return null;
+  return intersectionCount(predSkin, goldHair) / predPixels;
 }
 
 function metricBgAsSkin(predSkin, goldBg) {
-  return metricLeakageOverPred(predSkin, goldBg);
+  const predPixels = countOnes(predSkin);
+  if (predPixels <= 0) return null;
+  return intersectionCount(predSkin, goldBg) / predPixels;
 }
 
 function metricSkinMiss(predSkin, goldSkin) {
@@ -354,37 +288,8 @@ function metricSkinMiss(predSkin, goldSkin) {
   return (goldPixels - overlap) / goldPixels;
 }
 
-function subtractMask(left, right) {
-  if (!(left instanceof Uint8Array)) return null;
-  const out = new Uint8Array(left.length);
-  for (let i = 0; i < left.length; i += 1) {
-    out[i] = left[i] && (!right || !right[i]) ? 1 : 0;
-  }
-  return out;
-}
-
-function extractGoldMasks(gold, gridSize) {
-  const labels = gold && gold.labels && typeof gold.labels === 'object' ? gold.labels : {};
-  const coreMasks = {
-    face_oval: decodeMaskPayload(gold.face_oval_mask, gridSize) || polygonMaskFromLabel(labels.face_oval, gridSize),
-    skin: decodeMaskPayload(gold.skin_mask, gridSize) || polygonMaskFromLabel(labels.skin, gridSize),
-    hair: decodeMaskPayload(gold.hair_mask, gridSize) || polygonMaskFromLabel(labels.hair, gridSize),
-    background: decodeMaskPayload(gold.background_mask, gridSize) || polygonMaskFromLabel(labels.background, gridSize),
-  };
-
-  const moduleMasks = {};
-  const fromPayload = gold && gold.module_masks && typeof gold.module_masks === 'object' ? gold.module_masks : {};
-  for (const moduleId of ALL_MODULES) {
-    const payloadMask = decodeMaskPayload(fromPayload[moduleId], gridSize);
-    const labelMask = polygonMaskFromLabel(labels[moduleId], gridSize);
-    const moduleMask = payloadMask || labelMask;
-    if (moduleMask instanceof Uint8Array) moduleMasks[moduleId] = moduleMask;
-  }
-  return {
-    labels,
-    coreMasks,
-    moduleMasks,
-  };
+function staticFaceOvalMask(gridSize) {
+  return polygonNormToMask({ points: FACE_OVAL_POLYGON, closed: true }, gridSize, gridSize);
 }
 
 async function runLocalPrediction({ imagePath, gridSize, language, maxEdge }) {
@@ -435,19 +340,16 @@ async function runLocalPrediction({ imagePath, gridSize, language, maxEdge }) {
 
   const predSkin = new Uint8Array(gridSize * gridSize);
   const modulePixels = {};
-  const moduleMasks = {};
   for (const module of modules) {
     const moduleId = String(module && module.module_id ? module.module_id : '').trim();
     const moduleMask = decodeModuleMask(module, gridSize);
     if (!(moduleMask instanceof Uint8Array)) continue;
-    if (moduleId) moduleMasks[moduleId] = moduleMask;
     modulePixels[moduleId || 'unknown'] = countOnes(moduleMask);
     orMaskInto(predSkin, moduleMask);
   }
   return {
     pred_skin_mask: predSkin,
     pred_oval_mask: staticFaceOvalMask(gridSize),
-    pred_module_masks: moduleMasks,
     modules_count: modules.length,
     module_pixels_map: modulePixels,
     quality_grade: String(safePayload.quality_grade || '').trim() || null,
@@ -478,32 +380,12 @@ function extractPredFromRow(predRow, gridSize) {
     return null;
   }
 
-  const moduleMasks = {};
-  if (predRow.module_masks && typeof predRow.module_masks === 'object') {
-    for (const moduleId of Object.keys(predRow.module_masks)) {
-      const mask = decodeMaskPayload(predRow.module_masks[moduleId], gridSize);
-      if (mask instanceof Uint8Array) moduleMasks[moduleId] = mask;
-    }
-  }
-  const moduleRows = Array.isArray(predRow.modules)
-    ? predRow.modules
-    : Array.isArray(predRow.pred_modules)
-      ? predRow.pred_modules
-      : [];
-  for (const module of moduleRows) {
-    const moduleId = String(module && module.module_id ? module.module_id : '').trim();
-    if (!moduleId) continue;
-    const mask = decodeModuleMask(module, gridSize);
-    if (mask instanceof Uint8Array) moduleMasks[moduleId] = mask;
-  }
-
   return {
     pred_skin_mask: predSkinMask,
     pred_oval_mask:
       predOvalMask instanceof Uint8Array && predOvalMask.length === gridSize * gridSize
         ? predOvalMask
         : staticFaceOvalMask(gridSize),
-    pred_module_masks: moduleMasks,
     modules_count: Number.isFinite(Number(predRow.modules_count)) ? Math.max(0, Math.trunc(Number(predRow.modules_count))) : null,
     module_pixels_map: predRow.module_pixels_map && typeof predRow.module_pixels_map === 'object' ? predRow.module_pixels_map : {},
     quality_grade: predRow.quality_grade || null,
@@ -590,19 +472,8 @@ function buildCalibrationRow({ sample, metrics, predSkinMask, goldSkinMask, runI
 }
 
 function sourceStats(rows, source) {
-  const filtered = rows.filter((row) => source === 'all' || row.source === source);
-  const metricKeys = [
-    'oval_iou',
-    'skin_iou',
-    'hair_as_skin_rate',
-    'bg_as_skin_rate',
-    'skin_miss_rate',
-    'strong_module_miou_mean',
-    'under_eye_band_coverage_mean',
-    'under_eye_leakage_bg_mean',
-    'under_eye_leakage_hair_mean',
-    'forehead_hair_overlap_rate',
-  ];
+  const filtered = rows.filter((row) => row.source === source);
+  const metricKeys = ['oval_iou', 'skin_iou', 'hair_as_skin_rate', 'bg_as_skin_rate', 'skin_miss_rate'];
   const stats = { source, samples: filtered.length };
   for (const key of metricKeys) {
     const values = filtered.map((row) => row[key]).filter((value) => Number.isFinite(Number(value)));
@@ -613,72 +484,7 @@ function sourceStats(rows, source) {
   return stats;
 }
 
-function aggregateStrongModuleRows(rows) {
-  const map = new Map();
-  for (const row of rows) {
-    const scores = Array.isArray(row.strong_module_scores) ? row.strong_module_scores : [];
-    for (const score of scores) {
-      const moduleId = String(score.module_id || '').trim();
-      if (!moduleId) continue;
-      const bucket = map.get(moduleId) || [];
-      bucket.push(score);
-      map.set(moduleId, bucket);
-    }
-  }
-  return STRONG_MODULES.map((moduleId) => {
-    const rowsForModule = map.get(moduleId) || [];
-    const iouValues = rowsForModule.map((row) => row.iou).filter((value) => Number.isFinite(Number(value)));
-    const coverageValues = rowsForModule.map((row) => row.coverage).filter((value) => Number.isFinite(Number(value)));
-    const leakBgValues = rowsForModule.map((row) => row.leakage_bg).filter((value) => Number.isFinite(Number(value)));
-    const leakHairValues = rowsForModule.map((row) => row.leakage_hair).filter((value) => Number.isFinite(Number(value)));
-    return {
-      module_id: moduleId,
-      scored_samples: rowsForModule.length,
-      iou_mean: round3(mean(iouValues)),
-      coverage_mean: round3(mean(coverageValues)),
-      leakage_bg_mean: round3(mean(leakBgValues)),
-      leakage_hair_mean: round3(mean(leakHairValues)),
-    };
-  });
-}
-
-function aggregateWeakUnderEyeRows(rows) {
-  const map = new Map();
-  for (const row of rows) {
-    const scores = Array.isArray(row.under_eye_scores) ? row.under_eye_scores : [];
-    for (const score of scores) {
-      const moduleId = String(score.module_id || '').trim();
-      if (!moduleId) continue;
-      const bucket = map.get(moduleId) || [];
-      bucket.push(score);
-      map.set(moduleId, bucket);
-    }
-  }
-  return WEAK_UNDER_EYE_MODULES.map((moduleId) => {
-    const rowsForModule = map.get(moduleId) || [];
-    const coverageValues = rowsForModule.map((row) => row.band_coverage).filter((value) => Number.isFinite(Number(value)));
-    const leakBgValues = rowsForModule.map((row) => row.leakage_bg).filter((value) => Number.isFinite(Number(value)));
-    const leakHairValues = rowsForModule.map((row) => row.leakage_hair).filter((value) => Number.isFinite(Number(value)));
-    return {
-      module_id: moduleId,
-      scored_samples: rowsForModule.length,
-      band_coverage_mean: round3(mean(coverageValues)),
-      leakage_bg_mean: round3(mean(leakBgValues)),
-      leakage_hair_mean: round3(mean(leakHairValues)),
-    };
-  });
-}
-
-function buildSummaryMarkdown({
-  runId,
-  args,
-  rows,
-  sourceSummaries,
-  strongModuleSummary,
-  weakUnderEyeSummary,
-  worstRows,
-  files,
-}) {
+function buildSummaryMarkdown({ runId, args, rows, sourceSummaries, worstRows, files }) {
   const lines = [];
   lines.push('# Gold Label Evaluation');
   lines.push('');
@@ -688,50 +494,27 @@ function buildSummaryMarkdown({
   lines.push(`- pred_jsonl: ${args.pred_jsonl ? toPosix(path.relative(process.cwd(), path.resolve(args.pred_jsonl))) : '-'}`);
   lines.push(`- grid_size: ${args.grid_size}`);
   lines.push(`- rerun_local: ${args.rerun_local}`);
-  lines.push(`- forehead_hair_aware_clip: ${args.forehead_hair_aware_clip}`);
-  lines.push(`- under_eye_min_coverage: ${args.under_eye_min_coverage}`);
   lines.push(`- samples_total: ${rows.length}`);
   lines.push(`- samples_scored: ${rows.filter((row) => row.skin_iou != null).length}`);
   lines.push('');
-  lines.push('## GT Policy');
-  lines.push('');
-  lines.push(`- strong_gt_modules: ${STRONG_MODULES.join(', ')}`);
-  lines.push(`- weak_under_eye_modules: ${WEAK_UNDER_EYE_MODULES.join(', ')} (no mIoU; use band_coverage/leakage_bg/leakage_hair)`);
-  lines.push('');
   lines.push('## Source Metrics');
   lines.push('');
-  lines.push('| source | samples | skin_iou mean/p50/p90 | strong_module_mIoU mean/p50/p90 | under_eye_coverage mean/p50/p90 | under_eye_leak_bg mean/p50/p90 | under_eye_leak_hair mean/p50/p90 | forehead_hair_overlap mean/p50/p90 |');
-  lines.push('|---|---:|---|---|---|---|---|---|');
+  lines.push('| source | samples | oval_iou mean/p50/p90 | skin_iou mean/p50/p90 | hair_as_skin mean/p50/p90 | bg_as_skin mean/p50/p90 | skin_miss mean/p50/p90 |');
+  lines.push('|---|---:|---|---|---|---|---|');
   for (const summary of sourceSummaries) {
     const formatTriplet = (prefix) => `${summary[`${prefix}_mean`] ?? '-'} / ${summary[`${prefix}_p50`] ?? '-'} / ${summary[`${prefix}_p90`] ?? '-'}`;
     lines.push(
-      `| ${summary.source} | ${summary.samples} | ${formatTriplet('skin_iou')} | ${formatTriplet('strong_module_miou_mean')} | ${formatTriplet('under_eye_band_coverage_mean')} | ${formatTriplet('under_eye_leakage_bg_mean')} | ${formatTriplet('under_eye_leakage_hair_mean')} | ${formatTriplet('forehead_hair_overlap_rate')} |`,
+      `| ${summary.source} | ${summary.samples} | ${formatTriplet('oval_iou')} | ${formatTriplet('skin_iou')} | ${formatTriplet('hair_as_skin_rate')} | ${formatTriplet('bg_as_skin_rate')} | ${formatTriplet('skin_miss_rate')} |`,
     );
-  }
-  lines.push('');
-  lines.push('## Strong Module Summary');
-  lines.push('');
-  lines.push('| module_id | scored_samples | mIoU_mean | coverage_mean | leakage_bg_mean | leakage_hair_mean |');
-  lines.push('|---|---:|---:|---:|---:|---:|');
-  for (const row of strongModuleSummary) {
-    lines.push(`| ${row.module_id} | ${row.scored_samples} | ${row.iou_mean ?? '-'} | ${row.coverage_mean ?? '-'} | ${row.leakage_bg_mean ?? '-'} | ${row.leakage_hair_mean ?? '-'} |`);
-  }
-  lines.push('');
-  lines.push('## Under-Eye Weak Summary');
-  lines.push('');
-  lines.push('| module_id | scored_samples | band_coverage_mean | leakage_bg_mean | leakage_hair_mean |');
-  lines.push('|---|---:|---:|---:|---:|');
-  for (const row of weakUnderEyeSummary) {
-    lines.push(`| ${row.module_id} | ${row.scored_samples} | ${row.band_coverage_mean ?? '-'} | ${row.leakage_bg_mean ?? '-'} | ${row.leakage_hair_mean ?? '-'} |`);
   }
   lines.push('');
   lines.push('## Top 20 Worst Samples');
   lines.push('');
-  lines.push('| rank | sample_hash | source | strong_module_mIoU | under_eye_coverage | under_eye_leak_bg | under_eye_leak_hair | forehead_hair_overlap | skin_iou | driver_score | pred_source | fail_reason |');
-  lines.push('|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|');
+  lines.push('| rank | sample_hash | source | skin_iou | bg_as_skin_rate | skin_miss_rate | hair_as_skin_rate | driver_score | pred_source | fail_reason |');
+  lines.push('|---:|---|---|---:|---:|---:|---:|---:|---|---|');
   worstRows.forEach((row, index) => {
     lines.push(
-      `| ${index + 1} | ${row.sample_hash} | ${row.source} | ${row.strong_module_miou_mean ?? '-'} | ${row.under_eye_band_coverage_mean ?? '-'} | ${row.under_eye_leakage_bg_mean ?? '-'} | ${row.under_eye_leakage_hair_mean ?? '-'} | ${row.forehead_hair_overlap_rate ?? '-'} | ${row.skin_iou ?? '-'} | ${row.driver_score ?? '-'} | ${row.pred_source} | ${row.fail_reason || '-'} |`,
+      `| ${index + 1} | ${row.sample_hash} | ${row.source} | ${row.skin_iou ?? '-'} | ${row.bg_as_skin_rate ?? '-'} | ${row.skin_miss_rate ?? '-'} | ${row.hair_as_skin_rate ?? '-'} | ${row.driver_score ?? '-'} | ${row.pred_source} | ${row.fail_reason || '-'} |`,
     );
   });
   lines.push('');
@@ -785,12 +568,11 @@ async function main() {
     const source = String(gold.source || 'unknown').trim().toLowerCase() || 'unknown';
     if (!sampleHash) continue;
 
-    const extractedGold = extractGoldMasks(gold, args.grid_size);
-    const goldOvalMask = extractedGold.coreMasks.face_oval;
-    const goldSkinMask = extractedGold.coreMasks.skin;
-    const goldHairMask = extractedGold.coreMasks.hair;
-    const goldBgMask = extractedGold.coreMasks.background;
-    const goldModuleMasks = extractedGold.moduleMasks;
+    const labels = gold.labels && typeof gold.labels === 'object' ? gold.labels : {};
+    const goldOvalMask = polygonMaskFromLabel(labels.face_oval, args.grid_size);
+    const goldSkinMask = polygonMaskFromLabel(labels.skin, args.grid_size);
+    const goldHairMask = polygonMaskFromLabel(labels.hair, args.grid_size);
+    const goldBgMask = polygonMaskFromLabel(labels.background, args.grid_size);
 
     const predRow = predMap.get(sampleHash) || null;
     let prediction = extractPredFromRow(predRow, args.grid_size);
@@ -828,31 +610,14 @@ async function main() {
         hair_as_skin_rate: null,
         bg_as_skin_rate: null,
         skin_miss_rate: null,
-        strong_module_miou_mean: null,
-        under_eye_band_coverage_mean: null,
-        under_eye_leakage_bg_mean: null,
-        under_eye_leakage_hair_mean: null,
-        forehead_hair_overlap_rate: null,
       });
       continue;
     }
 
     const predSkinMask = prediction.pred_skin_mask;
     const predOvalMask = prediction.pred_oval_mask || staticFaceOvalMask(args.grid_size);
-    const predModuleMasks = prediction.pred_module_masks && typeof prediction.pred_module_masks === 'object'
-      ? { ...prediction.pred_module_masks }
-      : {};
-
-    if (args.forehead_hair_aware_clip && predModuleMasks.forehead instanceof Uint8Array && goldHairMask instanceof Uint8Array) {
-      predModuleMasks.forehead = subtractMask(predModuleMasks.forehead, goldHairMask);
-      if (predSkinMask instanceof Uint8Array) {
-        predSkinMask.fill(0);
-        for (const moduleId of Object.keys(predModuleMasks)) {
-          const mask = predModuleMasks[moduleId];
-          if (mask instanceof Uint8Array) orMaskInto(predSkinMask, mask);
-        }
-      }
-    }
+    const predSkinPixels = countOnes(predSkinMask);
+    const goldSkinPixels = goldSkinMask ? countOnes(goldSkinMask) : 0;
 
     const metrics = {
       oval_iou: goldOvalMask ? metricIou(predOvalMask, goldOvalMask) : null,
@@ -862,70 +627,10 @@ async function main() {
       skin_miss_rate: goldSkinMask ? metricSkinMiss(predSkinMask, goldSkinMask) : null,
     };
 
-    const strongModuleScores = [];
-    for (const moduleId of STRONG_MODULES) {
-      const gtMask = goldModuleMasks[moduleId];
-      if (!(gtMask instanceof Uint8Array)) continue;
-      const predMask = predModuleMasks[moduleId] instanceof Uint8Array
-        ? predModuleMasks[moduleId]
-        : moduleBoxMask(moduleId, args.grid_size);
-      if (!(predMask instanceof Uint8Array)) continue;
-      strongModuleScores.push({
-        module_id: moduleId,
-        iou: metricIou(predMask, gtMask),
-        coverage: metricCoverage(predMask, gtMask),
-        leakage_bg: goldBgMask ? metricLeakageOverPred(predMask, goldBgMask) : null,
-        leakage_hair: goldHairMask ? metricLeakageOverPred(predMask, goldHairMask) : null,
-        pred_pixels: countOnes(predMask),
-        gt_pixels: countOnes(gtMask),
-      });
-    }
-
-    const underEyeScores = [];
-    for (const moduleId of WEAK_UNDER_EYE_MODULES) {
-      const gtMask = goldModuleMasks[moduleId];
-      if (!(gtMask instanceof Uint8Array)) continue;
-      let predMask = predModuleMasks[moduleId] instanceof Uint8Array
-        ? predModuleMasks[moduleId]
-        : emptyMask(args.grid_size);
-      let bandCoverage = metricCoverage(predMask, gtMask);
-      if (Number.isFinite(Number(args.under_eye_min_coverage)) && Number(args.under_eye_min_coverage) > 0) {
-        if (bandCoverage != null && bandCoverage < Number(args.under_eye_min_coverage)) {
-          predMask = emptyMask(args.grid_size);
-          bandCoverage = metricCoverage(predMask, gtMask);
-        }
-      }
-      underEyeScores.push({
-        module_id: moduleId,
-        band_coverage: bandCoverage,
-        leakage_bg: goldBgMask ? metricLeakageOverPred(predMask, goldBgMask) : null,
-        leakage_hair: goldHairMask ? metricLeakageOverPred(predMask, goldHairMask) : null,
-        pred_pixels: countOnes(predMask),
-        gt_pixels: countOnes(gtMask),
-      });
-    }
-
-    const foreheadPredMask = predModuleMasks.forehead instanceof Uint8Array
-      ? predModuleMasks.forehead
-      : null;
-    const foreheadHairOverlapRate = (
-      foreheadPredMask && goldHairMask
-        ? safeRatio(intersectionCount(foreheadPredMask, goldHairMask), countOnes(foreheadPredMask))
-        : null
-    );
-
-    const strongMiou = mean(strongModuleScores.map((row) => row.iou));
-    const underEyeCoverageMean = mean(underEyeScores.map((row) => row.band_coverage));
-    const underEyeLeakBgMean = mean(underEyeScores.map((row) => row.leakage_bg));
-    const underEyeLeakHairMean = mean(underEyeScores.map((row) => row.leakage_hair));
-    const predSkinPixels = countOnes(predSkinMask);
-    const goldSkinPixels = goldSkinMask ? countOnes(goldSkinMask) : 0;
     const driverScore = (
-      (Number.isFinite(Number(strongMiou)) ? (1 - Number(strongMiou)) : 1)
-      + (Number.isFinite(Number(underEyeLeakBgMean)) ? Number(underEyeLeakBgMean) : 0)
-      + (Number.isFinite(Number(underEyeLeakHairMean)) ? Number(underEyeLeakHairMean) : 0)
-      + (Number.isFinite(Number(foreheadHairOverlapRate)) ? Number(foreheadHairOverlapRate) : 0)
-      + (Number.isFinite(Number(metrics.skin_iou)) ? (1 - Number(metrics.skin_iou)) * 0.5 : 0.5)
+      (Number.isFinite(Number(metrics.bg_as_skin_rate)) ? Number(metrics.bg_as_skin_rate) : 0)
+      + (Number.isFinite(Number(metrics.skin_miss_rate)) ? Number(metrics.skin_miss_rate) : 0)
+      + (Number.isFinite(Number(metrics.skin_iou)) ? (1 - Number(metrics.skin_iou)) : 1)
     );
 
     const row = {
@@ -946,28 +651,9 @@ async function main() {
       hair_as_skin_rate: round3(metrics.hair_as_skin_rate),
       bg_as_skin_rate: round3(metrics.bg_as_skin_rate),
       skin_miss_rate: round3(metrics.skin_miss_rate),
-      strong_module_miou_mean: round3(strongMiou),
-      strong_module_scored_count: strongModuleScores.length,
-      under_eye_band_coverage_mean: round3(underEyeCoverageMean),
-      under_eye_leakage_bg_mean: round3(underEyeLeakBgMean),
-      under_eye_leakage_hair_mean: round3(underEyeLeakHairMean),
-      under_eye_scored_count: underEyeScores.length,
-      forehead_hair_overlap_rate: round3(foreheadHairOverlapRate),
       driver_score: round3(driverScore),
-      strong_module_scores: strongModuleScores.map((item) => ({
-        ...item,
-        iou: round3(item.iou),
-        coverage: round3(item.coverage),
-        leakage_bg: round3(item.leakage_bg),
-        leakage_hair: round3(item.leakage_hair),
-      })),
-      under_eye_scores: underEyeScores.map((item) => ({
-        ...item,
-        band_coverage: round3(item.band_coverage),
-        leakage_bg: round3(item.leakage_bg),
-        leakage_hair: round3(item.leakage_hair),
-      })),
     };
+
     outRows.push(row);
 
     if (goldSkinMask) {
@@ -989,10 +675,21 @@ async function main() {
   }
 
   const sourceList = Array.from(new Set(outRows.map((row) => row.source))).sort();
-  const allSummary = sourceStats(outRows, 'all');
+  const summaries = sourceList.map((source) => sourceStats(outRows, source));
+  summaries.unshift(sourceStats(outRows, 'all').source === 'all' ? sourceStats(outRows, 'all') : { source: 'all', samples: outRows.length });
+
+  // Replace synthetic all summary with actual over all rows.
+  const allSummary = {
+    source: 'all',
+    samples: outRows.length,
+  };
+  for (const key of ['oval_iou', 'skin_iou', 'hair_as_skin_rate', 'bg_as_skin_rate', 'skin_miss_rate']) {
+    const values = outRows.map((row) => row[key]).filter((value) => Number.isFinite(Number(value)));
+    allSummary[`${key}_mean`] = round3(mean(values));
+    allSummary[`${key}_p50`] = round3(percentile(values, 0.5));
+    allSummary[`${key}_p90`] = round3(percentile(values, 0.9));
+  }
   const sourceSummaries = [allSummary, ...sourceList.map((source) => sourceStats(outRows, source))];
-  const strongModuleSummary = aggregateStrongModuleRows(outRows);
-  const weakUnderEyeSummary = aggregateWeakUnderEyeRows(outRows);
 
   const worstRows = [...outRows]
     .filter((row) => Number.isFinite(Number(row.driver_score)))
@@ -1006,31 +703,28 @@ async function main() {
   const calibrationPath = path.resolve(args.calibration_out);
 
   await fsp.mkdir(path.dirname(calibrationPath), { recursive: true });
+
   await fsp.writeFile(jsonlPath, outRows.map((row) => JSON.stringify(row)).join('\n') + (outRows.length ? '\n' : ''), 'utf8');
 
   const csvHeaders = [
     'source',
     'samples',
+    'oval_iou_mean', 'oval_iou_p50', 'oval_iou_p90',
     'skin_iou_mean', 'skin_iou_p50', 'skin_iou_p90',
-    'strong_module_miou_mean_mean', 'strong_module_miou_mean_p50', 'strong_module_miou_mean_p90',
-    'under_eye_band_coverage_mean_mean', 'under_eye_band_coverage_mean_p50', 'under_eye_band_coverage_mean_p90',
-    'under_eye_leakage_bg_mean_mean', 'under_eye_leakage_bg_mean_p50', 'under_eye_leakage_bg_mean_p90',
-    'under_eye_leakage_hair_mean_mean', 'under_eye_leakage_hair_mean_p50', 'under_eye_leakage_hair_mean_p90',
-    'forehead_hair_overlap_rate_mean', 'forehead_hair_overlap_rate_p50', 'forehead_hair_overlap_rate_p90',
-    'bg_as_skin_rate_mean', 'hair_as_skin_rate_mean', 'skin_miss_rate_mean',
+    'hair_as_skin_rate_mean', 'hair_as_skin_rate_p50', 'hair_as_skin_rate_p90',
+    'bg_as_skin_rate_mean', 'bg_as_skin_rate_p50', 'bg_as_skin_rate_p90',
+    'skin_miss_rate_mean', 'skin_miss_rate_p50', 'skin_miss_rate_p90',
   ];
   const csvRows = [
     csvHeaders.join(','),
     ...sourceSummaries.map((summary) => [
       summary.source,
       summary.samples,
+      summary.oval_iou_mean ?? '', summary.oval_iou_p50 ?? '', summary.oval_iou_p90 ?? '',
       summary.skin_iou_mean ?? '', summary.skin_iou_p50 ?? '', summary.skin_iou_p90 ?? '',
-      summary.strong_module_miou_mean_mean ?? '', summary.strong_module_miou_mean_p50 ?? '', summary.strong_module_miou_mean_p90 ?? '',
-      summary.under_eye_band_coverage_mean_mean ?? '', summary.under_eye_band_coverage_mean_p50 ?? '', summary.under_eye_band_coverage_mean_p90 ?? '',
-      summary.under_eye_leakage_bg_mean_mean ?? '', summary.under_eye_leakage_bg_mean_p50 ?? '', summary.under_eye_leakage_bg_mean_p90 ?? '',
-      summary.under_eye_leakage_hair_mean_mean ?? '', summary.under_eye_leakage_hair_mean_p50 ?? '', summary.under_eye_leakage_hair_mean_p90 ?? '',
-      summary.forehead_hair_overlap_rate_mean ?? '', summary.forehead_hair_overlap_rate_p50 ?? '', summary.forehead_hair_overlap_rate_p90 ?? '',
-      summary.bg_as_skin_rate_mean ?? '', summary.hair_as_skin_rate_mean ?? '', summary.skin_miss_rate_mean ?? '',
+      summary.hair_as_skin_rate_mean ?? '', summary.hair_as_skin_rate_p50 ?? '', summary.hair_as_skin_rate_p90 ?? '',
+      summary.bg_as_skin_rate_mean ?? '', summary.bg_as_skin_rate_p50 ?? '', summary.bg_as_skin_rate_p90 ?? '',
+      summary.skin_miss_rate_mean ?? '', summary.skin_miss_rate_p50 ?? '', summary.skin_miss_rate_p90 ?? '',
     ].map(csvEscape).join(',')),
   ];
   await fsp.writeFile(csvPath, `${csvRows.join('\n')}\n`, 'utf8');
@@ -1045,8 +739,6 @@ async function main() {
     args,
     rows: outRows,
     sourceSummaries,
-    strongModuleSummary,
-    weakUnderEyeSummary,
     worstRows,
     files: {
       jsonlRel: toPosix(path.relative(process.cwd(), jsonlPath)),
@@ -1065,19 +757,7 @@ async function main() {
     report_csv: toPosix(path.relative(process.cwd(), csvPath)),
     report_jsonl: toPosix(path.relative(process.cwd(), jsonlPath)),
     calibration_train_samples: toPosix(path.relative(process.cwd(), calibrationPath)),
-    overall: {
-      ...allSummary,
-      skin_iou_mean: round3(mean(outRows.map((row) => row.skin_iou))),
-      strong_module_miou_mean: round3(mean(outRows.map((row) => row.strong_module_miou_mean))),
-      under_eye_band_coverage_mean: round3(mean(outRows.map((row) => row.under_eye_band_coverage_mean))),
-      under_eye_leakage_bg_mean: round3(mean(outRows.map((row) => row.under_eye_leakage_bg_mean))),
-      under_eye_leakage_hair_mean: round3(mean(outRows.map((row) => row.under_eye_leakage_hair_mean))),
-      forehead_hair_overlap_rate_mean: round3(mean(outRows.map((row) => row.forehead_hair_overlap_rate))),
-      strong_gt_modules: STRONG_MODULES,
-      weak_under_eye_modules: WEAK_UNDER_EYE_MODULES,
-      forehead_hair_aware_clip: args.forehead_hair_aware_clip,
-      under_eye_min_coverage: args.under_eye_min_coverage,
-    },
+    overall: allSummary,
   };
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }

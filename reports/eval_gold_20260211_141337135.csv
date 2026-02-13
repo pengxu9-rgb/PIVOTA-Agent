@@ -1,4 +1,0 @@
-source,samples,oval_iou_mean,oval_iou_p50,oval_iou_p90,skin_iou_mean,skin_iou_p50,skin_iou_p90,hair_as_skin_rate_mean,hair_as_skin_rate_p50,hair_as_skin_rate_p90,bg_as_skin_rate_mean,bg_as_skin_rate_p50,bg_as_skin_rate_p90,skin_miss_rate_mean,skin_miss_rate_p50,skin_miss_rate_p90
-all,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-celebamaskhq,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-lapa,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

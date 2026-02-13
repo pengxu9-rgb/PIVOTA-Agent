@@ -1,8 +1,0 @@
-group_id,kind,score,skin_iou_mean,strong_module_miou_mean,under_eye_band_coverage_mean,under_eye_leakage_bg_mean,under_eye_leakage_hair_mean,forehead_hair_overlap_rate_mean,delta_strong_module_miou_mean,delta_forehead_hair_overlap_rate_mean
-baseline,baseline,0,0,0,0,0,0,0,0,0
-variant1_forehead_hair_clip,variant1,0,0,0,0,0,0,0,0,0
-variant2_under_eye_relaxed_guard,variant2,0,0,0,0,0,0,0,0,0
-variant3_clip_8_0_2,variant3,0,0,0,0,0,0,0,0,0
-variant3_clip_12_0_25,variant3,0,0,0,0,0,0,0,0,0
-variant3_clip_16_0_3,variant3,0,0,0,0,0,0,0,0,0
-variant3_clip_24_0_35,variant3,0,0,0,0,0,0,0,0,0

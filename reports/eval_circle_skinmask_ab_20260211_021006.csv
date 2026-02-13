@@ -1,8 +1,0 @@
-dataset,module_id,samples_off,samples_on,miou_mean_off,miou_mean_on,miou_mean_delta,miou_p50_off,miou_p50_on,miou_p50_delta,miou_p90_off,miou_p90_on,miou_p90_delta,coverage_mean_off,coverage_mean_on,coverage_mean_delta,leakage_mean_off,leakage_mean_on,leakage_mean_delta,roi_too_small_rate_off,roi_too_small_rate_on,roi_too_small_rate_delta
-fasseg,chin,114,114,0.036,0.036,0,0.032,0.032,0,0.045,0.046,0.001,0.96,0.959,-0.001,0.964,0.964,0,0,0,0
-fasseg,forehead,114,114,0.099,0.103,0.004,0.107,0.107,0,0.162,0.173,0.011,0.743,0.734,-0.009,0.898,0.891,-0.007,0,0,0
-fasseg,left_cheek,114,114,0.115,0.117,0.002,0.126,0.126,0,0.184,0.185,0.001,0.898,0.894,-0.004,0.883,0.881,-0.002,0,0,0
-fasseg,nose,114,114,0.571,0.57,-0.001,0.669,0.668,-0.001,0.757,0.757,0,0.936,0.931,-0.005,0.415,0.415,0,0,0,0
-fasseg,right_cheek,114,114,0.107,0.109,0.002,0.12,0.12,0,0.163,0.166,0.003,0.907,0.902,-0.005,0.891,0.889,-0.002,0,0,0
-fasseg,under_eye_left,114,114,0.502,0.501,-0.001,0.641,0.638,-0.003,0.788,0.795,0.007,0.789,0.776,-0.013,0.495,0.491,-0.004,0,0,0
-fasseg,under_eye_right,113,113,0.489,0.492,0.003,0.628,0.628,0,0.772,0.781,0.009,0.788,0.776,-0.012,0.506,0.502,-0.004,0,0,0

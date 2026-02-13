@@ -1,2 +1,0 @@
-scope,key,samples,pred_count,gold_count,tp,fp,fn,precision,recall,f1,mean_iou,p50_iou,p90_iou,matched_count
-overall,overall,0,0,0,0,0,0,0,0,0,,,,0

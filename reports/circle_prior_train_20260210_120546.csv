@@ -1,8 +1,0 @@
-module_id,x,y,w,h,samples,strong_samples,weak_samples,fallback_default
-forehead,0,0,0.9099,0.3554,4151,3714,437,false
-left_cheek,0.04,0.4239,0.4373,0.3433,4151,3959,192,false
-right_cheek,0.5174,0.4239,0.4426,0.3433,4151,3932,219,false
-nose,0.3655,0.3916,0.2516,0.2643,4151,3991,160,false
-chin,0.2565,0.7532,0.4454,0.2468,4151,3980,171,false
-under_eye_left,0.3961,0.4259,0.3114,0.0563,4151,3839,312,false
-under_eye_right,0.2831,0.4238,0.3114,0.0563,4151,3822,329,false

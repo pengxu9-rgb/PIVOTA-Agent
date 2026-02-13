@@ -1,3 +1,0 @@
-query,hinted,resolved,reason,reason_code,confidence,latency_ms,matched_product_id,matched_merchant_id,top_candidate_id,top_candidate_title,sources
-"SK-II Facial Treatment Essence",false,false,"no_candidates","no_candidates",0,2368,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"
-"Winona",false,true,"title_contains_query","",1,2203,"9886500749640","merch_efbc46b4619cfbdf","9886500749640","Winona Soothing Repair Serum","products_cache:ok;products_cache_global:ok;agent_search_global:fail(upstream_timeout)"

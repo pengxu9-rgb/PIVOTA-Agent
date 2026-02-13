@@ -1,6 +1,5 @@
 <View>
   <Header value="Aurora Gold Labeling — Oval/Skin/Hair/Background" />
-  <Header value="Round1 Real: label face_oval/skin/hair/background first, then modules (under-eye optional)." />
   <Image name="image" value="$image" zoom="true" />
   <PolygonLabels name="face_oval" toName="image" showInline="true">
     <Label value="face_oval" background="#4CAF50" />
@@ -14,17 +13,6 @@
   <PolygonLabels name="background" toName="image" showInline="true">
     <Label value="background" background="#607D8B" />
   </PolygonLabels>
-  <Header value="Module polygons (strong GT: nose/forehead/left_cheek/right_cheek/chin; weak optional: under_eye_left/under_eye_right)" />
-  <PolygonLabels name="module" toName="image" showInline="true" required="false">
-    <Label value="nose" background="#03A9F4" />
-    <Label value="forehead" background="#8BC34A" />
-    <Label value="left_cheek" background="#FF5722" />
-    <Label value="right_cheek" background="#FF7043" />
-    <Label value="chin" background="#009688" />
-    <Label value="under_eye_left" background="#FFC107" />
-    <Label value="under_eye_right" background="#FFB300" />
-  </PolygonLabels>
-  <Text name="under_eye_optional_note" value="under_eye_left / under_eye_right are optional weak labels." />
   <RectangleLabels name="artifact_box" toName="image" showInline="true">
     <Label value="bad_region" background="#F44336" />
     <Label value="artifact" background="#795548" />

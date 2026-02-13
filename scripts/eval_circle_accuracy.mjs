@@ -335,7 +335,6 @@ function predModulesMissingBreakdown(rows) {
 function datasetEvalMode(datasetName) {
   const token = String(datasetName || '').trim().toLowerCase();
   if (token === 'fasseg') return 'segmentation_only';
-  if (token === 'lapa') return 'parsing_gt';
   if (token === 'celebamaskhq') return 'parsing_gt';
   return 'full';
 }

@@ -1,6 +1,0 @@
-sample_hash,ok,status_code,fail_reason,quality_grade,modules_count,leakage_bg_mean,chin_leakage_bg,nose_leakage_bg,risk_score,degraded_reasons,reverted_modules,note
-fb372de37ff68acdbd93,false,200,NO_PHOTO_MODULES_CARD,,0,,,,0,[],[],
-70e32e6ec3578d52f122,false,200,NO_PHOTO_MODULES_CARD,,0,,,,0,[],[],
-68bd0434950924bb6df7,false,200,NO_PHOTO_MODULES_CARD,,0,,,,0,[],[],
-6792a46598a6002dd8d2,false,200,NO_PHOTO_MODULES_CARD,,0,,,,0,[],[],
-cf582fc883d21b89b09c,false,200,NO_PHOTO_MODULES_CARD,,0,,,,0,[],[],

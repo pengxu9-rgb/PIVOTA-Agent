@@ -1,9 +1,0 @@
-query,hinted,resolved,reason,reason_code,confidence,latency_ms,matched_product_id,matched_merchant_id,top_candidate_id,top_candidate_title,sources
-"The Ordinary Niacinamide 10% + Zinc 1%",true,true,"hint_product_ref","",1,0,"9886499864904","merch_efbc46b4619cfbdf","9886499864904","The Ordinary Niacinamide 10% + Zinc 1%","hints_product_ref:ok"
-"CeraVe Hydrating Cleanser",false,false,"no_candidates","no_candidates",0,2347,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"
-"La Roche-Posay Cicaplast Baume B5",false,false,"no_candidates","no_candidates",0,2410,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"
-"Bioderma Sensibio H2O Micellar",false,false,"no_candidates","no_candidates",0,2349,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"
-"Winona Soothing Repair Serum",true,true,"hint_product_ref","",1,0,"9886500749640","merch_efbc46b4619cfbdf","9886500749640","Winona Soothing Repair Serum","hints_product_ref:ok"
-"IPSA Time Reset Aqua",false,true,"stable_alias_match","stable_alias_match",1,0,"9886500127048","merch_efbc46b4619cfbdf","9886500127048","IPSA Time Reset Aqua","stable_alias_ref:ok(alias_exact)"
-"SK-II Facial Treatment Essence",false,false,"no_candidates","no_candidates",0,2411,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"
-"Avene Cicalfate+ Restorative Protective Cream",false,false,"no_candidates","no_candidates",0,2348,"","","","","products_cache:fail(db_query_timeout);agent_search_scoped:fail(upstream_timeout);products_cache_global:fail(db_query_timeout)"
