@@ -414,6 +414,74 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
   );
 });
 
+test('Stable-id offers.resolve no_candidates skips local invoke fallback', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let primaryCalls = 0;
+      let localCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/shop/v1/invoke') {
+          primaryCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'error',
+              reason_code: 'no_candidates',
+              reason: 'no_candidates',
+              metadata: { request_id: 'rid_primary_no_candidates' },
+            },
+          };
+        }
+        if (target === 'http://127.0.0.1:3000/agent/shop/v1/invoke') {
+          localCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'success',
+              payload: {
+                mapping: {
+                  canonical_product_ref: {
+                    product_id: 'prod_123',
+                    merchant_id: 'merch_123',
+                  },
+                },
+              },
+              metadata: { request_id: 'rid_local_should_not_be_called' },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.resolveRecoPdpByStableIds({
+          productId: 'prod_123',
+          skuId: 'prod_123',
+          logger: null,
+        });
+
+        assert.equal(primaryCalls, 1);
+        assert.equal(localCalls, 0);
+        assert.equal(out?.ok, false);
+        assert.equal(out?.reasonCode, 'no_candidates');
+        assert.equal(out?.localFallbackAttempted, false);
+        assert.deepEqual(out?.requestIds, { primary: 'rid_primary_no_candidates' });
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('UUID-only sku does not send product_ref hint and avoids duplicated brand in resolve query', async () => {
   await withEnv(
     {

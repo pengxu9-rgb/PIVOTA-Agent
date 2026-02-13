@@ -5918,6 +5918,9 @@ async function resolveRecoPdpByStableIds({
   let responseBody = null;
   let statusCode = 0;
   let responseError = null;
+  let primaryRequestId = null;
+  let localRequestId = null;
+  let localFallbackAttempted = false;
   const primaryInvokeUrl = `${String(PIVOTA_BACKEND_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
   try {
     const resolvePayload = {
@@ -5942,6 +5945,12 @@ async function resolveRecoPdpByStableIds({
     );
     responseBody = resp && typeof resp.data === 'object' ? resp.data : null;
     statusCode = Number(resp?.status || 0);
+    primaryRequestId = pickFirstTrimmed(
+      responseBody?.metadata?.request_id,
+      responseBody?.metadata?.requestId,
+      resp?.headers?.['x-request-id'],
+      resp?.headers?.['X-Request-Id'],
+    );
   } catch (err) {
     responseError = err;
   }
@@ -5953,6 +5962,11 @@ async function resolveRecoPdpByStableIds({
         ok: true,
         canonicalProductGroupId,
         canonicalProductRef,
+        requestIds:
+          primaryRequestId
+            ? { primary: primaryRequestId }
+            : null,
+        localFallbackAttempted: false,
       };
     }
   }
@@ -5964,11 +5978,15 @@ async function resolveRecoPdpByStableIds({
   });
 
   const localInvokeUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
-  if (
+  const shouldAttemptLocalFallback =
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localInvokeUrl &&
-    localInvokeUrl !== primaryInvokeUrl
+    localInvokeUrl !== primaryInvokeUrl &&
+    reasonCode !== 'no_candidates';
+  if (
+    shouldAttemptLocalFallback
   ) {
+    localFallbackAttempted = true;
     let localBody = null;
     let localStatusCode = 0;
     let localError = null;
@@ -5994,6 +6012,12 @@ async function resolveRecoPdpByStableIds({
       );
       localBody = resp && typeof resp.data === 'object' ? resp.data : null;
       localStatusCode = Number(resp?.status || 0);
+      localRequestId = pickFirstTrimmed(
+        localBody?.metadata?.request_id,
+        localBody?.metadata?.requestId,
+        resp?.headers?.['x-request-id'],
+        resp?.headers?.['X-Request-Id'],
+      );
     } catch (err) {
       localError = err;
     }
@@ -6007,6 +6031,8 @@ async function resolveRecoPdpByStableIds({
             sku_id: normalizedSkuId || null,
             primary_reason_code: reasonCode,
             local_status_code: localStatusCode,
+            primary_request_id: primaryRequestId || null,
+            local_request_id: localRequestId || null,
           },
           'aurora bff: reco stable-id resolved via local invoke fallback',
         );
@@ -6014,6 +6040,14 @@ async function resolveRecoPdpByStableIds({
           ok: true,
           canonicalProductGroupId,
           canonicalProductRef,
+          requestIds:
+            (primaryRequestId || localRequestId)
+              ? {
+                  ...(primaryRequestId ? { primary: primaryRequestId } : {}),
+                  ...(localRequestId ? { local: localRequestId } : {}),
+                }
+              : null,
+          localFallbackAttempted,
         };
       }
     }
@@ -6030,6 +6064,8 @@ async function resolveRecoPdpByStableIds({
         primary_reason_code: reasonCode,
         local_reason_code: localReasonCode,
         local_status_code: localStatusCode || null,
+        primary_request_id: primaryRequestId || null,
+        local_request_id: localRequestId || null,
         local_err: localError ? localError.message || String(localError) : null,
       },
       'aurora bff: reco stable-id local invoke fallback unresolved',
@@ -6047,6 +6083,8 @@ async function resolveRecoPdpByStableIds({
         sku_id: normalizedSkuId || null,
         reason_code: reasonCode,
         response_status: responseBody?.status || null,
+        primary_request_id: primaryRequestId || null,
+        local_fallback_attempted: localFallbackAttempted,
       },
       'aurora bff: reco stable-id offers.resolve unresolved',
     );
@@ -6058,11 +6096,24 @@ async function resolveRecoPdpByStableIds({
         product_id: normalizedProductId || null,
         sku_id: normalizedSkuId || null,
         reason_code: reasonCode,
+        primary_request_id: primaryRequestId || null,
+        local_fallback_attempted: localFallbackAttempted,
       },
       'aurora bff: reco stable-id offers.resolve failed',
     );
   }
-  return { ok: false, reasonCode };
+  return {
+    ok: false,
+    reasonCode,
+    requestIds:
+      (primaryRequestId || localRequestId)
+        ? {
+            ...(primaryRequestId ? { primary: primaryRequestId } : {}),
+            ...(localRequestId ? { local: localRequestId } : {}),
+          }
+        : null,
+    localFallbackAttempted,
+  };
 }
 
 function buildExternalGoogleSearchUrl(query) {
@@ -6080,6 +6131,8 @@ function withRecoPdpMetadata(base, {
   resolveAttempted = false,
   resolvedViaQuery = null,
   timeToPdpMs = null,
+  stableResolveRequestIds = null,
+  stableResolveLocalFallbackAttempted = false,
 }) {
   const nextMode = normalizePdpOpenMode(path, 'external');
   const nextPath = nextMode === 'external' ? 'external' : 'internal';
@@ -6105,6 +6158,10 @@ function withRecoPdpMetadata(base, {
         }
       : {}),
     ...(normalizedTimeToPdp != null ? { time_to_pdp_ms: normalizedTimeToPdp } : {}),
+    ...(stableResolveRequestIds ? { stable_resolve_request_ids: stableResolveRequestIds } : {}),
+    ...(stableResolveRequestIds || stableResolveLocalFallbackAttempted
+      ? { stable_resolve_local_fallback_attempted: Boolean(stableResolveLocalFallbackAttempted) }
+      : {}),
   };
 
   const nextSku =
@@ -6235,12 +6292,19 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     stableProductId,
   );
   let stableResolveReasonCode = null;
+  let stableResolveRequestIds = null;
+  let stableResolveLocalFallbackAttempted = false;
   if (RECO_PDP_RESOLVE_ENABLED && PIVOTA_BACKEND_BASE_URL && (stableProductId || stableSkuId)) {
     const stableResolved = await resolveRecoPdpByStableIds({
       productId: stableProductId,
       skuId: stableSkuId,
       logger,
     });
+    stableResolveRequestIds =
+      stableResolved?.requestIds && typeof stableResolved.requestIds === 'object'
+        ? stableResolved.requestIds
+        : null;
+    stableResolveLocalFallbackAttempted = Boolean(stableResolved?.localFallbackAttempted);
     if (stableResolved.ok && stableResolved.canonicalProductGroupId) {
       return withRecoPdpMetadata(base, {
         path: 'group',
@@ -6252,6 +6316,8 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
         canonicalProductRef: stableResolved.canonicalProductRef || null,
         resolveAttempted: true,
         timeToPdpMs: elapsedMs(),
+        stableResolveRequestIds,
+        stableResolveLocalFallbackAttempted,
       });
     }
     if (stableResolved.ok && stableResolved.canonicalProductRef) {
@@ -6260,6 +6326,8 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
         canonicalProductRef: stableResolved.canonicalProductRef,
         resolveAttempted: true,
         timeToPdpMs: elapsedMs(),
+        stableResolveRequestIds,
+        stableResolveLocalFallbackAttempted,
       });
     }
     stableResolveReasonCode = stableResolved.reasonCode || null;
@@ -6285,6 +6353,8 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
       resolveReasonCode: stableResolveReasonCode || 'no_candidates',
       resolveAttempted: false,
       timeToPdpMs: elapsedMs(),
+      stableResolveRequestIds,
+      stableResolveLocalFallbackAttempted,
     });
   }
 
@@ -6297,6 +6367,8 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
       resolveReasonCode: stableResolveReasonCode || 'no_candidates',
       resolveAttempted: false,
       timeToPdpMs: elapsedMs(),
+      stableResolveRequestIds,
+      stableResolveLocalFallbackAttempted,
     });
   }
 
@@ -6367,6 +6439,8 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     resolveReasonCode: reasonCode,
     resolveAttempted: true,
     timeToPdpMs: elapsedMs(),
+    stableResolveRequestIds,
+    stableResolveLocalFallbackAttempted,
   });
 }
 
@@ -14049,6 +14123,7 @@ const __internal = {
   looksLikeGreetingAlready,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
+  resolveRecoPdpByStableIds,
   maybeInferSkinMaskForPhotoModules,
   __setInferSkinMaskOnFaceCropForTest(fn) {
     inferSkinMaskOnFaceCropImpl = typeof fn === 'function' ? fn : inferSkinMaskOnFaceCrop;
