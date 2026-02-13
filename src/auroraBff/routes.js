@@ -821,7 +821,7 @@ function buildAvailabilityCatalogQuery(message, availabilityIntent) {
 
   let cleaned = raw
     .replace(/^(请问|请帮我|请|我想问下|我想问|could you|can you|do you|i want to know)\s*/i, '')
-    .replace(/\b(in stock|available|availability|where can i buy|where to buy|do you have|have any|buy|purchase|link)\b/gi, ' ')
+    .replace(/\b(in stock|available|availability|where can i buy|where to buy|do you have|have any|buy|purchase|link|have|has)\b/gi, ' ')
     .replace(/(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方旗舰|旗舰店|自营|请问)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -847,7 +847,7 @@ function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
   return q !== brand && q.replace(/\s+/g, '').length > brand.replace(/\s+/g, '').length + 2;
 }
 
-async function resolveAvailabilityProductByQuery({ query, logger } = {}) {
+async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = null, logger } = {}) {
   const q = String(query || '').trim();
   if (!q) return { ok: false, reason: 'query_missing', product: null, resolve_reason_code: 'no_candidates', latency_ms: 0 };
   if (!PIVOTA_BACKEND_BASE_URL) {
@@ -858,7 +858,7 @@ async function resolveAvailabilityProductByQuery({ query, logger } = {}) {
   const url = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`;
   const payload = {
     query: q,
-    lang: 'en',
+    lang: String(lang || 'en').toLowerCase() === 'cn' ? 'zh' : 'en',
     options: {
       search_all_merchants: true,
       timeout_ms: CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
@@ -866,6 +866,7 @@ async function resolveAvailabilityProductByQuery({ query, logger } = {}) {
       stable_alias_short_circuit: true,
       allow_stable_alias_for_uuid: true,
     },
+    ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
     caller: 'aurora_chatbox',
   };
 
@@ -12818,8 +12819,21 @@ function mountAuroraBffRoutes(app, { logger }) {
             const shouldRunResolveFallback =
               transientCatalogFailure || isSpecificAvailabilityQuery(availabilityQuery, availabilityIntent);
             if (shouldRunResolveFallback) {
+              const resolveAliasCandidates = [
+                availabilityIntent.brand_name,
+                availabilityIntent.matched_alias,
+              ]
+                .map((value) => String(value || '').trim())
+                .filter(Boolean);
+              const resolveAliases = [...new Set(resolveAliasCandidates)].slice(0, 8);
+              const resolveHints = {
+                ...(availabilityIntent.brand_name ? { brand: availabilityIntent.brand_name } : {}),
+                ...(resolveAliases.length ? { aliases: resolveAliases } : {}),
+              };
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({
                 query: availabilityQuery || availabilityIntent.brand_name,
+                lang: ctx.lang,
+                hints: Object.keys(resolveHints).length ? resolveHints : null,
                 logger,
               });
               if (availabilityResolveFallback?.ok && availabilityResolveFallback?.product) {
