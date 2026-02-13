@@ -5907,10 +5907,28 @@ function extractCanonicalFromOffersResolveBody(body) {
 async function resolveRecoPdpByStableIds({
   productId,
   skuId,
+  brand,
+  name,
+  displayName,
+  merchantId,
   logger,
 } = {}) {
   const normalizedProductId = String(productId || '').trim();
   const normalizedSkuId = String(skuId || '').trim();
+  const normalizedBrand = String(brand || '').trim();
+  const normalizedName = String(name || '').trim();
+  const normalizedDisplayName = String(displayName || '').trim();
+  const normalizedMerchantId = String(merchantId || '').trim();
+  const stableQueryText = pickFirstTrimmed(
+    normalizedBrand && normalizedDisplayName
+      ? joinBrandAndName(normalizedBrand, normalizedDisplayName)
+      : '',
+    normalizedBrand && normalizedName ? joinBrandAndName(normalizedBrand, normalizedName) : '',
+    normalizedDisplayName,
+    normalizedName,
+    normalizedSkuId,
+    normalizedProductId,
+  );
   if (!PIVOTA_BACKEND_BASE_URL || (!normalizedProductId && !normalizedSkuId)) {
     return { ok: false, reasonCode: 'no_candidates' };
   }
@@ -5927,9 +5945,15 @@ async function resolveRecoPdpByStableIds({
       product: {
         ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
         ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+        ...(normalizedMerchantId ? { merchant_id: normalizedMerchantId } : {}),
+        ...(normalizedBrand ? { brand: normalizedBrand } : {}),
+        ...(normalizedName ? { name: normalizedName } : {}),
+        ...(normalizedDisplayName ? { display_name: normalizedDisplayName } : {}),
+        ...(stableQueryText ? { query: stableQueryText } : {}),
       },
       ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
       ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+      ...(stableQueryText ? { query: stableQueryText } : {}),
     };
     const resp = await axios.post(
       primaryInvokeUrl,
@@ -5981,8 +6005,7 @@ async function resolveRecoPdpByStableIds({
   const shouldAttemptLocalFallback =
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localInvokeUrl &&
-    localInvokeUrl !== primaryInvokeUrl &&
-    reasonCode !== 'no_candidates';
+    localInvokeUrl !== primaryInvokeUrl;
   if (
     shouldAttemptLocalFallback
   ) {
@@ -5999,9 +6022,15 @@ async function resolveRecoPdpByStableIds({
             product: {
               ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
               ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+              ...(normalizedMerchantId ? { merchant_id: normalizedMerchantId } : {}),
+              ...(normalizedBrand ? { brand: normalizedBrand } : {}),
+              ...(normalizedName ? { name: normalizedName } : {}),
+              ...(normalizedDisplayName ? { display_name: normalizedDisplayName } : {}),
+              ...(stableQueryText ? { query: stableQueryText } : {}),
             },
             ...(normalizedProductId ? { product_id: normalizedProductId } : {}),
             ...(normalizedSkuId ? { sku_id: normalizedSkuId } : {}),
+            ...(stableQueryText ? { query: stableQueryText } : {}),
           },
         },
         {
@@ -6298,6 +6327,10 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     const stableResolved = await resolveRecoPdpByStableIds({
       productId: stableProductId,
       skuId: stableSkuId,
+      brand,
+      name,
+      displayName,
+      merchantId: rawMerchantId,
       logger,
     });
     stableResolveRequestIds =
@@ -6375,21 +6408,23 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   let resolveBody = null;
   let resolveStatus = 0;
   let resolveError = null;
+  const primaryResolveUrl = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`;
+  const queryResolvePayload = {
+    query: queryText,
+    lang: 'en',
+    hints,
+    options: {
+      search_all_merchants: true,
+      timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      upstream_retries: 0,
+      ...(rawMerchantId ? { prefer_merchants: [rawMerchantId] } : {}),
+    },
+    caller: 'aurora_chatbox',
+  };
   try {
     const resp = await axios.post(
-      `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`,
-      {
-        query: queryText,
-        lang: 'en',
-        hints,
-        options: {
-          search_all_merchants: true,
-          timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
-          upstream_retries: 0,
-          ...(rawMerchantId ? { prefer_merchants: [rawMerchantId] } : {}),
-        },
-        caller: 'aurora_chatbox',
-      },
+      primaryResolveUrl,
+      queryResolvePayload,
       {
         headers: buildPivotaBackendAgentHeaders(),
         timeout: RECO_PDP_RESOLVE_TIMEOUT_MS,
@@ -6416,11 +6451,79 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
     });
   }
 
-  const reasonCode = mapResolveFailureCode({
+  let reasonCode = mapResolveFailureCode({
     resolveBody,
     statusCode: resolveStatus,
     error: resolveError,
   });
+  const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
+  const shouldAttemptLocalResolveFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
+    localResolveUrl &&
+    localResolveUrl !== primaryResolveUrl;
+  if (shouldAttemptLocalResolveFallback) {
+    let localResolveBody = null;
+    let localResolveStatus = 0;
+    let localResolveError = null;
+    try {
+      const resp = await axios.post(
+        localResolveUrl,
+        queryResolvePayload,
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS,
+          validateStatus: () => true,
+        },
+      );
+      localResolveBody = resp && typeof resp.data === 'object' ? resp.data : null;
+      localResolveStatus = Number(resp?.status || 0);
+    } catch (err) {
+      localResolveError = err;
+    }
+
+    const localResolvedProductRef = normalizeCanonicalProductRef(localResolveBody?.product_ref, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (localResolveStatus === 200 && localResolveBody?.resolved === true && localResolvedProductRef) {
+      logger?.info(
+        {
+          query: queryText.slice(0, 120),
+          primary_reason_code: reasonCode,
+          local_status_code: localResolveStatus,
+        },
+        'aurora bff: reco pdp resolved via local products.resolve fallback',
+      );
+      return withRecoPdpMetadata(base, {
+        path: 'resolve',
+        canonicalProductRef: localResolvedProductRef,
+        resolveAttempted: true,
+        resolvedViaQuery: queryText,
+        timeToPdpMs: elapsedMs(),
+        stableResolveRequestIds,
+        stableResolveLocalFallbackAttempted,
+      });
+    }
+
+    const localReasonCode = mapResolveFailureCode({
+      resolveBody: localResolveBody,
+      statusCode: localResolveStatus,
+      error: localResolveError,
+    });
+    if (reasonCode === 'no_candidates' && localReasonCode && localReasonCode !== 'no_candidates') {
+      reasonCode = localReasonCode;
+    }
+    logger?.warn(
+      {
+        query: queryText.slice(0, 120),
+        primary_reason_code: reasonCode,
+        local_reason_code: localReasonCode,
+        local_status_code: localResolveStatus || null,
+        local_err: localResolveError ? localResolveError.message || String(localResolveError) : null,
+      },
+      'aurora bff: reco pdp local products.resolve fallback unresolved',
+    );
+  }
   if (resolveError) {
     logger?.warn(
       {

@@ -337,6 +337,7 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
       AURORA_DECISION_BASE_URL: '',
       AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
     },
@@ -414,7 +415,7 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
   );
 });
 
-test('Stable-id offers.resolve no_candidates skips local invoke fallback', async () => {
+test('Stable-id offers.resolve no_candidates attempts local invoke fallback', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -446,15 +447,13 @@ test('Stable-id offers.resolve no_candidates skips local invoke fallback', async
             status: 200,
             data: {
               status: 'success',
-              payload: {
-                mapping: {
-                  canonical_product_ref: {
-                    product_id: 'prod_123',
-                    merchant_id: 'merch_123',
-                  },
+              mapping: {
+                canonical_product_ref: {
+                  product_id: 'prod_123',
+                  merchant_id: 'merch_123',
                 },
               },
-              metadata: { request_id: 'rid_local_should_not_be_called' },
+              metadata: { request_id: 'rid_local_called' },
             },
           };
         }
@@ -470,11 +469,12 @@ test('Stable-id offers.resolve no_candidates skips local invoke fallback', async
         });
 
         assert.equal(primaryCalls, 1);
-        assert.equal(localCalls, 0);
-        assert.equal(out?.ok, false);
-        assert.equal(out?.reasonCode, 'no_candidates');
-        assert.equal(out?.localFallbackAttempted, false);
-        assert.deepEqual(out?.requestIds, { primary: 'rid_primary_no_candidates' });
+        assert.equal(localCalls, 1);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.canonicalProductRef?.product_id, 'prod_123');
+        assert.equal(out?.canonicalProductRef?.merchant_id, 'merch_123');
+        assert.equal(out?.localFallbackAttempted, true);
+        assert.deepEqual(out?.requestIds, { primary: 'rid_primary_no_candidates', local: 'rid_local_called' });
       } finally {
         axios.post = originalPost;
       }
@@ -524,6 +524,74 @@ test('UUID-only sku does not send product_ref hint and avoids duplicated brand i
         const aliases = Array.isArray(capturedBody?.hints?.aliases) ? capturedBody.hints.aliases : [];
         assert.equal(aliases.some((v) => String(v).toLowerCase().includes('the ordinary the ordinary')), false);
         assert.equal(enriched?.metadata?.pdp_open_path, 'external');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Query resolve no_candidates uses local products.resolve fallback', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let primaryResolveCalls = 0;
+      let localResolveCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          primaryResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: false,
+              reason: 'no_candidates',
+              reason_code: 'no_candidates',
+              product_ref: null,
+            },
+          };
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/resolve') {
+          localResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              reason: 'stable_alias_match',
+              reason_code: 'stable_alias_match',
+              product_ref: {
+                product_id: 'prod_winona_repair',
+                merchant_id: 'mid_winona',
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
+          sku: {
+            brand: 'Winona',
+            display_name: 'Winona Soothing Repair Serum',
+          },
+        }, { logger: null });
+
+        assert.equal(primaryResolveCalls, 1);
+        assert.equal(localResolveCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'resolve');
+        assert.equal(enriched?.pdp_open?.path, 'resolve');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_winona_repair');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_winona');
       } finally {
         axios.post = originalPost;
       }
