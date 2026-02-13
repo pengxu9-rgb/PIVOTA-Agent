@@ -40,6 +40,25 @@ if (process.env.NODE_ENV === 'production') {
 
 // Simple in-memory cache used when remote calls fail.
 let lastKnownPromotions = [];
+let lastKnownPromotionsFetchedAtMs = 0;
+let remotePromotionsRefreshPromise = null;
+const PROMO_REMOTE_CACHE_TTL_MS = Math.max(
+  1000,
+  Number(process.env.PROMO_REMOTE_CACHE_TTL_MS ?? 30_000) || 30_000
+);
+const PROMO_REMOTE_STALE_WHILE_REVALIDATE =
+  String(process.env.PROMO_REMOTE_STALE_WHILE_REVALIDATE || 'true').toLowerCase() === 'true';
+
+function setLastKnownPromotions(promos) {
+  lastKnownPromotions = Array.isArray(promos) ? promos : [];
+  lastKnownPromotionsFetchedAtMs = Date.now();
+}
+
+function isRemotePromotionsCacheFresh() {
+  if (!Array.isArray(lastKnownPromotions) || lastKnownPromotions.length === 0) return false;
+  if (!lastKnownPromotionsFetchedAtMs) return false;
+  return Date.now() - lastKnownPromotionsFetchedAtMs < PROMO_REMOTE_CACHE_TTL_MS;
+}
 
 // Note: Each promotion belongs to exactly one merchant (merchantId at root).
 // Scope only targets products/categories/brands; it should not carry merchantIds.
@@ -187,21 +206,38 @@ async function getAllPromotions() {
   );
   if (!USE_REMOTE_PROMO) {
     const promos = loadPromotionsLocal();
-    lastKnownPromotions = promos;
+    setLastKnownPromotions(promos);
     return promos;
   }
-  try {
-    const data = await fetchRemote('/agent/internal/promotions', 'GET');
-    const promos = (data.promotions || []).map(normalizePromotionRecord);
-    lastKnownPromotions = promos;
-    return promos;
-  } catch (err) {
-    console.error(
-      '[promotionStore] Failed to fetch remote promotions, falling back to cache:',
-      err.message
-    );
+
+  if (isRemotePromotionsCacheFresh()) {
     return lastKnownPromotions;
   }
+
+  if (!remotePromotionsRefreshPromise) {
+    remotePromotionsRefreshPromise = (async () => {
+      try {
+        const data = await fetchRemote('/agent/internal/promotions', 'GET');
+        const promos = (data.promotions || []).map(normalizePromotionRecord);
+        setLastKnownPromotions(promos);
+        return promos;
+      } catch (err) {
+        console.error(
+          '[promotionStore] Failed to fetch remote promotions, falling back to cache:',
+          err.message
+        );
+        return lastKnownPromotions;
+      } finally {
+        remotePromotionsRefreshPromise = null;
+      }
+    })();
+  }
+
+  if (PROMO_REMOTE_STALE_WHILE_REVALIDATE && lastKnownPromotions.length > 0) {
+    return lastKnownPromotions;
+  }
+
+  return remotePromotionsRefreshPromise;
 }
 
 async function getPromotionById(id) {
@@ -239,7 +275,7 @@ async function upsertPromotion(promo) {
       );
     }
     savePromotionsLocal(promos);
-    lastKnownPromotions = promos;
+    setLastKnownPromotions(promos);
     return promo.id;
   }
 
@@ -258,6 +294,7 @@ async function upsertPromotion(promo) {
     } else {
       lastKnownPromotions.push(saved);
     }
+    lastKnownPromotionsFetchedAtMs = Date.now();
     return saved.id;
   } catch (err) {
     console.error('[promotionStore] Failed to upsert remote promotion:', err.message);
@@ -272,7 +309,7 @@ async function softDeletePromotion(id) {
     if (idx >= 0) {
       promos[idx].deletedAt = new Date().toISOString();
       savePromotionsLocal(promos);
-      lastKnownPromotions = promos;
+      setLastKnownPromotions(promos);
       return true;
     }
     return false;
@@ -281,6 +318,7 @@ async function softDeletePromotion(id) {
   try {
     await fetchRemote(`/agent/internal/promotions/${id}`, 'DELETE');
     lastKnownPromotions = lastKnownPromotions.filter((p) => p.id !== id);
+    lastKnownPromotionsFetchedAtMs = Date.now();
     return true;
   } catch (err) {
     if (err.response && err.response.status === 404) {

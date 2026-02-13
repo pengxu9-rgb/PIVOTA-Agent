@@ -3731,9 +3731,9 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const intentLang = String(options?.intent?.language || '').toLowerCase();
   const shouldTryVector =
     vectorEnabled &&
-    // Try vector recall when lexical is weak or query is likely non-English.
-    (lexicalProducts.length < safeLimit ||
-      (intentLang && intentLang !== 'en' && intentLang !== 'other'));
+    // Keep vector recall for non-English queries, or when lexical returns nothing.
+    // This avoids paying embedding/vector latency on healthy lexical hits.
+    ((intentLang && intentLang !== 'en' && intentLang !== 'other') || lexicalProducts.length === 0);
 
   if (shouldTryVector) {
     try {
