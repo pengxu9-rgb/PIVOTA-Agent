@@ -18,6 +18,11 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
+      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS:
+        process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS,
+      PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS:
+        process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -39,6 +44,23 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     else process.env.API_MODE = prevEnv.API_MODE;
     if (prevEnv.DATABASE_URL === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = prevEnv.DATABASE_URL;
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS === undefined) {
+      delete process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS;
+    } else {
+      process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS =
+        prevEnv.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS;
+    }
+    if (prevEnv.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS === undefined) {
+      delete process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS;
+    } else {
+      process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS =
+        prevEnv.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS;
+    }
   });
 
   test('falls back to resolver when primary and invoke fallback both fail', async () => {
@@ -127,6 +149,73 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         proxy_search_fallback: expect.objectContaining({
           applied: true,
           reason: expect.stringMatching(/^resolver_after_/),
+        }),
+      }),
+    );
+  });
+
+  test('skips secondary fallback chain when resolver miss already has no positive sources', async () => {
+    const queryText = 'SK-II Facial Treatment Essence';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = '1800';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: {
+          latency_ms: 27,
+          sources: [
+            { source: 'products_cache', ok: false, reason: 'db_query_timeout' },
+            { source: 'agent_search_scoped', ok: false, reason: 'upstream_timeout' },
+            { source: 'products_cache_global', ok: false, reason: 'db_query_timeout' },
+          ],
+        },
+      }),
+    }));
+
+    const primaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(primaryScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: expect.any(String),
+        proxy_search_fallback: expect.objectContaining({
+          applied: false,
+          reason: 'resolver_miss_skip_secondary',
         }),
       }),
     );
