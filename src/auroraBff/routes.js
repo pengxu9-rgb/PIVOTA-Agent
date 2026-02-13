@@ -242,6 +242,17 @@ const RECO_CATALOG_FAIL_FAST_COOLDOWN_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
   return Math.max(3000, Math.min(300000, v));
 })();
+const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const CATALOG_AVAIL_RESOLVE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_TIMEOUT_MS || 1400);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
+  return Math.max(300, Math.min(6000, v));
+})();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
   process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
     process.env.PIVOTA_BACKEND_API_KEY ||
@@ -376,14 +387,14 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
 })();
 
 const RECO_UPSTREAM_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 12000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 12000;
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 10000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
   return Math.max(3000, Math.min(22000, v));
 })();
 
 const RECO_ROUTINE_UPSTREAM_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_ROUTINE_TIMEOUT_MS || 16000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 16000;
+  const n = Number(process.env.AURORA_BFF_RECO_ROUTINE_TIMEOUT_MS || 14000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 14000;
   return Math.max(3000, Math.min(22000, v));
 })();
 
@@ -395,14 +406,14 @@ const RECO_PDP_RESOLVE_ENABLED = (() => {
 })();
 
 const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 1800);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 1500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1500;
   return Math.max(300, Math.min(6000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2600);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
   return Math.max(300, Math.min(6000, v));
 })();
 
@@ -796,6 +807,146 @@ function detectBrandAvailabilityIntent(message, lang) {
   }
 
   return null;
+}
+
+function buildAvailabilityCatalogQuery(message, availabilityIntent) {
+  const raw = String(message || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[。！？!?]+$/g, '');
+  const brand = String(
+    availabilityIntent?.brand_name || availabilityIntent?.matched_alias || availabilityIntent?.brand_id || '',
+  ).trim();
+  if (!raw) return brand;
+
+  let cleaned = raw
+    .replace(/^(请问|请帮我|请|我想问下|我想问|could you|can you|do you|i want to know)\s*/i, '')
+    .replace(/\b(in stock|available|availability|where can i buy|where to buy|do you have|have any|buy|purchase|link)\b/gi, ' ')
+    .replace(/(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方旗舰|旗舰店|自营|请问)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[。！？!?]+$/g, '');
+
+  if (!cleaned) cleaned = raw;
+  if (cleaned.length > 120) cleaned = cleaned.slice(0, 120).trim();
+
+  if (!cleaned) return brand;
+  if (brand && cleaned.toLowerCase() === brand.toLowerCase()) return brand;
+  return cleaned;
+}
+
+function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
+  const q = String(queryText || '').trim().toLowerCase();
+  if (!q) return false;
+  const brand = String(
+    availabilityIntent?.brand_name || availabilityIntent?.matched_alias || availabilityIntent?.brand_id || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (!brand) return q.length >= 8;
+  return q !== brand && q.replace(/\s+/g, '').length > brand.replace(/\s+/g, '').length + 2;
+}
+
+async function resolveAvailabilityProductByQuery({ query, logger } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return { ok: false, reason: 'query_missing', product: null, resolve_reason_code: 'no_candidates', latency_ms: 0 };
+  if (!PIVOTA_BACKEND_BASE_URL) {
+    return { ok: false, reason: 'pivota_backend_not_configured', product: null, resolve_reason_code: 'db_error', latency_ms: 0 };
+  }
+
+  const startedAt = Date.now();
+  const url = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`;
+  const payload = {
+    query: q,
+    lang: 'en',
+    options: {
+      search_all_merchants: true,
+      timeout_ms: CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+      upstream_retries: 0,
+      stable_alias_short_circuit: true,
+      allow_stable_alias_for_uuid: true,
+    },
+    caller: 'aurora_chatbox',
+  };
+
+  let resp = null;
+  let err = null;
+  try {
+    resp = await axios.post(url, payload, {
+      headers: buildPivotaBackendAgentHeaders(),
+      timeout: CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+      validateStatus: () => true,
+    });
+  } catch (e) {
+    err = e;
+  }
+
+  const body = resp && typeof resp.data === 'object' ? resp.data : null;
+  const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : 0;
+  const resolvedRef = normalizeCanonicalProductRef(body?.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (statusCode === 200 && body?.resolved === true && resolvedRef) {
+    const firstCandidate =
+      Array.isArray(body?.candidates) && body.candidates.length && body.candidates[0] && typeof body.candidates[0] === 'object'
+        ? body.candidates[0]
+        : null;
+    const normalizedCandidate = normalizeRecoCatalogProduct(firstCandidate);
+    const displayName = pickFirstTrimmed(
+      normalizedCandidate?.display_name,
+      normalizedCandidate?.name,
+      firstCandidate?.title,
+      firstCandidate?.name,
+      q,
+    );
+    const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, displayName);
+    const brand = pickFirstTrimmed(normalizedCandidate?.brand, firstCandidate?.vendor, firstCandidate?.brand);
+    const imageUrl = pickFirstTrimmed(normalizedCandidate?.image_url, firstCandidate?.image_url, firstCandidate?.thumbnail_url);
+    const product = {
+      ...(normalizedCandidate && typeof normalizedCandidate === 'object' ? normalizedCandidate : {}),
+      product_id: resolvedRef.product_id,
+      merchant_id: resolvedRef.merchant_id,
+      canonical_product_ref: resolvedRef,
+      ...(brand ? { brand } : {}),
+      ...(name ? { name } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+    };
+    return {
+      ok: true,
+      reason: null,
+      product,
+      resolve_reason_code: null,
+      status_code: statusCode,
+      latency_ms: Date.now() - startedAt,
+    };
+  }
+
+  const reasonCode = mapResolveFailureCode({
+    resolveBody: body,
+    statusCode,
+    error: err,
+  });
+  if (err || reasonCode !== 'no_candidates') {
+    logger?.warn(
+      {
+        query: q.slice(0, 120),
+        status_code: statusCode || null,
+        resolve_reason_code: reasonCode,
+        err: err ? err.message || String(err) : null,
+      },
+      'aurora bff: availability resolve fallback failed',
+    );
+  }
+  return {
+    ok: false,
+    reason: 'unresolved',
+    product: null,
+    resolve_reason_code: reasonCode,
+    status_code: statusCode || null,
+    latency_ms: Date.now() - startedAt,
+  };
 }
 
 function buildBrandPlaceholderProduct({ brandId, brandName, lang } = {}) {
@@ -12646,10 +12797,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             lang: ctx.lang,
           });
 
+          const availabilityQuery = buildAvailabilityCatalogQuery(message, availabilityIntent);
           let catalogResult = { ok: false, products: [], reason: 'unknown' };
           if (PIVOTA_BACKEND_BASE_URL) {
             catalogResult = await searchPivotaBackendProducts({
-              query: availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
+              query: availabilityQuery || availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
               limit: 8,
               logger,
             });
@@ -12657,7 +12809,25 @@ function mountAuroraBffRoutes(app, { logger }) {
             catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
           }
 
-          const products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
+          let products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
+          let availabilityResolveFallback = null;
+          if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
+            const reason = String(catalogResult.reason || '').trim().toLowerCase();
+            const transientCatalogFailure =
+              reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
+            const shouldRunResolveFallback =
+              transientCatalogFailure || isSpecificAvailabilityQuery(availabilityQuery, availabilityIntent);
+            if (shouldRunResolveFallback) {
+              availabilityResolveFallback = await resolveAvailabilityProductByQuery({
+                query: availabilityQuery || availabilityIntent.brand_name,
+                logger,
+              });
+              if (availabilityResolveFallback?.ok && availabilityResolveFallback?.product) {
+                products = [availabilityResolveFallback.product];
+              }
+            }
+          }
+
           const offersItems = (products.length ? products : [brandProduct])
             .slice(0, 8)
             .map((product) => applyOfferItemPdpOpenContract({ product, offer: null }, { timeToPdpMs: 0 }));
@@ -12667,6 +12837,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const market = marketRaw ? marketRaw.slice(0, 8).toUpperCase() : 'US';
 
           const hasResults = products.length > 0;
+          const resolvedVia = availabilityResolveFallback?.ok ? 'products_resolve' : hasResults ? 'products_search' : 'none';
           const assistantRaw =
             ctx.lang === 'CN'
               ? hasResults
@@ -12690,6 +12861,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           const fieldMissing = [];
           if (!hasResults && catalogResult.reason) {
             fieldMissing.push({ field: 'catalog.products', reason: String(catalogResult.reason).slice(0, 60) });
+            if (availabilityResolveFallback?.resolve_reason_code) {
+              fieldMissing.push({
+                field: 'catalog.resolve',
+                reason: String(availabilityResolveFallback.resolve_reason_code).slice(0, 60),
+              });
+            }
           }
 
           const envelope = buildEnvelope(ctx, {
@@ -12700,7 +12877,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 card_id: `parse_${ctx.request_id}`,
                 type: 'product_parse',
                 payload: {
-                  product: brandProduct,
+                  product: hasResults && products[0] ? products[0] : brandProduct,
                   confidence: 1,
                   missing_info: [],
                   intent: 'availability',
@@ -12730,6 +12907,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                 reason: availabilityIntent.reason,
                 ok: Boolean(hasResults),
                 count: products.length,
+                query: String(availabilityQuery || '').slice(0, 120),
+                resolved_via: resolvedVia,
+                catalog_reason: catalogResult.reason || null,
+                resolve_reason_code: availabilityResolveFallback?.resolve_reason_code || null,
               }),
             ],
           });
