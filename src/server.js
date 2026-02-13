@@ -5526,7 +5526,36 @@ function extractOffersResolvePdpTargetFromResponse(responseBody, { fallbackQuery
     }) ||
     normalizeOffersResolveCanonicalProductRef(body.mapping?.product_ref, {
       allowOpaqueProductId: false,
-    });
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(
+      {
+        product_id: offersResolvePickFirstTrimmed(
+          body.canonical_product?.product_id,
+          body.canonical_product?.productId,
+          body.canonical_product?.id,
+          body.mapping?.canonical_product?.product_id,
+          body.mapping?.canonical_product?.productId,
+          body.mapping?.canonical_product?.id,
+          body.mapping?.canonicalProduct?.product_id,
+          body.mapping?.canonicalProduct?.productId,
+          body.mapping?.canonicalProduct?.id,
+        ),
+        merchant_id: offersResolvePickFirstTrimmed(
+          body.canonical_product?.merchant_id,
+          body.canonical_product?.merchantId,
+          body.canonical_product?.merchant?.merchant_id,
+          body.mapping?.canonical_product?.merchant_id,
+          body.mapping?.canonical_product?.merchantId,
+          body.mapping?.canonical_product?.merchant?.merchant_id,
+          body.mapping?.canonicalProduct?.merchant_id,
+          body.mapping?.canonicalProduct?.merchantId,
+          body.mapping?.canonicalProduct?.merchant?.merchant_id,
+        ),
+      },
+      {
+        allowOpaqueProductId: false,
+      },
+    );
 
   if (subjectProductGroupId) {
     return buildOffersResolvePdpTargetGroup(subjectProductGroupId, canonicalProductRef || null);
@@ -6179,11 +6208,13 @@ async function handleOffersResolveOperation({
             statusCode: cacheSearchResult.status,
           })
         : null;
-    const resolvedReasonCode = explicitReasonCode
-      ? explicitReasonCode
-      : pdpTarget.path === 'group' || pdpTarget.path === 'ref' || pdpTarget.path === 'resolve'
-        ? 'mapped_hit'
-        : inferredFailureCode || (offers.length ? 'mapped_hit' : 'no_candidates');
+    const pdpPath = offersResolvePickFirstTrimmed(pdpTarget?.path).toLowerCase();
+    const internalPdp = pdpPath === 'group' || pdpPath === 'ref' || pdpPath === 'resolve';
+    const resolvedReasonCode = internalPdp
+      ? explicitReasonCode && explicitReasonCode !== 'no_candidates'
+        ? explicitReasonCode
+        : 'mapped_hit'
+      : explicitReasonCode || inferredFailureCode || (offers.length ? 'mapped_hit' : 'no_candidates');
 
     return {
       statusCode: 200,

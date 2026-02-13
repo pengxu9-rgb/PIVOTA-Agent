@@ -210,4 +210,58 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(Array.isArray(res.body.metadata?.sources)).toBe(true);
     expect(res.body.metadata.sources.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('cache search canonical_product still returns internal pdp target even when upstream reason_code=no_candidates', async () => {
+    const subjectScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/v1/subject/resolve')
+      .reply(404, {
+        reason_code: 'no_candidates',
+        reason: 'no_candidates',
+      });
+    const cacheScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+      .reply(200, {
+        status: 'success',
+        offers: [],
+        offers_count: 0,
+        reason_code: 'no_candidates',
+        reason: 'no_candidates',
+        mapping: {
+          canonical_ref: 'pc:merch_efbc46b4619cfbdf:shopify:9886499864904',
+          canonical_product: {
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            platform: 'shopify',
+            product_id: '9886499864904',
+          },
+          candidates: [],
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'offers.resolve',
+        payload: {
+          offers: {
+            product: {
+              product_id: '9886499864904',
+            },
+            market: 'US',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(subjectScope.isDone()).toBe(true);
+    expect(cacheScope.isDone()).toBe(true);
+    expect(res.body.status).toBe('success');
+    expect(res.body.reason_code).toBe('mapped_hit');
+    expect(res.body.pdp_target?.v1?.path).toBe('ref');
+    expect(res.body.pdp_target?.v1?.product_ref).toEqual({
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      product_id: '9886499864904',
+    });
+    expect(res.body.metadata?.pdp_open_path).toBe('ref');
+    expect(res.body.metadata?.resolve_reason_code).toBeUndefined();
+  });
 });
