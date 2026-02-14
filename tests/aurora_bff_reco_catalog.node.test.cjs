@@ -1121,7 +1121,7 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         const thirdDebug = getAuroraDebugPayload(third.body);
         const thirdCatalogDebug = thirdDebug?.reco_catalog_debug;
         assert.equal(thirdCatalogDebug?.probe_while_open, true);
-        assert.equal(thirdCatalogDebug?.fail_fast_after?.open, false);
+        assert.equal(thirdCatalogDebug?.fail_fast_after?.open, true);
         assert.equal(thirdCatalogDebug?.search_timeout_effective_ms, 1200);
         assert.equal(searchTimeouts[1], 1200);
       } finally {

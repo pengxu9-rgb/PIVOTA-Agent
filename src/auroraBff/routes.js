@@ -1308,9 +1308,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
   const hasTransientErrors = results.some((r) => !r?.ok && transientReasons.has(String(r?.reason || '')));
   const healthyProbeResult = okCount > 0 && !hasTransientErrors;
   if (probeWhileOpen) {
-    if (healthyProbeResult) {
-      markRecoCatalogFailFastSuccess();
-    } else if (hasOnlyTransientErrors || hasTransientErrors) {
+    if (!healthyProbeResult && (hasOnlyTransientErrors || hasTransientErrors)) {
       markRecoCatalogFailFastFailure('probe_transient_errors', Date.now());
     }
   } else if (okCount > 0) {
