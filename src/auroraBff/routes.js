@@ -7396,6 +7396,71 @@ async function enrichRecommendationsWithPdpOpenContract({
           : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
             ? base.product
             : null;
+
+      const {
+        subjectProductGroupId,
+        directProductRef,
+        rawProductId,
+      } = extractRecoPdpDirectKeys(base, skuCandidate);
+      if (subjectProductGroupId) {
+        return withRecoPdpMetadata(base, {
+          path: 'group',
+          subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
+          canonicalProductRef: directProductRef,
+          resolveAttempted: false,
+          timeToPdpMs: 0,
+        });
+      }
+      if (directProductRef) {
+        return withRecoPdpMetadata(base, {
+          path: 'ref',
+          canonicalProductRef: directProductRef,
+          resolveAttempted: false,
+          timeToPdpMs: 0,
+        });
+      }
+
+      const brand = pickFirstTrimmed(skuCandidate?.brand, base.brand);
+      const name = pickFirstTrimmed(skuCandidate?.name, base.name);
+      const displayName = pickFirstTrimmed(
+        skuCandidate?.display_name,
+        skuCandidate?.displayName,
+        base.display_name,
+        base.displayName,
+        name,
+      );
+      const stableProductId = pickFirstTrimmed(
+        rawProductId,
+        skuCandidate?.product_id,
+        skuCandidate?.productId,
+        base?.product_id,
+        base?.productId,
+      );
+      const stableSkuId = pickFirstTrimmed(
+        skuCandidate?.sku_id,
+        skuCandidate?.skuId,
+        base?.sku_id,
+        base?.skuId,
+        stableProductId,
+      );
+      const stableQueryText = pickFirstTrimmed(
+        brand && displayName ? joinBrandAndName(brand, displayName) : '',
+        brand && name ? joinBrandAndName(brand, name) : '',
+        displayName,
+        name,
+        stableSkuId,
+        stableProductId,
+      );
+      const stableAliasMatch = resolveRecoStableAliasRefByQuery(stableQueryText);
+      if (stableAliasMatch?.canonicalProductRef) {
+        return withRecoPdpMetadata(base, {
+          path: 'ref',
+          canonicalProductRef: stableAliasMatch.canonicalProductRef,
+          resolveAttempted: false,
+          timeToPdpMs: 0,
+        });
+      }
+
       const queryText =
         buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
         pickFirstTrimmed(
