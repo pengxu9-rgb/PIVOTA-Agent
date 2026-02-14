@@ -463,6 +463,13 @@ const RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
+const RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
 const RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE || 'true')
     .trim()
@@ -6398,7 +6405,8 @@ function shouldAttemptLocalRecoFallback(reasonCode, error) {
   if (reasonCode === 'no_candidates') {
     return RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES;
   }
-  if (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') return true;
+  if (reasonCode === 'upstream_timeout') return RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT;
+  if (reasonCode === 'db_error') return true;
   if (error) return true;
   return false;
 }

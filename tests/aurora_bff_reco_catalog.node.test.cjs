@@ -489,6 +489,73 @@ test('Stable-id offers.resolve no_candidates attempts local invoke fallback', as
   );
 });
 
+test('Stable-id offers.resolve upstream_timeout does not attempt local invoke fallback by default', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'false',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let primaryCalls = 0;
+      let localCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/shop/v1/invoke') {
+          primaryCalls += 1;
+          return {
+            status: 504,
+            data: {
+              status: 'error',
+              reason_code: 'upstream_timeout',
+              reason: 'upstream_timeout',
+              metadata: { request_id: 'rid_primary_timeout' },
+            },
+          };
+        }
+        if (target === 'http://127.0.0.1:3000/agent/shop/v1/invoke') {
+          localCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'success',
+              mapping: {
+                canonical_product_ref: {
+                  product_id: 'prod_local_should_not_be_used',
+                  merchant_id: 'mid_local_should_not_be_used',
+                },
+              },
+              metadata: { request_id: 'rid_local_should_not_be_called' },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.resolveRecoPdpByStableIds({
+          productId: 'prod_timeout',
+          skuId: 'prod_timeout',
+          logger: null,
+        });
+
+        assert.equal(primaryCalls, 1);
+        assert.equal(localCalls, 0);
+        assert.equal(out?.ok, false);
+        assert.equal(out?.reasonCode, 'upstream_timeout');
+        assert.equal(out?.localFallbackAttempted, false);
+        assert.deepEqual(out?.requestIds, { primary: 'rid_primary_timeout' });
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Stable-id resolves from local stable-alias map without upstream offers.resolve', async () => {
   await withEnv(
     {
@@ -728,6 +795,7 @@ test('Availability resolve: primary timeout falls back to local products.resolve
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
     async () => {
