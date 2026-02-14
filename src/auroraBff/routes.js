@@ -238,13 +238,13 @@ const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 2600);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
   return Math.max(400, Math.min(12000, v));
 })();
 const RECO_CATALOG_SEARCH_CONCURRENCY = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_CONCURRENCY || 2);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_CONCURRENCY || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
   return Math.max(1, Math.min(4, v));
 })();
 const RECO_CATALOG_FAIL_FAST_ENABLED = (() => {
@@ -282,6 +282,11 @@ const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
 const CATALOG_AVAIL_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_TIMEOUT_MS || 1400);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
+  return Math.max(300, Math.min(6000, v));
+})();
+const CATALOG_AVAIL_SEARCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_CHAT_CATALOG_AVAIL_SEARCH_TIMEOUT_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
   return Math.max(300, Math.min(6000, v));
 })();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
@@ -1011,8 +1016,28 @@ function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
   )
     .trim()
     .toLowerCase();
-  if (!brand) return q.length >= 8;
-  return q !== brand && q.replace(/\s+/g, '').length > brand.replace(/\s+/g, '').length + 2;
+  const compact = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .replace(/[\s\p{P}_-]+/gu, '');
+
+  if (!brand) return compact(q).length >= 8;
+  const qCompact = compact(q);
+  const brandCompact = compact(brand);
+  if (!qCompact || !brandCompact) return false;
+  if (qCompact === brandCompact) return false;
+
+  const genericOnly = compact(
+    q
+      .replace(
+        /(有没有|有无|有吗|有没|有木有|请问|产品|商品|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方|旗舰|自营|店|products?|items?|catalog|store|shop|buy|available|availability|in\s*stock)/gi,
+        ' ',
+      )
+      .replace(/\b(do you have|have any|where can i buy|where to buy)\b/gi, ' '),
+  );
+  if (!genericOnly) return false;
+  if (genericOnly === brandCompact) return false;
+  return genericOnly.length > brandCompact.length + 2;
 }
 
 async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = null, logger } = {}) {
@@ -13301,45 +13326,23 @@ function mountAuroraBffRoutes(app, { logger }) {
           let products = [];
           let availabilityResolveFallback = null;
           let availabilityResolveAttempted = false;
-          if (specificAvailabilityQuery && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
-            availabilityResolveAttempted = true;
-            availabilityResolveFallback = await resolveAvailabilityProductByQuery({
-              query: availabilityQuery || availabilityIntent.brand_name,
-              lang: ctx.lang,
-              hints: Object.keys(resolveHints).length ? resolveHints : null,
+          if (PIVOTA_BACKEND_BASE_URL) {
+            catalogResult = await searchPivotaBackendProducts({
+              query: availabilityQuery || availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
+              limit: 8,
               logger,
+              timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
             });
-            if (availabilityResolveFallback?.ok && availabilityResolveFallback?.product) {
-              products = [availabilityResolveFallback.product];
-              catalogResult = { ok: true, products: [], reason: 'resolve_first' };
-            } else {
-              catalogResult = {
-                ok: false,
-                products: [],
-                reason: availabilityResolveFallback?.resolve_reason_code || 'resolve_only_unresolved',
-              };
-            }
+            products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
+          } else {
+            catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
           }
 
-          if (!products.length && !(specificAvailabilityQuery && availabilityResolveAttempted)) {
-            if (PIVOTA_BACKEND_BASE_URL) {
-              catalogResult = await searchPivotaBackendProducts({
-                query: availabilityQuery || availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
-                limit: 8,
-                logger,
-              });
-              products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
-            } else {
-              catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
-            }
-          }
-
-          if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL && !availabilityResolveAttempted) {
+          if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
             const reason = String(catalogResult.reason || '').trim().toLowerCase();
             const transientCatalogFailure =
               reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-            const shouldRunResolveFallback =
-              transientCatalogFailure || specificAvailabilityQuery;
+            const shouldRunResolveFallback = specificAvailabilityQuery || transientCatalogFailure;
             if (shouldRunResolveFallback) {
               availabilityResolveAttempted = true;
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({

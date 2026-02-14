@@ -160,6 +160,20 @@ test('detectBrandAvailabilityIntent: detects Winona availability intent (CN/EN/m
   }
 });
 
+test('isSpecificAvailabilityQuery: brand-only availability question is not treated as specific SKU lookup', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const intentCn = { brand_name: '薇诺娜', matched_alias: '薇诺娜', brand_id: 'brand_winona' };
+    const intentEn = { brand_name: 'Winona', matched_alias: 'winona', brand_id: 'brand_winona' };
+
+    assert.equal(__internal.isSpecificAvailabilityQuery('有没有薇诺娜的产品', intentCn), false);
+    assert.equal(__internal.isSpecificAvailabilityQuery('Winona products in stock?', intentEn), false);
+    assert.equal(__internal.isSpecificAvailabilityQuery('Winona Soothing Repair Serum 有货吗', intentEn), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('/v1/chat: brand availability query short-circuits to commerce cards (no auroraChat, no diagnosis intake)', async () => {
   resetVisionMetrics();
 
