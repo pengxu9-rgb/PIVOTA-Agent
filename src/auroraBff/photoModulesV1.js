@@ -142,6 +142,15 @@ const MODULE_SKIN_POSITIVE_RATIO_MAX = Math.max(
   MODULE_SKIN_POSITIVE_RATIO_MIN,
   Math.min(1, Number(process.env.DIAG_SKINMASK_POSITIVE_RATIO_MAX || 0.95)),
 );
+const MODULE_BOX_MODE = (() => {
+  const token = String(process.env.DIAG_MODULE_BOX_MODE || 'dynamic_skinmask').trim().toLowerCase();
+  if (token === 'static' || token === 'dynamic_skinmask' || token === 'auto') return token;
+  return 'dynamic_skinmask';
+})();
+const MODULE_BOX_DYNAMIC_MIN_SCORE = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_MODULE_BOX_DYNAMIC_MIN_SCORE || 0.6)),
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -1156,6 +1165,59 @@ function normalizeFaceCropFromInternal(diagnosisInternal) {
   });
 }
 
+function hasValidSkinBBoxNorm(diagnosisInternal) {
+  const internal = diagnosisInternal && typeof diagnosisInternal === 'object' ? diagnosisInternal : {};
+  const bbox = internal.skin_bbox_norm && typeof internal.skin_bbox_norm === 'object'
+    ? internal.skin_bbox_norm
+    : null;
+  if (!bbox) return false;
+  const x0 = Number(bbox.x0);
+  const y0 = Number(bbox.y0);
+  const x1 = Number(bbox.x1);
+  const y1 = Number(bbox.y1);
+  if (![x0, y0, x1, y1].every((value) => Number.isFinite(value))) return false;
+  return Math.abs(x1 - x0) >= 0.02 && Math.abs(y1 - y0) >= 0.02;
+}
+
+function resolveModuleBoxDynamicDebug({ diagnosisInternal, faceCrop } = {}) {
+  if (MODULE_BOX_MODE === 'static') {
+    return {
+      module_box_mode: 'static',
+      module_box_dynamic_applied: false,
+      module_box_dynamic_reason: 'mode_static',
+      module_box_dynamic_score: 0,
+    };
+  }
+
+  const hasSkinBBox = hasValidSkinBBoxNorm(diagnosisInternal);
+  const faceCropBox = faceCrop && typeof faceCrop === 'object' && faceCrop.bbox_px && typeof faceCrop.bbox_px === 'object'
+    ? faceCrop.bbox_px
+    : null;
+  const faceCropValid = faceCropBox
+    && Number.isFinite(Number(faceCropBox.w))
+    && Number.isFinite(Number(faceCropBox.h))
+    && Number(faceCropBox.w) > 8
+    && Number(faceCropBox.h) > 8;
+  const dynamicScore = clamp01((hasSkinBBox ? 0.7 : 0) + (faceCropValid ? 0.3 : 0));
+  const dynamicApplied = dynamicScore >= MODULE_BOX_DYNAMIC_MIN_SCORE;
+
+  if (MODULE_BOX_MODE === 'auto' && !dynamicApplied) {
+    return {
+      module_box_mode: 'static',
+      module_box_dynamic_applied: false,
+      module_box_dynamic_reason: hasSkinBBox ? 'auto_fallback_low_score' : 'auto_fallback_missing_skin_bbox',
+      module_box_dynamic_score: round3(dynamicScore),
+    };
+  }
+
+  return {
+    module_box_mode: 'dynamic_skinmask',
+    module_box_dynamic_applied: dynamicApplied,
+    module_box_dynamic_reason: dynamicApplied ? null : (hasSkinBBox ? 'dynamic_low_score' : 'dynamic_missing_skin_bbox'),
+    module_box_dynamic_score: round3(dynamicScore),
+  };
+}
+
 function normalizeMaskGridSize(value, fallback = MODULE_MASK_GRID_SIZE) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -1935,6 +1997,10 @@ function buildPhotoModulesCard({
   const qualityFlags = qualityFlagsFromReasons(qualityReasons);
 
   const faceCrop = normalizeFaceCropFromInternal(diagnosisInternal);
+  const moduleBoxDynamicDebug = resolveModuleBoxDynamicDebug({
+    diagnosisInternal,
+    faceCrop,
+  });
   const regionBuild = buildRegionsFromFindings({ findings, qualityFlags });
   const regions = regionBuild.regions;
   const allowFaceOvalClip = Boolean(
@@ -2018,6 +2084,10 @@ function buildPhotoModulesCard({
       module_guard_triggered: moduleMaskBuild.module_guard_triggered,
       guarded_modules: moduleMaskBuild.guarded_modules,
       module_guard_pixel_diffs: moduleMaskBuild.module_guard_pixel_diffs,
+      module_box_mode: moduleBoxDynamicDebug.module_box_mode,
+      module_box_dynamic_applied: moduleBoxDynamicDebug.module_box_dynamic_applied,
+      module_box_dynamic_reason: moduleBoxDynamicDebug.module_box_dynamic_reason,
+      module_box_dynamic_score: moduleBoxDynamicDebug.module_box_dynamic_score,
       module_min_pixels_under_eye: moduleMaskBuild.module_min_pixels_under_eye,
       module_min_pixels_forehead: moduleMaskBuild.module_min_pixels_forehead,
       module_min_pixels_chin: moduleMaskBuild.module_min_pixels_chin,

@@ -1512,19 +1512,23 @@ async function runSkinDiagnosisV1({
     takeaways: findingsOutput.takeaways,
   });
   const bbox = skin && skin.bbox && typeof skin.bbox === 'object' ? skin.bbox : null;
-  const w = Number.isFinite(width) ? width : null;
-  const h = Number.isFinite(height) ? height : null;
-  const internal =
-    bbox && w && h
-      ? {
-          skin_bbox_norm: {
-            x0: clamp01(bbox.x0 / w),
-            y0: clamp01(bbox.y0 / h),
-            x1: clamp01(bbox.x1 / w),
-            y1: clamp01(bbox.y1 / h),
-          },
-        }
-      : null;
+  const w = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : null;
+  const h = Number.isFinite(height) ? Math.max(1, Math.trunc(height)) : null;
+  const internal = w && h
+    ? {
+        orig_size_px: { w, h },
+        ...(bbox
+          ? {
+              skin_bbox_norm: {
+                x0: clamp01(bbox.x0 / w),
+                y0: clamp01(bbox.y0 / h),
+                x1: clamp01(bbox.x1 / w),
+                y1: clamp01(bbox.y1 / h),
+              },
+            }
+          : {}),
+      }
+    : null;
   return { ok: true, diagnosis: payload, ...(internal ? { internal } : {}) };
 }
 
