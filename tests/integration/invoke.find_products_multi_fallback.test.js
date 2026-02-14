@@ -221,7 +221,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('does not skip secondary fallback when resolver miss is upstream timeout', async () => {
+  test('skips secondary fallback when resolver miss is upstream timeout', async () => {
     const queryText = 'Winona Soothing Repair Serum';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
     process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS = 'true';
@@ -250,21 +250,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         total: 0,
       });
 
-    const fallbackScope = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: '9886500749640',
-            merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'Winona Soothing Repair Serum',
-          },
-        ],
-        total: 1,
-      });
-
     const app = require('../../src/server');
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
@@ -286,14 +271,13 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(primaryScope.isDone()).toBe(true);
-    expect(fallbackScope.isDone()).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(1);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         proxy_search_fallback: expect.objectContaining({
-          applied: true,
-          reason: 'empty_or_unusable_primary',
+          applied: false,
+          reason: 'resolver_miss_skip_secondary',
         }),
       }),
     );

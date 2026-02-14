@@ -261,6 +261,9 @@ const OFFERS_RESOLVE_CIRCUIT_OPEN_MS = Math.max(
 const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT =
   String(process.env.OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT || 'true').toLowerCase() ===
   'true';
+const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_NO_CANDIDATES =
+  String(process.env.OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_NO_CANDIDATES || 'true').toLowerCase() ===
+  'true';
 const OFFERS_RESOLVE_CIRCUITS = {
   subject_resolve: { failure_count: 0, open_until_ms: 0, last_reason: null },
   cache_search: { failure_count: 0, open_until_ms: 0, last_reason: null },
@@ -1880,7 +1883,7 @@ function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
     result?.resolve_reason_code || result?.resolve_reason || '',
     '',
   );
-  return reasonCode === 'no_candidates';
+  return reasonCode === 'no_candidates' || reasonCode === 'upstream_timeout' || reasonCode === 'db_timeout';
 }
 
 function shouldSkipSecondaryFallbackAfterResolverMiss(result) {
@@ -5987,15 +5990,34 @@ async function callOffersResolveSourceWithRetry({
   };
 }
 
-function shouldSkipOffersResolveCacheSearch(subjectResult) {
-  if (!OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT) return false;
+function hasStrongOffersResolveLookupInput(normalizedInput) {
+  const input = offersResolveIsRecord(normalizedInput) ? normalizedInput : {};
+  if (offersResolvePickFirstTrimmed(input.raw_merchant_id)) return true;
+
+  const rawProductId = offersResolvePickFirstTrimmed(input.raw_product_id);
+  if (rawProductId && !offersResolveIsUuidLike(rawProductId)) return true;
+
+  const rawSkuId = offersResolvePickFirstTrimmed(input.raw_sku_id);
+  if (rawSkuId && !offersResolveIsUuidLike(rawSkuId)) return true;
+
+  return false;
+}
+
+function shouldSkipOffersResolveCacheSearch(subjectResult, normalizedInput) {
   if (!subjectResult || subjectResult.ok) return false;
 
   const rawReason = String(subjectResult.reason || '').trim().toLowerCase();
   if (rawReason === 'circuit_open') return true;
 
   const normalizedReason = normalizeOffersResolveReasonCode(rawReason, '');
-  return normalizedReason === 'upstream_timeout';
+  if (normalizedReason === 'upstream_timeout') {
+    return OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT;
+  }
+  if (normalizedReason === 'no_candidates') {
+    if (!OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_NO_CANDIDATES) return false;
+    return !hasStrongOffersResolveLookupInput(normalizedInput);
+  }
+  return false;
 }
 
 function buildOffersResolveResponse({
@@ -6260,7 +6282,7 @@ async function handleOffersResolveOperation({
     }
   }
 
-  if (shouldSkipOffersResolveCacheSearch(subjectResult)) {
+  if (shouldSkipOffersResolveCacheSearch(subjectResult, normalizedInput)) {
     const failReasonCode = normalizeOffersResolveReasonCode(
       subjectResult.reason,
       'upstream_timeout',

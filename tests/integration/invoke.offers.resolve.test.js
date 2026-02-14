@@ -172,6 +172,46 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(res.body.metadata?.resolve_fail_reason).toBe('no_candidates');
   });
 
+  it('subject no_candidates with weak UUID-only identifier short-circuits without cache search', async () => {
+    const subjectScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/v1/subject/resolve')
+      .reply(404, {
+        reason_code: 'no_candidates',
+        reason: 'no_candidates',
+      });
+    const cacheScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+      .reply(200, {
+        status: 'success',
+        offers: [],
+        offers_count: 0,
+        reason_code: 'no_candidates',
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'offers.resolve',
+        payload: {
+          offers: {
+            product: {
+              product_id: '11111111-2222-4333-8444-555555555555',
+              name: 'Unknown UUID Product',
+            },
+            market: 'US',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(subjectScope.isDone()).toBe(true);
+    expect(cacheScope.isDone()).toBe(false);
+    expect(res.body.status).toBe('success');
+    expect(res.body.reason_code).toBe('no_candidates');
+    expect(res.body.pdp_target?.v1?.path).toBe('external');
+    expect(res.body.metadata?.resolve_fail_reason).toBe('no_candidates');
+  });
+
   it('db timeout keeps explicit reason_code=db_timeout and external pdp target', async () => {
     const subjectScope = nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve')
