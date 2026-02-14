@@ -456,6 +456,13 @@ const RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
+const RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
 const RECO_PDP_LOCAL_INVOKE_BASE_URL = (() => {
   const explicit = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL || '').trim();
   if (explicit) return explicit.replace(/\/+$/, '');
@@ -1079,7 +1086,8 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
   const shouldAttemptLocalResolveFallback =
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
-    localResolveUrl !== url;
+    localResolveUrl !== url &&
+    shouldAttemptLocalRecoFallback(reasonCode, err);
   let finalReasonCode = reasonCode;
   if (shouldAttemptLocalResolveFallback) {
     let localResp = null;
@@ -6372,6 +6380,15 @@ function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
   return 'no_candidates';
 }
 
+function shouldAttemptLocalRecoFallback(reasonCode, error) {
+  if (reasonCode === 'no_candidates') {
+    return RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES;
+  }
+  if (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') return true;
+  if (error) return true;
+  return false;
+}
+
 function extractCanonicalFromOffersResolveBody(body) {
   const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : null;
   const mapping = payload && payload.mapping && typeof payload.mapping === 'object' && !Array.isArray(payload.mapping)
@@ -6612,7 +6629,8 @@ async function resolveRecoPdpByStableIds({
   const shouldAttemptLocalFallback =
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localInvokeUrl &&
-    localInvokeUrl !== primaryInvokeUrl;
+    localInvokeUrl !== primaryInvokeUrl &&
+    shouldAttemptLocalRecoFallback(reasonCode, responseError);
   if (
     shouldAttemptLocalFallback
   ) {
@@ -7069,7 +7087,8 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   const shouldAttemptLocalResolveFallback =
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
-    localResolveUrl !== primaryResolveUrl;
+    localResolveUrl !== primaryResolveUrl &&
+    shouldAttemptLocalRecoFallback(reasonCode, resolveError);
   if (shouldAttemptLocalResolveFallback) {
     let localResolveBody = null;
     let localResolveStatus = 0;
