@@ -8684,6 +8684,12 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 }
 
 async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
+  const recoPipelineStartedAt = Date.now();
+  const recoPipelineTiming = {};
+  const stampRecoTiming = (stage, startedAt) => {
+    if (!stage || !Number.isFinite(Number(startedAt))) return;
+    recoPipelineTiming[stage] = Math.max(0, Date.now() - Number(startedAt));
+  };
   const profileSummary = summarizeProfileForContext(profile);
   const analysisSummary =
     profile && profile.lastAnalysis && (!profile.lastAnalysisLang || profile.lastAnalysisLang === ctx.lang) ? profile.lastAnalysis : null;
@@ -8706,7 +8712,9 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   let upstream = null;
   let contextMeta = {};
 
+  const catalogStartedAt = Date.now();
   const catalogOut = await buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger });
+  stampRecoTiming('catalog_grounding', catalogStartedAt);
   const catalogStructured =
     catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
       ? catalogOut.structured
@@ -8731,6 +8739,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   let answerJson = null;
 
   if (!structured) {
+    const upstreamRecoStartedAt = Date.now();
     const query =
       `${prefix}` +
       buildAuroraProductRecommendationsQuery({
@@ -8746,6 +8755,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         logger?.warn({ err: err.message }, 'aurora bff: product reco upstream failed');
       }
     }
+    stampRecoTiming('upstream_reco_call', upstreamRecoStartedAt);
 
     const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
     const routine = contextObj ? contextObj.routine : null;
@@ -8815,6 +8825,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
   }
 
+  const normalizeStartedAt = Date.now();
   const norm = normalizeRecoGenerate(mapped);
   norm.payload = { ...norm.payload, intent: 'reco_products', profile: profileSummary || null };
   if (Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length) {
@@ -8840,9 +8851,11 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     }
     norm.payload = { ...norm.payload, recommendations: deduped };
   }
+  stampRecoTiming('normalize_and_dedup', normalizeStartedAt);
   let alternativesDebug = null;
 
   if (includeAlternatives) {
+    const alternativesStartedAt = Date.now();
     const alt = await enrichRecommendationsWithAlternatives({
       ctx,
       profileSummary,
@@ -8856,6 +8869,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     if (debug && alt && typeof alt === 'object' && alt.debug) {
       alternativesDebug = alt.debug;
     }
+    stampRecoTiming('alternatives_enrich', alternativesStartedAt);
   }
 
   const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
@@ -8946,11 +8960,14 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     });
   }
 
+  const pdpEnrichStartedAt = Date.now();
   const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
     recommendations: norm.payload.recommendations,
     logger,
     fastExternalFallbackReasonCode: pdpFastFallbackReasonCode,
   });
+  stampRecoTiming('pdp_enrich', pdpEnrichStartedAt);
+  recoPipelineTiming.total = Math.max(0, Date.now() - recoPipelineStartedAt);
   norm.payload = {
     ...norm.payload,
     recommendations: pdpOpenOut.recommendations,
@@ -8959,8 +8976,12 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       pdp_open_path_stats: pdpOpenOut.path_stats,
       resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
       time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+      reco_pipeline_timing_ms: recoPipelineTiming,
     },
   };
+  if (debug && upstreamDebug && typeof upstreamDebug === 'object') {
+    upstreamDebug.reco_pipeline_timing_ms = recoPipelineTiming;
+  }
 
   return { norm, upstreamDebug, alternativesDebug };
 }
