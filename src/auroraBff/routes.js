@@ -463,6 +463,20 @@ const RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
+const RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_PDP_SKIP_OPAQUE_STABLE_IDS = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_SKIP_OPAQUE_STABLE_IDS || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
 const RECO_PDP_LOCAL_INVOKE_BASE_URL = (() => {
   const explicit = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL || '').trim();
   if (explicit) return explicit.replace(/\/+$/, '');
@@ -6556,6 +6570,26 @@ async function resolveRecoPdpByStableIds({
     return { ok: false, reasonCode: 'no_candidates' };
   }
 
+  const stableIdCandidates = [normalizedProductId, normalizedSkuId].filter(Boolean);
+  const hasOnlyOpaqueStableIds = stableIdCandidates.length > 0 && stableIdCandidates.every((v) => isUuidLikeString(v));
+  if (RECO_PDP_SKIP_OPAQUE_STABLE_IDS && hasOnlyOpaqueStableIds && !normalizedMerchantId) {
+    logger?.info(
+      {
+        product_id: normalizedProductId || null,
+        sku_id: normalizedSkuId || null,
+        merchant_id: null,
+      },
+      'aurora bff: reco stable-id offers.resolve skipped for opaque ids without merchant',
+    );
+    return {
+      ok: false,
+      reasonCode: 'no_candidates',
+      requestIds: null,
+      localFallbackAttempted: false,
+      resolveAttempted: false,
+    };
+  }
+
   let responseBody = null;
   let statusCode = 0;
   let responseError = null;
@@ -6996,6 +7030,23 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   const queryText =
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
     pickFirstTrimmed(displayName, name, brand);
+  const stableResolveFailureCode = normalizeResolveReasonCode(stableResolveReasonCode || '', null);
+  if (
+    RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE &&
+    stableResolveFailureCode &&
+    stableResolveFailureCode !== 'no_candidates'
+  ) {
+    return withRecoPdpMetadata(base, {
+      path: 'external',
+      queryText,
+      resolveReasonCode: stableResolveFailureCode,
+      resolveAttempted: true,
+      timeToPdpMs: elapsedMs(),
+      stableResolveRequestIds,
+      stableResolveLocalFallbackAttempted,
+    });
+  }
+
   const hints = buildRecoResolveHints({
     base,
     skuCandidate,
