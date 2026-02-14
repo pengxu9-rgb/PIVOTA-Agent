@@ -138,6 +138,12 @@ function getRecoPathStats(responseBody) {
   return stats && typeof stats === 'object' ? stats : null;
 }
 
+function getAuroraDebugPayload(responseBody) {
+  const cards = Array.isArray(responseBody?.cards) ? responseBody.cards : [];
+  const debugCard = cards.find((c) => c && c.type === 'aurora_debug');
+  return debugCard && debugCard.payload && typeof debugCard.payload === 'object' ? debugCard.payload : null;
+}
+
 test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled', async () => {
   const originalGet = axios.get;
   const queries = [];
@@ -986,6 +992,99 @@ test('Offers resolve db_error: canonical ref still keeps internal PDP open contr
         assert.equal(pdpLatencyStats.count, 1);
       } finally {
         axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat reco fail-fast: open state skips until probe interval, then probes and recovers', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'winona soothing repair serum',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST: 'true',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD: '1',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS: '90000',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS: '15000',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalNow = Date.now;
+      const originalGet = axios.get;
+      let nowMs = 1_000_000;
+      let phase = 'timeout';
+      let searchCalls = 0;
+
+      Date.now = () => nowMs;
+      axios.get = async (url, config = {}) => {
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        searchCalls += 1;
+        if (phase === 'timeout') {
+          const err = new Error('upstream timeout');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        const q = String(config?.params?.query || '').trim() || 'winona';
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: `prod_winona_${searchCalls}`,
+                merchant_id: 'mid_winona',
+                brand: 'Winona',
+                name: q,
+                display_name: `Winona ${q}`,
+              },
+            ],
+          },
+        };
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const first = await invokeRecoChat(app, { 'X-Debug': 'true' });
+        assert.equal(first.status, 200);
+        assert.equal(searchCalls, 1);
+        const firstDebug = getAuroraDebugPayload(first.body);
+        const firstCatalogDebug = firstDebug?.reco_catalog_debug;
+        assert.equal(firstCatalogDebug?.fail_fast_after?.open, true);
+
+        phase = 'success';
+        nowMs += 1000;
+        const second = await invokeRecoChat(app, { 'X-Debug': 'true' });
+        assert.equal(second.status, 200);
+        assert.equal(searchCalls, 1);
+        const secondDebug = getAuroraDebugPayload(second.body);
+        const secondCatalogDebug = secondDebug?.reco_catalog_debug;
+        assert.equal(secondCatalogDebug?.skipped_reason, 'fail_fast_open');
+        assert.equal(secondCatalogDebug?.fail_fast?.open, true);
+        assert.equal(secondCatalogDebug?.fail_fast?.can_probe_while_open, false);
+        assert.ok(Number(secondCatalogDebug?.fail_fast?.next_probe_in_ms) > 0);
+
+        nowMs += 16000;
+        const third = await invokeRecoChat(app, { 'X-Debug': 'true' });
+        assert.equal(third.status, 200);
+        assert.equal(searchCalls, 2);
+        const thirdDebug = getAuroraDebugPayload(third.body);
+        const thirdCatalogDebug = thirdDebug?.reco_catalog_debug;
+        assert.equal(thirdCatalogDebug?.probe_while_open, true);
+        assert.equal(thirdCatalogDebug?.fail_fast_after?.open, false);
+      } finally {
+        Date.now = originalNow;
+        axios.get = originalGet;
       }
     },
   );

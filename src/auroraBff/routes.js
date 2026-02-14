@@ -242,6 +242,11 @@ const RECO_CATALOG_FAIL_FAST_COOLDOWN_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 90000;
   return Math.max(3000, Math.min(300000, v));
 })();
+const RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  return Math.max(500, Math.min(60000, v));
+})();
 const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK || 'true')
     .trim()
@@ -649,11 +654,16 @@ const recoCatalogFailFastState = {
   open_until_ms: 0,
   last_reason: null,
   last_failed_at: 0,
+  last_probe_started_at: 0,
 };
 
 function getRecoCatalogFailFastSnapshot(nowMs = Date.now()) {
   const openUntilMs = Number(recoCatalogFailFastState.open_until_ms || 0);
   const open = RECO_CATALOG_FAIL_FAST_ENABLED && nowMs < openUntilMs;
+  const lastProbeStartedAt = Number(recoCatalogFailFastState.last_probe_started_at || 0);
+  const probeElapsedMs = Math.max(0, nowMs - lastProbeStartedAt);
+  const nextProbeInMs = open ? Math.max(0, RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS - probeElapsedMs) : 0;
+  const canProbeWhileOpen = open && nextProbeInMs <= 0;
   return {
     enabled: RECO_CATALOG_FAIL_FAST_ENABLED,
     open,
@@ -662,6 +672,10 @@ function getRecoCatalogFailFastSnapshot(nowMs = Date.now()) {
     last_reason: recoCatalogFailFastState.last_reason || null,
     cooldown_ms: RECO_CATALOG_FAIL_FAST_COOLDOWN_MS,
     threshold: RECO_CATALOG_FAIL_FAST_THRESHOLD,
+    probe_interval_ms: RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS,
+    last_probe_started_at: lastProbeStartedAt || 0,
+    can_probe_while_open: canProbeWhileOpen,
+    next_probe_in_ms: nextProbeInMs,
   };
 }
 
@@ -670,6 +684,7 @@ function markRecoCatalogFailFastSuccess() {
   recoCatalogFailFastState.open_until_ms = 0;
   recoCatalogFailFastState.last_reason = null;
   recoCatalogFailFastState.last_failed_at = 0;
+  recoCatalogFailFastState.last_probe_started_at = 0;
 }
 
 function markRecoCatalogFailFastFailure(reason, nowMs = Date.now()) {
@@ -679,7 +694,16 @@ function markRecoCatalogFailFastFailure(reason, nowMs = Date.now()) {
   recoCatalogFailFastState.last_failed_at = nowMs;
   if (recoCatalogFailFastState.consecutive_failures >= RECO_CATALOG_FAIL_FAST_THRESHOLD) {
     recoCatalogFailFastState.open_until_ms = nowMs + RECO_CATALOG_FAIL_FAST_COOLDOWN_MS;
+    recoCatalogFailFastState.last_probe_started_at = nowMs;
   }
+}
+
+function beginRecoCatalogFailFastProbe(nowMs = Date.now()) {
+  if (!RECO_CATALOG_FAIL_FAST_ENABLED) return false;
+  const snapshot = getRecoCatalogFailFastSnapshot(nowMs);
+  if (!snapshot.open || !snapshot.can_probe_while_open) return false;
+  recoCatalogFailFastState.last_probe_started_at = nowMs;
+  return true;
 }
 
 async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
@@ -1176,6 +1200,7 @@ function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
 async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger } = {}) {
   const startedAt = Date.now();
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
+  let probeWhileOpen = false;
   const debugInfo = {
     enabled: RECO_CATALOG_GROUNDED_ENABLED,
     search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
@@ -1193,7 +1218,10 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     };
   }
   if (failFastBefore.open) {
-    return { structured: null, debug: { ...debugInfo, skipped_reason: 'fail_fast_open', total_ms: Date.now() - startedAt } };
+    probeWhileOpen = beginRecoCatalogFailFastProbe(startedAt);
+    if (!probeWhileOpen) {
+      return { structured: null, debug: { ...debugInfo, skipped_reason: 'fail_fast_open', total_ms: Date.now() - startedAt } };
+    }
   }
 
   const queries = buildRecoCatalogQueries({ profileSummary, lang: ctx && ctx.lang ? ctx.lang : 'EN' });
@@ -1254,6 +1282,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     query_count: queries.length,
     ok_count: okCount,
     picked_count: recos.length,
+    probe_while_open: probeWhileOpen,
     total_ms: Date.now() - startedAt,
     fail_fast_after: getRecoCatalogFailFastSnapshot(Date.now()),
     ...(debug
