@@ -439,6 +439,12 @@ const RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS = (() => {
   return Math.max(250, Math.min(4000, v));
 })();
 
+const RECO_PDP_ENRICH_CONCURRENCY = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_CONCURRENCY || 6);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6;
+  return Math.max(1, Math.min(12, v));
+})();
+
 const DUPE_DEEPSCAN_CACHE_MAX = (() => {
   const n = Number(process.env.AURORA_BFF_DUPE_DEEPSCAN_CACHE_MAX || 80);
   const v = Number.isFinite(n) ? Math.trunc(n) : 80;
@@ -7241,7 +7247,7 @@ async function enrichRecommendationsWithPdpOpenContract({ recommendations, logge
     };
   }
 
-  const enriched = await mapWithConcurrency(recos, 3, async (item) =>
+  const enriched = await mapWithConcurrency(recos, RECO_PDP_ENRICH_CONCURRENCY, async (item) =>
     enrichRecoItemWithPdpOpenContract(item, { logger }),
   );
   const normalized = enriched.map((item, idx) => {
@@ -8070,6 +8076,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
       reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
       reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
+      reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
       reco_catalog_debug: catalogDebug,
     }
     : null;
