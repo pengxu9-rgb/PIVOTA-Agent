@@ -236,11 +236,11 @@ const OFFERS_RESOLVE_CACHE_SEARCH_TIMEOUT_MS = parseTimeoutMs(
 );
 const OFFERS_RESOLVE_SUBJECT_RETRY_MAX = Math.max(
   0,
-  Math.min(3, Number(process.env.OFFERS_RESOLVE_SUBJECT_RETRY_MAX || 1)),
+  Math.min(3, Number(process.env.OFFERS_RESOLVE_SUBJECT_RETRY_MAX || 0)),
 );
 const OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX = Math.max(
   0,
-  Math.min(3, Number(process.env.OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX || 1)),
+  Math.min(3, Number(process.env.OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX || 0)),
 );
 const OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS = Math.max(
   25,
@@ -252,12 +252,15 @@ const OFFERS_RESOLVE_CACHE_SEARCH_RETRY_BACKOFF_MS = Math.max(
 );
 const OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD = Math.max(
   1,
-  Math.min(10, Number(process.env.OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD || 3)),
+  Math.min(10, Number(process.env.OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD || 1)),
 );
 const OFFERS_RESOLVE_CIRCUIT_OPEN_MS = Math.max(
   1000,
-  Number(process.env.OFFERS_RESOLVE_CIRCUIT_OPEN_MS || 10000) || 10000,
+  Number(process.env.OFFERS_RESOLVE_CIRCUIT_OPEN_MS || 30000) || 30000,
 );
+const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT =
+  String(process.env.OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT || 'true').toLowerCase() ===
+  'true';
 const OFFERS_RESOLVE_CIRCUITS = {
   subject_resolve: { failure_count: 0, open_until_ms: 0, last_reason: null },
   cache_search: { failure_count: 0, open_until_ms: 0, last_reason: null },
@@ -1872,12 +1875,17 @@ function isResolverMiss(result) {
 }
 
 function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
-  return isResolverMiss(result);
+  if (!isResolverMiss(result)) return false;
+  const reasonCode = normalizeOffersResolveReasonCode(
+    result?.resolve_reason_code || result?.resolve_reason || '',
+    '',
+  );
+  return reasonCode === 'no_candidates';
 }
 
 function shouldSkipSecondaryFallbackAfterResolverMiss(result) {
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
-  return isResolverMiss(result);
+  return shouldReducePrimaryTimeoutAfterResolverMiss(result);
 }
 
 function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
@@ -5979,6 +5987,17 @@ async function callOffersResolveSourceWithRetry({
   };
 }
 
+function shouldSkipOffersResolveCacheSearch(subjectResult) {
+  if (!OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT) return false;
+  if (!subjectResult || subjectResult.ok) return false;
+
+  const rawReason = String(subjectResult.reason || '').trim().toLowerCase();
+  if (rawReason === 'circuit_open') return true;
+
+  const normalizedReason = normalizeOffersResolveReasonCode(rawReason, '');
+  return normalizedReason === 'upstream_timeout';
+}
+
 function buildOffersResolveResponse({
   upstreamBody,
   reasonCode,
@@ -6239,6 +6258,37 @@ async function handleOffersResolveOperation({
         }),
       };
     }
+  }
+
+  if (shouldSkipOffersResolveCacheSearch(subjectResult)) {
+    const failReasonCode = normalizeOffersResolveReasonCode(
+      subjectResult.reason,
+      'upstream_timeout',
+    );
+    const fallbackTarget = buildOffersResolvePdpTargetExternal(
+      normalizedInput.query_text,
+      failReasonCode,
+    );
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+        },
+        reasonCode: failReasonCode,
+        pdpTargetV1: fallbackTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+        failReasonCode,
+      }),
+    };
   }
 
   const cacheSearchPayload = {
