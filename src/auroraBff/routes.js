@@ -238,8 +238,8 @@ const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1800);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
   return Math.max(400, Math.min(12000, v));
 })();
 const RECO_CATALOG_SEARCH_CONCURRENCY = (() => {
@@ -275,12 +275,6 @@ const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
 })();
 const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
-const CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT = (() => {
-  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1015,11 +1009,31 @@ function buildAvailabilityCatalogQuery(message, availabilityIntent) {
     .replace(/^(请问|请帮我|请|我想问下|我想问|could you|can you|do you|i want to know)\s*/i, '')
     .replace(/\b(in stock|available|availability|where can i buy|where to buy|do you have|have any|buy|purchase|link|have|has)\b/gi, ' ')
     .replace(/(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方旗舰|旗舰店|自营|请问)/g, ' ')
+    .replace(/[（(]\s*(品牌|brand|official)\s*[）)]/gi, ' ')
+    .replace(/\bbrand\b/gi, ' ')
+    .replace(/品牌/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[。！？!?]+$/g, '');
 
   if (!cleaned) cleaned = raw;
+  cleaned = cleaned
+    .split(/\s+/)
+    .filter((token, idx, arr) => idx === 0 || token.toLowerCase() !== arr[idx - 1].toLowerCase())
+    .join(' ')
+    .trim();
+  cleaned = cleaned.replace(/[吗嘛呢呀]+$/g, '').trim();
+
+  if (brand) {
+    const compact = (value) =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/[\s\p{P}_-]+/gu, '');
+    const compactBrand = compact(brand);
+    const compactCleaned = compact(cleaned);
+    if (compactBrand && compactCleaned && compactCleaned === compactBrand.repeat(2)) cleaned = brand;
+  }
+
   if (cleaned.length > 120) cleaned = cleaned.slice(0, 120).trim();
 
   if (!cleaned) return brand;
@@ -13384,11 +13398,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             const reason = String(catalogResult.reason || '').trim().toLowerCase();
             const neutralCatalogMiss =
               !reason || reason === 'empty' || reason === 'no_candidates' || reason === 'not_found';
-            const transientCatalogFailure =
-              reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-            const shouldRunResolveFallback = specificAvailabilityQuery
-              ? neutralCatalogMiss || (CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT && transientCatalogFailure)
-              : false;
+            const shouldRunResolveFallback = specificAvailabilityQuery && neutralCatalogMiss;
             if (shouldRunResolveFallback) {
               availabilityResolveAttempted = true;
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({

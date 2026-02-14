@@ -1183,6 +1183,92 @@ test('Offers resolve db_error: canonical ref still keeps internal PDP open contr
   );
 });
 
+test('/v1/chat availability: specific query skips resolve fallback on transient search timeout', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
+      axios.get = async (url) => {
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        searchCalls += 1;
+        const timeoutErr = new Error('search timeout');
+        timeoutErr.code = 'ECONNABORTED';
+        throw timeoutErr;
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) resolveCalls += 1;
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_specific_transient',
+            'X-Trace-ID': 'test_trace_availability_specific_transient',
+            'X-Brief-ID': 'test_brief_availability_specific_transient',
+            'X-Lang': 'EN',
+          },
+          body: {
+            message: 'Do you have Winona Soothing Repair Serum?',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'EN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.equal(searchCalls, 1);
+        assert.equal(resolveCalls, 0);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Availability query normalization drops duplicated brand markers', async () => {
+  await withEnv(
+    {},
+    async () => {
+      const { __internal } = loadRoutesFresh();
+      const query = __internal.buildAvailabilityCatalogQuery('薇诺娜 薇诺娜（品牌）有货吗', {
+        brand_id: 'brand_winona',
+        brand_name: '薇诺娜',
+        matched_alias: '薇诺娜',
+      });
+      assert.equal(query, '薇诺娜');
+    },
+  );
+});
+
 test('/v1/chat reco fail-fast: open state skips until probe interval, then probes and recovers', async () => {
   await withEnv(
     {
@@ -1249,8 +1335,8 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         const firstDebug = getAuroraDebugPayload(first.body);
         const firstCatalogDebug = firstDebug?.reco_catalog_debug;
         assert.equal(firstCatalogDebug?.fail_fast_after?.open, true);
-        assert.equal(firstCatalogDebug?.search_timeout_effective_ms, 1800);
-        assert.equal(searchTimeouts[0], 1800);
+        assert.equal(firstCatalogDebug?.search_timeout_effective_ms, 1200);
+        assert.equal(searchTimeouts[0], 1200);
 
         phase = 'success';
         nowMs += 1000;
