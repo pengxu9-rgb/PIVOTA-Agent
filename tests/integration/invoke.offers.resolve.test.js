@@ -45,6 +45,47 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(res.body.offers.length).toBe(0);
   });
 
+  it('raw merchant+product id short-circuits to internal ref without upstream calls', async () => {
+    const subjectScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/v1/subject/resolve')
+      .reply(200, {
+        status: 'success',
+      });
+    const cacheScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+      .reply(200, {
+        status: 'success',
+        offers: [],
+        offers_count: 0,
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'offers.resolve',
+        payload: {
+          offers: {
+            product: {
+              merchant_id: 'merch_efbc46b4619cfbdf',
+              product_id: '9886500749640',
+            },
+            market: 'US',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(subjectScope.isDone()).toBe(false);
+    expect(cacheScope.isDone()).toBe(false);
+    expect(res.body.status).toBe('success');
+    expect(res.body.reason_code).toBe('canonical_ref_direct');
+    expect(res.body.pdp_target?.v1?.path).toBe('ref');
+    expect(res.body.pdp_target?.v1?.product_ref).toEqual({
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      product_id: '9886500749640',
+    });
+  });
+
   it('UUID-only input short-circuits via stable_alias_ref without upstream dependency', async () => {
     const res = await request(app)
       .post('/agent/shop/v1/invoke')

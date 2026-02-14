@@ -6207,6 +6207,49 @@ async function handleOffersResolveOperation({
     };
   }
 
+  const directRawProductRef =
+    normalizedInput.raw_merchant_id && (normalizedInput.raw_product_id || normalizedInput.raw_sku_id)
+      ? normalizeOffersResolveCanonicalProductRef(
+          {
+            merchant_id: normalizedInput.raw_merchant_id,
+            product_id: normalizedInput.raw_product_id || normalizedInput.raw_sku_id,
+          },
+          { allowOpaqueProductId: false },
+        )
+      : null;
+  if (directRawProductRef) {
+    const pdpTarget = buildOffersResolvePdpTargetRef(directRawProductRef, { path: 'ref' });
+    sourceTrace.push({
+      source: 'stable_input',
+      ok: true,
+      attempts: 0,
+      latency_ms: 0,
+      reason: 'raw_ref_direct',
+    });
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+          mapping: {
+            canonical_product_ref: directRawProductRef,
+          },
+        },
+        reasonCode: 'canonical_ref_direct',
+        pdpTargetV1: pdpTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+      }),
+    };
+  }
+
   const stableAliasRef = resolveOffersResolveStableAliasRef(normalizedInput);
   if (stableAliasRef?.product_ref) {
     const pdpTarget = buildOffersResolvePdpTargetRef(stableAliasRef.product_ref, {
