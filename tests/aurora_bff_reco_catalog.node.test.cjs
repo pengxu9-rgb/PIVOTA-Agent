@@ -799,6 +799,7 @@ test('Availability resolve: primary timeout falls back to local products.resolve
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
     async () => {
@@ -916,6 +917,7 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
     async () => {
@@ -1254,6 +1256,96 @@ test('/v1/chat availability: specific query skips resolve fallback on transient 
   );
 });
 
+test('/v1/chat availability: 200 soft-fallback timeout response skips resolve fallback', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
+      axios.get = async (url) => {
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        searchCalls += 1;
+        return {
+          status: 200,
+          data: {
+            status: 'success',
+            success: true,
+            products: [],
+            total: 0,
+            metadata: {
+              query_source: 'agent_products_error_fallback',
+              proxy_search_fallback: {
+                applied: true,
+                reason: 'primary_timeout',
+                upstream_status: 504,
+                upstream_error_code: 'ECONNABORTED',
+              },
+            },
+          },
+        };
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) resolveCalls += 1;
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_soft_timeout',
+            'X-Trace-ID': 'test_trace_availability_soft_timeout',
+            'X-Brief-ID': 'test_brief_availability_soft_timeout',
+            'X-Lang': 'EN',
+          },
+          body: {
+            message: 'Do you have Winona Soothing Repair Serum?',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'EN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.equal(searchCalls, 1);
+        assert.equal(resolveCalls, 0);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offersCard = cards.find((c) => c && c.type === 'offers_resolved');
+        const fieldMissing = Array.isArray(offersCard?.field_missing) ? offersCard.field_missing : [];
+        assert.ok(fieldMissing.some((f) => String(f?.reason || '') === 'upstream_timeout'));
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Availability query normalization drops duplicated brand markers', async () => {
   await withEnv(
     {},
@@ -1467,6 +1559,198 @@ test('/v1/chat reco fail-fast open: skips PDP resolve calls via fast external fa
         Date.now = originalNow;
         axios.get = originalGet;
         axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat reco transient catalog failure: returns stable internal fallback without aurora upstream wait', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'winona soothing repair serum,the ordinary niacinamide 10% + zinc 1%',
+      AURORA_BFF_RECO_CATALOG_TRANSIENT_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let postCalls = 0;
+
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (!target.includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${target}`);
+        }
+        searchCalls += 1;
+        const err = new Error('upstream timeout');
+        err.code = 'ECONNABORTED';
+        throw err;
+      };
+
+      axios.post = async (url) => {
+        postCalls += 1;
+        throw new Error(`Unexpected axios.post: ${String(url || '')}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRecoChat(app, { 'X-Debug': 'true' });
+        assert.equal(resp.status, 200);
+        assert.ok(searchCalls >= 1);
+        assert.equal(postCalls, 0);
+
+        const recos = getRecoItems(resp.body);
+        assert.ok(recos.length > 0);
+        assert.ok(recos.every((r) => (r?.metadata || {}).pdp_open_path === 'internal'));
+        assert.ok(recos.some((r) => (r?.metadata || {}).pdp_open_mode === 'ref'));
+
+        const stats = getRecoPathStats(resp.body);
+        assert.ok(Number(stats?.ref || 0) >= 1);
+        assert.equal(Number(stats?.external || 0), 0);
+
+        const debug = getAuroraDebugPayload(resp.body);
+        assert.equal(debug?.structured_source, 'catalog_transient_fallback');
+        assert.equal(debug?.reco_catalog_transient_fallback_applied, true);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat reco: 200 soft-fallback timeout search response uses transient catalog fallback', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'winona soothing repair serum,the ordinary niacinamide 10% + zinc 1%',
+      AURORA_BFF_RECO_CATALOG_TRANSIENT_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let postCalls = 0;
+
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (!target.includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${target}`);
+        }
+        searchCalls += 1;
+        return {
+          status: 200,
+          data: {
+            status: 'success',
+            success: true,
+            products: [],
+            total: 0,
+            metadata: {
+              query_source: 'agent_products_error_fallback',
+              proxy_search_fallback: {
+                applied: true,
+                reason: 'primary_timeout',
+                upstream_status: 504,
+                upstream_error_code: 'ECONNABORTED',
+              },
+            },
+          },
+        };
+      };
+
+      axios.post = async (url) => {
+        postCalls += 1;
+        throw new Error(`Unexpected axios.post: ${String(url || '')}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRecoChat(app, { 'X-Debug': 'true' });
+        assert.equal(resp.status, 200);
+        assert.ok(searchCalls >= 1);
+        assert.equal(postCalls, 0);
+
+        const recos = getRecoItems(resp.body);
+        assert.ok(recos.length > 0);
+        assert.ok(recos.some((r) => (r?.metadata || {}).pdp_open_path === 'internal'));
+
+        const debug = getAuroraDebugPayload(resp.body);
+        assert.equal(debug?.structured_source, 'catalog_transient_fallback');
+        assert.equal(debug?.reco_catalog_transient_fallback_applied, true);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Catalog search transient failure does not invoke local search fallback by default', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+    },
+    async () => {
+      const originalGet = axios.get;
+      let primaryCalls = 0;
+      let localCalls = 0;
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
+          primaryCalls += 1;
+          const err = new Error('upstream timeout');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/search') {
+          localCalls += 1;
+          return { status: 200, data: { products: [{ product_id: 'prod_local', merchant_id: 'mid_local' }] } };
+        }
+        throw new Error(`Unexpected axios.get: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.searchPivotaBackendProducts({
+          query: 'winona',
+          timeoutMs: 1200,
+          logger: null,
+        });
+
+        assert.equal(primaryCalls, 1);
+        assert.equal(localCalls, 0);
+        assert.equal(out?.ok, false);
+        assert.equal(out?.reason, 'upstream_timeout');
+      } finally {
+        axios.get = originalGet;
       }
     },
   );
