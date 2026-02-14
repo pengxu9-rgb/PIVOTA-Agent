@@ -1305,7 +1305,15 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
 
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const hasOnlyTransientErrors = results.length > 0 && results.every((r) => !r?.ok && transientReasons.has(String(r?.reason || '')));
-  if (okCount > 0) {
+  const hasTransientErrors = results.some((r) => !r?.ok && transientReasons.has(String(r?.reason || '')));
+  const healthyProbeResult = okCount > 0 && !hasTransientErrors;
+  if (probeWhileOpen) {
+    if (healthyProbeResult) {
+      markRecoCatalogFailFastSuccess();
+    } else if (hasOnlyTransientErrors || hasTransientErrors) {
+      markRecoCatalogFailFastFailure('probe_transient_errors', Date.now());
+    }
+  } else if (okCount > 0) {
     markRecoCatalogFailFastSuccess();
   } else if (hasOnlyTransientErrors) {
     markRecoCatalogFailFastFailure('all_queries_failed', Date.now());
