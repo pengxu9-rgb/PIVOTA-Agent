@@ -1093,6 +1093,10 @@ function detectBrandAvailabilityIntent(message, lang) {
   // Exclude obvious non-commerce asks.
   if (looksLikeDiagnosisStart(raw)) return null;
   if (looksLikeSuitabilityRequest(raw)) return null;
+  if (looksLikeRecommendationRequest(raw)) return null;
+  if (looksLikeRoutineRequest(raw, null)) return null;
+  if (looksLikeCompatibilityOrConflictQuestion(raw)) return null;
+  if (looksLikeWeatherOrEnvironmentQuestion(raw)) return null;
 
   const text = raw.normalize('NFKC');
   const lowered = text.toLowerCase();
@@ -1124,7 +1128,17 @@ function detectBrandAvailabilityIntent(message, lang) {
 
     if (!matchedAlias) continue;
 
-    const bareBrandQuery = lowered.replace(/[\s\p{P}_-]+/gu, '').length <= 18;
+    const compact = (value) =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/[\s\p{P}_-]+/gu, '');
+    const compactAlias = compact(matchedAlias);
+    const compactText = compact(text);
+    const bareBrandQuery =
+      compactText === compactAlias ||
+      compactText === `${compactAlias}品牌` ||
+      compactText === `${compactAlias}brand` ||
+      compactText === `${compactAlias}${compactAlias}`;
     if (!availabilityHint && !bareBrandQuery) continue;
 
     const brandName = lang === 'CN' ? brand?.name?.CN || '' : brand?.name?.EN || '';

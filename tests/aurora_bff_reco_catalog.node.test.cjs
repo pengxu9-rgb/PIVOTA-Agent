@@ -1063,6 +1063,104 @@ test('/v1/chat availability: specific query uses catalog hit directly without re
   );
 });
 
+test('detectBrandAvailabilityIntent: recommendation phrasing should not be hijacked by availability fast path', async () => {
+  const { __internal } = loadRoutesFresh();
+  const intent = __internal.detectBrandAvailabilityIntent('给我推荐Winona的修护精华', 'CN');
+  assert.equal(intent, null);
+});
+
+test('detectBrandAvailabilityIntent: bare brand query still routes to availability fast path', async () => {
+  const { __internal } = loadRoutesFresh();
+  const intentEn = __internal.detectBrandAvailabilityIntent('Winona', 'EN');
+  const intentCn = __internal.detectBrandAvailabilityIntent('薇诺娜品牌', 'CN');
+
+  assert.equal(intentEn?.brand_id, 'brand_winona');
+  assert.equal(intentEn?.intent, 'availability');
+  assert.equal(intentCn?.brand_id, 'brand_winona');
+  assert.equal(intentCn?.intent, 'availability');
+});
+
+test('/v1/chat recommendation phrasing with brand should return recommendations (not availability short-circuit cards)', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'winona soothing repair serum',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_winona_repair',
+                merchant_id: 'mid_winona',
+                product_group_id: 'pg_winona_repair',
+                brand: 'Winona',
+                name: 'Soothing Repair Serum',
+                display_name: 'Winona Soothing Repair Serum',
+              },
+            ],
+          },
+        };
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const uid = 'test_uid_reco_brand_phrase';
+        const headers = {
+          'X-Aurora-UID': uid,
+          'X-Trace-ID': 'test_trace_reco_brand_phrase',
+          'X-Brief-ID': 'test_brief_reco_brand_phrase',
+          'X-Lang': 'CN',
+        };
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers,
+          body: {
+            message: '给我推荐Winona的修护精华',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'oily',
+                sensitivity: 'low',
+                barrierStatus: 'healthy',
+                goals: ['acne'],
+                budgetTier: '¥500',
+                region: 'CN',
+              },
+            },
+            language: 'CN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        assert.ok(cards.some((card) => card && card.type === 'recommendations'));
+        assert.equal(cards.some((card) => card && card.type === 'offers_resolved'), false);
+
+        const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+        assert.equal(events.some((event) => event && event.event_name === 'catalog_availability_shortcircuit'), false);
+      } finally {
+        axios.get = originalGet;
+      }
+    },
+  );
+});
+
 test('Internal canonical product ref rewrites sku identifiers for PDP compatibility', async () => {
   await withEnv(
     {
