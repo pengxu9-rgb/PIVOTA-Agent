@@ -714,6 +714,99 @@ test('Availability resolve: passes zh locale and hints payload to resolver', asy
   );
 });
 
+test('/v1/chat availability: specific query runs resolve-first and skips catalog search when resolved', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
+      axios.get = async (url) => {
+        if (String(url).includes('/agent/v1/products/search')) searchCalls += 1;
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        if (!String(url).includes('/agent/v1/products/resolve')) {
+          throw new Error(`Unexpected axios.post: ${url}`);
+        }
+        resolveCalls += 1;
+        return {
+          status: 200,
+          data: {
+            resolved: true,
+            reason: 'stable_alias_match',
+            reason_code: 'stable_alias_match',
+            product_ref: {
+              product_id: 'prod_winona_repair',
+              merchant_id: 'mid_winona',
+            },
+            candidates: [
+              {
+                name: 'Winona Soothing Repair Serum',
+                brand: 'Winona',
+              },
+            ],
+          },
+        };
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_resolve_first',
+            'X-Trace-ID': 'test_trace_availability_resolve_first',
+            'X-Brief-ID': 'test_brief_availability_resolve_first',
+            'X-Lang': 'EN',
+          },
+          body: {
+            message: 'Do you have Winona Soothing Repair Serum?',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'EN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+
+        assert.equal(resolveCalls, 1);
+        assert.equal(searchCalls, 0);
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Internal canonical product ref rewrites sku identifiers for PDP compatibility', async () => {
   await withEnv(
     {

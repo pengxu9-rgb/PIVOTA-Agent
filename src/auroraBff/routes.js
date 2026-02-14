@@ -12866,37 +12866,64 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
 
           const availabilityQuery = buildAvailabilityCatalogQuery(message, availabilityIntent);
+          const specificAvailabilityQuery = isSpecificAvailabilityQuery(availabilityQuery, availabilityIntent);
+          const resolveAliasCandidates = [
+            availabilityIntent.brand_name,
+            availabilityIntent.matched_alias,
+          ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean);
+          const resolveAliases = [...new Set(resolveAliasCandidates)].slice(0, 8);
+          const resolveHints = {
+            ...(availabilityIntent.brand_name ? { brand: availabilityIntent.brand_name } : {}),
+            ...(resolveAliases.length ? { aliases: resolveAliases } : {}),
+          };
+
           let catalogResult = { ok: false, products: [], reason: 'unknown' };
-          if (PIVOTA_BACKEND_BASE_URL) {
-            catalogResult = await searchPivotaBackendProducts({
-              query: availabilityQuery || availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
-              limit: 8,
+          let products = [];
+          let availabilityResolveFallback = null;
+          let availabilityResolveAttempted = false;
+          if (specificAvailabilityQuery && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
+            availabilityResolveAttempted = true;
+            availabilityResolveFallback = await resolveAvailabilityProductByQuery({
+              query: availabilityQuery || availabilityIntent.brand_name,
+              lang: ctx.lang,
+              hints: Object.keys(resolveHints).length ? resolveHints : null,
               logger,
             });
-          } else {
-            catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
+            if (availabilityResolveFallback?.ok && availabilityResolveFallback?.product) {
+              products = [availabilityResolveFallback.product];
+              catalogResult = { ok: true, products: [], reason: 'resolve_first' };
+            } else {
+              catalogResult = {
+                ok: false,
+                products: [],
+                reason: availabilityResolveFallback?.resolve_reason_code || 'resolve_only_unresolved',
+              };
+            }
           }
 
-          let products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
-          let availabilityResolveFallback = null;
-          if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
+          if (!products.length && !(specificAvailabilityQuery && availabilityResolveAttempted)) {
+            if (PIVOTA_BACKEND_BASE_URL) {
+              catalogResult = await searchPivotaBackendProducts({
+                query: availabilityQuery || availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
+                limit: 8,
+                logger,
+              });
+              products = Array.isArray(catalogResult.products) ? catalogResult.products : [];
+            } else {
+              catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
+            }
+          }
+
+          if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL && !availabilityResolveAttempted) {
             const reason = String(catalogResult.reason || '').trim().toLowerCase();
             const transientCatalogFailure =
               reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
             const shouldRunResolveFallback =
-              transientCatalogFailure || isSpecificAvailabilityQuery(availabilityQuery, availabilityIntent);
+              transientCatalogFailure || specificAvailabilityQuery;
             if (shouldRunResolveFallback) {
-              const resolveAliasCandidates = [
-                availabilityIntent.brand_name,
-                availabilityIntent.matched_alias,
-              ]
-                .map((value) => String(value || '').trim())
-                .filter(Boolean);
-              const resolveAliases = [...new Set(resolveAliasCandidates)].slice(0, 8);
-              const resolveHints = {
-                ...(availabilityIntent.brand_name ? { brand: availabilityIntent.brand_name } : {}),
-                ...(resolveAliases.length ? { aliases: resolveAliases } : {}),
-              };
+              availabilityResolveAttempted = true;
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({
                 query: availabilityQuery || availabilityIntent.brand_name,
                 lang: ctx.lang,
