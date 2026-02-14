@@ -861,21 +861,101 @@ async def _handle_find_products_multi(
     # We fetch a bit more than the requested page size to have headroom for filtering.
     per_merchant_limit = min(max(limit * 2, 20), 200)
 
-    # Collect products as (StandardProduct, merchant_name) tuples
-    merchant_products: list[tuple[StandardProduct, str]] = []
-    for mid, name in merchant_map.items():
-        try:
-            products, _source, _error = await get_products_hybrid(
-                merchant_id=mid,
-                limit=per_merchant_limit,
-                agent_id="shopping_ai_multi",
-                background_tasks=background_tasks,
+    async def _load_merchant_products_batch(
+        merchant_ids: List[str],
+        per_merchant_cap: int,
+    ) -> list[tuple[StandardProduct, str]]:
+        """
+        Load recent cached products for all merchants in one DB roundtrip.
+
+        This replaces the previous N-roundtrip loop (one query per merchant),
+        which caused first-hit latency spikes on large merchant sets.
+        """
+        if not merchant_ids:
+            return []
+
+        safe_limit = min(max(int(per_merchant_cap), 1), 200)
+        bind_params: Dict[str, Any] = {"per_merchant_limit": safe_limit}
+        merchant_binds: List[str] = []
+        for idx, merchant_id in enumerate(merchant_ids):
+            bind_key = f"mid_{idx}"
+            bind_params[bind_key] = merchant_id
+            merchant_binds.append(f":{bind_key}")
+
+        in_clause = ", ".join(merchant_binds) if merchant_binds else "''"
+        rows = await database.fetch_all(
+            f"""
+            WITH ranked AS (
+                SELECT
+                    merchant_id,
+                    product_data,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY merchant_id
+                        ORDER BY cached_at DESC
+                    ) AS rn
+                FROM products_cache
+                WHERE merchant_id IN ({in_clause})
             )
-            for p in products:
-                merchant_products.append((p, name))
-        except Exception:
-            # Ignore individual merchant failures to keep cross-merchant search robust
-            continue
+            SELECT merchant_id, product_data
+            FROM ranked
+            WHERE rn <= :per_merchant_limit
+            ORDER BY merchant_id, rn
+            """,
+            bind_params,
+        )
+
+        out: list[tuple[StandardProduct, str]] = []
+        for row in rows or []:
+            merchant_id = str(
+                row.get("merchant_id") if isinstance(row, dict) else ""
+            ).strip()
+            if not merchant_id:
+                continue
+
+            product_data = row.get("product_data") if isinstance(row, dict) else None
+            if isinstance(product_data, str):
+                try:
+                    product_data = json.loads(product_data)
+                except Exception:
+                    continue
+            if not isinstance(product_data, dict):
+                continue
+
+            try:
+                product = StandardProduct(**product_data)
+                if not product.merchant_id:
+                    product.merchant_id = merchant_id
+                out.append((product, merchant_map.get(merchant_id) or ""))
+            except Exception:
+                continue
+
+        return out
+
+    merchant_products_source = "batch_cache_query"
+    merchant_products: list[tuple[StandardProduct, str]]
+    merchant_ids = list(merchant_map.keys())
+    try:
+        merchant_products = await _load_merchant_products_batch(
+            merchant_ids=merchant_ids,
+            per_merchant_cap=per_merchant_limit,
+        )
+    except Exception:
+        # Safety fallback: preserve previous behavior if batch query fails.
+        merchant_products_source = "per_merchant_fallback"
+        merchant_products = []
+        for mid, name in merchant_map.items():
+            try:
+                products, _source, _error = await get_products_hybrid(
+                    merchant_id=mid,
+                    limit=per_merchant_limit,
+                    agent_id="shopping_ai_multi",
+                    background_tasks=background_tasks,
+                )
+                for p in products:
+                    merchant_products.append((p, name))
+            except Exception:
+                # Ignore individual merchant failures to keep cross-merchant search robust
+                continue
 
     # In-memory filtering and simple relevance scoring (reuse Agent API logic)
     filtered_products: list[dict[str, Any]] = []
@@ -1152,6 +1232,8 @@ async def _handle_find_products_multi(
             "creator_id": creator_id,
             "creator_name": creator_name,
             "history_boost_applied": history_used,
+            "merchant_products_source": merchant_products_source,
+            "merchant_products_loaded": len(merchant_products),
         },
     }
 
