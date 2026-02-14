@@ -406,8 +406,8 @@ const RECO_PDP_RESOLVE_ENABLED = (() => {
 })();
 
 const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 1500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1500;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
   return Math.max(300, Math.min(6000, v));
 })();
 
@@ -434,8 +434,8 @@ const RECO_PDP_LOCAL_INVOKE_BASE_URL = (() => {
 })();
 
 const RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS || 900);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS || 500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 500;
   return Math.max(250, Math.min(4000, v));
 })();
 
