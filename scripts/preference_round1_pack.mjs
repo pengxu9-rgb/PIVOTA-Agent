@@ -98,6 +98,9 @@ const DEFAULTS = Object.freeze({
   hard_filter_min_dynamic_score: 0.7,
   hard_filter_min_box_plausibility: 0.72,
   hard_filter_min_mask_rle_ratio: 0,
+  hard_filter_min_face_span_h: 0,
+  hard_filter_min_face_span_w: 0,
+  hard_filter_min_face_span_area: 0,
   hard_filter_require_all_strong_modules: true,
   hard_filter_fail_on_empty: true,
   max_edge: 2048,
@@ -140,6 +143,9 @@ Options:
   --hard_filter_min_dynamic_score <0-1>  min allowed dynamic box score per side (default: 0.7)
   --hard_filter_min_box_plausibility <0-1>  min allowed module-box plausibility score per side (default: 0.72)
   --hard_filter_min_mask_rle_ratio <0-1>  min strong-module mask_rle coverage per side (default: 0, disabled)
+  --hard_filter_min_face_span_h <0-1>  min strong-module vertical span per side (default: 0, disabled)
+  --hard_filter_min_face_span_w <0-1>  min strong-module horizontal span per side (default: 0, disabled)
+  --hard_filter_min_face_span_area <0-1>  min strong-module bbox area per side (default: 0, disabled)
   --hard_filter_require_all_strong_modules <bool>  require 5 strong modules in both A/B (default: true)
   --hard_filter_fail_on_empty <bool>     exit non-zero when hard-filter removes all samples (default: true)
   --mock_pipeline <bool>                deterministic mock pipeline for smoke/tests
@@ -358,6 +364,9 @@ function parseArgs(argv) {
     hard_filter_min_dynamic_score: process.env.PREF_HARD_FILTER_MIN_DYNAMIC_SCORE || DEFAULTS.hard_filter_min_dynamic_score,
     hard_filter_min_box_plausibility: process.env.PREF_HARD_FILTER_MIN_BOX_PLAUSIBILITY || DEFAULTS.hard_filter_min_box_plausibility,
     hard_filter_min_mask_rle_ratio: process.env.PREF_HARD_FILTER_MIN_MASK_RLE_RATIO || DEFAULTS.hard_filter_min_mask_rle_ratio,
+    hard_filter_min_face_span_h: process.env.PREF_HARD_FILTER_MIN_FACE_SPAN_H || DEFAULTS.hard_filter_min_face_span_h,
+    hard_filter_min_face_span_w: process.env.PREF_HARD_FILTER_MIN_FACE_SPAN_W || DEFAULTS.hard_filter_min_face_span_w,
+    hard_filter_min_face_span_area: process.env.PREF_HARD_FILTER_MIN_FACE_SPAN_AREA || DEFAULTS.hard_filter_min_face_span_area,
     hard_filter_require_all_strong_modules: process.env.PREF_HARD_FILTER_REQUIRE_ALL_STRONG_MODULES || DEFAULTS.hard_filter_require_all_strong_modules,
     hard_filter_fail_on_empty: process.env.PREF_HARD_FILTER_FAIL_ON_EMPTY || DEFAULTS.hard_filter_fail_on_empty,
     mock_pipeline: process.env.PREF_MOCK_PIPELINE || String(DEFAULTS.mock_pipeline),
@@ -444,6 +453,24 @@ function parseArgs(argv) {
   out.hard_filter_min_mask_rle_ratio = clamp01(parseNumber(
     out.hard_filter_min_mask_rle_ratio,
     DEFAULTS.hard_filter_min_mask_rle_ratio,
+    0,
+    1,
+  ));
+  out.hard_filter_min_face_span_h = clamp01(parseNumber(
+    out.hard_filter_min_face_span_h,
+    DEFAULTS.hard_filter_min_face_span_h,
+    0,
+    1,
+  ));
+  out.hard_filter_min_face_span_w = clamp01(parseNumber(
+    out.hard_filter_min_face_span_w,
+    DEFAULTS.hard_filter_min_face_span_w,
+    0,
+    1,
+  ));
+  out.hard_filter_min_face_span_area = clamp01(parseNumber(
+    out.hard_filter_min_face_span_area,
+    DEFAULTS.hard_filter_min_face_span_area,
     0,
     1,
   ));
@@ -1054,6 +1081,41 @@ function strongMaskRleRatio(moduleRows) {
   return withMask / total;
 }
 
+function strongFaceSpanStats(moduleRowsMap) {
+  const boxes = STRONG_MODULES
+    .map((moduleId) => {
+      const row = moduleRowsMap && typeof moduleRowsMap.get === 'function' ? moduleRowsMap.get(moduleId) : null;
+      return normalizeBox(row && row.box);
+    })
+    .filter(Boolean);
+  if (boxes.length < STRONG_MODULES.length) {
+    return {
+      ok: false,
+      span_w: 0,
+      span_h: 0,
+      span_area: 0,
+    };
+  }
+  let x0 = 1;
+  let y0 = 1;
+  let x1 = 0;
+  let y1 = 0;
+  for (const box of boxes) {
+    x0 = Math.min(x0, Number(box.x));
+    y0 = Math.min(y0, Number(box.y));
+    x1 = Math.max(x1, Number(box.x) + Number(box.w));
+    y1 = Math.max(y1, Number(box.y) + Number(box.h));
+  }
+  const spanW = Math.max(0, x1 - x0);
+  const spanH = Math.max(0, y1 - y0);
+  return {
+    ok: true,
+    span_w: round3(spanW),
+    span_h: round3(spanH),
+    span_area: round3(spanW * spanH),
+  };
+}
+
 function hardFilterGateReasons({
   args,
   baselineSummary,
@@ -1128,6 +1190,43 @@ function hardFilterGateReasons({
     if (minMaskRatio < args.hard_filter_min_mask_rle_ratio) {
       reasons.push(
         `hard_filter_mask_rle_ratio:${round3(minMaskRatio)}<${round3(args.hard_filter_min_mask_rle_ratio)}`,
+      );
+    }
+  }
+  const baselineRowsMap = moduleRowsToMap(Array.isArray(baselineModuleRows) ? baselineModuleRows : []);
+  const variantRowsMap = moduleRowsToMap(Array.isArray(variantModuleRows) ? variantModuleRows : []);
+  const baselineFaceSpan = strongFaceSpanStats(baselineRowsMap);
+  const variantFaceSpan = strongFaceSpanStats(variantRowsMap);
+  if (args.hard_filter_min_face_span_h > 0) {
+    const minSpanH = Math.min(
+      Number(baselineFaceSpan.span_h || 0),
+      Number(variantFaceSpan.span_h || 0),
+    );
+    if (minSpanH < args.hard_filter_min_face_span_h) {
+      reasons.push(
+        `hard_filter_face_span_h:${round3(minSpanH)}<${round3(args.hard_filter_min_face_span_h)}`,
+      );
+    }
+  }
+  if (args.hard_filter_min_face_span_w > 0) {
+    const minSpanW = Math.min(
+      Number(baselineFaceSpan.span_w || 0),
+      Number(variantFaceSpan.span_w || 0),
+    );
+    if (minSpanW < args.hard_filter_min_face_span_w) {
+      reasons.push(
+        `hard_filter_face_span_w:${round3(minSpanW)}<${round3(args.hard_filter_min_face_span_w)}`,
+      );
+    }
+  }
+  if (args.hard_filter_min_face_span_area > 0) {
+    const minSpanArea = Math.min(
+      Number(baselineFaceSpan.span_area || 0),
+      Number(variantFaceSpan.span_area || 0),
+    );
+    if (minSpanArea < args.hard_filter_min_face_span_area) {
+      reasons.push(
+        `hard_filter_face_span_area:${round3(minSpanArea)}<${round3(args.hard_filter_min_face_span_area)}`,
       );
     }
   }
@@ -1220,17 +1319,11 @@ function buildOverlaySvg({ width, height, role, label, variantId, moduleRows }) 
 }
 
 async function renderOverlay({ imageBuffer, payload, moduleRows, role, label, variantId, outPath, maxEdge }) {
-  const baseMeta = await sharp(imageBuffer, { failOn: 'none' }).metadata();
-  const baseW = Math.max(1, Math.trunc(Number(baseMeta.width) || 1));
-  const baseH = Math.max(1, Math.trunc(Number(baseMeta.height) || 1));
-
   let work = sharp(imageBuffer, { failOn: 'none' }).rotate();
-  const cropBox = resolveFaceCropBox(payload && payload.face_crop, baseW, baseH);
-  if (cropBox) {
-    work = work.extract(cropBox);
-  }
+  // Keep full-image coordinates so overlay boxes (normalized on source image)
+  // stay aligned with rendered pixels.
   if (maxEdge > 0) {
-    work = work.resize({ width: maxEdge, height: maxEdge, fit: 'inside', withoutEnlargement: true });
+    work = work.resize({ width: maxEdge, height: maxEdge, fit: 'inside', withoutEnlargement: false });
   }
   const basePng = await work.png().toBuffer();
   const meta = await sharp(basePng, { failOn: 'none' }).metadata();
@@ -1668,6 +1761,9 @@ async function main() {
       hard_filter_min_dynamic_score: args.hard_filter_min_dynamic_score,
       hard_filter_min_box_plausibility: args.hard_filter_min_box_plausibility,
       hard_filter_min_mask_rle_ratio: args.hard_filter_min_mask_rle_ratio,
+      hard_filter_min_face_span_h: args.hard_filter_min_face_span_h,
+      hard_filter_min_face_span_w: args.hard_filter_min_face_span_w,
+      hard_filter_min_face_span_area: args.hard_filter_min_face_span_area,
       hard_filter_require_all_strong_modules: args.hard_filter_require_all_strong_modules,
       hard_filter_fail_on_empty: args.hard_filter_fail_on_empty,
     },
