@@ -528,6 +528,19 @@ const RECO_PDP_ENRICH_CONCURRENCY = (() => {
   return Math.max(1, Math.min(12, v));
 })();
 
+const RECO_PDP_ENRICH_MAX_NETWORK_ITEMS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(0, Math.min(8, v));
+})();
+
+const RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
 const RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_TRANSIENT_FALLBACK || 'true')
     .trim()
@@ -6897,6 +6910,7 @@ async function resolveRecoPdpByStableIds({
   displayName,
   merchantId,
   logger,
+  allowLocalInvokeFallback = true,
 } = {}) {
   const normalizedProductId = String(productId || '').trim();
   const normalizedSkuId = String(skuId || '').trim();
@@ -7032,6 +7046,7 @@ async function resolveRecoPdpByStableIds({
 
   const localInvokeUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
   const shouldAttemptLocalFallback =
+    allowLocalInvokeFallback &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localInvokeUrl &&
@@ -7294,7 +7309,7 @@ function withRecoPdpMetadata(base, {
   };
 }
 
-async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
+async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvokeFallback = true } = {}) {
   const startedAt = Date.now();
   const elapsedMs = () => Math.max(0, Date.now() - startedAt);
   const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
@@ -7365,6 +7380,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
       displayName,
       merchantId: rawMerchantId,
       logger,
+      allowLocalInvokeFallback,
     });
     stableResolveRequestIds =
       stableResolved?.requestIds && typeof stableResolved.requestIds === 'object'
@@ -7508,6 +7524,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   });
   const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
   const shouldAttemptLocalResolveFallback =
+    allowLocalInvokeFallback &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
@@ -7819,6 +7836,100 @@ function summarizeOfferPdpOpen(items) {
   };
 }
 
+function buildRecoPdpQuickItem(item, { fastFallbackReasonCode = null } = {}) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+  if (!base) return item;
+  const skuCandidate =
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+      ? base.sku
+      : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+        ? base.product
+        : null;
+
+  const {
+    subjectProductGroupId,
+    directProductRef,
+    rawProductId,
+  } = extractRecoPdpDirectKeys(base, skuCandidate);
+  if (subjectProductGroupId) {
+    return withRecoPdpMetadata(base, {
+      path: 'group',
+      subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
+      canonicalProductRef: directProductRef,
+      resolveAttempted: false,
+      timeToPdpMs: 0,
+    });
+  }
+  if (directProductRef) {
+    return withRecoPdpMetadata(base, {
+      path: 'ref',
+      canonicalProductRef: directProductRef,
+      resolveAttempted: false,
+      timeToPdpMs: 0,
+    });
+  }
+
+  const brand = pickFirstTrimmed(skuCandidate?.brand, base.brand);
+  const name = pickFirstTrimmed(skuCandidate?.name, base.name);
+  const displayName = pickFirstTrimmed(
+    skuCandidate?.display_name,
+    skuCandidate?.displayName,
+    base.display_name,
+    base.displayName,
+    name,
+  );
+  const stableProductId = pickFirstTrimmed(
+    rawProductId,
+    skuCandidate?.product_id,
+    skuCandidate?.productId,
+    base?.product_id,
+    base?.productId,
+  );
+  const stableSkuId = pickFirstTrimmed(
+    skuCandidate?.sku_id,
+    skuCandidate?.skuId,
+    base?.sku_id,
+    base?.skuId,
+    stableProductId,
+  );
+  const stableQueryText = pickFirstTrimmed(
+    brand && displayName ? joinBrandAndName(brand, displayName) : '',
+    brand && name ? joinBrandAndName(brand, name) : '',
+    displayName,
+    name,
+    stableSkuId,
+    stableProductId,
+  );
+  const stableAliasMatch = resolveRecoStableAliasRefByQuery(stableQueryText);
+  if (stableAliasMatch?.canonicalProductRef) {
+    return withRecoPdpMetadata(base, {
+      path: 'ref',
+      canonicalProductRef: stableAliasMatch.canonicalProductRef,
+      resolveAttempted: false,
+      timeToPdpMs: 0,
+    });
+  }
+
+  const queryText =
+    buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
+    pickFirstTrimmed(
+      skuCandidate?.display_name,
+      skuCandidate?.displayName,
+      skuCandidate?.name,
+      base.display_name,
+      base.displayName,
+      base.name,
+      base.brand,
+    );
+  return withRecoPdpMetadata(base, {
+    path: 'external',
+    queryText,
+    resolveReasonCode: fastFallbackReasonCode,
+    resolveAttempted: false,
+    timeToPdpMs: 0,
+  });
+}
+
 async function enrichRecommendationsWithPdpOpenContract({
   recommendations,
   logger,
@@ -7836,99 +7947,7 @@ async function enrichRecommendationsWithPdpOpenContract({
 
   const fastFallbackReasonCode = normalizeResolveReasonCode(fastExternalFallbackReasonCode || '', null);
   if (fastFallbackReasonCode) {
-    const fastExternal = recos.map((item) => {
-      const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
-      if (!base) return item;
-      const skuCandidate =
-        base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
-          ? base.sku
-          : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
-            ? base.product
-            : null;
-
-      const {
-        subjectProductGroupId,
-        directProductRef,
-        rawProductId,
-      } = extractRecoPdpDirectKeys(base, skuCandidate);
-      if (subjectProductGroupId) {
-        return withRecoPdpMetadata(base, {
-          path: 'group',
-          subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
-          canonicalProductRef: directProductRef,
-          resolveAttempted: false,
-          timeToPdpMs: 0,
-        });
-      }
-      if (directProductRef) {
-        return withRecoPdpMetadata(base, {
-          path: 'ref',
-          canonicalProductRef: directProductRef,
-          resolveAttempted: false,
-          timeToPdpMs: 0,
-        });
-      }
-
-      const brand = pickFirstTrimmed(skuCandidate?.brand, base.brand);
-      const name = pickFirstTrimmed(skuCandidate?.name, base.name);
-      const displayName = pickFirstTrimmed(
-        skuCandidate?.display_name,
-        skuCandidate?.displayName,
-        base.display_name,
-        base.displayName,
-        name,
-      );
-      const stableProductId = pickFirstTrimmed(
-        rawProductId,
-        skuCandidate?.product_id,
-        skuCandidate?.productId,
-        base?.product_id,
-        base?.productId,
-      );
-      const stableSkuId = pickFirstTrimmed(
-        skuCandidate?.sku_id,
-        skuCandidate?.skuId,
-        base?.sku_id,
-        base?.skuId,
-        stableProductId,
-      );
-      const stableQueryText = pickFirstTrimmed(
-        brand && displayName ? joinBrandAndName(brand, displayName) : '',
-        brand && name ? joinBrandAndName(brand, name) : '',
-        displayName,
-        name,
-        stableSkuId,
-        stableProductId,
-      );
-      const stableAliasMatch = resolveRecoStableAliasRefByQuery(stableQueryText);
-      if (stableAliasMatch?.canonicalProductRef) {
-        return withRecoPdpMetadata(base, {
-          path: 'ref',
-          canonicalProductRef: stableAliasMatch.canonicalProductRef,
-          resolveAttempted: false,
-          timeToPdpMs: 0,
-        });
-      }
-
-      const queryText =
-        buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
-        pickFirstTrimmed(
-          skuCandidate?.display_name,
-          skuCandidate?.displayName,
-          skuCandidate?.name,
-          base.display_name,
-          base.displayName,
-          base.name,
-          base.brand,
-        );
-      return withRecoPdpMetadata(base, {
-        path: 'external',
-        queryText,
-        resolveReasonCode: fastFallbackReasonCode,
-        resolveAttempted: false,
-        timeToPdpMs: 0,
-      });
-    });
+    const fastExternal = recos.map((item) => buildRecoPdpQuickItem(item, { fastFallbackReasonCode }));
     return {
       recommendations: fastExternal,
       path_stats: tallyPdpOpenPathStats(fastExternal),
@@ -7937,9 +7956,12 @@ async function enrichRecommendationsWithPdpOpenContract({
     };
   }
 
-  const enriched = await mapWithConcurrency(recos, RECO_PDP_ENRICH_CONCURRENCY, async (item) =>
-    enrichRecoItemWithPdpOpenContract(item, { logger }),
-  );
+  const networkItemCap = Math.max(0, Math.min(recos.length, RECO_PDP_ENRICH_MAX_NETWORK_ITEMS));
+  const allowLocalInvokeFallback = !RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP;
+  const enriched = await mapWithConcurrency(recos, RECO_PDP_ENRICH_CONCURRENCY, async (item, idx) => {
+    if (idx >= networkItemCap) return buildRecoPdpQuickItem(item, { fastFallbackReasonCode: null });
+    return enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvokeFallback });
+  });
   const normalized = enriched.map((item, idx) => {
     if (item && typeof item === 'object' && !Array.isArray(item)) return item;
     return recos[idx];
@@ -8777,6 +8799,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
       reco_upstream_timeout_hard_cap_ms: RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
+      reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
+      reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
       reco_local_fallback_chat_enabled: RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
       reco_local_search_fallback_on_transient: RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
       reco_catalog_transient_fallback_enabled: RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED,

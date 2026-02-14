@@ -557,6 +557,184 @@ test('Stable-id offers.resolve upstream_timeout does not attempt local invoke fa
   );
 });
 
+test('/v1/chat reco PDP: local double-hop fallback disabled by default', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+      AURORA_BFF_RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP: undefined,
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let primaryStableCalls = 0;
+      let localStableCalls = 0;
+      let queryResolveCalls = 0;
+
+      axios.get = async (url, config = {}) => {
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const q = String(config?.params?.query || '').trim().toLowerCase();
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: `prod_chat_${q.replace(/[^a-z0-9]+/g, '_').slice(0, 18) || 'x'}`,
+                brand: 'UnknownBrand',
+                name: `Unknown ${q}`,
+                display_name: `Unknown ${q}`,
+              },
+            ],
+          },
+        };
+      };
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/shop/v1/invoke') {
+          primaryStableCalls += 1;
+          return {
+            status: 504,
+            data: {
+              status: 'error',
+              reason: 'upstream_timeout',
+              reason_code: 'upstream_timeout',
+              metadata: { request_id: `rid_primary_${primaryStableCalls}` },
+            },
+          };
+        }
+        if (target === 'http://127.0.0.1:3000/agent/shop/v1/invoke') {
+          localStableCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'success',
+              mapping: {
+                canonical_product_ref: {
+                  product_id: 'prod_local_should_not_be_called',
+                  merchant_id: 'mid_local_should_not_be_called',
+                },
+              },
+              metadata: { request_id: `rid_local_${localStableCalls}` },
+            },
+          };
+        }
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          queryResolveCalls += 1;
+          throw new Error(`Unexpected axios.post resolve call: ${target}`);
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRecoChat(app, {
+          'X-Aurora-UID': 'test_uid_no_double_hop',
+          'X-Aurora-Debug': '1',
+        });
+        assert.equal(resp.status, 200);
+
+        const recos = getRecoItems(resp.body);
+        assert.ok(recos.length > 0);
+        assert.ok(primaryStableCalls > 0);
+        assert.equal(localStableCalls, 0);
+        assert.equal(queryResolveCalls, 0);
+
+        const withStableReqId = recos.find(
+          (item) => item && item.metadata && item.metadata.stable_resolve_request_ids,
+        );
+        assert.ok(withStableReqId);
+        assert.ok(withStableReqId.metadata.stable_resolve_request_ids.primary);
+        assert.equal(withStableReqId.metadata.stable_resolve_request_ids.local, undefined);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Reco PDP enrichment caps network resolves by max items budget', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS: '1',
+      AURORA_BFF_RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let stableResolveCalls = 0;
+      axios.post = async (url, body = {}) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/shop/v1/invoke') {
+          stableResolveCalls += 1;
+          const productId =
+            body && body.payload && body.payload.product && typeof body.payload.product.product_id === 'string'
+              ? body.payload.product.product_id
+              : `prod_${stableResolveCalls}`;
+          return {
+            status: 200,
+            data: {
+              status: 'success',
+              mapping: {
+                canonical_product_ref: {
+                  product_id: productId,
+                  merchant_id: 'mid_test',
+                },
+              },
+              metadata: { request_id: `rid_${stableResolveCalls}` },
+            },
+          };
+        }
+        if (target.includes('/agent/v1/products/resolve')) {
+          throw new Error(`Unexpected axios.post resolve call: ${target}`);
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.enrichRecommendationsWithPdpOpenContract({
+          recommendations: [
+            { sku: { product_id: 'prod_a', sku_id: 'prod_a', brand: 'Brand A', display_name: 'Brand A Serum' } },
+            { sku: { product_id: 'prod_b', sku_id: 'prod_b', brand: 'Brand B', display_name: 'Brand B Serum' } },
+            { sku: { product_id: 'prod_c', sku_id: 'prod_c', brand: 'Brand C', display_name: 'Brand C Serum' } },
+          ],
+          logger: null,
+        });
+
+        assert.equal(stableResolveCalls, 1);
+        assert.equal(Array.isArray(out?.recommendations), true);
+        assert.equal(out.recommendations.length, 3);
+        assert.equal(out.recommendations[0]?.metadata?.pdp_open_path, 'internal');
+        assert.equal(out.recommendations[1]?.metadata?.pdp_open_path, 'external');
+        assert.equal(out.recommendations[2]?.metadata?.pdp_open_path, 'external');
+        assert.equal(out.recommendations[1]?.metadata?.stable_resolve_request_ids, undefined);
+        assert.equal(out.recommendations[2]?.metadata?.stable_resolve_request_ids, undefined);
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Stable-id resolves from local stable-alias map without upstream offers.resolve', async () => {
   await withEnv(
     {
