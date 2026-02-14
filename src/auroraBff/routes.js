@@ -279,6 +279,12 @@ const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT = (() => {
+  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const CATALOG_AVAIL_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_TIMEOUT_MS || 1400);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
@@ -422,10 +428,17 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
   return Math.max(1, Math.min(4, v));
 })();
 
+const RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS || 4500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4500;
+  return Math.max(2000, Math.min(22000, v));
+})();
+
 const RECO_UPSTREAM_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 10000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
-  return Math.max(3000, Math.min(22000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 3500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3500;
+  const bounded = Math.max(3000, Math.min(22000, v));
+  return Math.min(bounded, RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS);
 })();
 
 const RECO_ROUTINE_UPSTREAM_TIMEOUT_MS = (() => {
@@ -454,13 +467,19 @@ const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
 })();
 
 const RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED = (() => {
-  const fallbackDefault = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  const fallbackDefault = 'false';
   const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED || fallbackDefault)
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
+const RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES || 'false')
     .trim()
@@ -488,7 +507,6 @@ const RECO_PDP_SKIP_OPAQUE_STABLE_IDS = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
-
 const RECO_PDP_LOCAL_INVOKE_BASE_URL = (() => {
   const explicit = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL || '').trim();
   if (explicit) return explicit.replace(/\/+$/, '');
@@ -782,6 +800,7 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
   const primaryUrl = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`;
   const localSearchUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/search`;
   const shouldAttemptLocalSearchFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localSearchUrl &&
     localSearchUrl !== primaryUrl;
@@ -1130,6 +1149,7 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
   });
   const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
   const shouldAttemptLocalResolveFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
     localResolveUrl !== url &&
@@ -1380,11 +1400,11 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     search_timeout_effective_ms: searchTimeoutEffectiveMs,
     total_ms: Date.now() - startedAt,
     fail_fast_after: getRecoCatalogFailFastSnapshot(Date.now()),
+    timeout_count: timeoutCount,
+    status_counts: statusCounts,
     ...(debug
       ? {
         empty_count: emptyCount,
-        timeout_count: timeoutCount,
-        status_counts: statusCounts,
       }
       : {}),
   };
@@ -1407,12 +1427,30 @@ function deriveRecoPdpFastFallbackReasonCode(catalogDebug) {
   const debugObj = catalogDebug && typeof catalogDebug === 'object' ? catalogDebug : null;
   if (!debugObj) return null;
   if (String(debugObj.skipped_reason || '').trim() === 'fail_fast_open') return 'upstream_timeout';
-  if (debugObj.probe_while_open !== true) return null;
   const okCount = Number.isFinite(Number(debugObj.ok_count)) ? Math.trunc(Number(debugObj.ok_count)) : 0;
   const timeoutCount = Number.isFinite(Number(debugObj.timeout_count)) ? Math.trunc(Number(debugObj.timeout_count)) : 0;
   const queryCount = Number.isFinite(Number(debugObj.query_count)) ? Math.trunc(Number(debugObj.query_count)) : 0;
+  const statusCounts =
+    debugObj.status_counts && typeof debugObj.status_counts === 'object' && !Array.isArray(debugObj.status_counts)
+      ? debugObj.status_counts
+      : null;
+  const timeoutByStatus = Number.isFinite(Number(statusCounts && statusCounts.upstream_timeout))
+    ? Math.trunc(Number(statusCounts ? statusCounts.upstream_timeout : 0))
+    : 0;
+  const failFastAfter =
+    debugObj.fail_fast_after && typeof debugObj.fail_fast_after === 'object' && !Array.isArray(debugObj.fail_fast_after)
+      ? debugObj.fail_fast_after
+      : null;
+  const failFastAfterOpen = Boolean(failFastAfter && failFastAfter.open === true);
+  const failFastAfterReason = String(failFastAfter && failFastAfter.last_reason ? failFastAfter.last_reason : '')
+    .trim()
+    .toLowerCase();
+  const failFastAfterTransient =
+    failFastAfterReason === 'all_queries_failed' || failFastAfterReason === 'probe_transient_errors';
   if (okCount > 0) return null;
   if (timeoutCount > 0 && timeoutCount >= Math.max(1, queryCount)) return 'upstream_timeout';
+  if (timeoutByStatus > 0 && timeoutByStatus >= Math.max(1, queryCount)) return 'upstream_timeout';
+  if (failFastAfterOpen && failFastAfterTransient) return 'upstream_timeout';
   return null;
 }
 
@@ -6694,6 +6732,7 @@ async function resolveRecoPdpByStableIds({
 
   const localInvokeUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
   const shouldAttemptLocalFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localInvokeUrl &&
     localInvokeUrl !== primaryInvokeUrl &&
@@ -7169,6 +7208,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   });
   const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
   const shouldAttemptLocalResolveFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
     localResolveUrl !== primaryResolveUrl &&
@@ -8427,7 +8467,9 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
       reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
       reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
+      reco_upstream_timeout_hard_cap_ms: RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
+      reco_local_fallback_chat_enabled: RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
       reco_catalog_debug: catalogDebug,
       reco_pdp_fast_fallback_reason: pdpFastFallbackReasonCode,
     }
@@ -13340,9 +13382,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 
           if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
             const reason = String(catalogResult.reason || '').trim().toLowerCase();
+            const neutralCatalogMiss =
+              !reason || reason === 'empty' || reason === 'no_candidates' || reason === 'not_found';
             const transientCatalogFailure =
               reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-            const shouldRunResolveFallback = specificAvailabilityQuery || transientCatalogFailure;
+            const shouldRunResolveFallback = specificAvailabilityQuery
+              ? neutralCatalogMiss || (CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT && transientCatalogFailure)
+              : false;
             if (shouldRunResolveFallback) {
               availabilityResolveAttempted = true;
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({
