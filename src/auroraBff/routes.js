@@ -681,22 +681,43 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
   if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
+  const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
+  const params = {
+    query: q,
+    search_all_merchants: true,
+    in_stock_only: false,
+    limit: normalizedLimit,
+    offset: 0,
+  };
+  const primaryUrl = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`;
+  const localSearchUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/search`;
+  const shouldAttemptLocalSearchFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
+    localSearchUrl &&
+    localSearchUrl !== primaryUrl;
+  const mapSearchFailureReason = ({ statusCode, errCode, errMessage } = {}) => {
+    const code = typeof errCode === 'string' ? errCode.trim().toUpperCase() : '';
+    const msg = typeof errMessage === 'string' ? errMessage : '';
+    const timeoutHit = code === 'ECONNABORTED' || /timeout/i.test(msg);
+    let reason = 'upstream_error';
+    if (timeoutHit || statusCode === 504 || statusCode === 408) reason = 'upstream_timeout';
+    else if (statusCode === 404) reason = 'not_found';
+    else if (statusCode === 429) reason = 'rate_limited';
+    return reason;
+  };
+  const normalizeProductsFromSearchData = (data) => {
+    const rawList = extractAgentProductsFromSearchResponse(data);
+    return rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
+  };
 
   try {
-    const resp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`, {
-      params: {
-        query: q,
-        search_all_merchants: true,
-        in_stock_only: false,
-        limit: Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6)),
-        offset: 0,
-      },
+    const resp = await axios.get(primaryUrl, {
+      params,
       headers: buildPivotaBackendAgentHeaders(),
       timeout: RECO_CATALOG_SEARCH_TIMEOUT_MS,
     });
 
-    const rawList = extractAgentProductsFromSearchResponse(resp && resp.data ? resp.data : null);
-    const products = rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
+    const products = normalizeProductsFromSearchData(resp && resp.data ? resp.data : null);
 
     return {
       ok: true,
@@ -709,11 +730,73 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
     const statusCode = Number.isFinite(Number(err?.response?.status)) ? Math.trunc(Number(err.response.status)) : null;
     const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
     const errMessage = err && err.message ? err.message : String(err);
-    const timeoutHit = errCode === 'ECONNABORTED' || (typeof errMessage === 'string' && /timeout/i.test(errMessage));
-    let reason = 'upstream_error';
-    if (timeoutHit || statusCode === 504 || statusCode === 408) reason = 'upstream_timeout';
-    else if (statusCode === 404) reason = 'not_found';
-    else if (statusCode === 429) reason = 'rate_limited';
+    let reason = mapSearchFailureReason({ statusCode, errCode, errMessage });
+    const transientFailure = reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
+    if (transientFailure && shouldAttemptLocalSearchFallback) {
+      try {
+        const localResp = await axios.get(localSearchUrl, {
+          params,
+          headers: { 'Content-Type': 'application/json' },
+          timeout: RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS,
+          validateStatus: () => true,
+        });
+        const localStatusCode = Number.isFinite(Number(localResp?.status)) ? Math.trunc(Number(localResp.status)) : 0;
+        if (localStatusCode >= 200 && localStatusCode < 300) {
+          const products = normalizeProductsFromSearchData(localResp?.data || null);
+          return {
+            ok: true,
+            products,
+            reason: products.length ? null : 'empty',
+            status_code: localStatusCode,
+            latency_ms: Date.now() - startedAt,
+          };
+        }
+        const localReason = mapSearchFailureReason({
+          statusCode: localStatusCode,
+          errCode: null,
+          errMessage: null,
+        });
+        if (reason === 'upstream_timeout' && localReason && localReason !== 'not_found') {
+          reason = localReason;
+        }
+        logger?.warn(
+          {
+            query: q.slice(0, 120),
+            primary_status_code: statusCode,
+            primary_reason: reason,
+            local_status_code: localStatusCode,
+            local_reason: localReason,
+          },
+          'aurora bff: reco catalog local search fallback unresolved',
+        );
+      } catch (localErr) {
+        const localStatusCode = Number.isFinite(Number(localErr?.response?.status))
+          ? Math.trunc(Number(localErr.response.status))
+          : null;
+        const localErrCode = typeof localErr?.code === 'string' ? localErr.code.trim().toUpperCase() : '';
+        const localErrMessage = localErr && localErr.message ? localErr.message : String(localErr);
+        const localReason = mapSearchFailureReason({
+          statusCode: localStatusCode,
+          errCode: localErrCode,
+          errMessage: localErrMessage,
+        });
+        if (reason === 'upstream_timeout' && localReason && localReason !== 'not_found') {
+          reason = localReason;
+        }
+        logger?.warn(
+          {
+            query: q.slice(0, 120),
+            primary_status_code: statusCode,
+            primary_reason: reason,
+            local_status_code: localStatusCode,
+            local_reason: localReason,
+            local_code: localErrCode || null,
+            local_err: localErrMessage,
+          },
+          'aurora bff: reco catalog local search fallback failed',
+        );
+      }
+    }
     logger?.warn(
       { reason, status_code: statusCode, code: errCode || null, err: errMessage },
       'aurora bff: reco catalog search failed',
@@ -14668,6 +14751,7 @@ const __internal = {
   buildAvailabilityCatalogQuery,
   isSpecificAvailabilityQuery,
   resolveAvailabilityProductByQuery,
+  searchPivotaBackendProducts,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,

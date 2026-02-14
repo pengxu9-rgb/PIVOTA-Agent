@@ -714,6 +714,68 @@ test('Availability resolve: passes zh locale and hints payload to resolver', asy
   );
 });
 
+test('Catalog search: primary timeout uses local search fallback', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+    },
+    async () => {
+      const originalGet = axios.get;
+      let primaryCalls = 0;
+      let localCalls = 0;
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
+          primaryCalls += 1;
+          const timeoutErr = new Error('primary timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/search') {
+          localCalls += 1;
+          return {
+            status: 200,
+            data: {
+              products: [
+                {
+                  product_id: 'prod_winona_repair',
+                  merchant_id: 'mid_winona',
+                  brand: 'Winona',
+                  name: 'Soothing Repair Serum',
+                  display_name: 'Winona Soothing Repair Serum',
+                },
+              ],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.searchPivotaBackendProducts({
+          query: 'winona soothing repair serum',
+          limit: 6,
+          logger: null,
+        });
+
+        assert.equal(primaryCalls, 1);
+        assert.equal(localCalls, 1);
+        assert.equal(out?.ok, true);
+        assert.equal(Array.isArray(out?.products), true);
+        assert.equal(out.products.length, 1);
+        assert.equal(out.products[0]?.product_id, 'prod_winona_repair');
+        assert.equal(out.products[0]?.merchant_id, 'mid_winona');
+      } finally {
+        axios.get = originalGet;
+      }
+    },
+  );
+});
+
 test('/v1/chat availability: specific query runs resolve-first and skips catalog search when resolved', async () => {
   await withEnv(
     {
