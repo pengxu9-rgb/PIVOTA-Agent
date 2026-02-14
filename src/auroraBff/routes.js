@@ -1322,6 +1322,19 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
   };
 }
 
+function deriveRecoPdpFastFallbackReasonCode(catalogDebug) {
+  const debugObj = catalogDebug && typeof catalogDebug === 'object' ? catalogDebug : null;
+  if (!debugObj) return null;
+  if (String(debugObj.skipped_reason || '').trim() === 'fail_fast_open') return 'upstream_timeout';
+  if (debugObj.probe_while_open !== true) return null;
+  const okCount = Number.isFinite(Number(debugObj.ok_count)) ? Math.trunc(Number(debugObj.ok_count)) : 0;
+  const timeoutCount = Number.isFinite(Number(debugObj.timeout_count)) ? Math.trunc(Number(debugObj.timeout_count)) : 0;
+  const queryCount = Number.isFinite(Number(debugObj.query_count)) ? Math.trunc(Number(debugObj.query_count)) : 0;
+  if (okCount > 0) return null;
+  if (timeoutCount > 0 && timeoutCount >= Math.max(1, queryCount)) return 'upstream_timeout';
+  return null;
+}
+
 function normalizeHeatmapStepLabel(raw, { slot } = {}) {
   const slotPrefix = String(slot || '').trim().toUpperCase();
   const base =
@@ -7279,7 +7292,11 @@ function summarizeOfferPdpOpen(items) {
   };
 }
 
-async function enrichRecommendationsWithPdpOpenContract({ recommendations, logger } = {}) {
+async function enrichRecommendationsWithPdpOpenContract({
+  recommendations,
+  logger,
+  fastExternalFallbackReasonCode = null,
+} = {}) {
   const recos = Array.isArray(recommendations) ? recommendations : [];
   if (!recos.length) {
     return {
@@ -7287,6 +7304,44 @@ async function enrichRecommendationsWithPdpOpenContract({ recommendations, logge
       path_stats: { group: 0, ref: 0, resolve: 0, external: 0 },
       fail_reason_counts: { db_error: 0, upstream_timeout: 0, no_candidates: 0 },
       time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
+    };
+  }
+
+  const fastFallbackReasonCode = normalizeResolveReasonCode(fastExternalFallbackReasonCode || '', null);
+  if (fastFallbackReasonCode) {
+    const fastExternal = recos.map((item) => {
+      const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+      if (!base) return item;
+      const skuCandidate =
+        base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+          ? base.sku
+          : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+            ? base.product
+            : null;
+      const queryText =
+        buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
+        pickFirstTrimmed(
+          skuCandidate?.display_name,
+          skuCandidate?.displayName,
+          skuCandidate?.name,
+          base.display_name,
+          base.displayName,
+          base.name,
+          base.brand,
+        );
+      return withRecoPdpMetadata(base, {
+        path: 'external',
+        queryText,
+        resolveReasonCode: fastFallbackReasonCode,
+        resolveAttempted: false,
+        timeToPdpMs: 0,
+      });
+    });
+    return {
+      recommendations: fastExternal,
+      path_stats: tallyPdpOpenPathStats(fastExternal),
+      fail_reason_counts: tallyResolveFailReasonCounts(fastExternal),
+      time_to_pdp_ms_stats: summarizeTimeToPdpStats(fastExternal),
     };
   }
 
@@ -8045,6 +8100,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
       ? catalogOut.debug
       : null;
+  const pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
 
   // Prefer: catalog-grounded → explicit JSON (from answer) → routine object (from context) → any structured blob.
   let structured = catalogStructured;
@@ -8121,6 +8177,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
       reco_catalog_debug: catalogDebug,
+      reco_pdp_fast_fallback_reason: pdpFastFallbackReasonCode,
     }
     : null;
   const mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
@@ -8262,6 +8319,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
     recommendations: norm.payload.recommendations,
     logger,
+    fastExternalFallbackReasonCode: pdpFastFallbackReasonCode,
   });
   norm.payload = {
     ...norm.payload,

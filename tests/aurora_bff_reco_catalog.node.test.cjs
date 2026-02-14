@@ -1095,3 +1095,107 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
     },
   );
 });
+
+test('/v1/chat reco fail-fast open: skips PDP resolve calls via fast external fallback', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'winona soothing repair serum',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST: 'true',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD: '1',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS: '90000',
+      AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS: '30000',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalNow = Date.now;
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let nowMs = 2_000_000;
+      let searchPhase = 'timeout';
+      let resolveCalls = 0;
+
+      Date.now = () => nowMs;
+      axios.get = async (url, config = {}) => {
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        if (searchPhase === 'timeout') {
+          const err = new Error('upstream timeout');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        const q = String(config?.params?.query || '').trim() || 'winona';
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: `prod_winona_${q.replace(/\s+/g, '_')}`,
+                merchant_id: 'mid_winona',
+                brand: 'Winona',
+                name: q,
+                display_name: `Winona ${q}`,
+              },
+            ],
+          },
+        };
+      };
+      axios.post = async (url) => {
+        resolveCalls += 1;
+        if (
+          String(url).includes('/agent/shop/v1/invoke') ||
+          String(url).includes('/agent/v1/products/resolve')
+        ) {
+          return {
+            status: 504,
+            data: {
+              status: 'error',
+              reason: 'upstream_timeout',
+              reason_code: 'upstream_timeout',
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const first = await invokeRecoChat(app, { 'X-Debug': 'true' });
+        assert.equal(first.status, 200);
+        assert.ok(resolveCalls > 0);
+
+        const callsAfterFirst = resolveCalls;
+        searchPhase = 'success';
+        nowMs += 1000;
+        const second = await invokeRecoChat(app, { 'X-Debug': 'true' });
+        assert.equal(second.status, 200);
+        assert.equal(resolveCalls, callsAfterFirst);
+
+        const secondDebug = getAuroraDebugPayload(second.body);
+        assert.equal(secondDebug?.reco_pdp_fast_fallback_reason, 'upstream_timeout');
+
+        const secondRecos = getRecoItems(second.body);
+        assert.ok(secondRecos.length > 0);
+        const firstRecoMeta = secondRecos[0]?.metadata || {};
+        assert.equal(firstRecoMeta?.pdp_open_path, 'external');
+        assert.equal(firstRecoMeta?.resolve_reason_code, 'upstream_timeout');
+        assert.notEqual(firstRecoMeta?.pdp_open_resolve_attempted, true);
+      } finally {
+        Date.now = originalNow;
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
