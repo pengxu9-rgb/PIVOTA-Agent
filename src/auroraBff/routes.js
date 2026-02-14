@@ -869,6 +869,36 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
     ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
     caller: 'aurora_chatbox',
   };
+  const buildResolvedProduct = (resolvedRef, resolveBody) => {
+    const firstCandidate =
+      Array.isArray(resolveBody?.candidates) &&
+      resolveBody.candidates.length &&
+      resolveBody.candidates[0] &&
+      typeof resolveBody.candidates[0] === 'object'
+        ? resolveBody.candidates[0]
+        : null;
+    const normalizedCandidate = normalizeRecoCatalogProduct(firstCandidate);
+    const displayName = pickFirstTrimmed(
+      normalizedCandidate?.display_name,
+      normalizedCandidate?.name,
+      firstCandidate?.title,
+      firstCandidate?.name,
+      q,
+    );
+    const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, displayName);
+    const brand = pickFirstTrimmed(normalizedCandidate?.brand, firstCandidate?.vendor, firstCandidate?.brand);
+    const imageUrl = pickFirstTrimmed(normalizedCandidate?.image_url, firstCandidate?.image_url, firstCandidate?.thumbnail_url);
+    return {
+      ...(normalizedCandidate && typeof normalizedCandidate === 'object' ? normalizedCandidate : {}),
+      product_id: resolvedRef.product_id,
+      merchant_id: resolvedRef.merchant_id,
+      canonical_product_ref: resolvedRef,
+      ...(brand ? { brand } : {}),
+      ...(name ? { name } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+    };
+  };
 
   let resp = null;
   let err = null;
@@ -889,31 +919,7 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
     allowOpaqueProductId: false,
   });
   if (statusCode === 200 && body?.resolved === true && resolvedRef) {
-    const firstCandidate =
-      Array.isArray(body?.candidates) && body.candidates.length && body.candidates[0] && typeof body.candidates[0] === 'object'
-        ? body.candidates[0]
-        : null;
-    const normalizedCandidate = normalizeRecoCatalogProduct(firstCandidate);
-    const displayName = pickFirstTrimmed(
-      normalizedCandidate?.display_name,
-      normalizedCandidate?.name,
-      firstCandidate?.title,
-      firstCandidate?.name,
-      q,
-    );
-    const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, displayName);
-    const brand = pickFirstTrimmed(normalizedCandidate?.brand, firstCandidate?.vendor, firstCandidate?.brand);
-    const imageUrl = pickFirstTrimmed(normalizedCandidate?.image_url, firstCandidate?.image_url, firstCandidate?.thumbnail_url);
-    const product = {
-      ...(normalizedCandidate && typeof normalizedCandidate === 'object' ? normalizedCandidate : {}),
-      product_id: resolvedRef.product_id,
-      merchant_id: resolvedRef.merchant_id,
-      canonical_product_ref: resolvedRef,
-      ...(brand ? { brand } : {}),
-      ...(name ? { name } : {}),
-      ...(displayName ? { display_name: displayName } : {}),
-      ...(imageUrl ? { image_url: imageUrl } : {}),
-    };
+    const product = buildResolvedProduct(resolvedRef, body);
     return {
       ok: true,
       reason: null,
@@ -929,12 +935,73 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
     statusCode,
     error: err,
   });
+  const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
+  const shouldAttemptLocalResolveFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
+    localResolveUrl &&
+    localResolveUrl !== url;
+  let finalReasonCode = reasonCode;
+  if (shouldAttemptLocalResolveFallback) {
+    let localResp = null;
+    let localErr = null;
+    try {
+      localResp = await axios.post(localResolveUrl, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS,
+        validateStatus: () => true,
+      });
+    } catch (e) {
+      localErr = e;
+    }
+
+    const localBody = localResp && typeof localResp.data === 'object' ? localResp.data : null;
+    const localStatusCode = Number.isFinite(Number(localResp?.status)) ? Math.trunc(Number(localResp.status)) : 0;
+    const localResolvedRef = normalizeCanonicalProductRef(localBody?.product_ref, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (localStatusCode === 200 && localBody?.resolved === true && localResolvedRef) {
+      return {
+        ok: true,
+        reason: null,
+        product: buildResolvedProduct(localResolvedRef, localBody),
+        resolve_reason_code: null,
+        status_code: localStatusCode,
+        latency_ms: Date.now() - startedAt,
+      };
+    }
+    const localReasonCode = mapResolveFailureCode({
+      resolveBody: localBody,
+      statusCode: localStatusCode,
+      error: localErr,
+    });
+    if (
+      (finalReasonCode === 'no_candidates' || finalReasonCode === 'upstream_timeout') &&
+      localReasonCode &&
+      localReasonCode !== 'no_candidates'
+    ) {
+      finalReasonCode = localReasonCode;
+    }
+    if (localErr || localReasonCode !== 'no_candidates') {
+      logger?.warn(
+        {
+          query: q.slice(0, 120),
+          primary_status_code: statusCode || null,
+          primary_resolve_reason_code: reasonCode,
+          local_status_code: localStatusCode || null,
+          local_resolve_reason_code: localReasonCode,
+          local_err: localErr ? localErr.message || String(localErr) : null,
+        },
+        'aurora bff: availability local resolve fallback unresolved',
+      );
+    }
+  }
   if (err || reasonCode !== 'no_candidates') {
     logger?.warn(
       {
         query: q.slice(0, 120),
         status_code: statusCode || null,
-        resolve_reason_code: reasonCode,
+        resolve_reason_code: finalReasonCode,
         err: err ? err.message || String(err) : null,
       },
       'aurora bff: availability resolve fallback failed',
@@ -944,7 +1011,7 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
     ok: false,
     reason: 'unresolved',
     product: null,
-    resolve_reason_code: reasonCode,
+    resolve_reason_code: finalReasonCode,
     status_code: statusCode || null,
     latency_ms: Date.now() - startedAt,
   };
@@ -14571,6 +14638,9 @@ function mountAuroraBffRoutes(app, { logger }) {
 const __internal = {
   normalizeClarificationField,
   detectBrandAvailabilityIntent,
+  buildAvailabilityCatalogQuery,
+  isSpecificAvailabilityQuery,
+  resolveAvailabilityProductByQuery,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,

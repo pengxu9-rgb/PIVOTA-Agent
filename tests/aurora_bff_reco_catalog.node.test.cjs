@@ -599,6 +599,121 @@ test('Query resolve no_candidates uses local products.resolve fallback', async (
   );
 });
 
+test('Availability resolve: primary timeout falls back to local products.resolve', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let primaryResolveCalls = 0;
+      let localResolveCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          primaryResolveCalls += 1;
+          const timeoutErr = new Error('timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/resolve') {
+          localResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              reason: 'stable_alias_match',
+              reason_code: 'stable_alias_match',
+              product_ref: {
+                product_id: 'prod_winona_repair',
+                merchant_id: 'mid_winona',
+              },
+              candidates: [
+                {
+                  name: 'Winona Soothing Repair Serum',
+                  brand: 'Winona',
+                },
+              ],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.resolveAvailabilityProductByQuery({
+          query: 'Winona Soothing Repair Serum',
+          lang: 'en',
+          hints: { brand: 'Winona', aliases: ['Winona Soothing Repair Serum'] },
+          logger: null,
+        });
+
+        assert.equal(primaryResolveCalls, 1);
+        assert.equal(localResolveCalls, 1);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.product?.canonical_product_ref?.product_id, 'prod_winona_repair');
+        assert.equal(out?.product?.canonical_product_ref?.merchant_id, 'mid_winona');
+        assert.equal(out?.product?.display_name, 'Winona Soothing Repair Serum');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Availability resolve: passes zh locale and hints payload to resolver', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let capturedBody = null;
+      axios.post = async (url, body) => {
+        if (!String(url).includes('/agent/v1/products/resolve')) {
+          throw new Error(`Unexpected axios.post: ${url}`);
+        }
+        capturedBody = body;
+        return {
+          status: 200,
+          data: {
+            resolved: false,
+            reason: 'no_candidates',
+            reason_code: 'no_candidates',
+            product_ref: null,
+            candidates: [],
+          },
+        };
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.resolveAvailabilityProductByQuery({
+          query: 'Winona Soothing Repair Serum',
+          lang: 'CN',
+          hints: { brand: '薇诺娜', aliases: ['Winona Soothing Repair Serum'] },
+          logger: null,
+        });
+
+        assert.ok(capturedBody);
+        assert.equal(capturedBody.lang, 'zh');
+        assert.equal(capturedBody?.hints?.brand, '薇诺娜');
+        assert.deepEqual(capturedBody?.hints?.aliases, ['Winona Soothing Repair Serum']);
+        assert.equal(out?.ok, false);
+        assert.equal(out?.resolve_reason_code, 'no_candidates');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Internal canonical product ref rewrites sku identifiers for PDP compatibility', async () => {
   await withEnv(
     {
