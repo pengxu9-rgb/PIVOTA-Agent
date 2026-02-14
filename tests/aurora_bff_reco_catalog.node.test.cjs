@@ -488,6 +488,42 @@ test('Stable-id offers.resolve no_candidates attempts local invoke fallback', as
   );
 });
 
+test('Stable-id resolves from local stable-alias map without upstream offers.resolve', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let postCalls = 0;
+      axios.post = async (url) => {
+        postCalls += 1;
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.resolveRecoPdpByStableIds({
+          skuId: 'f16c11ec-ccfa-41d6-a43b-4fcfa4e706cb',
+          brand: 'Winona',
+          displayName: 'Soothing Repair Serum',
+          logger: null,
+        });
+
+        assert.equal(postCalls, 0);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.resolveAttempted, false);
+        assert.equal(out?.reasonCode, 'stable_alias_ref');
+        assert.equal(out?.canonicalProductRef?.product_id, '9886500749640');
+        assert.equal(out?.canonicalProductRef?.merchant_id, 'merch_efbc46b4619cfbdf');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('UUID-only sku does not send product_ref hint and avoids duplicated brand in resolve query', async () => {
   await withEnv(
     {
@@ -517,18 +553,18 @@ test('UUID-only sku does not send product_ref hint and avoids duplicated brand i
         const { __internal } = loadRoutesFresh();
         const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
           sku: {
-            brand: 'The Ordinary',
-            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
-            product_id: 'c231aaaa-8b00-4145-a704-684931049303',
-            sku_id: 'c231aaaa-8b00-4145-a704-684931049303',
+            brand: 'BrandX',
+            display_name: 'BrandX Barrier Serum',
+            product_id: '11111111-2222-4333-8444-555555555555',
+            sku_id: '11111111-2222-4333-8444-555555555555',
           },
         }, { logger: null });
 
         assert.ok(capturedBody);
-        assert.equal(capturedBody.query, 'The Ordinary Niacinamide 10% + Zinc 1%');
+        assert.equal(capturedBody.query, 'BrandX Barrier Serum');
         assert.equal(capturedBody?.hints?.product_ref, undefined);
         const aliases = Array.isArray(capturedBody?.hints?.aliases) ? capturedBody.hints.aliases : [];
-        assert.equal(aliases.some((v) => String(v).toLowerCase().includes('the ordinary the ordinary')), false);
+        assert.equal(aliases.some((v) => String(v).toLowerCase().includes('brandx brandx')), false);
         assert.equal(enriched?.metadata?.pdp_open_path, 'external');
       } finally {
         axios.post = originalPost;

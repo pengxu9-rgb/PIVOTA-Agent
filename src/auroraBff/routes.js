@@ -155,6 +155,9 @@ const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = requ
 const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
+  _internals: productGroundingResolverInternals = {},
+} = require('../services/productGroundingResolver');
+const {
   normalizeBudgetHint,
   mapConcerns,
   mapBarrierStatus,
@@ -164,6 +167,24 @@ const {
   mapAuroraAlternativesToRecoAlternatives,
   mapAuroraRoutineToRecoGenerate,
 } = require('./auroraStructuredMapper');
+
+const resolveKnownStableProductRef =
+  typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
+    ? productGroundingResolverInternals.resolveKnownStableProductRef
+    : null;
+const normalizeTextForStableResolver =
+  typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
+    ? productGroundingResolverInternals.normalizeTextForResolver
+    : (value) => String(value || '').trim().toLowerCase();
+const tokenizeStableResolverQuery =
+  typeof productGroundingResolverInternals.tokenizeNormalizedResolverQuery === 'function'
+    ? productGroundingResolverInternals.tokenizeNormalizedResolverQuery
+    : (value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
 
 const AURORA_DECISION_BASE_URL = String(process.env.AURORA_DECISION_BASE_URL || '').replace(/\/$/, '');
 const PIVOTA_BACKEND_BASE_URL = String(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '')
@@ -6429,6 +6450,37 @@ function extractCanonicalFromOffersResolveBody(body) {
   return { canonicalProductRef, canonicalProductGroupId };
 }
 
+function resolveRecoStableAliasRefByQuery(queryText) {
+  if (!resolveKnownStableProductRef) return null;
+  const raw = String(queryText || '').trim();
+  if (!raw) return null;
+
+  const normalizedQuery = normalizeTextForStableResolver(raw);
+  const queryTokens = tokenizeStableResolverQuery(normalizedQuery);
+  if (!normalizedQuery || !Array.isArray(queryTokens) || queryTokens.length === 0) return null;
+
+  const match = resolveKnownStableProductRef({
+    query: raw,
+    normalizedQuery,
+    queryTokens,
+  });
+  if (!match || !match.product_ref || typeof match.product_ref !== 'object') return null;
+
+  const canonicalProductRef = normalizeCanonicalProductRef(match.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (!canonicalProductRef) return null;
+
+  return {
+    canonicalProductRef,
+    matchId: String(match.id || '').trim() || null,
+    matchedAlias: String(match.matched_alias || '').trim() || null,
+    reason: String(match.reason || '').trim() || 'stable_alias_ref',
+    score: Number.isFinite(Number(match.score)) ? Number(match.score) : null,
+  };
+}
+
 async function resolveRecoPdpByStableIds({
   productId,
   skuId,
@@ -6454,6 +6506,29 @@ async function resolveRecoPdpByStableIds({
     normalizedSkuId,
     normalizedProductId,
   );
+
+  const stableAliasMatch = resolveRecoStableAliasRefByQuery(stableQueryText);
+  if (stableAliasMatch?.canonicalProductRef) {
+    logger?.info(
+      {
+        product_id: normalizedProductId || null,
+        sku_id: normalizedSkuId || null,
+        match_id: stableAliasMatch.matchId,
+        matched_alias: stableAliasMatch.matchedAlias,
+        score: stableAliasMatch.score,
+      },
+      'aurora bff: reco stable-id resolved via local stable alias',
+    );
+    return {
+      ok: true,
+      canonicalProductRef: stableAliasMatch.canonicalProductRef,
+      requestIds: null,
+      localFallbackAttempted: false,
+      resolveAttempted: false,
+      reasonCode: 'stable_alias_ref',
+    };
+  }
+
   if (!PIVOTA_BACKEND_BASE_URL || (!normalizedProductId && !normalizedSkuId)) {
     return { ok: false, reasonCode: 'no_candidates' };
   }
@@ -6513,9 +6588,10 @@ async function resolveRecoPdpByStableIds({
         canonicalProductRef,
         requestIds:
           primaryRequestId
-            ? { primary: primaryRequestId }
-            : null,
+        ? { primary: primaryRequestId }
+        : null,
         localFallbackAttempted: false,
+        resolveAttempted: true,
       };
     }
   }
@@ -6602,6 +6678,7 @@ async function resolveRecoPdpByStableIds({
                 }
               : null,
           localFallbackAttempted,
+          resolveAttempted: true,
         };
       }
     }
@@ -6667,6 +6744,7 @@ async function resolveRecoPdpByStableIds({
           }
         : null,
     localFallbackAttempted,
+    resolveAttempted: true,
   };
 }
 
@@ -6872,7 +6950,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
           product_group_id: stableResolved.canonicalProductGroupId,
         },
         canonicalProductRef: stableResolved.canonicalProductRef || null,
-        resolveAttempted: true,
+        resolveAttempted: stableResolved.resolveAttempted === true,
         timeToPdpMs: elapsedMs(),
         stableResolveRequestIds,
         stableResolveLocalFallbackAttempted,
@@ -6882,7 +6960,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
       return withRecoPdpMetadata(base, {
         path: 'ref',
         canonicalProductRef: stableResolved.canonicalProductRef,
-        resolveAttempted: true,
+        resolveAttempted: stableResolved.resolveAttempted === true,
         timeToPdpMs: elapsedMs(),
         stableResolveRequestIds,
         stableResolveLocalFallbackAttempted,
