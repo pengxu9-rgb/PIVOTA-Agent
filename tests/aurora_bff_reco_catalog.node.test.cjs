@@ -1060,6 +1060,96 @@ test('/v1/chat availability: specific query runs resolve-first and skips catalog
   );
 });
 
+test('/v1/chat availability: generic brand query skips resolve fallback on transient search failure by default', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
+      axios.get = async (url) => {
+        if (String(url).includes('/agent/v1/products/search')) {
+          searchCalls += 1;
+          const timeoutErr = new Error('search timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          resolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              product_ref: {
+                product_id: 'prod_should_not_be_used',
+                merchant_id: 'mid_should_not_be_used',
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_generic_transient',
+            'X-Trace-ID': 'test_trace_availability_generic_transient',
+            'X-Brief-ID': 'test_brief_availability_generic_transient',
+            'X-Lang': 'CN',
+          },
+          body: {
+            message: '有没有薇诺娜的产品？',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'CN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.equal(searchCalls, 1);
+        assert.equal(resolveCalls, 0);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'external');
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Internal canonical product ref rewrites sku identifiers for PDP compatibility', async () => {
   await withEnv(
     {

@@ -279,6 +279,12 @@ const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT = (() => {
+  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const CATALOG_AVAIL_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_TIMEOUT_MS || 1400);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
@@ -423,8 +429,8 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
 })();
 
 const RECO_UPSTREAM_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 10000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 3500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3500;
   return Math.max(3000, Math.min(22000, v));
 })();
 
@@ -454,7 +460,7 @@ const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
 })();
 
 const RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED = (() => {
-  const fallbackDefault = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  const fallbackDefault = 'false';
   const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED || fallbackDefault)
     .trim()
     .toLowerCase();
@@ -13342,7 +13348,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             const reason = String(catalogResult.reason || '').trim().toLowerCase();
             const transientCatalogFailure =
               reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-            const shouldRunResolveFallback = specificAvailabilityQuery || transientCatalogFailure;
+            const shouldRunResolveFallback =
+              specificAvailabilityQuery ||
+              (transientCatalogFailure && CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT);
             if (shouldRunResolveFallback) {
               availabilityResolveAttempted = true;
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({
