@@ -1249,7 +1249,7 @@ function buildBrandPlaceholderProduct({ brandId, brandName, lang } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const brand = String(brandName || '').trim() || (isCn ? '未知品牌' : 'Unknown brand');
   const skuId = String(brandId || '').trim() || `brand_${stableHashBase36(brand).slice(0, 10)}`;
-  const name = isCn ? `${brand}（品牌）` : `${brand} (brand)`;
+  const name = brand;
   return {
     product_id: `brand:${skuId}`,
     sku_id: skuId,
