@@ -201,6 +201,8 @@ const PROXY_SEARCH_RESOLVER_FIRST_ENABLED = (() => {
   const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
   return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED || defaultValue).toLowerCase() === 'true';
 })();
+const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED =
+  String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
@@ -212,6 +214,16 @@ const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
     parseTimeoutMs(process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS, 3200),
+    UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+  ),
+);
+const PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = Math.max(
+  1200,
+  Math.min(
+    parseTimeoutMs(
+      process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
+      Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 3500),
+    ),
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
 );
@@ -4930,10 +4942,10 @@ async function proxyAgentSearchToBackend(req, res) {
   const resolverFirstMetadata = source ? { source } : null;
   let resolverFirstResult = null;
   const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
-    operation: 'find_products_multi',
-    metadata: resolverFirstMetadata,
-    queryText,
-  });
+      operation: 'find_products_multi',
+      metadata: resolverFirstMetadata,
+      queryText,
+  }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
   if (shouldAttemptResolverFirst) {
     try {
@@ -4959,10 +4971,14 @@ async function proxyAgentSearchToBackend(req, res) {
   }
 
   try {
+    const basePrimaryTimeoutMs = Math.min(
+      getUpstreamTimeoutMs('find_products_multi'),
+      PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
+    );
     const primaryTimeoutMs =
       shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult)
-        ? Math.min(getUpstreamTimeoutMs('find_products_multi'), PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
-        : getUpstreamTimeoutMs('find_products_multi');
+        ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
+        : basePrimaryTimeoutMs;
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
     const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi');
 

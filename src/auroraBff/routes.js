@@ -823,6 +823,7 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
     in_stock_only: false,
     limit: normalizedLimit,
     offset: 0,
+    source: 'aurora_catalog',
   };
   const primaryUrl = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`;
   const localSearchUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/search`;
