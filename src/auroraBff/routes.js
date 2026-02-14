@@ -233,8 +233,8 @@ const RECO_CATALOG_FAIL_FAST_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const RECO_CATALOG_FAIL_FAST_THRESHOLD = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD || 2);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
   return Math.max(1, Math.min(8, v));
 })();
 const RECO_CATALOG_FAIL_FAST_COOLDOWN_MS = (() => {
