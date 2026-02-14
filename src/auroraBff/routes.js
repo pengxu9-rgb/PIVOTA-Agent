@@ -247,6 +247,11 @@ const RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
   return Math.max(500, Math.min(60000, v));
 })();
+const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(300, Math.min(6000, v));
+})();
 const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK || 'true')
     .trim()
@@ -706,12 +711,13 @@ function beginRecoCatalogFailFastProbe(nowMs = Date.now()) {
   return true;
 }
 
-async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
+async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
   if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
+  const normalizedTimeout = Math.max(300, Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS));
   const params = {
     query: q,
     search_all_merchants: true,
@@ -744,7 +750,7 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger } = {}) {
     const resp = await axios.get(primaryUrl, {
       params,
       headers: buildPivotaBackendAgentHeaders(),
-      timeout: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+      timeout: normalizedTimeout,
     });
 
     const products = normalizeProductsFromSearchData(resp && resp.data ? resp.data : null);
@@ -1201,6 +1207,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
   const startedAt = Date.now();
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
   let probeWhileOpen = false;
+  let searchTimeoutEffectiveMs = RECO_CATALOG_SEARCH_TIMEOUT_MS;
   const debugInfo = {
     enabled: RECO_CATALOG_GROUNDED_ENABLED,
     search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
@@ -1222,6 +1229,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     if (!probeWhileOpen) {
       return { structured: null, debug: { ...debugInfo, skipped_reason: 'fail_fast_open', total_ms: Date.now() - startedAt } };
     }
+    searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
   }
 
   const queries = buildRecoCatalogQueries({ profileSummary, lang: ctx && ctx.lang ? ctx.lang : 'EN' });
@@ -1230,7 +1238,12 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
   }
 
   const results = await mapWithConcurrency(queries, RECO_CATALOG_SEARCH_CONCURRENCY, async (q) => {
-    const out = await searchPivotaBackendProducts({ query: q.query, limit: 6, logger });
+    const out = await searchPivotaBackendProducts({
+      query: q.query,
+      limit: 6,
+      logger,
+      timeoutMs: searchTimeoutEffectiveMs,
+    });
     return { ...q, ...out };
   });
 
@@ -1283,6 +1296,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     ok_count: okCount,
     picked_count: recos.length,
     probe_while_open: probeWhileOpen,
+    search_timeout_effective_ms: searchTimeoutEffectiveMs,
     total_ms: Date.now() - startedAt,
     fail_fast_after: getRecoCatalogFailFastSnapshot(Date.now()),
     ...(debug

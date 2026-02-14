@@ -1019,6 +1019,7 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
       let nowMs = 1_000_000;
       let phase = 'timeout';
       let searchCalls = 0;
+      const searchTimeouts = [];
 
       Date.now = () => nowMs;
       axios.get = async (url, config = {}) => {
@@ -1026,6 +1027,7 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         searchCalls += 1;
+        searchTimeouts.push(Number(config?.timeout));
         if (phase === 'timeout') {
           const err = new Error('upstream timeout');
           err.code = 'ECONNABORTED';
@@ -1061,6 +1063,8 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         const firstDebug = getAuroraDebugPayload(first.body);
         const firstCatalogDebug = firstDebug?.reco_catalog_debug;
         assert.equal(firstCatalogDebug?.fail_fast_after?.open, true);
+        assert.equal(firstCatalogDebug?.search_timeout_effective_ms, 2600);
+        assert.equal(searchTimeouts[0], 2600);
 
         phase = 'success';
         nowMs += 1000;
@@ -1082,6 +1086,8 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         const thirdCatalogDebug = thirdDebug?.reco_catalog_debug;
         assert.equal(thirdCatalogDebug?.probe_while_open, true);
         assert.equal(thirdCatalogDebug?.fail_fast_after?.open, false);
+        assert.equal(thirdCatalogDebug?.search_timeout_effective_ms, 1200);
+        assert.equal(searchTimeouts[1], 1200);
       } finally {
         Date.now = originalNow;
         axios.get = originalGet;
