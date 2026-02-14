@@ -56,12 +56,33 @@ const { mountRecommendationRoutes } = require('./recommendations/routes');
 const { mountAuroraBffRoutes } = require('./auroraBff/routes');
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
-const { resolveProductRef } = require('./services/productGroundingResolver');
+const {
+  resolveProductRef,
+  _internals: productGroundingResolverInternals = {},
+} = require('./services/productGroundingResolver');
 const {
   upsertMissingCatalogProduct,
   listMissingCatalogProducts,
   toCsv: missingCatalogProductsToCsv,
 } = require('./services/missingCatalogProductsStore');
+
+const resolveStableAliasByQuery =
+  typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
+    ? productGroundingResolverInternals.resolveKnownStableProductRef
+    : null;
+const normalizeResolverText =
+  typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
+    ? productGroundingResolverInternals.normalizeTextForResolver
+    : (value) => String(value || '').trim().toLowerCase();
+const tokenizeResolverQuery =
+  typeof productGroundingResolverInternals.tokenizeNormalizedResolverQuery === 'function'
+    ? productGroundingResolverInternals.tokenizeNormalizedResolverQuery
+    : (value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
@@ -104,6 +125,42 @@ function parseTimeoutMs(envValue, fallbackMs) {
 const UPSTREAM_TIMEOUT_SEARCH_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_SEARCH_MS, 15000);
 const UPSTREAM_TIMEOUT_SLOW_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_SLOW_MS, 60000);
 const UPSTREAM_TIMEOUT_ADMIN_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_ADMIN_MS, 15000);
+const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS = Math.max(
+  1200,
+  Math.min(
+    parseTimeoutMs(
+      process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS,
+      Math.min(UPSTREAM_TIMEOUT_SEARCH_MS, 5000),
+    ),
+    6000,
+  ),
+);
+const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = Math.max(
+  1500,
+  Math.min(
+    parseTimeoutMs(
+      process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+      Math.min(UPSTREAM_TIMEOUT_SEARCH_MS, 6000),
+    ),
+    7000,
+  ),
+);
+const UPSTREAM_TIMEOUT_FIND_PRODUCTS_RETRY_MS = parseTimeoutMs(
+  process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_RETRY_MS,
+  Math.min(
+    UPSTREAM_TIMEOUT_SLOW_MS,
+    Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS * 2, 9000),
+  ),
+);
+const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS = parseTimeoutMs(
+  process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS,
+  Math.min(
+    UPSTREAM_TIMEOUT_SLOW_MS,
+    Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS + 1500, 7000),
+  ),
+);
+const UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT =
+  String(process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT || '').toLowerCase() === 'true';
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
 // even when the reviews service is degraded.
 const UPSTREAM_TIMEOUT_REVIEWS_MS = parseTimeoutMs(process.env.UPSTREAM_TIMEOUT_REVIEWS_MS, 4000);
@@ -121,8 +178,103 @@ const SLOW_UPSTREAM_OPS = new Set([
 ]);
 
 function getUpstreamTimeoutMs(operation) {
+  if (operation === 'find_products') return UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS;
+  if (operation === 'find_products_multi') return UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
   return SLOW_UPSTREAM_OPS.has(operation) ? UPSTREAM_TIMEOUT_SLOW_MS : UPSTREAM_TIMEOUT_SEARCH_MS;
 }
+
+const PROXY_SEARCH_FALLBACK_TIMEOUT_MS = parseTimeoutMs(
+  process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+  Math.max(6500, Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 10000)),
+);
+const PROXY_SEARCH_RESOLVER_TIMEOUT_MS = parseTimeoutMs(
+  process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
+  1600,
+);
+const PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS = parseTimeoutMs(
+  process.env.PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
+  1200,
+);
+const PROXY_SEARCH_RESOLVER_DETAIL_ENABLED =
+  String(process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED || '').toLowerCase() === 'true';
+const PROXY_SEARCH_RESOLVER_FIRST_ENABLED = (() => {
+  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED || defaultValue).toLowerCase() === 'true';
+})();
+const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
+  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'true').toLowerCase() === 'true';
+const PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS =
+  String(process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS || 'true').toLowerCase() ===
+  'true';
+const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
+  1200,
+  Math.min(
+    parseTimeoutMs(process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS, 3200),
+    UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+  ),
+);
+const PROXY_SEARCH_RESOLVER_CACHE_TTL_MS = Math.max(
+  1000,
+  parseTimeoutMs(process.env.PROXY_SEARCH_RESOLVER_CACHE_TTL_MS, 5 * 60 * 1000),
+);
+const PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS = Math.max(
+  500,
+  parseTimeoutMs(process.env.PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS, 45 * 1000),
+);
+const PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES = Math.max(
+  100,
+  Number(process.env.PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES || 2000) || 2000,
+);
+
+const OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = parseTimeoutMs(
+  process.env.OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
+  1800,
+);
+const OFFERS_RESOLVE_CACHE_SEARCH_TIMEOUT_MS = parseTimeoutMs(
+  process.env.OFFERS_RESOLVE_CACHE_SEARCH_TIMEOUT_MS,
+  2600,
+);
+const OFFERS_RESOLVE_SUBJECT_RETRY_MAX = Math.max(
+  0,
+  Math.min(3, Number(process.env.OFFERS_RESOLVE_SUBJECT_RETRY_MAX || 0)),
+);
+const OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX = Math.max(
+  0,
+  Math.min(3, Number(process.env.OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX || 0)),
+);
+const OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS = Math.max(
+  25,
+  Number(process.env.OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS || 120) || 120,
+);
+const OFFERS_RESOLVE_CACHE_SEARCH_RETRY_BACKOFF_MS = Math.max(
+  25,
+  Number(process.env.OFFERS_RESOLVE_CACHE_SEARCH_RETRY_BACKOFF_MS || 120) || 120,
+);
+const OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD = Math.max(
+  1,
+  Math.min(10, Number(process.env.OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD || 1)),
+);
+const OFFERS_RESOLVE_CIRCUIT_OPEN_MS = Math.max(
+  1000,
+  Number(process.env.OFFERS_RESOLVE_CIRCUIT_OPEN_MS || 30000) || 30000,
+);
+const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT =
+  String(process.env.OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT || 'true').toLowerCase() ===
+  'true';
+const OFFERS_RESOLVE_CIRCUITS = {
+  subject_resolve: { failure_count: 0, open_until_ms: 0, last_reason: null },
+  cache_search: { failure_count: 0, open_until_ms: 0, last_reason: null },
+};
+const OFFERS_RESOLVE_REASON_CODE_SET = new Set([
+  'mapped_hit',
+  'subject_direct',
+  'canonical_ref_direct',
+  'stable_alias_ref',
+  'no_candidates',
+  'db_timeout',
+  'upstream_timeout',
+  'fallback_external',
+]);
 
 // Resolve-product candidates cache (Phase 2 perf: avoid repeated slow scans).
 const RESOLVE_PRODUCT_CANDIDATES_CACHE_ENABLED =
@@ -270,6 +422,53 @@ function safeCloneJson(value) {
   } catch {
     return value;
   }
+}
+
+const PROXY_SEARCH_RESOLVER_CACHE = new Map(); // key -> { value, expiresAtMs }
+
+function buildProxySearchResolverCacheKey({
+  queryText,
+  lang,
+  preferMerchants,
+  searchAllMerchants,
+  fetchDetail,
+}) {
+  return JSON.stringify({
+    q: String(queryText || '').trim().toLowerCase(),
+    lang: String(lang || '').trim().toLowerCase() || 'en',
+    prefer_merchants: Array.isArray(preferMerchants)
+      ? preferMerchants.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    search_all_merchants: searchAllMerchants === true ? true : false,
+    fetch_detail: fetchDetail === true,
+  });
+}
+
+function getProxySearchResolverCacheEntry(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return null;
+  const hit = PROXY_SEARCH_RESOLVER_CACHE.get(key);
+  if (!hit) return null;
+  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
+    PROXY_SEARCH_RESOLVER_CACHE.delete(key);
+    return null;
+  }
+  return safeCloneJson(hit.value);
+}
+
+function setProxySearchResolverCacheEntry(cacheKey, value, ttlMs = PROXY_SEARCH_RESOLVER_CACHE_TTL_MS) {
+  const key = String(cacheKey || '');
+  if (!key) return;
+  const ttl = Math.max(500, Number(ttlMs) || PROXY_SEARCH_RESOLVER_CACHE_TTL_MS);
+  while (PROXY_SEARCH_RESOLVER_CACHE.size >= PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES) {
+    const firstKey = PROXY_SEARCH_RESOLVER_CACHE.keys().next().value;
+    if (!firstKey) break;
+    PROXY_SEARCH_RESOLVER_CACHE.delete(firstKey);
+  }
+  PROXY_SEARCH_RESOLVER_CACHE.set(key, {
+    value: safeCloneJson(value),
+    expiresAtMs: Date.now() + ttl,
+  });
 }
 
 // Product-detail cache (avoid repeated slow upstream product fetches).
@@ -1192,6 +1391,519 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
   };
 }
 
+function withProxySearchFallbackMetadata(body, patch) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : {};
+  metadata.proxy_search_fallback = {
+    ...(metadata.proxy_search_fallback &&
+    typeof metadata.proxy_search_fallback === 'object' &&
+    !Array.isArray(metadata.proxy_search_fallback)
+      ? metadata.proxy_search_fallback
+      : {}),
+    ...patch,
+  };
+  return { ...body, metadata };
+}
+
+function buildProxySearchSoftFallbackResponse({
+  queryParams,
+  reason,
+  upstreamStatus = null,
+  upstreamCode = null,
+  upstreamMessage = null,
+  route = null,
+  reply = 'Search is temporarily unavailable. Please retry shortly.',
+}) {
+  const normalized = normalizeAgentProductsListResponse(
+    {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+      page: 1,
+      page_size: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size) || 0,
+      reply,
+      metadata: {
+        query_source: 'agent_products_error_fallback',
+        upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
+        upstream_error_code: upstreamCode ? String(upstreamCode) : null,
+        upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
+        fallback_route: route || null,
+      },
+    },
+    {
+      limit: queryParams?.limit,
+      offset: queryParams?.offset,
+    },
+  );
+  return withProxySearchFallbackMetadata(normalized, {
+    applied: true,
+    reason: reason || 'error_soft_fallback',
+    route: route || null,
+    upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
+    upstream_error_code: upstreamCode ? String(upstreamCode) : null,
+    upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
+  });
+}
+
+function firstQueryParamValue(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item != null && String(item).trim()) return item;
+    }
+    return value.length > 0 ? value[0] : undefined;
+  }
+  return value;
+}
+
+function parseQueryBoolean(value) {
+  const raw = firstQueryParamValue(value);
+  if (raw == null) return undefined;
+  const normalized = String(raw).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
+}
+
+function parseQueryNumber(value) {
+  const raw = firstQueryParamValue(value);
+  if (raw == null || String(raw).trim() === '') return undefined;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+function parseQueryStringArray(value) {
+  if (value == null) return [];
+  const arr = Array.isArray(value) ? value : [value];
+  return arr
+    .flatMap((item) => String(item || '').split(','))
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+}
+
+function extractSearchQueryText(rawQuery) {
+  const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
+  const raw =
+    firstQueryParamValue(query.query) ??
+    firstQueryParamValue(query.q) ??
+    firstQueryParamValue(query.keyword) ??
+    firstQueryParamValue(query.text);
+  return String(raw || '').trim();
+}
+
+function normalizeSearchQueryParams(rawQuery) {
+  const queryParams =
+    rawQuery && typeof rawQuery === 'object' && !Array.isArray(rawQuery) ? { ...rawQuery } : {};
+  const queryText = extractSearchQueryText(queryParams);
+  const hasQuery = String(firstQueryParamValue(queryParams.query) || '').trim().length > 0;
+  if (queryText && !hasQuery) {
+    queryParams.query = queryText;
+  }
+  return { queryText, queryParams };
+}
+
+function extractSearchProductId(product) {
+  if (!product || typeof product !== 'object') return '';
+  const raw =
+    product.product_id ||
+    product.productId ||
+    product.platform_product_id ||
+    product.platformProductId ||
+    product.sku_id ||
+    product.skuId ||
+    product.id;
+  return String(raw || '').trim();
+}
+
+function hasUsableSearchProduct(product) {
+  if (!product || typeof product !== 'object') return false;
+  const merchantId = String(product.merchant_id || product.merchantId || '').trim();
+  if (!merchantId) return false;
+  return Boolean(extractSearchProductId(product));
+}
+
+function countUsableSearchProducts(products) {
+  if (!Array.isArray(products)) return 0;
+  return products.filter((product) => hasUsableSearchProduct(product)).length;
+}
+
+function normalizeSearchTextForMatch(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeSearchTextForMatch(raw) {
+  return normalizeSearchTextForMatch(raw)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function buildFallbackCandidateText(product) {
+  if (!product || typeof product !== 'object') return '';
+  const parts = [
+    product.title,
+    product.name,
+    product.display_name,
+    product.brand,
+    product.product_name,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  return normalizeSearchTextForMatch(parts.join(' '));
+}
+
+function isProxySearchFallbackRelevant(normalized, queryText) {
+  const products = Array.isArray(normalized?.products) ? normalized.products : [];
+  if (!products.length) return false;
+
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return true;
+
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const longQuery = queryTokens.length >= 2;
+
+  for (const product of products.slice(0, 8)) {
+    if (!hasUsableSearchProduct(product)) continue;
+    const candidateText = buildFallbackCandidateText(product);
+    if (!candidateText) continue;
+    if (candidateText.includes(normalizedQuery)) return true;
+    if (!longQuery) return true;
+    const overlapCount = queryTokens.filter((token) => candidateText.includes(token)).length;
+    if (overlapCount >= 2) return true;
+  }
+
+  return false;
+}
+
+function shouldFallbackProxySearch(normalized, statusCode) {
+  if (Number(statusCode) >= 500) return true;
+  if (Number(statusCode) < 200 || Number(statusCode) >= 300) return false;
+  const products = Array.isArray(normalized?.products) ? normalized.products : [];
+  const usableCount = countUsableSearchProducts(products);
+  const total = Number(normalized?.total);
+  if (products.length > 0 && usableCount === 0) return true;
+  if (Number.isFinite(total) && total > 0 && usableCount === 0) return true;
+  if (products.length === 0 && Number.isFinite(total) && total === 0) return true;
+  return false;
+}
+
+function buildFindProductsMultiPayloadFromQuery(rawQuery) {
+  const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
+  const search = {};
+
+  const textQuery = extractSearchQueryText(query);
+  if (!textQuery) return null;
+  search.query = textQuery;
+
+  const merchantId = String(firstQueryParamValue(query.merchant_id || query.merchantId) || '').trim();
+  if (merchantId) search.merchant_id = merchantId;
+
+  const merchantIds = parseQueryStringArray(query.merchant_ids || query.merchantIds);
+  if (merchantIds.length > 0) search.merchant_ids = merchantIds;
+
+  const searchAllMerchants = parseQueryBoolean(query.search_all_merchants || query.searchAllMerchants);
+  if (searchAllMerchants !== undefined) search.search_all_merchants = searchAllMerchants;
+
+  const inStockOnly = parseQueryBoolean(query.in_stock_only || query.inStockOnly);
+  if (inStockOnly !== undefined) search.in_stock_only = inStockOnly;
+
+  const lang = String(firstQueryParamValue(query.lang) || '').trim();
+  if (lang) search.lang = lang;
+
+  const category = String(firstQueryParamValue(query.category) || '').trim();
+  if (category) search.category = category;
+
+  const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
+  if (minPrice !== undefined) search.min_price = minPrice;
+
+  const maxPrice = parseQueryNumber(query.max_price ?? query.price_max);
+  if (maxPrice !== undefined) search.max_price = maxPrice;
+
+  const limit = parseQueryNumber(query.limit ?? query.page_size);
+  if (limit !== undefined) search.limit = Math.max(1, Math.min(100, Math.floor(limit)));
+
+  const offset = parseQueryNumber(query.offset);
+  if (offset !== undefined) {
+    const normalizedOffset = Math.max(0, Math.floor(offset));
+    if (search.limit) {
+      search.page = Math.floor(normalizedOffset / search.limit) + 1;
+    } else {
+      search.offset = normalizedOffset;
+    }
+  }
+
+  return { search };
+}
+
+async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason }) {
+  const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
+  if (!payload) return null;
+
+  const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const requestBody = {
+    operation: 'find_products_multi',
+    payload,
+    metadata: {
+      source: 'agent_search_proxy_fallback',
+      trigger_reason: reason || 'unknown',
+    },
+  };
+
+  const resp = await axios({
+    method: 'POST',
+    url,
+    data: requestBody,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+    validateStatus: () => true,
+  });
+
+  const normalized = normalizeAgentProductsListResponse(resp.data, {
+    limit: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size),
+    offset: parseQueryNumber(queryParams?.offset),
+  });
+
+  return {
+    status: resp.status,
+    usableCount: countUsableSearchProducts(normalized?.products),
+    data: withProxySearchFallbackMetadata(normalized, {
+      applied: true,
+      reason: reason || 'unknown',
+    }),
+  };
+}
+
+async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, fetchDetail = false }) {
+  const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
+  const queryText = extractSearchQueryText(query);
+  if (!queryText) return null;
+
+  const lang = String(firstQueryParamValue(query.lang) || 'en').trim().toLowerCase() || 'en';
+  const merchantId = String(firstQueryParamValue(query.merchant_id || query.merchantId) || '').trim();
+  const merchantIds = parseQueryStringArray(query.merchant_ids || query.merchantIds);
+  const preferMerchants = uniqueStrings([
+    merchantId,
+    ...merchantIds,
+  ]);
+  const searchAllMerchants = parseQueryBoolean(query.search_all_merchants || query.searchAllMerchants);
+  const resolveOptions = {
+    ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+    ...(searchAllMerchants !== undefined ? { search_all_merchants: searchAllMerchants } : {}),
+    timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
+    upstream_retries: 0,
+    stable_alias_short_circuit: true,
+  };
+  const resolverCacheKey = buildProxySearchResolverCacheKey({
+    queryText,
+    lang,
+    preferMerchants,
+    searchAllMerchants,
+    fetchDetail,
+  });
+  const cached = getProxySearchResolverCacheEntry(resolverCacheKey);
+  if (cached) return cached;
+
+  let resolved = null;
+  try {
+    resolved = await resolveProductRef({
+      query: queryText,
+      lang,
+      hints: null,
+      options: resolveOptions,
+      pivotaApiBase: PIVOTA_API_BASE,
+      pivotaApiKey: PIVOTA_API_KEY,
+      checkoutToken,
+    });
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), query: queryText },
+      'proxy agent search resolver fallback failed',
+    );
+    return null;
+  }
+
+  const resolvedRef = resolved && resolved.resolved ? resolved.product_ref : null;
+  const resolvedProductId = String(resolvedRef?.product_id || '').trim();
+  const resolvedMerchantId = String(resolvedRef?.merchant_id || '').trim();
+  const resolveSources = Array.isArray(resolved?.metadata?.sources)
+    ? resolved.metadata.sources
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => ({
+          source: String(item.source || '').trim() || null,
+          ok: item.ok === true,
+          count: Number.isFinite(Number(item.count)) ? Number(item.count) : null,
+          reason: String(item.reason || '').trim() || null,
+          error_code: String(item.error_code || '').trim() || null,
+        }))
+    : [];
+  if (!resolvedProductId || !resolvedMerchantId) {
+    const missResult = {
+      status: 200,
+      usableCount: 0,
+      data: null,
+      resolved: false,
+      resolve_reason: resolved?.reason || null,
+      resolve_reason_code:
+        resolved?.reason_code ||
+        resolved?.metadata?.resolve_reason_code ||
+        null,
+      resolve_confidence:
+        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
+      resolve_latency_ms:
+        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+      resolve_sources: resolveSources,
+    };
+    setProxySearchResolverCacheEntry(
+      resolverCacheKey,
+      missResult,
+      PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS,
+    );
+    return missResult;
+  }
+
+  let detail = null;
+  if (fetchDetail && PROXY_SEARCH_RESOLVER_DETAIL_ENABLED) {
+    try {
+      detail = await fetchProductDetailFromUpstream({
+        merchantId: resolvedMerchantId,
+        productId: resolvedProductId,
+        checkoutToken,
+        timeoutMs: PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
+        noRetry: true,
+      });
+    } catch (err) {
+      logger.warn(
+        {
+          err: err?.message || String(err),
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        'proxy agent search resolver fallback detail fetch failed; returning minimal row',
+      );
+    }
+  }
+
+  const title = String(
+    detail?.title ||
+      detail?.name ||
+      detail?.display_name ||
+      queryText,
+  ).trim();
+
+  const productRow = {
+    ...(detail && typeof detail === 'object' ? detail : {}),
+    id: String(detail?.id || detail?.product_id || resolvedProductId),
+    product_id: String(detail?.product_id || detail?.id || resolvedProductId),
+    merchant_id: String(detail?.merchant_id || resolvedMerchantId),
+    platform_product_id: String(
+      detail?.platform_product_id ||
+        detail?.platformProductId ||
+        detail?.product_id ||
+        resolvedProductId,
+    ),
+    ...(title ? { title } : {}),
+    ...(title && !detail?.name ? { name: title } : {}),
+    canonical_product_ref: {
+      merchant_id: resolvedMerchantId,
+      product_id: resolvedProductId,
+    },
+  };
+
+  const normalized = normalizeAgentProductsListResponse({
+    status: 'success',
+    success: true,
+    products: [productRow],
+    total: 1,
+    page: 1,
+    page_size: 1,
+    metadata: {
+      query_source: 'agent_products_resolver_fallback',
+      resolve_reason: resolved?.reason || null,
+      resolve_reason_code:
+        resolved?.reason_code ||
+        resolved?.metadata?.resolve_reason_code ||
+        null,
+      resolve_confidence:
+        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
+      resolve_latency_ms:
+        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+    },
+  });
+
+  const successResult = {
+    status: 200,
+    usableCount: countUsableSearchProducts(normalized?.products),
+    resolved: true,
+    resolve_reason: resolved?.reason || null,
+    resolve_reason_code:
+      resolved?.reason_code ||
+      resolved?.metadata?.resolve_reason_code ||
+      null,
+    resolve_confidence:
+      Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
+    resolve_latency_ms:
+      Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+    resolve_sources: resolveSources,
+    data: withProxySearchFallbackMetadata(normalized, {
+      applied: true,
+      reason: reason || 'resolver_fallback',
+    }),
+  };
+  setProxySearchResolverCacheEntry(resolverCacheKey, successResult, PROXY_SEARCH_RESOLVER_CACHE_TTL_MS);
+  return successResult;
+}
+
+function isResolverMiss(result) {
+  if (!result || typeof result !== 'object') return false;
+  return Number(result.usableCount || 0) <= 0;
+}
+
+function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
+  if (!isResolverMiss(result)) return false;
+  const reasonCode = normalizeOffersResolveReasonCode(
+    result?.resolve_reason_code || result?.resolve_reason || '',
+    '',
+  );
+  return reasonCode === 'no_candidates';
+}
+
+function shouldSkipSecondaryFallbackAfterResolverMiss(result) {
+  if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
+  return shouldReducePrimaryTimeoutAfterResolverMiss(result);
+}
+
+function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
+  if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
+  if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
+  if (!String(queryText || '').trim()) return false;
+
+  const source = String(metadata?.source || '').trim().toLowerCase();
+  if (source === 'creator-agent-ui' || source === 'creator_agent_ui') return false;
+  if (!source) return true;
+  return (
+    source === 'shopping_agent' ||
+    source === 'shopping-agent-ui' ||
+    source === 'aurora_chatbox' ||
+    source === 'aurora_bff'
+  );
+}
+
 function normalizeAgentProductDetailResponse(raw) {
   if (!raw) return raw;
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
@@ -1317,7 +2029,10 @@ function getOpenAIClient() {
 // This keeps the gateway responsive while being more tolerant of
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
-  const timeoutRetryableOps = ['find_products', 'find_products_multi', 'find_similar_products'];
+  const timeoutRetryableOps = ['find_products', 'find_similar_products'];
+  if (UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT) {
+    timeoutRetryableOps.push('find_products_multi');
+  }
   const busyRetryableOps = [
     'find_products',
     'find_products_multi',
@@ -1391,6 +2106,25 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
     return computed;
   }
 
+  function getTimeoutRetryMs(op, previousTimeoutMs) {
+    const prev = Number(previousTimeoutMs || 0) || 0;
+    if (op === 'find_products_multi') {
+      const bounded = Math.min(
+        UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS,
+        Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, prev + 1200),
+      );
+      return Math.max(prev, bounded);
+    }
+    if (op === 'find_products') {
+      const bounded = Math.min(
+        UPSTREAM_TIMEOUT_FIND_PRODUCTS_RETRY_MS,
+        Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS, prev + 1000),
+      );
+      return Math.max(prev, bounded);
+    }
+    return Math.max(prev, UPSTREAM_TIMEOUT_SEARCH_RETRY_MS);
+  }
+
   let attempt = 0;
   while (true) {
     try {
@@ -1405,7 +2139,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
         attempt === 1
       ) {
         const prevTimeoutMs = Number(axiosConfig?.timeout || 0) || null;
-        const retryTimeoutMs = Math.max(prevTimeoutMs || 0, UPSTREAM_TIMEOUT_SEARCH_RETRY_MS);
+        const retryTimeoutMs = getTimeoutRetryMs(operation, prevTimeoutMs);
         if (retryTimeoutMs && retryTimeoutMs !== prevTimeoutMs) {
           axiosConfig.timeout = retryTimeoutMs;
         }
@@ -1472,6 +2206,10 @@ function getPdpOptions(payload) {
 
 async function fetchProductDetailFromUpstream(args) {
   const { merchantId, productId, skuId, checkoutToken } = args;
+  const timeoutMsRaw = Number(args?.timeoutMs);
+  const timeoutMs = Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0
+    ? timeoutMsRaw
+    : getUpstreamTimeoutMs('get_product_detail');
   const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   const data = {
     operation: 'get_product_detail',
@@ -1495,10 +2233,12 @@ async function fetchProductDetailFromUpstream(args) {
             ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
           }),
     },
-    timeout: getUpstreamTimeoutMs('get_product_detail'),
+    timeout: timeoutMs,
     data,
   };
-  const resp = await callUpstreamWithOptionalRetry('get_product_detail', axiosConfig);
+  const resp = args?.noRetry
+    ? await axios(axiosConfig)
+    : await callUpstreamWithOptionalRetry('get_product_detail', axiosConfig);
   return resp?.data?.product || null;
 }
 
@@ -3075,9 +3815,9 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const intentLang = String(options?.intent?.language || '').toLowerCase();
   const shouldTryVector =
     vectorEnabled &&
-    // Try vector recall when lexical is weak or query is likely non-English.
-    (lexicalProducts.length < safeLimit ||
-      (intentLang && intentLang !== 'en' && intentLang !== 'other'));
+    // Keep vector recall for non-English queries, or when lexical returns nothing.
+    // This avoids paying embedding/vector latency on healthy lexical hits.
+    ((intentLang && intentLang !== 'en' && intentLang !== 'other') || lexicalProducts.length === 0);
 
   if (shouldTryVector) {
     try {
@@ -4173,12 +4913,50 @@ async function proxyAgentSearchToBackend(req, res) {
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
 
   const url = `${PIVOTA_API_BASE}${req.path}`;
+  const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
+  const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
+  const resolverFirstMetadata = source ? { source } : null;
+  let resolverFirstResult = null;
+  const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
+    operation: 'find_products_multi',
+    metadata: resolverFirstMetadata,
+    queryText,
+  });
+
+  if (shouldAttemptResolverFirst) {
+    try {
+      resolverFirstResult = await queryResolveSearchFallback({
+        queryParams,
+        checkoutToken,
+        reason: 'resolver_first',
+      });
+      if (
+        resolverFirstResult &&
+        resolverFirstResult.status >= 200 &&
+        resolverFirstResult.status < 300 &&
+        resolverFirstResult.usableCount > 0
+      ) {
+        return res.status(resolverFirstResult.status).json(resolverFirstResult.data);
+      }
+    } catch (resolverErr) {
+      logger.warn(
+        { err: resolverErr?.message || String(resolverErr) },
+        'proxy agent search resolver-first failed; falling back to upstream',
+      );
+    }
+  }
 
   try {
+    const primaryTimeoutMs =
+      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult)
+        ? Math.min(getUpstreamTimeoutMs('find_products_multi'), PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
+        : getUpstreamTimeoutMs('find_products_multi');
+    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+
     const resp = await axios({
       method: 'GET',
       url,
-      params: req.query,
+      params: queryParams,
       headers: {
         ...(checkoutToken
           ? { 'X-Checkout-Token': checkoutToken }
@@ -4187,14 +4965,153 @@ async function proxyAgentSearchToBackend(req, res) {
               ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
             }),
       },
-      timeout: getUpstreamTimeoutMs('find_products_multi'),
+      timeout: primaryTimeoutMs,
       validateStatus: () => true,
     });
 
-    return res.status(resp.status).json(resp.data);
+    const normalized = normalizeAgentProductsListResponse(resp.data, {
+      limit: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size),
+      offset: parseQueryNumber(queryParams?.offset),
+    });
+    const primaryUsableCount = countUsableSearchProducts(normalized?.products);
+    const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
+
+    if (shouldFallback) {
+      if (!skipSecondaryFallback) {
+        try {
+          const resolverFallback = await queryResolveSearchFallback({
+            queryParams,
+            checkoutToken,
+            reason: 'resolver_after_primary',
+          });
+          if (
+            resolverFallback &&
+            resolverFallback.status >= 200 &&
+            resolverFallback.status < 300 &&
+            resolverFallback.usableCount > 0
+          ) {
+            return res.status(resolverFallback.status).json(resolverFallback.data);
+          }
+        } catch (resolverErr) {
+          logger.warn(
+            { err: resolverErr?.message || String(resolverErr) },
+            'proxy agent search resolver fallback failed; keeping primary response',
+          );
+        }
+      }
+
+      if (!skipSecondaryFallback) {
+        try {
+          const fallback = await queryFindProductsMultiFallback({
+            queryParams,
+            checkoutToken,
+            reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
+          });
+          if (
+            fallback &&
+            fallback.status >= 200 &&
+            fallback.status < 300 &&
+            fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+            isProxySearchFallbackRelevant(fallback.data, queryText)
+          ) {
+            return res.status(fallback.status).json(fallback.data);
+          }
+        } catch (fallbackErr) {
+          logger.warn(
+            { err: fallbackErr?.message || String(fallbackErr) },
+            'proxy agent search fallback invoke failed; keeping primary response',
+          );
+        }
+      }
+    }
+
+    if (Number(resp.status) >= 500) {
+      return res.status(200).json(
+        buildProxySearchSoftFallbackResponse({
+          queryParams,
+          reason: 'primary_status_5xx',
+          upstreamStatus: resp.status,
+          route: 'proxy_search_primary_status',
+        }),
+      );
+    }
+
+    return res.status(resp.status).json(
+      withProxySearchFallbackMetadata(normalized, {
+        applied: false,
+        reason:
+          shouldFallback && skipSecondaryFallback
+            ? 'resolver_miss_skip_secondary'
+            : shouldFallback
+              ? 'fallback_not_better'
+              : 'not_needed',
+      }),
+    );
   } catch (err) {
+    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+    if (queryText) {
+      if (!skipSecondaryFallback) {
+        try {
+          const resolverFallback = await queryResolveSearchFallback({
+            queryParams,
+            checkoutToken,
+            reason: 'resolver_after_exception',
+          });
+          if (
+            resolverFallback &&
+            resolverFallback.status >= 200 &&
+            resolverFallback.status < 300 &&
+            resolverFallback.usableCount > 0
+          ) {
+            return res.status(resolverFallback.status).json(resolverFallback.data);
+          }
+        } catch (resolverErr) {
+          logger.warn(
+            { err: resolverErr?.message || String(resolverErr) },
+            'proxy agent search resolver fallback failed after primary exception',
+          );
+        }
+      }
+
+      if (!skipSecondaryFallback) {
+        try {
+          const fallback = await queryFindProductsMultiFallback({
+            queryParams,
+            checkoutToken,
+            reason: 'primary_request_failed',
+          });
+          if (
+            fallback &&
+            fallback.status >= 200 &&
+            fallback.status < 300 &&
+            fallback.usableCount > 0 &&
+            isProxySearchFallbackRelevant(fallback.data, queryText)
+          ) {
+            return res.status(fallback.status).json(fallback.data);
+          }
+        } catch (fallbackErr) {
+          logger.warn(
+            { err: fallbackErr?.message || String(fallbackErr) },
+            'proxy agent search fallback invoke failed after primary exception',
+          );
+        }
+      }
+    }
+
     const { code, message, data } = extractUpstreamErrorCode(err);
-    const statusCode = err?.response?.status || err?.status || 500;
+    const statusCode = err?.response?.status || err?.status || (err?.code === 'ECONNABORTED' ? 504 : 500);
+    if (queryText) {
+      return res.status(200).json(
+        buildProxySearchSoftFallbackResponse({
+          queryParams,
+          reason: err?.code === 'ECONNABORTED' ? 'primary_timeout' : 'primary_exception',
+          upstreamStatus: statusCode,
+          upstreamCode: code || err?.code || null,
+          upstreamMessage: message || err?.message || null,
+          route: 'proxy_search_exception',
+        }),
+      );
+    }
     return res.status(statusCode).json({
       error: code || 'FAILED_TO_PROXY_AGENT_SEARCH',
       message: message || 'Failed to proxy agent search request',
@@ -4239,6 +5156,10 @@ function pickResolveOptions(raw) {
     ...(o.upstreamRetries !== undefined ? { upstream_retries: o.upstreamRetries } : {}),
     ...(o.upstream_retry_backoff_ms !== undefined ? { upstream_retry_backoff_ms: o.upstream_retry_backoff_ms } : {}),
     ...(o.upstreamRetryBackoffMs !== undefined ? { upstream_retry_backoff_ms: o.upstreamRetryBackoffMs } : {}),
+    ...(o.stable_alias_short_circuit !== undefined ? { stable_alias_short_circuit: o.stable_alias_short_circuit } : {}),
+    ...(o.stableAliasShortCircuit !== undefined ? { stable_alias_short_circuit: o.stableAliasShortCircuit } : {}),
+    ...(o.allow_stable_alias_for_uuid !== undefined ? { allow_stable_alias_for_uuid: o.allow_stable_alias_for_uuid } : {}),
+    ...(o.allowStableAliasForUuid !== undefined ? { allow_stable_alias_for_uuid: o.allowStableAliasForUuid } : {}),
   };
 }
 
@@ -4283,7 +5204,14 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const queryText = String(body.query || '').trim();
+  const queryText = String(
+    body.query ||
+      body.product_id ||
+      body.productId ||
+      body.sku_id ||
+      body.skuId ||
+      '',
+  ).trim();
   const lang = normalizeResolveLang(body.lang);
   let options = pickResolveOptions(body.options);
   const hints = body.hints && typeof body.hints === 'object' && !Array.isArray(body.hints) ? body.hints : null;
@@ -4303,6 +5231,14 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
   const origin = String(req.headers.origin || '').trim();
   const shouldDefaultPreferMerchants =
     callerHint === 'aurora_chatbox' || callerHint === 'aurora-chatbox' || hasAuroraUid || origin === 'https://aurora.pivota.cc';
+  if (shouldDefaultPreferMerchants) {
+    if (options.stable_alias_short_circuit === undefined) {
+      options = { ...options, stable_alias_short_circuit: true };
+    }
+    if (options.allow_stable_alias_for_uuid === undefined) {
+      options = { ...options, allow_stable_alias_for_uuid: true };
+    }
+  }
   const preferMerchantsRaw = options?.prefer_merchants;
   const hasPreferMerchants =
     (Array.isArray(preferMerchantsRaw) && preferMerchantsRaw.length > 0) ||
@@ -4390,6 +5326,1067 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
     });
   }
 });
+
+function offersResolveIsRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function offersResolvePickFirstTrimmed(...values) {
+  for (const raw of values) {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    if (s) return s;
+  }
+  return '';
+}
+
+function offersResolveIsUuidLike(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
+function normalizeOffersResolveReasonCode(raw, fallback = 'no_candidates') {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return fallback;
+  if (OFFERS_RESOLVE_REASON_CODE_SET.has(token)) return token;
+  if (
+    token === 'db_error' ||
+    token === 'db_query_timeout' ||
+    token === 'products_cache_missing' ||
+    token.startsWith('db_') ||
+    token.includes('database') ||
+    token.includes('postgres')
+  ) {
+    return 'db_timeout';
+  }
+  if (
+    token === 'timeout' ||
+    token === 'upstream_error' ||
+    token.startsWith('upstream_') ||
+    token.includes('timed out') ||
+    token.includes('timeout')
+  ) {
+    return 'upstream_timeout';
+  }
+  if (
+    token === 'no_result' ||
+    token === 'no_results' ||
+    token === 'not_found' ||
+    token === 'not_found_in_cache' ||
+    token === 'low_confidence' ||
+    token === 'empty_query'
+  ) {
+    return 'no_candidates';
+  }
+  if (token === 'mapped' || token === 'mapped_direct' || token === 'cache_hit') return 'mapped_hit';
+  if (token === 'subject_hit' || token === 'subject_match') return 'subject_direct';
+  if (token === 'canonical_direct' || token === 'canonical_ref_hit') return 'canonical_ref_direct';
+  if (
+    token === 'stable_alias' ||
+    token === 'stable_alias_ref' ||
+    token === 'stable_alias_match' ||
+    token === 'alias_exact' ||
+    token === 'alias_fuzzy'
+  ) {
+    return 'stable_alias_ref';
+  }
+  if (token === 'external_fallback') return 'fallback_external';
+  return fallback;
+}
+
+function inferOffersResolveFailureReasonCode({ responseBody, statusCode, error } = {}) {
+  const explicit = normalizeOffersResolveReasonCode(
+    responseBody?.reason_code ||
+      responseBody?.reasonCode ||
+      responseBody?.metadata?.reason_code ||
+      responseBody?.metadata?.resolve_reason_code,
+    '',
+  );
+  if (explicit) return explicit;
+
+  const reason = String(
+    responseBody?.reason ||
+      responseBody?.error ||
+      responseBody?.code ||
+      responseBody?.message ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (reason) {
+    const mapped = normalizeOffersResolveReasonCode(reason, '');
+    if (mapped) return mapped;
+  }
+
+  const sourceReasons = Array.isArray(responseBody?.metadata?.sources)
+    ? responseBody.metadata.sources
+        .map((s) => String(s?.reason || '').trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+  for (const sourceReason of sourceReasons) {
+    const mapped = normalizeOffersResolveReasonCode(sourceReason, '');
+    if (mapped) return mapped;
+  }
+
+  const status = Number(statusCode || 0);
+  if (status === 408 || status === 429 || status >= 500) return 'upstream_timeout';
+
+  const errText = String(error?.code || error?.message || error || '').trim().toLowerCase();
+  if (
+    errText.includes('timeout') ||
+    errText.includes('econnaborted') ||
+    errText.includes('etimedout')
+  ) {
+    return 'upstream_timeout';
+  }
+  if (errText.includes('database') || errText.includes('postgres') || errText.includes('db_')) {
+    return 'db_timeout';
+  }
+
+  return 'no_candidates';
+}
+
+function normalizeOffersResolveCanonicalProductRef(input, { allowOpaqueProductId = false } = {}) {
+  const ref = offersResolveIsRecord(input) ? input : null;
+  if (!ref) return null;
+  const productId = offersResolvePickFirstTrimmed(ref.product_id, ref.productId);
+  const merchantId = offersResolvePickFirstTrimmed(ref.merchant_id, ref.merchantId);
+  if (!productId || !merchantId) return null;
+  if (!allowOpaqueProductId && offersResolveIsUuidLike(productId)) return null;
+  return {
+    product_id: productId,
+    merchant_id: merchantId,
+  };
+}
+
+function extractOffersResolveSubjectProductGroupId(input) {
+  const subject = offersResolveIsRecord(input) ? input : null;
+  if (!subject) return '';
+  const type = offersResolvePickFirstTrimmed(subject.type).toLowerCase();
+  const id = offersResolvePickFirstTrimmed(subject.id);
+  if (type === 'product_group' && id) return id;
+  return offersResolvePickFirstTrimmed(subject.product_group_id, subject.productGroupId, id);
+}
+
+function buildOffersResolveExternalSearchUrl(query) {
+  const q = String(query || '').trim();
+  if (!q) return 'https://www.google.com/';
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
+
+function buildOffersResolvePdpTargetGroup(productGroupId, canonicalProductRef = null) {
+  const pgid = offersResolvePickFirstTrimmed(productGroupId);
+  if (!pgid) return null;
+  return {
+    schema: 'pdp_target.v1',
+    type: 'internal',
+    path: 'group',
+    subject: {
+      type: 'product_group',
+      id: pgid,
+      product_group_id: pgid,
+    },
+    ...(canonicalProductRef ? { canonical_product_ref: canonicalProductRef } : {}),
+    get_pdp_v2_payload: {
+      subject: {
+        type: 'product_group',
+        id: pgid,
+      },
+    },
+  };
+}
+
+function buildOffersResolvePdpTargetRef(canonicalProductRef, { path = 'ref' } = {}) {
+  const ref = normalizeOffersResolveCanonicalProductRef(canonicalProductRef, {
+    allowOpaqueProductId: false,
+  });
+  if (!ref) return null;
+  const normalizedPath = String(path || '').trim().toLowerCase() === 'resolve' ? 'resolve' : 'ref';
+  return {
+    schema: 'pdp_target.v1',
+    type: 'internal',
+    path: normalizedPath,
+    product_ref: ref,
+    canonical_product_ref: ref,
+    get_pdp_v2_payload: {
+      product_ref: ref,
+    },
+  };
+}
+
+function buildOffersResolvePdpTargetExternal(query, reasonCode = null) {
+  const normalizedReason = reasonCode
+    ? normalizeOffersResolveReasonCode(reasonCode, 'fallback_external')
+    : null;
+  return {
+    schema: 'pdp_target.v1',
+    type: 'external',
+    path: 'external',
+    external: {
+      provider: 'google',
+      target: '_blank',
+      url: buildOffersResolveExternalSearchUrl(query),
+      query: String(query || '').trim() || null,
+    },
+    ...(normalizedReason ? { reason_code: normalizedReason } : {}),
+  };
+}
+
+function normalizeOffersResolvePdpTargetV1(rawTarget, { fallbackQuery = '' } = {}) {
+  const target = offersResolveIsRecord(rawTarget) ? rawTarget : null;
+  if (!target) return null;
+
+  const rawPath = offersResolvePickFirstTrimmed(target.path, target.mode).toLowerCase();
+  const rawSubject = offersResolveIsRecord(target.subject) ? target.subject : null;
+  const subjectProductGroupId =
+    extractOffersResolveSubjectProductGroupId(rawSubject) ||
+    offersResolvePickFirstTrimmed(target.product_group_id, target.productGroupId);
+  const canonicalProductRef =
+    normalizeOffersResolveCanonicalProductRef(target.canonical_product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(target.product_ref, {
+      allowOpaqueProductId: false,
+    });
+
+  if (rawPath === 'group' && subjectProductGroupId) {
+    return buildOffersResolvePdpTargetGroup(subjectProductGroupId, canonicalProductRef || null);
+  }
+  if ((rawPath === 'ref' || rawPath === 'resolve') && canonicalProductRef) {
+    return buildOffersResolvePdpTargetRef(canonicalProductRef, { path: rawPath });
+  }
+  if (rawPath === 'external') {
+    const query = offersResolvePickFirstTrimmed(
+      target?.external?.query,
+      target?.external?.search_query,
+      fallbackQuery,
+    );
+    return buildOffersResolvePdpTargetExternal(query, target.reason_code);
+  }
+
+  if (subjectProductGroupId) {
+    return buildOffersResolvePdpTargetGroup(subjectProductGroupId, canonicalProductRef || null);
+  }
+  if (canonicalProductRef) {
+    return buildOffersResolvePdpTargetRef(canonicalProductRef, { path: 'ref' });
+  }
+  return null;
+}
+
+function extractOffersResolvePdpTargetFromResponse(responseBody, { fallbackQuery = '' } = {}) {
+  const body = offersResolveIsRecord(responseBody) ? responseBody : null;
+  if (!body) return null;
+
+  const explicitTargets = [
+    body?.pdp_target?.v1,
+    body?.pdpTarget?.v1,
+    body?.mapping?.pdp_target?.v1,
+    body?.mapping?.pdpTarget?.v1,
+  ];
+  for (const candidateTarget of explicitTargets) {
+    const normalized = normalizeOffersResolvePdpTargetV1(candidateTarget, { fallbackQuery });
+    if (normalized) return normalized;
+  }
+
+  const subjectProductGroupId = offersResolvePickFirstTrimmed(
+    extractOffersResolveSubjectProductGroupId(body.subject),
+    extractOffersResolveSubjectProductGroupId(body.mapping?.subject),
+    body.product_group_id,
+    body.productGroupId,
+    body.mapping?.product_group_id,
+    body.mapping?.productGroupId,
+  );
+  const canonicalProductRef =
+    normalizeOffersResolveCanonicalProductRef(body.canonical_product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(body.product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(body.mapping?.canonical_product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(body.mapping?.product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(
+      {
+        product_id: offersResolvePickFirstTrimmed(
+          body.canonical_product?.product_id,
+          body.canonical_product?.productId,
+          body.canonical_product?.id,
+          body.mapping?.canonical_product?.product_id,
+          body.mapping?.canonical_product?.productId,
+          body.mapping?.canonical_product?.id,
+          body.mapping?.canonicalProduct?.product_id,
+          body.mapping?.canonicalProduct?.productId,
+          body.mapping?.canonicalProduct?.id,
+        ),
+        merchant_id: offersResolvePickFirstTrimmed(
+          body.canonical_product?.merchant_id,
+          body.canonical_product?.merchantId,
+          body.canonical_product?.merchant?.merchant_id,
+          body.mapping?.canonical_product?.merchant_id,
+          body.mapping?.canonical_product?.merchantId,
+          body.mapping?.canonical_product?.merchant?.merchant_id,
+          body.mapping?.canonicalProduct?.merchant_id,
+          body.mapping?.canonicalProduct?.merchantId,
+          body.mapping?.canonicalProduct?.merchant?.merchant_id,
+        ),
+      },
+      {
+        allowOpaqueProductId: false,
+      },
+    );
+
+  if (subjectProductGroupId) {
+    return buildOffersResolvePdpTargetGroup(subjectProductGroupId, canonicalProductRef || null);
+  }
+  if (canonicalProductRef) {
+    return buildOffersResolvePdpTargetRef(canonicalProductRef, { path: 'ref' });
+  }
+
+  return null;
+}
+
+function normalizeOffersResolveInput(rawPayload) {
+  const payload = offersResolveIsRecord(rawPayload) ? rawPayload : {};
+  const offersPayload =
+    offersResolveIsRecord(payload.offers) && Object.keys(payload.offers).length > 0
+      ? payload.offers
+      : payload;
+  const product = offersResolveIsRecord(offersPayload.product) ? offersPayload.product : {};
+  const subject =
+    (offersResolveIsRecord(offersPayload.subject) ? offersPayload.subject : null) ||
+    (offersResolveIsRecord(product.subject) ? product.subject : null);
+
+  const subjectProductGroupId = offersResolvePickFirstTrimmed(
+    extractOffersResolveSubjectProductGroupId(subject),
+    offersPayload.product_group_id,
+    offersPayload.productGroupId,
+    product.product_group_id,
+    product.productGroupId,
+  );
+
+  const canonicalProductRef =
+    normalizeOffersResolveCanonicalProductRef(offersPayload.canonical_product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(offersPayload.product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(product.canonical_product_ref, {
+      allowOpaqueProductId: false,
+    }) ||
+    normalizeOffersResolveCanonicalProductRef(product.product_ref, {
+      allowOpaqueProductId: false,
+    });
+
+  const rawProductId = offersResolvePickFirstTrimmed(
+    product.product_id,
+    product.productId,
+    offersPayload.product_id,
+    offersPayload.productId,
+  );
+  const rawSkuId = offersResolvePickFirstTrimmed(
+    product.sku_id,
+    product.skuId,
+    offersPayload.sku_id,
+    offersPayload.skuId,
+  );
+  const rawMerchantId = offersResolvePickFirstTrimmed(
+    product.merchant_id,
+    product.merchantId,
+    offersPayload.merchant_id,
+    offersPayload.merchantId,
+  );
+  const brand = offersResolvePickFirstTrimmed(product.brand, offersPayload.brand);
+  const name = offersResolvePickFirstTrimmed(product.name, product.title, offersPayload.name, offersPayload.title);
+  const displayName = offersResolvePickFirstTrimmed(
+    product.display_name,
+    product.displayName,
+    offersPayload.display_name,
+    offersPayload.displayName,
+    name,
+  );
+
+  let queryText = offersResolvePickFirstTrimmed(
+    offersPayload.query,
+    product.query,
+    offersPayload.search_query,
+    product.search_query,
+  );
+  if (!queryText) {
+    if (brand && displayName) queryText = `${brand} ${displayName}`.trim();
+    else {
+      queryText = offersResolvePickFirstTrimmed(
+        displayName,
+        name,
+        brand,
+        rawProductId,
+        rawSkuId,
+      );
+    }
+  }
+
+  const limitRaw = offersPayload.limit ?? payload.limit;
+  const limit = Math.min(Math.max(1, Number(limitRaw || 10) || 10), 50);
+  const market = offersResolvePickFirstTrimmed(offersPayload.market, payload.market) || null;
+  const tool = offersResolvePickFirstTrimmed(offersPayload.tool, payload.tool) || null;
+
+  return {
+    offers_payload: offersPayload,
+    product,
+    subject_product_group_id: subjectProductGroupId || null,
+    canonical_product_ref: canonicalProductRef || null,
+    raw_product_id: rawProductId || null,
+    raw_sku_id: rawSkuId || null,
+    raw_merchant_id: rawMerchantId || null,
+    legacy_opaque_id:
+      (rawProductId && offersResolveIsUuidLike(rawProductId)) ||
+      (rawSkuId && offersResolveIsUuidLike(rawSkuId)),
+    market,
+    tool,
+    limit,
+    query_text: queryText || '',
+    brand: brand || null,
+    name: name || null,
+    display_name: displayName || null,
+    has_any_identifier: Boolean(
+      subjectProductGroupId ||
+        canonicalProductRef ||
+        rawProductId ||
+        rawSkuId ||
+        queryText,
+    ),
+  };
+}
+
+function resolveOffersResolveStableAliasRef(normalizedInput) {
+  if (!resolveStableAliasByQuery) return null;
+  const input = normalizedInput || {};
+  const composedBrandTitle = offersResolvePickFirstTrimmed(
+    input.brand && input.display_name ? `${input.brand} ${input.display_name}` : '',
+    input.brand && input.name ? `${input.brand} ${input.name}` : '',
+  );
+  const candidateQueries = [
+    input.query_text,
+    input.display_name,
+    input.name,
+    composedBrandTitle,
+    input.raw_product_id,
+    input.raw_sku_id,
+  ];
+  const seen = new Set();
+
+  for (const rawCandidate of candidateQueries) {
+    const query = String(rawCandidate || '').trim();
+    if (!query) continue;
+    const dedupeKey = query.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const normalizedQuery = normalizeResolverText(query);
+    const queryTokens = tokenizeResolverQuery(normalizedQuery);
+    if (!normalizedQuery || !Array.isArray(queryTokens) || queryTokens.length === 0) continue;
+
+    const matched = resolveStableAliasByQuery({
+      query,
+      normalizedQuery,
+      queryTokens,
+    });
+    if (
+      matched &&
+      matched.product_ref &&
+      matched.product_ref.product_id &&
+      matched.product_ref.merchant_id
+    ) {
+      return {
+        product_ref: {
+          product_id: String(matched.product_ref.product_id).trim(),
+          merchant_id: String(matched.product_ref.merchant_id).trim(),
+        },
+        match_id: String(matched.id || '').trim() || null,
+        match_reason: String(matched.reason || '').trim() || null,
+        matched_alias: String(matched.matched_alias || query).trim() || query,
+      };
+    }
+  }
+  return null;
+}
+
+function buildOffersResolveCacheSearchPayload(normalizedInput) {
+  const input = normalizedInput || {};
+  const product = {};
+
+  const canonicalRef = normalizeOffersResolveCanonicalProductRef(input.canonical_product_ref, {
+    allowOpaqueProductId: false,
+  });
+  if (canonicalRef) product.canonical_product_ref = canonicalRef;
+  if (input.subject_product_group_id) product.product_group_id = String(input.subject_product_group_id).trim();
+  if (input.raw_merchant_id) product.merchant_id = String(input.raw_merchant_id).trim();
+
+  const rawProductId = offersResolvePickFirstTrimmed(input.raw_product_id);
+  const rawSkuId = offersResolvePickFirstTrimmed(input.raw_sku_id);
+  if (rawProductId && !offersResolveIsUuidLike(rawProductId)) product.product_id = rawProductId;
+  if (rawSkuId) product.sku_id = rawSkuId;
+  if (input.brand) product.brand = input.brand;
+  if (input.name) product.name = input.name;
+  if (input.display_name) product.display_name = input.display_name;
+
+  return {
+    product,
+    ...(input.market ? { market: input.market } : {}),
+    ...(input.tool ? { tool: input.tool } : {}),
+    ...(input.limit ? { limit: input.limit } : {}),
+    ...(input.query_text ? { query: input.query_text } : {}),
+  };
+}
+
+function getOffersResolveCircuitState(sourceKey) {
+  const key = sourceKey === 'cache_search' ? 'cache_search' : 'subject_resolve';
+  return OFFERS_RESOLVE_CIRCUITS[key];
+}
+
+function markOffersResolveCircuitSuccess(sourceKey) {
+  const state = getOffersResolveCircuitState(sourceKey);
+  state.failure_count = 0;
+  state.last_reason = null;
+  state.open_until_ms = 0;
+}
+
+function shouldTripOffersResolveCircuit({ reason, status } = {}) {
+  if (reason === 'upstream_timeout' || reason === 'upstream_error') return true;
+  const code = Number(status || 0);
+  return code === 408 || code === 429 || code >= 500;
+}
+
+function markOffersResolveCircuitFailure(sourceKey, reason, status) {
+  const state = getOffersResolveCircuitState(sourceKey);
+  if (!shouldTripOffersResolveCircuit({ reason, status })) return;
+  state.failure_count += 1;
+  state.last_reason = reason || null;
+  if (state.failure_count >= OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD) {
+    state.failure_count = 0;
+    state.open_until_ms = Date.now() + OFFERS_RESOLVE_CIRCUIT_OPEN_MS;
+  }
+}
+
+async function callOffersResolveSourceWithRetry({
+  sourceKey,
+  url,
+  body,
+  checkoutToken,
+  timeoutMs,
+  maxRetries,
+  retryBackoffMs,
+}) {
+  const source = sourceKey === 'cache_search' ? 'cache_search' : 'subject_resolve';
+  const state = getOffersResolveCircuitState(source);
+  if (state.open_until_ms > Date.now()) {
+    return {
+      ok: false,
+      source_trace: {
+        source,
+        ok: false,
+        attempts: 0,
+        latency_ms: 0,
+        reason: 'circuit_open',
+      },
+      reason: 'circuit_open',
+      status: 503,
+      response_body: null,
+    };
+  }
+
+  const startedAt = Date.now();
+  const safeTimeoutMs = Math.max(100, Number(timeoutMs) || 1000);
+  const safeRetries = Math.max(0, Math.min(3, Number(maxRetries) || 0));
+  const safeBackoffMs = Math.max(25, Number(retryBackoffMs) || 100);
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(checkoutToken
+      ? { 'X-Checkout-Token': checkoutToken }
+      : {
+          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+        }),
+  };
+
+  let attempts = 0;
+  let lastStatus = null;
+  let lastReason = 'upstream_timeout';
+  let lastBody = null;
+  let lastError = null;
+
+  while (attempts <= safeRetries) {
+    attempts += 1;
+    try {
+      const resp = await axios.post(url, body, {
+        headers,
+        timeout: safeTimeoutMs,
+        validateStatus: () => true,
+      });
+      lastStatus = Number(resp?.status || 0) || null;
+      lastBody = offersResolveIsRecord(resp?.data) ? resp.data : null;
+      if (lastStatus >= 200 && lastStatus < 300) {
+        markOffersResolveCircuitSuccess(source);
+        return {
+          ok: true,
+          response_body: lastBody,
+          status: lastStatus,
+          attempts,
+          source_trace: {
+            source,
+            ok: true,
+            attempts,
+            latency_ms: Math.max(0, Date.now() - startedAt),
+            status: lastStatus,
+          },
+        };
+      }
+
+      lastReason = inferOffersResolveFailureReasonCode({
+        responseBody: lastBody,
+        statusCode: lastStatus,
+      });
+      const retryable = lastStatus === 408 || lastStatus === 429 || lastStatus >= 500;
+      if (!retryable || attempts > safeRetries) break;
+      await sleepMs(safeBackoffMs * attempts);
+    } catch (err) {
+      lastError = err;
+      lastReason = inferOffersResolveFailureReasonCode({ error: err });
+      const errText = String(err?.code || err?.message || err || '').toLowerCase();
+      const retryable =
+        errText.includes('timeout') ||
+        errText.includes('econnaborted') ||
+        errText.includes('etimedout');
+      if (!retryable || attempts > safeRetries) break;
+      await sleepMs(safeBackoffMs * attempts);
+    }
+  }
+
+  markOffersResolveCircuitFailure(source, lastReason, lastStatus);
+  return {
+    ok: false,
+    response_body: lastBody,
+    status: lastStatus,
+    attempts,
+    reason: lastReason,
+    error: lastError,
+    source_trace: {
+      source,
+      ok: false,
+      attempts,
+      latency_ms: Math.max(0, Date.now() - startedAt),
+      ...(lastStatus ? { status: lastStatus } : {}),
+      reason: lastReason,
+    },
+  };
+}
+
+function shouldSkipOffersResolveCacheSearch(subjectResult) {
+  if (!OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT) return false;
+  if (!subjectResult || subjectResult.ok) return false;
+
+  const rawReason = String(subjectResult.reason || '').trim().toLowerCase();
+  if (rawReason === 'circuit_open') return true;
+
+  const normalizedReason = normalizeOffersResolveReasonCode(rawReason, '');
+  return normalizedReason === 'upstream_timeout';
+}
+
+function buildOffersResolveResponse({
+  upstreamBody,
+  reasonCode,
+  pdpTargetV1,
+  sourceTrace,
+  queryText,
+  startedAtMs,
+  failReasonCode = null,
+}) {
+  const base = offersResolveIsRecord(upstreamBody) ? { ...upstreamBody } : {};
+  const nestedData = offersResolveIsRecord(base.data) ? base.data : {};
+  const offers = Array.isArray(base.offers)
+    ? base.offers
+    : Array.isArray(nestedData.offers)
+      ? nestedData.offers
+      : [];
+  const mappingBase = offersResolveIsRecord(base.mapping) ? { ...base.mapping } : {};
+  const metadataBase = offersResolveIsRecord(base.metadata) ? { ...base.metadata } : {};
+  const normalizedReasonCode = normalizeOffersResolveReasonCode(
+    reasonCode,
+    failReasonCode ? normalizeOffersResolveReasonCode(failReasonCode, 'no_candidates') : 'no_candidates',
+  );
+  const normalizedFailReason = failReasonCode
+    ? normalizeOffersResolveReasonCode(failReasonCode, 'no_candidates')
+    : null;
+  const totalLatencyMs = Math.max(0, Date.now() - Number(startedAtMs || Date.now()));
+  const pdpPath = offersResolvePickFirstTrimmed(pdpTargetV1?.path) || 'external';
+
+  const response = {
+    ...base,
+    status: base.status || 'success',
+    offers,
+    offers_count:
+      Number.isFinite(Number(base.offers_count)) && Number(base.offers_count) >= 0
+        ? Number(base.offers_count)
+        : offers.length,
+    reason_code: normalizedReasonCode,
+    reason: base.reason || normalizedReasonCode,
+    pdp_target: {
+      ...(offersResolveIsRecord(base.pdp_target) ? base.pdp_target : {}),
+      v1: pdpTargetV1,
+    },
+    mapping: {
+      ...mappingBase,
+      pdp_target: {
+        ...(offersResolveIsRecord(mappingBase.pdp_target) ? mappingBase.pdp_target : {}),
+        v1: pdpTargetV1,
+      },
+      source_trace: Array.isArray(sourceTrace) ? sourceTrace : [],
+    },
+    metadata: {
+      ...metadataBase,
+      source: 'offers.resolve',
+      pdp_open_path: pdpPath,
+      time_to_pdp_ms: totalLatencyMs,
+      sources: Array.isArray(sourceTrace) ? sourceTrace : [],
+      ...(queryText ? { query: queryText } : {}),
+      ...(normalizedFailReason
+        ? {
+            fail_reason: normalizedFailReason,
+            resolve_fail_reason: normalizedFailReason,
+            resolve_reason_code: normalizedFailReason,
+          }
+        : {}),
+    },
+  };
+
+  if (response.status === 'success' && offers.length === 0 && !response.reason_code) {
+    response.reason_code = 'no_candidates';
+    response.reason = response.reason || 'no_candidates';
+  }
+
+  return response;
+}
+
+async function handleOffersResolveOperation({
+  payload,
+  metadata,
+  checkoutToken,
+}) {
+  const startedAt = Date.now();
+  const sourceTrace = [];
+  const normalizedInput = normalizeOffersResolveInput(payload);
+
+  if (!normalizedInput.has_any_identifier) {
+    return {
+      statusCode: 400,
+      response: {
+        error: 'MISSING_PARAMETERS',
+        message:
+          'offers.resolve requires product.sku_id, product.product_id, subject.product_group_id, canonical_product_ref, or query',
+      },
+    };
+  }
+
+  if (normalizedInput.subject_product_group_id) {
+    const pdpTarget = buildOffersResolvePdpTargetGroup(
+      normalizedInput.subject_product_group_id,
+      normalizedInput.canonical_product_ref,
+    );
+    sourceTrace.push({
+      source: 'stable_input',
+      ok: true,
+      attempts: 0,
+      latency_ms: 0,
+      reason: 'subject_direct',
+    });
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+        },
+        reasonCode: 'subject_direct',
+        pdpTargetV1: pdpTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+      }),
+    };
+  }
+
+  if (normalizedInput.canonical_product_ref) {
+    const pdpTarget = buildOffersResolvePdpTargetRef(normalizedInput.canonical_product_ref, {
+      path: 'ref',
+    });
+    sourceTrace.push({
+      source: 'stable_input',
+      ok: true,
+      attempts: 0,
+      latency_ms: 0,
+      reason: 'canonical_ref_direct',
+    });
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+        },
+        reasonCode: 'canonical_ref_direct',
+        pdpTargetV1: pdpTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+      }),
+    };
+  }
+
+  const stableAliasRef = resolveOffersResolveStableAliasRef(normalizedInput);
+  if (stableAliasRef?.product_ref) {
+    const pdpTarget = buildOffersResolvePdpTargetRef(stableAliasRef.product_ref, {
+      path: 'ref',
+    });
+    sourceTrace.push({
+      source: 'stable_alias_ref',
+      ok: true,
+      attempts: 0,
+      latency_ms: 0,
+      reason: stableAliasRef.match_reason || 'stable_alias_ref',
+      ...(stableAliasRef.match_id ? { match_id: stableAliasRef.match_id } : {}),
+      ...(stableAliasRef.matched_alias ? { matched_alias: stableAliasRef.matched_alias } : {}),
+    });
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+          mapping: {
+            canonical_product_ref: stableAliasRef.product_ref,
+          },
+          metadata: {
+            source: 'offers.resolve',
+            resolve_source: 'stable_alias_ref',
+            stable_alias_match_id: stableAliasRef.match_id || null,
+            stable_alias_match_query: stableAliasRef.matched_alias || null,
+          },
+        },
+        reasonCode: 'stable_alias_ref',
+        pdpTargetV1: pdpTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+      }),
+    };
+  }
+
+  const subjectResolvePayload = {
+    product: {
+      ...(normalizedInput.raw_product_id ? { product_id: normalizedInput.raw_product_id } : {}),
+      ...(normalizedInput.raw_sku_id ? { sku_id: normalizedInput.raw_sku_id } : {}),
+      ...(normalizedInput.raw_merchant_id ? { merchant_id: normalizedInput.raw_merchant_id } : {}),
+      ...(normalizedInput.brand ? { brand: normalizedInput.brand } : {}),
+      ...(normalizedInput.name ? { name: normalizedInput.name } : {}),
+      ...(normalizedInput.display_name ? { display_name: normalizedInput.display_name } : {}),
+      ...(normalizedInput.query_text ? { query: normalizedInput.query_text } : {}),
+    },
+    ...(normalizedInput.query_text ? { query: normalizedInput.query_text } : {}),
+    ...(normalizedInput.market ? { market: normalizedInput.market } : {}),
+    ...(normalizedInput.tool ? { tool: normalizedInput.tool } : {}),
+    source: 'offers.resolve',
+    metadata: offersResolveIsRecord(metadata) ? metadata : {},
+  };
+
+  const subjectResult = await callOffersResolveSourceWithRetry({
+    sourceKey: 'subject_resolve',
+    url: `${PIVOTA_API_BASE}/v1/subject/resolve`,
+    body: subjectResolvePayload,
+    checkoutToken,
+    timeoutMs: OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
+    maxRetries: OFFERS_RESOLVE_SUBJECT_RETRY_MAX,
+    retryBackoffMs: OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS,
+  });
+  sourceTrace.push(subjectResult.source_trace);
+
+  if (subjectResult.ok) {
+    const subjectTarget = extractOffersResolvePdpTargetFromResponse(subjectResult.response_body, {
+      fallbackQuery: normalizedInput.query_text,
+    });
+    if (subjectTarget && subjectTarget.path !== 'external') {
+      const reasonCode = subjectTarget.path === 'group' ? 'subject_direct' : 'subject_direct';
+      return {
+        statusCode: 200,
+        response: buildOffersResolveResponse({
+          upstreamBody: {
+            ...(offersResolveIsRecord(subjectResult.response_body)
+              ? subjectResult.response_body
+              : { status: 'success' }),
+            offers: [],
+            offers_count: 0,
+            input: {
+              product_id: normalizedInput.raw_product_id,
+              sku_id: normalizedInput.raw_sku_id,
+            },
+          },
+          reasonCode,
+          pdpTargetV1: subjectTarget,
+          sourceTrace,
+          queryText: normalizedInput.query_text,
+          startedAtMs: startedAt,
+        }),
+      };
+    }
+  }
+
+  if (shouldSkipOffersResolveCacheSearch(subjectResult)) {
+    const failReasonCode = normalizeOffersResolveReasonCode(
+      subjectResult.reason,
+      'upstream_timeout',
+    );
+    const fallbackTarget = buildOffersResolvePdpTargetExternal(
+      normalizedInput.query_text,
+      failReasonCode,
+    );
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+        },
+        reasonCode: failReasonCode,
+        pdpTargetV1: fallbackTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+        failReasonCode,
+      }),
+    };
+  }
+
+  const cacheSearchPayload = {
+    operation: 'offers.resolve',
+    payload: buildOffersResolveCacheSearchPayload(normalizedInput),
+    metadata: offersResolveIsRecord(metadata) ? metadata : {},
+  };
+
+  const cacheSearchResult = await callOffersResolveSourceWithRetry({
+    sourceKey: 'cache_search',
+    url: `${PIVOTA_API_BASE}/agent/shop/v1/invoke`,
+    body: cacheSearchPayload,
+    checkoutToken,
+    timeoutMs: OFFERS_RESOLVE_CACHE_SEARCH_TIMEOUT_MS,
+    maxRetries: OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX,
+    retryBackoffMs: OFFERS_RESOLVE_CACHE_SEARCH_RETRY_BACKOFF_MS,
+  });
+  sourceTrace.push(cacheSearchResult.source_trace);
+
+  if (cacheSearchResult.ok) {
+    const upstreamBody = cacheSearchResult.response_body;
+    const pdpTarget =
+      extractOffersResolvePdpTargetFromResponse(upstreamBody, {
+        fallbackQuery: normalizedInput.query_text,
+      }) || buildOffersResolvePdpTargetExternal(normalizedInput.query_text);
+
+    const offers = Array.isArray(upstreamBody?.offers)
+      ? upstreamBody.offers
+      : Array.isArray(upstreamBody?.data?.offers)
+        ? upstreamBody.data.offers
+        : [];
+    const explicitReasonCode = normalizeOffersResolveReasonCode(
+      upstreamBody?.reason_code ||
+        upstreamBody?.reasonCode ||
+        upstreamBody?.metadata?.reason_code ||
+        upstreamBody?.metadata?.resolve_reason_code,
+      '',
+    );
+    const inferredFailureCode =
+      pdpTarget.path === 'external'
+        ? inferOffersResolveFailureReasonCode({
+            responseBody: upstreamBody,
+            statusCode: cacheSearchResult.status,
+          })
+        : null;
+    const pdpPath = offersResolvePickFirstTrimmed(pdpTarget?.path).toLowerCase();
+    const internalPdp = pdpPath === 'group' || pdpPath === 'ref' || pdpPath === 'resolve';
+    const resolvedReasonCode = internalPdp
+      ? explicitReasonCode && explicitReasonCode !== 'no_candidates'
+        ? explicitReasonCode
+        : 'mapped_hit'
+      : explicitReasonCode || inferredFailureCode || (offers.length ? 'mapped_hit' : 'no_candidates');
+
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody,
+        reasonCode: resolvedReasonCode,
+        pdpTargetV1: pdpTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+        failReasonCode: pdpTarget.path === 'external' ? inferredFailureCode : null,
+      }),
+    };
+  }
+
+  const failReasonCode = inferOffersResolveFailureReasonCode({
+    responseBody: cacheSearchResult.response_body,
+    statusCode: cacheSearchResult.status,
+    error: cacheSearchResult.error,
+  });
+  const fallbackTarget = buildOffersResolvePdpTargetExternal(
+    normalizedInput.query_text,
+    failReasonCode,
+  );
+
+  return {
+    statusCode: 200,
+    response: buildOffersResolveResponse({
+      upstreamBody: {
+        status: 'success',
+        offers: [],
+        offers_count: 0,
+        input: {
+          product_id: normalizedInput.raw_product_id,
+          sku_id: normalizedInput.raw_sku_id,
+        },
+      },
+      reasonCode: failReasonCode || 'fallback_external',
+      pdpTargetV1: fallbackTarget,
+      sourceTrace,
+      queryText: normalizedInput.query_text,
+      startedAtMs: startedAt,
+      failReasonCode: failReasonCode || 'fallback_external',
+    }),
+  };
+}
 
 // ---------------- Ops export: missing catalog products (requires X-ADMIN-KEY) ----------------
 
@@ -6459,6 +8456,58 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     }
   }
 
+  if (operation === 'offers.resolve') {
+    try {
+      const handled = await handleOffersResolveOperation({
+        payload,
+        metadata,
+        checkoutToken,
+      });
+      if (
+        handled &&
+        typeof handled === 'object' &&
+        handled.response &&
+        typeof handled.response === 'object'
+      ) {
+        return res.status(Number(handled.statusCode || 200) || 200).json(handled.response);
+      }
+      return res.status(500).json({
+        error: 'OFFERS_RESOLVE_HANDLER_FAILED',
+        message: 'offers.resolve returned an invalid response envelope',
+      });
+    } catch (err) {
+      const failReason = inferOffersResolveFailureReasonCode({ error: err });
+      logger.warn(
+        { err: err?.message || String(err), fail_reason: failReason },
+        'offers.resolve failed; returning explicit external fallback',
+      );
+      const pdpTarget = buildOffersResolvePdpTargetExternal('', failReason);
+      return res.status(200).json(
+        buildOffersResolveResponse({
+          upstreamBody: {
+            status: 'success',
+            offers: [],
+            offers_count: 0,
+          },
+          reasonCode: failReason,
+          pdpTargetV1: pdpTarget,
+          sourceTrace: [
+            {
+              source: 'offers_resolve_handler',
+              ok: false,
+              attempts: 1,
+              latency_ms: 0,
+              reason: failReason,
+            },
+          ],
+          queryText: '',
+          startedAtMs: Date.now(),
+          failReasonCode: failReason,
+        }),
+      );
+    }
+  }
+
   // Use real API routing
   const route = ROUTE_MAP[operation];
   if (!route) {
@@ -6794,6 +8843,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const offset = (page - 1) * limit;
 
         const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+        const searchAllMerchants =
+          !merchantId ||
+          search.search_all_merchants === true ||
+          search.searchAllMerchants === true;
         const priceMin = search.price_min ?? search.min_price;
         const priceMax = search.price_max ?? search.max_price;
 
@@ -6803,6 +8856,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ...(search.category ? { category: search.category } : {}),
           ...(priceMin != null ? { min_price: priceMin } : {}),
           ...(priceMax != null ? { max_price: priceMax } : {}),
+          ...(searchAllMerchants ? { search_all_merchants: true } : {}),
           in_stock_only: search.in_stock_only !== false,
           limit,
           offset,
@@ -7328,9 +9382,29 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         // Expected payload shape:
         // { offers: { product: { sku_id?, product_id? }, limit?, market?, tool? } }
         const offersPayload = payload.offers || payload || {};
+        const offersProduct =
+          offersPayload && typeof offersPayload.product === 'object' && !Array.isArray(offersPayload.product)
+            ? { ...offersPayload.product }
+            : {};
+        const productId = String(
+          offersProduct.product_id || offersProduct.productId || offersPayload.product_id || offersPayload.productId || '',
+        ).trim();
+        const skuId = String(
+          offersProduct.sku_id || offersProduct.skuId || offersPayload.sku_id || offersPayload.skuId || '',
+        ).trim();
+        const normalizedOffersPayload = {
+          ...offersPayload,
+          product: {
+            ...offersProduct,
+            ...(productId ? { product_id: productId } : {}),
+            ...(skuId ? { sku_id: skuId } : {}),
+          },
+          ...(productId ? { product_id: productId } : {}),
+          ...(skuId ? { sku_id: skuId } : {}),
+        };
         requestBody = {
           operation: 'offers.resolve',
-          payload: offersPayload,
+          payload: normalizedOffersPayload,
           metadata,
         };
         break;
@@ -7361,6 +9435,47 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     };
 
     let response;
+    const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+    const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
+    const resolverQueryParams = resolverQueryText ? { ...queryParams, query: resolverQueryText } : queryParams;
+    const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
+      operation,
+      metadata,
+      queryText: resolverQueryText,
+    });
+    let resolverFirstResult = null;
+    if (shouldAttemptResolverFirst) {
+      try {
+        resolverFirstResult = await queryResolveSearchFallback({
+          queryParams: resolverQueryParams,
+          checkoutToken,
+          reason: 'resolver_first',
+        });
+        if (
+          resolverFirstResult &&
+          resolverFirstResult.status >= 200 &&
+          resolverFirstResult.status < 300 &&
+          resolverFirstResult.usableCount > 0
+        ) {
+          response = { status: resolverFirstResult.status, data: resolverFirstResult.data };
+        }
+      } catch (resolverErr) {
+        logger.warn(
+          { err: resolverErr?.message || String(resolverErr), operation },
+          `${operation} resolver-first failed; falling back to upstream`,
+        );
+      }
+    }
+    if (
+      !response &&
+      operation === 'find_products_multi' &&
+      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult)
+    ) {
+      axiosConfig.timeout = Math.min(
+        Number(axiosConfig.timeout || getUpstreamTimeoutMs(operation)),
+        PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS,
+      );
+    }
     try {
       if (
         operation === 'get_product_detail' &&
@@ -7515,6 +9630,111 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
       }
 
+      if (!response && (operation === 'find_products' || operation === 'find_products_multi')) {
+        const queryText = resolverQueryText || searchQueryText;
+        const upstreamStatus = err?.response?.status || null;
+        const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+        const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+        if (queryText) {
+          const fallbackReason =
+            upstreamStatus
+              ? `upstream_status_${upstreamStatus}`
+              : err?.code === 'ECONNABORTED'
+                ? 'upstream_timeout'
+                : 'upstream_exception';
+
+          if (!skipSecondaryFallback) {
+            try {
+              const resolverFallback = await queryResolveSearchFallback({
+                queryParams: resolverQueryParams,
+                checkoutToken,
+                reason: 'resolver_after_exception',
+              });
+              if (
+                resolverFallback &&
+                resolverFallback.status >= 200 &&
+                resolverFallback.status < 300 &&
+                resolverFallback.usableCount > 0
+              ) {
+                response = {
+                  status: resolverFallback.status,
+                  data: withProxySearchFallbackMetadata(resolverFallback.data, {
+                    applied: true,
+                    reason: 'resolver_after_exception',
+                    route: 'invoke_exception_resolver',
+                    upstream_status: upstreamStatus,
+                    upstream_error_code: upstreamCode || err?.code || null,
+                    upstream_error_message: upstreamMessage || err?.message || null,
+                  }),
+                };
+              }
+            } catch (resolverErr) {
+              logger.warn(
+                { err: resolverErr?.message || String(resolverErr) },
+                `${operation} resolver fallback failed after upstream exception`,
+              );
+            }
+          }
+
+          if (!response && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED && !skipSecondaryFallback) {
+            try {
+              const fallback = await queryFindProductsMultiFallback({
+                queryParams: resolverQueryParams,
+                checkoutToken,
+                reason: fallbackReason,
+              });
+              if (
+                fallback &&
+                fallback.status >= 200 &&
+                fallback.status < 300 &&
+                fallback.usableCount > 0 &&
+                isProxySearchFallbackRelevant(fallback.data, queryText)
+              ) {
+                response = {
+                  status: fallback.status,
+                  data: withProxySearchFallbackMetadata(fallback.data, {
+                    applied: true,
+                    reason: fallbackReason,
+                    route: 'invoke_exception_fallback_invoke',
+                    upstream_status: upstreamStatus,
+                    upstream_error_code: upstreamCode || err?.code || null,
+                    upstream_error_message: upstreamMessage || err?.message || null,
+                  }),
+                };
+              }
+            } catch (fallbackErr) {
+              logger.warn(
+                { err: fallbackErr?.message || String(fallbackErr) },
+                `${operation} invoke fallback failed after upstream exception`,
+              );
+            }
+          }
+        }
+        if (!response) {
+          logger.warn(
+            {
+              operation,
+              upstream_status: upstreamStatus,
+              upstream_code: err?.code || null,
+              soft_code: upstreamCode || null,
+              soft_message: upstreamMessage || null,
+            },
+            `${operation} upstream failed; returning soft fallback empty payload`,
+          );
+          response = {
+            status: 200,
+            data: buildProxySearchSoftFallbackResponse({
+              queryParams,
+              reason: 'error_soft_fallback',
+              upstreamStatus,
+              upstreamCode: upstreamCode || err?.code || null,
+              upstreamMessage: upstreamMessage || err?.message || null,
+              route: 'invoke_exception',
+            }),
+          };
+        }
+      }
+
       if (!response) throw err;
     }
     let upstreamData = response.data;
@@ -7536,6 +9756,73 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         limit: queryParams?.limit,
         offset: queryParams?.offset,
       });
+    }
+
+    if (operation === 'find_products' || operation === 'find_products_multi') {
+      const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
+      const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
+      const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+
+      if (shouldFallback) {
+        let replacedByFallback = false;
+
+        if (!skipSecondaryFallback) {
+          try {
+            const resolverFallback = await queryResolveSearchFallback({
+              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
+              checkoutToken,
+              reason: 'resolver_after_primary',
+            });
+            if (
+              resolverFallback &&
+              resolverFallback.status >= 200 &&
+              resolverFallback.status < 300 &&
+              resolverFallback.usableCount > 0
+            ) {
+              upstreamData = resolverFallback.data;
+              replacedByFallback = true;
+            }
+          } catch (resolverErr) {
+            logger.warn(
+              { err: resolverErr?.message || String(resolverErr) },
+              `${operation} resolver fallback failed after primary response`,
+            );
+          }
+        }
+
+        if (!replacedByFallback && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED && !skipSecondaryFallback) {
+          try {
+            const fallback = await queryFindProductsMultiFallback({
+              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
+              checkoutToken,
+              reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
+            });
+            if (
+              fallback &&
+              fallback.status >= 200 &&
+              fallback.status < 300 &&
+              fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+              isProxySearchFallbackRelevant(fallback.data, queryText)
+            ) {
+              upstreamData = fallback.data;
+              replacedByFallback = true;
+            }
+          } catch (fallbackErr) {
+            logger.warn(
+              { err: fallbackErr?.message || String(fallbackErr) },
+              `${operation} invoke fallback failed after primary response`,
+            );
+          }
+        }
+
+        if (!replacedByFallback) {
+          upstreamData = withProxySearchFallbackMetadata(upstreamData, {
+            applied: false,
+            reason: skipSecondaryFallback ? 'resolver_miss_skip_secondary' : 'fallback_not_better',
+          });
+        }
+      }
     }
 
     if (operation === 'offers.resolve') {
@@ -7828,6 +10115,31 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     return res.status(response.status).json(enriched);
 
 	  } catch (err) {
+	    if (operation === 'find_products' || operation === 'find_products_multi') {
+	      const { code, message } = extractUpstreamErrorCode(err);
+	      const upstreamStatus =
+	        err?.response?.status || err?.status || (err?.code === 'ECONNABORTED' ? 504 : 502);
+	      logger.warn(
+	        {
+	          gateway_request_id: gatewayRequestId,
+	          operation,
+	          upstream_status: upstreamStatus,
+	          upstream_code: code || err?.code || null,
+	          upstream_message: message || err?.message || null,
+	        },
+	        'search operation failed in invoke outer catch; returning soft fallback',
+	      );
+	      return res.status(200).json(
+	        buildProxySearchSoftFallbackResponse({
+	          queryParams,
+	          reason: err?.code === 'ECONNABORTED' ? 'invoke_outer_timeout' : 'invoke_outer_exception',
+	          upstreamStatus,
+	          upstreamCode: code || err?.code || null,
+	          upstreamMessage: message || err?.message || null,
+	          route: 'invoke_outer_catch',
+	        }),
+	      );
+	    }
 	    if (err.response) {
 	      const upstreamStatus = err.response.status || 502;
 	      const upstreamRequestId =
