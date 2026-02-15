@@ -7564,68 +7564,85 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
 	      const pdpOptions = getPdpOptions(payload);
 	      let canonicalProductForPdp = canonicalProduct;
+	      const reviewSummaryPromise = wantsReviewsPreview
+	        ? (async () => {
+	            const reviewPlatform = String(
+	              canonicalProduct.platform || canonicalProductRef.platform || '',
+	            ).trim();
+	            const reviewPlatformProductId = String(
+	              canonicalProduct.platform_product_id ||
+	                canonicalProduct.platformProductId ||
+	                canonicalProduct.shopify_id ||
+	                canonicalProduct.product_id ||
+	                canonicalProduct.id ||
+	                canonicalProductRef.product_id ||
+	                '',
+	            ).trim();
+	            if (!reviewPlatform || !reviewPlatformProductId) return null;
+	            return fetchReviewSummaryFromUpstream({
+	              merchantId: canonicalProductRef.merchant_id,
+	              platform: reviewPlatform,
+	              platformProductId: reviewPlatformProductId,
+	              checkoutToken,
+	            }).catch(() => null);
+	          })()
+	        : Promise.resolve(null);
 
-      if (wantsReviewsPreview) {
-        try {
-          const reviewPlatform = String(canonicalProduct.platform || canonicalProductRef.platform || '').trim();
-          const reviewPlatformProductId = String(
-            canonicalProduct.platform_product_id ||
-              canonicalProduct.platformProductId ||
-              canonicalProduct.shopify_id ||
-              canonicalProduct.product_id ||
-              canonicalProduct.id ||
-              canonicalProductRef.product_id ||
-              '',
-          ).trim();
+	      // Similar products (non-blocking; can be requested by include=similar).
+	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
+	      const relatedProductsPromise = wantsSimilar
+	        ? (async () => {
+	            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+	            const rec = await recommendPdpProducts({
+	              pdp_product: canonicalProduct,
+	              k: limit,
+	              locale:
+	                payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+	              currency: canonicalProduct.currency || 'USD',
+	              options: {
+	                debug,
+	                // Respect caller cache controls (same semantics as resolve op).
+	                no_cache: bypassCache,
+	                cache_bypass: bypassCache,
+	                bypass_cache: bypassCache,
+	              },
+	            });
+	            return Array.isArray(rec?.items) ? rec.items : [];
+	          })()
+	        : Promise.resolve([]);
 
-          const reviewSummary =
-            reviewPlatform && reviewPlatformProductId
-              ? await fetchReviewSummaryFromUpstream({
-                  merchantId: canonicalProductRef.merchant_id,
-                  platform: reviewPlatform,
-                  platformProductId: reviewPlatformProductId,
-                  checkoutToken,
-                }).catch(() => null)
-              : null;
+	      const [reviewSummaryResult, relatedProductsResult] = await Promise.allSettled([
+	        reviewSummaryPromise,
+	        relatedProductsPromise,
+	      ]);
 
-          if (reviewSummary && typeof reviewSummary === 'object') {
-            canonicalProductForPdp = {
-              ...canonicalProductForPdp,
-              review_summary: reviewSummary,
-            };
-          }
-        } catch {
-          // Non-blocking.
-        }
-      }
+	      if (
+	        reviewSummaryResult.status === 'fulfilled' &&
+	        reviewSummaryResult.value &&
+	        typeof reviewSummaryResult.value === 'object'
+	      ) {
+	        canonicalProductForPdp = {
+	          ...canonicalProductForPdp,
+	          review_summary: reviewSummaryResult.value,
+	        };
+	      }
 
-      // Similar products (non-blocking; can be requested by include=similar).
-      let relatedProducts = [];
-      if (wantsSimilar) {
-        const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
-        try {
-          const rec = await recommendPdpProducts({
-            pdp_product: canonicalProductForPdp,
-            k: limit,
-            locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-            currency: canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
-            options: {
-              debug,
-              // Respect caller cache controls (same semantics as resolve op).
-              no_cache: bypassCache,
-              cache_bypass: bypassCache,
-              bypass_cache: bypassCache,
-            },
-          });
-          relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
-        } catch (err) {
-          logger.warn(
-            { err: err?.message || String(err), product_id: canonicalProductRef.product_id },
-            'PDP recommendations failed; returning without similar module',
-          );
-          relatedProducts = [];
-        }
-      }
+	      let relatedProducts = [];
+	      if (relatedProductsResult.status === 'fulfilled') {
+	        relatedProducts = Array.isArray(relatedProductsResult.value)
+	          ? relatedProductsResult.value
+	          : [];
+	      } else if (wantsSimilar) {
+	        logger.warn(
+	          {
+	            err:
+	              relatedProductsResult?.reason?.message ||
+	              String(relatedProductsResult?.reason || 'unknown'),
+	            product_id: canonicalProductRef.product_id,
+	          },
+	          'PDP recommendations failed; returning without similar module',
+	        );
+	      }
 
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
