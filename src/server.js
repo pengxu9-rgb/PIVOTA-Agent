@@ -168,6 +168,35 @@ const UPSTREAM_TIMEOUT_SEARCH_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_SEARCH_RETRY_MS,
   Math.min(UPSTREAM_TIMEOUT_SLOW_MS, Math.max(UPSTREAM_TIMEOUT_SEARCH_MS * 3, 45_000)),
 );
+const PDP_V2_CORE_HOT_CACHE_ENABLED =
+  String(process.env.PDP_V2_CORE_HOT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
+const PDP_V2_CORE_HOT_CACHE_TTL_MS = Math.max(
+  1000,
+  parseTimeoutMs(process.env.PDP_V2_CORE_HOT_CACHE_TTL_MS, 20 * 1000),
+);
+const PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES = Math.max(
+  20,
+  Number(process.env.PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES || 400) || 400,
+);
+const PDP_CORE_PREWARM_ENABLED =
+  String(process.env.PDP_CORE_PREWARM_ENABLED || 'false').toLowerCase() === 'true';
+const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
+  1000,
+  parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
+);
+const PDP_CORE_PREWARM_INTERVAL_MS = Math.max(
+  30_000,
+  parseTimeoutMs(process.env.PDP_CORE_PREWARM_INTERVAL_MS, 5 * 60 * 1000),
+);
+const PDP_CORE_PREWARM_INITIAL_DELAY_MS = Math.max(
+  0,
+  Number(process.env.PDP_CORE_PREWARM_INITIAL_DELAY_MS || 3000) || 3000,
+);
+const PDP_CORE_PREWARM_GATEWAY_URL = String(process.env.PDP_CORE_PREWARM_GATEWAY_URL || '').trim();
+const PDP_CORE_PREWARM_TARGETS = parsePdpCorePrewarmTargets(
+  process.env.PDP_CORE_PREWARM_TARGETS || '',
+  DEFAULT_MERCHANT_ID,
+);
 
 const SLOW_UPSTREAM_OPS = new Set([
   'preview_quote',
@@ -441,6 +470,36 @@ function safeCloneJson(value) {
   }
 }
 
+function parsePdpCorePrewarmTargets(raw, defaultMerchantId) {
+  const source = String(raw || '').trim();
+  if (!source) return [];
+
+  const fallbackMerchantId = String(defaultMerchantId || '').trim();
+  const seen = new Set();
+  const out = [];
+
+  for (const tokenRaw of source.split(/[,\n]/g)) {
+    const token = String(tokenRaw || '').trim();
+    if (!token) continue;
+
+    let merchantId = fallbackMerchantId;
+    let productId = token;
+    const sepIdx = token.indexOf(':');
+    if (sepIdx > 0) {
+      merchantId = String(token.slice(0, sepIdx)).trim() || fallbackMerchantId;
+      productId = String(token.slice(sepIdx + 1)).trim();
+    }
+    if (!merchantId || !productId) continue;
+
+    const dedupeKey = `${merchantId}:${productId}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push({ merchant_id: merchantId, product_id: productId });
+  }
+
+  return out;
+}
+
 const PROXY_SEARCH_RESOLVER_CACHE = new Map(); // key -> { value, expiresAtMs }
 
 function buildProxySearchResolverCacheKey({
@@ -621,6 +680,99 @@ function snapshotResolveProductGroupCacheStats() {
     ttl_ms: RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS,
     size: RESOLVE_PRODUCT_GROUP_CACHE.size,
     ...RESOLVE_PRODUCT_GROUP_CACHE_METRICS,
+  };
+}
+
+// get_pdp_v2 hot cache (short TTL, response-level, designed for cold-start jitter smoothing).
+const PDP_V2_CORE_HOT_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
+const PDP_V2_CORE_HOT_CACHE_METRICS = {
+  hits: 0,
+  misses: 0,
+  sets: 0,
+  evictions: 0,
+  bypasses: 0,
+};
+
+function buildPdpV2CoreHotCacheKey(args) {
+  const include = Array.isArray(args?.include)
+    ? Array.from(
+        new Set(
+          args.include
+            .map((item) => String(item || '').trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ).sort()
+    : [];
+  return JSON.stringify({
+    product_id: String(args?.productId || '').trim(),
+    merchant_id: String(args?.merchantId || '').trim(),
+    variant_id: String(args?.variantId || '').trim(),
+    offer_id: String(args?.offerId || '').trim(),
+    subject_type: String(args?.subjectType || '').trim(),
+    subject_id: String(args?.subjectId || '').trim(),
+    include,
+    has_checkout_token: args?.hasCheckoutToken === true,
+  });
+}
+
+function getPdpV2CoreHotCacheEntry(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return null;
+  const hit = PDP_V2_CORE_HOT_CACHE.get(key);
+  if (!hit) {
+    PDP_V2_CORE_HOT_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
+    PDP_V2_CORE_HOT_CACHE.delete(key);
+    PDP_V2_CORE_HOT_CACHE_METRICS.misses += 1;
+    return null;
+  }
+  PDP_V2_CORE_HOT_CACHE_METRICS.hits += 1;
+  return hit;
+}
+
+function setPdpV2CoreHotCacheEntry(cacheKey, value, ttlMs = PDP_V2_CORE_HOT_CACHE_TTL_MS) {
+  const key = String(cacheKey || '');
+  if (!key) return;
+
+  if (PDP_V2_CORE_HOT_CACHE.size >= PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES) {
+    const overflow = PDP_V2_CORE_HOT_CACHE.size - PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES + 1;
+    let removed = 0;
+    for (const existingKey of PDP_V2_CORE_HOT_CACHE.keys()) {
+      PDP_V2_CORE_HOT_CACHE.delete(existingKey);
+      removed += 1;
+      if (removed >= overflow) break;
+    }
+    if (removed > 0) PDP_V2_CORE_HOT_CACHE_METRICS.evictions += removed;
+  }
+
+  const ttl = Math.max(1000, Number(ttlMs) || PDP_V2_CORE_HOT_CACHE_TTL_MS);
+  PDP_V2_CORE_HOT_CACHE_METRICS.sets += 1;
+  PDP_V2_CORE_HOT_CACHE.set(key, {
+    value: safeCloneJson(value),
+    storedAtMs: Date.now(),
+    expiresAtMs: Date.now() + ttl,
+  });
+}
+
+function clonePdpV2CachedResponse(value, gatewayRequestId) {
+  const cloned = safeCloneJson(value);
+  if (!cloned || typeof cloned !== 'object') return cloned;
+  return {
+    ...cloned,
+    request_id: gatewayRequestId,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+function snapshotPdpV2CoreHotCacheStats() {
+  return {
+    enabled: PDP_V2_CORE_HOT_CACHE_ENABLED,
+    ttl_ms: PDP_V2_CORE_HOT_CACHE_TTL_MS,
+    max_entries: PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES,
+    size: PDP_V2_CORE_HOT_CACHE.size,
+    ...PDP_V2_CORE_HOT_CACHE_METRICS,
   };
 }
 
@@ -4423,6 +4575,7 @@ const healthRouteHandler = (req, res) => {
     resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
     resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
     product_detail_cache: snapshotProductDetailCacheStats(),
+    pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
     pdp_recommendations_cache: getPdpRecsCacheStats(),
     products_available: true,
     catalog_cache: includeCacheStats
@@ -4468,6 +4621,7 @@ const healthRouteHandler = (req, res) => {
         resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
         resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
         product_detail_cache: snapshotProductDetailCacheStats(),
+        pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
         pdp_recommendations_cache: getPdpRecsCacheStats(),
         products_available: true,
         warning: 'healthz_cache_stats_failed',
@@ -7478,6 +7632,35 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		            'product_ref.product_id is required unless you provide product_ref.offer_id or subject=product_group',
 		        });
 		      }
+
+	      const canUsePdpV2CoreHotCache =
+	        PDP_V2_CORE_HOT_CACHE_ENABLED && !bypassCache && !debug;
+	      if (!canUsePdpV2CoreHotCache) {
+	        PDP_V2_CORE_HOT_CACHE_METRICS.bypasses += 1;
+	      }
+	      const pdpV2CoreHotCacheKey = canUsePdpV2CoreHotCache
+	        ? buildPdpV2CoreHotCacheKey({
+	            productId,
+	            merchantId: requestedMerchantId,
+	            variantId,
+	            offerId,
+	            subjectType,
+	            subjectId,
+	            include: includeList,
+	            hasCheckoutToken: Boolean(checkoutToken),
+	          })
+	        : null;
+	      if (pdpV2CoreHotCacheKey) {
+	        const cachedEntry = getPdpV2CoreHotCacheEntry(pdpV2CoreHotCacheKey);
+	        if (cachedEntry?.value) {
+	          const cachedResponse = clonePdpV2CachedResponse(
+	            cachedEntry.value,
+	            gatewayRequestId,
+	          );
+	          if (cachedResponse) return res.json(cachedResponse);
+	        }
+	      }
+
 	      if (subjectType === 'product_group' && subjectId) {
 	        try {
 	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
@@ -7859,7 +8042,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           null,
       };
 
-      return res.json({
+      const responseBody = {
         status: 'success',
         pdp_version: '2.0',
         request_id: gatewayRequestId,
@@ -7872,7 +8055,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         modules,
         warnings: debug ? [] : [],
         missing,
-      });
+      };
+
+      if (pdpV2CoreHotCacheKey) {
+        setPdpV2CoreHotCacheEntry(pdpV2CoreHotCacheKey, responseBody);
+      }
+
+      return res.json(responseBody);
     } catch (err) {
       const { code, message, data } = extractUpstreamErrorCode(err);
       const statusCode = err?.response?.status || err?.status || 502;
@@ -10342,6 +10531,92 @@ app.post('/recommend', async (req, res) => {
   return recommendHandler(req, res);
 });
 
+async function runPdpCorePrewarmPass() {
+  if (!PDP_CORE_PREWARM_TARGETS.length) {
+    return { attempted: 0, succeeded: 0, failed: 0 };
+  }
+
+  const invokeUrl =
+    PDP_CORE_PREWARM_GATEWAY_URL ||
+    `http://127.0.0.1:${PORT}/agent/shop/v1/invoke`;
+
+  let succeeded = 0;
+  let failed = 0;
+  const startedAt = Date.now();
+
+  for (const target of PDP_CORE_PREWARM_TARGETS) {
+    const merchantId = String(target?.merchant_id || '').trim();
+    const productId = String(target?.product_id || '').trim();
+    if (!merchantId || !productId) continue;
+
+    const reqBody = {
+      operation: 'get_pdp_v2',
+      payload: {
+        product_ref: {
+          merchant_id: merchantId,
+          product_id: productId,
+        },
+        include: ['offers'],
+        options: {
+          debug: false,
+        },
+      },
+      metadata: {
+        source: 'pdp_core_prewarm',
+      },
+    };
+
+    const reqStartedAt = Date.now();
+    try {
+      const resp = await axios.post(invokeUrl, reqBody, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: PDP_CORE_PREWARM_TIMEOUT_MS,
+      });
+      succeeded += 1;
+      logger.info(
+        {
+          product_id: productId,
+          merchant_id: merchantId,
+          status: resp.status,
+          latency_ms: Math.max(0, Date.now() - reqStartedAt),
+          request_id: resp?.data?.request_id || null,
+        },
+        'PDP core prewarm request complete',
+      );
+    } catch (err) {
+      failed += 1;
+      const status = err?.response?.status || null;
+      logger.warn(
+        {
+          product_id: productId,
+          merchant_id: merchantId,
+          status,
+          latency_ms: Math.max(0, Date.now() - reqStartedAt),
+          err: err?.message || String(err),
+        },
+        'PDP core prewarm request failed',
+      );
+    }
+  }
+
+  const attempted = succeeded + failed;
+  logger.info(
+    {
+      attempted,
+      succeeded,
+      failed,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      timeout_ms: PDP_CORE_PREWARM_TIMEOUT_MS,
+      interval_ms: PDP_CORE_PREWARM_INTERVAL_MS,
+    },
+    'PDP core prewarm pass summary',
+  );
+
+  return { attempted, succeeded, failed };
+}
+
 module.exports = app;
 module.exports._debug = {
   loadCreatorSellableFromCache,
@@ -10377,6 +10652,26 @@ if (require.main === module) {
           runCreatorCatalogAutoSync();
           setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
         }, initialDelayMs);
+      }
+
+      if (PDP_CORE_PREWARM_ENABLED) {
+        if (!PDP_CORE_PREWARM_TARGETS.length) {
+          logger.warn(
+            { env: 'PDP_CORE_PREWARM_TARGETS', enabled: true },
+            'PDP core prewarm is enabled but no targets were configured',
+          );
+        } else {
+          setTimeout(() => {
+            runPdpCorePrewarmPass().catch((err) => {
+              logger.warn({ err: err?.message || String(err) }, 'PDP core prewarm pass failed');
+            });
+            setInterval(() => {
+              runPdpCorePrewarmPass().catch((err) => {
+                logger.warn({ err: err?.message || String(err) }, 'PDP core prewarm pass failed');
+              });
+            }, PDP_CORE_PREWARM_INTERVAL_MS);
+          }, PDP_CORE_PREWARM_INITIAL_DELAY_MS);
+        }
       }
     });
 
