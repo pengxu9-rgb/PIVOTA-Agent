@@ -1101,6 +1101,11 @@ const CATALOG_BRANDS = {
     aliases: ['薇诺娜', 'winona', 'wei nuo na'],
     name: { CN: '薇诺娜', EN: 'Winona' },
   },
+  brand_ipsa: {
+    brand_id: 'brand_ipsa',
+    aliases: ['茵芙莎', 'ipsa', 'i p s a'],
+    name: { CN: '茵芙莎', EN: 'IPSA' },
+  },
 };
 
 function escapeRegExp(text) {

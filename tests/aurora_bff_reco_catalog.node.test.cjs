@@ -1323,11 +1323,17 @@ test('detectBrandAvailabilityIntent: bare brand query still routes to availabili
   const { __internal } = loadRoutesFresh();
   const intentEn = __internal.detectBrandAvailabilityIntent('Winona', 'EN');
   const intentCn = __internal.detectBrandAvailabilityIntent('薇诺娜品牌', 'CN');
+  const intentIpsaCn = __internal.detectBrandAvailabilityIntent('茵芙莎品牌', 'CN');
+  const intentIpsaEn = __internal.detectBrandAvailabilityIntent('IPSA', 'EN');
 
   assert.equal(intentEn?.brand_id, 'brand_winona');
   assert.equal(intentEn?.intent, 'availability');
   assert.equal(intentCn?.brand_id, 'brand_winona');
   assert.equal(intentCn?.intent, 'availability');
+  assert.equal(intentIpsaCn?.brand_id, 'brand_ipsa');
+  assert.equal(intentIpsaCn?.intent, 'availability');
+  assert.equal(intentIpsaEn?.brand_id, 'brand_ipsa');
+  assert.equal(intentIpsaEn?.intent, 'availability');
 });
 
 test('/v1/chat recommendation phrasing with brand should return recommendations (not availability short-circuit cards)', async () => {
