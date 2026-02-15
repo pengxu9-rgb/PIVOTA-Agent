@@ -41,19 +41,29 @@ const DEFAULTS = Object.freeze({
   report_dir: 'reports',
   mock_pipeline: false,
   module_box_mode: 'dynamic_skinmask',
-  require_dynamic_boxes: false,
+  require_dynamic_boxes: true,
   exclude_template_like: false,
   min_geometry_qc_score: 0,
   template_match_eps: 0.004,
-  hard_filter_gate: false,
-  hard_filter_require_quality_pass: true,
+  hard_filter_gate: true,
+  hard_filter_require_quality_pass: false,
   hard_filter_max_guarded_modules: 1,
   hard_filter_min_module_pixels: 48,
   hard_filter_min_dynamic_score: 0.7,
   hard_filter_min_box_plausibility: 0.72,
   hard_filter_min_mask_rle_ratio: 0,
+  hard_filter_min_face_span_h: 0,
+  hard_filter_min_face_span_w: 0,
+  hard_filter_min_face_span_area: 0,
+  hard_filter_require_onnx_skinmask: true,
+  hard_filter_min_overlap_score: 0.6,
+  hard_filter_max_abs_yaw: 0.85,
   hard_filter_require_all_strong_modules: true,
   hard_filter_fail_on_empty: true,
+  skinmask_onnx_enabled: true,
+  skinmask_onnx_strict: true,
+  skinmask_model_path: path.join('artifacts', 'skinmask_v2.onnx'),
+  skinmask_timeout_ms: 1200,
 });
 
 const SOURCE_PRIORITY = Object.freeze(['internal', 'lapa', 'celebamaskhq']);
@@ -98,14 +108,24 @@ Options:
   --min_geometry_qc_score <0-1>              minimum geometry QC score passed to pack (default: 0)
   --template_match_eps <0-0.05>              template box match epsilon (default: 0.004)
   --hard_filter_gate <bool>                  enable offline hard-filter gate (default: false)
-  --hard_filter_require_quality_pass <bool>  require quality_grade=pass in both A/B (default: true)
+  --hard_filter_require_quality_pass <bool>  require quality_grade=pass in both A/B (default: false)
   --hard_filter_max_guarded_modules <n>      max allowed guarded modules per side (default: 1)
   --hard_filter_min_module_pixels <n>        min allowed module_pixels_min per side (default: 48)
   --hard_filter_min_dynamic_score <0-1>      min allowed dynamic box score per side (default: 0.7)
   --hard_filter_min_box_plausibility <0-1>   min allowed module-box plausibility score per side (default: 0.72)
   --hard_filter_min_mask_rle_ratio <0-1>     min strong-module mask_rle coverage per side (default: 0, disabled)
+  --hard_filter_min_face_span_h <0-1>        min strong-module vertical span per side (default: 0, disabled)
+  --hard_filter_min_face_span_w <0-1>        min strong-module horizontal span per side (default: 0, disabled)
+  --hard_filter_min_face_span_area <0-1>     min strong-module bbox area per side (default: 0, disabled)
+  --hard_filter_require_onnx_skinmask <bool> require ONNX skinmask source in both A/B (default: true)
+  --hard_filter_min_overlap_score <0-1>      min module_box_overlap_score per side (default: 0.6)
+  --hard_filter_max_abs_yaw <0-1>            max absolute yaw_est per side (default: 0.85)
   --hard_filter_require_all_strong_modules <bool>  require all 5 strong modules in both A/B (default: true)
   --hard_filter_fail_on_empty <bool>         exit non-zero if hard filter removes all samples (default: true)
+  --skinmask_onnx_enabled <bool>             enable ONNX skinmask in pack (default: true)
+  --skinmask_onnx_strict <bool>              if ONNX fails, do not fallback to bbox prior (default: true)
+  --skinmask_model_path <path>               ONNX model path passed to pack (default: artifacts/skinmask_v2.onnx)
+  --skinmask_timeout_ms <ms>                 ONNX timeout per side (default: 1200)
   --mock_pipeline <bool>                     deterministic mock mode for smoke/tests
   --help                                     show help
 `;
@@ -495,8 +515,18 @@ async function runPreferencePack({ args, syntheticReviewPath, selectedCounts, ou
     '--hard_filter_min_dynamic_score', String(args.hard_filter_min_dynamic_score),
     '--hard_filter_min_box_plausibility', String(args.hard_filter_min_box_plausibility),
     '--hard_filter_min_mask_rle_ratio', String(args.hard_filter_min_mask_rle_ratio),
+    '--hard_filter_min_face_span_h', String(args.hard_filter_min_face_span_h),
+    '--hard_filter_min_face_span_w', String(args.hard_filter_min_face_span_w),
+    '--hard_filter_min_face_span_area', String(args.hard_filter_min_face_span_area),
+    '--hard_filter_require_onnx_skinmask', String(args.hard_filter_require_onnx_skinmask),
+    '--hard_filter_min_overlap_score', String(args.hard_filter_min_overlap_score),
+    '--hard_filter_max_abs_yaw', String(args.hard_filter_max_abs_yaw),
     '--hard_filter_require_all_strong_modules', String(args.hard_filter_require_all_strong_modules),
     '--hard_filter_fail_on_empty', String(args.hard_filter_fail_on_empty),
+    '--skinmask_onnx_enabled', String(args.skinmask_onnx_enabled),
+    '--skinmask_onnx_strict', String(args.skinmask_onnx_strict),
+    '--skinmask_model_path', String(args.skinmask_model_path),
+    '--skinmask_timeout_ms', String(args.skinmask_timeout_ms),
   ];
   if (args.mock_pipeline) {
     commandArgs.push('--mock_pipeline', 'true');
@@ -586,8 +616,21 @@ function parseArgs(argv) {
     hard_filter_min_dynamic_score: process.env.PREFERENCE_HARD_FILTER_MIN_DYNAMIC_SCORE || DEFAULTS.hard_filter_min_dynamic_score,
     hard_filter_min_box_plausibility: process.env.PREFERENCE_HARD_FILTER_MIN_BOX_PLAUSIBILITY || DEFAULTS.hard_filter_min_box_plausibility,
     hard_filter_min_mask_rle_ratio: process.env.PREFERENCE_HARD_FILTER_MIN_MASK_RLE_RATIO || DEFAULTS.hard_filter_min_mask_rle_ratio,
+    hard_filter_min_face_span_h: process.env.PREFERENCE_HARD_FILTER_MIN_FACE_SPAN_H || DEFAULTS.hard_filter_min_face_span_h,
+    hard_filter_min_face_span_w: process.env.PREFERENCE_HARD_FILTER_MIN_FACE_SPAN_W || DEFAULTS.hard_filter_min_face_span_w,
+    hard_filter_min_face_span_area: process.env.PREFERENCE_HARD_FILTER_MIN_FACE_SPAN_AREA || DEFAULTS.hard_filter_min_face_span_area,
+    hard_filter_require_onnx_skinmask:
+      process.env.PREFERENCE_HARD_FILTER_REQUIRE_ONNX_SKINMASK || DEFAULTS.hard_filter_require_onnx_skinmask,
+    hard_filter_min_overlap_score:
+      process.env.PREFERENCE_HARD_FILTER_MIN_OVERLAP_SCORE || DEFAULTS.hard_filter_min_overlap_score,
+    hard_filter_max_abs_yaw:
+      process.env.PREFERENCE_HARD_FILTER_MAX_ABS_YAW || DEFAULTS.hard_filter_max_abs_yaw,
     hard_filter_require_all_strong_modules: process.env.PREFERENCE_HARD_FILTER_REQUIRE_ALL_STRONG_MODULES || String(DEFAULTS.hard_filter_require_all_strong_modules),
     hard_filter_fail_on_empty: process.env.PREFERENCE_HARD_FILTER_FAIL_ON_EMPTY || String(DEFAULTS.hard_filter_fail_on_empty),
+    skinmask_onnx_enabled: process.env.PREFERENCE_SKINMASK_ONNX_ENABLED || String(DEFAULTS.skinmask_onnx_enabled),
+    skinmask_onnx_strict: process.env.PREFERENCE_SKINMASK_ONNX_STRICT || String(DEFAULTS.skinmask_onnx_strict),
+    skinmask_model_path: process.env.PREFERENCE_SKINMASK_MODEL_PATH || DEFAULTS.skinmask_model_path,
+    skinmask_timeout_ms: process.env.PREFERENCE_SKINMASK_TIMEOUT_MS || DEFAULTS.skinmask_timeout_ms,
     report_dir: process.env.EVAL_REPORT_DIR || process.env.REPORT_DIR || DEFAULTS.report_dir,
     mock_pipeline: process.env.MOCK_PIPELINE || process.env.PREF_MOCK_PIPELINE || String(DEFAULTS.mock_pipeline),
   };
@@ -674,6 +717,40 @@ function parseArgs(argv) {
     0,
     1,
   ));
+  out.hard_filter_min_face_span_h = clamp01(parseNumber(
+    out.hard_filter_min_face_span_h,
+    DEFAULTS.hard_filter_min_face_span_h,
+    0,
+    1,
+  ));
+  out.hard_filter_min_face_span_w = clamp01(parseNumber(
+    out.hard_filter_min_face_span_w,
+    DEFAULTS.hard_filter_min_face_span_w,
+    0,
+    1,
+  ));
+  out.hard_filter_min_face_span_area = clamp01(parseNumber(
+    out.hard_filter_min_face_span_area,
+    DEFAULTS.hard_filter_min_face_span_area,
+    0,
+    1,
+  ));
+  out.hard_filter_require_onnx_skinmask = parseBool(
+    out.hard_filter_require_onnx_skinmask,
+    DEFAULTS.hard_filter_require_onnx_skinmask,
+  );
+  out.hard_filter_min_overlap_score = clamp01(parseNumber(
+    out.hard_filter_min_overlap_score,
+    DEFAULTS.hard_filter_min_overlap_score,
+    0,
+    1,
+  ));
+  out.hard_filter_max_abs_yaw = clamp01(parseNumber(
+    out.hard_filter_max_abs_yaw,
+    DEFAULTS.hard_filter_max_abs_yaw,
+    0,
+    1,
+  ));
   out.hard_filter_require_all_strong_modules = parseBool(
     out.hard_filter_require_all_strong_modules,
     DEFAULTS.hard_filter_require_all_strong_modules,
@@ -681,6 +758,13 @@ function parseArgs(argv) {
   out.hard_filter_fail_on_empty = parseBool(
     out.hard_filter_fail_on_empty,
     DEFAULTS.hard_filter_fail_on_empty,
+  );
+  out.skinmask_onnx_enabled = parseBool(out.skinmask_onnx_enabled, DEFAULTS.skinmask_onnx_enabled);
+  out.skinmask_onnx_strict = parseBool(out.skinmask_onnx_strict, DEFAULTS.skinmask_onnx_strict);
+  out.skinmask_model_path = String(out.skinmask_model_path || DEFAULTS.skinmask_model_path).trim();
+  out.skinmask_timeout_ms = Math.max(
+    50,
+    Math.min(60000, Math.trunc(parseNumber(out.skinmask_timeout_ms, DEFAULTS.skinmask_timeout_ms, 50, 60000))),
   );
   out.report_dir = String(out.report_dir || DEFAULTS.report_dir).trim() || DEFAULTS.report_dir;
   out.mock_pipeline = parseBool(out.mock_pipeline, DEFAULTS.mock_pipeline);
@@ -1687,6 +1771,9 @@ async function main() {
       hard_filter_min_dynamic_score: args.hard_filter_min_dynamic_score,
       hard_filter_min_box_plausibility: args.hard_filter_min_box_plausibility,
       hard_filter_min_mask_rle_ratio: args.hard_filter_min_mask_rle_ratio,
+      hard_filter_min_face_span_h: args.hard_filter_min_face_span_h,
+      hard_filter_min_face_span_w: args.hard_filter_min_face_span_w,
+      hard_filter_min_face_span_area: args.hard_filter_min_face_span_area,
       hard_filter_require_all_strong_modules: args.hard_filter_require_all_strong_modules,
       hard_filter_fail_on_empty: args.hard_filter_fail_on_empty,
       selected_total: enrichedRows.length,

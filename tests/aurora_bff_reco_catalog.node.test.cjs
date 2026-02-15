@@ -351,11 +351,24 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
       const originalGet = axios.get;
       const originalPost = axios.post;
       let resolveCalls = 0;
+      let stableResolveCalls = 0;
       let lastResolveBody = null;
       axios.get = async (url) => {
         throw new Error(`Unexpected axios.get: ${url}`);
       };
       axios.post = async (url, body) => {
+        if (String(url).includes('/agent/shop/v1/invoke')) {
+          stableResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'error',
+              reason: 'no_candidates',
+              reason_code: 'no_candidates',
+              metadata: { request_id: 'rid_stable_no_candidates' },
+            },
+          };
+        }
         if (!String(url).includes('/agent/v1/products/resolve')) {
           throw new Error(`Unexpected axios.post: ${url}`);
         }
@@ -391,6 +404,7 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
         const serialized = JSON.stringify(first).toLowerCase();
 
         assert.equal(resolveCalls, 1);
+        assert.ok(stableResolveCalls <= 1);
         assert.ok(lastResolveBody && typeof lastResolveBody.query === 'string' && lastResolveBody.query.length > 0);
         assert.equal(first?.metadata?.pdp_open_path, 'external');
         assert.equal(first?.metadata?.pdp_open_mode, 'external');
@@ -427,6 +441,7 @@ test('Stable-id offers.resolve no_candidates attempts local invoke fallback', as
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
@@ -495,6 +510,7 @@ test('Stable-id offers.resolve upstream_timeout does not attempt local invoke fa
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'false',
     },
@@ -727,6 +743,7 @@ test('Query resolve no_candidates uses local products.resolve fallback', async (
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
@@ -795,6 +812,7 @@ test('Availability resolve: primary timeout falls back to local products.resolve
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
@@ -911,6 +929,7 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
     async () => {
@@ -967,7 +986,7 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
   );
 });
 
-test('/v1/chat availability: specific query runs resolve-first and skips catalog search when resolved', async () => {
+test('/v1/chat availability: specific query uses catalog hit directly without resolve fallback', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -983,33 +1002,29 @@ test('/v1/chat availability: specific query runs resolve-first and skips catalog
       let resolveCalls = 0;
 
       axios.get = async (url) => {
-        if (String(url).includes('/agent/v1/products/search')) searchCalls += 1;
-        throw new Error(`Unexpected axios.get: ${url}`);
-      };
-
-      axios.post = async (url) => {
-        if (!String(url).includes('/agent/v1/products/resolve')) {
-          throw new Error(`Unexpected axios.post: ${url}`);
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
         }
-        resolveCalls += 1;
+        searchCalls += 1;
         return {
           status: 200,
           data: {
-            resolved: true,
-            reason: 'stable_alias_match',
-            reason_code: 'stable_alias_match',
-            product_ref: {
-              product_id: 'prod_winona_repair',
-              merchant_id: 'mid_winona',
-            },
-            candidates: [
+            products: [
               {
-                name: 'Winona Soothing Repair Serum',
+                product_id: 'prod_winona_repair',
+                merchant_id: 'mid_winona',
                 brand: 'Winona',
+                name: 'Soothing Repair Serum',
+                display_name: 'Winona Soothing Repair Serum',
               },
             ],
           },
         };
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) resolveCalls += 1;
+        throw new Error(`Unexpected axios.post: ${url}`);
       };
 
       try {
@@ -1047,8 +1062,8 @@ test('/v1/chat availability: specific query runs resolve-first and skips catalog
         const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
         const first = items[0] || null;
 
-        assert.equal(resolveCalls, 1);
-        assert.equal(searchCalls, 0);
+        assert.equal(resolveCalls, 0);
+        assert.equal(searchCalls, 1);
         assert.ok(first);
         assert.equal(first?.metadata?.pdp_open_path, 'internal');
         assert.equal(first?.metadata?.pdp_open_mode, 'ref');
@@ -1142,6 +1157,89 @@ test('/v1/chat availability: generic brand query skips resolve fallback on trans
         const first = items[0] || null;
         assert.ok(first);
         assert.equal(first?.metadata?.pdp_open_path, 'external');
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat availability: specific query also skips resolve fallback on transient search timeout', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
+      axios.get = async (url) => {
+        if (String(url).includes('/agent/v1/products/search')) {
+          searchCalls += 1;
+          const timeoutErr = new Error('search timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          resolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              product_ref: {
+                product_id: 'prod_should_not_be_used',
+                merchant_id: 'mid_should_not_be_used',
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_specific_transient',
+            'X-Trace-ID': 'test_trace_availability_specific_transient',
+            'X-Brief-ID': 'test_brief_availability_specific_transient',
+            'X-Lang': 'CN',
+          },
+          body: {
+            message: '有没有薇诺娜舒敏修护精华',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'CN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.equal(searchCalls, 1);
+        assert.equal(resolveCalls, 0);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -1338,8 +1436,8 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         const firstDebug = getAuroraDebugPayload(first.body);
         const firstCatalogDebug = firstDebug?.reco_catalog_debug;
         assert.equal(firstCatalogDebug?.fail_fast_after?.open, true);
-        assert.equal(firstCatalogDebug?.search_timeout_effective_ms, 2600);
-        assert.equal(searchTimeouts[0], 2600);
+        assert.equal(firstCatalogDebug?.search_timeout_effective_ms, 1800);
+        assert.equal(searchTimeouts[0], 1800);
 
         phase = 'success';
         nowMs += 1000;
@@ -1448,7 +1546,9 @@ test('/v1/chat reco fail-fast open: skips PDP resolve calls via fast external fa
 
         const first = await invokeRecoChat(app, { 'X-Debug': 'true' });
         assert.equal(first.status, 200);
-        assert.ok(resolveCalls > 0);
+        assert.equal(resolveCalls, 0);
+        const firstDebug = getAuroraDebugPayload(first.body);
+        assert.equal(firstDebug?.reco_pdp_fast_fallback_reason, 'upstream_timeout');
 
         const callsAfterFirst = resolveCalls;
         searchPhase = 'success';

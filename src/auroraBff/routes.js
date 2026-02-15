@@ -428,10 +428,17 @@ const RECO_ALTERNATIVES_CONCURRENCY = (() => {
   return Math.max(1, Math.min(4, v));
 })();
 
+const RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS || 4500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4500;
+  return Math.max(2000, Math.min(22000, v));
+})();
+
 const RECO_UPSTREAM_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS || 3500);
   const v = Number.isFinite(n) ? Math.trunc(n) : 3500;
-  return Math.max(3000, Math.min(22000, v));
+  const bounded = Math.max(3000, Math.min(22000, v));
+  return Math.min(bounded, RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS);
 })();
 
 const RECO_ROUTINE_UPSTREAM_TIMEOUT_MS = (() => {
@@ -462,6 +469,13 @@ const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
 const RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED = (() => {
   const fallbackDefault = 'false';
   const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED || fallbackDefault)
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -515,6 +529,80 @@ const RECO_PDP_ENRICH_CONCURRENCY = (() => {
   return Math.max(1, Math.min(12, v));
 })();
 
+const AURORA_BFF_PDP_CORE_PREFETCH_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PDP_CORE_PREFETCH_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(8, v));
+})();
+
+const AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS || 1600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1600;
+  return Math.max(300, Math.min(6000, v));
+})();
+
+const AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS || 120000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 120000;
+  return Math.max(1000, Math.min(15 * 60 * 1000, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS || 10 * 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10 * 60 * 1000;
+  return Math.max(30 * 1000, Math.min(60 * 60 * 1000, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS || 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1000;
+  return Math.max(0, Math.min(5 * 60 * 1000, v));
+})();
+
+function parsePdpHotsetFromEnv(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS = (() => {
+  const fromEnv = parsePdpHotsetFromEnv(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_JSON);
+  if (fromEnv.length) return fromEnv;
+  return [
+    {
+      product_ref: {
+        merchant_id: 'merch_efbc46b4619cfbdf',
+        product_id: '9886500749640',
+      },
+    },
+    {
+      product_ref: {
+        merchant_id: 'merch_efbc46b4619cfbdf',
+        product_id: '9886500127048',
+      },
+    },
+  ];
+})();
+
 const DUPE_DEEPSCAN_CACHE_MAX = (() => {
   const n = Number(process.env.AURORA_BFF_DUPE_DEEPSCAN_CACHE_MAX || 80);
   const v = Number.isFinite(n) ? Math.trunc(n) : 80;
@@ -529,6 +617,8 @@ const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
 
 const dupeDeepscanCache = new Map();
 const photoBytesCache = new Map();
+const pdpPrefetchRecentMap = new Map();
+let pdpHotsetPrewarmStarted = false;
 
 function getDupeDeepscanCache(key) {
   if (!key || DUPE_DEEPSCAN_CACHE_MAX <= 0) return null;
@@ -788,6 +878,7 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
   const primaryUrl = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`;
   const localSearchUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/search`;
   const shouldAttemptLocalSearchFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localSearchUrl &&
     localSearchUrl !== primaryUrl;
@@ -1136,6 +1227,7 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
   });
   const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
   const shouldAttemptLocalResolveFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
     localResolveUrl !== url &&
@@ -1386,11 +1478,11 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
     search_timeout_effective_ms: searchTimeoutEffectiveMs,
     total_ms: Date.now() - startedAt,
     fail_fast_after: getRecoCatalogFailFastSnapshot(Date.now()),
+    timeout_count: timeoutCount,
+    status_counts: statusCounts,
     ...(debug
       ? {
         empty_count: emptyCount,
-        timeout_count: timeoutCount,
-        status_counts: statusCounts,
       }
       : {}),
   };
@@ -1413,12 +1505,30 @@ function deriveRecoPdpFastFallbackReasonCode(catalogDebug) {
   const debugObj = catalogDebug && typeof catalogDebug === 'object' ? catalogDebug : null;
   if (!debugObj) return null;
   if (String(debugObj.skipped_reason || '').trim() === 'fail_fast_open') return 'upstream_timeout';
-  if (debugObj.probe_while_open !== true) return null;
   const okCount = Number.isFinite(Number(debugObj.ok_count)) ? Math.trunc(Number(debugObj.ok_count)) : 0;
   const timeoutCount = Number.isFinite(Number(debugObj.timeout_count)) ? Math.trunc(Number(debugObj.timeout_count)) : 0;
   const queryCount = Number.isFinite(Number(debugObj.query_count)) ? Math.trunc(Number(debugObj.query_count)) : 0;
+  const statusCounts =
+    debugObj.status_counts && typeof debugObj.status_counts === 'object' && !Array.isArray(debugObj.status_counts)
+      ? debugObj.status_counts
+      : null;
+  const timeoutByStatus = Number.isFinite(Number(statusCounts && statusCounts.upstream_timeout))
+    ? Math.trunc(Number(statusCounts ? statusCounts.upstream_timeout : 0))
+    : 0;
+  const failFastAfter =
+    debugObj.fail_fast_after && typeof debugObj.fail_fast_after === 'object' && !Array.isArray(debugObj.fail_fast_after)
+      ? debugObj.fail_fast_after
+      : null;
+  const failFastAfterOpen = Boolean(failFastAfter && failFastAfter.open === true);
+  const failFastAfterReason = String(failFastAfter && failFastAfter.last_reason ? failFastAfter.last_reason : '')
+    .trim()
+    .toLowerCase();
+  const failFastAfterTransient =
+    failFastAfterReason === 'all_queries_failed' || failFastAfterReason === 'probe_transient_errors';
   if (okCount > 0) return null;
   if (timeoutCount > 0 && timeoutCount >= Math.max(1, queryCount)) return 'upstream_timeout';
+  if (timeoutByStatus > 0 && timeoutByStatus >= Math.max(1, queryCount)) return 'upstream_timeout';
+  if (failFastAfterOpen && failFastAfterTransient) return 'upstream_timeout';
   return null;
 }
 
@@ -6700,6 +6810,7 @@ async function resolveRecoPdpByStableIds({
 
   const localInvokeUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
   const shouldAttemptLocalFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localInvokeUrl &&
     localInvokeUrl !== primaryInvokeUrl &&
@@ -7175,6 +7286,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   });
   const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
   const shouldAttemptLocalResolveFallback =
+    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
     localResolveUrl !== primaryResolveUrl &&
@@ -7485,6 +7597,176 @@ function summarizeOfferPdpOpen(items) {
   };
 }
 
+function normalizePdpCorePrefetchPayload(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const productRef = normalizeCanonicalProductRef(raw.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (productRef) return { product_ref: productRef };
+
+  const subject = raw.subject && typeof raw.subject === 'object' && !Array.isArray(raw.subject) ? raw.subject : null;
+  const subjectType = String(subject?.type || '').trim().toLowerCase();
+  const subjectId = pickFirstTrimmed(subject?.id, subject?.product_group_id);
+  if (subjectType === 'product_group' && subjectId) {
+    return {
+      subject: {
+        type: 'product_group',
+        id: subjectId,
+      },
+    };
+  }
+
+  return null;
+}
+
+function extractPdpCorePrefetchPayloadFromItem(item) {
+  const fromContract = normalizePdpCorePrefetchPayload(item?.pdp_open?.get_pdp_v2_payload);
+  if (fromContract) return fromContract;
+
+  const mode = normalizePdpOpenMode(item?.pdp_open?.path || item?.metadata?.pdp_open_mode, '');
+  if (mode === 'group') {
+    const subjectId = pickFirstTrimmed(item?.pdp_open?.subject?.id, item?.pdp_open?.subject?.product_group_id);
+    if (subjectId) {
+      return {
+        subject: {
+          type: 'product_group',
+          id: subjectId,
+        },
+      };
+    }
+    return null;
+  }
+  if (mode === 'ref' || mode === 'resolve') {
+    const productRef = normalizeCanonicalProductRef(item?.pdp_open?.product_ref, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (productRef) return { product_ref: productRef };
+  }
+
+  return null;
+}
+
+function makePdpCorePrefetchKey(payload) {
+  const normalized = normalizePdpCorePrefetchPayload(payload);
+  if (!normalized) return '';
+  if (normalized.subject?.type === 'product_group' && normalized.subject.id) {
+    return `subject:product_group:${normalized.subject.id}`;
+  }
+  if (normalized.product_ref?.merchant_id && normalized.product_ref?.product_id) {
+    return `ref:${normalized.product_ref.merchant_id}:${normalized.product_ref.product_id}`;
+  }
+  return '';
+}
+
+function shouldRunPdpCorePrefetch(key) {
+  if (!key) return false;
+  const now = Date.now();
+  const prev = Number(pdpPrefetchRecentMap.get(key) || 0);
+  if (prev > 0 && now - prev < AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS) return false;
+  pdpPrefetchRecentMap.set(key, now);
+  if (pdpPrefetchRecentMap.size > 300) {
+    const oldest = pdpPrefetchRecentMap.keys().next().value;
+    if (oldest) pdpPrefetchRecentMap.delete(oldest);
+  }
+  return true;
+}
+
+async function invokePdpCorePrefetch(payload, { logger, reason = null } = {}) {
+  if (!PIVOTA_BACKEND_BASE_URL) return;
+  const normalized = normalizePdpCorePrefetchPayload(payload);
+  if (!normalized) return;
+  const invokeUrl = `${String(PIVOTA_BACKEND_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
+  try {
+    const resp = await axios.post(
+      invokeUrl,
+      {
+        operation: 'get_pdp_v2',
+        payload: {
+          ...normalized,
+          include: ['offers'],
+          capabilities: {
+            client: 'aurora_bff_prefetch',
+            client_version: 'v1',
+          },
+        },
+      },
+      {
+        headers: buildPivotaBackendAgentHeaders(),
+        timeout: AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS,
+        validateStatus: () => true,
+      },
+    );
+    if (Number(resp?.status || 0) >= 400) {
+      logger?.warn(
+        {
+          reason: reason || 'unknown',
+          status: Number(resp?.status || 0),
+          key: makePdpCorePrefetchKey(normalized) || null,
+        },
+        'aurora bff: pdp core prefetch non-200',
+      );
+    }
+  } catch (err) {
+    logger?.warn(
+      {
+        reason: reason || 'unknown',
+        err: err?.message || String(err),
+        key: makePdpCorePrefetchKey(normalized) || null,
+      },
+      'aurora bff: pdp core prefetch failed',
+    );
+  }
+}
+
+function schedulePdpCorePrefetchFromItems(items, { logger, reason = null, maxItems = AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS } = {}) {
+  if (!AURORA_BFF_PDP_CORE_PREFETCH_ENABLED || !PIVOTA_BACKEND_BASE_URL) return;
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return;
+
+  const targets = [];
+  const limit = Math.max(1, Math.min(12, Number(maxItems) || AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS));
+  for (const item of list) {
+    const payload = extractPdpCorePrefetchPayloadFromItem(item);
+    if (!payload) continue;
+    const key = makePdpCorePrefetchKey(payload);
+    if (!shouldRunPdpCorePrefetch(key)) continue;
+    targets.push({ payload, key });
+    if (targets.length >= limit) break;
+  }
+  if (!targets.length) return;
+
+  void mapWithConcurrency(targets, 2, async (target) => {
+    await invokePdpCorePrefetch(target.payload, { logger, reason });
+  });
+}
+
+function startPdpHotsetPrewarmLoop({ logger } = {}) {
+  if (pdpHotsetPrewarmStarted) return;
+  if (!AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED || !PIVOTA_BACKEND_BASE_URL) return;
+  const hotset = (Array.isArray(AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS) ? AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS : [])
+    .map((item) => normalizePdpCorePrefetchPayload(item))
+    .filter(Boolean);
+  if (!hotset.length) return;
+
+  pdpHotsetPrewarmStarted = true;
+  const runOnce = async () => {
+    await mapWithConcurrency(hotset, 2, async (payload) => {
+      await invokePdpCorePrefetch(payload, { logger, reason: 'hotset_prewarm' });
+    });
+  };
+
+  setTimeout(() => {
+    void runOnce();
+  }, AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS);
+
+  const timer = setInterval(() => {
+    void runOnce();
+  }, AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS);
+  if (typeof timer.unref === 'function') timer.unref();
+}
+
 async function enrichRecommendationsWithPdpOpenContract({
   recommendations,
   logger,
@@ -7595,6 +7877,10 @@ async function enrichRecommendationsWithPdpOpenContract({
         timeToPdpMs: 0,
       });
     });
+    schedulePdpCorePrefetchFromItems(fastExternal, {
+      logger,
+      reason: 'reco_card_fast_fallback',
+    });
     return {
       recommendations: fastExternal,
       path_stats: tallyPdpOpenPathStats(fastExternal),
@@ -7609,6 +7895,10 @@ async function enrichRecommendationsWithPdpOpenContract({
   const normalized = enriched.map((item, idx) => {
     if (item && typeof item === 'object' && !Array.isArray(item)) return item;
     return recos[idx];
+  });
+  schedulePdpCorePrefetchFromItems(normalized, {
+    logger,
+    reason: 'reco_card',
   });
 
   return {
@@ -8433,7 +8723,9 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
       reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
       reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
+      reco_upstream_timeout_hard_cap_ms: RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
+      reco_local_fallback_chat_enabled: RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
       reco_catalog_debug: catalogDebug,
       reco_pdp_fast_fallback_reason: pdpFastFallbackReasonCode,
     }
@@ -8594,6 +8886,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
+  startPdpHotsetPrewarmLoop({ logger });
+
   app.get('/metrics', (req, res) => {
     res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
     return res.status(200).send(renderVisionMetricsPrometheus());
@@ -12860,6 +13154,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const offersPdpMeta = summarizeOfferPdpOpen(resolved);
+      schedulePdpCorePrefetchFromItems(resolved, {
+        logger,
+        reason: 'offers_resolved',
+      });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -13346,11 +13644,9 @@ function mountAuroraBffRoutes(app, { logger }) {
 
           if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
             const reason = String(catalogResult.reason || '').trim().toLowerCase();
-            const transientCatalogFailure =
-              reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-            const shouldRunResolveFallback =
-              specificAvailabilityQuery ||
-              (transientCatalogFailure && CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT);
+            const neutralCatalogMiss =
+              !reason || reason === 'empty' || reason === 'no_candidates' || reason === 'not_found';
+            const shouldRunResolveFallback = specificAvailabilityQuery && neutralCatalogMiss;
             if (shouldRunResolveFallback) {
               availabilityResolveAttempted = true;
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({

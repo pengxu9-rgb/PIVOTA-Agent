@@ -22,6 +22,7 @@ const {
   runSkinDiagnosisV1,
   buildSkinAnalysisFromDiagnosisV1,
 } = require('../src/auroraBff/skinDiagnosisV1');
+const { inferSkinMaskOnFaceCrop } = require('../src/auroraBff/skinmaskOnnx');
 const {
   bboxNormToMask,
   countOnes,
@@ -101,8 +102,15 @@ const DEFAULTS = Object.freeze({
   hard_filter_min_face_span_h: 0,
   hard_filter_min_face_span_w: 0,
   hard_filter_min_face_span_area: 0,
+  hard_filter_require_onnx_skinmask: false,
+  hard_filter_min_overlap_score: 0,
+  hard_filter_max_abs_yaw: 1,
   hard_filter_require_all_strong_modules: true,
   hard_filter_fail_on_empty: true,
+  skinmask_onnx_enabled: true,
+  skinmask_onnx_strict: true,
+  skinmask_model_path: path.join('artifacts', 'skinmask_v2.onnx'),
+  skinmask_timeout_ms: 1200,
   max_edge: 2048,
   concurrency: 2,
 });
@@ -146,8 +154,15 @@ Options:
   --hard_filter_min_face_span_h <0-1>  min strong-module vertical span per side (default: 0, disabled)
   --hard_filter_min_face_span_w <0-1>  min strong-module horizontal span per side (default: 0, disabled)
   --hard_filter_min_face_span_area <0-1>  min strong-module bbox area per side (default: 0, disabled)
+  --hard_filter_require_onnx_skinmask <bool>  require ONNX skinmask source in both A/B (default: false)
+  --hard_filter_min_overlap_score <0-1>  min module_box_overlap_score per side (default: 0, disabled)
+  --hard_filter_max_abs_yaw <0-1>  max absolute yaw_est per side (default: 1, disabled)
   --hard_filter_require_all_strong_modules <bool>  require 5 strong modules in both A/B (default: true)
   --hard_filter_fail_on_empty <bool>     exit non-zero when hard-filter removes all samples (default: true)
+  --skinmask_onnx_enabled <bool>         enable ONNX skinmask for module boxes (default: true)
+  --skinmask_onnx_strict <bool>          if ONNX fails, exclude/fallback-null instead of bbox prior (default: true)
+  --skinmask_model_path <path>           ONNX model path (default: artifacts/skinmask_v2.onnx)
+  --skinmask_timeout_ms <n>              ONNX timeout in ms per side (default: 1200)
   --mock_pipeline <bool>                deterministic mock pipeline for smoke/tests
   --max_edge <n>                        max edge for render buffer (default: 2048)
   --concurrency <n>                     local processing concurrency (default: 2)
@@ -367,8 +382,18 @@ function parseArgs(argv) {
     hard_filter_min_face_span_h: process.env.PREF_HARD_FILTER_MIN_FACE_SPAN_H || DEFAULTS.hard_filter_min_face_span_h,
     hard_filter_min_face_span_w: process.env.PREF_HARD_FILTER_MIN_FACE_SPAN_W || DEFAULTS.hard_filter_min_face_span_w,
     hard_filter_min_face_span_area: process.env.PREF_HARD_FILTER_MIN_FACE_SPAN_AREA || DEFAULTS.hard_filter_min_face_span_area,
+    hard_filter_require_onnx_skinmask:
+      process.env.PREF_HARD_FILTER_REQUIRE_ONNX_SKINMASK || DEFAULTS.hard_filter_require_onnx_skinmask,
+    hard_filter_min_overlap_score:
+      process.env.PREF_HARD_FILTER_MIN_OVERLAP_SCORE || DEFAULTS.hard_filter_min_overlap_score,
+    hard_filter_max_abs_yaw:
+      process.env.PREF_HARD_FILTER_MAX_ABS_YAW || DEFAULTS.hard_filter_max_abs_yaw,
     hard_filter_require_all_strong_modules: process.env.PREF_HARD_FILTER_REQUIRE_ALL_STRONG_MODULES || DEFAULTS.hard_filter_require_all_strong_modules,
     hard_filter_fail_on_empty: process.env.PREF_HARD_FILTER_FAIL_ON_EMPTY || DEFAULTS.hard_filter_fail_on_empty,
+    skinmask_onnx_enabled: process.env.PREF_SKINMASK_ONNX_ENABLED || DEFAULTS.skinmask_onnx_enabled,
+    skinmask_onnx_strict: process.env.PREF_SKINMASK_ONNX_STRICT || DEFAULTS.skinmask_onnx_strict,
+    skinmask_model_path: process.env.PREF_SKINMASK_MODEL_PATH || process.env.DIAG_SKINMASK_MODEL_PATH || DEFAULTS.skinmask_model_path,
+    skinmask_timeout_ms: process.env.PREF_SKINMASK_TIMEOUT_MS || process.env.DIAG_SKINMASK_TIMEOUT_MS || DEFAULTS.skinmask_timeout_ms,
     mock_pipeline: process.env.PREF_MOCK_PIPELINE || String(DEFAULTS.mock_pipeline),
     max_edge: process.env.MAX_EDGE || DEFAULTS.max_edge,
     concurrency: process.env.CONCURRENCY || DEFAULTS.concurrency,
@@ -474,11 +499,37 @@ function parseArgs(argv) {
     0,
     1,
   ));
+  out.hard_filter_require_onnx_skinmask = parseBool(
+    out.hard_filter_require_onnx_skinmask,
+    DEFAULTS.hard_filter_require_onnx_skinmask,
+  );
+  out.hard_filter_min_overlap_score = clamp01(parseNumber(
+    out.hard_filter_min_overlap_score,
+    DEFAULTS.hard_filter_min_overlap_score,
+    0,
+    1,
+  ));
+  out.hard_filter_max_abs_yaw = clamp01(parseNumber(
+    out.hard_filter_max_abs_yaw,
+    DEFAULTS.hard_filter_max_abs_yaw,
+    0,
+    1,
+  ));
   out.hard_filter_require_all_strong_modules = parseBool(
     out.hard_filter_require_all_strong_modules,
     DEFAULTS.hard_filter_require_all_strong_modules,
   );
   out.hard_filter_fail_on_empty = parseBool(out.hard_filter_fail_on_empty, DEFAULTS.hard_filter_fail_on_empty);
+  out.skinmask_onnx_enabled = parseBool(out.skinmask_onnx_enabled, DEFAULTS.skinmask_onnx_enabled);
+  out.skinmask_onnx_strict = parseBool(out.skinmask_onnx_strict, DEFAULTS.skinmask_onnx_strict);
+  out.skinmask_model_path = String(out.skinmask_model_path || DEFAULTS.skinmask_model_path).trim();
+  out.skinmask_timeout_ms = Math.max(
+    50,
+    Math.min(
+      60000,
+      Math.trunc(parseNumber(out.skinmask_timeout_ms, DEFAULTS.skinmask_timeout_ms, 50, 60000)),
+    ),
+  );
   out.mock_pipeline = parseBool(out.mock_pipeline, DEFAULTS.mock_pipeline);
   out.max_edge = Math.max(64, Math.min(4096, Math.trunc(parseNumber(out.max_edge, DEFAULTS.max_edge, 64, 4096))));
   out.concurrency = Math.max(1, Math.min(8, Math.trunc(parseNumber(out.concurrency, DEFAULTS.concurrency, 1, 8))));
@@ -676,12 +727,22 @@ function fallbackFaceCropFromDiagnosisInternal(diagnosisInternal) {
   };
 }
 
-function skinMaskFromDiagnosis(diagnosis) {
-  const internal = diagnosis && diagnosis.internal && typeof diagnosis.internal === 'object'
-    ? diagnosis.internal
-    : null;
-  const norm = internal && internal.skin_bbox_norm && typeof internal.skin_bbox_norm === 'object'
-    ? internal.skin_bbox_norm
+function withTimeout(promise, timeoutMs, code = 'TIMEOUT') {
+  const ms = Math.max(50, Math.min(60000, Math.trunc(Number(timeoutMs) || DEFAULTS.skinmask_timeout_ms)));
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      const error = new Error(code);
+      error.code = code;
+      setTimeout(() => reject(error), ms);
+    }),
+  ]);
+}
+
+function skinMaskPriorFromDiagnosisInternal(internal) {
+  const safeInternal = internal && typeof internal === 'object' ? internal : null;
+  const norm = safeInternal && safeInternal.skin_bbox_norm && typeof safeInternal.skin_bbox_norm === 'object'
+    ? safeInternal.skin_bbox_norm
     : null;
   if (!norm) return null;
   const x0 = clamp01(norm.x0);
@@ -693,11 +754,74 @@ function skinMaskFromDiagnosis(diagnosis) {
   const w = Math.max(0, Math.abs(x1 - x0));
   const h = Math.max(0, Math.abs(y1 - y0));
   if (w <= 0.01 || h <= 0.01) return null;
-  const positiveRatio = Math.max(0, Math.min(1, w * h));
   return {
     bbox: { x, y, w, h },
-    positive_ratio: positiveRatio,
+    positive_ratio: Math.max(0, Math.min(1, w * h)),
   };
+}
+
+async function inferSkinMaskForPackModules({ imageBuffer, diagnosisInternal, args } = {}) {
+  const priorMask = skinMaskPriorFromDiagnosisInternal(diagnosisInternal);
+  const strict = Boolean(args && args.skinmask_onnx_strict);
+  const enabled = Boolean(args && args.skinmask_onnx_enabled);
+  const modelPath = String(args && args.skinmask_model_path ? args.skinmask_model_path : '').trim();
+  if (!enabled) {
+    return {
+      skinMask: priorMask,
+      source: priorMask ? 'bbox_prior' : 'none',
+      onnx_ok: false,
+      onnx_reason: 'onnx_disabled',
+    };
+  }
+  if (!modelPath) {
+    return {
+      skinMask: strict ? null : priorMask,
+      source: strict ? 'none' : (priorMask ? 'bbox_prior' : 'none'),
+      onnx_ok: false,
+      onnx_reason: 'onnx_model_missing',
+    };
+  }
+  const modelPathResolved = path.isAbsolute(modelPath) ? modelPath : path.resolve(modelPath);
+  try {
+    const inferred = await withTimeout(
+      Promise.resolve(
+        inferSkinMaskOnFaceCrop({
+          imageBuffer,
+          diagnosisInternal,
+          modelPath: modelPathResolved,
+        }),
+      ),
+      args && args.skinmask_timeout_ms,
+      'SKINMASK_TIMEOUT',
+    );
+    if (inferred && inferred.ok && typeof inferred.mask_rle_norm === 'string' && inferred.mask_rle_norm.trim()) {
+      return {
+        skinMask: {
+          mask_grid: Math.max(16, Math.min(512, Math.trunc(Number(inferred.mask_grid) || 64))),
+          mask_rle_norm: inferred.mask_rle_norm,
+          positive_ratio: Number.isFinite(Number(inferred.positive_ratio)) ? Number(inferred.positive_ratio) : null,
+          ...(inferred.bbox && typeof inferred.bbox === 'object' ? { bbox: inferred.bbox } : {}),
+        },
+        source: 'onnx_rle',
+        onnx_ok: true,
+        onnx_reason: null,
+      };
+    }
+    return {
+      skinMask: strict ? null : priorMask,
+      source: strict ? 'none' : (priorMask ? 'bbox_prior' : 'none'),
+      onnx_ok: false,
+      onnx_reason: String(inferred && inferred.reason ? inferred.reason : 'onnx_no_mask'),
+    };
+  } catch (error) {
+    const reason = String(error && (error.code || error.message) ? (error.code || error.message) : 'onnx_exception');
+    return {
+      skinMask: strict ? null : priorMask,
+      source: strict ? 'none' : (priorMask ? 'bbox_prior' : 'none'),
+      onnx_ok: false,
+      onnx_reason: reason,
+    };
+  }
 }
 
 function buildMockPayload({ sampleHash, variantKind }) {
@@ -752,6 +876,7 @@ async function runLocalPipeline({
   imageBuffer,
   sampleHash,
   lang,
+  args,
   buildPhotoModulesCard,
   postprocess,
   mockMode,
@@ -803,10 +928,15 @@ async function runLocalPipeline({
     language: String(lang || 'en').toLowerCase().startsWith('zh') ? 'CN' : 'EN',
     profileSummary: null,
   });
+  const skinMaskResult = await inferSkinMaskForPackModules({
+    imageBuffer,
+    diagnosisInternal: diagnosis.internal || null,
+    args,
+  });
 
   let built;
   try {
-    const skinMask = skinMaskFromDiagnosis(diagnosis);
+    const skinMask = skinMaskResult && typeof skinMaskResult === 'object' ? skinMaskResult.skinMask : null;
     built = buildPhotoModulesCard({
       requestId: `pref_${sampleHash}`,
       analysis,
@@ -844,6 +974,18 @@ async function runLocalPipeline({
 
   const moduleRows = postprocess(parseModuleRows(payload));
   payload.modules = moduleRows;
+  const internalDebug = payload.internal_debug && typeof payload.internal_debug === 'object'
+    ? payload.internal_debug
+    : {};
+  payload.internal_debug = {
+    ...internalDebug,
+    skinmask_source: skinMaskResult && skinMaskResult.source ? skinMaskResult.source : 'none',
+    skinmask_onnx_ok: Boolean(skinMaskResult && skinMaskResult.onnx_ok),
+    skinmask_onnx_reason:
+      skinMaskResult && Object.prototype.hasOwnProperty.call(skinMaskResult, 'onnx_reason')
+        ? skinMaskResult.onnx_reason
+        : null,
+  };
 
   return {
     ok: true,
@@ -877,6 +1019,23 @@ function moduleSummary(moduleRows, payload, templateMatchEps = DEFAULTS.template
   const dynamicScore = Number.isFinite(Number(internalDebug.module_box_dynamic_score))
     ? Math.max(0, Math.min(1, Number(internalDebug.module_box_dynamic_score)))
     : null;
+  const overlapScore = Number.isFinite(Number(internalDebug.module_box_overlap_score))
+    ? Math.max(0, Math.min(1, Number(internalDebug.module_box_overlap_score)))
+    : null;
+  const positiveRatio = Number.isFinite(Number(internalDebug.module_box_positive_ratio))
+    ? Math.max(0, Math.min(1, Number(internalDebug.module_box_positive_ratio)))
+    : null;
+  const anchors = internalDebug.module_box_anchors && typeof internalDebug.module_box_anchors === 'object'
+    ? internalDebug.module_box_anchors
+    : null;
+  const yawRaw = anchors && Number.isFinite(Number(anchors.yaw_est))
+    ? Number(anchors.yaw_est)
+    : null;
+  const yawEst = yawRaw == null ? null : Math.max(-1, Math.min(1, yawRaw));
+  const skinmaskSource = internalDebug.skinmask_source == null ? null : String(internalDebug.skinmask_source);
+  const skinmaskOnnxOk = Boolean(internalDebug.skinmask_onnx_ok);
+  const skinmaskOnnxReason = internalDebug.skinmask_onnx_reason == null ? null : String(internalDebug.skinmask_onnx_reason);
+  const faceOvalMaskSource = internalDebug.face_oval_mask_source == null ? null : String(internalDebug.face_oval_mask_source);
   const boxPlausibility = computeModuleBoxPlausibility(moduleRowsMap);
 
   const templateRows = STRONG_MODULES
@@ -928,6 +1087,13 @@ function moduleSummary(moduleRows, payload, templateMatchEps = DEFAULTS.template
     module_box_dynamic_applied: dynamicApplied,
     module_box_dynamic_reason: dynamicReason,
     module_box_dynamic_score: dynamicScore,
+    module_box_overlap_score: overlapScore,
+    module_box_positive_ratio: positiveRatio,
+    module_box_yaw_est: yawEst,
+    skinmask_source: skinmaskSource,
+    skinmask_onnx_ok: skinmaskOnnxOk,
+    skinmask_onnx_reason: skinmaskOnnxReason,
+    face_oval_mask_source: faceOvalMaskSource,
     module_box_plausibility_score: boxPlausibility.score,
     module_box_plausibility_violations: boxPlausibility.violations,
     module_box_template_like: templateLike,
@@ -1228,6 +1394,39 @@ function hardFilterGateReasons({
       reasons.push(
         `hard_filter_face_span_area:${round3(minSpanArea)}<${round3(args.hard_filter_min_face_span_area)}`,
       );
+    }
+  }
+  if (args.hard_filter_require_onnx_skinmask) {
+    const baselineSource = String(baselineSummary && baselineSummary.skinmask_source || '');
+    const variantSource = String(variantSummary && variantSummary.skinmask_source || '');
+    if (baselineSource !== 'onnx_rle' || variantSource !== 'onnx_rle') {
+      reasons.push(`hard_filter_skinmask_source:${baselineSource || 'none'}|${variantSource || 'none'}`);
+    }
+  }
+  if (args.hard_filter_min_overlap_score > 0) {
+    const baselineOverlap = Number.isFinite(Number(baselineSummary && baselineSummary.module_box_overlap_score))
+      ? Number(baselineSummary.module_box_overlap_score)
+      : 0;
+    const variantOverlap = Number.isFinite(Number(variantSummary && variantSummary.module_box_overlap_score))
+      ? Number(variantSummary.module_box_overlap_score)
+      : 0;
+    const minOverlap = Math.min(baselineOverlap, variantOverlap);
+    if (minOverlap < args.hard_filter_min_overlap_score) {
+      reasons.push(
+        `hard_filter_overlap_score:${round3(minOverlap)}<${round3(args.hard_filter_min_overlap_score)}`,
+      );
+    }
+  }
+  if (args.hard_filter_max_abs_yaw < 1) {
+    const baselineYaw = Number.isFinite(Number(baselineSummary && baselineSummary.module_box_yaw_est))
+      ? Math.abs(Number(baselineSummary.module_box_yaw_est))
+      : 1;
+    const variantYaw = Number.isFinite(Number(variantSummary && variantSummary.module_box_yaw_est))
+      ? Math.abs(Number(variantSummary.module_box_yaw_est))
+      : 1;
+    const maxYaw = Math.max(baselineYaw, variantYaw);
+    if (maxYaw > args.hard_filter_max_abs_yaw) {
+      reasons.push(`hard_filter_abs_yaw:${round3(maxYaw)}>${round3(args.hard_filter_max_abs_yaw)}`);
     }
   }
 
@@ -1571,6 +1770,7 @@ async function main() {
       imageBuffer,
       sampleHash: row.sample_hash,
       lang: 'en',
+      args,
       buildPhotoModulesCard: buildPhotoModulesCardBaseline,
       postprocess: (moduleRows) => moduleRows,
       mockMode: args.mock_pipeline,
@@ -1581,6 +1781,7 @@ async function main() {
       imageBuffer,
       sampleHash: row.sample_hash,
       lang: 'en',
+      args,
       buildPhotoModulesCard: buildPhotoModulesCardVariant,
       postprocess: variant.applyPostprocess,
       mockMode: args.mock_pipeline,

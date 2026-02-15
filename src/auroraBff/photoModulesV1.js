@@ -969,6 +969,7 @@ function buildModuleIssues({
 function buildModules({
   regions,
   regionMeta,
+  moduleBoxes,
   qualityGrade,
   language,
   profileSummary,
@@ -997,8 +998,9 @@ function buildModules({
     sensitivity: profileSummary && profileSummary.sensitivity,
     contraindications: profileSummary && profileSummary.contraindications,
   });
+  const activeModuleBoxes = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
 
-  for (const [moduleId, moduleBoxRaw] of Object.entries(MODULE_BOXES)) {
+  for (const [moduleId, moduleBoxRaw] of Object.entries(activeModuleBoxes)) {
     const moduleBoxSanitized = sanitizeBBox(moduleBoxRaw);
     if (!moduleBoxSanitized.ok || !moduleBoxSanitized.bbox) continue;
     const moduleBox = moduleBoxSanitized.bbox;
@@ -1179,45 +1181,6 @@ function hasValidSkinBBoxNorm(diagnosisInternal) {
   return Math.abs(x1 - x0) >= 0.02 && Math.abs(y1 - y0) >= 0.02;
 }
 
-function resolveModuleBoxDynamicDebug({ diagnosisInternal, faceCrop } = {}) {
-  if (MODULE_BOX_MODE === 'static') {
-    return {
-      module_box_mode: 'static',
-      module_box_dynamic_applied: false,
-      module_box_dynamic_reason: 'mode_static',
-      module_box_dynamic_score: 0,
-    };
-  }
-
-  const hasSkinBBox = hasValidSkinBBoxNorm(diagnosisInternal);
-  const faceCropBox = faceCrop && typeof faceCrop === 'object' && faceCrop.bbox_px && typeof faceCrop.bbox_px === 'object'
-    ? faceCrop.bbox_px
-    : null;
-  const faceCropValid = faceCropBox
-    && Number.isFinite(Number(faceCropBox.w))
-    && Number.isFinite(Number(faceCropBox.h))
-    && Number(faceCropBox.w) > 8
-    && Number(faceCropBox.h) > 8;
-  const dynamicScore = clamp01((hasSkinBBox ? 0.7 : 0) + (faceCropValid ? 0.3 : 0));
-  const dynamicApplied = dynamicScore >= MODULE_BOX_DYNAMIC_MIN_SCORE;
-
-  if (MODULE_BOX_MODE === 'auto' && !dynamicApplied) {
-    return {
-      module_box_mode: 'static',
-      module_box_dynamic_applied: false,
-      module_box_dynamic_reason: hasSkinBBox ? 'auto_fallback_low_score' : 'auto_fallback_missing_skin_bbox',
-      module_box_dynamic_score: round3(dynamicScore),
-    };
-  }
-
-  return {
-    module_box_mode: 'dynamic_skinmask',
-    module_box_dynamic_applied: dynamicApplied,
-    module_box_dynamic_reason: dynamicApplied ? null : (hasSkinBBox ? 'dynamic_low_score' : 'dynamic_missing_skin_bbox'),
-    module_box_dynamic_score: round3(dynamicScore),
-  };
-}
-
 function normalizeMaskGridSize(value, fallback = MODULE_MASK_GRID_SIZE) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -1280,6 +1243,698 @@ function decodeSkinMaskToGrid(skinMask, gridSize) {
   return null;
 }
 
+function median(numbers) {
+  const values = Array.isArray(numbers)
+    ? numbers.map((value) => Number(value)).filter((value) => Number.isFinite(value)).sort((a, b) => a - b)
+    : [];
+  if (!values.length) return null;
+  const mid = Math.floor(values.length / 2);
+  if (values.length % 2) return values[mid];
+  return (values[mid - 1] + values[mid]) / 2;
+}
+
+function percentileSortedNumbers(sortedValues, q) {
+  const values = Array.isArray(sortedValues) ? sortedValues : [];
+  if (!values.length) return null;
+  const quantile = clamp01(q);
+  const idx = (values.length - 1) * quantile;
+  const lo = Math.max(0, Math.min(values.length - 1, Math.floor(idx)));
+  const hi = Math.max(0, Math.min(values.length - 1, Math.ceil(idx)));
+  if (lo === hi) return Number(values[lo]);
+  const ratio = idx - lo;
+  return Number(values[lo]) + ((Number(values[hi]) - Number(values[lo])) * ratio);
+}
+
+function percentileNumbers(numbers, q) {
+  const values = Array.isArray(numbers)
+    ? numbers.map((value) => Number(value)).filter((value) => Number.isFinite(value)).sort((a, b) => a - b)
+    : [];
+  return percentileSortedNumbers(values, q);
+}
+
+function gatherMaskRowEdges(mask, gridSize) {
+  if (!(mask instanceof Uint8Array) || !mask.length) {
+    return {
+      row_edges: [],
+      min_x: gridSize,
+      max_x: -1,
+      min_y: gridSize,
+      max_y: -1,
+      positive_pixels: 0,
+    };
+  }
+  const g = Math.max(1, Math.trunc(Number(gridSize) || 1));
+  const rowEdges = [];
+  let minX = g;
+  let maxX = -1;
+  let minY = g;
+  let maxY = -1;
+  let positivePixels = 0;
+  for (let y = 0; y < g; y += 1) {
+    let lx = -1;
+    let rx = -1;
+    let count = 0;
+    let sumX = 0;
+    for (let x = 0; x < g; x += 1) {
+      if (!mask[(y * g) + x]) continue;
+      if (lx < 0) lx = x;
+      rx = x;
+      count += 1;
+      sumX += x;
+    }
+    if (count <= 0 || lx < 0 || rx < 0) continue;
+    rowEdges.push({
+      y,
+      lx,
+      rx,
+      cx: count > 0 ? (sumX / count) : ((lx + rx) / 2),
+      w: rx - lx + 1,
+      count,
+    });
+    positivePixels += count;
+    if (lx < minX) minX = lx;
+    if (rx > maxX) maxX = rx;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return {
+    row_edges: rowEdges,
+    min_x: minX,
+    max_x: maxX,
+    min_y: minY,
+    max_y: maxY,
+    positive_pixels: positivePixels,
+  };
+}
+
+function pickRowByAreaQuantile(rowEdges, quantile) {
+  if (!Array.isArray(rowEdges) || !rowEdges.length) return null;
+  const weightedTotal = rowEdges.reduce(
+    (sum, row) => sum + Math.max(1, Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0),
+    0,
+  );
+  if (weightedTotal <= 0) return pickRowEdgeNear(rowEdges, rowEdges[Math.trunc(rowEdges.length / 2)].y);
+  const target = clamp01(quantile) * weightedTotal;
+  let acc = 0;
+  for (const row of rowEdges) {
+    const weight = Math.max(1, Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0);
+    acc += weight;
+    if (acc >= target) return row;
+  }
+  return rowEdges[rowEdges.length - 1] || null;
+}
+
+function summarizeRowBand(rowEdges, yMin, yMax) {
+  if (!Array.isArray(rowEdges) || !rowEdges.length) return null;
+  const lower = Math.min(Number(yMin), Number(yMax));
+  const upper = Math.max(Number(yMin), Number(yMax));
+  const rows = rowEdges.filter((row) => Number(row && row.y) >= lower && Number(row && row.y) <= upper);
+  if (!rows.length) return null;
+  const lefts = rows.map((row) => Number(row.lx)).filter((value) => Number.isFinite(value));
+  const rights = rows.map((row) => Number(row.rx)).filter((value) => Number.isFinite(value));
+  const lxQ = percentileNumbers(lefts, 0.2);
+  const rxQ = percentileNumbers(rights, 0.8);
+  const lxRaw = Number.isFinite(lxQ) ? lxQ : Math.min(...lefts);
+  const rxRaw = Number.isFinite(rxQ) ? rxQ : Math.max(...rights);
+  const lx = Math.trunc(Math.floor(Math.max(0, lxRaw)));
+  const rx = Math.trunc(Math.ceil(Math.max(lx + 1, rxRaw)));
+  const weighted = rows.reduce(
+    (acc, row) => {
+      const weight = Math.max(1, Number.isFinite(Number(row && row.count)) ? Number(row.count) : 0);
+      const cx = Number.isFinite(Number(row && row.cx)) ? Number(row.cx) : (Number(row.lx) + Number(row.rx)) / 2;
+      return {
+        sum: acc.sum + (cx * weight),
+        weight: acc.weight + weight,
+      };
+    },
+    { sum: 0, weight: 0 },
+  );
+  const cx = weighted.weight > 0
+    ? weighted.sum / weighted.weight
+    : (median(rows.map((row) => row.cx)) ?? ((lx + rx) / 2));
+  return {
+    y0: rows[0].y,
+    y1: rows[rows.length - 1].y,
+    lx,
+    rx,
+    cx,
+    rows: rows.length,
+  };
+}
+
+function rowBandToNorm(rowBand, gridSize) {
+  if (!rowBand || !Number.isFinite(Number(gridSize)) || Number(gridSize) <= 0) return null;
+  const g = Number(gridSize);
+  const x0 = clamp01(Number(rowBand.lx) / g);
+  const x1 = clamp01((Number(rowBand.rx) + 1) / g);
+  const y0 = clamp01(Number(rowBand.y0) / g);
+  const y1 = clamp01((Number(rowBand.y1) + 1) / g);
+  const cx = clamp01((Number(rowBand.cx) + 0.5) / g);
+  if (![x0, x1, y0, y1, cx].every((value) => Number.isFinite(value))) return null;
+  return {
+    x0: Math.min(x0, x1),
+    x1: Math.max(x0, x1),
+    y0: Math.min(y0, y1),
+    y1: Math.max(y0, y1),
+    cx,
+  };
+}
+
+function pickRowEdgeNear(rowEdges, targetY) {
+  if (!Array.isArray(rowEdges) || !rowEdges.length) return null;
+  let best = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const row of rowEdges) {
+    const dist = Math.abs(Number(row.y) - Number(targetY));
+    if (dist < bestDist) {
+      best = row;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+function rowEdgeToNorm(row, gridSize) {
+  if (!row || !Number.isFinite(Number(gridSize)) || Number(gridSize) <= 0) return null;
+  const g = Number(gridSize);
+  const y = (Number(row.y) + 0.5) / g;
+  const lx = (Number(row.lx) + 0.5) / g;
+  const rx = (Number(row.rx) + 0.5) / g;
+  const cx = (Number(row.cx) + 0.5) / g;
+  if (![y, lx, rx, cx].every((value) => Number.isFinite(value))) return null;
+  return {
+    y: clamp01(y),
+    lx: clamp01(Math.min(lx, rx)),
+    rx: clamp01(Math.max(lx, rx)),
+    cx: clamp01(cx),
+  };
+}
+
+function sanitizeBoxCorners(x0, y0, x1, y1) {
+  return sanitizeBBox({
+    x: Math.min(Number(x0), Number(x1)),
+    y: Math.min(Number(y0), Number(y1)),
+    w: Math.abs(Number(x1) - Number(x0)),
+    h: Math.abs(Number(y1) - Number(y0)),
+  });
+}
+
+function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
+  const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
+  const decoded = decodeSkinMaskToGrid(skinMask, targetGrid);
+  if (!(decoded instanceof Uint8Array) || !decoded.length) {
+    return { ok: false, reason: 'skinmask_unavailable', score: 0, module_boxes: null };
+  }
+
+  const totalPixels = targetGrid * targetGrid;
+  const componentMinPixels = Math.max(12, Math.trunc(totalPixels * 0.015));
+  const componentSelection = selectFaceComponentFromMask(decoded, targetGrid, {
+    minPixels: componentMinPixels,
+    centerX: 0.5,
+    centerY: 0.54,
+  });
+  const componentMask = componentSelection && componentSelection.mask
+    ? componentSelection.mask
+    : (largestConnectedComponentMask(decoded, targetGrid, componentMinPixels) || decoded);
+  const geometry = gatherMaskRowEdges(componentMask, targetGrid);
+  const rowEdges = geometry.row_edges;
+  const rawMinX = geometry.min_x;
+  const rawMaxX = geometry.max_x;
+  const rawMinY = geometry.min_y;
+  const rawMaxY = geometry.max_y;
+  const positivePixels = Math.max(0, Math.trunc(Number(geometry.positive_pixels) || 0));
+  const positiveRatio = positivePixels / Math.max(1, totalPixels);
+
+  if (rowEdges.length < Math.max(6, Math.trunc(targetGrid * 0.08)) || rawMinX > rawMaxX || rawMinY > rawMaxY) {
+    return {
+      ok: false,
+      reason: 'skinmask_rows_insufficient',
+      score: round3(clamp01(positiveRatio)),
+      module_boxes: null,
+      positive_ratio: round3(positiveRatio),
+    };
+  }
+
+  const rowWidthsSorted = rowEdges
+    .map((row) => Number(row && row.w))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  const medianRowWidth = percentileSortedNumbers(rowWidthsSorted, 0.5) || Math.max(1, rawMaxX - rawMinX + 1);
+  const stableRowWidthThreshold = Math.max(3, Math.trunc(medianRowWidth * 0.68));
+  const stableRows = rowEdges.filter((row) => Number(row && row.w) >= stableRowWidthThreshold);
+  const minX = stableRows.length >= 5
+    ? Math.min(...stableRows.map((row) => Number(row.lx)))
+    : rawMinX;
+  const maxX = stableRows.length >= 5
+    ? Math.max(...stableRows.map((row) => Number(row.rx)))
+    : rawMaxX;
+  const minY = stableRows.length >= 5
+    ? Math.min(...stableRows.map((row) => Number(row.y)))
+    : rawMinY;
+  const maxY = stableRows.length >= 5
+    ? Math.max(...stableRows.map((row) => Number(row.y)))
+    : rawMaxY;
+
+  const faceHpx = Math.max(4, maxY - minY + 1);
+  const faceWpx = Math.max(4, maxX - minX + 1);
+  const faceBoxRaw = sanitizeBBox({
+    x: (minX / targetGrid) - 0.01,
+    y: (minY / targetGrid) - 0.01,
+    w: (faceWpx / targetGrid) + 0.02,
+    h: (faceHpx / targetGrid) + 0.02,
+  });
+  if (!faceBoxRaw.ok || !faceBoxRaw.bbox) {
+    return { ok: false, reason: 'skinmask_face_bbox_invalid', score: 0, module_boxes: null };
+  }
+  const faceBox = faceBoxRaw.bbox;
+  const faceW = faceBox.w;
+  const faceH = faceBox.h;
+
+  const clampRow = (value) => Math.max(minY, Math.min(maxY, Math.trunc(Number(value) || minY)));
+  const yByArea = (quantile, fallbackRatio) => {
+    const row = pickRowByAreaQuantile(rowEdges, quantile);
+    if (row && Number.isFinite(Number(row.y))) return clampRow(row.y);
+    return clampRow(minY + (faceHpx * fallbackRatio));
+  };
+  const yNormByArea = (quantile, fallbackRatio) => clamp01(yByArea(quantile, fallbackRatio) / targetGrid);
+  const pickBand = (q0, q1, minRows = 3) => {
+    let y0 = yByArea(q0, q0);
+    let y1 = yByArea(q1, q1);
+    if (y1 < y0) {
+      const tmp = y0;
+      y0 = y1;
+      y1 = tmp;
+    }
+    const currentRows = y1 - y0 + 1;
+    if (currentRows < minRows) {
+      const expand = Math.ceil((minRows - currentRows) / 2);
+      y0 = clampRow(y0 - expand);
+      y1 = clampRow(y1 + expand);
+    }
+    let band = summarizeRowBand(rowEdges, y0, y1);
+    if (!band) {
+      const near = pickRowEdgeNear(rowEdges, (y0 + y1) / 2);
+      if (near) {
+        band = {
+          y0: near.y,
+          y1: near.y,
+          lx: near.lx,
+          rx: near.rx,
+          cx: near.cx,
+          rows: 1,
+        };
+      }
+    }
+    return band;
+  };
+
+  const foreheadBandPx = pickBand(0.02, 0.24, 4);
+  const underEyeBandPx = pickBand(0.29, 0.46, 4);
+  const noseBandPx = pickBand(0.36, 0.71, 5);
+  const cheekBandPx = pickBand(0.43, 0.8, 6);
+  const chinBandPx = pickBand(0.73, 0.98, 4);
+  const midBandPx = pickBand(0.35, 0.68, 6);
+
+  const foreheadBand = rowBandToNorm(foreheadBandPx, targetGrid);
+  const underEyeBand = rowBandToNorm(underEyeBandPx, targetGrid);
+  const noseBand = rowBandToNorm(noseBandPx, targetGrid);
+  const cheekBand = rowBandToNorm(cheekBandPx, targetGrid);
+  const chinBand = rowBandToNorm(chinBandPx, targetGrid);
+  const midBand = rowBandToNorm(midBandPx, targetGrid);
+
+  const centerDefault = faceBox.x + (faceW / 2);
+  const centerX = clamp01(
+    median(
+      [midBand && midBand.cx, noseBand && noseBand.cx, cheekBand && cheekBand.cx]
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value)),
+    ) ?? centerDefault,
+  );
+  const yawEstimate = faceW > 0.01 ? (centerX - centerDefault) / (faceW * 0.35) : 0;
+  const yaw = Math.max(-1, Math.min(1, yawEstimate));
+  const bridgePad = Math.max(0.006, Math.min(faceW * 0.085, faceW * (0.055 + (Math.abs(yaw) * 0.02))));
+
+  const dynamicBoxes = {};
+  const directModuleIds = new Set();
+  const fallbackModuleIds = new Set();
+  const minBoxScales = {
+    forehead: { w: 0.36, h: 0.085 },
+    under_eye_left: { w: 0.11, h: 0.055 },
+    under_eye_right: { w: 0.11, h: 0.055 },
+    left_cheek: { w: 0.15, h: 0.145 },
+    right_cheek: { w: 0.15, h: 0.145 },
+    nose: { w: 0.08, h: 0.16 },
+    chin: { w: 0.24, h: 0.095 },
+  };
+  const enforceMinimumBoxSize = (moduleId, box, clampBox) => {
+    const rule = minBoxScales[moduleId];
+    if (!rule || !box) return box;
+    const minW = Math.max(0.01, faceW * Number(rule.w || 0));
+    const minH = Math.max(0.01, faceH * Number(rule.h || 0));
+    const needW = box.w < minW;
+    const needH = box.h < minH;
+    if (!needW && !needH) return box;
+    const cx = box.x + (box.w / 2);
+    const cy = box.y + (box.h / 2);
+    const grown = sanitizeBBox({
+      x: cx - (Math.max(box.w, minW) / 2),
+      y: cy - (Math.max(box.h, minH) / 2),
+      w: Math.max(box.w, minW),
+      h: Math.max(box.h, minH),
+    });
+    if (!grown.ok || !grown.bbox) return box;
+    let bounded = grown.bbox;
+    if (clampBox) {
+      const clamped = intersectBoxes(bounded, clampBox);
+      if (clamped) bounded = clamped;
+    }
+    return intersectBoxes(bounded, faceBox) || bounded || box;
+  };
+  const addBox = (moduleId, x0, y0, x1, y1, clampBoxRaw = null, source = 'direct') => {
+    const raw = sanitizeBoxCorners(x0, y0, x1, y1);
+    if (!raw.ok || !raw.bbox) return;
+    const clampBox = clampBoxRaw ? sanitizeBBox(clampBoxRaw) : null;
+    let bounded = intersectBoxes(raw.bbox, faceBox) || raw.bbox;
+    if (clampBox && clampBox.ok && clampBox.bbox) {
+      bounded = intersectBoxes(bounded, clampBox.bbox);
+      if (!bounded) return;
+    }
+    const minSized = enforceMinimumBoxSize(
+      moduleId,
+      bounded,
+      clampBox && clampBox.ok ? clampBox.bbox : null,
+    );
+    const final = sanitizeBBox(minSized || bounded);
+    if (!final.ok || !final.bbox) return;
+    dynamicBoxes[moduleId] = final.bbox;
+    if (String(source || 'direct') === 'fallback') fallbackModuleIds.add(moduleId);
+    else directModuleIds.add(moduleId);
+  };
+
+  const foreheadY0 = Math.max(faceBox.y + (faceH * 0.01), foreheadBand ? foreheadBand.y0 : yNormByArea(0.02, 0.02));
+  const foreheadY1 = Math.min(
+    foreheadBand ? foreheadBand.y1 : yNormByArea(0.24, 0.24),
+    (underEyeBand ? underEyeBand.y0 : yNormByArea(0.3, 0.3)) - (faceH * 0.012),
+  );
+  const foreheadClamp = {
+    x: faceBox.x,
+    y: faceBox.y,
+    w: faceBox.w,
+    h: Math.max(0.02, (underEyeBand ? underEyeBand.y0 : (faceBox.y + faceH * 0.35)) - faceBox.y),
+  };
+  addBox(
+    'forehead',
+    (foreheadBand ? foreheadBand.x0 : faceBox.x) + (faceW * 0.015),
+    foreheadY0,
+    (foreheadBand ? foreheadBand.x1 : (faceBox.x + faceBox.w)) - (faceW * 0.015),
+    foreheadY1,
+    foreheadClamp,
+  );
+
+  const underY0 = Math.max(faceBox.y + (faceH * 0.24), underEyeBand ? underEyeBand.y0 : yNormByArea(0.29, 0.29));
+  const underY1 = Math.min(
+    faceBox.y + (faceH * 0.55),
+    underEyeBand ? underEyeBand.y1 : yNormByArea(0.46, 0.46),
+  );
+  const underLeft = (underEyeBand ? underEyeBand.x0 : faceBox.x) + (faceW * 0.01);
+  const underRight = (underEyeBand ? underEyeBand.x1 : (faceBox.x + faceBox.w)) - (faceW * 0.01);
+  const centerPad = Math.max(bridgePad, faceW * 0.055);
+  const leftSideX1 = Math.max(faceBox.x + faceW * 0.2, centerX - centerPad);
+  const rightSideX0 = Math.min(faceBox.x + faceW * 0.8, centerX + centerPad);
+  const underEyeLeftClamp = {
+    x: faceBox.x,
+    y: faceBox.y + (faceH * 0.2),
+    w: Math.max(0.01, leftSideX1 - faceBox.x),
+    h: Math.max(0.01, faceH * 0.38),
+  };
+  const underEyeRightClamp = {
+    x: rightSideX0,
+    y: faceBox.y + (faceH * 0.2),
+    w: Math.max(0.01, (faceBox.x + faceBox.w) - rightSideX0),
+    h: Math.max(0.01, faceH * 0.38),
+  };
+  addBox(
+    'under_eye_left',
+    underLeft,
+    underY0,
+    Math.min(centerX - bridgePad, underRight - (faceW * 0.06)),
+    underY1,
+    underEyeLeftClamp,
+  );
+  addBox(
+    'under_eye_right',
+    Math.max(centerX + bridgePad, underLeft + (faceW * 0.06)),
+    underY0,
+    underRight,
+    underY1,
+    underEyeRightClamp,
+  );
+
+  const mouthAnchorY = yNormByArea(0.68, 0.68);
+  const jawAnchorY = yNormByArea(0.88, 0.88);
+  const chinBandTopY = chinBand ? chinBand.y0 : yNormByArea(0.79, 0.79);
+  const chinTopFloor = Math.max(
+    faceBox.y + (faceH * 0.7),
+    mouthAnchorY + (faceH * 0.08),
+  );
+  const chinTopCeil = Math.min(
+    faceBox.y + (faceH * 0.9),
+    jawAnchorY + (faceH * 0.04),
+  );
+  const chinTopY = Math.max(chinTopFloor, Math.min(chinBandTopY, chinTopCeil));
+  const cheekY0 = Math.max(underY0 + (faceH * 0.01), cheekBand ? cheekBand.y0 : yNormByArea(0.43, 0.43));
+  const cheekY1 = Math.min(chinTopY - (faceH * 0.04), cheekBand ? cheekBand.y1 : yNormByArea(0.8, 0.8));
+  const cheekSplitPad = Math.max(bridgePad, faceW * 0.075);
+  const leftCheekClamp = {
+    x: faceBox.x,
+    y: faceBox.y + (faceH * 0.34),
+    w: Math.max(0.01, (centerX - cheekSplitPad) - faceBox.x),
+    h: Math.max(0.01, faceH * 0.58),
+  };
+  const rightCheekClamp = {
+    x: centerX + cheekSplitPad,
+    y: faceBox.y + (faceH * 0.34),
+    w: Math.max(0.01, (faceBox.x + faceBox.w) - (centerX + cheekSplitPad)),
+    h: Math.max(0.01, faceH * 0.58),
+  };
+  addBox(
+    'left_cheek',
+    (cheekBand ? cheekBand.x0 : faceBox.x) + (faceW * 0.015),
+    cheekY0,
+    centerX - cheekSplitPad,
+    cheekY1,
+    leftCheekClamp,
+  );
+  addBox(
+    'right_cheek',
+    centerX + cheekSplitPad,
+    cheekY0,
+    (cheekBand ? cheekBand.x1 : (faceBox.x + faceBox.w)) - (faceW * 0.015),
+    cheekY1,
+    rightCheekClamp,
+  );
+
+  const noseBandLeft = noseBand ? noseBand.x0 : (faceBox.x + (faceW * 0.3));
+  const noseBandRight = noseBand ? noseBand.x1 : (faceBox.x + (faceW * 0.7));
+  const noseCenterX = clamp01(((noseBand ? noseBand.cx : centerX) * 0.7) + (centerX * 0.3));
+  const noseBandSpanLeft = Math.max(0.01, noseCenterX - noseBandLeft);
+  const noseBandSpanRight = Math.max(0.01, noseBandRight - noseCenterX);
+  const noseHalfW = Math.max(
+    faceW * 0.045,
+    Math.min(faceW * 0.13, Math.min(noseBandSpanLeft, noseBandSpanRight) * 0.78),
+  );
+  const noseClamp = {
+    x: centerX - (faceW * 0.18),
+    y: faceBox.y + (faceH * 0.26),
+    w: Math.max(0.01, faceW * 0.36),
+    h: Math.max(0.01, faceH * 0.48),
+  };
+  addBox(
+    'nose',
+    noseCenterX - noseHalfW,
+    Math.max(underY0 + (faceH * 0.005), noseBand ? noseBand.y0 : yNormByArea(0.36, 0.36)),
+    noseCenterX + noseHalfW,
+    Math.min(chinTopY - (faceH * 0.05), noseBand ? noseBand.y1 : yNormByArea(0.71, 0.71)),
+    noseClamp,
+  );
+
+  const chinBandLeft = chinBand ? chinBand.x0 : (faceBox.x + (faceW * 0.18));
+  const chinBandRight = chinBand ? chinBand.x1 : (faceBox.x + (faceW * 0.82));
+  const chinHalfW = Math.max(
+    faceW * 0.2,
+    Math.min(faceW * 0.34, ((chinBandRight - chinBandLeft) * 0.5)),
+  );
+  const chinBottomByBand = chinBand ? chinBand.y1 : yNormByArea(0.95, 0.95);
+  const chinBottomCeil = Math.min(
+    faceBox.y + (faceH * 0.965),
+    mouthAnchorY + (faceH * 0.45),
+  );
+  const chinBottomY = Math.max(
+    chinTopY + (faceH * 0.08),
+    Math.min(chinBottomByBand, chinBottomCeil),
+  );
+  const chinClamp = {
+    x: faceBox.x + (faceW * 0.04),
+    y: Math.max(faceBox.y + (faceH * 0.62), chinTopY - (faceH * 0.04)),
+    w: faceW * 0.92,
+    h: Math.max(
+      0.01,
+      (faceBox.y + (faceH * 0.98)) - Math.max(faceBox.y + (faceH * 0.62), chinTopY - (faceH * 0.04)),
+    ),
+  };
+  addBox(
+    'chin',
+    centerX - chinHalfW,
+    chinTopY,
+    centerX + chinHalfW,
+    chinBottomY,
+    chinClamp,
+  );
+
+  const addFaceGeometryFallback = (moduleId) => {
+    const xLeft = faceBox.x;
+    const xRight = faceBox.x + faceBox.w;
+    if (moduleId === 'forehead') {
+      addBox(moduleId, xLeft + (faceW * 0.1), faceBox.y + (faceH * 0.02), xRight - (faceW * 0.1), faceBox.y + (faceH * 0.25), null, 'fallback');
+      return;
+    }
+    if (moduleId === 'under_eye_left') {
+      addBox(moduleId, xLeft + (faceW * 0.08), faceBox.y + (faceH * 0.28), centerX - bridgePad, faceBox.y + (faceH * 0.44), null, 'fallback');
+      return;
+    }
+    if (moduleId === 'under_eye_right') {
+      addBox(moduleId, centerX + bridgePad, faceBox.y + (faceH * 0.28), xRight - (faceW * 0.08), faceBox.y + (faceH * 0.44), null, 'fallback');
+      return;
+    }
+    if (moduleId === 'left_cheek') {
+      addBox(moduleId, xLeft + (faceW * 0.04), faceBox.y + (faceH * 0.45), centerX - (faceW * 0.09), faceBox.y + (faceH * 0.78), null, 'fallback');
+      return;
+    }
+    if (moduleId === 'right_cheek') {
+      addBox(moduleId, centerX + (faceW * 0.09), faceBox.y + (faceH * 0.45), xRight - (faceW * 0.04), faceBox.y + (faceH * 0.78), null, 'fallback');
+      return;
+    }
+    if (moduleId === 'nose') {
+      addBox(moduleId, centerX - (faceW * 0.08), faceBox.y + (faceH * 0.36), centerX + (faceW * 0.08), faceBox.y + (faceH * 0.69), null, 'fallback');
+      return;
+    }
+    if (moduleId === 'chin') {
+      addBox(moduleId, centerX - (faceW * 0.28), faceBox.y + (faceH * 0.74), centerX + (faceW * 0.28), faceBox.y + (faceH * 0.99), null, 'fallback');
+    }
+  };
+
+  for (const moduleId of [
+    'forehead',
+    'under_eye_left',
+    'under_eye_right',
+    'left_cheek',
+    'right_cheek',
+    'nose',
+    'chin',
+  ]) {
+    if (!dynamicBoxes[moduleId]) addFaceGeometryFallback(moduleId);
+  }
+
+  const overlaps = [];
+  for (const finalBox of Object.values(dynamicBoxes)) {
+    const moduleMask = bboxNormToMask(finalBox, targetGrid, targetGrid);
+    const modulePixels = countOnes(moduleMask);
+    if (modulePixels <= 0) continue;
+    const overlapPixels = countOnes(andMasks(moduleMask, componentMask));
+    overlaps.push(clamp01(overlapPixels / modulePixels));
+  }
+  const overlapScore = overlaps.length
+    ? overlaps.reduce((sum, value) => sum + value, 0) / overlaps.length
+    : 0;
+  const rowsCoverage = clamp01(rowEdges.length / Math.max(1, faceHpx));
+  const ratioInRange = positiveRatio >= MODULE_SKIN_POSITIVE_RATIO_MIN && positiveRatio <= MODULE_SKIN_POSITIVE_RATIO_MAX;
+  const ratioQuality = ratioInRange ? clamp01(positiveRatio) : clamp01(positiveRatio * 0.6);
+  const directCoverage = clamp01(directModuleIds.size / 7);
+  const adjustedScore = round3(clamp01((0.48 * overlapScore) + (0.2 * rowsCoverage) + (0.12 * ratioQuality) + (0.2 * directCoverage)));
+  const hasRequiredDynamic = Object.keys(dynamicBoxes).length >= 5;
+  const hasLowDirectCoverage = directModuleIds.size < 5;
+  const ratioReason = ratioInRange ? null : 'skinmask_positive_ratio_out_of_range';
+  return {
+    ok: hasRequiredDynamic,
+    reason: hasRequiredDynamic
+      ? (hasLowDirectCoverage ? 'dynamic_boxes_partial_direct' : ratioReason)
+      : (ratioReason || 'dynamic_boxes_incomplete'),
+    score: adjustedScore,
+    module_boxes: hasRequiredDynamic ? dynamicBoxes : null,
+    positive_ratio: round3(positiveRatio),
+    overlap_score: round3(overlapScore),
+    rows_coverage: round3(rowsCoverage),
+    direct_coverage: round3(directCoverage),
+    derived_modules_count: directModuleIds.size,
+    fallback_modules_count: fallbackModuleIds.size,
+    total_modules_count: Object.keys(dynamicBoxes).length,
+    anchors: {
+      forehead_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.2), targetGrid),
+      eye_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.4), targetGrid),
+      nose_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.56), targetGrid),
+      mouth_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.72), targetGrid),
+      chin_row: rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.92), targetGrid),
+      face_center: { x: centerX, y: faceBox.y + (faceBox.h / 2) },
+      yaw_est: round3(yaw),
+      component_center: componentSelection
+        ? { x: round3(componentSelection.cx), y: round3(componentSelection.cy) }
+        : null,
+      component_score: componentSelection ? componentSelection.score : null,
+      component_count: componentSelection ? componentSelection.component_count : null,
+    },
+  };
+}
+
+function resolveModuleBoxDynamicDebug({ derivation } = {}) {
+  const derived = derivation && typeof derivation === 'object' ? derivation : {};
+  const score = Number.isFinite(Number(derived.score)) ? clamp01(Number(derived.score)) : 0;
+  const boxCount =
+    derived.module_boxes && typeof derived.module_boxes === 'object'
+      ? Object.keys(derived.module_boxes).length
+      : 0;
+  const hasDerivedBoxes = boxCount >= 5;
+  const meetsScore = hasDerivedBoxes && score >= MODULE_BOX_DYNAMIC_MIN_SCORE;
+
+  if (MODULE_BOX_MODE === 'static') {
+    return {
+      module_box_mode: 'static',
+      module_box_dynamic_applied: false,
+      module_box_dynamic_reason: 'mode_static',
+      module_box_dynamic_score: round3(score),
+    };
+  }
+  if (MODULE_BOX_MODE === 'auto' && !meetsScore) {
+    return {
+      module_box_mode: 'static',
+      module_box_dynamic_applied: false,
+      module_box_dynamic_reason: derived.reason || (hasDerivedBoxes ? 'auto_fallback_low_score' : 'auto_fallback_dynamic_unavailable'),
+      module_box_dynamic_score: round3(score),
+      module_box_dynamic_boxes_count: boxCount,
+    };
+  }
+  if (MODULE_BOX_MODE === 'auto' && meetsScore) {
+    return {
+      module_box_mode: 'dynamic_skinmask',
+      module_box_dynamic_applied: true,
+      module_box_dynamic_reason: derived.reason || null,
+      module_box_dynamic_score: round3(score),
+      module_box_dynamic_boxes_count: boxCount,
+    };
+  }
+
+  const applied = hasDerivedBoxes;
+  const reason = applied
+    ? (derived.reason || (score >= MODULE_BOX_DYNAMIC_MIN_SCORE ? null : 'forced_dynamic_low_score'))
+    : (derived.reason || 'dynamic_unavailable');
+  return {
+    module_box_mode: 'dynamic_skinmask',
+    module_box_dynamic_applied: applied,
+    module_box_dynamic_reason: reason,
+    module_box_dynamic_score: round3(score),
+    module_box_dynamic_boxes_count: boxCount,
+  };
+}
+
 function collectEvidenceRegionIds(moduleRow) {
   const ids = new Set();
   if (!moduleRow || typeof moduleRow !== 'object') return ids;
@@ -1323,6 +1978,132 @@ function maskBoundingBox(mask, gridSize) {
   };
   const sanitized = sanitizeBBox(raw);
   return sanitized.ok ? sanitized.bbox : null;
+}
+
+function extractConnectedComponents(mask, gridSize, minPixels = 1) {
+  if (!(mask instanceof Uint8Array) || !mask.length) return [];
+  const g = Math.max(1, Math.trunc(Number(gridSize) || 1));
+  const n = g * g;
+  if (mask.length < n) return [];
+  const minCount = Math.max(1, Math.trunc(Number(minPixels) || 1));
+  const visited = new Uint8Array(n);
+  const stack = [];
+  const neighbors = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1, 0], [1, 0],
+    [-1, 1], [0, 1], [1, 1],
+  ];
+  const components = [];
+  for (let i = 0; i < n; i += 1) {
+    if (!mask[i] || visited[i]) continue;
+    stack.length = 0;
+    const indices = [];
+    visited[i] = 1;
+    stack.push(i);
+    let minX = g;
+    let minY = g;
+    let maxX = -1;
+    let maxY = -1;
+    let sumX = 0;
+    let sumY = 0;
+    let touchesLeft = false;
+    let touchesRight = false;
+    let touchesTop = false;
+    let touchesBottom = false;
+    while (stack.length) {
+      const idx = stack.pop();
+      indices.push(idx);
+      const x = idx % g;
+      const y = Math.trunc(idx / g);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      sumX += x;
+      sumY += y;
+      if (x <= 0) touchesLeft = true;
+      if (x >= g - 1) touchesRight = true;
+      if (y <= 0) touchesTop = true;
+      if (y >= g - 1) touchesBottom = true;
+      for (const [dx, dy] of neighbors) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= g || ny >= g) continue;
+        const nIdx = ny * g + nx;
+        if (visited[nIdx] || !mask[nIdx]) continue;
+        visited[nIdx] = 1;
+        stack.push(nIdx);
+      }
+    }
+    if (indices.length < minCount || maxX < 0 || maxY < 0) continue;
+    const width = Math.max(1, maxX - minX + 1);
+    const height = Math.max(1, maxY - minY + 1);
+    components.push({
+      indices,
+      pixels: indices.length,
+      bbox: sanitizeBBox({
+        x: minX / g,
+        y: minY / g,
+        w: width / g,
+        h: height / g,
+      }).bbox,
+      cx: clamp01(((sumX / Math.max(1, indices.length)) + 0.5) / g),
+      cy: clamp01(((sumY / Math.max(1, indices.length)) + 0.5) / g),
+      aspect: width / Math.max(1, height),
+      border_touches: Number(touchesLeft) + Number(touchesRight) + Number(touchesTop) + Number(touchesBottom),
+    });
+  }
+  components.sort((a, b) => Number(b.pixels || 0) - Number(a.pixels || 0));
+  return components;
+}
+
+function selectFaceComponentFromMask(mask, gridSize, { minPixels = 24, centerX = 0.5, centerY = 0.54 } = {}) {
+  const components = extractConnectedComponents(mask, gridSize, minPixels);
+  if (!components.length) return null;
+  const g = Math.max(1, Math.trunc(Number(gridSize) || 1));
+  const totalPixels = g * g;
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const component of components) {
+    const areaRatio = Number(component.pixels || 0) / Math.max(1, totalPixels);
+    const areaScore = clamp01(areaRatio / 0.22);
+    const dx = Number(component.cx || 0.5) - clamp01(centerX);
+    const dy = Number(component.cy || 0.5) - clamp01(centerY);
+    const centerDist = Math.sqrt((dx * dx) + (dy * dy));
+    const centerScore = clamp01(1 - (centerDist / 0.75));
+    const aspect = Number(component.aspect || 0.7);
+    const aspectScore = clamp01(1 - (Math.abs(aspect - 0.65) / 0.6));
+    const borderTouches = Math.max(0, Math.trunc(Number(component.border_touches) || 0));
+    const borderPenalty = borderTouches >= 3 ? 0.3 : borderTouches === 2 ? 0.12 : 0;
+    const score = (0.42 * areaScore) + (0.43 * centerScore) + (0.15 * aspectScore) - borderPenalty;
+    if (score > bestScore) {
+      best = component;
+      bestScore = score;
+    }
+  }
+  if (!best || !Array.isArray(best.indices) || !best.indices.length) return null;
+  const outMask = createMask(g, g, 0);
+  for (const idx of best.indices) outMask[idx] = 1;
+  return {
+    mask: outMask,
+    bbox: best.bbox || null,
+    pixels: Math.max(0, Math.trunc(Number(best.pixels) || 0)),
+    cx: clamp01(best.cx),
+    cy: clamp01(best.cy),
+    aspect: Number.isFinite(Number(best.aspect)) ? Number(best.aspect) : null,
+    border_touches: Math.max(0, Math.trunc(Number(best.border_touches) || 0)),
+    score: round3(clamp01(bestScore)),
+    component_count: components.length,
+  };
+}
+
+function largestConnectedComponentMask(mask, gridSize, minPixels = 24) {
+  const components = extractConnectedComponents(mask, gridSize, minPixels);
+  if (!components.length) return null;
+  const g = Math.max(1, Math.trunc(Number(gridSize) || 1));
+  const out = createMask(g, g, 0);
+  for (const idx of components[0].indices || []) out[idx] = 1;
+  return out;
 }
 
 function moduleShrinkScale(moduleId) {
@@ -1392,24 +2173,53 @@ function ellipseNormToMask({ cx, cy, rx, ry } = {}, gridSize) {
   return mask;
 }
 
-function buildChinGuardMask({ targetGrid, moduleBox, faceOvalMask, boxScale = 1 } = {}) {
+function buildChinGuardMask({
+  targetGrid,
+  moduleBox,
+  faceOvalMask,
+  faceOvalBox,
+  faceOvalMaskSource,
+  boxScale = 1,
+} = {}) {
+  const faceOvalSanitized = sanitizeBBox(faceOvalBox);
+  const moduleSanitized = sanitizeBBox(moduleBox);
+  const useDynamicFaceOvalRef = String(faceOvalMaskSource || '') === 'skinmask_component';
+  const refBox = useDynamicFaceOvalRef && faceOvalSanitized.ok && faceOvalSanitized.bbox
+    ? faceOvalSanitized.bbox
+    : moduleSanitized.ok && moduleSanitized.bbox
+      ? moduleSanitized.bbox
+      : null;
   const yMax = Math.min(CHIN_GUARD_Y_MAX, CHIN_GUARD_JAWLINE_Y_MAX);
-  const bandRaw = {
-    x: CHIN_GUARD_X_MIN,
-    y: CHIN_GUARD_Y_MIN,
-    w: Math.max(0.01, CHIN_GUARD_X_MAX - CHIN_GUARD_X_MIN),
-    h: Math.max(0.01, yMax - CHIN_GUARD_Y_MIN),
-  };
+  const bandRaw = refBox
+    ? {
+      x: refBox.x + (refBox.w * 0.18),
+      y: refBox.y + (refBox.h * 0.67),
+      w: Math.max(0.01, refBox.w * 0.64),
+      h: Math.max(0.01, refBox.h * 0.3),
+    }
+    : {
+      x: CHIN_GUARD_X_MIN,
+      y: CHIN_GUARD_Y_MIN,
+      w: Math.max(0.01, CHIN_GUARD_X_MAX - CHIN_GUARD_X_MIN),
+      h: Math.max(0.01, yMax - CHIN_GUARD_Y_MIN),
+    };
   const band = sanitizeBBox(bandRaw);
   if (!band.ok || !band.bbox) return null;
   let mask = bboxNormToMask(band.bbox, targetGrid, targetGrid);
   const ellipseMask = ellipseNormToMask(
-    {
-      cx: CHIN_GUARD_ELLIPSE_CX,
-      cy: CHIN_GUARD_ELLIPSE_CY,
-      rx: CHIN_GUARD_ELLIPSE_RX,
-      ry: CHIN_GUARD_ELLIPSE_RY,
-    },
+    refBox
+      ? {
+        cx: refBox.x + (refBox.w * 0.5),
+        cy: refBox.y + (refBox.h * 0.84),
+        rx: Math.max(0.02, refBox.w * 0.22),
+        ry: Math.max(0.02, refBox.h * 0.13),
+      }
+      : {
+        cx: CHIN_GUARD_ELLIPSE_CX,
+        cy: CHIN_GUARD_ELLIPSE_CY,
+        rx: CHIN_GUARD_ELLIPSE_RX,
+        ry: CHIN_GUARD_ELLIPSE_RY,
+      },
     targetGrid,
   );
   mask = andMasks(mask, ellipseMask);
@@ -1426,22 +2236,43 @@ function buildChinGuardMask({ targetGrid, moduleBox, faceOvalMask, boxScale = 1 
   return countOnes(mask) > 0 ? mask : null;
 }
 
-function buildNoseGuardMask({ targetGrid, moduleBox, faceOvalMask, boxScale = 1 } = {}) {
+function buildNoseGuardMask({
+  targetGrid,
+  moduleBox,
+  faceOvalMask,
+  faceOvalBox,
+  faceOvalMaskSource,
+  boxScale = 1,
+} = {}) {
   const scaledBox = Number(boxScale) < 0.999 ? shrinkModuleBox(moduleBox, boxScale) : moduleBox;
   const sanitized = sanitizeBBox(scaledBox);
+  const faceOvalSanitized = sanitizeBBox(faceOvalBox);
+  const dynamicFaceOval = String(faceOvalMaskSource || '') === 'skinmask_component' && faceOvalSanitized.ok && faceOvalSanitized.bbox
+    ? faceOvalSanitized.bbox
+    : null;
+  const dynamicTop = dynamicFaceOval ? dynamicFaceOval.y + (dynamicFaceOval.h * 0.3) : NOSE_GUARD_Y_TOP;
+  const dynamicBottom = dynamicFaceOval ? dynamicFaceOval.y + (dynamicFaceOval.h * 0.74) : NOSE_GUARD_Y_BOTTOM;
+  const dynamicMaxWidth = dynamicFaceOval
+    ? Math.max(NOSE_GUARD_MAX_WIDTH, dynamicFaceOval.w * 0.24)
+    : NOSE_GUARD_MAX_WIDTH;
   const sourceBox = sanitized.ok && sanitized.bbox
     ? sanitized.bbox
-    : { x: NOSE_GUARD_X_CENTER - NOSE_GUARD_MAX_WIDTH / 2, y: NOSE_GUARD_Y_TOP, w: NOSE_GUARD_MAX_WIDTH, h: Math.max(0.01, NOSE_GUARD_Y_BOTTOM - NOSE_GUARD_Y_TOP) };
+    : {
+      x: NOSE_GUARD_X_CENTER - dynamicMaxWidth / 2,
+      y: dynamicTop,
+      w: dynamicMaxWidth,
+      h: Math.max(0.01, dynamicBottom - dynamicTop),
+    };
   const centerX = sourceBox.x + sourceBox.w / 2;
   const wingHalfWidth = Math.max(
     0.01,
-    Math.min(NOSE_GUARD_MAX_WIDTH / 2, sourceBox.w * NOSE_GUARD_WING_HALF_WIDTH_RATIO),
+    Math.min(dynamicMaxWidth / 2, sourceBox.w * NOSE_GUARD_WING_HALF_WIDTH_RATIO),
   );
   const guardRaw = {
     x: centerX - wingHalfWidth - NOSE_GUARD_WING_MARGIN,
-    y: NOSE_GUARD_Y_TOP,
+    y: dynamicTop,
     w: (wingHalfWidth + NOSE_GUARD_WING_MARGIN) * 2,
-    h: Math.max(0.01, NOSE_GUARD_Y_BOTTOM - NOSE_GUARD_Y_TOP),
+    h: Math.max(0.01, dynamicBottom - dynamicTop),
   };
   const guard = sanitizeBBox(guardRaw);
   if (!guard.ok || !guard.bbox) return null;
@@ -1452,7 +2283,7 @@ function buildNoseGuardMask({ targetGrid, moduleBox, faceOvalMask, boxScale = 1 
   return countOnes(mask) > 0 ? mask : null;
 }
 
-function applyModuleGuards(moduleId, boxRaw) {
+function applyModuleGuards(moduleId, boxRaw, { faceOvalBox, faceOvalMaskSource } = {}) {
   const baseSanitized = sanitizeBBox(boxRaw);
   if (!baseSanitized.ok || !baseSanitized.bbox) {
     return {
@@ -1466,14 +2297,25 @@ function applyModuleGuards(moduleId, boxRaw) {
   let chinGuardApplied = false;
   let noseGuardApplied = false;
   let foreheadBandApplied = false;
+  const faceOvalSanitized = sanitizeBBox(faceOvalBox);
+  const dynamicFaceOval = String(faceOvalMaskSource || '') === 'skinmask_component' && faceOvalSanitized.ok && faceOvalSanitized.bbox
+    ? faceOvalSanitized.bbox
+    : null;
   if (moduleId === 'chin') {
     const yMax = Math.min(CHIN_GUARD_Y_MAX, CHIN_GUARD_JAWLINE_Y_MAX);
-    const chinGuard = {
-      x: CHIN_GUARD_X_MIN,
-      y: CHIN_GUARD_Y_MIN,
-      w: Math.max(0.01, CHIN_GUARD_X_MAX - CHIN_GUARD_X_MIN),
-      h: Math.max(0.01, yMax - CHIN_GUARD_Y_MIN),
-    };
+    const chinGuard = dynamicFaceOval
+      ? {
+        x: dynamicFaceOval.x + (dynamicFaceOval.w * 0.16),
+        y: dynamicFaceOval.y + (dynamicFaceOval.h * 0.66),
+        w: Math.max(0.01, dynamicFaceOval.w * 0.68),
+        h: Math.max(0.01, dynamicFaceOval.h * 0.31),
+      }
+      : {
+        x: CHIN_GUARD_X_MIN,
+        y: CHIN_GUARD_Y_MIN,
+        w: Math.max(0.01, CHIN_GUARD_X_MAX - CHIN_GUARD_X_MIN),
+        h: Math.max(0.01, yMax - CHIN_GUARD_Y_MIN),
+      };
     const guarded = intersectBoxes(box, chinGuard);
     if (guarded) {
       box = guarded;
@@ -1484,17 +2326,22 @@ function applyModuleGuards(moduleId, boxRaw) {
   if (moduleId === 'nose') {
     const sourceCenterX = box.x + box.w / 2;
     const centerX = clamp01(Number.isFinite(sourceCenterX) ? sourceCenterX : NOSE_GUARD_X_CENTER);
+    const dynamicTop = dynamicFaceOval ? dynamicFaceOval.y + (dynamicFaceOval.h * 0.3) : NOSE_GUARD_Y_TOP;
+    const dynamicBottom = dynamicFaceOval ? dynamicFaceOval.y + (dynamicFaceOval.h * 0.74) : NOSE_GUARD_Y_BOTTOM;
+    const dynamicMaxWidth = dynamicFaceOval
+      ? Math.max(NOSE_GUARD_MAX_WIDTH, dynamicFaceOval.w * 0.24)
+      : NOSE_GUARD_MAX_WIDTH;
     const wingHalfWidth = Math.max(
       0.01,
-      Math.min(NOSE_GUARD_MAX_WIDTH / 2, box.w * NOSE_GUARD_WING_HALF_WIDTH_RATIO),
+      Math.min(dynamicMaxWidth / 2, box.w * NOSE_GUARD_WING_HALF_WIDTH_RATIO),
     );
     const width = (wingHalfWidth + NOSE_GUARD_WING_MARGIN) * 2;
     const guardXMin = centerX - width / 2;
     const guard = {
       x: guardXMin,
-      y: NOSE_GUARD_Y_TOP,
+      y: dynamicTop,
       w: width,
-      h: Math.max(0.01, NOSE_GUARD_Y_BOTTOM - NOSE_GUARD_Y_TOP),
+      h: Math.max(0.01, dynamicBottom - dynamicTop),
     };
     const guarded = intersectBoxes(box, guard);
     if (guarded) {
@@ -1504,8 +2351,23 @@ function applyModuleGuards(moduleId, boxRaw) {
   }
 
   if (moduleId === 'forehead') {
-    const ovalTopY = Math.min(...FACE_OVAL_POLYGON.points.map((point) => Number(point.y || 0)));
-    const clampedBrowY = Math.max(ovalTopY + 0.02, FOREHEAD_BROW_LINE_Y);
+    const staticOvalTop = Math.min(...FACE_OVAL_POLYGON.points.map((point) => Number(point.y || 0)));
+    const staticOvalBottom = Math.max(...FACE_OVAL_POLYGON.points.map((point) => Number(point.y || 1)));
+    const dynamicTop = faceOvalBox && Number.isFinite(Number(faceOvalBox.y))
+      ? Number(faceOvalBox.y)
+      : staticOvalTop;
+    const dynamicBottom = faceOvalBox && Number.isFinite(Number(faceOvalBox.y + faceOvalBox.h))
+      ? Number(faceOvalBox.y + faceOvalBox.h)
+      : staticOvalBottom;
+    const browTarget = faceOvalBox && Number.isFinite(Number(faceOvalBox.h))
+      ? Number(faceOvalBox.y) + (Number(faceOvalBox.h) * 0.42)
+      : FOREHEAD_BROW_LINE_Y;
+    const ovalTopY = clamp01(dynamicTop);
+    const ovalBottomY = clamp01(dynamicBottom);
+    const clampedBrowY = Math.max(
+      ovalTopY + 0.02,
+      Math.min(ovalBottomY - 0.02, browTarget),
+    );
     const bandTop = clampedBrowY - (clampedBrowY - ovalTopY) * FOREHEAD_BAND_RATIO;
     const foreheadBand = {
       x: box.x,
@@ -1653,8 +2515,64 @@ function attachModuleMasks({
 } = {}) {
   const safeModules = Array.isArray(modules) ? modules : [];
   const safeRegions = Array.isArray(regions) ? regions : [];
+  const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
   const activeModuleBoxes = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : MODULE_BOXES;
   const moduleIds = Object.keys(activeModuleBoxes);
+
+  const skinMaskNorm = decodeSkinMaskToGrid(skinMask, targetGrid);
+  const staticFaceOvalMask =
+    FACE_OVAL_CLIP_ENABLED && allowFaceOvalClip !== false
+      ? polygonNormToMask(FACE_OVAL_POLYGON, targetGrid, targetGrid)
+      : null;
+  const dynamicFaceOvalSelection =
+    FACE_OVAL_CLIP_ENABLED && allowFaceOvalClip !== false && skinMaskNorm
+      ? selectFaceComponentFromMask(
+        skinMaskNorm,
+        targetGrid,
+        {
+          minPixels: Math.max(FACE_OVAL_CLIP_MIN_PIXELS, Math.trunc(targetGrid * targetGrid * 0.02)),
+          centerX: 0.5,
+          centerY: 0.54,
+        },
+      )
+      : null;
+  const dynamicFaceOvalCandidate =
+    dynamicFaceOvalSelection && dynamicFaceOvalSelection.mask ? dynamicFaceOvalSelection.mask : null;
+  const dynamicFaceOvalPixels = countOnes(dynamicFaceOvalCandidate || createMask(targetGrid, targetGrid, 0));
+  const dynamicFaceOvalRatio = dynamicFaceOvalPixels / Math.max(1, targetGrid * targetGrid);
+  const dynamicFaceOvalBox = dynamicFaceOvalCandidate ? maskBoundingBox(dynamicFaceOvalCandidate, targetGrid) : null;
+  const dynamicFaceOvalAspect = dynamicFaceOvalBox && Number.isFinite(Number(dynamicFaceOvalBox.w))
+    && Number.isFinite(Number(dynamicFaceOvalBox.h))
+    && Number(dynamicFaceOvalBox.h) > 1e-6
+    ? Number(dynamicFaceOvalBox.w) / Number(dynamicFaceOvalBox.h)
+    : null;
+  const dynamicFaceOvalPlausible =
+    dynamicFaceOvalCandidate &&
+    dynamicFaceOvalRatio >= 0.02 &&
+    dynamicFaceOvalBox &&
+    Number.isFinite(Number(dynamicFaceOvalAspect)) &&
+    dynamicFaceOvalAspect >= 0.25 &&
+    dynamicFaceOvalAspect <= 1.15 &&
+    Number(dynamicFaceOvalBox.w) * Number(dynamicFaceOvalBox.h) >= 0.08;
+  const dynamicFaceOvalMask = dynamicFaceOvalPlausible ? dynamicFaceOvalCandidate : null;
+  const faceOvalMask = dynamicFaceOvalMask || staticFaceOvalMask;
+  const faceOvalMaskSource = dynamicFaceOvalMask
+    ? 'skinmask_component'
+    : staticFaceOvalMask
+      ? 'template_fallback'
+      : 'none';
+  const faceOvalBox = faceOvalMask ? maskBoundingBox(faceOvalMask, targetGrid) : null;
+
+  const skinMaskPositiveRatio = skinMask && Number.isFinite(Number(skinMask.positive_ratio))
+    ? Number(skinMask.positive_ratio)
+    : skinMaskNorm
+      ? countOnes(skinMaskNorm) / Math.max(1, targetGrid * targetGrid)
+      : 0;
+  const skinMaskReliable =
+    Boolean(skinMaskNorm) &&
+    skinMaskPositiveRatio >= MODULE_SKIN_POSITIVE_RATIO_MIN &&
+    skinMaskPositiveRatio <= MODULE_SKIN_POSITIVE_RATIO_MAX;
+
   const effectiveModuleBoxes = {};
   const shrinkFactorsUsed = {};
   let chinGuardApplied = false;
@@ -1667,13 +2585,12 @@ function attachModuleMasks({
     const scale = moduleShrinkScale(moduleId);
     shrinkFactorsUsed[moduleId] = round3(scale);
     const adjusted = shrinkModuleBox(baseBox, scale);
-    const guarded = applyModuleGuards(moduleId, adjusted || baseBox);
+    const guarded = applyModuleGuards(moduleId, adjusted || baseBox, { faceOvalBox, faceOvalMaskSource });
     if (guarded.box) effectiveModuleBoxes[moduleId] = guarded.box;
     chinGuardApplied = chinGuardApplied || guarded.chinGuardApplied;
     noseGuardApplied = noseGuardApplied || guarded.noseGuardApplied;
     foreheadBandApplied = foreheadBandApplied || guarded.foreheadBandApplied;
   }
-  const targetGrid = normalizeMaskGridSize(gridSize, MODULE_MASK_GRID_SIZE);
 
   const regionMaskMap = new Map();
   for (const region of safeRegions) {
@@ -1681,21 +2598,6 @@ function attachModuleMasks({
     if (!regionId) continue;
     regionMaskMap.set(regionId, buildRegionMask(region, targetGrid));
   }
-
-  const skinMaskNorm = decodeSkinMaskToGrid(skinMask, targetGrid);
-  const faceOvalMask =
-    FACE_OVAL_CLIP_ENABLED && allowFaceOvalClip !== false
-      ? polygonNormToMask(FACE_OVAL_POLYGON, targetGrid, targetGrid)
-      : null;
-  const skinMaskPositiveRatio = skinMask && Number.isFinite(Number(skinMask.positive_ratio))
-    ? Number(skinMask.positive_ratio)
-    : skinMaskNorm
-      ? countOnes(skinMaskNorm) / Math.max(1, targetGrid * targetGrid)
-      : 0;
-  const skinMaskReliable =
-    Boolean(skinMaskNorm) &&
-    skinMaskPositiveRatio >= MODULE_SKIN_POSITIVE_RATIO_MIN &&
-    skinMaskPositiveRatio <= MODULE_SKIN_POSITIVE_RATIO_MAX;
   let refinedModules = 0;
   let fallbackSkippedModules = 0;
   let faceOvalClipFallbackModules = 0;
@@ -1737,7 +2639,13 @@ function attachModuleMasks({
     let moduleDegradedReason = null;
 
     if (moduleId === 'chin') {
-      const chinGuardMask = buildChinGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask });
+      const chinGuardMask = buildChinGuardMask({
+        targetGrid,
+        moduleBox: moduleBaseBox,
+        faceOvalMask,
+        faceOvalBox,
+        faceOvalMaskSource,
+      });
       if (chinGuardMask) {
         const constrained = andMasks(finalMask, chinGuardMask);
         if (countOnes(constrained) > 0) {
@@ -1747,7 +2655,13 @@ function attachModuleMasks({
         }
       }
     } else if (moduleId === 'nose') {
-      const noseGuardMask = buildNoseGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask });
+      const noseGuardMask = buildNoseGuardMask({
+        targetGrid,
+        moduleBox: moduleBaseBox,
+        faceOvalMask,
+        faceOvalBox,
+        faceOvalMaskSource,
+      });
       if (noseGuardMask) {
         const constrained = andMasks(finalMask, noseGuardMask);
         if (countOnes(constrained) > 0) {
@@ -1778,8 +2692,22 @@ function attachModuleMasks({
           let strictReason = null;
           for (const scale of strictScales) {
             const strictMask = moduleId === 'chin'
-              ? buildChinGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask, boxScale: scale })
-              : buildNoseGuardMask({ targetGrid, moduleBox: moduleBaseBox, faceOvalMask, boxScale: scale });
+              ? buildChinGuardMask({
+                targetGrid,
+                moduleBox: moduleBaseBox,
+                faceOvalMask,
+                faceOvalBox,
+                faceOvalMaskSource,
+                boxScale: scale,
+              })
+              : buildNoseGuardMask({
+                targetGrid,
+                moduleBox: moduleBaseBox,
+                faceOvalMask,
+                faceOvalBox,
+                faceOvalMaskSource,
+                boxScale: scale,
+              });
             const strictPixels = countOnes(strictMask || createMask(targetGrid, targetGrid, 0));
             if (strictPixels > 0 && strictPixels > strictBestPixels) {
               strictBestMask = strictMask;
@@ -1860,7 +2788,10 @@ function attachModuleMasks({
 
       if (guardPixels < moduleThreshold) {
         const rawBaseBox = activeModuleBoxes[moduleId] || MODULE_BOXES[moduleId] || moduleBaseBox;
-        const rawGuarded = applyModuleGuards(moduleId, rawBaseBox || moduleBaseBox);
+        const rawGuarded = applyModuleGuards(moduleId, rawBaseBox || moduleBaseBox, {
+          faceOvalBox,
+          faceOvalMaskSource,
+        });
         const rawGuardBox = rawGuarded.box || rawBaseBox || moduleBaseBox;
         let rawMask = bboxNormToMask(rawGuardBox, targetGrid, targetGrid);
         if (faceOvalMask) rawMask = andMasks(rawMask, faceOvalMask);
@@ -1936,9 +2867,18 @@ function attachModuleMasks({
     skinmask_reliable: Boolean(skinMaskReliable),
     skinmask_positive_ratio: Number.isFinite(skinMaskPositiveRatio) ? round3(skinMaskPositiveRatio) : null,
     face_oval_clip_enabled: Boolean(faceOvalMask),
+    face_oval_mask_source: faceOvalMaskSource,
     face_oval_clip_fallback_modules: faceOvalClipFallbackModules,
     face_oval_clip_fallback_reason:
       faceOvalClipFallbackReasons.length > 0 ? String(faceOvalClipFallbackReasons[0]) : null,
+    face_oval_component_score:
+      dynamicFaceOvalSelection && Number.isFinite(Number(dynamicFaceOvalSelection.score))
+        ? Number(dynamicFaceOvalSelection.score)
+        : null,
+    face_oval_component_count:
+      dynamicFaceOvalSelection && Number.isFinite(Number(dynamicFaceOvalSelection.component_count))
+        ? Math.max(0, Math.trunc(Number(dynamicFaceOvalSelection.component_count)))
+        : null,
     shrink_factors_used: shrinkFactorsUsed,
     chin_guard_applied: chinGuardApplied,
     nose_guard_applied: noseGuardApplied,
@@ -1997,10 +2937,19 @@ function buildPhotoModulesCard({
   const qualityFlags = qualityFlagsFromReasons(qualityReasons);
 
   const faceCrop = normalizeFaceCropFromInternal(diagnosisInternal);
-  const moduleBoxDynamicDebug = resolveModuleBoxDynamicDebug({
-    diagnosisInternal,
-    faceCrop,
+  const moduleBoxDerivation = deriveModuleBoxesFromSkinMask({
+    skinMask,
+    gridSize: MODULE_MASK_GRID_SIZE,
   });
+  const moduleBoxDynamicDebug = resolveModuleBoxDynamicDebug({ derivation: moduleBoxDerivation });
+  const useDynamicModuleBoxes = moduleBoxDynamicDebug.module_box_mode === 'dynamic_skinmask'
+    && moduleBoxDynamicDebug.module_box_dynamic_applied
+    && moduleBoxDerivation
+    && moduleBoxDerivation.module_boxes
+    && typeof moduleBoxDerivation.module_boxes === 'object';
+  const activeModuleBoxes = useDynamicModuleBoxes
+    ? moduleBoxDerivation.module_boxes
+    : MODULE_BOXES;
   const regionBuild = buildRegionsFromFindings({ findings, qualityFlags });
   const regions = regionBuild.regions;
   const allowFaceOvalClip = Boolean(
@@ -2015,6 +2964,7 @@ function buildPhotoModulesCard({
   const modulesBuild = buildModules({
     regions,
     regionMeta: regionBuild.regionMeta,
+    moduleBoxes: activeModuleBoxes,
     qualityGrade,
     language,
     profileSummary,
@@ -2032,7 +2982,7 @@ function buildPhotoModulesCard({
     modules: modulesBuild.modules,
     regions,
     skinMask,
-    moduleBoxes: MODULE_BOXES,
+    moduleBoxes: activeModuleBoxes,
     gridSize: MODULE_MASK_GRID_SIZE,
     allowFaceOvalClip,
   });
@@ -2070,8 +3020,11 @@ function buildPhotoModulesCard({
       skinmask_reliable: moduleMaskBuild.skinmask_reliable,
       skinmask_positive_ratio: moduleMaskBuild.skinmask_positive_ratio,
       face_oval_clip_enabled: moduleMaskBuild.face_oval_clip_enabled,
+      face_oval_mask_source: moduleMaskBuild.face_oval_mask_source,
       face_oval_clip_fallback_modules: moduleMaskBuild.face_oval_clip_fallback_modules,
       clip_fallback_reason: moduleMaskBuild.face_oval_clip_fallback_reason,
+      face_oval_component_score: moduleMaskBuild.face_oval_component_score,
+      face_oval_component_count: moduleMaskBuild.face_oval_component_count,
       shrink_factors_used: moduleMaskBuild.shrink_factors_used,
       chin_guard_applied: moduleMaskBuild.chin_guard_applied,
       chin_hard_guard_applied: moduleMaskBuild.chin_hard_guard_applied,
@@ -2088,6 +3041,13 @@ function buildPhotoModulesCard({
       module_box_dynamic_applied: moduleBoxDynamicDebug.module_box_dynamic_applied,
       module_box_dynamic_reason: moduleBoxDynamicDebug.module_box_dynamic_reason,
       module_box_dynamic_score: moduleBoxDynamicDebug.module_box_dynamic_score,
+      module_box_overlap_score: Number.isFinite(Number(moduleBoxDerivation && moduleBoxDerivation.overlap_score))
+        ? Number(moduleBoxDerivation.overlap_score)
+        : null,
+      module_box_positive_ratio: Number.isFinite(Number(moduleBoxDerivation && moduleBoxDerivation.positive_ratio))
+        ? Number(moduleBoxDerivation.positive_ratio)
+        : null,
+      module_box_anchors: moduleBoxDerivation && moduleBoxDerivation.anchors ? moduleBoxDerivation.anchors : null,
       module_min_pixels_under_eye: moduleMaskBuild.module_min_pixels_under_eye,
       module_min_pixels_forehead: moduleMaskBuild.module_min_pixels_forehead,
       module_min_pixels_chin: moduleMaskBuild.module_min_pixels_chin,

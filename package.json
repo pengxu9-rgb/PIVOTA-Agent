@@ -11,6 +11,7 @@
     "smoke:layer2": "node scripts/smoke-layer2.js",
     "diag:calibration:train": "node scripts/train_diag_calibration.js",
     "diag:calibration:eval": "node scripts/eval_calibration.js",
+    "diag:boxqc:llm:poc": "node scripts/llm_module_box_qc_poc.mjs",
     "diag:gold:sample": "node scripts/sample_gold_label_tasks.js",
     "diag:gold:import": "node scripts/import_gold_labels.js",
     "diag:gold:seed-pack": "node scripts/gold_seed_pack.mjs",
