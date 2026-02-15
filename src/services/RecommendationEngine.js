@@ -22,6 +22,25 @@ function parseTimeoutMs(raw, fallbackMs) {
 const PDP_RECS_CACHE_ENABLED = process.env.PDP_RECS_CACHE_ENABLED !== 'false';
 const PDP_RECS_CACHE_TTL_MS = parseTimeoutMs(process.env.PDP_RECS_CACHE_TTL_MS, 10 * 60 * 1000);
 const PDP_RECS_CACHE_MAX_ENTRIES = Math.max(0, Number(process.env.PDP_RECS_CACHE_MAX_ENTRIES || 2000) || 2000);
+const PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS = Math.max(
+  300,
+  parseTimeoutMs(process.env.PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS, 2200),
+);
+const PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS = Math.max(
+  300,
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 1200),
+);
+const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
+  1,
+  Math.min(
+    6,
+    Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER || 2.5) || 2.5,
+  ),
+);
+const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS = Math.max(
+  4,
+  Math.min(120, Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS || 14) || 14),
+);
 const PDP_RECS_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
 const PDP_RECS_CACHE_METRICS = {
   hits: 0,
@@ -74,6 +93,31 @@ function setCacheEntry(cacheKey, value, ttlMs = PDP_RECS_CACHE_TTL_MS) {
 
 function stableHashShort(input) {
   return crypto.createHash('sha256').update(String(input || ''), 'utf8').digest('hex').slice(0, 12);
+}
+
+async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout) {
+  const timeout = Number(timeoutMs);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    return promise;
+  }
+  let timer = null;
+  const timeoutPromise = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      if (typeof onTimeout === 'function') {
+        try {
+          onTimeout(timeout);
+        } catch {
+          // Ignore timeout callback errors.
+        }
+      }
+      resolve(fallbackValue);
+    }, timeout);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function normalizeText(input) {
@@ -766,64 +810,77 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
-  const out = [];
   const brand = normalizeText(brandHint);
   const category = normalizeText(categoryHint);
 
-  async function runQuery(whereSql, params, cap) {
-    const res = await query(
-      `
-        SELECT
-          id,
-          external_product_id,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND attached_product_key IS NULL
-          AND market = $1
-          AND (tool = '*' OR tool = $2)
-          ${whereSql}
-        ORDER BY updated_at DESC, created_at DESC
-        LIMIT $3
-      `,
-      [market, tool, cap, ...params],
-    );
-    for (const row of res.rows || []) {
-      const p = buildExternalSeedProduct(row);
-      if (p) out.push(p);
+  async function runQuery(whereSql, params, cap, queryName) {
+    try {
+      const res = await query(
+        `
+          SELECT
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND attached_product_key IS NULL
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+            ${whereSql}
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT $3
+        `,
+        [market, tool, cap, ...params],
+      );
+      const products = [];
+      for (const row of res.rows || []) {
+        const p = buildExternalSeedProduct(row);
+        if (p) products.push(p);
+      }
+      return products;
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: queryName || 'external_recent' },
+        'recommendations external query failed',
+      );
+      return [];
     }
   }
 
-  try {
-    if (brand) {
-      await runQuery(`AND lower(coalesce(seed_data->>'brand','')) = $4`, [brand], Math.min(120, safeLimit));
-    }
-  } catch (err) {
-    logger.warn({ err: err?.message || String(err) }, 'recommendations external brand query failed');
-  }
+  const [brandMatches, categoryMatches] = await Promise.all([
+    brand
+      ? runQuery(
+          `AND lower(coalesce(seed_data->>'brand','')) = $4`,
+          [brand],
+          Math.min(120, safeLimit),
+          'external_brand',
+        )
+      : Promise.resolve([]),
+    category
+      ? runQuery(
+          `AND lower(coalesce(seed_data->>'category','')) = $4`,
+          [category],
+          Math.min(120, safeLimit),
+          'external_category',
+        )
+      : Promise.resolve([]),
+  ]);
 
-  try {
-    if (category) {
-      await runQuery(`AND lower(coalesce(seed_data->>'category','')) = $4`, [category], Math.min(120, safeLimit));
-    }
-  } catch (err) {
-    logger.warn({ err: err?.message || String(err) }, 'recommendations external category query failed');
-  }
-
-  try {
-    await runQuery('', [], Math.min(240, safeLimit));
-  } catch (err) {
-    logger.warn({ err: err?.message || String(err) }, 'recommendations external recent query failed');
+  const out = [...brandMatches, ...categoryMatches];
+  const enoughFocusedCandidates = out.length >= Math.max(safeLimit, 80);
+  if (!enoughFocusedCandidates) {
+    const recent = await runQuery('', [], Math.min(240, safeLimit), 'external_recent');
+    out.push(...recent);
   }
 
   return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
@@ -871,7 +928,9 @@ async function recommend({
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
 
-  const [internalCandidates, externalCandidates] = await Promise.all([
+  let internalTimedOut = false;
+  let externalTimedOut = false;
+  const internalCandidates = await withSoftTimeout(
     providedInternal
       ? Promise.resolve(providedInternal)
       : fetchInternalCandidates({
@@ -879,14 +938,50 @@ async function recommend({
           limit: Math.max(60, Number(k || 6) * 10),
           excludeMerchantId: getMerchantId(baseProduct),
         }),
-    providedExternal
-      ? Promise.resolve(providedExternal)
-      : fetchExternalCandidates({
-          brandHint: baseBrand,
-          categoryHint: baseLeaf,
-          limit: Math.max(120, Number(k || 6) * 15),
-        }),
-  ]);
+    PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
+    [],
+    () => {
+      internalTimedOut = true;
+      logger.warn(
+        {
+          product_id: baseProductId,
+          timeout_ms: PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
+        },
+        'PDP recommendations internal candidate fetch timed out',
+      );
+    },
+  );
+
+  const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
+  const skipExternalMin = Math.max(
+    PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
+    Math.ceil(Math.max(1, Number(k || 6)) * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
+  );
+  const shouldSkipExternal = !providedExternal && internalCount >= skipExternalMin;
+
+  const externalCandidates = shouldSkipExternal
+    ? []
+    : await withSoftTimeout(
+        providedExternal
+          ? Promise.resolve(providedExternal)
+          : fetchExternalCandidates({
+              brandHint: baseBrand,
+              categoryHint: baseLeaf,
+              limit: Math.max(120, Number(k || 6) * 15),
+            }),
+        PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+        [],
+        () => {
+          externalTimedOut = true;
+          logger.warn(
+            {
+              product_id: baseProductId,
+              timeout_ms: PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+            },
+            'PDP recommendations external candidate fetch timed out',
+          );
+        },
+      );
 
   const picked = pickLayeredRecommendations({
     baseProduct,
@@ -901,6 +996,14 @@ async function recommend({
     debug: {
       ...picked.debug,
       timing_ms: elapsedMs,
+      fetch_strategy: {
+        internal_count: internalCount,
+        external_count: Array.isArray(externalCandidates) ? externalCandidates.length : 0,
+        internal_timed_out: internalTimedOut,
+        external_timed_out: externalTimedOut,
+        external_skipped: shouldSkipExternal,
+        external_skip_min_candidates: skipExternalMin,
+      },
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
     },
   };
