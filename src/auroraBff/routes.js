@@ -448,16 +448,30 @@ const RECO_PDP_RESOLVE_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
+const RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(400, Math.min(6000, v));
+})();
+
 const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 900);
   const v = Number.isFinite(n) ? Math.trunc(n) : 900;
-  return Math.max(300, Math.min(6000, v));
+  const bounded = Math.max(300, Math.min(6000, v));
+  return Math.min(bounded, RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS);
+})();
+
+const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  return Math.max(500, Math.min(6000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
-  return Math.max(300, Math.min(6000, v));
+  const bounded = Math.max(300, Math.min(6000, v));
+  return Math.min(bounded, RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS);
 })();
 
 const RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED = (() => {
@@ -490,6 +504,13 @@ const RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT = (() => {
 
 const RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -7420,11 +7441,14 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
     pickFirstTrimmed(displayName, name, brand);
   const stableResolveFailureCode = normalizeResolveReasonCode(stableResolveReasonCode || '', null);
-  if (
+  const skipQueryResolveOnStableFailure =
     RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE &&
     stableResolveFailureCode &&
-    stableResolveFailureCode !== 'no_candidates'
-  ) {
+    (
+      stableResolveFailureCode !== 'no_candidates' ||
+      RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES
+    );
+  if (skipQueryResolveOnStableFailure) {
     return withRecoPdpMetadata(base, {
       path: 'external',
       queryText,
@@ -8809,9 +8833,15 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
       reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
       reco_upstream_timeout_hard_cap_ms: RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
+      reco_pdp_resolve_timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      reco_pdp_resolve_timeout_hard_cap_ms: RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS,
+      reco_pdp_offers_resolve_timeout_ms: RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS,
+      reco_pdp_offers_resolve_timeout_hard_cap_ms: RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS,
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
       reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
       reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
+      reco_skip_query_resolve_on_stable_failure: RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE,
+      reco_skip_query_resolve_on_stable_no_candidates: RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES,
       reco_local_fallback_chat_enabled: RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
       reco_local_search_fallback_on_transient: RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
       reco_catalog_transient_fallback_enabled: RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED,

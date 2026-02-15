@@ -343,6 +343,7 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
       AURORA_DECISION_BASE_URL: '',
       AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
@@ -777,6 +778,7 @@ test('UUID-only sku does not send product_ref hint and avoids duplicated brand i
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE: 'false',
       AURORA_BFF_RECO_PDP_SKIP_OPAQUE_STABLE_IDS: 'true',
     },
     async () => {
@@ -892,6 +894,76 @@ test('Stable-id upstream timeout skips query products.resolve when configured', 
         assert.equal(enriched?.metadata?.resolve_reason_code, 'upstream_timeout');
         assert.equal(enriched?.metadata?.pdp_open_resolve_attempted, true);
         assert.deepEqual(enriched?.metadata?.stable_resolve_request_ids, { primary: 'rid_stable_timeout' });
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('Stable-id no_candidates skips query products.resolve when configured', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE: 'true',
+      AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let stableInvokeCalls = 0;
+      let queryResolveCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/shop/v1/invoke') {
+          stableInvokeCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'error',
+              reason: 'no_candidates',
+              reason_code: 'no_candidates',
+              metadata: { request_id: 'rid_stable_no_candidates' },
+            },
+          };
+        }
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          queryResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              reason: 'resolved',
+              reason_code: 'resolved',
+              product_ref: { product_id: 'prod_should_not_be_used', merchant_id: 'mid_should_not_be_used' },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract(
+          {
+            sku: {
+              brand: 'NoCandidateBrand',
+              name: 'NoCandidate Serum',
+              product_id: 'prod_no_candidate_123',
+              sku_id: 'prod_no_candidate_123',
+            },
+          },
+          { logger: null },
+        );
+
+        assert.equal(stableInvokeCalls, 1);
+        assert.equal(queryResolveCalls, 0);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'external');
+        assert.equal(enriched?.metadata?.resolve_reason_code, 'no_candidates');
+        assert.equal(enriched?.metadata?.pdp_open_resolve_attempted, true);
+        assert.deepEqual(enriched?.metadata?.stable_resolve_request_ids, { primary: 'rid_stable_no_candidates' });
       } finally {
         axios.post = originalPost;
       }
