@@ -1,0 +1,84 @@
+{
+  "rubric_version": "aurora.reply_quality.v1",
+  "domain": "non_medical_skincare_assistant",
+  "scoring": {
+    "max_total_score": 100,
+    "hard_fail_total_score": 0
+  },
+  "hard_fail": {
+    "forbidden_medical_diagnosis_regex": [
+      "\\b(diagnosed with|clinical diagnosis|you have eczema|you have dermatitis|you have rosacea)\\b",
+      "(确诊|诊断为|你患有|你有湿疹|你有皮炎|你有玫瑰痤疮)"
+    ],
+    "forbidden_absolute_cure_regex": [
+      "\\b(definitely cure|guaranteed cure|cure\\s+for\\s+sure|100%\\s*cure)\\b",
+      "(一定治好|包治|百分之百治愈|保证治好)"
+    ]
+  },
+  "checks": [
+    {
+      "id": "message_length_budget",
+      "weight": 25,
+      "type": "length",
+      "thresholds": {
+        "text_max_chars": 280,
+        "markdown_max_chars": 520,
+        "markdown_max_bullets": 6
+      }
+    },
+    {
+      "id": "recommendations_state_gate",
+      "weight": 25,
+      "type": "state_gate",
+      "condition": "cards_include_recommendations",
+      "thresholds": {
+        "next_state_prefix": "RECO_"
+      }
+    },
+    {
+      "id": "pending_clarification_chips_budget",
+      "weight": 20,
+      "type": "chips_count",
+      "condition": "pending_clarification_current_exists",
+      "thresholds": {
+        "min": 4,
+        "max": 10
+      }
+    },
+    {
+      "id": "pending_clarification_single_question",
+      "weight": 15,
+      "type": "question_count",
+      "condition": "pending_clarification_current_exists",
+      "thresholds": {
+        "max_questions": 1
+      }
+    },
+    {
+      "id": "offers_null_no_stock_assertion",
+      "weight": 15,
+      "type": "assertion_guard",
+      "condition": "offers_resolved_contains_null_offer",
+      "patterns": {
+        "forbidden_positive": [
+          "\\bin stock\\b",
+          "\\bbuy now\\b",
+          "\\bavailable now\\b",
+          "现货",
+          "立即购买",
+          "现在可以买",
+          "有货",
+          "在售"
+        ],
+        "allowed_negative": [
+          "\\bout of stock\\b",
+          "\\bnot in stock\\b",
+          "\\bnot available\\b",
+          "暂时无货",
+          "无法购买",
+          "暂无购买入口"
+        ]
+      }
+    }
+  ]
+}
