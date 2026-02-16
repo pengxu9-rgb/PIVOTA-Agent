@@ -13,6 +13,12 @@ const {
   recordSkinmaskFallback,
   observeSkinmaskInferLatency,
   recordUiBehaviorEvent,
+  recordTemplateApplied,
+  recordTemplateFallback,
+  recordChipsTruncated,
+  recordFieldMissingAdded,
+  recordAntiTemplateViolation,
+  recordActionableReply,
 } = require('../src/auroraBff/visionMetrics');
 
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
@@ -111,4 +117,38 @@ test('vision metrics: skinmask counters and latency histogram are exported', () 
   assert.match(metrics, /skinmask_infer_ms_bucket\{le="250"\} 2/);
   assert.match(metrics, /skinmask_infer_ms_bucket\{le="2000"\} 3/);
   assert.match(metrics, /skinmask_infer_ms_count 3/);
+});
+
+test('vision metrics: template-system counters and rates are exported', () => {
+  resetVisionMetrics();
+  recordTemplateApplied({
+    templateId: 'recommendations_output.standard',
+    moduleName: 'recommendations_output',
+    variant: 'standard',
+    source: 'chat',
+  });
+  recordTemplateApplied({
+    templateId: 'diagnosis_clarification.standard',
+    moduleName: 'diagnosis_clarification',
+    variant: 'standard',
+    source: 'chat',
+  });
+  recordTemplateFallback({ reason: 'keep_existing', moduleName: 'product_evaluation' });
+  recordChipsTruncated({ delta: 3 });
+  recordFieldMissingAdded({ delta: 2 });
+  recordAntiTemplateViolation({ rule: 'missing_action', delta: 2 });
+  recordActionableReply({ actionable: true });
+  recordActionableReply({ actionable: false });
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /template_applied_total\{template_id="recommendations_output.standard",module="recommendations_output",variant="standard",source="chat"\} 1/);
+  assert.match(metrics, /template_fallback_total\{reason="keep_existing",module="product_evaluation"\} 1/);
+  assert.match(metrics, /chips_truncated_count 3/);
+  assert.match(metrics, /field_missing_added_count 2/);
+  assert.match(metrics, /anti_template_violation_count\{rule="missing_action"\} 2/);
+  assert.match(metrics, /actionable_reply_total\{actionable="true"\} 1/);
+  assert.match(metrics, /actionable_reply_total\{actionable="false"\} 1/);
+  assert.match(metrics, /template_applied_rate 0\.6666666666666666/);
+  assert.match(metrics, /template_fallback_rate 0\.3333333333333333/);
+  assert.match(metrics, /actionable_reply_rate 0\.5/);
 });

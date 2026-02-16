@@ -76,6 +76,29 @@ function coerceIsoDate(value) {
   return raw;
 }
 
+function resolveNextStateFromSessionPatch(patch) {
+  const p = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : null;
+  if (!p) return null;
+
+  const state = p.state && typeof p.state === 'object' && !Array.isArray(p.state) ? p.state : null;
+  const internalNext = state && typeof state._internal_next_state === 'string'
+    ? state._internal_next_state.trim()
+    : '';
+  if (internalNext) return internalNext;
+
+  const next = typeof p.next_state === 'string' ? p.next_state.trim() : '';
+  return next || null;
+}
+
+function applySessionPatchNextState(persistedState, patch) {
+  const base = persistedState && typeof persistedState === 'object' && !Array.isArray(persistedState)
+    ? persistedState
+    : {};
+  const next = resolveNextStateFromSessionPatch(patch);
+  if (!next) return { ...base };
+  return { ...base, next_state: next };
+}
+
 async function ensureUserProfileRow(auroraUid) {
   const uid = normalizeAuroraUid(auroraUid);
   if (!uid) return null;
@@ -957,6 +980,8 @@ async function deleteIdentityData({ auroraUid, userId }) {
 
 module.exports = {
   isoDateUTC,
+  resolveNextStateFromSessionPatch,
+  applySessionPatchNextState,
   normalizeAuroraUid,
   normalizeUserId,
   getUserProfile,

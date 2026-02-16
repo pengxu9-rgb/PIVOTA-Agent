@@ -48,6 +48,8 @@ const {
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
+  recordTemplateApplied,
+  recordTemplateFallback,
   observeUpstreamLatency,
   recordVisionDecision,
   recordEnsembleProviderResult,
@@ -75,6 +77,11 @@ const {
   recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
+const {
+  selectTemplate,
+  renderAssistantMessage,
+  adaptChips,
+} = require('./templateSystem');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runGeminiShadowVerify } = require('./diagVerify');
@@ -109,6 +116,7 @@ const {
   saveLastAnalysisForIdentity,
   deleteIdentityData,
   isCheckinDue,
+  resolveNextStateFromSessionPatch,
   upsertIdentityLink,
   migrateGuestDataToUser,
 } = require('./memoryStore');
@@ -132,6 +140,7 @@ const {
   shouldDiagnosisGate,
   buildDiagnosisPrompt,
   buildDiagnosisChips,
+  buildPendingClarificationForGate,
   stripRecommendationCards,
 } = require('./gating');
 const {
@@ -238,8 +247,8 @@ const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
 const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
   return Math.max(400, Math.min(12000, v));
 })();
 const RECO_CATALOG_SEARCH_CONCURRENCY = (() => {
@@ -275,6 +284,12 @@ const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
 })();
 const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT = (() => {
+  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -448,30 +463,16 @@ const RECO_PDP_RESOLVE_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
-const RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS || 1200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
-  return Math.max(400, Math.min(6000, v));
-})();
-
 const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 900);
   const v = Number.isFinite(n) ? Math.trunc(n) : 900;
-  const bounded = Math.max(300, Math.min(6000, v));
-  return Math.min(bounded, RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS);
-})();
-
-const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS || 2200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
-  return Math.max(500, Math.min(6000, v));
+  return Math.max(300, Math.min(6000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
-  const bounded = Math.max(300, Math.min(6000, v));
-  return Math.min(bounded, RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS);
+  return Math.max(300, Math.min(6000, v));
 })();
 
 const RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED = (() => {
@@ -488,6 +489,7 @@ const RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+
 const RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_NO_CANDIDATES || 'false')
     .trim()
@@ -509,19 +511,13 @@ const RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
-const RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
-
 const RECO_PDP_SKIP_OPAQUE_STABLE_IDS = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_PDP_SKIP_OPAQUE_STABLE_IDS || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+
 const RECO_PDP_LOCAL_INVOKE_BASE_URL = (() => {
   const explicit = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL || '').trim();
   if (explicit) return explicit.replace(/\/+$/, '');
@@ -536,43 +532,150 @@ const RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS = (() => {
   return Math.max(250, Math.min(4000, v));
 })();
 
-const RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT || 'false')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
-
 const RECO_PDP_ENRICH_CONCURRENCY = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_CONCURRENCY || 6);
   const v = Number.isFinite(n) ? Math.trunc(n) : 6;
   return Math.max(1, Math.min(12, v));
 })();
 
-const RECO_PDP_ENRICH_MAX_NETWORK_ITEMS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS || 3);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
-  return Math.max(0, Math.min(8, v));
-})();
-
-const RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP || 'true')
+const AURORA_BFF_PDP_CORE_PREFETCH_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PDP_CORE_PREFETCH_ENABLED || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
-const RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_TRANSIENT_FALLBACK || 'true')
+const AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(8, v));
+})();
+
+const AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS || 1600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1600;
+  return Math.max(300, Math.min(6000, v));
+})();
+
+const AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS || 120000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 120000;
+  return Math.max(1000, Math.min(15 * 60 * 1000, v));
+})();
+
+const AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE = (() => {
+  const raw = String(process.env.AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE || 'offers,reviews_preview,similar')
+    .trim()
+    .toLowerCase();
+  const tokens = raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const normalized = [];
+  const seen = new Set();
+  for (const token of tokens) {
+    const mapped = token === 'recommendations' ? 'similar' : token;
+    if (mapped !== 'offers' && mapped !== 'reviews_preview' && mapped !== 'similar') continue;
+    if (seen.has(mapped)) continue;
+    seen.add(mapped);
+    normalized.push(mapped);
+  }
+  return normalized.length ? normalized : ['offers'];
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 
-const RECO_CATALOG_TRANSIENT_FALLBACK_MAX_ITEMS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_TRANSIENT_FALLBACK_MAX_ITEMS || 3);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
-  return Math.max(1, Math.min(6, v));
+const AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS || 10 * 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10 * 60 * 1000;
+  return Math.max(30 * 1000, Math.min(60 * 60 * 1000, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS || 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1000;
+  return Math.max(0, Math.min(5 * 60 * 1000, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(8, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(8, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS || 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1000;
+  return Math.max(0, Math.min(5 * 60 * 1000, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY = String(
+  process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY || '',
+).trim();
+
+function parsePdpHotsetFromEnv(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parsePdpHotsetCompactList(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  return text
+    .split(/[,\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [merchantIdRaw, productIdRaw] = entry.split(':');
+      const merchantId = String(merchantIdRaw || '').trim();
+      const productId = String(productIdRaw || '').trim();
+      if (!merchantId || !productId) return null;
+      return {
+        product_ref: {
+          merchant_id: merchantId,
+          product_id: productId,
+        },
+      };
+    })
+    .filter(Boolean);
+}
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS = (() => {
+  const fromEnv = parsePdpHotsetFromEnv(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_JSON);
+  if (fromEnv.length) return fromEnv;
+  const fromCompactList = parsePdpHotsetCompactList(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_LIST);
+  if (fromCompactList.length) return fromCompactList;
+  return [
+    {
+      product_ref: {
+        merchant_id: 'merch_efbc46b4619cfbdf',
+        product_id: '9886500749640',
+      },
+    },
+    {
+      product_ref: {
+        merchant_id: 'merch_efbc46b4619cfbdf',
+        product_id: '9886500127048',
+      },
+    },
+  ];
 })();
 
 const DUPE_DEEPSCAN_CACHE_MAX = (() => {
@@ -589,6 +692,29 @@ const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
 
 const dupeDeepscanCache = new Map();
 const photoBytesCache = new Map();
+const pdpPrefetchRecentMap = new Map();
+let pdpHotsetPrewarmStarted = false;
+let pdpHotsetPrewarmInFlight = false;
+const pdpPrefetchStats = {
+  totals: {
+    total: 0,
+    ok: 0,
+    non_200: 0,
+    failed: 0,
+  },
+  by_reason: {},
+  last_prefetch: null,
+  hotset_runs: {
+    started: 0,
+    completed: 0,
+    skipped_unavailable: 0,
+    skipped_disabled: 0,
+    skipped_no_hotset: 0,
+    skipped_in_flight: 0,
+    failed: 0,
+  },
+  hotset_last: null,
+};
 
 function getDupeDeepscanCache(key) {
   if (!key || DUPE_DEEPSCAN_CACHE_MAX <= 0) return null;
@@ -844,7 +970,6 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
     in_stock_only: false,
     limit: normalizedLimit,
     offset: 0,
-    source: 'aurora_catalog',
   };
   const primaryUrl = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`;
   const localSearchUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/search`;
@@ -863,104 +988,6 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
     else if (statusCode === 429) reason = 'rate_limited';
     return reason;
   };
-  const mapProxySearchFallbackReason = (raw) => {
-    const token = String(raw || '').trim().toLowerCase();
-    if (!token) return null;
-    if (
-      token === 'upstream_timeout' ||
-      token === 'timeout' ||
-      token === 'primary_timeout' ||
-      token === 'invoke_timeout'
-    ) {
-      return 'upstream_timeout';
-    }
-    if (token === 'rate_limited' || token === 'too_many_requests' || token === 'throttled') {
-      return 'rate_limited';
-    }
-    if (
-      token === 'upstream_error' ||
-      token === 'primary_exception' ||
-      token === 'primary_request_failed' ||
-      token === 'primary_status_5xx' ||
-      token === 'error_soft_fallback' ||
-      token === 'db_timeout' ||
-      token === 'db_error'
-    ) {
-      return 'upstream_error';
-    }
-    if (token === 'not_found' || token === 'no_candidates' || token === 'no_results') {
-      return 'not_found';
-    }
-    return null;
-  };
-  const inferSearchFailureReasonFromBody = ({ data, statusCode } = {}) => {
-    const body = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
-    if (!body) return null;
-    const metadata =
-      body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata : null;
-    const proxyFallback =
-      metadata &&
-      metadata.proxy_search_fallback &&
-      typeof metadata.proxy_search_fallback === 'object' &&
-      !Array.isArray(metadata.proxy_search_fallback)
-        ? metadata.proxy_search_fallback
-        : null;
-
-    const fallbackReason = mapProxySearchFallbackReason(proxyFallback && proxyFallback.reason);
-    if (fallbackReason === 'upstream_timeout' || fallbackReason === 'upstream_error' || fallbackReason === 'rate_limited') {
-      return fallbackReason;
-    }
-
-    const resolveReason = mapProxySearchFallbackReason(
-      body.reason_code ||
-      body.reasonCode ||
-      metadata?.reason_code ||
-      metadata?.reasonCode ||
-      metadata?.resolve_reason_code ||
-      metadata?.resolveReasonCode,
-    );
-    if (resolveReason === 'upstream_timeout' || resolveReason === 'upstream_error' || resolveReason === 'rate_limited') {
-      return resolveReason;
-    }
-    if (resolveReason === 'not_found') return 'not_found';
-
-    const upstreamStatus = Number(
-      proxyFallback?.upstream_status ??
-      proxyFallback?.upstreamStatus ??
-      metadata?.upstream_status ??
-      metadata?.upstreamStatus ??
-      statusCode ??
-      0,
-    );
-    if (Number.isFinite(upstreamStatus)) {
-      if (upstreamStatus === 429) return 'rate_limited';
-      if (upstreamStatus === 408 || upstreamStatus === 504) return 'upstream_timeout';
-      if (upstreamStatus >= 500) return 'upstream_error';
-    }
-
-    const upstreamErrorCode = String(
-      proxyFallback?.upstream_error_code ||
-      proxyFallback?.upstreamErrorCode ||
-      metadata?.upstream_error_code ||
-      metadata?.upstreamErrorCode ||
-      '',
-    )
-      .trim()
-      .toUpperCase();
-    if (upstreamErrorCode === 'ECONNABORTED' || upstreamErrorCode === 'ETIMEDOUT') {
-      return 'upstream_timeout';
-    }
-
-    const upstreamErrorMessage = String(
-      proxyFallback?.upstream_error_message ||
-      proxyFallback?.upstreamErrorMessage ||
-      metadata?.upstream_error_message ||
-      metadata?.upstreamErrorMessage ||
-      '',
-    ).trim();
-    if (/timeout/i.test(upstreamErrorMessage)) return 'upstream_timeout';
-    return null;
-  };
   const normalizeProductsFromSearchData = (data) => {
     const rawList = extractAgentProductsFromSearchResponse(data);
     return rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
@@ -973,27 +1000,13 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
       timeout: normalizedTimeout,
     });
 
-    const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
-    const body = resp && resp.data ? resp.data : null;
-    const products = normalizeProductsFromSearchData(body);
-    const bodyReason = products.length
-      ? null
-      : inferSearchFailureReasonFromBody({ data: body, statusCode });
-    if (bodyReason && bodyReason !== 'not_found') {
-      return {
-        ok: false,
-        products: [],
-        reason: bodyReason,
-        status_code: statusCode,
-        latency_ms: Date.now() - startedAt,
-      };
-    }
+    const products = normalizeProductsFromSearchData(resp && resp.data ? resp.data : null);
 
     return {
       ok: true,
       products,
-      reason: products.length ? null : bodyReason || 'empty',
-      status_code: statusCode,
+      reason: products.length ? null : 'empty',
+      status_code: Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null,
       latency_ms: Date.now() - startedAt,
     };
   } catch (err) {
@@ -1002,7 +1015,7 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
     const errMessage = err && err.message ? err.message : String(err);
     let reason = mapSearchFailureReason({ statusCode, errCode, errMessage });
     const transientFailure = reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-    if (transientFailure && shouldAttemptLocalSearchFallback && RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT) {
+    if (transientFailure && shouldAttemptLocalSearchFallback) {
       try {
         const localResp = await axios.get(localSearchUrl, {
           params,
@@ -1012,24 +1025,11 @@ async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs
         });
         const localStatusCode = Number.isFinite(Number(localResp?.status)) ? Math.trunc(Number(localResp.status)) : 0;
         if (localStatusCode >= 200 && localStatusCode < 300) {
-          const localBody = localResp?.data || null;
-          const products = normalizeProductsFromSearchData(localBody);
-          const localBodyReason = products.length
-            ? null
-            : inferSearchFailureReasonFromBody({ data: localBody, statusCode: localStatusCode });
-          if (localBodyReason && localBodyReason !== 'not_found') {
-            return {
-              ok: false,
-              products: [],
-              reason: localBodyReason,
-              status_code: localStatusCode,
-              latency_ms: Date.now() - startedAt,
-            };
-          }
+          const products = normalizeProductsFromSearchData(localResp?.data || null);
           return {
             ok: true,
             products,
-            reason: products.length ? null : localBodyReason || 'empty',
+            reason: products.length ? null : 'empty',
             status_code: localStatusCode,
             latency_ms: Date.now() - startedAt,
           };
@@ -1101,11 +1101,6 @@ const CATALOG_BRANDS = {
     aliases: ['薇诺娜', 'winona', 'wei nuo na'],
     name: { CN: '薇诺娜', EN: 'Winona' },
   },
-  brand_ipsa: {
-    brand_id: 'brand_ipsa',
-    aliases: ['茵芙莎', 'ipsa', 'i p s a'],
-    name: { CN: '茵芙莎', EN: 'IPSA' },
-  },
 };
 
 function escapeRegExp(text) {
@@ -1133,10 +1128,6 @@ function detectBrandAvailabilityIntent(message, lang) {
   // Exclude obvious non-commerce asks.
   if (looksLikeDiagnosisStart(raw)) return null;
   if (looksLikeSuitabilityRequest(raw)) return null;
-  if (looksLikeRecommendationRequest(raw)) return null;
-  if (looksLikeRoutineRequest(raw, null)) return null;
-  if (looksLikeCompatibilityOrConflictQuestion(raw)) return null;
-  if (looksLikeWeatherOrEnvironmentQuestion(raw)) return null;
 
   const text = raw.normalize('NFKC');
   const lowered = text.toLowerCase();
@@ -1168,17 +1159,7 @@ function detectBrandAvailabilityIntent(message, lang) {
 
     if (!matchedAlias) continue;
 
-    const compact = (value) =>
-      String(value || '')
-        .toLowerCase()
-        .replace(/[\s\p{P}_-]+/gu, '');
-    const compactAlias = compact(matchedAlias);
-    const compactText = compact(text);
-    const bareBrandQuery =
-      compactText === compactAlias ||
-      compactText === `${compactAlias}品牌` ||
-      compactText === `${compactAlias}brand` ||
-      compactText === `${compactAlias}${compactAlias}`;
+    const bareBrandQuery = lowered.replace(/[\s\p{P}_-]+/gu, '').length <= 18;
     if (!availabilityHint && !bareBrandQuery) continue;
 
     const brandName = lang === 'CN' ? brand?.name?.CN || '' : brand?.name?.EN || '';
@@ -1208,31 +1189,11 @@ function buildAvailabilityCatalogQuery(message, availabilityIntent) {
     .replace(/^(请问|请帮我|请|我想问下|我想问|could you|can you|do you|i want to know)\s*/i, '')
     .replace(/\b(in stock|available|availability|where can i buy|where to buy|do you have|have any|buy|purchase|link|have|has)\b/gi, ' ')
     .replace(/(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方旗舰|旗舰店|自营|请问)/g, ' ')
-    .replace(/[（(]\s*(品牌|brand|official)\s*[）)]/gi, ' ')
-    .replace(/\bbrand\b/gi, ' ')
-    .replace(/品牌/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[。！？!?]+$/g, '');
 
   if (!cleaned) cleaned = raw;
-  cleaned = cleaned
-    .split(/\s+/)
-    .filter((token, idx, arr) => idx === 0 || token.toLowerCase() !== arr[idx - 1].toLowerCase())
-    .join(' ')
-    .trim();
-  cleaned = cleaned.replace(/[吗嘛呢呀]+$/g, '').trim();
-
-  if (brand) {
-    const compact = (value) =>
-      String(value || '')
-        .toLowerCase()
-        .replace(/[\s\p{P}_-]+/gu, '');
-    const compactBrand = compact(brand);
-    const compactCleaned = compact(cleaned);
-    if (compactBrand && compactCleaned && compactCleaned === compactBrand.repeat(2)) cleaned = brand;
-  }
-
   if (cleaned.length > 120) cleaned = cleaned.slice(0, 120).trim();
 
   if (!cleaned) return brand;
@@ -1448,7 +1409,7 @@ function buildBrandPlaceholderProduct({ brandId, brandName, lang } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const brand = String(brandName || '').trim() || (isCn ? '未知品牌' : 'Unknown brand');
   const skuId = String(brandId || '').trim() || `brand_${stableHashBase36(brand).slice(0, 10)}`;
-  const name = brand;
+  const name = isCn ? `${brand}（品牌）` : `${brand} (brand)`;
   return {
     product_id: `brand:${skuId}`,
     sku_id: skuId,
@@ -1509,133 +1470,6 @@ function buildRecoCatalogQueries({ profileSummary, lang } = {}) {
   });
 
   return items.slice(0, 8);
-}
-
-function shouldUseRecoCatalogTransientFallback(catalogDebug) {
-  if (!RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED) return false;
-  if (!catalogDebug || typeof catalogDebug !== 'object' || Array.isArray(catalogDebug)) return false;
-  const queryCount = Number.isFinite(Number(catalogDebug.query_count)) ? Math.trunc(Number(catalogDebug.query_count)) : 0;
-  const okCount = Number.isFinite(Number(catalogDebug.ok_count)) ? Math.trunc(Number(catalogDebug.ok_count)) : 0;
-  if (queryCount <= 0 || okCount > 0) return false;
-
-  const timeoutCount = Number.isFinite(Number(catalogDebug.timeout_count)) ? Math.trunc(Number(catalogDebug.timeout_count)) : 0;
-  const statusCounts =
-    catalogDebug.status_counts && typeof catalogDebug.status_counts === 'object' && !Array.isArray(catalogDebug.status_counts)
-      ? catalogDebug.status_counts
-      : null;
-  const timeoutByStatus = Number.isFinite(Number(statusCounts && statusCounts.upstream_timeout))
-    ? Math.trunc(Number(statusCounts.upstream_timeout))
-    : 0;
-  const upstreamErrorByStatus = Number.isFinite(Number(statusCounts && statusCounts.upstream_error))
-    ? Math.trunc(Number(statusCounts.upstream_error))
-    : 0;
-  const rateLimitedByStatus = Number.isFinite(Number(statusCounts && statusCounts.rate_limited))
-    ? Math.trunc(Number(statusCounts.rate_limited))
-    : 0;
-  const transientByStatus = timeoutByStatus + upstreamErrorByStatus + rateLimitedByStatus;
-  const skippedReason = String(catalogDebug.skipped_reason || '').trim().toLowerCase();
-  const failFastAfter =
-    catalogDebug.fail_fast_after && typeof catalogDebug.fail_fast_after === 'object' && !Array.isArray(catalogDebug.fail_fast_after)
-      ? catalogDebug.fail_fast_after
-      : null;
-  const failFastAfterOpen = Boolean(failFastAfter && failFastAfter.open === true);
-  const failFastAfterReason = String(failFastAfter && failFastAfter.last_reason ? failFastAfter.last_reason : '')
-    .trim()
-    .toLowerCase();
-  const failFastAfterTransient =
-    failFastAfterReason === 'all_queries_failed' || failFastAfterReason === 'probe_transient_errors';
-
-  if (skippedReason === 'fail_fast_open') return true;
-  if (timeoutCount >= Math.max(1, queryCount)) return true;
-  if (transientByStatus >= Math.max(1, queryCount)) return true;
-  if (failFastAfterOpen && failFastAfterTransient) return true;
-  return false;
-}
-
-function buildRecoCatalogTransientFallbackStructured({ ctx } = {}) {
-  const isCn = String(ctx && ctx.lang ? ctx.lang : '').toUpperCase() === 'CN';
-  const stableSeeds = [
-    {
-      query: 'Winona Soothing Repair Serum',
-      brand: isCn ? '薇诺娜' : 'Winona',
-      name: isCn ? '舒缓修护精华' : 'Soothing Repair Serum',
-      display_name: isCn ? '薇诺娜 舒缓修护精华' : 'Winona Soothing Repair Serum',
-      step: isCn ? '修护精华' : 'Barrier Serum',
-      slot: 'pm',
-      reasons: isCn
-        ? ['优先修护屏障与舒缓不适，可作为晚间核心修护步骤。']
-        : ['Prioritizes barrier repair and soothing support for PM recovery.'],
-    },
-    {
-      query: 'The Ordinary Niacinamide 10% + Zinc 1%',
-      brand: 'The Ordinary',
-      name: 'Niacinamide 10% + Zinc 1%',
-      display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
-      step: isCn ? '控油精华' : 'Balancing Serum',
-      slot: 'am',
-      reasons: isCn
-        ? ['聚焦提亮与毛孔困扰，适合作为白天轻量功效步骤。']
-        : ['Targets uneven tone and pores with a light daytime active step.'],
-    },
-    {
-      query: 'IPSA Time Reset Aqua',
-      brand: 'IPSA',
-      name: 'Time Reset Aqua',
-      display_name: 'IPSA Time Reset Aqua',
-      step: isCn ? '补水打底' : 'Hydration Base',
-      slot: 'am',
-      reasons: isCn
-        ? ['偏向基础保湿与稳定耐受，适合和功效产品搭配。']
-        : ['Provides hydration baseline and tolerance support for layering.'],
-    },
-  ];
-
-  const recos = [];
-  const seenProductIds = new Set();
-  for (const seed of stableSeeds) {
-    if (recos.length >= RECO_CATALOG_TRANSIENT_FALLBACK_MAX_ITEMS) break;
-    const match = resolveRecoStableAliasRefByQuery(seed.query);
-    if (!match || !match.canonicalProductRef) continue;
-    const productId = String(match.canonicalProductRef.product_id || '').trim();
-    const merchantId = String(match.canonicalProductRef.merchant_id || '').trim();
-    if (!productId || !merchantId || seenProductIds.has(productId)) continue;
-    seenProductIds.add(productId);
-    recos.push({
-      slot: seed.slot,
-      step: seed.step,
-      score: 90 - recos.length * 2,
-      sku: {
-        product_id: productId,
-        merchant_id: merchantId,
-        brand: seed.brand,
-        name: seed.name,
-        display_name: seed.display_name,
-        canonical_product_ref: {
-          product_id: productId,
-          merchant_id: merchantId,
-        },
-      },
-      reasons: seed.reasons,
-      warnings: [
-        isCn
-          ? '商品库上游暂时波动，已使用稳定候选作为快速兜底。'
-          : 'Catalog upstream is unstable; showing stable fallback picks for faster response.',
-      ],
-    });
-  }
-
-  if (!recos.length) return null;
-  return {
-    recommendations: recos,
-    evidence: null,
-    confidence: 0.62,
-    missing_info: [],
-    warnings: [
-      isCn
-        ? '商品库服务波动，当前先返回稳定候选；稍后可再次刷新获取更多选项。'
-        : 'Catalog service is unstable right now; returning stable fallback picks first.',
-    ],
-  };
 }
 
 async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger } = {}) {
@@ -6937,7 +6771,6 @@ async function resolveRecoPdpByStableIds({
   displayName,
   merchantId,
   logger,
-  allowLocalInvokeFallback = true,
 } = {}) {
   const normalizedProductId = String(productId || '').trim();
   const normalizedSkuId = String(skuId || '').trim();
@@ -7073,7 +6906,6 @@ async function resolveRecoPdpByStableIds({
 
   const localInvokeUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
   const shouldAttemptLocalFallback =
-    allowLocalInvokeFallback &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localInvokeUrl &&
@@ -7336,7 +7168,7 @@ function withRecoPdpMetadata(base, {
   };
 }
 
-async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvokeFallback = true } = {}) {
+async function enrichRecoItemWithPdpOpenContract(item, { logger } = {}) {
   const startedAt = Date.now();
   const elapsedMs = () => Math.max(0, Date.now() - startedAt);
   const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
@@ -7407,7 +7239,6 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       displayName,
       merchantId: rawMerchantId,
       logger,
-      allowLocalInvokeFallback,
     });
     stableResolveRequestIds =
       stableResolved?.requestIds && typeof stableResolved.requestIds === 'object'
@@ -7446,14 +7277,11 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
     pickFirstTrimmed(displayName, name, brand);
   const stableResolveFailureCode = normalizeResolveReasonCode(stableResolveReasonCode || '', null);
-  const skipQueryResolveOnStableFailure =
+  if (
     RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE &&
     stableResolveFailureCode &&
-    (
-      stableResolveFailureCode !== 'no_candidates' ||
-      RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES
-    );
-  if (skipQueryResolveOnStableFailure) {
+    stableResolveFailureCode !== 'no_candidates'
+  ) {
     return withRecoPdpMetadata(base, {
       path: 'external',
       queryText,
@@ -7554,7 +7382,6 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   });
   const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
   const shouldAttemptLocalResolveFallback =
-    allowLocalInvokeFallback &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localResolveUrl &&
@@ -7866,98 +7693,427 @@ function summarizeOfferPdpOpen(items) {
   };
 }
 
-function buildRecoPdpQuickItem(item, { fastFallbackReasonCode = null } = {}) {
-  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
-  if (!base) return item;
-  const skuCandidate =
-    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
-      ? base.sku
-      : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
-        ? base.product
-        : null;
+function normalizePdpPrefetchReason(reason) {
+  const normalized = String(reason || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9:_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized || 'unknown';
+}
 
-  const {
-    subjectProductGroupId,
-    directProductRef,
-    rawProductId,
-  } = extractRecoPdpDirectKeys(base, skuCandidate);
-  if (subjectProductGroupId) {
-    return withRecoPdpMetadata(base, {
-      path: 'group',
-      subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
-      canonicalProductRef: directProductRef,
-      resolveAttempted: false,
-      timeToPdpMs: 0,
-    });
+function getPdpPrefetchReasonBucket(reason) {
+  const key = normalizePdpPrefetchReason(reason);
+  if (!pdpPrefetchStats.by_reason[key]) {
+    pdpPrefetchStats.by_reason[key] = {
+      total: 0,
+      ok: 0,
+      non_200: 0,
+      failed: 0,
+    };
   }
-  if (directProductRef) {
-    return withRecoPdpMetadata(base, {
-      path: 'ref',
-      canonicalProductRef: directProductRef,
-      resolveAttempted: false,
-      timeToPdpMs: 0,
-    });
-  }
+  return { key, bucket: pdpPrefetchStats.by_reason[key] };
+}
 
-  const brand = pickFirstTrimmed(skuCandidate?.brand, base.brand);
-  const name = pickFirstTrimmed(skuCandidate?.name, base.name);
-  const displayName = pickFirstTrimmed(
-    skuCandidate?.display_name,
-    skuCandidate?.displayName,
-    base.display_name,
-    base.displayName,
-    name,
-  );
-  const stableProductId = pickFirstTrimmed(
-    rawProductId,
-    skuCandidate?.product_id,
-    skuCandidate?.productId,
-    base?.product_id,
-    base?.productId,
-  );
-  const stableSkuId = pickFirstTrimmed(
-    skuCandidate?.sku_id,
-    skuCandidate?.skuId,
-    base?.sku_id,
-    base?.skuId,
-    stableProductId,
-  );
-  const stableQueryText = pickFirstTrimmed(
-    brand && displayName ? joinBrandAndName(brand, displayName) : '',
-    brand && name ? joinBrandAndName(brand, name) : '',
-    displayName,
-    name,
-    stableSkuId,
-    stableProductId,
-  );
-  const stableAliasMatch = resolveRecoStableAliasRefByQuery(stableQueryText);
-  if (stableAliasMatch?.canonicalProductRef) {
-    return withRecoPdpMetadata(base, {
-      path: 'ref',
-      canonicalProductRef: stableAliasMatch.canonicalProductRef,
-      resolveAttempted: false,
-      timeToPdpMs: 0,
-    });
+function recordPdpPrefetchResult({ reason, status = 0, ok = false, failed = false, key = '', durationMs = 0, error = '' } = {}) {
+  const { key: reasonKey, bucket } = getPdpPrefetchReasonBucket(reason);
+  pdpPrefetchStats.totals.total += 1;
+  bucket.total += 1;
+  if (ok) {
+    pdpPrefetchStats.totals.ok += 1;
+    bucket.ok += 1;
+  } else if (failed) {
+    pdpPrefetchStats.totals.failed += 1;
+    bucket.failed += 1;
+  } else {
+    pdpPrefetchStats.totals.non_200 += 1;
+    bucket.non_200 += 1;
   }
+  pdpPrefetchStats.last_prefetch = {
+    at: new Date().toISOString(),
+    reason: reasonKey,
+    key: key || null,
+    status: Number(status || 0),
+    ok: Boolean(ok),
+    failed: Boolean(failed),
+    duration_ms: Number(durationMs || 0),
+    error: error ? String(error).slice(0, 400) : null,
+  };
+}
 
-  const queryText =
-    buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
-    pickFirstTrimmed(
-      skuCandidate?.display_name,
-      skuCandidate?.displayName,
-      skuCandidate?.name,
-      base.display_name,
-      base.displayName,
-      base.name,
-      base.brand,
-    );
-  return withRecoPdpMetadata(base, {
-    path: 'external',
-    queryText,
-    resolveReasonCode: fastFallbackReasonCode,
-    resolveAttempted: false,
-    timeToPdpMs: 0,
+function getNormalizedPdpHotsetPrewarmPayloads() {
+  return (Array.isArray(AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS) ? AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS : [])
+    .map((item) => normalizePdpCorePrefetchPayload(item))
+    .filter(Boolean);
+}
+
+function getPdpPrefetchStateSnapshot() {
+  return {
+    config: {
+      prefetch_enabled: AURORA_BFF_PDP_CORE_PREFETCH_ENABLED,
+      prefetch_include: AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE,
+      prefetch_timeout_ms: AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS,
+      prefetch_dedup_ttl_ms: AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS,
+      hotset_prewarm_enabled: AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
+      hotset_size: getNormalizedPdpHotsetPrewarmPayloads().length,
+      hotset_concurrency: AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY,
+      hotset_interval_ms: AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS,
+      hotset_initial_delay_ms: AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS,
+      hotset_bootstrap_rounds: AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS,
+      hotset_bootstrap_gap_ms: AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS,
+    },
+    runtime: {
+      started: pdpHotsetPrewarmStarted,
+      in_flight: pdpHotsetPrewarmInFlight,
+      totals: { ...pdpPrefetchStats.totals },
+      by_reason: { ...pdpPrefetchStats.by_reason },
+      last_prefetch: pdpPrefetchStats.last_prefetch ? { ...pdpPrefetchStats.last_prefetch } : null,
+      hotset_runs: { ...pdpPrefetchStats.hotset_runs },
+      hotset_last: pdpPrefetchStats.hotset_last ? { ...pdpPrefetchStats.hotset_last } : null,
+    },
+  };
+}
+
+function getPdpHotsetPrewarmAdminToken(req) {
+  if (!req || typeof req.get !== 'function') return '';
+  return String(req.get('X-Aurora-Admin-Key') || req.get('x-aurora-admin-key') || '').trim();
+}
+
+function hasPdpHotsetPrewarmAdminAccess(req) {
+  if (!AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY) return false;
+  const provided = getPdpHotsetPrewarmAdminToken(req);
+  if (!provided) return false;
+  const expectedBuf = Buffer.from(AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY);
+  const providedBuf = Buffer.from(provided);
+  if (expectedBuf.length !== providedBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(expectedBuf, providedBuf);
+  } catch {
+    return false;
+  }
+}
+
+function normalizePdpCorePrefetchPayload(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const productRef = normalizeCanonicalProductRef(raw.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
   });
+  if (productRef) return { product_ref: productRef };
+
+  const subject = raw.subject && typeof raw.subject === 'object' && !Array.isArray(raw.subject) ? raw.subject : null;
+  const subjectType = String(subject?.type || '').trim().toLowerCase();
+  const subjectId = pickFirstTrimmed(subject?.id, subject?.product_group_id);
+  if (subjectType === 'product_group' && subjectId) {
+    return {
+      subject: {
+        type: 'product_group',
+        id: subjectId,
+      },
+    };
+  }
+
+  return null;
+}
+
+function extractPdpCorePrefetchPayloadFromItem(item) {
+  const fromContract = normalizePdpCorePrefetchPayload(item?.pdp_open?.get_pdp_v2_payload);
+  if (fromContract) return fromContract;
+
+  const mode = normalizePdpOpenMode(item?.pdp_open?.path || item?.metadata?.pdp_open_mode, '');
+  if (mode === 'group') {
+    const subjectId = pickFirstTrimmed(item?.pdp_open?.subject?.id, item?.pdp_open?.subject?.product_group_id);
+    if (subjectId) {
+      return {
+        subject: {
+          type: 'product_group',
+          id: subjectId,
+        },
+      };
+    }
+    return null;
+  }
+  if (mode === 'ref' || mode === 'resolve') {
+    const productRef = normalizeCanonicalProductRef(item?.pdp_open?.product_ref, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (productRef) return { product_ref: productRef };
+  }
+
+  return null;
+}
+
+function makePdpCorePrefetchKey(payload) {
+  const normalized = normalizePdpCorePrefetchPayload(payload);
+  if (!normalized) return '';
+  if (normalized.subject?.type === 'product_group' && normalized.subject.id) {
+    return `subject:product_group:${normalized.subject.id}`;
+  }
+  if (normalized.product_ref?.merchant_id && normalized.product_ref?.product_id) {
+    return `ref:${normalized.product_ref.merchant_id}:${normalized.product_ref.product_id}`;
+  }
+  return '';
+}
+
+function shouldRunPdpCorePrefetch(key) {
+  if (!key) return false;
+  const now = Date.now();
+  const prev = Number(pdpPrefetchRecentMap.get(key) || 0);
+  if (prev > 0 && now - prev < AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS) return false;
+  pdpPrefetchRecentMap.set(key, now);
+  if (pdpPrefetchRecentMap.size > 300) {
+    const oldest = pdpPrefetchRecentMap.keys().next().value;
+    if (oldest) pdpPrefetchRecentMap.delete(oldest);
+  }
+  return true;
+}
+
+async function invokePdpCorePrefetch(payload, { logger, reason = null } = {}) {
+  if (!PIVOTA_BACKEND_BASE_URL) return { skipped: true, skip_reason: 'missing_base_url' };
+  const normalized = normalizePdpCorePrefetchPayload(payload);
+  if (!normalized) return { skipped: true, skip_reason: 'invalid_payload' };
+  const invokeUrl = `${String(PIVOTA_BACKEND_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
+  const reasonKey = normalizePdpPrefetchReason(reason);
+  const prefetchKey = makePdpCorePrefetchKey(normalized) || null;
+  const startedAt = Date.now();
+  try {
+    const resp = await axios.post(
+      invokeUrl,
+      {
+        operation: 'get_pdp_v2',
+        payload: {
+          ...normalized,
+          include: AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE,
+          capabilities: {
+            client: 'aurora_bff_prefetch',
+            client_version: 'v1',
+          },
+        },
+      },
+      {
+        headers: buildPivotaBackendAgentHeaders(),
+        timeout: AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS,
+        validateStatus: () => true,
+      },
+    );
+    const status = Number(resp?.status || 0);
+    const durationMs = Date.now() - startedAt;
+    if (status >= 400) {
+      recordPdpPrefetchResult({
+        reason: reasonKey,
+        status,
+        ok: false,
+        failed: false,
+        key: prefetchKey || '',
+        durationMs,
+      });
+      logger?.warn(
+        {
+          reason: reasonKey,
+          status,
+          key: prefetchKey,
+          duration_ms: durationMs,
+        },
+        'aurora bff: pdp core prefetch non-200',
+      );
+      return { ok: false, status, duration_ms: durationMs, key: prefetchKey };
+    }
+    recordPdpPrefetchResult({
+      reason: reasonKey,
+      status,
+      ok: true,
+      failed: false,
+      key: prefetchKey || '',
+      durationMs,
+    });
+    return { ok: true, status, duration_ms: durationMs, key: prefetchKey };
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const errMessage = err?.message || String(err);
+    recordPdpPrefetchResult({
+      reason: reasonKey,
+      status: 0,
+      ok: false,
+      failed: true,
+      key: prefetchKey || '',
+      durationMs,
+      error: errMessage,
+    });
+    logger?.warn(
+      {
+        reason: reasonKey,
+        err: errMessage,
+        key: prefetchKey,
+        duration_ms: durationMs,
+      },
+      'aurora bff: pdp core prefetch failed',
+    );
+    return { ok: false, status: 0, duration_ms: durationMs, key: prefetchKey, error: errMessage };
+  }
+}
+
+function schedulePdpCorePrefetchFromItems(items, { logger, reason = null, maxItems = AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS } = {}) {
+  if (!AURORA_BFF_PDP_CORE_PREFETCH_ENABLED || !PIVOTA_BACKEND_BASE_URL) return;
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return;
+
+  const targets = [];
+  const limit = Math.max(1, Math.min(12, Number(maxItems) || AURORA_BFF_PDP_CORE_PREFETCH_MAX_ITEMS));
+  for (const item of list) {
+    const payload = extractPdpCorePrefetchPayloadFromItem(item);
+    if (!payload) continue;
+    const key = makePdpCorePrefetchKey(payload);
+    if (!shouldRunPdpCorePrefetch(key)) continue;
+    targets.push({ payload, key });
+    if (targets.length >= limit) break;
+  }
+  if (!targets.length) return;
+
+  void mapWithConcurrency(targets, 2, async (target) => {
+    await invokePdpCorePrefetch(target.payload, { logger, reason });
+  });
+}
+
+async function runPdpHotsetPrewarmBatch({ logger, reason = 'hotset_prewarm', allowWhenDisabled = false } = {}) {
+  const reasonKey = normalizePdpPrefetchReason(reason);
+  if (!PIVOTA_BACKEND_BASE_URL) {
+    pdpPrefetchStats.hotset_runs.skipped_unavailable += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'missing_base_url',
+      duration_ms: 0,
+      hotset_size: 0,
+    };
+    return { ok: false, skipped: true, skip_reason: 'missing_base_url', hotset_size: 0, duration_ms: 0 };
+  }
+  if (!allowWhenDisabled && !AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED) {
+    pdpPrefetchStats.hotset_runs.skipped_disabled += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'feature_disabled',
+      duration_ms: 0,
+      hotset_size: 0,
+    };
+    return { ok: false, skipped: true, skip_reason: 'feature_disabled', hotset_size: 0, duration_ms: 0 };
+  }
+  const hotset = getNormalizedPdpHotsetPrewarmPayloads();
+  if (!hotset.length) {
+    pdpPrefetchStats.hotset_runs.skipped_no_hotset += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'empty_hotset',
+      duration_ms: 0,
+      hotset_size: 0,
+    };
+    return { ok: false, skipped: true, skip_reason: 'empty_hotset', hotset_size: 0, duration_ms: 0 };
+  }
+  if (pdpHotsetPrewarmInFlight) {
+    pdpPrefetchStats.hotset_runs.skipped_in_flight += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'in_flight',
+      duration_ms: 0,
+      hotset_size: hotset.length,
+    };
+    return { ok: false, skipped: true, skip_reason: 'in_flight', hotset_size: hotset.length, duration_ms: 0 };
+  }
+
+  pdpHotsetPrewarmInFlight = true;
+  pdpPrefetchStats.hotset_runs.started += 1;
+  const startedAt = Date.now();
+  try {
+    await mapWithConcurrency(hotset, AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY, async (payload) => {
+      await invokePdpCorePrefetch(payload, { logger, reason: reasonKey });
+    });
+    const durationMs = Date.now() - startedAt;
+    pdpPrefetchStats.hotset_runs.completed += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: true,
+      skipped: false,
+      duration_ms: durationMs,
+      hotset_size: hotset.length,
+    };
+    return { ok: true, skipped: false, duration_ms: durationMs, hotset_size: hotset.length };
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const errMessage = err?.message || String(err);
+    pdpPrefetchStats.hotset_runs.failed += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: false,
+      duration_ms: durationMs,
+      hotset_size: hotset.length,
+      error: String(errMessage).slice(0, 400),
+    };
+    logger?.warn(
+      {
+        reason: reasonKey,
+        hotset_size: hotset.length,
+        duration_ms: durationMs,
+        err: errMessage,
+      },
+      'aurora bff: pdp hotset prewarm run failed',
+    );
+    return { ok: false, skipped: false, duration_ms: durationMs, hotset_size: hotset.length, error: errMessage };
+  } finally {
+    pdpHotsetPrewarmInFlight = false;
+  }
+}
+
+function startPdpHotsetPrewarmLoop({ logger } = {}) {
+  if (pdpHotsetPrewarmStarted) return;
+  if (!AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED || !PIVOTA_BACKEND_BASE_URL) return;
+  const hotset = getNormalizedPdpHotsetPrewarmPayloads();
+  if (!hotset.length) return;
+
+  pdpHotsetPrewarmStarted = true;
+  const waitMs = async (ms) => {
+    const delay = Math.max(0, Number(ms) || 0);
+    if (!delay) return;
+    await new Promise((resolve) => {
+      setTimeout(resolve, delay);
+    });
+  };
+
+  const runOnce = async ({ reason = 'hotset_prewarm' } = {}) => {
+    await runPdpHotsetPrewarmBatch({ logger, reason, allowWhenDisabled: false });
+  };
+
+  const runBootstrapBurst = async () => {
+    for (let i = 0; i < AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS; i += 1) {
+      const reason = i === 0 ? 'hotset_prewarm_startup' : 'hotset_prewarm_startup_followup';
+      await runOnce({ reason });
+      if (i < AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS - 1) {
+        await waitMs(AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS);
+      }
+    }
+  };
+
+  setTimeout(() => {
+    void runBootstrapBurst();
+  }, AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS);
+
+  const timer = setInterval(() => {
+    void runOnce({ reason: 'hotset_prewarm_interval' });
+  }, AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS);
+  if (typeof timer.unref === 'function') timer.unref();
 }
 
 async function enrichRecommendationsWithPdpOpenContract({
@@ -7977,7 +8133,103 @@ async function enrichRecommendationsWithPdpOpenContract({
 
   const fastFallbackReasonCode = normalizeResolveReasonCode(fastExternalFallbackReasonCode || '', null);
   if (fastFallbackReasonCode) {
-    const fastExternal = recos.map((item) => buildRecoPdpQuickItem(item, { fastFallbackReasonCode }));
+    const fastExternal = recos.map((item) => {
+      const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+      if (!base) return item;
+      const skuCandidate =
+        base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+          ? base.sku
+          : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+            ? base.product
+            : null;
+
+      const {
+        subjectProductGroupId,
+        directProductRef,
+        rawProductId,
+      } = extractRecoPdpDirectKeys(base, skuCandidate);
+      if (subjectProductGroupId) {
+        return withRecoPdpMetadata(base, {
+          path: 'group',
+          subject: { type: 'product_group', id: subjectProductGroupId, product_group_id: subjectProductGroupId },
+          canonicalProductRef: directProductRef,
+          resolveAttempted: false,
+          timeToPdpMs: 0,
+        });
+      }
+      if (directProductRef) {
+        return withRecoPdpMetadata(base, {
+          path: 'ref',
+          canonicalProductRef: directProductRef,
+          resolveAttempted: false,
+          timeToPdpMs: 0,
+        });
+      }
+
+      const brand = pickFirstTrimmed(skuCandidate?.brand, base.brand);
+      const name = pickFirstTrimmed(skuCandidate?.name, base.name);
+      const displayName = pickFirstTrimmed(
+        skuCandidate?.display_name,
+        skuCandidate?.displayName,
+        base.display_name,
+        base.displayName,
+        name,
+      );
+      const stableProductId = pickFirstTrimmed(
+        rawProductId,
+        skuCandidate?.product_id,
+        skuCandidate?.productId,
+        base?.product_id,
+        base?.productId,
+      );
+      const stableSkuId = pickFirstTrimmed(
+        skuCandidate?.sku_id,
+        skuCandidate?.skuId,
+        base?.sku_id,
+        base?.skuId,
+        stableProductId,
+      );
+      const stableQueryText = pickFirstTrimmed(
+        brand && displayName ? joinBrandAndName(brand, displayName) : '',
+        brand && name ? joinBrandAndName(brand, name) : '',
+        displayName,
+        name,
+        stableSkuId,
+        stableProductId,
+      );
+      const stableAliasMatch = resolveRecoStableAliasRefByQuery(stableQueryText);
+      if (stableAliasMatch?.canonicalProductRef) {
+        return withRecoPdpMetadata(base, {
+          path: 'ref',
+          canonicalProductRef: stableAliasMatch.canonicalProductRef,
+          resolveAttempted: false,
+          timeToPdpMs: 0,
+        });
+      }
+
+      const queryText =
+        buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
+        pickFirstTrimmed(
+          skuCandidate?.display_name,
+          skuCandidate?.displayName,
+          skuCandidate?.name,
+          base.display_name,
+          base.displayName,
+          base.name,
+          base.brand,
+        );
+      return withRecoPdpMetadata(base, {
+        path: 'external',
+        queryText,
+        resolveReasonCode: fastFallbackReasonCode,
+        resolveAttempted: false,
+        timeToPdpMs: 0,
+      });
+    });
+    schedulePdpCorePrefetchFromItems(fastExternal, {
+      logger,
+      reason: 'reco_card_fast_fallback',
+    });
     return {
       recommendations: fastExternal,
       path_stats: tallyPdpOpenPathStats(fastExternal),
@@ -7986,15 +8238,16 @@ async function enrichRecommendationsWithPdpOpenContract({
     };
   }
 
-  const networkItemCap = Math.max(0, Math.min(recos.length, RECO_PDP_ENRICH_MAX_NETWORK_ITEMS));
-  const allowLocalInvokeFallback = !RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP;
-  const enriched = await mapWithConcurrency(recos, RECO_PDP_ENRICH_CONCURRENCY, async (item, idx) => {
-    if (idx >= networkItemCap) return buildRecoPdpQuickItem(item, { fastFallbackReasonCode: null });
-    return enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvokeFallback });
-  });
+  const enriched = await mapWithConcurrency(recos, RECO_PDP_ENRICH_CONCURRENCY, async (item) =>
+    enrichRecoItemWithPdpOpenContract(item, { logger }),
+  );
   const normalized = enriched.map((item, idx) => {
     if (item && typeof item === 'object' && !Array.isArray(item)) return item;
     return recos[idx];
+  });
+  schedulePdpCorePrefetchFromItems(normalized, {
+    logger,
+    reason: 'reco_card',
   });
 
   return {
@@ -8713,12 +8966,6 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
 }
 
 async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
-  const recoPipelineStartedAt = Date.now();
-  const recoPipelineTiming = {};
-  const stampRecoTiming = (stage, startedAt) => {
-    if (!stage || !Number.isFinite(Number(startedAt))) return;
-    recoPipelineTiming[stage] = Math.max(0, Date.now() - Number(startedAt));
-  };
   const profileSummary = summarizeProfileForContext(profile);
   const analysisSummary =
     profile && profile.lastAnalysis && (!profile.lastAnalysisLang || profile.lastAnalysisLang === ctx.lang) ? profile.lastAnalysis : null;
@@ -8741,9 +8988,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   let upstream = null;
   let contextMeta = {};
 
-  const catalogStartedAt = Date.now();
   const catalogOut = await buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger });
-  stampRecoTiming('catalog_grounding', catalogStartedAt);
   const catalogStructured =
     catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
       ? catalogOut.structured
@@ -8753,22 +8998,13 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       ? catalogOut.debug
       : null;
   const pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
-  const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
-  const catalogTransientFallbackStructured = useCatalogTransientFallback
-    ? buildRecoCatalogTransientFallbackStructured({ ctx })
-    : null;
 
   // Prefer: catalog-grounded → explicit JSON (from answer) → routine object (from context) → any structured blob.
-  let structured = catalogStructured || catalogTransientFallbackStructured;
-  let structuredSource = catalogStructured
-    ? 'catalog_grounded'
-    : catalogTransientFallbackStructured
-      ? 'catalog_transient_fallback'
-      : null;
+  let structured = catalogStructured;
+  let structuredSource = catalogStructured ? 'catalog_grounded' : null;
   let answerJson = null;
 
   if (!structured) {
-    const upstreamRecoStartedAt = Date.now();
     const query =
       `${prefix}` +
       buildAuroraProductRecommendationsQuery({
@@ -8784,7 +9020,6 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         logger?.warn({ err: err.message }, 'aurora bff: product reco upstream failed');
       }
     }
-    stampRecoTiming('upstream_reco_call', upstreamRecoStartedAt);
 
     const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
     const routine = contextObj ? contextObj.routine : null;
@@ -8838,19 +9073,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
       reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
       reco_upstream_timeout_hard_cap_ms: RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
-      reco_pdp_resolve_timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
-      reco_pdp_resolve_timeout_hard_cap_ms: RECO_PDP_RESOLVE_TIMEOUT_HARD_CAP_MS,
-      reco_pdp_offers_resolve_timeout_ms: RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS,
-      reco_pdp_offers_resolve_timeout_hard_cap_ms: RECO_PDP_OFFERS_RESOLVE_TIMEOUT_HARD_CAP_MS,
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
-      reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
-      reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
-      reco_skip_query_resolve_on_stable_failure: RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE,
-      reco_skip_query_resolve_on_stable_no_candidates: RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES,
       reco_local_fallback_chat_enabled: RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
-      reco_local_search_fallback_on_transient: RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
-      reco_catalog_transient_fallback_enabled: RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED,
-      reco_catalog_transient_fallback_applied: Boolean(catalogTransientFallbackStructured),
       reco_catalog_debug: catalogDebug,
       reco_pdp_fast_fallback_reason: pdpFastFallbackReasonCode,
     }
@@ -8860,7 +9084,6 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
   }
 
-  const normalizeStartedAt = Date.now();
   const norm = normalizeRecoGenerate(mapped);
   norm.payload = { ...norm.payload, intent: 'reco_products', profile: profileSummary || null };
   if (Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length) {
@@ -8886,11 +9109,9 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     }
     norm.payload = { ...norm.payload, recommendations: deduped };
   }
-  stampRecoTiming('normalize_and_dedup', normalizeStartedAt);
   let alternativesDebug = null;
 
   if (includeAlternatives) {
-    const alternativesStartedAt = Date.now();
     const alt = await enrichRecommendationsWithAlternatives({
       ctx,
       profileSummary,
@@ -8904,7 +9125,6 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     if (debug && alt && typeof alt === 'object' && alt.debug) {
       alternativesDebug = alt.debug;
     }
-    stampRecoTiming('alternatives_enrich', alternativesStartedAt);
   }
 
   const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
@@ -8995,14 +9215,11 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     });
   }
 
-  const pdpEnrichStartedAt = Date.now();
   const pdpOpenOut = await enrichRecommendationsWithPdpOpenContract({
     recommendations: norm.payload.recommendations,
     logger,
     fastExternalFallbackReasonCode: pdpFastFallbackReasonCode,
   });
-  stampRecoTiming('pdp_enrich', pdpEnrichStartedAt);
-  recoPipelineTiming.total = Math.max(0, Date.now() - recoPipelineStartedAt);
   norm.payload = {
     ...norm.payload,
     recommendations: pdpOpenOut.recommendations,
@@ -9011,20 +9228,51 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       pdp_open_path_stats: pdpOpenOut.path_stats,
       resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
       time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
-      reco_pipeline_timing_ms: recoPipelineTiming,
     },
   };
-  if (debug && upstreamDebug && typeof upstreamDebug === 'object') {
-    upstreamDebug.reco_pipeline_timing_ms = recoPipelineTiming;
-  }
 
   return { norm, upstreamDebug, alternativesDebug };
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
+  startPdpHotsetPrewarmLoop({ logger });
+
   app.get('/metrics', (req, res) => {
     res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
     return res.status(200).send(renderVisionMetricsPrometheus());
+  });
+
+  app.get('/v1/ops/pdp-prefetch/state', (req, res) => {
+    if (!AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasPdpHotsetPrewarmAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    return res.status(200).json({
+      ok: true,
+      data: getPdpPrefetchStateSnapshot(),
+    });
+  });
+
+  app.post('/v1/ops/pdp-prefetch/run', async (req, res) => {
+    if (!AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasPdpHotsetPrewarmAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    const reason = normalizePdpPrefetchReason(pickFirstTrimmed(req?.body?.reason, 'hotset_prewarm_manual'));
+    const result = await runPdpHotsetPrewarmBatch({
+      logger,
+      reason,
+      allowWhenDisabled: true,
+    });
+    return res.status(200).json({
+      ok: true,
+      result,
+      data: getPdpPrefetchStateSnapshot(),
+    });
   });
 
   app.post('/v1/auth/start', async (req, res) => {
@@ -9598,6 +9846,27 @@ function mountAuroraBffRoutes(app, { logger }) {
           events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
         });
         return res.status(400).json(envelope);
+      }
+
+      const incomingSession =
+        parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+          ? parsed.data.session
+          : null;
+      if (incomingSession) {
+        const sessionStateAsObject =
+          incomingSession.state && typeof incomingSession.state === 'object' && !Array.isArray(incomingSession.state)
+            ? incomingSession.state
+            : null;
+        const resumedState = resolveNextStateFromSessionPatch({
+          next_state:
+            typeof incomingSession.state === 'string'
+              ? incomingSession.state
+              : typeof incomingSession.next_state === 'string'
+                ? incomingSession.next_state
+                : '',
+          state: sessionStateAsObject,
+        });
+        if (resumedState) ctx.state = resumedState;
       }
 
       const identity = await resolveIdentity(req, ctx);
@@ -10931,6 +11200,18 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (gate.gated) {
         const prompt = buildDiagnosisPrompt(ctx.lang, gate.missing);
         const chips = buildDiagnosisChips(ctx.lang, gate.missing);
+        const sessionPatch = { next_state: 'S2_DIAGNOSIS' };
+        if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
+          const pendingFromGate =
+            gate.pending_clarification ||
+            buildPendingClarificationForGate({
+              language: ctx.lang,
+              missing: gate.missing,
+              message: 'recommend',
+              wants: 'recommendation',
+            });
+          if (pendingFromGate) emitPendingClarificationPatch(sessionPatch, pendingFromGate);
+        }
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(prompt),
           suggested_chips: chips,
@@ -10941,7 +11222,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: { reason: gate.reason, missing_fields: gate.missing, wants: 'recommendation', profile: profileSummary, recent_logs: recentLogs },
             },
           ],
-          session_patch: { next_state: 'S2_DIAGNOSIS' },
+          session_patch: sessionPatch,
           events: [makeEvent({ ...ctx, trigger_source: 'action' }, 'state_entered', { next_state: 'S2_DIAGNOSIS', reason: gate.reason })],
         });
         return res.json(envelope);
@@ -13288,6 +13569,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const offersPdpMeta = summarizeOfferPdpOpen(resolved);
+      schedulePdpCorePrefetchFromItems(resolved, {
+        logger,
+        reason: 'offers_resolved',
+      });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -14400,14 +14685,28 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (wantsProductRecommendations) {
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
+        const hardRequiredFields = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+        const hardRequiredMissing = hardRequiredFields.filter((field) =>
+          Array.isArray(profileMissing) ? profileMissing.includes(field) : false,
+        );
 
         // Diagnosis-first gate: if profile is incomplete, do NOT generate recommendations yet.
         // This applies regardless of the current state; otherwise users see weakly-related recos before core profile.
-        if (profileScore < 3) {
-          const required = Array.isArray(profileMissing) ? profileMissing : [];
+        if (hardRequiredMissing.length > 0) {
+          const required = hardRequiredMissing;
           const prompt = buildDiagnosisPrompt(ctx.lang, required);
           const chips = buildDiagnosisChips(ctx.lang, required);
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+          const sessionPatch = nextState ? { next_state: nextState } : {};
+          if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
+            const pendingFromGate = buildPendingClarificationForGate({
+              language: ctx.lang,
+              missing: required,
+              message,
+              wants: 'recommendation',
+            });
+            if (pendingFromGate) emitPendingClarificationPatch(sessionPatch, pendingFromGate);
+          }
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(prompt),
@@ -14425,7 +14724,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             ],
-            session_patch: nextState ? { next_state: nextState } : {},
+            session_patch: sessionPatch,
             events: [
               makeEvent(ctx, 'recos_requested', { explicit: true, gated: true, reason: 'diagnosis_first' }),
               makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first' }),
@@ -15470,30 +15769,91 @@ function mountAuroraBffRoutes(app, { logger }) {
         emitPendingClarificationPatch(sessionPatch, pendingClarificationFromUpstream);
       }
 
+      const assembledCards = [
+        ...(structuredForEnvelope && !structuredBlocked
+          ? [{
+            card_id: `structured_${ctx.request_id}`,
+            type: 'aurora_structured',
+            payload: structuredForEnvelope,
+          }]
+          : []),
+        ...derivedCards,
+        ...cardsForEnvelope.map((c, idx) => ({
+          card_id: c.card_id || `aurora_${ctx.request_id}_${idx}`,
+          type: c.type || 'aurora_card',
+          title: c.title,
+          payload: c.payload || c,
+          ...(Array.isArray(c.field_missing) ? { field_missing: c.field_missing } : {}),
+        })),
+        ...contextCard,
+        ...(fieldMissing.length
+          ? [{ card_id: `gate_${ctx.request_id}`, type: 'gate_notice', payload: {}, field_missing: fieldMissing }]
+          : []),
+      ];
+
+      const pendingForTemplate =
+        pendingClarificationPatchOverride !== undefined
+          ? pendingClarificationPatchOverride
+          : pendingClarificationFromUpstream || null;
+      const pendingCurrentNormId =
+        pendingForTemplate &&
+        typeof pendingForTemplate === 'object' &&
+        pendingForTemplate.current &&
+        typeof pendingForTemplate.current === 'object'
+          ? String(
+            pendingForTemplate.current.norm_id ||
+            pendingForTemplate.current.normId ||
+            pendingForTemplate.current.id ||
+            '',
+          ).trim()
+          : '';
+
+      const templateDecision = selectTemplate({
+        language: ctx.lang,
+        intent: routeHint && routeHint.route === 'env' ? 'weather_env' : null,
+        cards: assembledCards,
+        session_patch: sessionPatch,
+        pending_clarification: pendingForTemplate,
+      });
+      const templateRendered = renderAssistantMessage(templateDecision, {
+        language: ctx.lang,
+        assistant_message: { role: 'assistant', content: safeAnswer, format: 'markdown' },
+        cards: assembledCards,
+        session_patch: sessionPatch,
+        pending_clarification: pendingForTemplate,
+      });
+      if (templateRendered && templateRendered.applied) {
+        recordTemplateApplied({
+          templateId: templateDecision && templateDecision.id,
+          moduleName: templateDecision && templateDecision.module,
+          variant: templateDecision && templateDecision.variant,
+          source: 'chat',
+        });
+      } else {
+        recordTemplateFallback({
+          reason: templateRendered && templateRendered.reason ? templateRendered.reason : 'keep_existing',
+          moduleName: templateDecision && templateDecision.module,
+        });
+      }
+
+      const adaptedChips = adaptChips({
+        existingChips: suggestedChips,
+        maxChips: 10,
+        currentNormId: pendingCurrentNormId || null,
+      });
+      const finalAssistantText =
+        templateRendered && typeof templateRendered.content === 'string' && templateRendered.content.trim()
+          ? templateRendered.content
+          : safeAnswer;
+      const finalAssistantFormat =
+        templateRendered && templateRendered.format === 'text'
+          ? 'text'
+          : 'markdown';
+
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeChatAssistantMessage(safeAnswer, 'markdown'),
-        suggested_chips: suggestedChips,
-        cards: [
-          ...(structuredForEnvelope && !structuredBlocked
-            ? [{
-              card_id: `structured_${ctx.request_id}`,
-              type: 'aurora_structured',
-              payload: structuredForEnvelope,
-            }]
-            : []),
-          ...derivedCards,
-          ...cardsForEnvelope.map((c, idx) => ({
-            card_id: c.card_id || `aurora_${ctx.request_id}_${idx}`,
-            type: c.type || 'aurora_card',
-            title: c.title,
-            payload: c.payload || c,
-            ...(Array.isArray(c.field_missing) ? { field_missing: c.field_missing } : {}),
-          })),
-          ...contextCard,
-          ...(fieldMissing.length
-            ? [{ card_id: `gate_${ctx.request_id}`, type: 'gate_notice', payload: {}, field_missing: fieldMissing }]
-            : []),
-        ],
+        assistant_message: makeChatAssistantMessage(finalAssistantText, finalAssistantFormat),
+        suggested_chips: adaptedChips.chips,
+        cards: assembledCards,
         session_patch: sessionPatch,
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'chat_reply' }),
@@ -15545,6 +15905,8 @@ const __internal = {
   looksLikeGreetingAlready,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
+  getPdpPrefetchStateSnapshot,
+  runPdpHotsetPrewarmBatch,
   resolveRecoPdpByStableIds,
   maybeInferSkinMaskForPhotoModules,
   __setInferSkinMaskOnFaceCropForTest(fn) {

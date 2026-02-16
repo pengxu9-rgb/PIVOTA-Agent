@@ -82,6 +82,12 @@ const profileContextMissingCounter = new Map();
 const sessionPatchProfileEmittedCounter = new Map();
 const upstreamCallsCounter = new Map();
 const upstreamLatencyByPath = new Map();
+const templateAppliedCounter = new Map();
+const templateFallbackCounter = new Map();
+const antiTemplateViolationCounter = new Map();
+const actionableReplyCounter = new Map();
+let chipsTruncatedCount = 0;
+let fieldMissingAddedCount = 0;
 let modulesInteractionCount = 0;
 let actionClickCount = 0;
 let actionCopyCount = 0;
@@ -319,6 +325,34 @@ function normalizeUpstreamPath(path) {
 
 function normalizeUpstreamStatus(status) {
   return cleanMetricToken(status, 'unknown');
+}
+
+function normalizeTemplateModule(moduleName) {
+  return cleanMetricToken(moduleName, 'unknown');
+}
+
+function normalizeTemplateVariant(variant) {
+  return cleanMetricToken(variant, 'unknown');
+}
+
+function normalizeTemplateId(templateId) {
+  return cleanMetricToken(templateId, 'unknown');
+}
+
+function normalizeTemplateSource(source) {
+  return cleanMetricToken(source, 'unknown');
+}
+
+function normalizeTemplateFallbackReason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizeAntiTemplateRule(rule) {
+  return cleanMetricToken(rule, 'unknown');
+}
+
+function normalizeBoolLabel(value) {
+  return value ? 'true' : 'false';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -565,6 +599,66 @@ function recordUpstreamCall({ path, status } = {}) {
     upstreamCallsCounter,
     { path: normalizeUpstreamPath(path), status: normalizeUpstreamStatus(status) },
     1,
+  );
+}
+
+function recordTemplateApplied({ templateId, moduleName, variant, source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    templateAppliedCounter,
+    {
+      template_id: normalizeTemplateId(templateId),
+      module: normalizeTemplateModule(moduleName),
+      variant: normalizeTemplateVariant(variant),
+      source: normalizeTemplateSource(source),
+    },
+    amount,
+  );
+}
+
+function recordTemplateFallback({ reason, moduleName, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    templateFallbackCounter,
+    {
+      reason: normalizeTemplateFallbackReason(reason),
+      module: normalizeTemplateModule(moduleName),
+    },
+    amount,
+  );
+}
+
+function recordChipsTruncated({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  chipsTruncatedCount += amount;
+}
+
+function recordFieldMissingAdded({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  fieldMissingAddedCount += amount;
+}
+
+function recordAntiTemplateViolation({ rule, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    antiTemplateViolationCounter,
+    { rule: normalizeAntiTemplateRule(rule) },
+    amount,
+  );
+}
+
+function recordActionableReply({ actionable, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    actionableReplyCounter,
+    { actionable: normalizeBoolLabel(Boolean(actionable)) },
+    amount,
   );
 }
 
@@ -1214,6 +1308,51 @@ function renderVisionMetricsPrometheus() {
     lines.push(`upstream_latency_ms_count{path="${escapePromValue(path)}"} ${state.count}`);
   }
 
+  lines.push('# HELP template_applied_total Total number of responses where template rendering was applied.');
+  lines.push('# TYPE template_applied_total counter');
+  renderCounter(lines, 'template_applied_total', templateAppliedCounter);
+
+  lines.push('# HELP template_fallback_total Total number of responses that kept existing content via template fallback path.');
+  lines.push('# TYPE template_fallback_total counter');
+  renderCounter(lines, 'template_fallback_total', templateFallbackCounter);
+
+  lines.push('# HELP chips_truncated_count Total number of chips truncated by response budget.');
+  lines.push('# TYPE chips_truncated_count counter');
+  lines.push(`chips_truncated_count ${chipsTruncatedCount}`);
+
+  lines.push('# HELP field_missing_added_count Total number of field_missing rows auto-added by envelope enforcer.');
+  lines.push('# TYPE field_missing_added_count counter');
+  lines.push(`field_missing_added_count ${fieldMissingAddedCount}`);
+
+  lines.push('# HELP anti_template_violation_count Total anti-template violations detected in response validation.');
+  lines.push('# TYPE anti_template_violation_count counter');
+  renderCounter(lines, 'anti_template_violation_count', antiTemplateViolationCounter);
+
+  lines.push('# HELP actionable_reply_total Total responses classified as actionable=true|false.');
+  lines.push('# TYPE actionable_reply_total counter');
+  renderCounter(lines, 'actionable_reply_total', actionableReplyCounter);
+
+  const templateAppliedTotal = Array.from(templateAppliedCounter.values()).reduce((acc, v) => acc + Number(v || 0), 0);
+  const templateFallbackTotal = Array.from(templateFallbackCounter.values()).reduce((acc, v) => acc + Number(v || 0), 0);
+  const templateAttempts = templateAppliedTotal + templateFallbackTotal;
+  const actionableTrue = Array.from(actionableReplyCounter.entries())
+    .map(([key, value]) => ({ labels: parseLabelsKey(key), value: Number(value || 0) }))
+    .filter((entry) => entry.labels.actionable === 'true')
+    .reduce((acc, entry) => acc + entry.value, 0);
+  const actionableTotal = Array.from(actionableReplyCounter.values()).reduce((acc, v) => acc + Number(v || 0), 0);
+
+  lines.push('# HELP template_applied_rate template_applied_total / (template_applied_total + template_fallback_total).');
+  lines.push('# TYPE template_applied_rate gauge');
+  lines.push(`template_applied_rate ${templateAttempts > 0 ? templateAppliedTotal / templateAttempts : 0}`);
+
+  lines.push('# HELP template_fallback_rate template_fallback_total / (template_applied_total + template_fallback_total).');
+  lines.push('# TYPE template_fallback_rate gauge');
+  lines.push(`template_fallback_rate ${templateAttempts > 0 ? templateFallbackTotal / templateAttempts : 0}`);
+
+  lines.push('# HELP actionable_reply_rate actionable=true / total actionable classifications.');
+  lines.push('# TYPE actionable_reply_rate gauge');
+  lines.push(`actionable_reply_rate ${actionableTotal > 0 ? actionableTrue / actionableTotal : 0}`);
+
   lines.push('# HELP modules_interaction_total Total UI interactions related to photo modules.');
   lines.push('# TYPE modules_interaction_total counter');
   lines.push(`modules_interaction_total ${modulesInteractionCount}`);
@@ -1323,6 +1462,12 @@ function resetVisionMetrics() {
   sessionPatchProfileEmittedCounter.clear();
   upstreamCallsCounter.clear();
   upstreamLatencyByPath.clear();
+  templateAppliedCounter.clear();
+  templateFallbackCounter.clear();
+  antiTemplateViolationCounter.clear();
+  actionableReplyCounter.clear();
+  chipsTruncatedCount = 0;
+  fieldMissingAddedCount = 0;
   modulesInteractionCount = 0;
   actionClickCount = 0;
   actionCopyCount = 0;
@@ -1393,6 +1538,12 @@ function snapshotVisionMetrics() {
     sessionPatchProfileEmitted: Array.from(sessionPatchProfileEmittedCounter.entries()),
     upstreamCalls: Array.from(upstreamCallsCounter.entries()),
     upstreamLatencyPaths: Array.from(upstreamLatencyByPath.keys()),
+    templateApplied: Array.from(templateAppliedCounter.entries()),
+    templateFallback: Array.from(templateFallbackCounter.entries()),
+    antiTemplateViolation: Array.from(antiTemplateViolationCounter.entries()),
+    actionableReply: Array.from(actionableReplyCounter.entries()),
+    chipsTruncatedCount,
+    fieldMissingAddedCount,
     modulesInteractionCount,
     actionClickCount,
     actionCopyCount,
@@ -1423,6 +1574,12 @@ module.exports = {
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
+  recordTemplateApplied,
+  recordTemplateFallback,
+  recordChipsTruncated,
+  recordFieldMissingAdded,
+  recordAntiTemplateViolation,
+  recordActionableReply,
   observeUpstreamLatency,
   recordVisionDecision,
   observeVisionLatency,

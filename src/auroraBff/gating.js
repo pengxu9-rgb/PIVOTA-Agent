@@ -162,6 +162,131 @@ function stateChangeAllowed(triggerSource) {
   return triggerSource === 'chip' || triggerSource === 'action' || triggerSource === 'text_explicit';
 }
 
+const CORE_PROFILE_FIELDS = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+
+function orderMissingFields(missing) {
+  const list = Array.isArray(missing) ? missing.filter(Boolean) : [];
+  const unique = [...new Set(list)];
+  const known = CORE_PROFILE_FIELDS.filter((k) => unique.includes(k));
+  const rest = unique.filter((k) => !CORE_PROFILE_FIELDS.includes(k));
+  return [...known, ...rest];
+}
+
+function pickCurrentMissingField(missing) {
+  const ordered = orderMissingFields(missing);
+  return ordered[0] || null;
+}
+
+function buildDiagnosisQuestionMeta(language, field) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+
+  if (field === 'skinType') {
+    return {
+      field,
+      question:
+        lang === 'CN'
+          ? '先确认一个问题：你的肤质更接近哪一类？'
+          : 'One quick check first: which skin type fits you best?',
+      options: [
+        { value: 'oily', label: lang === 'CN' ? '油性' : 'Oily' },
+        { value: 'dry', label: lang === 'CN' ? '干性' : 'Dry' },
+        { value: 'combination', label: lang === 'CN' ? '混合' : 'Combination' },
+        { value: 'normal', label: lang === 'CN' ? '中性' : 'Normal' },
+        { value: 'sensitive', label: lang === 'CN' ? '敏感' : 'Sensitive' },
+      ],
+      unsure: { value: 'unknown', label: lang === 'CN' ? '不确定' : 'Not sure' },
+      patchKey: 'skinType',
+    };
+  }
+
+  if (field === 'sensitivity') {
+    return {
+      field,
+      question:
+        lang === 'CN'
+          ? '再确认一个：你的敏感程度大概是？'
+          : 'One more: how sensitive is your skin?',
+      options: [
+        { value: 'low', label: lang === 'CN' ? '低敏' : 'Low' },
+        { value: 'medium', label: lang === 'CN' ? '中敏' : 'Medium' },
+        { value: 'high', label: lang === 'CN' ? '高敏' : 'High' },
+      ],
+      unsure: { value: 'unknown', label: lang === 'CN' ? '不确定' : 'Not sure' },
+      patchKey: 'sensitivity',
+    };
+  }
+
+  if (field === 'barrierStatus') {
+    return {
+      field,
+      question:
+        lang === 'CN'
+          ? '当前屏障状态更接近哪种？'
+          : 'How would you describe your barrier status lately?',
+      options: [
+        { value: 'healthy', label: lang === 'CN' ? '稳定' : 'Healthy' },
+        { value: 'impaired', label: lang === 'CN' ? '不稳定/易刺痛' : 'Irritated' },
+      ],
+      unsure: { value: 'unknown', label: lang === 'CN' ? '不确定' : 'Not sure' },
+      patchKey: 'barrierStatus',
+    };
+  }
+
+  if (field === 'goals') {
+    return {
+      field,
+      question:
+        lang === 'CN'
+          ? '你现在最想优先改善哪个目标？'
+          : 'What is your top skin goal right now?',
+      options: [
+        { value: 'acne', label: lang === 'CN' ? '控痘' : 'Acne' },
+        { value: 'redness', label: lang === 'CN' ? '泛红/敏感' : 'Redness' },
+        { value: 'dark_spots', label: lang === 'CN' ? '淡斑' : 'Dark spots' },
+        { value: 'dehydration', label: lang === 'CN' ? '保湿补水' : 'Hydration' },
+        { value: 'pores', label: lang === 'CN' ? '毛孔' : 'Pores' },
+        { value: 'wrinkles', label: lang === 'CN' ? '抗老' : 'Anti-aging' },
+      ],
+      unsure: { value: 'unknown', label: lang === 'CN' ? '不确定' : 'Not sure' },
+      patchKey: 'goals',
+    };
+  }
+
+  return null;
+}
+
+function buildPendingClarificationForGate({ language, missing, message, wants }) {
+  const ordered = orderMissingFields(missing);
+  const current = pickCurrentMissingField(ordered);
+  if (!current) return null;
+
+  const queue = ordered
+    .filter((field) => field !== current)
+    .map((field) => {
+      const meta = buildDiagnosisQuestionMeta(language, field);
+      if (!meta) return null;
+      const labels = meta.options.map((opt) => opt.label);
+      if (meta.unsure && meta.unsure.label && !labels.includes(meta.unsure.label)) labels.push(meta.unsure.label);
+      return {
+        id: field,
+        question: meta.question,
+        options: labels,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    v: 1,
+    flow_id: `pc_gate_${Date.now().toString(36)}`,
+    created_at_ms: Date.now(),
+    resume_user_text: String(message || '').trim() || String(wants || 'recommendation'),
+    step_index: 0,
+    current: { id: current, norm_id: current },
+    queue,
+    history: [],
+  };
+}
+
 function shouldDiagnosisGate({ message, triggerSource, profile }) {
   const wantsRecs = looksLikeRecommendationRequest(message);
   const wantsFit = looksLikeSuitabilityRequest(message);
@@ -169,124 +294,83 @@ function shouldDiagnosisGate({ message, triggerSource, profile }) {
   const intentTriggersGate = wantsRecs || wantsFit || wantsDiag;
 
   const { score, missing } = profileCompleteness(profile);
+  const orderedMissing = orderMissingFields(missing);
+  const recoMissing = CORE_PROFILE_FIELDS.filter((field) => orderedMissing.includes(field));
+
   // For explicit "start diagnosis", require the full 4 core dimensions.
   // For recos/fit-check, we only require at least 3 dimensions.
-  const missingEnough = wantsDiag ? score < 4 : score < 3;
+  const missingEnough = wantsRecs ? recoMissing.length > 0 : wantsDiag ? score < 4 : score < 3;
 
   if (!intentTriggersGate || !missingEnough) {
-    return { gated: false, missing };
+    return { gated: false, missing: orderedMissing };
   }
+
+  const wants = wantsRecs ? 'recommendation' : wantsFit ? 'fit_check' : 'diagnosis';
+  const effectiveMissing = wantsRecs ? recoMissing : orderedMissing;
+  const current = pickCurrentMissingField(effectiveMissing);
 
   // Gate even if the user is explicit: we can proceed only after minimal profile.
   return {
     gated: true,
     reason: wantsDiag && !wantsRecs && !wantsFit ? 'diagnosis_start' : 'diagnosis_first',
-    missing,
-    wants: wantsRecs ? 'recommendation' : wantsFit ? 'fit_check' : 'diagnosis',
+    missing: effectiveMissing,
+    current,
+    wants,
     triggerSource,
+    pending_clarification: wantsRecs
+      ? buildPendingClarificationForGate({
+          language: profile && profile.lang_pref === 'CN' ? 'CN' : 'EN',
+          missing: effectiveMissing,
+          message,
+          wants,
+        })
+      : null,
   };
 }
 
 function buildDiagnosisPrompt(language, missing) {
   const lang = language === 'CN' ? 'CN' : 'EN';
-  const missingSet = new Set(missing || []);
-
-  const linesEN = [];
-  const linesCN = [];
-
-  linesEN.push("I can help — but first I need a quick skin profile so I don't guess.");
-  linesCN.push('我可以帮你，但我需要先做一个极简肤况确认，避免瞎猜。');
-
-  if (missingSet.has('skinType')) {
-    linesEN.push('1) Your skin type?');
-    linesCN.push('1）你的肤质是？');
+  const current = pickCurrentMissingField(missing);
+  const meta = buildDiagnosisQuestionMeta(lang, current);
+  const prefix =
+    lang === 'CN'
+      ? '我可以帮你，但我需要先做一个极简肤况确认，避免瞎猜。'
+      : "I can help — but first I need a quick skin profile so I don't guess.";
+  if (!meta) {
+    return prefix;
   }
-  if (missingSet.has('sensitivity')) {
-    linesEN.push('2) How sensitive is your skin (low/medium/high)?');
-    linesCN.push('2）你的敏感程度（低/中/高）？');
-  }
-  if (missingSet.has('barrierStatus')) {
-    linesEN.push('3) Barrier status lately (healthy / irritated / not sure)?');
-    linesCN.push('3）最近屏障状态（稳定/泛红刺痛/不确定）？');
-  }
-  if (missingSet.has('goals')) {
-    linesEN.push('4) Top goal right now?');
-    linesCN.push('4）你当前最想改善的目标是？');
-  }
-
-  return (lang === 'CN' ? linesCN : linesEN).join('\n');
+  return `${prefix}\n${meta.question}`;
 }
 
 function buildDiagnosisChips(language, missing) {
   const lang = language === 'CN' ? 'CN' : 'EN';
-  const missingSet = new Set(missing || []);
+  const current = pickCurrentMissingField(missing);
+  const meta = buildDiagnosisQuestionMeta(lang, current);
   const chips = [];
 
-  if (missingSet.has('skinType')) {
-    const options = [
-      ['oily', lang === 'CN' ? '油性' : 'Oily'],
-      ['dry', lang === 'CN' ? '干性' : 'Dry'],
-      ['combination', lang === 'CN' ? '混合' : 'Combination'],
-      ['normal', lang === 'CN' ? '中性' : 'Normal'],
-      ['sensitive', lang === 'CN' ? '敏感' : 'Sensitive'],
-    ];
-    for (const [value, label] of options) {
+  if (meta) {
+    for (const option of meta.options) {
+      const patch =
+        meta.patchKey === 'goals'
+          ? { goals: [option.value] }
+          : { [meta.patchKey]: option.value };
       chips.push({
-        chip_id: `profile.skinType.${value}`,
-        label,
+        chip_id: `profile.${meta.patchKey}.${option.value}`,
+        label: option.label,
         kind: 'quick_reply',
-        data: { profile_patch: { skinType: value } },
+        data: { norm_id: meta.patchKey, value: option.value, profile_patch: patch },
       });
     }
-  }
-
-  if (missingSet.has('sensitivity')) {
-    const options = [
-      ['low', lang === 'CN' ? '敏感：低' : 'Sensitivity: low'],
-      ['medium', lang === 'CN' ? '敏感：中' : 'Sensitivity: medium'],
-      ['high', lang === 'CN' ? '敏感：高' : 'Sensitivity: high'],
-    ];
-    for (const [value, label] of options) {
+    if (meta.unsure && meta.unsure.value) {
+      const unsurePatch =
+        meta.patchKey === 'goals'
+          ? { goals: [meta.unsure.value] }
+          : { [meta.patchKey]: meta.unsure.value };
       chips.push({
-        chip_id: `profile.sensitivity.${value}`,
-        label,
+        chip_id: `profile.${meta.patchKey}.${meta.unsure.value}`,
+        label: meta.unsure.label,
         kind: 'quick_reply',
-        data: { profile_patch: { sensitivity: value } },
-      });
-    }
-  }
-
-  if (missingSet.has('barrierStatus')) {
-    const options = [
-      ['healthy', lang === 'CN' ? '屏障：稳定' : 'Barrier: healthy'],
-      ['impaired', lang === 'CN' ? '屏障：不稳定/刺痛' : 'Barrier: irritated'],
-      ['unknown', lang === 'CN' ? '屏障：不确定' : 'Barrier: not sure'],
-    ];
-    for (const [value, label] of options) {
-      chips.push({
-        chip_id: `profile.barrierStatus.${value}`,
-        label,
-        kind: 'quick_reply',
-        data: { profile_patch: { barrierStatus: value } },
-      });
-    }
-  }
-
-  if (missingSet.has('goals')) {
-    const options = [
-      ['acne', lang === 'CN' ? '目标：控痘' : 'Goal: acne'],
-      ['redness', lang === 'CN' ? '目标：泛红/敏感' : 'Goal: redness'],
-      ['dark_spots', lang === 'CN' ? '目标：淡斑' : 'Goal: dark spots'],
-      ['dehydration', lang === 'CN' ? '目标：保湿补水' : 'Goal: hydration'],
-      ['pores', lang === 'CN' ? '目标：毛孔' : 'Goal: pores'],
-      ['wrinkles', lang === 'CN' ? '目标：抗老' : 'Goal: anti-aging'],
-    ];
-    for (const [value, label] of options) {
-      chips.push({
-        chip_id: `profile.goals.${value}`,
-        label,
-        kind: 'quick_reply',
-        data: { profile_patch: { goals: [value] } },
+        data: { norm_id: meta.patchKey, value: meta.unsure.value, profile_patch: unsurePatch },
       });
     }
   }
@@ -326,5 +410,6 @@ module.exports = {
   shouldDiagnosisGate,
   buildDiagnosisPrompt,
   buildDiagnosisChips,
+  buildPendingClarificationForGate,
   stripRecommendationCards,
 };
