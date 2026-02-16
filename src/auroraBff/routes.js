@@ -82,6 +82,7 @@ const {
   renderAssistantMessage,
   adaptChips,
 } = require('./templateSystem');
+const { applyReplyTemplates } = require('./replyTemplates');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runGeminiShadowVerify } = require('./diagVerify');
@@ -13697,6 +13698,15 @@ function mountAuroraBffRoutes(app, { logger }) {
   app.post('/v1/chat', async (req, res) => {
     const parsed = V1ChatRequestSchema.safeParse(req.body || {});
     const ctx = buildRequestContext(req, parsed.success ? parsed.data : req.body || {});
+    const templateCtx = {
+      ...ctx,
+      accept_language: String(req.get('Accept-Language') || req.get('accept-language') || '').trim(),
+    };
+    const sendChatEnvelope = (envelope, statusCode = 200) => {
+      const normalized = applyReplyTemplates({ envelope, ctx: templateCtx });
+      if (statusCode >= 400) return res.status(statusCode).json(normalized);
+      return res.json(normalized);
+    };
 
     try {
       requireAuroraUid(ctx);
@@ -13708,7 +13718,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
         });
-        return res.status(400).json(envelope);
+        return sendChatEnvelope(envelope, 400);
       }
 
       const identity = await resolveIdentity(req, ctx);
@@ -13842,7 +13852,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               session_patch: {},
               events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: 'TEXT_EXPLICIT_NOT_ALLOWED' })],
             });
-            return res.status(400).json(envelope);
+            return sendChatEnvelope(envelope, 400);
           }
         }
 
@@ -13880,7 +13890,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             session_patch: {},
             events: [makeEvent(ctx, 'error', { code: 'STATE_TRANSITION_REJECTED', reason: validation.reason })],
           });
-          return res.status(400).json(envelope);
+          return sendChatEnvelope(envelope, 400);
         }
 
         agentState = validation.next_state;
@@ -14003,7 +14013,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             session_patch: sessionPatch,
             events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'pending_clarification_step' })],
           });
-          return res.json(envelope);
+          return sendChatEnvelope(envelope);
         }
 
         pendingClarificationPatchOverride = null;
@@ -14201,7 +14211,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             ],
           });
-          return res.json(envelope);
+          return sendChatEnvelope(envelope);
         }
       }
 
@@ -14269,7 +14279,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       // Local compatibility/conflict short-circuit: return routine_simulation + conflict_heatmap without upstream.
@@ -14347,7 +14357,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
             events,
           });
-          return res.json(envelope);
+          return sendChatEnvelope(envelope);
         }
       }
 
@@ -14382,7 +14392,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             session_patch: nextState ? { next_state: nextState } : {},
             events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_start' })],
           });
-          return res.json(envelope);
+          return sendChatEnvelope(envelope);
         }
 
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
@@ -14418,7 +14428,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: nextState ? { next_state: nextState, profile: summarizeProfileForContext(profile) } : { profile: summarizeProfileForContext(profile) },
           events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_profile_complete' })],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, parsed.data.action);
@@ -14440,7 +14450,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_science_clarify' })],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       if (isBudgetOptimizationEntryAction(actionId) && allowRecoCards) {
@@ -14457,7 +14467,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
           events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_optimization_optional' })],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       // Phase 0 gate: Diagnosis-first (no recos/offers before minimal profile).
@@ -14518,7 +14528,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               session_patch: {},
               events: [],
             });
-            return res.json(envelope);
+            return sendChatEnvelope(envelope);
           }
 
           if (!rawBudget) {
@@ -14535,7 +14545,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
               events: [makeEvent(ctx, 'state_entered', { next_state: 'S6_BUDGET', reason: 'budget_optimization_optional' })],
             });
-            return res.json(envelope);
+            return sendChatEnvelope(envelope);
           }
 
           if (!profile || profile.budgetTier !== rawBudget) {
@@ -14582,7 +14592,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               makeEvent(ctx, 'recos_requested', { explicit: true }),
             ],
           });
-          return res.json(envelope);
+          return sendChatEnvelope(envelope);
         }
       }
 
@@ -14636,7 +14646,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             makeEvent(ctx, 'recos_requested', { explicit: true }),
           ],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       const budgetClarificationAction =
@@ -14702,7 +14712,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'stale_budget_chip_ignored' })],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
@@ -14769,7 +14779,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first' }),
             ],
           });
-          return res.json(envelope);
+          return sendChatEnvelope(envelope);
         }
 
         const refinementMissing = (Array.isArray(profileMissing) ? profileMissing : []).filter(
@@ -14853,7 +14863,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             makeEvent(ctx, 'recos_requested', { explicit: true }),
           ],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
@@ -14909,7 +14919,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_progress' }),
             ],
           });
-          return res.json(envelope);
+          return sendChatEnvelope(envelope);
         }
 
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
@@ -14951,7 +14961,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: { profile: profileSummaryForPatch },
           events: [makeEvent(ctx, 'profile_saved', { fields: Object.keys(appliedProfilePatch) })],
         });
-        return res.json(envelope);
+        return sendChatEnvelope(envelope);
       }
 
       let upstream = null;
@@ -15900,7 +15910,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(heatmapImpressionEvent ? [heatmapImpressionEvent] : []),
         ],
       });
-      return res.json(envelope);
+      return sendChatEnvelope(envelope);
     } catch (err) {
       const status = err.status || 500;
       logger?.error({ err: err.message, status }, 'aurora bff chat failed');
@@ -15911,7 +15921,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: {},
         events: [makeEvent(ctx, 'error', { code: err.code || 'CHAT_FAILED' })],
       });
-      return res.status(status).json(envelope);
+      return sendChatEnvelope(envelope, status);
     }
   });
 }

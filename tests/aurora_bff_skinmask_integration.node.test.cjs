@@ -35,6 +35,18 @@ function buildDiagnosisInternalFixture() {
   };
 }
 
+function buildDiagnosisInternalWithFaceCropFixture() {
+  return {
+    ...buildDiagnosisInternalFixture(),
+    face_crop: {
+      coord_space: 'orig_px_v1',
+      bbox_px: { x: 108, y: 120, w: 864, h: 1200 },
+      orig_size_px: { w: 1080, h: 1440 },
+      render_size_px_hint: { w: 384, h: 512 },
+    },
+  };
+}
+
 function getModuleMask(payload, moduleId, gridSize = 64) {
   const row = Array.isArray(payload && payload.modules) ? payload.modules.find((item) => item.module_id === moduleId) : null;
   assert.ok(row, `module ${moduleId} should exist`);
@@ -43,6 +55,23 @@ function getModuleMask(payload, moduleId, gridSize = 64) {
   const decoded = decodeRleBinary(row.mask_rle_norm, gridSize * gridSize);
   assert.ok(decoded instanceof Uint8Array);
   return decoded;
+}
+
+function getModuleBox(payload, moduleId) {
+  const row = Array.isArray(payload && payload.modules) ? payload.modules.find((item) => item.module_id === moduleId) : null;
+  assert.ok(row && row.box, `module ${moduleId} should include box`);
+  return row.box;
+}
+
+function unionBoxesMask(boxes, gridSize = 64) {
+  const out = new Uint8Array(gridSize * gridSize);
+  for (const box of Array.isArray(boxes) ? boxes : []) {
+    const mask = bboxNormToMask(box, gridSize, gridSize);
+    for (let i = 0; i < out.length; i += 1) {
+      if (mask[i]) out[i] = 1;
+    }
+  }
+  return out;
 }
 
 test('skinmask intersection reduces leakage while preserving coverage and valid geometry', () => {
@@ -109,5 +138,56 @@ test('skinmask intersection reduces leakage while preserving coverage and valid 
   const geometryCounts = Array.isArray(on.metrics && on.metrics.geometryDropCounts) ? on.metrics.geometryDropCounts : [];
   for (const row of geometryCounts) {
     assert.ok(Number(row.count) >= 0);
+  }
+});
+
+test('dynamic skinmask picks center face component and keeps chin below mouth band', () => {
+  const analysis = buildAnalysisFixture();
+  const diagnosisInternal = buildDiagnosisInternalWithFaceCropFixture();
+  const skinMaskGrid = 64;
+  const disjointFaceLike = unionBoxesMask(
+    [
+      { x: 0.02, y: 0.08, w: 0.28, h: 0.84 },
+      { x: 0.45, y: 0.09, w: 0.3, h: 0.8 },
+    ],
+    skinMaskGrid,
+  );
+  const skinMaskPayload = {
+    mask_grid: skinMaskGrid,
+    mask_rle_norm: encodeRleBinary(disjointFaceLike),
+  };
+
+  const built = buildPhotoModulesCard({
+    requestId: 'skinmask_multi_component_center_pick',
+    analysis,
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal,
+    language: 'EN',
+    ingredientRecEnabled: false,
+    productRecEnabled: false,
+    skinMask: skinMaskPayload,
+    internalTestMode: true,
+  });
+  assert.ok(built && built.card && built.card.payload);
+  const payload = built.card.payload;
+  assert.ok(payload.internal_debug);
+  assert.equal(payload.internal_debug.module_box_mode, 'dynamic_skinmask');
+  assert.equal(payload.internal_debug.module_box_dynamic_applied, true);
+  assert.equal(payload.internal_debug.face_oval_mask_source, 'skinmask_component');
+  assert.ok(Number(payload.internal_debug.face_oval_component_count) >= 2);
+
+  const anchors = payload.internal_debug.module_box_anchors || {};
+  assert.ok(anchors.face_center && Number(anchors.face_center.x) > 0.42);
+
+  const noseBox = getModuleBox(payload, 'nose');
+  const chinBox = getModuleBox(payload, 'chin');
+  const noseCenterX = Number(noseBox.x) + Number(noseBox.w) / 2;
+  assert.ok(noseCenterX > 0.42, `nose should stay on center component, got x=${noseCenterX}`);
+  assert.ok(Number(chinBox.y) > Number(noseBox.y) + (Number(noseBox.h) * 0.65));
+
+  const mouthY = Number(anchors.mouth_row && anchors.mouth_row.y);
+  if (Number.isFinite(mouthY)) {
+    assert.ok(Number(chinBox.y) >= mouthY + 0.02, `chin should be below mouth anchor, chinY=${chinBox.y}, mouthY=${mouthY}`);
   }
 });

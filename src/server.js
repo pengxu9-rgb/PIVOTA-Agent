@@ -683,99 +683,6 @@ function snapshotResolveProductGroupCacheStats() {
   };
 }
 
-// get_pdp_v2 hot cache (short TTL, response-level, designed for cold-start jitter smoothing).
-const PDP_V2_CORE_HOT_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
-const PDP_V2_CORE_HOT_CACHE_METRICS = {
-  hits: 0,
-  misses: 0,
-  sets: 0,
-  evictions: 0,
-  bypasses: 0,
-};
-
-function buildPdpV2CoreHotCacheKey(args) {
-  const include = Array.isArray(args?.include)
-    ? Array.from(
-        new Set(
-          args.include
-            .map((item) => String(item || '').trim().toLowerCase())
-            .filter(Boolean),
-        ),
-      ).sort()
-    : [];
-  return JSON.stringify({
-    product_id: String(args?.productId || '').trim(),
-    merchant_id: String(args?.merchantId || '').trim(),
-    variant_id: String(args?.variantId || '').trim(),
-    offer_id: String(args?.offerId || '').trim(),
-    subject_type: String(args?.subjectType || '').trim(),
-    subject_id: String(args?.subjectId || '').trim(),
-    include,
-    has_checkout_token: args?.hasCheckoutToken === true,
-  });
-}
-
-function getPdpV2CoreHotCacheEntry(cacheKey) {
-  const key = String(cacheKey || '');
-  if (!key) return null;
-  const hit = PDP_V2_CORE_HOT_CACHE.get(key);
-  if (!hit) {
-    PDP_V2_CORE_HOT_CACHE_METRICS.misses += 1;
-    return null;
-  }
-  if (hit.expiresAtMs && hit.expiresAtMs < Date.now()) {
-    PDP_V2_CORE_HOT_CACHE.delete(key);
-    PDP_V2_CORE_HOT_CACHE_METRICS.misses += 1;
-    return null;
-  }
-  PDP_V2_CORE_HOT_CACHE_METRICS.hits += 1;
-  return hit;
-}
-
-function setPdpV2CoreHotCacheEntry(cacheKey, value, ttlMs = PDP_V2_CORE_HOT_CACHE_TTL_MS) {
-  const key = String(cacheKey || '');
-  if (!key) return;
-
-  if (PDP_V2_CORE_HOT_CACHE.size >= PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES) {
-    const overflow = PDP_V2_CORE_HOT_CACHE.size - PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES + 1;
-    let removed = 0;
-    for (const existingKey of PDP_V2_CORE_HOT_CACHE.keys()) {
-      PDP_V2_CORE_HOT_CACHE.delete(existingKey);
-      removed += 1;
-      if (removed >= overflow) break;
-    }
-    if (removed > 0) PDP_V2_CORE_HOT_CACHE_METRICS.evictions += removed;
-  }
-
-  const ttl = Math.max(1000, Number(ttlMs) || PDP_V2_CORE_HOT_CACHE_TTL_MS);
-  PDP_V2_CORE_HOT_CACHE_METRICS.sets += 1;
-  PDP_V2_CORE_HOT_CACHE.set(key, {
-    value: safeCloneJson(value),
-    storedAtMs: Date.now(),
-    expiresAtMs: Date.now() + ttl,
-  });
-}
-
-function clonePdpV2CachedResponse(value, gatewayRequestId) {
-  const cloned = safeCloneJson(value);
-  if (!cloned || typeof cloned !== 'object') return cloned;
-  return {
-    ...cloned,
-    request_id: gatewayRequestId,
-    generated_at: new Date().toISOString(),
-  };
-}
-
-function snapshotPdpV2CoreHotCacheStats() {
-  return {
-    enabled: PDP_V2_CORE_HOT_CACHE_ENABLED,
-    ttl_ms: PDP_V2_CORE_HOT_CACHE_TTL_MS,
-    max_entries: PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES,
-    size: PDP_V2_CORE_HOT_CACHE.size,
-    ...PDP_V2_CORE_HOT_CACHE_METRICS,
-  };
-}
-
 // PDP optional-module cache/singleflight (reviews + similar):
 // reduces repeated upstream fan-out when clients quickly reopen/switch PDPs.
 const PDP_REVIEW_SUMMARY_CACHE_ENABLED =
@@ -7806,35 +7713,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		            'product_ref.product_id is required unless you provide product_ref.offer_id or subject=product_group',
 		        });
 		      }
-      const canUsePdpV2CoreHotCache =
-        PDP_V2_CORE_HOT_CACHE_ENABLED && !bypassCache && !debug;
-      if (!canUsePdpV2CoreHotCache) {
-        PDP_V2_CORE_HOT_CACHE_METRICS.bypasses += 1;
-      }
-      const pdpV2CoreHotCacheKey = canUsePdpV2CoreHotCache
-        ? buildPdpV2CoreHotCacheKey({
-            productId,
-            merchantId: requestedMerchantId,
-            variantId,
-            offerId,
-            subjectType,
-            subjectId,
-            include: includeList,
-            hasCheckoutToken: Boolean(checkoutToken),
-          })
-        : null;
-      if (pdpV2CoreHotCacheKey) {
-        const cachedEntry = getPdpV2CoreHotCacheEntry(pdpV2CoreHotCacheKey);
-        if (cachedEntry?.value) {
-          const cachedResponse = clonePdpV2CachedResponse(
-            cachedEntry.value,
-            gatewayRequestId,
-          );
-          if (cachedResponse) return res.json(cachedResponse);
-        }
-      }
-
-      const resolveSubjectGroupStartedAt = Date.now();
+	      const resolveSubjectGroupStartedAt = Date.now();
 	      if (subjectType === 'product_group' && subjectId) {
 	        try {
 	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
@@ -8017,18 +7896,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	                '',
 	            ).trim();
 	            if (!reviewPlatform || !reviewPlatformProductId) return null;
-            return fetchReviewSummaryCached({
-              merchantId: canonicalProductRef.merchant_id,
-              platform: reviewPlatform,
-              platformProductId: reviewPlatformProductId,
-              checkoutToken,
-              bypassCache,
-            }).catch(() => null);
-            } finally {
-              markPdpV2Module('reviews_preview', moduleStartedAt);
-            }
-          })()
-        : Promise.resolve(null);
+	            return fetchReviewSummaryCached({
+	              merchantId: canonicalProductRef.merchant_id,
+	              platform: reviewPlatform,
+	              platformProductId: reviewPlatformProductId,
+	              checkoutToken,
+	              bypassCache,
+	            }).catch(() => null);
+	            } finally {
+	              markPdpV2Module('reviews_preview', moduleStartedAt);
+	            }
+	          })()
+	        : Promise.resolve(null);
 
 	      // Similar products (non-blocking; can be requested by include=similar).
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
@@ -8037,25 +7916,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            const moduleStartedAt = Date.now();
 	            try {
 	            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
-            return fetchSimilarProductsDeduped({
+	            return fetchSimilarProductsDeduped({
               pdp_product: canonicalProduct,
               k: limit,
               locale:
                 payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
               currency: canonicalProduct.currency || 'USD',
-              options: {
-                debug,
-                // Respect caller cache controls (same semantics as resolve op).
-                no_cache: bypassCache,
+	              options: {
+	                debug,
+	                // Respect caller cache controls (same semantics as resolve op).
+	                no_cache: bypassCache,
                 cache_bypass: bypassCache,
-                bypass_cache: bypassCache,
-              },
-            });
-            } finally {
-              markPdpV2Module('similar', moduleStartedAt);
-            }
-          })()
-        : Promise.resolve([]);
+	                bypass_cache: bypassCache,
+	              },
+	            });
+	            } finally {
+	              markPdpV2Module('similar', moduleStartedAt);
+	            }
+	          })()
+	        : Promise.resolve([]);
 
 	      const fetchOptionalModulesStartedAt = Date.now();
 	      const [reviewSummaryResult, relatedProductsResult] = await Promise.allSettled([
@@ -8256,52 +8135,46 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           null,
       };
 
-      const responseBody = {
-        status: 'success',
-        pdp_version: '2.0',
-        request_id: gatewayRequestId,
+	      const responsePayload = {
+	        status: 'success',
+	        pdp_version: '2.0',
+	        request_id: gatewayRequestId,
         build_id: buildId,
         generated_at: new Date().toISOString(),
         subject: productGroupId
           ? { type: 'product_group', id: productGroupId, canonical_product_ref: canonicalProductRef }
           : { type: 'product', id: canonicalProductRef.product_id, canonical_product_ref: canonicalProductRef },
         capabilities,
-        modules,
-        warnings: debug ? [] : [],
-        missing,
-      };
-
-      logger.info(
-        {
-          gateway_request_id: gatewayRequestId,
-          operation: 'get_pdp_v2',
-          requested_product_id: entryProductId || null,
-          resolved_product_id: canonicalProductRef?.product_id || null,
-          requested_merchant_id: requestedMerchantId || null,
-          resolved_merchant_id: canonicalProductRef?.merchant_id || null,
-          include: includeList,
-          modules_returned: modules.map((module) => module.type),
-          missing_modules: missing.map((module) => module.type),
-          timing_ms: {
-            total: Date.now() - pdpV2StartedAt,
-            phases: pdpV2PhaseTimings,
-            modules: pdpV2ModuleTimings,
-          },
-        },
-        'get_pdp_v2 completed',
-      );
-
-      if (pdpV2CoreHotCacheKey) {
-        setPdpV2CoreHotCacheEntry(pdpV2CoreHotCacheKey, responseBody);
-      }
-
-      return res.json(responseBody);
-    } catch (err) {
-      const { code, message, data } = extractUpstreamErrorCode(err);
-      const statusCode = err?.response?.status || err?.status || 502;
-      logger.error(
-        {
-          gateway_request_id: gatewayRequestId,
+	        modules,
+	        warnings: debug ? [] : [],
+	        missing,
+	      };
+	      logger.info(
+	        {
+	          gateway_request_id: gatewayRequestId,
+	          operation: 'get_pdp_v2',
+	          requested_product_id: entryProductId || null,
+	          resolved_product_id: canonicalProductRef?.product_id || null,
+	          requested_merchant_id: requestedMerchantId || null,
+	          resolved_merchant_id: canonicalProductRef?.merchant_id || null,
+	          include: includeList,
+	          modules_returned: modules.map((module) => module.type),
+	          missing_modules: missing.map((module) => module.type),
+	          timing_ms: {
+	            total: Date.now() - pdpV2StartedAt,
+	            phases: pdpV2PhaseTimings,
+	            modules: pdpV2ModuleTimings,
+	          },
+	        },
+	        'get_pdp_v2 completed',
+	      );
+	      return res.json(responsePayload);
+	    } catch (err) {
+	      const { code, message, data } = extractUpstreamErrorCode(err);
+	      const statusCode = err?.response?.status || err?.status || 502;
+	      logger.error(
+	        {
+	          gateway_request_id: gatewayRequestId,
 	          operation: 'get_pdp_v2',
 	          status_code: statusCode,
 	          err: err?.message || String(err),
@@ -8310,11 +8183,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            phases: pdpV2PhaseTimings,
 	            modules: pdpV2ModuleTimings,
 	          },
-        },
-        'get_pdp_v2 failed',
-      );
-      return res.status(statusCode).json({
-        error: code || 'GET_PDP_V2_FAILED',
+	        },
+	        'get_pdp_v2 failed',
+	      );
+	      return res.status(statusCode).json({
+	        error: code || 'GET_PDP_V2_FAILED',
         message: message || 'Failed to build pdp payload',
         details: data || null,
       });

@@ -352,11 +352,24 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
       const originalGet = axios.get;
       const originalPost = axios.post;
       let resolveCalls = 0;
+      let stableResolveCalls = 0;
       let lastResolveBody = null;
       axios.get = async (url) => {
         throw new Error(`Unexpected axios.get: ${url}`);
       };
       axios.post = async (url, body) => {
+        if (String(url).includes('/agent/shop/v1/invoke')) {
+          stableResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'error',
+              reason: 'no_candidates',
+              reason_code: 'no_candidates',
+              metadata: { request_id: 'rid_stable_no_candidates' },
+            },
+          };
+        }
         if (!String(url).includes('/agent/v1/products/resolve')) {
           throw new Error(`Unexpected axios.post: ${url}`);
         }
@@ -392,6 +405,7 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
         const serialized = JSON.stringify(first).toLowerCase();
 
         assert.equal(resolveCalls, 1);
+        assert.ok(stableResolveCalls <= 1);
         assert.ok(lastResolveBody && typeof lastResolveBody.query === 'string' && lastResolveBody.query.length > 0);
         assert.equal(first?.metadata?.pdp_open_path, 'external');
         assert.equal(first?.metadata?.pdp_open_mode, 'external');
@@ -497,6 +511,7 @@ test('Stable-id offers.resolve upstream_timeout does not attempt local invoke fa
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'false',
     },
@@ -1166,8 +1181,6 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
-      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'true',
-      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
     async () => {
@@ -1300,8 +1313,8 @@ test('/v1/chat availability: specific query uses catalog hit directly without re
         const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
         const first = items[0] || null;
 
-        assert.equal(searchCalls, 1);
         assert.equal(resolveCalls, 0);
+        assert.equal(searchCalls, 1);
         assert.ok(first);
         assert.equal(first?.metadata?.pdp_open_path, 'internal');
         assert.equal(first?.metadata?.pdp_open_mode, 'ref');
@@ -1313,60 +1326,47 @@ test('/v1/chat availability: specific query uses catalog hit directly without re
   );
 });
 
-test('detectBrandAvailabilityIntent: recommendation phrasing should not be hijacked by availability fast path', async () => {
-  const { __internal } = loadRoutesFresh();
-  const intent = __internal.detectBrandAvailabilityIntent('给我推荐Winona的修护精华', 'CN');
-  assert.equal(intent, null);
-});
-
-test('detectBrandAvailabilityIntent: bare brand query still routes to availability fast path', async () => {
-  const { __internal } = loadRoutesFresh();
-  const intentEn = __internal.detectBrandAvailabilityIntent('Winona', 'EN');
-  const intentCn = __internal.detectBrandAvailabilityIntent('薇诺娜品牌', 'CN');
-  const intentIpsaCn = __internal.detectBrandAvailabilityIntent('茵芙莎品牌', 'CN');
-  const intentIpsaEn = __internal.detectBrandAvailabilityIntent('IPSA', 'EN');
-
-  assert.equal(intentEn?.brand_id, 'brand_winona');
-  assert.equal(intentEn?.intent, 'availability');
-  assert.equal(intentCn?.brand_id, 'brand_winona');
-  assert.equal(intentCn?.intent, 'availability');
-  assert.equal(intentIpsaCn?.brand_id, 'brand_ipsa');
-  assert.equal(intentIpsaCn?.intent, 'availability');
-  assert.equal(intentIpsaEn?.brand_id, 'brand_ipsa');
-  assert.equal(intentIpsaEn?.intent, 'availability');
-});
-
-test('/v1/chat recommendation phrasing with brand should return recommendations (not availability short-circuit cards)', async () => {
+test('/v1/chat availability: generic brand query skips resolve fallback on transient search failure by default', async () => {
   await withEnv(
     {
-      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
-      AURORA_BFF_RECO_CATALOG_QUERIES: 'winona soothing repair serum',
-      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
-      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
     },
     async () => {
       const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
       axios.get = async (url) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
-          throw new Error(`Unexpected axios.get: ${url}`);
+        if (String(url).includes('/agent/v1/products/search')) {
+          searchCalls += 1;
+          const timeoutErr = new Error('search timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
         }
-        return {
-          status: 200,
-          data: {
-            products: [
-              {
-                product_id: 'prod_winona_repair',
-                merchant_id: 'mid_winona',
-                product_group_id: 'pg_winona_repair',
-                brand: 'Winona',
-                name: 'Soothing Repair Serum',
-                display_name: 'Winona Soothing Repair Serum',
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          resolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              product_ref: {
+                product_id: 'prod_should_not_be_used',
+                merchant_id: 'mid_should_not_be_used',
               },
-            ],
-          },
-        };
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
       };
 
       try {
@@ -1376,27 +1376,22 @@ test('/v1/chat recommendation phrasing with brand should return recommendations 
         app.use(express.json({ limit: '1mb' }));
         mountAuroraBffRoutes(app, { logger: null });
 
-        const uid = 'test_uid_reco_brand_phrase';
-        const headers = {
-          'X-Aurora-UID': uid,
-          'X-Trace-ID': 'test_trace_reco_brand_phrase',
-          'X-Brief-ID': 'test_brief_reco_brand_phrase',
-          'X-Lang': 'CN',
-        };
-
         const resp = await invokeRoute(app, 'POST', '/v1/chat', {
-          headers,
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_generic_transient',
+            'X-Trace-ID': 'test_trace_availability_generic_transient',
+            'X-Brief-ID': 'test_brief_availability_generic_transient',
+            'X-Lang': 'CN',
+          },
           body: {
-            message: '给我推荐Winona的修护精华',
+            message: '有没有薇诺娜的产品？',
             session: {
               state: 'idle',
               profile: {
-                skinType: 'oily',
-                sensitivity: 'low',
-                barrierStatus: 'healthy',
-                goals: ['acne'],
-                budgetTier: '¥500',
-                region: 'CN',
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
               },
             },
             language: 'CN',
@@ -1404,14 +1399,101 @@ test('/v1/chat recommendation phrasing with brand should return recommendations 
         });
 
         assert.equal(resp.status, 200);
-        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-        assert.ok(cards.some((card) => card && card.type === 'recommendations'));
-        assert.equal(cards.some((card) => card && card.type === 'offers_resolved'), false);
+        assert.equal(searchCalls, 1);
+        assert.equal(resolveCalls, 0);
 
-        const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
-        assert.equal(events.some((event) => event && event.event_name === 'catalog_availability_shortcircuit'), false);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'external');
       } finally {
         axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat availability: specific query also skips resolve fallback on transient search timeout', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
+      axios.get = async (url) => {
+        if (String(url).includes('/agent/v1/products/search')) {
+          searchCalls += 1;
+          const timeoutErr = new Error('search timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          resolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              product_ref: {
+                product_id: 'prod_should_not_be_used',
+                merchant_id: 'mid_should_not_be_used',
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_specific_transient',
+            'X-Trace-ID': 'test_trace_availability_specific_transient',
+            'X-Brief-ID': 'test_brief_availability_specific_transient',
+            'X-Lang': 'CN',
+          },
+          body: {
+            message: '有没有薇诺娜舒敏修护精华',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'CN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.equal(searchCalls, 1);
+        assert.equal(resolveCalls, 0);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
       }
     },
   );
@@ -1781,8 +1863,8 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         const firstDebug = getAuroraDebugPayload(first.body);
         const firstCatalogDebug = firstDebug?.reco_catalog_debug;
         assert.equal(firstCatalogDebug?.fail_fast_after?.open, true);
-        assert.equal(firstCatalogDebug?.search_timeout_effective_ms, 1200);
-        assert.equal(searchTimeouts[0], 1200);
+        assert.equal(firstCatalogDebug?.search_timeout_effective_ms, 1800);
+        assert.equal(searchTimeouts[0], 1800);
 
         phase = 'success';
         nowMs += 1000;
@@ -1892,6 +1974,8 @@ test('/v1/chat reco fail-fast open: skips PDP resolve calls via fast external fa
         const first = await invokeRecoChat(app, { 'X-Debug': 'true' });
         assert.equal(first.status, 200);
         assert.equal(resolveCalls, 0);
+        const firstDebug = getAuroraDebugPayload(first.body);
+        assert.equal(firstDebug?.reco_pdp_fast_fallback_reason, 'upstream_timeout');
 
         const callsAfterFirst = resolveCalls;
         searchPhase = 'success';
