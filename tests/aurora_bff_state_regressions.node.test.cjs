@@ -112,6 +112,57 @@ test('regression: offers_resolved item with offer=null must include field_missin
   );
 });
 
+test('regression: product_parse missing product_ref and anchor_product_id must include parse_failed', () => {
+  const envelope = buildEnvelope(makeCtx(), {
+    assistant_message: null,
+    suggested_chips: [],
+    cards: [
+      {
+        card_id: 'card_parse',
+        type: 'product_parse',
+        payload: {
+          brand: 'Winona',
+          product_name: 'Unknown',
+        },
+      },
+    ],
+    session_patch: {},
+    events: [],
+  });
+
+  const card = Array.isArray(envelope.cards) ? envelope.cards[0] : null;
+  const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+  assert.equal(
+    missing.some((x) => x && x.field === 'payload.product_ref' && x.reason === 'parse_failed'),
+    true,
+  );
+});
+
+test('regression: recommendations missing recommendations_count must include upstream_timeout', () => {
+  const envelope = buildEnvelope(makeCtx(), {
+    assistant_message: null,
+    suggested_chips: [],
+    cards: [
+      {
+        card_id: 'card_reco_missing_count',
+        type: 'recommendations',
+        payload: {
+          recommendations: [],
+        },
+      },
+    ],
+    session_patch: { next_state: 'S7_PRODUCT_RECO' },
+    events: [],
+  });
+
+  const card = Array.isArray(envelope.cards) ? envelope.cards[0] : null;
+  const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+  assert.equal(
+    missing.some((x) => x && x.field === 'payload.recommendations_count' && x.reason === 'upstream_timeout'),
+    true,
+  );
+});
+
 test('regression: memoryStore patch apply prefers state._internal_next_state over ui next_state', () => {
   const patch = {
     state: { _internal_next_state: 'S7_PRODUCT_RECO' },
