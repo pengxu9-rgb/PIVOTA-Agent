@@ -53,7 +53,10 @@ const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compat
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
 const { mountRecommendationRoutes } = require('./recommendations/routes');
-const { mountAuroraBffRoutes } = require('./auroraBff/routes');
+const {
+  mountAuroraBffRoutes,
+  __internal: auroraBffInternal = {},
+} = require('./auroraBff/routes');
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
 const {
@@ -83,6 +86,11 @@ const tokenizeResolverQuery =
           .toLowerCase()
           .split(/\s+/)
           .filter(Boolean);
+
+const getAuroraPdpPrefetchStateSnapshot =
+  typeof auroraBffInternal.getPdpPrefetchStateSnapshot === 'function'
+    ? auroraBffInternal.getPdpPrefetchStateSnapshot
+    : null;
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
@@ -681,6 +689,35 @@ function snapshotResolveProductGroupCacheStats() {
     size: RESOLVE_PRODUCT_GROUP_CACHE.size,
     ...RESOLVE_PRODUCT_GROUP_CACHE_METRICS,
   };
+}
+
+function snapshotPdpV2CoreHotCacheStats() {
+  if (!getAuroraPdpPrefetchStateSnapshot) {
+    return {
+      available: false,
+      reason: 'aurora_bff_prefetch_snapshot_not_exported',
+    };
+  }
+
+  try {
+    const snapshot = getAuroraPdpPrefetchStateSnapshot();
+    if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
+      return {
+        available: true,
+        ...snapshot,
+      };
+    }
+    return {
+      available: true,
+      snapshot: snapshot == null ? null : snapshot,
+    };
+  } catch (err) {
+    return {
+      available: false,
+      reason: 'aurora_bff_prefetch_snapshot_failed',
+      error: String(err && err.message ? err.message : err || 'unknown_error'),
+    };
+  }
 }
 
 // PDP optional-module cache/singleflight (reviews + similar):
