@@ -83,6 +83,7 @@ const {
   adaptChips,
 } = require('./templateSystem');
 const { applyReplyTemplates } = require('./replyTemplates');
+const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runGeminiShadowVerify } = require('./diagVerify');
@@ -13704,6 +13705,7 @@ function mountAuroraBffRoutes(app, { logger }) {
     };
     const sendChatEnvelope = (envelope, statusCode = 200) => {
       const normalized = applyReplyTemplates({ envelope, ctx: templateCtx });
+      emitAudit(normalized, templateCtx, { logger });
       if (statusCode >= 400) return res.status(statusCode).json(normalized);
       return res.json(normalized);
     };
