@@ -174,13 +174,22 @@ function enforceCardFieldMissing(card) {
       (typeof payload.product_ref === 'string' && payload.product_ref.trim()) ||
       (typeof payload.productRef === 'string' && payload.productRef.trim()) ||
       isPlainObject(payload.product);
+    const hasAnchorProductId =
+      (typeof payload.anchor_product_id === 'string' && payload.anchor_product_id.trim()) ||
+      (typeof payload.anchorProductId === 'string' && payload.anchorProductId.trim());
     const parseFailed =
       payload.parse_failed === true ||
       String(payload.error || '').trim().toLowerCase() === 'parse_failed' ||
       String(payload.status || '').trim().toLowerCase() === 'parse_failed';
+    const needsDisambiguation =
+      payload.needs_disambiguation === true ||
+      String(payload.reason || '').trim().toLowerCase() === 'needs_disambiguation' ||
+      String(payload.error || '').trim().toLowerCase() === 'needs_disambiguation' ||
+      /ambiguous|disambiguat/.test(String(payload.status || '').trim().toLowerCase()) ||
+      (Array.isArray(payload.candidates) && payload.candidates.length > 1);
 
-    if (!hasProductRef) {
-      appendFieldMissing(card, 'payload.product_ref', parseFailed ? 'parse_failed' : confidence != null && confidence < 0.5 ? 'low_confidence' : 'parse_failed');
+    if (!hasProductRef && !hasAnchorProductId) {
+      appendFieldMissing(card, 'payload.product_ref', needsDisambiguation ? 'needs_disambiguation' : 'parse_failed');
     } else if (confidence != null && confidence < 0.5) {
       appendFieldMissing(card, 'payload.product_ref', 'low_confidence');
     }
@@ -189,11 +198,7 @@ function enforceCardFieldMissing(card) {
   if (type === 'recommendations') {
     const recs = Array.isArray(payload.recommendations) ? payload.recommendations : [];
     if (payload.recommendations_count == null) {
-      appendFieldMissing(
-        card,
-        'payload.recommendations_count',
-        recs.length ? 'feature_flag_disabled' : 'catalog_not_available',
-      );
+      appendFieldMissing(card, 'payload.recommendations_count', 'upstream_timeout');
     }
     if (recs.length > 0 && !recommendationHasPurchasePath(recs[0])) {
       appendFieldMissing(card, 'payload.recommendations[0].purchase_path', 'catalog_not_available');
