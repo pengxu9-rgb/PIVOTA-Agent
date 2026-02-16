@@ -7445,7 +7445,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   }
 
 	  if (operation === 'get_pdp_v2') {
+	    const pdpV2StartedAt = Date.now();
+	    const pdpV2PhaseTimings = {};
+	    const pdpV2ModuleTimings = {};
+	    const markPdpV2Phase = (name, startedAt) => {
+	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
+	    };
+	    const markPdpV2Module = (name, startedAt) => {
+	      pdpV2ModuleTimings[name] = Date.now() - startedAt;
+	    };
 	    try {
+	      const parseRequestStartedAt = Date.now();
 	      const productRef = payload.product_ref || payload.productRef || payload.product || {};
 	      let productId = String(
 	        productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
@@ -7499,13 +7509,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               .map((v) => String(v || '').trim().toLowerCase())
               .filter(Boolean)
           : [];
-      const includeAll = includeList.includes('all');
-      const wantsOffers = includeAll || includeList.includes('offers');
-      const wantsReviewsPreview = includeAll || includeList.includes('reviews_preview');
+	      const includeAll = includeList.includes('all');
+	      const wantsOffers = includeAll || includeList.includes('offers');
+	      const wantsReviewsPreview = includeAll || includeList.includes('reviews_preview');
 	      const wantsSimilar =
 	        includeAll ||
 	        includeList.includes('similar') ||
 	        includeList.includes('recommendations');
+	      markPdpV2Phase('parse_request', parseRequestStartedAt);
 
 	      // Resolve the canonical product group first so every client sees the same details.
 	      let productGroupId = null;
@@ -7533,6 +7544,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        Boolean(variantId) &&
 	        Boolean(requestedMerchantId) &&
 	        (!productId || productId === variantId);
+	      const resolveVariantStartedAt = Date.now();
 	      if (shouldResolveVariantToProduct) {
 	        try {
 	          const rawVariant = await fetchVariantDetailFromUpstream({
@@ -7551,6 +7563,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          // Ignore and fall back to product_id/offer_id flow.
 	        }
 	      }
+	      markPdpV2Phase('resolve_variant_to_product', resolveVariantStartedAt);
 
 		      if (!productId && !offerProductGroupId && !hasExplicitProductGroup) {
 		        // If the caller only provided a merchant-scoped variant id (no product_id) and we
@@ -7569,6 +7582,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		            'product_ref.product_id is required unless you provide product_ref.offer_id or subject=product_group',
 		        });
 		      }
+	      const resolveSubjectGroupStartedAt = Date.now();
 	      if (subjectType === 'product_group' && subjectId) {
 	        try {
 	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
@@ -7606,7 +7620,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           // Ignore and fall back to resolve-by-product-id.
 	        }
 	      }
+	      markPdpV2Phase('resolve_subject_group', resolveSubjectGroupStartedAt);
 
+	      const resolveOfferGroupStartedAt = Date.now();
 	      if (!canonicalProductRef && offerProductGroupId) {
 	        try {
 	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
@@ -7644,6 +7660,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          // Ignore and fall back to resolve-by-product-id.
 	        }
 	      }
+	      markPdpV2Phase('resolve_offer_group', resolveOfferGroupStartedAt);
 
 		      if (!productId && canonicalProductRef?.product_id) {
 		        productId = String(canonicalProductRef.product_id || '').trim();
@@ -7652,13 +7669,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		      // Fast-fail for merchant-scoped PDP requests where the entry product doesn't exist.
 		      // This avoids spending time resolving product groups/offers only to return 404.
 		      let precheckedMerchantProduct = null;
-		      const shouldPrecheckMerchantScoped =
-		        Boolean(requestedMerchantId) &&
-		        Boolean(productId) &&
-		        !offerProductGroupId &&
-		        !hasExplicitProductGroup;
-		      if (shouldPrecheckMerchantScoped) {
-		        precheckedMerchantProduct = await fetchProductDetailForOffers({
+	      const shouldPrecheckMerchantScoped =
+	        Boolean(requestedMerchantId) &&
+	        Boolean(productId) &&
+	        !offerProductGroupId &&
+	        !hasExplicitProductGroup;
+	      const precheckEntryProductStartedAt = Date.now();
+	      if (shouldPrecheckMerchantScoped) {
+	        precheckedMerchantProduct = await fetchProductDetailForOffers({
 		          merchantId: requestedMerchantId,
 		          productId,
 		          checkoutToken,
@@ -7668,11 +7686,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		            error: 'PRODUCT_NOT_FOUND',
 		            message: 'Product not found',
 		          });
-		        }
-		      }
+	        }
+	      }
+	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
 
-		      if (!canonicalProductRef) {
-		        const resolvedGroup = await resolveProductGroupCached({
+	      const resolveGroupCachedStartedAt = Date.now();
+	      if (!canonicalProductRef) {
+	        const resolvedGroup = await resolveProductGroupCached({
 		          productId,
 	          merchantId: requestedMerchantId || null,
           platform,
@@ -7683,10 +7703,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const pgid = resolvedGroup?.product_group_id || null;
         productGroupId = typeof pgid === 'string' && pgid.trim() ? pgid.trim() : productGroupId;
         groupMembers = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : groupMembers;
-        if (resolvedGroup?.canonical_product_ref) {
-          canonicalProductRef = resolvedGroup.canonical_product_ref;
-        }
-      }
+	        if (resolvedGroup?.canonical_product_ref) {
+	          canonicalProductRef = resolvedGroup.canonical_product_ref;
+	        }
+	      }
+	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
 
 	      if (!canonicalProductRef) {
 	        canonicalProductRef = {
@@ -7696,17 +7717,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         };
 		      }
 
-		      // Fetch canonical detail (cached via products_cache + memory cache).
-		      const canonicalProduct =
-		        precheckedMerchantProduct &&
-		        canonicalProductRef.merchant_id === requestedMerchantId &&
+	      // Fetch canonical detail (cached via products_cache + memory cache).
+	      const fetchCanonicalProductStartedAt = Date.now();
+	      const canonicalProduct =
+	        precheckedMerchantProduct &&
+	        canonicalProductRef.merchant_id === requestedMerchantId &&
 		        canonicalProductRef.product_id === productId
 		          ? precheckedMerchantProduct
 		          : await fetchProductDetailForOffers({
 		              merchantId: canonicalProductRef.merchant_id,
-		              productId: canonicalProductRef.product_id,
-		              checkoutToken,
-		            });
+	              productId: canonicalProductRef.product_id,
+	              checkoutToken,
+	            });
+	      markPdpV2Phase('fetch_canonical_product', fetchCanonicalProductStartedAt);
 
 	      if (!canonicalProduct) {
 	        return res.status(404).json({
@@ -7727,6 +7750,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	      let canonicalProductForPdp = canonicalProduct;
 	      const reviewSummaryPromise = wantsReviewsPreview
 	        ? (async () => {
+	            const moduleStartedAt = Date.now();
+	            try {
 	            const reviewPlatform = String(
 	              canonicalProduct.platform || canonicalProductRef.platform || '',
 	            ).trim();
@@ -7740,22 +7765,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	                '',
 	            ).trim();
 	            if (!reviewPlatform || !reviewPlatformProductId) return null;
-            return fetchReviewSummaryCached({
-              merchantId: canonicalProductRef.merchant_id,
-              platform: reviewPlatform,
-              platformProductId: reviewPlatformProductId,
-              checkoutToken,
-              bypassCache,
-            }).catch(() => null);
-          })()
-        : Promise.resolve(null);
+	            return fetchReviewSummaryCached({
+	              merchantId: canonicalProductRef.merchant_id,
+	              platform: reviewPlatform,
+	              platformProductId: reviewPlatformProductId,
+	              checkoutToken,
+	              bypassCache,
+	            }).catch(() => null);
+	            } finally {
+	              markPdpV2Module('reviews_preview', moduleStartedAt);
+	            }
+	          })()
+	        : Promise.resolve(null);
 
 	      // Similar products (non-blocking; can be requested by include=similar).
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
 	      const relatedProductsPromise = wantsSimilar
 	        ? (async () => {
+	            const moduleStartedAt = Date.now();
+	            try {
 	            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
-            return fetchSimilarProductsDeduped({
+	            return fetchSimilarProductsDeduped({
               pdp_product: canonicalProduct,
               k: limit,
               locale:
@@ -7766,16 +7796,21 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	                // Respect caller cache controls (same semantics as resolve op).
 	                no_cache: bypassCache,
                 cache_bypass: bypassCache,
-                bypass_cache: bypassCache,
-              },
-            });
-          })()
-        : Promise.resolve([]);
+	                bypass_cache: bypassCache,
+	              },
+	            });
+	            } finally {
+	              markPdpV2Module('similar', moduleStartedAt);
+	            }
+	          })()
+	        : Promise.resolve([]);
 
+	      const fetchOptionalModulesStartedAt = Date.now();
 	      const [reviewSummaryResult, relatedProductsResult] = await Promise.allSettled([
 	        reviewSummaryPromise,
 	        relatedProductsPromise,
 	      ]);
+	      markPdpV2Phase('fetch_optional_modules_parallel', fetchOptionalModulesStartedAt);
 
 	      if (
 	        reviewSummaryResult.status === 'fulfilled' &&
@@ -7846,9 +7881,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
       const missing = [];
 
-      if (wantsOffers) {
-        let offersData = null;
-        try {
+	      if (wantsOffers) {
+	        const offersModuleStartedAt = Date.now();
+	        let offersData = null;
+	        try {
           const fallbackProductGroupId =
             productGroupId ||
             (canonicalProduct.platform && canonicalProduct.platform_product_id
@@ -7921,16 +7957,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             required: false,
             data: offersData,
           });
-        } else {
-          modules.push({
+	        } else {
+	          modules.push({
             type: 'offers',
             required: false,
             data: null,
             reason: 'unavailable',
           });
-          missing.push({ type: 'offers', reason: 'unavailable' });
-        }
-      }
+	          missing.push({ type: 'offers', reason: 'unavailable' });
+	        }
+	        markPdpV2Module('offers', offersModuleStartedAt);
+	      }
 
       if (wantsReviewsPreview) {
         const data = reviewsModule?.data || null;
@@ -7967,26 +8004,59 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           null,
       };
 
-      return res.json({
-        status: 'success',
-        pdp_version: '2.0',
-        request_id: gatewayRequestId,
+	      const responsePayload = {
+	        status: 'success',
+	        pdp_version: '2.0',
+	        request_id: gatewayRequestId,
         build_id: buildId,
         generated_at: new Date().toISOString(),
         subject: productGroupId
           ? { type: 'product_group', id: productGroupId, canonical_product_ref: canonicalProductRef }
           : { type: 'product', id: canonicalProductRef.product_id, canonical_product_ref: canonicalProductRef },
         capabilities,
-        modules,
-        warnings: debug ? [] : [],
-        missing,
-      });
-    } catch (err) {
-      const { code, message, data } = extractUpstreamErrorCode(err);
-      const statusCode = err?.response?.status || err?.status || 502;
-      logger.error({ err: err?.message || String(err) }, 'get_pdp_v2 failed');
-      return res.status(statusCode).json({
-        error: code || 'GET_PDP_V2_FAILED',
+	        modules,
+	        warnings: debug ? [] : [],
+	        missing,
+	      };
+	      logger.info(
+	        {
+	          gateway_request_id: gatewayRequestId,
+	          operation: 'get_pdp_v2',
+	          requested_product_id: entryProductId || null,
+	          resolved_product_id: canonicalProductRef?.product_id || null,
+	          requested_merchant_id: requestedMerchantId || null,
+	          resolved_merchant_id: canonicalProductRef?.merchant_id || null,
+	          include: includeList,
+	          modules_returned: modules.map((module) => module.type),
+	          missing_modules: missing.map((module) => module.type),
+	          timing_ms: {
+	            total: Date.now() - pdpV2StartedAt,
+	            phases: pdpV2PhaseTimings,
+	            modules: pdpV2ModuleTimings,
+	          },
+	        },
+	        'get_pdp_v2 completed',
+	      );
+	      return res.json(responsePayload);
+	    } catch (err) {
+	      const { code, message, data } = extractUpstreamErrorCode(err);
+	      const statusCode = err?.response?.status || err?.status || 502;
+	      logger.error(
+	        {
+	          gateway_request_id: gatewayRequestId,
+	          operation: 'get_pdp_v2',
+	          status_code: statusCode,
+	          err: err?.message || String(err),
+	          timing_ms: {
+	            total: Date.now() - pdpV2StartedAt,
+	            phases: pdpV2PhaseTimings,
+	            modules: pdpV2ModuleTimings,
+	          },
+	        },
+	        'get_pdp_v2 failed',
+	      );
+	      return res.status(statusCode).json({
+	        error: code || 'GET_PDP_V2_FAILED',
         message: message || 'Failed to build pdp payload',
         details: data || null,
       });
