@@ -151,6 +151,74 @@ const MODULE_BOX_DYNAMIC_MIN_SCORE = Math.max(
   0,
   Math.min(1, Number(process.env.DIAG_MODULE_BOX_DYNAMIC_MIN_SCORE || 0.6)),
 );
+const MODULE_SUPPORT_REFINEMENT_ENABLED = parseEnvBoolean(
+  process.env.DIAG_MODULE_SUPPORT_REFINEMENT_ENABLED,
+  true,
+);
+const MODULE_SUPPORT_REFINE_MIN_RATIO = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_MODULE_SUPPORT_REFINE_MIN_RATIO || 0.2)),
+);
+const MODULE_SUPPORT_REFINE_MIN_PIXELS = Math.max(
+  1,
+  Math.min(128, Math.trunc(Number(process.env.DIAG_MODULE_SUPPORT_REFINE_MIN_PIXELS || 8) || 8)),
+);
+const MODULE_SIDE_IMBALANCE_RATIO = Math.max(
+  1,
+  Math.min(4, Number(process.env.DIAG_MODULE_SIDE_IMBALANCE_RATIO || 1.7)),
+);
+const MODULE_SIDE_WEAK_THRESHOLD = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_MODULE_SIDE_WEAK_THRESHOLD || 0.22)),
+);
+const MODULE_FACE_AREA_FAR_THRESHOLD = Math.max(
+  0.01,
+  Math.min(0.9, Number(process.env.DIAG_MODULE_FACE_AREA_FAR_THRESHOLD || 0.2)),
+);
+const MODULE_STRICT_REFINEMENT_ENABLED = parseEnvBoolean(
+  process.env.DIAG_MODULE_STRICT_REFINEMENT_ENABLED,
+  true,
+);
+const MODULE_STRICT_SUPPORT_MIN_RATIO = Math.max(
+  0,
+  Math.min(1, Number(process.env.DIAG_MODULE_STRICT_SUPPORT_MIN_RATIO || 0.14)),
+);
+const MODULE_NOSE_BOTTOM_MAX_RATIO = Math.max(
+  0.5,
+  Math.min(0.9, Number(process.env.DIAG_MODULE_NOSE_BOTTOM_MAX_RATIO || 0.71)),
+);
+const MODULE_NOSE_BOTTOM_MAX_RATIO_FAR = Math.max(
+  0.45,
+  Math.min(MODULE_NOSE_BOTTOM_MAX_RATIO, Number(process.env.DIAG_MODULE_NOSE_BOTTOM_MAX_RATIO_FAR || 0.66)),
+);
+const MODULE_CHIN_TOP_MAX_RATIO = Math.max(
+  0.65,
+  Math.min(0.9, Number(process.env.DIAG_MODULE_CHIN_TOP_MAX_RATIO || 0.82)),
+);
+const MODULE_CHIN_TOP_MAX_RATIO_FAR = Math.max(
+  0.6,
+  Math.min(MODULE_CHIN_TOP_MAX_RATIO, Number(process.env.DIAG_MODULE_CHIN_TOP_MAX_RATIO_FAR || 0.77)),
+);
+const MODULE_CHIN_BOTTOM_MAX_RATIO = Math.max(
+  0.78,
+  Math.min(0.99, Number(process.env.DIAG_MODULE_CHIN_BOTTOM_MAX_RATIO || 0.94)),
+);
+const MODULE_CHIN_BOTTOM_MAX_RATIO_FAR = Math.max(
+  0.75,
+  Math.min(MODULE_CHIN_BOTTOM_MAX_RATIO, Number(process.env.DIAG_MODULE_CHIN_BOTTOM_MAX_RATIO_FAR || 0.91)),
+);
+const MODULE_POST_VALIDATOR_ENABLED = parseEnvBoolean(
+  process.env.DIAG_MODULE_POST_VALIDATOR_ENABLED,
+  true,
+);
+const MODULE_POST_VALIDATOR_SIDE_PAD_RATIO = Math.max(
+  0.005,
+  Math.min(0.18, Number(process.env.DIAG_MODULE_POST_VALIDATOR_SIDE_PAD_RATIO || 0.035)),
+);
+const MODULE_POST_VALIDATOR_YAW_BIAS_RATIO = Math.max(
+  0,
+  Math.min(0.18, Number(process.env.DIAG_MODULE_POST_VALIDATOR_YAW_BIAS_RATIO || 0.04)),
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -1823,7 +1891,7 @@ function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
     }
   };
 
-  for (const moduleId of [
+  const moduleIdsOrdered = [
     'forehead',
     'under_eye_left',
     'under_eye_right',
@@ -1831,9 +1899,434 @@ function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
     'right_cheek',
     'nose',
     'chin',
-  ]) {
+  ];
+  for (const moduleId of moduleIdsOrdered) {
     if (!dynamicBoxes[moduleId]) addFaceGeometryFallback(moduleId);
   }
+
+  const supportDebug = {};
+  const pairAdjustmentDebug = [];
+  const strictAdjustmentDebug = [];
+  const postAdjustmentDebug = [];
+  const faceAreaNorm = round3(faceW * faceH);
+  const captureSupport = (moduleId) => {
+    const box = dynamicBoxes[moduleId];
+    if (!box) {
+      supportDebug[moduleId] = {
+        module_pixels: 0,
+        support_pixels: 0,
+        support_ratio: 0,
+      };
+      return supportDebug[moduleId];
+    }
+    const moduleMask = bboxNormToMask(box, targetGrid, targetGrid);
+    const modulePixels = countOnes(moduleMask);
+    const supportMask = andMasks(moduleMask, componentMask);
+    const supportPixels = countOnes(supportMask);
+    const supportRatio = modulePixels > 0 ? clamp01(supportPixels / modulePixels) : 0;
+    const supportBox = supportPixels > 0 ? maskBoundingBox(supportMask, targetGrid) : null;
+    supportDebug[moduleId] = {
+      module_pixels: modulePixels,
+      support_pixels: supportPixels,
+      support_ratio: round3(supportRatio),
+      support_box: supportBox || null,
+    };
+    return supportDebug[moduleId];
+  };
+  const growAndConstrainSupportBox = (supportBox, originalBox, padPx = 1, floorScale = 0.42) => {
+    if (!supportBox || !originalBox) return null;
+    const pad = Math.max(0, Number(padPx) || 0) / Math.max(1, targetGrid);
+    const padded = sanitizeBBox({
+      x: supportBox.x - pad,
+      y: supportBox.y - pad,
+      w: supportBox.w + (2 * pad),
+      h: supportBox.h + (2 * pad),
+    });
+    if (!padded.ok || !padded.bbox) return null;
+    let candidate = intersectBoxes(padded.bbox, faceBox) || padded.bbox;
+    const minW = Math.max(0.006, originalBox.w * Math.max(0.25, Math.min(0.9, Number(floorScale) || 0.42)));
+    const minH = Math.max(0.006, originalBox.h * Math.max(0.25, Math.min(0.9, Number(floorScale) || 0.42)));
+    if (candidate.w < minW || candidate.h < minH) {
+      const cx = candidate.x + (candidate.w / 2);
+      const cy = candidate.y + (candidate.h / 2);
+      const grown = sanitizeBBox({
+        x: cx - (Math.max(candidate.w, minW) / 2),
+        y: cy - (Math.max(candidate.h, minH) / 2),
+        w: Math.max(candidate.w, minW),
+        h: Math.max(candidate.h, minH),
+      });
+      if (grown.ok && grown.bbox) candidate = intersectBoxes(grown.bbox, faceBox) || grown.bbox;
+    }
+    const out = sanitizeBBox(candidate);
+    return out.ok ? out.bbox : null;
+  };
+  const pullBoxTowardCenter = (boxRaw, widthScale = 0.62, shiftFactor = 0.48) => {
+    const sanitized = sanitizeBBox(boxRaw);
+    if (!sanitized.ok || !sanitized.bbox) return null;
+    const box = sanitized.bbox;
+    const scale = Math.max(0.45, Math.min(0.95, Number(widthScale) || 0.62));
+    const shift = Math.max(0.1, Math.min(0.9, Number(shiftFactor) || 0.48));
+    const newW = Math.max(0.006, box.w * scale);
+    const newH = Math.max(0.006, box.h * 0.94);
+    const cx = box.x + (box.w / 2);
+    const targetCx = cx + ((centerX - cx) * shift);
+    const moved = sanitizeBBox({
+      x: targetCx - (newW / 2),
+      y: (box.y + (box.h / 2)) - (newH / 2),
+      w: newW,
+      h: newH,
+    });
+    if (!moved.ok || !moved.bbox) return null;
+    return intersectBoxes(moved.bbox, faceBox) || moved.bbox;
+  };
+  const constrainBoxVertical = (boxRaw, yMinRaw, yMaxRaw) => {
+    const sanitized = sanitizeBBox(boxRaw);
+    if (!sanitized.ok || !sanitized.bbox) return null;
+    const box = sanitized.bbox;
+    const yMin = clamp01(yMinRaw);
+    const yMax = clamp01(yMaxRaw);
+    if (yMax <= (yMin + 0.005)) return box;
+    let h = box.h;
+    if (h > (yMax - yMin)) h = Math.max(0.006, yMax - yMin);
+    let y = box.y;
+    if (y < yMin) y = yMin;
+    if ((y + h) > yMax) y = yMax - h;
+    const adjusted = sanitizeBBox({
+      x: box.x,
+      y,
+      w: box.w,
+      h,
+    });
+    if (!adjusted.ok || !adjusted.bbox) return box;
+    return intersectBoxes(adjusted.bbox, faceBox) || adjusted.bbox;
+  };
+  const boxDeltaL1 = (aRaw, bRaw) => {
+    if (!aRaw || !bRaw) return 0;
+    const a = sanitizeBBox(aRaw);
+    const b = sanitizeBBox(bRaw);
+    if (!a.ok || !a.bbox || !b.ok || !b.bbox) return 0;
+    const ax = a.bbox.x + (a.bbox.w / 2);
+    const ay = a.bbox.y + (a.bbox.h / 2);
+    const bx = b.bbox.x + (b.bbox.w / 2);
+    const by = b.bbox.y + (b.bbox.h / 2);
+    return Math.abs(ax - bx) + Math.abs(ay - by) + Math.abs(a.bbox.w - b.bbox.w) + Math.abs(a.bbox.h - b.bbox.h);
+  };
+  const computeSideImbalance = () => Math.max(
+    Math.abs(
+      Number((supportDebug.under_eye_left || {}).support_ratio || 0)
+      - Number((supportDebug.under_eye_right || {}).support_ratio || 0),
+    ),
+    Math.abs(
+      Number((supportDebug.left_cheek || {}).support_ratio || 0)
+      - Number((supportDebug.right_cheek || {}).support_ratio || 0),
+    ),
+  );
+
+  for (const moduleId of moduleIdsOrdered) captureSupport(moduleId);
+
+  if (MODULE_SUPPORT_REFINEMENT_ENABLED) {
+    const modulePadPx = {
+      forehead: 1,
+      under_eye_left: 1,
+      under_eye_right: 1,
+      left_cheek: 2,
+      right_cheek: 2,
+      nose: 1,
+      chin: 2,
+    };
+    const moduleFloorScale = {
+      forehead: 0.52,
+      under_eye_left: 0.45,
+      under_eye_right: 0.45,
+      left_cheek: 0.42,
+      right_cheek: 0.42,
+      nose: 0.48,
+      chin: 0.52,
+    };
+    for (const moduleId of moduleIdsOrdered) {
+      const box = dynamicBoxes[moduleId];
+      const stat = supportDebug[moduleId] || captureSupport(moduleId);
+      if (!box || !stat || !stat.support_box) continue;
+      const supportPixels = Number(stat.support_pixels || 0);
+      const supportRatio = Number(stat.support_ratio || 0);
+      if (supportPixels < MODULE_SUPPORT_REFINE_MIN_PIXELS) continue;
+      if (supportRatio >= 0.9) continue;
+      if (supportRatio < MODULE_SUPPORT_REFINE_MIN_RATIO && !String(moduleId).includes('cheek')) continue;
+      const refined = growAndConstrainSupportBox(
+        stat.support_box,
+        box,
+        modulePadPx[moduleId] || 1,
+        moduleFloorScale[moduleId] || 0.42,
+      );
+      if (refined) {
+        dynamicBoxes[moduleId] = refined;
+        captureSupport(moduleId);
+      }
+    }
+  }
+
+  if (faceAreaNorm < MODULE_FACE_AREA_FAR_THRESHOLD) {
+    for (const moduleId of ['under_eye_left', 'under_eye_right', 'left_cheek', 'right_cheek']) {
+      const box = dynamicBoxes[moduleId];
+      if (!box) continue;
+      const shrunk = shrinkModuleBox(box, 0.9);
+      if (!shrunk) continue;
+      const bounded = intersectBoxes(shrunk, faceBox);
+      if (bounded) {
+        dynamicBoxes[moduleId] = bounded;
+        captureSupport(moduleId);
+      }
+    }
+  }
+
+  const applyPairImbalancePull = (leftId, rightId, widthScale) => {
+    const left = supportDebug[leftId] || captureSupport(leftId);
+    const right = supportDebug[rightId] || captureSupport(rightId);
+    const leftRatio = Number(left && left.support_ratio) || 0;
+    const rightRatio = Number(right && right.support_ratio) || 0;
+    const maxRatio = Math.max(leftRatio, rightRatio);
+    const minRatio = Math.min(leftRatio, rightRatio);
+    if (maxRatio < MODULE_SIDE_WEAK_THRESHOLD) return;
+    if (minRatio > MODULE_SIDE_WEAK_THRESHOLD) return;
+    if (maxRatio < (minRatio * MODULE_SIDE_IMBALANCE_RATIO)) return;
+    const weakId = leftRatio <= rightRatio ? leftId : rightId;
+    const weakBox = dynamicBoxes[weakId];
+    if (!weakBox) return;
+    const pulled = pullBoxTowardCenter(weakBox, widthScale, 0.52);
+    if (!pulled) return;
+    dynamicBoxes[weakId] = pulled;
+    captureSupport(weakId);
+    pairAdjustmentDebug.push({
+      pair: `${leftId}|${rightId}`,
+      weak_module: weakId,
+      left_ratio: round3(leftRatio),
+      right_ratio: round3(rightRatio),
+    });
+  };
+  applyPairImbalancePull('under_eye_left', 'under_eye_right', 0.66);
+  applyPairImbalancePull('left_cheek', 'right_cheek', 0.58);
+  let sideImbalance = computeSideImbalance();
+
+  if (MODULE_STRICT_REFINEMENT_ENABLED) {
+    const isFarFace = faceAreaNorm < MODULE_FACE_AREA_FAR_THRESHOLD;
+    const noseBottomLimit = faceBox.y + (faceH * (isFarFace ? MODULE_NOSE_BOTTOM_MAX_RATIO_FAR : MODULE_NOSE_BOTTOM_MAX_RATIO));
+    const chinTopCap = faceBox.y + (faceH * (isFarFace ? MODULE_CHIN_TOP_MAX_RATIO_FAR : MODULE_CHIN_TOP_MAX_RATIO));
+    const chinBottomCap = faceBox.y + (faceH * (isFarFace ? MODULE_CHIN_BOTTOM_MAX_RATIO_FAR : MODULE_CHIN_BOTTOM_MAX_RATIO));
+
+    const noseOriginal = dynamicBoxes.nose;
+    if (noseOriginal) {
+      let noseAdjusted = noseOriginal;
+      const noseSupport = supportDebug.nose || captureSupport('nose');
+      const noseSupportRatio = Number(noseSupport && noseSupport.support_ratio) || 0;
+      if (noseSupport && noseSupport.support_box && noseSupportRatio >= MODULE_STRICT_SUPPORT_MIN_RATIO) {
+        const supportAnchored = growAndConstrainSupportBox(noseSupport.support_box, noseAdjusted, 1, 0.48);
+        if (supportAnchored) noseAdjusted = supportAnchored;
+      } else if (sideImbalance > 0.45 && noseSupportRatio < MODULE_SIDE_WEAK_THRESHOLD) {
+        const centerPulled = pullBoxTowardCenter(noseAdjusted, 0.82, 0.42);
+        if (centerPulled) noseAdjusted = centerPulled;
+      }
+      noseAdjusted = constrainBoxVertical(
+        noseAdjusted,
+        Math.max(faceBox.y + (faceH * 0.25), underY0 + (faceH * 0.005)),
+        Math.min(chinTopY - (faceH * 0.04), noseBottomLimit),
+      ) || noseAdjusted;
+      dynamicBoxes.nose = noseAdjusted;
+      captureSupport('nose');
+      if (Math.abs(noseAdjusted.y - noseOriginal.y) > 0.002 || Math.abs(noseAdjusted.h - noseOriginal.h) > 0.002) {
+        strictAdjustmentDebug.push({
+          module: 'nose',
+          support_ratio: round3(noseSupportRatio),
+          far_face: isFarFace,
+          bottom_cap: round3(noseBottomLimit),
+        });
+      }
+    }
+
+    const chinOriginal = dynamicBoxes.chin;
+    if (chinOriginal) {
+      let chinAdjusted = chinOriginal;
+      const chinSupport = supportDebug.chin || captureSupport('chin');
+      const chinSupportRatio = Number(chinSupport && chinSupport.support_ratio) || 0;
+      if (chinSupport && chinSupport.support_box && chinSupportRatio >= MODULE_STRICT_SUPPORT_MIN_RATIO) {
+        const supportAnchored = growAndConstrainSupportBox(chinSupport.support_box, chinAdjusted, 1, 0.5);
+        if (supportAnchored) chinAdjusted = supportAnchored;
+      }
+      chinAdjusted = constrainBoxVertical(
+        chinAdjusted,
+        Math.max(mouthAnchorY + (faceH * 0.035), faceBox.y + (faceH * 0.6)),
+        chinBottomCap,
+      ) || chinAdjusted;
+      if (chinAdjusted.y > chinTopCap) {
+        const shifted = sanitizeBBox({
+          x: chinAdjusted.x,
+          y: chinTopCap,
+          w: chinAdjusted.w,
+          h: chinAdjusted.h,
+        });
+        if (shifted.ok && shifted.bbox) {
+          chinAdjusted = constrainBoxVertical(
+            shifted.bbox,
+            Math.max(mouthAnchorY + (faceH * 0.035), faceBox.y + (faceH * 0.6)),
+            chinBottomCap,
+          ) || shifted.bbox;
+        }
+      }
+      dynamicBoxes.chin = chinAdjusted;
+      captureSupport('chin');
+      if (Math.abs(chinAdjusted.y - chinOriginal.y) > 0.002 || Math.abs(chinAdjusted.h - chinOriginal.h) > 0.002) {
+        strictAdjustmentDebug.push({
+          module: 'chin',
+          support_ratio: round3(chinSupportRatio),
+          far_face: isFarFace,
+          top_cap: round3(chinTopCap),
+          bottom_cap: round3(chinBottomCap),
+        });
+      }
+    }
+  }
+
+  if (MODULE_POST_VALIDATOR_ENABLED) {
+    const sidePad = Math.max(faceW * MODULE_POST_VALIDATOR_SIDE_PAD_RATIO, faceW * 0.03);
+    const sideBias = yaw * faceW * MODULE_POST_VALIDATOR_YAW_BIAS_RATIO;
+    const sideCenter = clamp01(centerX + sideBias);
+    const sideGap = Math.max(sidePad, faceW * 0.045);
+    const yRangeByModule = {
+      forehead: [0.0, 0.42],
+      under_eye_left: [0.2, 0.58],
+      under_eye_right: [0.2, 0.58],
+      left_cheek: [0.34, 0.86],
+      right_cheek: [0.34, 0.86],
+      nose: [0.25, 0.76],
+      chin: [0.6, 0.99],
+    };
+    const constrainHorizontalBySide = (moduleId, boxRaw) => {
+      const sanitized = sanitizeBBox(boxRaw);
+      if (!sanitized.ok || !sanitized.bbox) return null;
+      let box = sanitized.bbox;
+      const leftLimit = sideCenter - sideGap;
+      const rightLimit = sideCenter + sideGap;
+      const remap = (x, y, w, h) => {
+        const safe = sanitizeBBox({ x, y, w, h });
+        if (!safe.ok || !safe.bbox) return box;
+        return intersectBoxes(safe.bbox, faceBox) || safe.bbox;
+      };
+      if (moduleId === 'under_eye_left' || moduleId === 'left_cheek') {
+        const maxRight = Math.max(faceBox.x + 0.01, Math.min(faceBox.x + faceW - 0.01, leftLimit));
+        const right = box.x + box.w;
+        if (right > maxRight) {
+          const nextW = Math.max(0.01, Math.min(box.w, maxRight - box.x));
+          box = remap(Math.min(box.x, maxRight - nextW), box.y, nextW, box.h);
+        }
+      } else if (moduleId === 'under_eye_right' || moduleId === 'right_cheek') {
+        const minLeft = Math.min(faceBox.x + faceW - 0.01, Math.max(faceBox.x, rightLimit));
+        if (box.x < minLeft) {
+          const right = box.x + box.w;
+          const nextX = Math.min(Math.max(minLeft, faceBox.x), faceBox.x + faceW - 0.01);
+          const nextW = Math.max(0.01, right - nextX);
+          box = remap(nextX, box.y, nextW, box.h);
+        }
+      } else if (moduleId === 'nose') {
+        const noseMin = Math.max(faceBox.x, sideCenter - (faceW * 0.22));
+        const noseMax = Math.min(faceBox.x + faceW, sideCenter + (faceW * 0.22));
+        let nextX = box.x;
+        let nextW = box.w;
+        if (nextX < noseMin) {
+          nextW = Math.max(0.01, nextW - (noseMin - nextX));
+          nextX = noseMin;
+        }
+        if (nextX + nextW > noseMax) {
+          nextW = Math.max(0.01, noseMax - nextX);
+        }
+        box = remap(nextX, box.y, nextW, box.h);
+      }
+      return box;
+    };
+    const clampModuleToEnvelope = (moduleId, boxRaw) => {
+      const sanitized = sanitizeBBox(boxRaw);
+      if (!sanitized.ok || !sanitized.bbox) return null;
+      let box = intersectBoxes(sanitized.bbox, faceBox) || sanitized.bbox;
+      const range = yRangeByModule[moduleId] || [0, 1];
+      box = constrainBoxVertical(
+        box,
+        faceBox.y + (faceH * Number(range[0] || 0)),
+        faceBox.y + (faceH * Number(range[1] || 1)),
+      ) || box;
+      box = constrainHorizontalBySide(moduleId, box) || box;
+      return box;
+    };
+    const applyPostAdjustment = (moduleId, nextBox, reason) => {
+      const prev = dynamicBoxes[moduleId];
+      if (!prev || !nextBox) return;
+      const delta = boxDeltaL1(prev, nextBox);
+      if (delta <= 0.001) return;
+      dynamicBoxes[moduleId] = nextBox;
+      captureSupport(moduleId);
+      postAdjustmentDebug.push({
+        module: moduleId,
+        reason,
+        delta_l1: round3(delta),
+      });
+    };
+
+    for (const moduleId of moduleIdsOrdered) {
+      const current = dynamicBoxes[moduleId];
+      if (!current) continue;
+      const clamped = clampModuleToEnvelope(moduleId, current);
+      if (clamped) applyPostAdjustment(moduleId, clamped, 'pose_envelope');
+    }
+
+    const forehead = dynamicBoxes.forehead;
+    const nose = dynamicBoxes.nose;
+    const chin = dynamicBoxes.chin;
+    const eyeTop = Math.min(
+      Number((dynamicBoxes.under_eye_left || {}).y || 1),
+      Number((dynamicBoxes.under_eye_right || {}).y || 1),
+    );
+    if (forehead && Number.isFinite(eyeTop)) {
+      const maxForeheadBottom = Math.max(faceBox.y + (faceH * 0.17), eyeTop - (faceH * 0.015));
+      const currentBottom = forehead.y + forehead.h;
+      if (currentBottom > maxForeheadBottom) {
+        const tightened = sanitizeBBox({
+          x: forehead.x,
+          y: forehead.y,
+          w: forehead.w,
+          h: Math.max(0.01, maxForeheadBottom - forehead.y),
+        });
+        if (tightened.ok && tightened.bbox) applyPostAdjustment('forehead', tightened.bbox, 'forehead_below_eyes_guard');
+      }
+    }
+    if (nose && chin) {
+      const maxNoseBottom = chin.y - (faceH * 0.012);
+      const noseBottom = nose.y + nose.h;
+      if (noseBottom > maxNoseBottom) {
+        const tightenedNose = sanitizeBBox({
+          x: nose.x,
+          y: nose.y,
+          w: nose.w,
+          h: Math.max(0.01, maxNoseBottom - nose.y),
+        });
+        if (tightenedNose.ok && tightenedNose.bbox) applyPostAdjustment('nose', tightenedNose.bbox, 'nose_above_chin_guard');
+      }
+    }
+
+    const mouthRowGuard = rowEdgeToNorm(pickRowByAreaQuantile(rowEdges, 0.72), targetGrid);
+    const mouthRowY = Number(mouthRowGuard && mouthRowGuard.y);
+    const chinMinFromMouth = Number.isFinite(mouthRowY)
+      ? (mouthRowY + 0.02)
+      : (mouthAnchorY + 0.02);
+    const chinMinTop = Math.max(chinMinFromMouth, faceBox.y + (faceH * 0.6));
+    const chinMaxBottom = faceBox.y + (faceH * 0.99);
+    const chinCurrent = dynamicBoxes.chin;
+    if (chinCurrent && chinMinTop < (chinMaxBottom - 0.005) && chinCurrent.y < chinMinTop) {
+      const liftedChin = constrainBoxVertical(
+        chinCurrent,
+        chinMinTop,
+        chinMaxBottom,
+      );
+      if (liftedChin) applyPostAdjustment('chin', liftedChin, 'chin_below_mouth_guard');
+    }
+  }
+  sideImbalance = computeSideImbalance();
 
   const overlaps = [];
   for (const finalBox of Object.values(dynamicBoxes)) {
@@ -1850,21 +2343,45 @@ function deriveModuleBoxesFromSkinMask({ skinMask, gridSize } = {}) {
   const ratioInRange = positiveRatio >= MODULE_SKIN_POSITIVE_RATIO_MIN && positiveRatio <= MODULE_SKIN_POSITIVE_RATIO_MAX;
   const ratioQuality = ratioInRange ? clamp01(positiveRatio) : clamp01(positiveRatio * 0.6);
   const directCoverage = clamp01(directModuleIds.size / 7);
-  const adjustedScore = round3(clamp01((0.48 * overlapScore) + (0.2 * rowsCoverage) + (0.12 * ratioQuality) + (0.2 * directCoverage)));
+  const baseScore = (0.48 * overlapScore) + (0.2 * rowsCoverage) + (0.12 * ratioQuality) + (0.2 * directCoverage);
+  const farFacePenalty = faceAreaNorm < MODULE_FACE_AREA_FAR_THRESHOLD
+    ? Math.min(0.12, ((MODULE_FACE_AREA_FAR_THRESHOLD - faceAreaNorm) / Math.max(0.02, MODULE_FACE_AREA_FAR_THRESHOLD)) * 0.12)
+    : 0;
+  const sideImbalancePenalty = sideImbalance > 0.45
+    ? Math.min(0.08, (sideImbalance - 0.45) * 0.18)
+    : 0;
+  const adjustedScore = round3(clamp01(baseScore - farFacePenalty - sideImbalancePenalty));
   const hasRequiredDynamic = Object.keys(dynamicBoxes).length >= 5;
   const hasLowDirectCoverage = directModuleIds.size < 5;
   const ratioReason = ratioInRange ? null : 'skinmask_positive_ratio_out_of_range';
+  const finalReason = hasRequiredDynamic
+    ? (
+      hasLowDirectCoverage
+        ? 'dynamic_boxes_partial_direct'
+        : (ratioReason
+          || (pairAdjustmentDebug.length ? 'dynamic_boxes_side_adjusted' : null)
+          || (farFacePenalty > 0.02 ? 'dynamic_boxes_far_face' : null))
+    )
+    : (ratioReason || 'dynamic_boxes_incomplete');
   return {
     ok: hasRequiredDynamic,
-    reason: hasRequiredDynamic
-      ? (hasLowDirectCoverage ? 'dynamic_boxes_partial_direct' : ratioReason)
-      : (ratioReason || 'dynamic_boxes_incomplete'),
+    reason: finalReason,
     score: adjustedScore,
     module_boxes: hasRequiredDynamic ? dynamicBoxes : null,
     positive_ratio: round3(positiveRatio),
     overlap_score: round3(overlapScore),
     rows_coverage: round3(rowsCoverage),
     direct_coverage: round3(directCoverage),
+    face_area_norm: faceAreaNorm,
+    side_imbalance: round3(sideImbalance),
+    support_refinement_enabled: MODULE_SUPPORT_REFINEMENT_ENABLED,
+    support_refine_min_ratio: round3(MODULE_SUPPORT_REFINE_MIN_RATIO),
+    support_refine_min_pixels: MODULE_SUPPORT_REFINE_MIN_PIXELS,
+    support_stats: supportDebug,
+    side_adjustments: pairAdjustmentDebug,
+    strict_adjustments: strictAdjustmentDebug,
+    post_validator_enabled: MODULE_POST_VALIDATOR_ENABLED,
+    post_adjustments: postAdjustmentDebug,
     derived_modules_count: directModuleIds.size,
     fallback_modules_count: fallbackModuleIds.size,
     total_modules_count: Object.keys(dynamicBoxes).length,
@@ -3048,6 +3565,11 @@ function buildPhotoModulesCard({
         ? Number(moduleBoxDerivation.positive_ratio)
         : null,
       module_box_anchors: moduleBoxDerivation && moduleBoxDerivation.anchors ? moduleBoxDerivation.anchors : null,
+      module_box_post_validator_enabled: Boolean(moduleBoxDerivation && moduleBoxDerivation.post_validator_enabled),
+      module_box_post_adjustments:
+        moduleBoxDerivation && Array.isArray(moduleBoxDerivation.post_adjustments)
+          ? moduleBoxDerivation.post_adjustments
+          : [],
       module_min_pixels_under_eye: moduleMaskBuild.module_min_pixels_under_eye,
       module_min_pixels_forehead: moduleMaskBuild.module_min_pixels_forehead,
       module_min_pixels_chin: moduleMaskBuild.module_min_pixels_chin,
