@@ -1101,6 +1101,11 @@ const CATALOG_BRANDS = {
     aliases: ['薇诺娜', 'winona', 'wei nuo na'],
     name: { CN: '薇诺娜', EN: 'Winona' },
   },
+  brand_ipsa: {
+    brand_id: 'brand_ipsa',
+    aliases: ['茵芙莎', 'ipsa', 'i p s a'],
+    name: { CN: '茵芙莎', EN: 'IPSA' },
+  },
 };
 
 function escapeRegExp(text) {
@@ -1128,6 +1133,10 @@ function detectBrandAvailabilityIntent(message, lang) {
   // Exclude obvious non-commerce asks.
   if (looksLikeDiagnosisStart(raw)) return null;
   if (looksLikeSuitabilityRequest(raw)) return null;
+  if (looksLikeRecommendationRequest(raw)) return null;
+  if (looksLikeRoutineRequest(raw, null)) return null;
+  if (looksLikeCompatibilityOrConflictQuestion(raw)) return null;
+  if (looksLikeWeatherOrEnvironmentQuestion(raw)) return null;
 
   const text = raw.normalize('NFKC');
   const lowered = text.toLowerCase();
@@ -1159,7 +1168,17 @@ function detectBrandAvailabilityIntent(message, lang) {
 
     if (!matchedAlias) continue;
 
-    const bareBrandQuery = lowered.replace(/[\s\p{P}_-]+/gu, '').length <= 18;
+    const compact = (value) =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/[\s\p{P}_-]+/gu, '');
+    const compactAlias = compact(matchedAlias);
+    const compactText = compact(text);
+    const bareBrandQuery =
+      compactText === compactAlias ||
+      compactText === `${compactAlias}品牌` ||
+      compactText === `${compactAlias}brand` ||
+      compactText === `${compactAlias}${compactAlias}`;
     if (!availabilityHint && !bareBrandQuery) continue;
 
     const brandName = lang === 'CN' ? brand?.name?.CN || '' : brand?.name?.EN || '';
@@ -1189,11 +1208,31 @@ function buildAvailabilityCatalogQuery(message, availabilityIntent) {
     .replace(/^(请问|请帮我|请|我想问下|我想问|could you|can you|do you|i want to know)\s*/i, '')
     .replace(/\b(in stock|available|availability|where can i buy|where to buy|do you have|have any|buy|purchase|link|have|has)\b/gi, ' ')
     .replace(/(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方旗舰|旗舰店|自营|请问)/g, ' ')
+    .replace(/[（(]\s*(品牌|brand|official)\s*[）)]/gi, ' ')
+    .replace(/\bbrand\b/gi, ' ')
+    .replace(/品牌/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[。！？!?]+$/g, '');
 
   if (!cleaned) cleaned = raw;
+  cleaned = cleaned
+    .split(/\s+/)
+    .filter((token, idx, arr) => idx === 0 || token.toLowerCase() !== arr[idx - 1].toLowerCase())
+    .join(' ')
+    .trim();
+  cleaned = cleaned.replace(/[吗嘛呢呀]+$/g, '').trim();
+
+  if (brand) {
+    const compact = (value) =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/[\s\p{P}_-]+/gu, '');
+    const compactBrand = compact(brand);
+    const compactCleaned = compact(cleaned);
+    if (compactBrand && compactCleaned && compactCleaned === compactBrand.repeat(2)) cleaned = brand;
+  }
+
   if (cleaned.length > 120) cleaned = cleaned.slice(0, 120).trim();
 
   if (!cleaned) return brand;
