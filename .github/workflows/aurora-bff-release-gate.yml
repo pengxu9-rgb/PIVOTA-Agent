@@ -56,6 +56,9 @@ jobs:
       - name: Aurora BFF unit tests (offline)
         run: npm run test:aurora-bff:unit
 
+      - name: Replay quality gate (deterministic)
+        run: npm run test:replay-quality
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:

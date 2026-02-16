@@ -1,0 +1,52 @@
+{
+  "name": "offers_resolved_offer_null",
+  "input": {
+    "user_text": "这款现在能买吗",
+    "ctx": {
+      "lang": "CN",
+      "accept_language": "zh-CN",
+      "intent": "availability",
+      "state": "product_link_eval"
+    },
+    "session": {
+      "next_state": "PRODUCT_LINK_EVAL"
+    },
+    "bootstrap": {},
+    "seed_envelope": {
+      "assistant_message": {
+        "role": "assistant",
+        "format": "text",
+        "content": "目前暂无购买入口，我可以先给你替代方案。"
+      },
+      "cards": [
+        {
+          "card_id": "fx_offer_1",
+          "type": "offers_resolved",
+          "payload": {
+            "items": [
+              {
+                "product": { "name": "Sample Product" },
+                "offer": null
+              }
+            ]
+          }
+        }
+      ],
+      "suggested_chips": []
+    }
+  },
+  "expected": {
+    "ui_next_state": "PRODUCT_LINK_EVAL",
+    "must_have_cards": ["offers_resolved"],
+    "must_not_have_cards": ["recommendations"],
+    "quality_min_score": 80,
+    "hard_fail_forbidden": ["inventory_assertion_without_offer", "medical_diagnosis"],
+    "must_have_field_missing": [
+      {
+        "card_type": "offers_resolved",
+        "field": "items[0].offer",
+        "reason": "catalog_not_available"
+      }
+    ]
+  }
+}

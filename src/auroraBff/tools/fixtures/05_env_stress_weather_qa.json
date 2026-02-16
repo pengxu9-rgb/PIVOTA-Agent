@@ -1,0 +1,42 @@
+{
+  "name": "env_stress_weather_qa",
+  "input": {
+    "user_text": "下雪天怎么护肤",
+    "ctx": {
+      "lang": "CN",
+      "accept_language": "zh-CN",
+      "intent": "weather_env",
+      "state": "idle"
+    },
+    "session": {
+      "next_state": "IDLE_CHAT"
+    },
+    "bootstrap": {},
+    "seed_envelope": {
+      "assistant_message": null,
+      "cards": [
+        {
+          "card_id": "fx_env_1",
+          "type": "env_stress",
+          "payload": {
+            "ess": 66,
+            "tier": "high",
+            "radar": {
+              "uv": 0.3,
+              "dryness": 0.9,
+              "cold": 0.8
+            }
+          }
+        }
+      ],
+      "suggested_chips": []
+    }
+  },
+  "expected": {
+    "ui_next_state": "IDLE_CHAT",
+    "must_have_cards": ["env_stress"],
+    "must_not_have_cards": ["recommendations"],
+    "quality_min_score": 80,
+    "hard_fail_forbidden": ["medical_diagnosis"]
+  }
+}
