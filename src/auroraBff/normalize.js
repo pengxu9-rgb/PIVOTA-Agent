@@ -111,13 +111,31 @@ function normalizeProductParse(raw) {
     };
   }
 
-  const product = asPlainObject(o.product) || null;
+  const parseRaw = asPlainObject(o.parse);
+  const product =
+    asPlainObject(o.product) ||
+    asPlainObject(o.anchor_product || o.anchorProduct) ||
+    asPlainObject(o.product_entity || o.productEntity) ||
+    asPlainObject(parseRaw?.product) ||
+    asPlainObject(parseRaw?.anchor_product || parseRaw?.anchorProduct) ||
+    asPlainObject(parseRaw?.product_entity || parseRaw?.productEntity) ||
+    null;
   if (!product) field_missing.push({ field: 'product', reason: 'upstream_missing_or_invalid' });
 
-  const confidence = asNumberOrNull(o.confidence);
+  const confidence = asNumberOrNull(
+    o.confidence ??
+      o.parse_confidence ??
+      o.parseConfidence ??
+      parseRaw?.parse_confidence ??
+      parseRaw?.parseConfidence ??
+      parseRaw?.confidence,
+  );
   if (confidence == null) field_missing.push({ field: 'confidence', reason: 'upstream_missing_or_invalid' });
 
-  const missing_info = uniqueStrings(asStringArray(o.missing_info ?? o.missingInfo));
+  const missing_info = uniqueStrings([
+    ...asStringArray(o.missing_info ?? o.missingInfo),
+    ...asStringArray(parseRaw?.missing_info ?? parseRaw?.missingInfo ?? parseRaw?.missing_fields ?? parseRaw?.missingFields),
+  ]);
 
   return {
     payload: { product, confidence, missing_info },

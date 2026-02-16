@@ -86,19 +86,213 @@ function compactCitations(citations, max = 10) {
   return tailCount > 0 ? `${head.join(', ')} (+${tailCount} more)` : head.join(', ');
 }
 
+function pickFirstObject(...values) {
+  for (const value of values) {
+    const obj = asPlainObject(value);
+    if (obj) return obj;
+  }
+  return null;
+}
+
+function pickFirstString(...values) {
+  for (const value of values) {
+    const s = asString(value);
+    if (s) return s;
+  }
+  return null;
+}
+
+function decodeURIComponentSafe(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function joinBrandAndName(brandRaw, nameRaw) {
+  const brand = String(brandRaw || '').trim();
+  const name = String(nameRaw || '').trim();
+  if (!brand) return name || null;
+  if (!name) return brand;
+  const brandLower = brand.toLowerCase();
+  const nameLower = name.toLowerCase();
+  if (nameLower === brandLower || nameLower.startsWith(`${brandLower} `)) return name;
+  return `${brand} ${name}`.trim();
+}
+
+function humanizeSlugText(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+
+  const tokens = decodeURIComponentSafe(text.replace(/\+/g, ' '))
+    .replace(/[_-]+/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => !/^[a-z]{2}(?:-[a-z]{2})?$/i.test(token))
+    .filter((token) => !/^\d{5,}$/.test(token));
+
+  if (!tokens.length) return null;
+
+  const acronymTokens = new Set(['aha', 'bha', 'pha', 'spf', 'uv', 'txa', 'bb', 'cc']);
+  const words = tokens.map((token) => {
+    if (/^\d+$/.test(token)) return token;
+    const lower = token.toLowerCase();
+    if (acronymTokens.has(lower)) return lower.toUpperCase();
+    return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+  });
+
+  const out = words.join(' ').replace(/\s+/g, ' ').trim();
+  return out || null;
+}
+
+function hostToBrand(hostname) {
+  const host = String(hostname || '').trim().toLowerCase().replace(/^www\./, '').replace(/^m\./, '');
+  if (!host) return null;
+
+  const parts = host.split('.').filter(Boolean);
+  if (!parts.length) return null;
+
+  let token = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+  if (token === 'co' && parts.length >= 3) token = parts[parts.length - 3];
+
+  const overrides = {
+    theordinary: 'The Ordinary',
+    larocheposay: 'La Roche-Posay',
+    paulaschoice: "Paula's Choice",
+    kiehls: "Kiehl's",
+    skii: 'SK-II',
+    cerave: 'CeraVe',
+    skinceuticals: 'SkinCeuticals',
+  };
+  if (overrides[token]) return overrides[token];
+  return humanizeSlugText(token);
+}
+
+function inferProductFromUrlLike(value) {
+  const raw = asString(value);
+  if (!raw) return null;
+
+  let parsed = null;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+
+  const brand = hostToBrand(parsed.hostname);
+  const pathSegments = String(parsed.pathname || '')
+    .split('/')
+    .map((segment) => decodeURIComponentSafe(segment).trim())
+    .filter(Boolean);
+
+  let slug = '';
+  for (let i = pathSegments.length - 1; i >= 0; i -= 1) {
+    const segment = pathSegments[i].replace(/\.[a-z0-9]{1,5}$/i, '').trim();
+    if (!segment) continue;
+    if (/^[a-z]{2}(?:-[a-z]{2})?$/i.test(segment)) continue;
+    slug = segment;
+    break;
+  }
+
+  const name = humanizeSlugText(slug);
+  const displayName = joinBrandAndName(brand, name) || name || brand;
+  if (!displayName) return null;
+
+  return {
+    ...(brand ? { brand } : {}),
+    ...(name ? { name } : {}),
+    display_name: displayName,
+    url: parsed.toString(),
+  };
+}
+
+function ensureProductDisplayName(product) {
+  const p = asPlainObject(product);
+  if (!p) return null;
+
+  const brand = asString(p.brand);
+  const name = asString(p.name) || asString(p.display_name || p.displayName);
+  const displayName = asString(p.display_name || p.displayName) || joinBrandAndName(brand, name);
+
+  return {
+    ...p,
+    ...(brand ? { brand } : {}),
+    ...(name ? { name } : {}),
+    ...(displayName ? { display_name: displayName } : {}),
+  };
+}
+
 function mapAuroraProductParse(upstreamStructured) {
   const structured = asPlainObject(upstreamStructured);
   const parse = structured && asPlainObject(structured.parse);
-  const anchor = parse && asPlainObject(parse.anchor_product || parse.anchorProduct);
-  const confidence = asNumberOrNull(parse && (parse.parse_confidence ?? parse.parseConfidence));
+
+  const anchor = pickFirstObject(
+    parse && (parse.anchor_product || parse.anchorProduct),
+    parse && parse.product,
+    parse && (parse.product_entity || parse.productEntity),
+    parse && (parse.parsed_product || parse.parsedProduct),
+    structured && (structured.anchor_product || structured.anchorProduct),
+    structured && structured.product,
+    structured && (structured.product_entity || structured.productEntity),
+  );
+
+  const candidateLists = [
+    parse && (parse.products || parse.product_candidates || parse.productCandidates || parse.candidates),
+  ];
+  let firstCandidate = null;
+  for (const list of candidateLists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const row = asPlainObject(item);
+      if (!row) continue;
+      const productCandidate = pickFirstObject(
+        row.product,
+        row.anchor_product || row.anchorProduct,
+        row.product_entity || row.productEntity,
+        row,
+      );
+      if (!productCandidate) continue;
+      firstCandidate = productCandidate;
+      break;
+    }
+    if (firstCandidate) break;
+  }
+
+  const parseInput = pickFirstString(
+    parse && (parse.normalized_query || parse.normalizedQuery),
+    parse && (parse.input || parse.query || parse.url),
+    structured && (structured.normalized_query || structured.normalizedQuery),
+    structured && (structured.input || structured.query || structured.url || structured.anchor_product_url),
+  );
+  const urlFallback = inferProductFromUrlLike(parseInput);
+  const product =
+    ensureProductDisplayName(anchor) ||
+    ensureProductDisplayName(firstCandidate) ||
+    ensureProductDisplayName(urlFallback) ||
+    null;
+
+  let confidence = asNumberOrNull(
+    (parse && (parse.parse_confidence ?? parse.parseConfidence ?? parse.confidence)) ??
+      (structured && (structured.parse_confidence ?? structured.parseConfidence ?? structured.confidence)),
+  );
+  if (product && urlFallback && product.url === urlFallback.url && (confidence == null || confidence <= 0)) {
+    confidence = 0.25;
+  }
 
   const kb = structured && asPlainObject(structured.kb_requirements_check || structured.kbRequirementsCheck);
   const missingFields = kb ? asStringArray(kb.missing_fields || kb.missingFields) : [];
+  const parseMissing = parse ? asStringArray(parse.missing_info || parse.missingInfo || parse.missing_fields || parse.missingFields) : [];
 
   return {
-    product: anchor || null,
+    product,
     confidence,
-    missing_info: missingFields,
+    missing_info: uniqueStrings([
+      ...missingFields,
+      ...parseMissing,
+      ...(product && urlFallback && product.url === urlFallback.url ? ['heuristic_url_parse'] : []),
+    ]),
   };
 }
 
