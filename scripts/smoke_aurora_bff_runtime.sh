@@ -86,7 +86,7 @@ skin_json="$(curl -fsS -X POST "${BASE}/v1/analysis/skin" \
   --data '{}')"
 
 printf "%s\n" "$skin_json" | jq_assert "analysis_summary card exists" '.cards | any(.type=="analysis_summary")'
-printf "%s\n" "$skin_json" | jq_assert "analysis field_missing is null" '(.cards[]|select(.type=="analysis_summary")|.field_missing) == null'
+printf "%s\n" "$skin_json" | jq_assert "analysis field_missing is array" '((.cards[]|select(.type=="analysis_summary")|.field_missing)|type) == "array"'
 printf "%s\n" "$skin_json" | jq_assert "analysis has 1+ features" '(.cards[]|select(.type=="analysis_summary")|.payload.analysis.features|length) >= 1'
 printf "%s\n" "$skin_json" | jq_assert "analysis has strategy" '((.cards[]|select(.type=="analysis_summary")|.payload.analysis.strategy)//"") | length > 0'
 
