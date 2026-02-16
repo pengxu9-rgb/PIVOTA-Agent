@@ -135,7 +135,7 @@ test('normalizeClarificationField: never returns empty; falls back to stable has
   assert.ok(Number(snap.clarificationIdNormalizedEmptyCount) >= 3);
 });
 
-test('detectBrandAvailabilityIntent: detects Winona availability intent (CN/EN/mixed) and rejects generic diagnosis', () => {
+test('detectBrandAvailabilityIntent: detects Winona/IPSA availability intent (CN/EN/mixed) and rejects generic diagnosis', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const cn = __internal.detectBrandAvailabilityIntent('有没有薇诺娜的产品', 'CN');
@@ -152,6 +152,16 @@ test('detectBrandAvailabilityIntent: detects Winona availability intent (CN/EN/m
     assert.ok(mixed);
     assert.equal(mixed.intent, 'availability');
     assert.equal(mixed.brand_id, 'brand_winona');
+
+    const ipsaCn = __internal.detectBrandAvailabilityIntent('茵芙莎有货吗', 'CN');
+    assert.ok(ipsaCn);
+    assert.equal(ipsaCn.intent, 'availability');
+    assert.equal(ipsaCn.brand_id, 'brand_ipsa');
+
+    const ipsaEn = __internal.detectBrandAvailabilityIntent('IPSA available?', 'EN');
+    assert.ok(ipsaEn);
+    assert.equal(ipsaEn.intent, 'availability');
+    assert.equal(ipsaEn.brand_id, 'brand_ipsa');
 
     assert.equal(__internal.detectBrandAvailabilityIntent('我脸很红怎么办', 'CN'), null);
     assert.equal(__internal.detectBrandAvailabilityIntent('我皮肤很干怎么办', 'CN'), null);

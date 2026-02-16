@@ -168,6 +168,35 @@ const UPSTREAM_TIMEOUT_SEARCH_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_SEARCH_RETRY_MS,
   Math.min(UPSTREAM_TIMEOUT_SLOW_MS, Math.max(UPSTREAM_TIMEOUT_SEARCH_MS * 3, 45_000)),
 );
+const PDP_V2_CORE_HOT_CACHE_ENABLED =
+  String(process.env.PDP_V2_CORE_HOT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
+const PDP_V2_CORE_HOT_CACHE_TTL_MS = Math.max(
+  1000,
+  parseTimeoutMs(process.env.PDP_V2_CORE_HOT_CACHE_TTL_MS, 20 * 1000),
+);
+const PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES = Math.max(
+  20,
+  Number(process.env.PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES || 400) || 400,
+);
+const PDP_CORE_PREWARM_ENABLED =
+  String(process.env.PDP_CORE_PREWARM_ENABLED || 'false').toLowerCase() === 'true';
+const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
+  1000,
+  parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
+);
+const PDP_CORE_PREWARM_INTERVAL_MS = Math.max(
+  30_000,
+  parseTimeoutMs(process.env.PDP_CORE_PREWARM_INTERVAL_MS, 5 * 60 * 1000),
+);
+const PDP_CORE_PREWARM_INITIAL_DELAY_MS = Math.max(
+  0,
+  Number(process.env.PDP_CORE_PREWARM_INITIAL_DELAY_MS || 3000) || 3000,
+);
+const PDP_CORE_PREWARM_GATEWAY_URL = String(process.env.PDP_CORE_PREWARM_GATEWAY_URL || '').trim();
+const PDP_CORE_PREWARM_TARGETS = parsePdpCorePrewarmTargets(
+  process.env.PDP_CORE_PREWARM_TARGETS || '',
+  DEFAULT_MERCHANT_ID,
+);
 
 const SLOW_UPSTREAM_OPS = new Set([
   'preview_quote',
@@ -201,8 +230,12 @@ const PROXY_SEARCH_RESOLVER_FIRST_ENABLED = (() => {
   const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
   return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED || defaultValue).toLowerCase() === 'true';
 })();
+const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED =
+  String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
-  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'true').toLowerCase() === 'true';
+  String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'false').toLowerCase() === 'true';
+const PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
+  String(process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS =
   String(process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS || 'true').toLowerCase() ===
   'true';
@@ -210,6 +243,16 @@ const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
     parseTimeoutMs(process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS, 3200),
+    UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+  ),
+);
+const PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = Math.max(
+  1200,
+  Math.min(
+    parseTimeoutMs(
+      process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
+      Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 3500),
+    ),
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
 );
@@ -425,6 +468,36 @@ function safeCloneJson(value) {
   } catch {
     return value;
   }
+}
+
+function parsePdpCorePrewarmTargets(raw, defaultMerchantId) {
+  const source = String(raw || '').trim();
+  if (!source) return [];
+
+  const fallbackMerchantId = String(defaultMerchantId || '').trim();
+  const seen = new Set();
+  const out = [];
+
+  for (const tokenRaw of source.split(/[,\n]/g)) {
+    const token = String(tokenRaw || '').trim();
+    if (!token) continue;
+
+    let merchantId = fallbackMerchantId;
+    let productId = token;
+    const sepIdx = token.indexOf(':');
+    if (sepIdx > 0) {
+      merchantId = String(token.slice(0, sepIdx)).trim() || fallbackMerchantId;
+      productId = String(token.slice(sepIdx + 1)).trim();
+    }
+    if (!merchantId || !productId) continue;
+
+    const dedupeKey = `${merchantId}:${productId}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push({ merchant_id: merchantId, product_id: productId });
+  }
+
+  return out;
 }
 
 const PROXY_SEARCH_RESOLVER_CACHE = new Map(); // key -> { value, expiresAtMs }
@@ -1983,6 +2056,13 @@ function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
 function shouldSkipSecondaryFallbackAfterResolverMiss(result) {
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
   return shouldReducePrimaryTimeoutAfterResolverMiss(result);
+}
+
+function shouldAllowSecondaryFallback(operation) {
+  if (operation === 'find_products_multi') {
+    return PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
+  }
+  return true;
 }
 
 function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
@@ -4563,6 +4643,7 @@ const healthRouteHandler = (req, res) => {
     resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
     resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
     product_detail_cache: snapshotProductDetailCacheStats(),
+    pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
     pdp_recommendations_cache: getPdpRecsCacheStats(),
     products_available: true,
     catalog_cache: includeCacheStats
@@ -4608,6 +4689,7 @@ const healthRouteHandler = (req, res) => {
         resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
         resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
         product_detail_cache: snapshotProductDetailCacheStats(),
+        pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
         pdp_recommendations_cache: getPdpRecsCacheStats(),
         products_available: true,
         warning: 'healthz_cache_stats_failed',
@@ -5082,10 +5164,10 @@ async function proxyAgentSearchToBackend(req, res) {
   const resolverFirstMetadata = source ? { source } : null;
   let resolverFirstResult = null;
   const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
-    operation: 'find_products_multi',
-    metadata: resolverFirstMetadata,
-    queryText,
-  });
+      operation: 'find_products_multi',
+      metadata: resolverFirstMetadata,
+      queryText,
+  }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
   if (shouldAttemptResolverFirst) {
     try {
@@ -5111,11 +5193,16 @@ async function proxyAgentSearchToBackend(req, res) {
   }
 
   try {
+    const basePrimaryTimeoutMs = Math.min(
+      getUpstreamTimeoutMs('find_products_multi'),
+      PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
+    );
     const primaryTimeoutMs =
       shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult)
-        ? Math.min(getUpstreamTimeoutMs('find_products_multi'), PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
-        : getUpstreamTimeoutMs('find_products_multi');
+        ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
+        : basePrimaryTimeoutMs;
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+    const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi');
 
     const resp = await axios({
       method: 'GET',
@@ -5141,7 +5228,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
 
     if (shouldFallback) {
-      if (!skipSecondaryFallback) {
+      if (allowSecondaryFallback && !skipSecondaryFallback) {
         try {
           const resolverFallback = await queryResolveSearchFallback({
             queryParams,
@@ -5164,7 +5251,7 @@ async function proxyAgentSearchToBackend(req, res) {
         }
       }
 
-      if (!skipSecondaryFallback) {
+      if (allowSecondaryFallback && !skipSecondaryFallback) {
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams,
@@ -5213,8 +5300,9 @@ async function proxyAgentSearchToBackend(req, res) {
     );
   } catch (err) {
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+    const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi');
     if (queryText) {
-      if (!skipSecondaryFallback) {
+      if (allowSecondaryFallback && !skipSecondaryFallback) {
         try {
           const resolverFallback = await queryResolveSearchFallback({
             queryParams,
@@ -5237,7 +5325,7 @@ async function proxyAgentSearchToBackend(req, res) {
         }
       }
 
-      if (!skipSecondaryFallback) {
+      if (allowSecondaryFallback && !skipSecondaryFallback) {
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams,
@@ -6330,6 +6418,49 @@ async function handleOffersResolveOperation({
           input: {
             product_id: normalizedInput.raw_product_id,
             sku_id: normalizedInput.raw_sku_id,
+          },
+        },
+        reasonCode: 'canonical_ref_direct',
+        pdpTargetV1: pdpTarget,
+        sourceTrace,
+        queryText: normalizedInput.query_text,
+        startedAtMs: startedAt,
+      }),
+    };
+  }
+
+  const directRawProductRef =
+    normalizedInput.raw_merchant_id && (normalizedInput.raw_product_id || normalizedInput.raw_sku_id)
+      ? normalizeOffersResolveCanonicalProductRef(
+          {
+            merchant_id: normalizedInput.raw_merchant_id,
+            product_id: normalizedInput.raw_product_id || normalizedInput.raw_sku_id,
+          },
+          { allowOpaqueProductId: false },
+        )
+      : null;
+  if (directRawProductRef) {
+    const pdpTarget = buildOffersResolvePdpTargetRef(directRawProductRef, { path: 'ref' });
+    sourceTrace.push({
+      source: 'stable_input',
+      ok: true,
+      attempts: 0,
+      latency_ms: 0,
+      reason: 'raw_ref_direct',
+    });
+    return {
+      statusCode: 200,
+      response: buildOffersResolveResponse({
+        upstreamBody: {
+          status: 'success',
+          offers: [],
+          offers_count: 0,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+          mapping: {
+            canonical_product_ref: directRawProductRef,
           },
         },
         reasonCode: 'canonical_ref_direct',
@@ -9905,6 +10036,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
         const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+        const allowSecondaryFallback = shouldAllowSecondaryFallback(operation);
         if (queryText) {
           const fallbackReason =
             upstreamStatus
@@ -9913,7 +10045,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 ? 'upstream_timeout'
                 : 'upstream_exception';
 
-          if (!skipSecondaryFallback) {
+          if (allowSecondaryFallback && !skipSecondaryFallback) {
             try {
               const resolverFallback = await queryResolveSearchFallback({
                 queryParams: resolverQueryParams,
@@ -9946,7 +10078,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }
           }
 
-          if (!response && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED && !skipSecondaryFallback) {
+          if (!response && allowSecondaryFallback && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED && !skipSecondaryFallback) {
             try {
               const fallback = await queryFindProductsMultiFallback({
                 queryParams: resolverQueryParams,
@@ -10033,11 +10165,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+      const allowSecondaryFallback = shouldAllowSecondaryFallback(operation);
 
       if (shouldFallback) {
         let replacedByFallback = false;
 
-        if (!skipSecondaryFallback) {
+        if (allowSecondaryFallback && !skipSecondaryFallback) {
           try {
             const resolverFallback = await queryResolveSearchFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -10061,7 +10194,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         }
 
-        if (!replacedByFallback && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED && !skipSecondaryFallback) {
+        if (!replacedByFallback && allowSecondaryFallback && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED && !skipSecondaryFallback) {
           try {
             const fallback = await queryFindProductsMultiFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -10518,6 +10651,92 @@ app.post('/recommend', async (req, res) => {
   return recommendHandler(req, res);
 });
 
+async function runPdpCorePrewarmPass() {
+  if (!PDP_CORE_PREWARM_TARGETS.length) {
+    return { attempted: 0, succeeded: 0, failed: 0 };
+  }
+
+  const invokeUrl =
+    PDP_CORE_PREWARM_GATEWAY_URL ||
+    `http://127.0.0.1:${PORT}/agent/shop/v1/invoke`;
+
+  let succeeded = 0;
+  let failed = 0;
+  const startedAt = Date.now();
+
+  for (const target of PDP_CORE_PREWARM_TARGETS) {
+    const merchantId = String(target?.merchant_id || '').trim();
+    const productId = String(target?.product_id || '').trim();
+    if (!merchantId || !productId) continue;
+
+    const reqBody = {
+      operation: 'get_pdp_v2',
+      payload: {
+        product_ref: {
+          merchant_id: merchantId,
+          product_id: productId,
+        },
+        include: ['offers'],
+        options: {
+          debug: false,
+        },
+      },
+      metadata: {
+        source: 'pdp_core_prewarm',
+      },
+    };
+
+    const reqStartedAt = Date.now();
+    try {
+      const resp = await axios.post(invokeUrl, reqBody, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: PDP_CORE_PREWARM_TIMEOUT_MS,
+      });
+      succeeded += 1;
+      logger.info(
+        {
+          product_id: productId,
+          merchant_id: merchantId,
+          status: resp.status,
+          latency_ms: Math.max(0, Date.now() - reqStartedAt),
+          request_id: resp?.data?.request_id || null,
+        },
+        'PDP core prewarm request complete',
+      );
+    } catch (err) {
+      failed += 1;
+      const status = err?.response?.status || null;
+      logger.warn(
+        {
+          product_id: productId,
+          merchant_id: merchantId,
+          status,
+          latency_ms: Math.max(0, Date.now() - reqStartedAt),
+          err: err?.message || String(err),
+        },
+        'PDP core prewarm request failed',
+      );
+    }
+  }
+
+  const attempted = succeeded + failed;
+  logger.info(
+    {
+      attempted,
+      succeeded,
+      failed,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      timeout_ms: PDP_CORE_PREWARM_TIMEOUT_MS,
+      interval_ms: PDP_CORE_PREWARM_INTERVAL_MS,
+    },
+    'PDP core prewarm pass summary',
+  );
+
+  return { attempted, succeeded, failed };
+}
+
 module.exports = app;
 module.exports._debug = {
   loadCreatorSellableFromCache,
@@ -10553,6 +10772,26 @@ if (require.main === module) {
           runCreatorCatalogAutoSync();
           setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
         }, initialDelayMs);
+      }
+
+      if (PDP_CORE_PREWARM_ENABLED) {
+        if (!PDP_CORE_PREWARM_TARGETS.length) {
+          logger.warn(
+            { env: 'PDP_CORE_PREWARM_TARGETS', enabled: true },
+            'PDP core prewarm is enabled but no targets were configured',
+          );
+        } else {
+          setTimeout(() => {
+            runPdpCorePrewarmPass().catch((err) => {
+              logger.warn({ err: err?.message || String(err) }, 'PDP core prewarm pass failed');
+            });
+            setInterval(() => {
+              runPdpCorePrewarmPass().catch((err) => {
+                logger.warn({ err: err?.message || String(err) }, 'PDP core prewarm pass failed');
+              });
+            }, PDP_CORE_PREWARM_INTERVAL_MS);
+          }, PDP_CORE_PREWARM_INITIAL_DELAY_MS);
+        }
       }
     });
 
