@@ -3160,7 +3160,8 @@ test('/v1/chat: fit-check bypasses the AM/PM budget gate when session.state=S6_B
     const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
     assert.equal(cardTypes.includes('budget_gate'), false);
     assert.ok(cardTypes.includes('product_analysis'));
-    assert.equal(resp.body?.session_patch?.next_state, 'S7_PRODUCT_RECO');
+    assert.equal(resp.body?.session_patch?.next_state, 'PRODUCT_LINK_EVAL');
+    assert.equal(resp.body?.session_patch?.state?._internal_next_state, 'S7_PRODUCT_RECO');
   });
 });
 
@@ -3255,7 +3256,8 @@ test('/v1/chat: compatibility bypasses the AM/PM budget gate when session.state=
     assert.equal(cardTypes.includes('budget_gate'), false);
     assert.ok(cardTypes.includes('routine_simulation'));
     assert.ok(cardTypes.includes('conflict_heatmap'));
-    assert.equal(resp.body?.session_patch?.next_state, 'S7_PRODUCT_RECO');
+    assert.equal(resp.body?.session_patch?.next_state, 'ROUTINE_REVIEW');
+    assert.equal(resp.body?.session_patch?.state?._internal_next_state, 'S7_PRODUCT_RECO');
   });
 });
 
@@ -4964,7 +4966,8 @@ test('/v1/chat: reco chip gates when profile is incomplete', async () => {
     });
 
     assert.equal(resp.status, 200);
-    assert.equal(resp.body?.session_patch?.next_state, 'S2_DIAGNOSIS');
+    assert.equal(resp.body?.session_patch?.next_state, 'RECO_GATE');
+    assert.equal(resp.body?.session_patch?.state?._internal_next_state, 'S2_DIAGNOSIS');
 
     const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
     assert.ok(cards.some((c) => c && c.type === 'diagnosis_gate'));
@@ -5059,7 +5062,8 @@ test('/v1/chat: profile.patch does not auto-advance to photo', async () => {
     assert.equal(resp.status, 200);
     assert.equal(typeof resp.body?.session_patch, 'object');
     assert.equal(Object.prototype.hasOwnProperty.call(resp.body.session_patch, 'profile'), true);
-    assert.equal(Object.prototype.hasOwnProperty.call(resp.body.session_patch, 'next_state'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(resp.body.session_patch, 'next_state'), true);
+    assert.equal(resp.body?.session_patch?.next_state, 'IDLE_CHAT');
     const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
     assert.ok(cards.some((c) => c && c.type === 'profile'));
   });

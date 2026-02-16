@@ -48,6 +48,8 @@ const {
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
   recordUpstreamCall,
+  recordTemplateApplied,
+  recordTemplateFallback,
   observeUpstreamLatency,
   recordVisionDecision,
   recordEnsembleProviderResult,
@@ -75,6 +77,11 @@ const {
   recordGeometrySanitizerDropReason,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
+const {
+  selectTemplate,
+  renderAssistantMessage,
+  adaptChips,
+} = require('./templateSystem');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runGeminiShadowVerify } = require('./diagVerify');
@@ -109,6 +116,7 @@ const {
   saveLastAnalysisForIdentity,
   deleteIdentityData,
   isCheckinDue,
+  resolveNextStateFromSessionPatch,
   upsertIdentityLink,
   migrateGuestDataToUser,
 } = require('./memoryStore');
@@ -132,6 +140,7 @@ const {
   shouldDiagnosisGate,
   buildDiagnosisPrompt,
   buildDiagnosisChips,
+  buildPendingClarificationForGate,
   stripRecommendationCards,
 } = require('./gating');
 const {
@@ -554,6 +563,26 @@ const AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS = (() => {
   return Math.max(1000, Math.min(15 * 60 * 1000, v));
 })();
 
+const AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE = (() => {
+  const raw = String(process.env.AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE || 'offers,reviews_preview,similar')
+    .trim()
+    .toLowerCase();
+  const tokens = raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const normalized = [];
+  const seen = new Set();
+  for (const token of tokens) {
+    const mapped = token === 'recommendations' ? 'similar' : token;
+    if (mapped !== 'offers' && mapped !== 'reviews_preview' && mapped !== 'similar') continue;
+    if (seen.has(mapped)) continue;
+    seen.add(mapped);
+    normalized.push(mapped);
+  }
+  return normalized.length ? normalized : ['offers'];
+})();
+
 const AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED || 'true')
     .trim()
@@ -573,6 +602,28 @@ const AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS = (() => {
   return Math.max(0, Math.min(5 * 60 * 1000, v));
 })();
 
+const AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(8, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(8, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS || 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1000;
+  return Math.max(0, Math.min(5 * 60 * 1000, v));
+})();
+
+const AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY = String(
+  process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY || '',
+).trim();
+
 function parsePdpHotsetFromEnv(raw) {
   const text = String(raw || '').trim();
   if (!text) return [];
@@ -584,9 +635,33 @@ function parsePdpHotsetFromEnv(raw) {
   }
 }
 
+function parsePdpHotsetCompactList(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  return text
+    .split(/[,\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [merchantIdRaw, productIdRaw] = entry.split(':');
+      const merchantId = String(merchantIdRaw || '').trim();
+      const productId = String(productIdRaw || '').trim();
+      if (!merchantId || !productId) return null;
+      return {
+        product_ref: {
+          merchant_id: merchantId,
+          product_id: productId,
+        },
+      };
+    })
+    .filter(Boolean);
+}
+
 const AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS = (() => {
   const fromEnv = parsePdpHotsetFromEnv(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_JSON);
   if (fromEnv.length) return fromEnv;
+  const fromCompactList = parsePdpHotsetCompactList(process.env.AURORA_BFF_PDP_HOTSET_PREWARM_LIST);
+  if (fromCompactList.length) return fromCompactList;
   return [
     {
       product_ref: {
@@ -619,6 +694,27 @@ const dupeDeepscanCache = new Map();
 const photoBytesCache = new Map();
 const pdpPrefetchRecentMap = new Map();
 let pdpHotsetPrewarmStarted = false;
+let pdpHotsetPrewarmInFlight = false;
+const pdpPrefetchStats = {
+  totals: {
+    total: 0,
+    ok: 0,
+    non_200: 0,
+    failed: 0,
+  },
+  by_reason: {},
+  last_prefetch: null,
+  hotset_runs: {
+    started: 0,
+    completed: 0,
+    skipped_unavailable: 0,
+    skipped_disabled: 0,
+    skipped_no_hotset: 0,
+    skipped_in_flight: 0,
+    failed: 0,
+  },
+  hotset_last: null,
+};
 
 function getDupeDeepscanCache(key) {
   if (!key || DUPE_DEEPSCAN_CACHE_MAX <= 0) return null;
@@ -7597,6 +7693,106 @@ function summarizeOfferPdpOpen(items) {
   };
 }
 
+function normalizePdpPrefetchReason(reason) {
+  const normalized = String(reason || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9:_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized || 'unknown';
+}
+
+function getPdpPrefetchReasonBucket(reason) {
+  const key = normalizePdpPrefetchReason(reason);
+  if (!pdpPrefetchStats.by_reason[key]) {
+    pdpPrefetchStats.by_reason[key] = {
+      total: 0,
+      ok: 0,
+      non_200: 0,
+      failed: 0,
+    };
+  }
+  return { key, bucket: pdpPrefetchStats.by_reason[key] };
+}
+
+function recordPdpPrefetchResult({ reason, status = 0, ok = false, failed = false, key = '', durationMs = 0, error = '' } = {}) {
+  const { key: reasonKey, bucket } = getPdpPrefetchReasonBucket(reason);
+  pdpPrefetchStats.totals.total += 1;
+  bucket.total += 1;
+  if (ok) {
+    pdpPrefetchStats.totals.ok += 1;
+    bucket.ok += 1;
+  } else if (failed) {
+    pdpPrefetchStats.totals.failed += 1;
+    bucket.failed += 1;
+  } else {
+    pdpPrefetchStats.totals.non_200 += 1;
+    bucket.non_200 += 1;
+  }
+  pdpPrefetchStats.last_prefetch = {
+    at: new Date().toISOString(),
+    reason: reasonKey,
+    key: key || null,
+    status: Number(status || 0),
+    ok: Boolean(ok),
+    failed: Boolean(failed),
+    duration_ms: Number(durationMs || 0),
+    error: error ? String(error).slice(0, 400) : null,
+  };
+}
+
+function getNormalizedPdpHotsetPrewarmPayloads() {
+  return (Array.isArray(AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS) ? AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS : [])
+    .map((item) => normalizePdpCorePrefetchPayload(item))
+    .filter(Boolean);
+}
+
+function getPdpPrefetchStateSnapshot() {
+  return {
+    config: {
+      prefetch_enabled: AURORA_BFF_PDP_CORE_PREFETCH_ENABLED,
+      prefetch_include: AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE,
+      prefetch_timeout_ms: AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS,
+      prefetch_dedup_ttl_ms: AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS,
+      hotset_prewarm_enabled: AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
+      hotset_size: getNormalizedPdpHotsetPrewarmPayloads().length,
+      hotset_concurrency: AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY,
+      hotset_interval_ms: AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS,
+      hotset_initial_delay_ms: AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS,
+      hotset_bootstrap_rounds: AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS,
+      hotset_bootstrap_gap_ms: AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS,
+    },
+    runtime: {
+      started: pdpHotsetPrewarmStarted,
+      in_flight: pdpHotsetPrewarmInFlight,
+      totals: { ...pdpPrefetchStats.totals },
+      by_reason: { ...pdpPrefetchStats.by_reason },
+      last_prefetch: pdpPrefetchStats.last_prefetch ? { ...pdpPrefetchStats.last_prefetch } : null,
+      hotset_runs: { ...pdpPrefetchStats.hotset_runs },
+      hotset_last: pdpPrefetchStats.hotset_last ? { ...pdpPrefetchStats.hotset_last } : null,
+    },
+  };
+}
+
+function getPdpHotsetPrewarmAdminToken(req) {
+  if (!req || typeof req.get !== 'function') return '';
+  return String(req.get('X-Aurora-Admin-Key') || req.get('x-aurora-admin-key') || '').trim();
+}
+
+function hasPdpHotsetPrewarmAdminAccess(req) {
+  if (!AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY) return false;
+  const provided = getPdpHotsetPrewarmAdminToken(req);
+  if (!provided) return false;
+  const expectedBuf = Buffer.from(AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY);
+  const providedBuf = Buffer.from(provided);
+  if (expectedBuf.length !== providedBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(expectedBuf, providedBuf);
+  } catch {
+    return false;
+  }
+}
+
 function normalizePdpCorePrefetchPayload(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const productRef = normalizeCanonicalProductRef(raw.product_ref, {
@@ -7674,10 +7870,13 @@ function shouldRunPdpCorePrefetch(key) {
 }
 
 async function invokePdpCorePrefetch(payload, { logger, reason = null } = {}) {
-  if (!PIVOTA_BACKEND_BASE_URL) return;
+  if (!PIVOTA_BACKEND_BASE_URL) return { skipped: true, skip_reason: 'missing_base_url' };
   const normalized = normalizePdpCorePrefetchPayload(payload);
-  if (!normalized) return;
+  if (!normalized) return { skipped: true, skip_reason: 'invalid_payload' };
   const invokeUrl = `${String(PIVOTA_BACKEND_BASE_URL || '').replace(/\/+$/, '')}/agent/shop/v1/invoke`;
+  const reasonKey = normalizePdpPrefetchReason(reason);
+  const prefetchKey = makePdpCorePrefetchKey(normalized) || null;
+  const startedAt = Date.now();
   try {
     const resp = await axios.post(
       invokeUrl,
@@ -7685,7 +7884,7 @@ async function invokePdpCorePrefetch(payload, { logger, reason = null } = {}) {
         operation: 'get_pdp_v2',
         payload: {
           ...normalized,
-          include: ['offers'],
+          include: AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE,
           capabilities: {
             client: 'aurora_bff_prefetch',
             client_version: 'v1',
@@ -7698,25 +7897,59 @@ async function invokePdpCorePrefetch(payload, { logger, reason = null } = {}) {
         validateStatus: () => true,
       },
     );
-    if (Number(resp?.status || 0) >= 400) {
+    const status = Number(resp?.status || 0);
+    const durationMs = Date.now() - startedAt;
+    if (status >= 400) {
+      recordPdpPrefetchResult({
+        reason: reasonKey,
+        status,
+        ok: false,
+        failed: false,
+        key: prefetchKey || '',
+        durationMs,
+      });
       logger?.warn(
         {
-          reason: reason || 'unknown',
-          status: Number(resp?.status || 0),
-          key: makePdpCorePrefetchKey(normalized) || null,
+          reason: reasonKey,
+          status,
+          key: prefetchKey,
+          duration_ms: durationMs,
         },
         'aurora bff: pdp core prefetch non-200',
       );
+      return { ok: false, status, duration_ms: durationMs, key: prefetchKey };
     }
+    recordPdpPrefetchResult({
+      reason: reasonKey,
+      status,
+      ok: true,
+      failed: false,
+      key: prefetchKey || '',
+      durationMs,
+    });
+    return { ok: true, status, duration_ms: durationMs, key: prefetchKey };
   } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const errMessage = err?.message || String(err);
+    recordPdpPrefetchResult({
+      reason: reasonKey,
+      status: 0,
+      ok: false,
+      failed: true,
+      key: prefetchKey || '',
+      durationMs,
+      error: errMessage,
+    });
     logger?.warn(
       {
-        reason: reason || 'unknown',
-        err: err?.message || String(err),
-        key: makePdpCorePrefetchKey(normalized) || null,
+        reason: reasonKey,
+        err: errMessage,
+        key: prefetchKey,
+        duration_ms: durationMs,
       },
       'aurora bff: pdp core prefetch failed',
     );
+    return { ok: false, status: 0, duration_ms: durationMs, key: prefetchKey, error: errMessage };
   }
 }
 
@@ -7742,27 +7975,143 @@ function schedulePdpCorePrefetchFromItems(items, { logger, reason = null, maxIte
   });
 }
 
+async function runPdpHotsetPrewarmBatch({ logger, reason = 'hotset_prewarm', allowWhenDisabled = false } = {}) {
+  const reasonKey = normalizePdpPrefetchReason(reason);
+  if (!PIVOTA_BACKEND_BASE_URL) {
+    pdpPrefetchStats.hotset_runs.skipped_unavailable += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'missing_base_url',
+      duration_ms: 0,
+      hotset_size: 0,
+    };
+    return { ok: false, skipped: true, skip_reason: 'missing_base_url', hotset_size: 0, duration_ms: 0 };
+  }
+  if (!allowWhenDisabled && !AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED) {
+    pdpPrefetchStats.hotset_runs.skipped_disabled += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'feature_disabled',
+      duration_ms: 0,
+      hotset_size: 0,
+    };
+    return { ok: false, skipped: true, skip_reason: 'feature_disabled', hotset_size: 0, duration_ms: 0 };
+  }
+  const hotset = getNormalizedPdpHotsetPrewarmPayloads();
+  if (!hotset.length) {
+    pdpPrefetchStats.hotset_runs.skipped_no_hotset += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'empty_hotset',
+      duration_ms: 0,
+      hotset_size: 0,
+    };
+    return { ok: false, skipped: true, skip_reason: 'empty_hotset', hotset_size: 0, duration_ms: 0 };
+  }
+  if (pdpHotsetPrewarmInFlight) {
+    pdpPrefetchStats.hotset_runs.skipped_in_flight += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: true,
+      skip_reason: 'in_flight',
+      duration_ms: 0,
+      hotset_size: hotset.length,
+    };
+    return { ok: false, skipped: true, skip_reason: 'in_flight', hotset_size: hotset.length, duration_ms: 0 };
+  }
+
+  pdpHotsetPrewarmInFlight = true;
+  pdpPrefetchStats.hotset_runs.started += 1;
+  const startedAt = Date.now();
+  try {
+    await mapWithConcurrency(hotset, AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY, async (payload) => {
+      await invokePdpCorePrefetch(payload, { logger, reason: reasonKey });
+    });
+    const durationMs = Date.now() - startedAt;
+    pdpPrefetchStats.hotset_runs.completed += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: true,
+      skipped: false,
+      duration_ms: durationMs,
+      hotset_size: hotset.length,
+    };
+    return { ok: true, skipped: false, duration_ms: durationMs, hotset_size: hotset.length };
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const errMessage = err?.message || String(err);
+    pdpPrefetchStats.hotset_runs.failed += 1;
+    pdpPrefetchStats.hotset_last = {
+      at: new Date().toISOString(),
+      reason: reasonKey,
+      ok: false,
+      skipped: false,
+      duration_ms: durationMs,
+      hotset_size: hotset.length,
+      error: String(errMessage).slice(0, 400),
+    };
+    logger?.warn(
+      {
+        reason: reasonKey,
+        hotset_size: hotset.length,
+        duration_ms: durationMs,
+        err: errMessage,
+      },
+      'aurora bff: pdp hotset prewarm run failed',
+    );
+    return { ok: false, skipped: false, duration_ms: durationMs, hotset_size: hotset.length, error: errMessage };
+  } finally {
+    pdpHotsetPrewarmInFlight = false;
+  }
+}
+
 function startPdpHotsetPrewarmLoop({ logger } = {}) {
   if (pdpHotsetPrewarmStarted) return;
   if (!AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED || !PIVOTA_BACKEND_BASE_URL) return;
-  const hotset = (Array.isArray(AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS) ? AURORA_BFF_PDP_HOTSET_PREWARM_ITEMS : [])
-    .map((item) => normalizePdpCorePrefetchPayload(item))
-    .filter(Boolean);
+  const hotset = getNormalizedPdpHotsetPrewarmPayloads();
   if (!hotset.length) return;
 
   pdpHotsetPrewarmStarted = true;
-  const runOnce = async () => {
-    await mapWithConcurrency(hotset, 2, async (payload) => {
-      await invokePdpCorePrefetch(payload, { logger, reason: 'hotset_prewarm' });
+  const waitMs = async (ms) => {
+    const delay = Math.max(0, Number(ms) || 0);
+    if (!delay) return;
+    await new Promise((resolve) => {
+      setTimeout(resolve, delay);
     });
   };
 
+  const runOnce = async ({ reason = 'hotset_prewarm' } = {}) => {
+    await runPdpHotsetPrewarmBatch({ logger, reason, allowWhenDisabled: false });
+  };
+
+  const runBootstrapBurst = async () => {
+    for (let i = 0; i < AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS; i += 1) {
+      const reason = i === 0 ? 'hotset_prewarm_startup' : 'hotset_prewarm_startup_followup';
+      await runOnce({ reason });
+      if (i < AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS - 1) {
+        await waitMs(AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS);
+      }
+    }
+  };
+
   setTimeout(() => {
-    void runOnce();
+    void runBootstrapBurst();
   }, AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS);
 
   const timer = setInterval(() => {
-    void runOnce();
+    void runOnce({ reason: 'hotset_prewarm_interval' });
   }, AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS);
   if (typeof timer.unref === 'function') timer.unref();
 }
@@ -8893,6 +9242,39 @@ function mountAuroraBffRoutes(app, { logger }) {
     return res.status(200).send(renderVisionMetricsPrometheus());
   });
 
+  app.get('/v1/ops/pdp-prefetch/state', (req, res) => {
+    if (!AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasPdpHotsetPrewarmAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    return res.status(200).json({
+      ok: true,
+      data: getPdpPrefetchStateSnapshot(),
+    });
+  });
+
+  app.post('/v1/ops/pdp-prefetch/run', async (req, res) => {
+    if (!AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasPdpHotsetPrewarmAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    const reason = normalizePdpPrefetchReason(pickFirstTrimmed(req?.body?.reason, 'hotset_prewarm_manual'));
+    const result = await runPdpHotsetPrewarmBatch({
+      logger,
+      reason,
+      allowWhenDisabled: true,
+    });
+    return res.status(200).json({
+      ok: true,
+      result,
+      data: getPdpPrefetchStateSnapshot(),
+    });
+  });
+
   app.post('/v1/auth/start', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -9464,6 +9846,27 @@ function mountAuroraBffRoutes(app, { logger }) {
           events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
         });
         return res.status(400).json(envelope);
+      }
+
+      const incomingSession =
+        parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+          ? parsed.data.session
+          : null;
+      if (incomingSession) {
+        const sessionStateAsObject =
+          incomingSession.state && typeof incomingSession.state === 'object' && !Array.isArray(incomingSession.state)
+            ? incomingSession.state
+            : null;
+        const resumedState = resolveNextStateFromSessionPatch({
+          next_state:
+            typeof incomingSession.state === 'string'
+              ? incomingSession.state
+              : typeof incomingSession.next_state === 'string'
+                ? incomingSession.next_state
+                : '',
+          state: sessionStateAsObject,
+        });
+        if (resumedState) ctx.state = resumedState;
       }
 
       const identity = await resolveIdentity(req, ctx);
@@ -10797,6 +11200,18 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (gate.gated) {
         const prompt = buildDiagnosisPrompt(ctx.lang, gate.missing);
         const chips = buildDiagnosisChips(ctx.lang, gate.missing);
+        const sessionPatch = { next_state: 'S2_DIAGNOSIS' };
+        if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
+          const pendingFromGate =
+            gate.pending_clarification ||
+            buildPendingClarificationForGate({
+              language: ctx.lang,
+              missing: gate.missing,
+              message: 'recommend',
+              wants: 'recommendation',
+            });
+          if (pendingFromGate) emitPendingClarificationPatch(sessionPatch, pendingFromGate);
+        }
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(prompt),
           suggested_chips: chips,
@@ -10807,7 +11222,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: { reason: gate.reason, missing_fields: gate.missing, wants: 'recommendation', profile: profileSummary, recent_logs: recentLogs },
             },
           ],
-          session_patch: { next_state: 'S2_DIAGNOSIS' },
+          session_patch: sessionPatch,
           events: [makeEvent({ ...ctx, trigger_source: 'action' }, 'state_entered', { next_state: 'S2_DIAGNOSIS', reason: gate.reason })],
         });
         return res.json(envelope);
@@ -14270,14 +14685,28 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (wantsProductRecommendations) {
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
+        const hardRequiredFields = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+        const hardRequiredMissing = hardRequiredFields.filter((field) =>
+          Array.isArray(profileMissing) ? profileMissing.includes(field) : false,
+        );
 
         // Diagnosis-first gate: if profile is incomplete, do NOT generate recommendations yet.
         // This applies regardless of the current state; otherwise users see weakly-related recos before core profile.
-        if (profileScore < 3) {
-          const required = Array.isArray(profileMissing) ? profileMissing : [];
+        if (hardRequiredMissing.length > 0) {
+          const required = hardRequiredMissing;
           const prompt = buildDiagnosisPrompt(ctx.lang, required);
           const chips = buildDiagnosisChips(ctx.lang, required);
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+          const sessionPatch = nextState ? { next_state: nextState } : {};
+          if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
+            const pendingFromGate = buildPendingClarificationForGate({
+              language: ctx.lang,
+              missing: required,
+              message,
+              wants: 'recommendation',
+            });
+            if (pendingFromGate) emitPendingClarificationPatch(sessionPatch, pendingFromGate);
+          }
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(prompt),
@@ -14295,7 +14724,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 },
               },
             ],
-            session_patch: nextState ? { next_state: nextState } : {},
+            session_patch: sessionPatch,
             events: [
               makeEvent(ctx, 'recos_requested', { explicit: true, gated: true, reason: 'diagnosis_first' }),
               makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_first' }),
@@ -15340,30 +15769,91 @@ function mountAuroraBffRoutes(app, { logger }) {
         emitPendingClarificationPatch(sessionPatch, pendingClarificationFromUpstream);
       }
 
+      const assembledCards = [
+        ...(structuredForEnvelope && !structuredBlocked
+          ? [{
+            card_id: `structured_${ctx.request_id}`,
+            type: 'aurora_structured',
+            payload: structuredForEnvelope,
+          }]
+          : []),
+        ...derivedCards,
+        ...cardsForEnvelope.map((c, idx) => ({
+          card_id: c.card_id || `aurora_${ctx.request_id}_${idx}`,
+          type: c.type || 'aurora_card',
+          title: c.title,
+          payload: c.payload || c,
+          ...(Array.isArray(c.field_missing) ? { field_missing: c.field_missing } : {}),
+        })),
+        ...contextCard,
+        ...(fieldMissing.length
+          ? [{ card_id: `gate_${ctx.request_id}`, type: 'gate_notice', payload: {}, field_missing: fieldMissing }]
+          : []),
+      ];
+
+      const pendingForTemplate =
+        pendingClarificationPatchOverride !== undefined
+          ? pendingClarificationPatchOverride
+          : pendingClarificationFromUpstream || null;
+      const pendingCurrentNormId =
+        pendingForTemplate &&
+        typeof pendingForTemplate === 'object' &&
+        pendingForTemplate.current &&
+        typeof pendingForTemplate.current === 'object'
+          ? String(
+            pendingForTemplate.current.norm_id ||
+            pendingForTemplate.current.normId ||
+            pendingForTemplate.current.id ||
+            '',
+          ).trim()
+          : '';
+
+      const templateDecision = selectTemplate({
+        language: ctx.lang,
+        intent: routeHint && routeHint.route === 'env' ? 'weather_env' : null,
+        cards: assembledCards,
+        session_patch: sessionPatch,
+        pending_clarification: pendingForTemplate,
+      });
+      const templateRendered = renderAssistantMessage(templateDecision, {
+        language: ctx.lang,
+        assistant_message: { role: 'assistant', content: safeAnswer, format: 'markdown' },
+        cards: assembledCards,
+        session_patch: sessionPatch,
+        pending_clarification: pendingForTemplate,
+      });
+      if (templateRendered && templateRendered.applied) {
+        recordTemplateApplied({
+          templateId: templateDecision && templateDecision.id,
+          moduleName: templateDecision && templateDecision.module,
+          variant: templateDecision && templateDecision.variant,
+          source: 'chat',
+        });
+      } else {
+        recordTemplateFallback({
+          reason: templateRendered && templateRendered.reason ? templateRendered.reason : 'keep_existing',
+          moduleName: templateDecision && templateDecision.module,
+        });
+      }
+
+      const adaptedChips = adaptChips({
+        existingChips: suggestedChips,
+        maxChips: 10,
+        currentNormId: pendingCurrentNormId || null,
+      });
+      const finalAssistantText =
+        templateRendered && typeof templateRendered.content === 'string' && templateRendered.content.trim()
+          ? templateRendered.content
+          : safeAnswer;
+      const finalAssistantFormat =
+        templateRendered && templateRendered.format === 'text'
+          ? 'text'
+          : 'markdown';
+
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeChatAssistantMessage(safeAnswer, 'markdown'),
-        suggested_chips: suggestedChips,
-        cards: [
-          ...(structuredForEnvelope && !structuredBlocked
-            ? [{
-              card_id: `structured_${ctx.request_id}`,
-              type: 'aurora_structured',
-              payload: structuredForEnvelope,
-            }]
-            : []),
-          ...derivedCards,
-          ...cardsForEnvelope.map((c, idx) => ({
-            card_id: c.card_id || `aurora_${ctx.request_id}_${idx}`,
-            type: c.type || 'aurora_card',
-            title: c.title,
-            payload: c.payload || c,
-            ...(Array.isArray(c.field_missing) ? { field_missing: c.field_missing } : {}),
-          })),
-          ...contextCard,
-          ...(fieldMissing.length
-            ? [{ card_id: `gate_${ctx.request_id}`, type: 'gate_notice', payload: {}, field_missing: fieldMissing }]
-            : []),
-        ],
+        assistant_message: makeChatAssistantMessage(finalAssistantText, finalAssistantFormat),
+        suggested_chips: adaptedChips.chips,
+        cards: assembledCards,
         session_patch: sessionPatch,
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'chat_reply' }),
@@ -15415,6 +15905,8 @@ const __internal = {
   looksLikeGreetingAlready,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
+  getPdpPrefetchStateSnapshot,
+  runPdpHotsetPrewarmBatch,
   resolveRecoPdpByStableIds,
   maybeInferSkinMaskForPhotoModules,
   __setInferSkinMaskOnFaceCropForTest(fn) {

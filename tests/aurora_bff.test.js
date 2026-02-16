@@ -45,7 +45,8 @@ describe('Aurora BFF (/v1)', () => {
       })
       .expect(200);
 
-    expect(res.body.session_patch.next_state).toBe('S2_DIAGNOSIS');
+    expect(res.body.session_patch.next_state).toBe('DIAG_PROFILE');
+    expect(res.body.session_patch?.state?._internal_next_state).toBe('S2_DIAGNOSIS');
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
     expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.'))).toBe(true);
   });
@@ -169,7 +170,12 @@ describe('Aurora BFF (/v1)', () => {
 
     expect(res.body.cards.some((c) => c.type === 'diagnosis_gate')).toBe(true);
     expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.skinType.'))).toBe(false);
-    expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('profile.barrierStatus.'))).toBe(true);
+    expect(
+      res.body.suggested_chips.some((c) => {
+        const id = String(c.chip_id);
+        return id.startsWith('profile.sensitivity.') || id.startsWith('profile.barrierStatus.');
+      }),
+    ).toBe(true);
   });
 
   test('Diagnosis: DIAG_PROFILE with complete profile returns photo opt-in chips (no diagnosis_gate loop)', async () => {
@@ -220,7 +226,8 @@ describe('Aurora BFF (/v1)', () => {
 
     expect(res.body.assistant_message.content).toMatch(/预算/);
     expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(true);
-    expect(res.body.session_patch.next_state).toBe('S7_PRODUCT_RECO');
+    expect(res.body.session_patch.next_state).toBe('RECO_RESULTS');
+    expect(res.body.session_patch?.state?._internal_next_state).toBe('S7_PRODUCT_RECO');
     expect(res.body.suggested_chips.some((c) => c.chip_id === 'chip.budget.optimize.entry')).toBe(true);
   });
 
@@ -252,7 +259,8 @@ describe('Aurora BFF (/v1)', () => {
 
     for (const res of [first, second]) {
       expect(res.body.assistant_message.content).toMatch(/预算/);
-      expect(res.body.session_patch.next_state).toBe('S6_BUDGET');
+      expect(res.body.session_patch.next_state).toBe('IDLE_CHAT');
+      expect(res.body.session_patch?.state?._internal_next_state).toBe('S6_BUDGET');
       expect(res.body.cards.some((c) => c.type === 'budget_gate')).toBe(true);
       expect(res.body.suggested_chips.some((c) => String(c.chip_id).startsWith('chip.budget.'))).toBe(true);
     }
@@ -277,7 +285,8 @@ describe('Aurora BFF (/v1)', () => {
 
     expect(res.body.assistant_message.content).toMatch(/routine/);
     expect(res.body.cards.some((c) => c.type === 'recommendations')).toBe(true);
-    expect(res.body.session_patch.next_state).toBe('S7_PRODUCT_RECO');
+    expect(res.body.session_patch.next_state).toBe('RECO_RESULTS');
+    expect(res.body.session_patch?.state?._internal_next_state).toBe('S7_PRODUCT_RECO');
   });
 
   test('Routine simulate: detects retinoid x acids conflict', async () => {
