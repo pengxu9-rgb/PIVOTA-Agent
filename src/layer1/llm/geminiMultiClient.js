@@ -60,10 +60,11 @@ async function withTimeout(promise, timeoutMs) {
  * - Uses the same guards & preprocessing as single-image calls.
  * - Accepts multiple local image paths; each image is attached with a label.
  */
-async function generateMultiImageJsonFromGemini({ promptText, images, schema }) {
-  const apiKey = parseEnvString(process.env.GEMINI_API_KEY);
+async function generateMultiImageJsonFromGemini({ promptText, images, schema, model: modelOverride }) {
+  const apiKey = parseEnvString(process.env.GEMINI_API_KEY) || parseEnvString(process.env.GOOGLE_API_KEY);
   // One-click JSON should use a text-capable model even if GEMINI_MODEL is set to an image model for try-on.
   const model =
+    parseEnvString(modelOverride) ||
     parseEnvString(process.env.GEMINI_ONE_CLICK_MODEL) ||
     parseEnvString(process.env.GEMINI_MODEL) ||
     "gemini-2.5-flash";
@@ -80,7 +81,7 @@ async function generateMultiImageJsonFromGemini({ promptText, images, schema }) 
     preprocess: [],
   };
 
-  if (!apiKey) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY" }, meta };
+  if (!apiKey) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
 
   let GoogleGenAI = null;
   try {
@@ -216,7 +217,7 @@ function extractFirstInlineImage(resp) {
  * - Requests IMAGE modality output and returns the first image bytes.
  */
 async function generateMultiImageImageFromGemini({ promptText, images }) {
-  const apiKey = parseEnvString(process.env.GEMINI_API_KEY);
+  const apiKey = parseEnvString(process.env.GEMINI_API_KEY) || parseEnvString(process.env.GOOGLE_API_KEY);
   const model =
     parseEnvString(process.env.GEMINI_TRYON_IMAGE_MODEL) ||
     parseEnvString(process.env.GEMINI_MODEL) ||
@@ -234,7 +235,7 @@ async function generateMultiImageImageFromGemini({ promptText, images }) {
     preprocess: [],
   };
 
-  if (!apiKey) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY" }, meta };
+  if (!apiKey) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
 
   let GoogleGenAI = null;
   try {

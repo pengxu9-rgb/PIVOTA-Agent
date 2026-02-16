@@ -109,7 +109,7 @@ function isLikelyImageBytes(buf) {
 }
 
 async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSchema }) {
-  const apiKey = parseEnvString(process.env.GEMINI_API_KEY);
+  const apiKey = parseEnvString(process.env.GEMINI_API_KEY) || parseEnvString(process.env.GOOGLE_API_KEY);
   const model = parseEnvString(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
   const timeoutMs = Math.max(1, parseEnvInt(process.env.GEMINI_TIMEOUT_MS, 20_000));
   const maxRetries = Math.max(0, parseEnvInt(process.env.GEMINI_MAX_RETRIES, 1));
@@ -129,7 +129,7 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
   };
 
   if (!apiKey) {
-    return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY" }, meta };
+    return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
   }
 
   let GoogleGenAI = null;
