@@ -1,0 +1,42 @@
+{
+  "name": "analysis_summary_no_photo",
+  "input": {
+    "user_text": "没有照片先给我建议",
+    "ctx": {
+      "lang": "CN",
+      "accept_language": "zh-CN",
+      "intent": "analysis",
+      "state": "diag_analysis"
+    },
+    "session": {
+      "next_state": "S3_ANALYSIS"
+    },
+    "bootstrap": {},
+    "seed_envelope": {
+      "assistant_message": null,
+      "cards": [
+        {
+          "card_id": "fx_analysis_1",
+          "type": "analysis_summary",
+          "payload": {
+            "used_photos": false,
+            "photos_provided": false,
+            "low_confidence": true,
+            "analysis": {
+              "features": ["dryness"],
+              "strategy": "barrier_first"
+            }
+          }
+        }
+      ],
+      "suggested_chips": []
+    }
+  },
+  "expected": {
+    "ui_next_state": "DIAG_ANALYSIS_SUMMARY",
+    "must_have_cards": ["analysis_summary"],
+    "must_not_have_cards": ["recommendations"],
+    "quality_min_score": 80,
+    "hard_fail_forbidden": ["medical_diagnosis"]
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "name": "reco_gate_missing_fields",
+  "input": {
+    "user_text": "给我一套推荐",
+    "ctx": {
+      "lang": "CN",
+      "accept_language": "zh-CN",
+      "intent": "recommendation",
+      "state": "reco_gate"
+    },
+    "session": {
+      "next_state": "S2_DIAGNOSIS",
+      "profile": {
+        "sensitivity": "high",
+        "barrierStatus": "weakened",
+        "goals": ["acne"]
+      },
+      "state": {
+        "pending_clarification": {
+          "v": 1,
+          "current": { "id": "skin_type", "norm_id": "skinType" },
+          "queue": [
+            { "id": "sensitivity", "norm_id": "sensitivity" }
+          ],
+          "history": []
+        }
+      }
+    },
+    "bootstrap": {},
+    "seed_envelope": {
+      "assistant_message": {
+        "role": "assistant",
+        "format": "text",
+        "content": "我可以继续。"
+      },
+      "cards": [
+        {
+          "card_id": "fx_gate_1",
+          "type": "diagnosis_gate",
+          "payload": {
+            "wants": "recommendation",
+            "missing_fields": ["skinType"]
+          }
+        }
+      ],
+      "suggested_chips": []
+    }
+  },
+  "expected": {
+    "ui_next_state": "RECO_GATE",
+    "must_have_cards": ["diagnosis_gate"],
+    "must_not_have_cards": ["recommendations"],
+    "quality_min_score": 80,
+    "hard_fail_forbidden": ["medical_diagnosis", "inventory_assertion_without_offer"]
+  }
+}

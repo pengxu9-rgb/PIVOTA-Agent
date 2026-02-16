@@ -1,0 +1,50 @@
+{
+  "name": "reco_results_visible",
+  "input": {
+    "user_text": "给我具体可买清单",
+    "ctx": {
+      "lang": "CN",
+      "accept_language": "zh-CN",
+      "intent": "recommendation",
+      "state": "reco_results"
+    },
+    "session": {
+      "next_state": "S7_PRODUCT_RECO",
+      "profile": {
+        "skinType": "oily",
+        "sensitivity": "medium",
+        "barrierStatus": "stable",
+        "goals": ["acne"]
+      }
+    },
+    "bootstrap": {},
+    "seed_envelope": {
+      "assistant_message": null,
+      "cards": [
+        {
+          "card_id": "fx_reco_1",
+          "type": "recommendations",
+          "payload": {
+            "recommendations_count": 1,
+            "recommendations": [
+              {
+                "name": "Sample Serum",
+                "offer": {
+                  "affiliate_url": "https://example.com/buy/sample-serum"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "suggested_chips": []
+    }
+  },
+  "expected": {
+    "ui_next_state": "RECO_RESULTS",
+    "must_have_cards": ["recommendations"],
+    "must_not_have_cards": ["diagnosis_gate"],
+    "quality_min_score": 80,
+    "hard_fail_forbidden": ["medical_diagnosis"]
+  }
+}
