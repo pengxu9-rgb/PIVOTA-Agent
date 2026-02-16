@@ -61,6 +61,109 @@ Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`)
 - `AURORA_BFF_INCLUDE_RAW_CONTEXT=true` → includes `aurora_context_raw` card in `/v1/chat`
 - `AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED=true` → emit full `conflict_heatmap` payload (otherwise placeholder-only)
 
+## PDP hotset prewarm (Winona/IPSA jitter control)
+
+Use this block to reduce first-screen/backfill jitter on hot PDPs (for example Winona/IPSA).
+
+### Env vars
+
+- `AURORA_BFF_PDP_CORE_PREFETCH_ENABLED` (`true|false`, default `true`)
+- `AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE` (default `offers,reviews_preview,similar`)
+- `AURORA_BFF_PDP_CORE_PREFETCH_TIMEOUT_MS` (default `1600`)
+- `AURORA_BFF_PDP_CORE_PREFETCH_DEDUP_TTL_MS` (default `120000`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED` (`true|false`, default `true`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_INTERVAL_MS` (default `600000`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_INITIAL_DELAY_MS` (default `1000`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_CONCURRENCY` (default `2`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_ROUNDS` (default `2`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS` (default `1000`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_JSON` (JSON array of `product_ref`/`subject`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_LIST` (compact list, e.g. `merch_x:pid_a,merch_x:pid_b`)
+- `AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY` (enables prewarm ops endpoints)
+
+Default hotset includes:
+
+- `merch_efbc46b4619cfbdf:9886500749640` (Winona)
+- `merch_efbc46b4619cfbdf:9886500127048` (IPSA)
+
+### Manual trigger and state check
+
+With `AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY` configured:
+
+```bash
+AURORA_BASE_URL='https://pivota-agent-production.up.railway.app' \
+AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY='***' \
+node scripts/pdp_hotset_prewarm_once.js
+```
+
+State-only check:
+
+```bash
+AURORA_BASE_URL='https://pivota-agent-production.up.railway.app' \
+AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY='***' \
+node scripts/pdp_hotset_prewarm_once.js --state-only
+```
+
+Direct endpoint check:
+
+```bash
+curl -sS "$BASE_URL/v1/ops/pdp-prefetch/state" \
+  -H "X-Aurora-Admin-Key: $AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY" | jq .
+```
+
+### Fixed regression workflow (warmup 1 + formal 100)
+
+Use this when comparing Winona/IPSA performance without mixing first-hit cold-start noise into steady-state decisions.
+
+```bash
+cd pivota-agent-backend
+npm run probe:frontend:winona-ipsa:fixed
+```
+
+Equivalent explicit command:
+
+```bash
+cd pivota-agent-backend
+WARMUP_ROUNDS=1 FORMAL_ROUNDS=100 node scripts/run_frontend_live_regression_winona_ipsa.js
+```
+
+Output files are written to `pivota-agent-backend/reports/` with name:
+
+- `frontend_live_regression_winona_ipsa_warmup1_formal100_<timestamp>.json`
+- `frontend_live_regression_winona_ipsa_warmup1_formal100_<timestamp>.md`
+
+The report includes three summaries:
+
+- `summary_formal`: decision baseline (steady state)
+- `summary_warmup`: first-hit cost (cold-start signal)
+- `summary_all`: combined trend
+
+### Post-deploy first-visit mitigation checklist
+
+1. Keep `AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED=true`.
+2. Keep hotset entries for Winona/IPSA in `AURORA_BFF_PDP_HOTSET_PREWARM_LIST` (or JSON form).
+3. After deployment success, run one manual prewarm:
+
+```bash
+cd pivota-agent-backend
+AURORA_BASE_URL='https://pivota-agent-production.up.railway.app' \
+AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY='***' \
+node scripts/pdp_hotset_prewarm_once.js
+```
+
+4. Then run fixed regression (`warmup1+formal100`) and track:
+   - `summary_warmup.est_e2e_first_ms` (first-visit user impact)
+   - `summary_formal.est_e2e_p95_ms` (steady-state SLA)
+   - `summary_formal.reviews_408_count` / `similar_408_count` (backfill timeout pressure)
+
+### Rollback
+
+If prewarm is suspected to cause load/latency regressions:
+
+1. Set `AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED=false`
+2. Set `AURORA_BFF_PDP_CORE_PREFETCH_INCLUDE=offers`
+3. Redeploy and re-run the Winona/IPSA live regression probe
+
 ## DB migrations
 
 New tables are created by migration:
