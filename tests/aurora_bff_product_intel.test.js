@@ -687,4 +687,63 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(lastWrite.analysis?.competitors?.candidates)).toBe(true);
     expect(lastWrite.analysis.competitors.candidates.length).toBeGreaterThan(0);
   });
+
+  test('/v1/product/analyze filters nav links and recovers competitor candidates from on-page related products', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    const getProductIntelKbEntry = jest.fn().mockResolvedValue(null);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      getProductIntelKbEntry,
+      upsertProductIntelKbEntry,
+    }));
+
+    nock('https://brand.example')
+      .get('/product-5.html')
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Peptide Serum | Brand</title></head>
+         <body>
+           <a href="#main-content">Skip to main content</a>
+           <a href="/contact-us">Contact Us</a>
+           <a href="/en-al/multi-peptide-eye-serum-100700.html">Multi-Peptide Eye Serum</a>
+           <a href="/en-al/hyaluronic-acid-2-b5-100426.html">Hyaluronic Acid 2% + B5</a>
+           <p class="ingredients-flyout-content" data-original-ingredients="Aqua (Water), Glycerin, Copper Tripeptide-1, Sodium Hyaluronate, Allantoin"></p>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(503, { error: 'temporary unavailable' });
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(503, { error: 'temporary unavailable' });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_ingredient_on_page_comp_1')
+      .send({ url: 'https://brand.example/product-5.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    const competitors = Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates : [];
+    expect(competitors.length).toBeGreaterThan(0);
+    const names = competitors.map((x) => String(x?.name || '').toLowerCase());
+    expect(names.some((n) => n.includes('multi-peptide eye serum') || n.includes('hyaluronic acid'))).toBe(true);
+    expect(names.some((n) => n.includes('skip to main content'))).toBe(false);
+    expect(names.some((n) => n.includes('contact us'))).toBe(false);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).not.toContain('competitors_missing');
+  });
 });

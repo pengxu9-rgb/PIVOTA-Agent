@@ -1958,6 +1958,14 @@ function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 
     'view',
     'buy',
     'product',
+    'skip to main content',
+    'skip to footer content',
+    'contact us',
+    'search',
+    'my account',
+    'sign in',
+    'menu',
+    'home',
   ]);
   const productPathLike = /(product|serum|cream|moistur|cleanser|toner|mask|spf|sunscreen|retinol|niacinamide|peptide)/i;
   const anchorKey = String(anchorName || '')
@@ -1971,15 +1979,26 @@ function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 
   let m = re.exec(source);
   while (m) {
     const hrefRaw = decodeHtmlEntitiesBasic(m[1] || '');
+    const hrefTrimmed = String(hrefRaw || '').trim();
+    if (!hrefTrimmed || hrefTrimmed.startsWith('#') || /^javascript:/i.test(hrefTrimmed) || /^mailto:/i.test(hrefTrimmed) || /^tel:/i.test(hrefTrimmed)) {
+      m = re.exec(source);
+      continue;
+    }
     const textRaw = stripHtmlToText(m[2] || '');
     let absUrl = '';
     try {
-      const u = new URL(hrefRaw, parsedBase);
+      const u = new URL(hrefTrimmed, parsedBase);
       if (!/^https?:$/i.test(u.protocol)) {
         m = re.exec(source);
         continue;
       }
       if (u.hostname.replace(/^www\./i, '') !== parsedBase.hostname.replace(/^www\./i, '')) {
+        m = re.exec(source);
+        continue;
+      }
+      const samePath = String(u.pathname || '') === String(parsedBase.pathname || '');
+      const sameSearch = String(u.search || '') === String(parsedBase.search || '');
+      if (samePath && sameSearch) {
         m = re.exec(source);
         continue;
       }
@@ -1995,6 +2014,7 @@ function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 
     }
 
     const textNorm = String(textRaw || '').replace(/\s+/g, ' ').trim();
+    const lowerTextNorm = textNorm.toLowerCase();
     const slugName = (() => {
       try {
         const u = new URL(absUrl);
@@ -2009,13 +2029,19 @@ function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 
     })();
 
     let name = textNorm;
-    if (!name || name.length < 4 || generic.has(name.toLowerCase())) name = slugName;
+    if (!name || name.length < 4 || generic.has(lowerTextNorm) || /^skip to /i.test(name) || /\b(contact us|search|my account|sign in)\b/i.test(name)) {
+      name = slugName;
+    }
     if (!name || name.length < 4 || name.length > 120) {
       m = re.exec(source);
       continue;
     }
     const nameKey = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     if (!nameKey) {
+      m = re.exec(source);
+      continue;
+    }
+    if (generic.has(nameKey) || /^skip to /i.test(name) || /^contact us$/i.test(name)) {
       m = re.exec(source);
       continue;
     }
