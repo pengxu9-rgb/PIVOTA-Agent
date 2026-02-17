@@ -19,6 +19,8 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
+        process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
       PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS:
         process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS,
       PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS:
@@ -28,6 +30,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
     delete process.env.DATABASE_URL;
   });
 
@@ -48,6 +51,12 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
+        prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
     }
     if (prevEnv.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS === undefined) {
       delete process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS;
@@ -278,6 +287,166 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         proxy_search_fallback: expect.objectContaining({
           applied: false,
           reason: 'resolver_miss_skip_secondary',
+        }),
+      }),
+    );
+  });
+
+  test('uses resolver fallback when primary rows are usable but irrelevant for brand lookup', async () => {
+    const queryText = 'IPSA related products';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886500127048';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: true,
+        product_ref: {
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        confidence: 0.96,
+        reason: 'stable_alias_ref',
+        metadata: { latency_ms: 14 },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: '9859801710920',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        product: {
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: 'IPSA Time Reset Aqua',
+          brand: 'IPSA',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_resolver_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'resolver_after_primary',
+        }),
+      }),
+    );
+  });
+
+  test('returns empty soft fallback when invoke lookup stays irrelevant and resolver misses', async () => {
+    const queryText = 'IPSA related products';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: {
+          latency_ms: 12,
+          sources: [{ source: 'agent_search_scoped', ok: false, reason: 'no_candidates' }],
+        },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: '9859801710920',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_irrelevant_no_fallback',
         }),
       }),
     );

@@ -475,4 +475,153 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       }),
     );
   });
+
+  test('uses resolver fallback when primary rows are usable but irrelevant for brand lookup', async () => {
+    const queryText = 'IPSA related products';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886500127048';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: true,
+        product_ref: {
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        confidence: 0.95,
+        reason: 'stable_alias_ref',
+        metadata: { latency_ms: 10 },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: '9859801710920',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        product: {
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: 'IPSA Time Reset Aqua',
+          brand: 'IPSA',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        lang: 'en',
+        limit: 5,
+        offset: 0,
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_resolver_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'resolver_after_primary',
+        }),
+      }),
+    );
+  });
+
+  test('returns empty soft fallback when brand lookup remains irrelevant after fallback chain', async () => {
+    const queryText = 'IPSA related products';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 8, sources: [{ source: 'agent_search_scoped', ok: false, reason: 'no_candidates' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: '9859801710920',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: '9859801710921',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Large Makeup Brush Set',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_irrelevant_no_fallback',
+        }),
+      }),
+    );
+  });
 });
