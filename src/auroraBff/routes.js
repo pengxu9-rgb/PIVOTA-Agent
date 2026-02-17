@@ -2734,7 +2734,13 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
 
   const missingInfo = Array.isArray(p.missing_info) ? p.missing_info : [];
   const nextMissingInfo = cleanLen
-    ? stripCompetitorMissingTokens(missingInfo)
+    ? uniqCaseInsensitiveStrings(
+        [
+          ...stripCompetitorMissingTokens(missingInfo),
+          ...(cleanLen < 2 ? ['competitors_low_coverage'] : []),
+        ],
+        16,
+      )
     : uniqCaseInsensitiveStrings([...missingInfo, 'competitors_missing', 'competitor_candidates_filtered_noise'], 16);
 
   return {
@@ -2747,15 +2753,25 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
   };
 }
 
-function hasCompetitorCandidatesInPayload(payload) {
+function getCompetitorCandidatesFromPayload(payload, { max = 10 } = {}) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
-  if (!p) return false;
+  if (!p) return [];
   const competitors =
     p.competitors && typeof p.competitors === 'object' && !Array.isArray(p.competitors)
       ? p.competitors
       : null;
-  const cleanCandidates = sanitizeCompetitorCandidates(competitors?.candidates, 10);
-  return cleanCandidates.length > 0;
+  return sanitizeCompetitorCandidates(competitors?.candidates, max);
+}
+
+function hasCompetitorCandidatesInPayload(payload, { minCount = 1 } = {}) {
+  const threshold = Math.max(1, Math.min(10, Number(minCount) || 1));
+  return getCompetitorCandidatesFromPayload(payload, { max: 10 }).length >= threshold;
+}
+
+function hasLowCoverageCompetitorsInPayload(payload, { preferredCount = 2 } = {}) {
+  const target = Math.max(1, Math.min(10, Number(preferredCount) || 2));
+  const count = getCompetitorCandidatesFromPayload(payload, { max: 10 }).length;
+  return count > 0 && count < target;
 }
 
 function stripCompetitorMissingTokens(items) {
@@ -2765,6 +2781,8 @@ function stripCompetitorMissingTokens(items) {
     if (!token) continue;
     if (token === 'competitors_missing') continue;
     if (token === 'competitors.competitors.candidates') continue;
+    if (token === 'competitors_low_coverage') continue;
+    if (token === 'competitor_candidates_filtered_noise') continue;
     if (/^competitor_recall_/i.test(token)) continue;
     out.push(token);
   }
@@ -2909,13 +2927,18 @@ function scheduleProductIntelCompetitorEnrichBackfill({
   profileSummary = null,
   source = 'url_realtime_product_intel',
   sourceMeta = null,
+  forceEnhance = false,
   logger,
 } = {}) {
   if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED || !PRODUCT_URL_REALTIME_COMPETITOR_ASYNC_ENRICH_ENABLED) return;
   const urlText = String(productUrl || '').trim();
   if (!/^https?:\/\//i.test(urlText)) return;
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
-  if (hasCompetitorCandidatesInPayload(payload)) return;
+  if (forceEnhance) {
+    if (!hasLowCoverageCompetitorsInPayload(payload, { preferredCount: 2 })) return;
+  } else if (hasCompetitorCandidatesInPayload(payload)) {
+    return;
+  }
 
   let payloadSnapshot = null;
   try {
@@ -3015,7 +3038,14 @@ function scheduleProductIntelCompetitorEnrichBackfill({
           expert_notes: uniqCaseInsensitiveStrings([...existingExpertNotes, asyncNote], 6),
           missing_info: existingEvidenceMissing,
         },
-        missing_info: [...stripCompetitorMissingTokens(payloadSnapshot.missing_info || []), 'competitor_async_backfill_used'],
+        missing_info: uniqCaseInsensitiveStrings(
+          [
+            ...stripCompetitorMissingTokens(payloadSnapshot.missing_info || []),
+            ...(Array.isArray(competitorOut.candidates) && competitorOut.candidates.length < 2 ? ['competitors_low_coverage'] : []),
+            'competitor_async_backfill_used',
+          ],
+          16,
+        ),
       };
       const enriched = enrichProductAnalysisPayload(mergedPayload, { lang, profileSummary });
       const kbKey = buildProductIntelKbKey({
@@ -3138,7 +3168,6 @@ async function buildProductAnalysisFromUrlIngredients({
           ? `识别到的关键成分：${keyIngredients.slice(0, 5).join('、')}。`
           : `Detected key ingredients: ${keyIngredients.slice(0, 5).join(', ')}.`
         : '',
-      profileNote,
       riskNotes.length ? riskNotes[0] : '',
       socialSignals.typical_positive.length
         ? isCn
@@ -3223,6 +3252,7 @@ async function buildProductAnalysisFromUrlIngredients({
   const evidenceMissingInfo = ['concentration_unknown'];
   if (socialMissing) evidenceMissingInfo.push('social_signals_missing');
   if (competitorMissing) evidenceMissingInfo.push('competitors_missing');
+  if (!competitorMissing && competitorCandidates.length < 2) evidenceMissingInfo.push('competitors_low_coverage');
   if (competitorMissing && competitorReason) evidenceMissingInfo.push(`competitor_recall_${String(competitorReason).toLowerCase()}`);
 
   const raw = {
@@ -3276,6 +3306,7 @@ async function buildProductAnalysisFromUrlIngredients({
         'url_realtime_product_intel_used',
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
+        ...(!competitorMissing && competitorCandidates.length < 2 ? ['competitors_low_coverage'] : []),
         competitorMissing && competitorReason ? `competitor_recall_${String(competitorReason).toLowerCase()}` : '',
       ],
       12,
@@ -3292,6 +3323,7 @@ async function buildProductAnalysisFromUrlIngredients({
       'url_realtime_product_intel_used',
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
+      ...(!competitorMissing && competitorCandidates.length < 2 ? ['competitors_low_coverage'] : []),
       ...(competitorMissing && competitorReason ? [`competitor_recall_${String(competitorReason).toLowerCase()}`] : []),
     ]),
   );
@@ -11850,6 +11882,22 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           if (!kbAnalysisSanitized || !shouldServeProductIntelKbPayload(kbAnalysisSanitized)) continue;
           const kbPayload = enrichProductAnalysisPayload(kbAnalysisSanitized, { lang: ctx.lang, profileSummary });
+          const kbAssessment = kbPayload?.assessment && typeof kbPayload.assessment === 'object' ? kbPayload.assessment : null;
+          const kbBackfillAnchor =
+            kbAssessment && typeof kbAssessment.anchor_product === 'object' && !Array.isArray(kbAssessment.anchor_product)
+              ? kbAssessment.anchor_product
+              : parsedProduct;
+          scheduleProductIntelCompetitorEnrichBackfill({
+            productUrl: realtimeUrlInput,
+            parsedProduct: kbBackfillAnchor,
+            payload: kbPayload,
+            lang: ctx.lang,
+            profileSummary,
+            source: 'url_realtime_product_intel',
+            sourceMeta: kbEntry && typeof kbEntry.source_meta === 'object' ? kbEntry.source_meta : null,
+            forceEnhance: hasLowCoverageCompetitorsInPayload(kbPayload, { preferredCount: 2 }),
+            logger,
+          });
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
             suggested_chips: [],
@@ -11911,6 +11959,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
             source: 'url_realtime_product_intel',
             sourceMeta: realtimeUrlNormMeta,
+            forceEnhance: hasLowCoverageCompetitorsInPayload(realtimePayload, { preferredCount: 2 }),
             logger,
           });
 
@@ -12275,6 +12324,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           profileSummary,
           source: 'url_realtime_product_intel',
           sourceMeta: realtimeUrlNormMeta,
+          forceEnhance: hasLowCoverageCompetitorsInPayload(payload, { preferredCount: 2 }),
           logger,
         });
       }
