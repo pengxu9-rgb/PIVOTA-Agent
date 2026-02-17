@@ -164,7 +164,11 @@ const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
 const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
-const { normalizeKey: normalizeProductIntelKbKey, upsertProductIntelKbEntry } = require('./productIntelKbStore');
+const {
+  normalizeKey: normalizeProductIntelKbKey,
+  getProductIntelKbEntry,
+  upsertProductIntelKbEntry,
+} = require('./productIntelKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   _internals: productGroundingResolverInternals = {},
@@ -2448,6 +2452,136 @@ function stripCompetitorMissingTokens(items) {
   return Array.from(new Set(out));
 }
 
+function shouldServeProductIntelKbPayload(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!p) return false;
+  const assessment = p.assessment && typeof p.assessment === 'object' && !Array.isArray(p.assessment) ? p.assessment : null;
+  if (!assessment) return false;
+
+  const missingInfo = Array.isArray(p.missing_info) ? p.missing_info : [];
+  const hasCompetitors = hasCompetitorCandidatesInPayload(p);
+  const competitorMissing = missingInfo.some((raw) => {
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) return false;
+    return token === 'competitors_missing' || token === 'competitors.competitors.candidates' || token.startsWith('competitor_recall_');
+  });
+  if (competitorMissing && !hasCompetitors) return false;
+  return true;
+}
+
+function mapAlternativesToCompetitorCandidates(alternatives, { lang = 'EN', maxCandidates = 6 } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const seen = new Set();
+  const out = [];
+  const list = Array.isArray(alternatives) ? alternatives : [];
+  for (const item of list) {
+    const alt = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+    const product = alt && alt.product && typeof alt.product === 'object' && !Array.isArray(alt.product) ? alt.product : null;
+    if (!product) continue;
+
+    const name = pickFirstTrimmed(product.display_name, product.name);
+    if (!name) continue;
+    const productId = pickFirstTrimmed(product.product_id, product.sku_id, product.id);
+    const key = `${String(productId || '').toLowerCase()}::${name.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const rawSimilarity = Number(alt.similarity);
+    const similarityScore = Number.isFinite(rawSimilarity)
+      ? Number(Math.max(0.2, Math.min(0.95, rawSimilarity > 1 ? rawSimilarity / 100 : rawSimilarity)).toFixed(3))
+      : null;
+
+    const reasons = uniqCaseInsensitiveStrings(Array.isArray(alt.reasons) ? alt.reasons : [], 3);
+    const tradeoffs = uniqCaseInsensitiveStrings(Array.isArray(alt.tradeoffs) ? alt.tradeoffs : [], 2);
+    const kind = String(alt.kind || '').trim().toLowerCase();
+    const kindLine =
+      kind === 'dupe'
+        ? isCn
+          ? 'LLM 候选：高相似平替'
+          : 'LLM candidate: high-similarity dupe'
+        : kind === 'premium'
+          ? isCn
+            ? 'LLM 候选：偏高阶替代'
+            : 'LLM candidate: premium alternative'
+          : isCn
+            ? 'LLM 候选：相近替代'
+            : 'LLM candidate: similar alternative';
+
+    const whyCandidate = uniqCaseInsensitiveStrings([kindLine, ...reasons], 4);
+    const compareHighlights = uniqCaseInsensitiveStrings(tradeoffs, 2);
+
+    out.push({
+      ...(productId ? { product_id: productId } : {}),
+      ...(pickFirstTrimmed(product.sku_id) ? { sku_id: pickFirstTrimmed(product.sku_id) } : {}),
+      ...(pickFirstTrimmed(product.brand, product.brand_name) ? { brand: pickFirstTrimmed(product.brand, product.brand_name) } : {}),
+      name,
+      ...(pickFirstTrimmed(product.display_name) ? { display_name: pickFirstTrimmed(product.display_name) } : {}),
+      ...(similarityScore != null ? { similarity_score: similarityScore } : {}),
+      why_candidate: whyCandidate,
+      ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+    });
+    if (out.length >= Math.max(1, Math.min(10, Number(maxCandidates) || 6))) break;
+  }
+  return out;
+}
+
+async function buildAuroraFallbackCompetitorCandidates({
+  productUrl,
+  anchorProduct = null,
+  profileSummary = null,
+  lang = 'EN',
+  maxCandidates = 6,
+  logger,
+} = {}) {
+  const anchorObj = anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct) ? anchorProduct : null;
+  const productInput = buildProductInputText(anchorObj, productUrl) || String(productUrl || '').trim();
+  if (!productInput) return { candidates: [], reason: 'fallback_input_missing', source: 'aurora_alternatives' };
+
+  const anchorId = pickFirstTrimmed(anchorObj?.product_id, anchorObj?.sku_id);
+  const fallbackCtx = {
+    lang: String(lang || '').toUpperCase() === 'CN' ? 'CN' : 'EN',
+    trigger_source: 'product_intel_competitor_async_backfill',
+    state: 'idle',
+  };
+  const out = await fetchRecoAlternativesForProduct({
+    ctx: fallbackCtx,
+    profileSummary,
+    recentLogs: [],
+    productInput,
+    productObj: anchorObj,
+    anchorId,
+    maxTotal: Math.max(2, Math.min(6, Number(maxCandidates) || 6)),
+    debug: false,
+    logger,
+  });
+  if (!out || !out.ok) {
+    return {
+      candidates: [],
+      reason: 'aurora_alternatives_failed',
+      source: 'aurora_alternatives',
+    };
+  }
+
+  const mappedAlternatives = mapAuroraAlternativesToRecoAlternatives(out.alternatives, {
+    lang: fallbackCtx.lang,
+    maxTotal: Math.max(2, Math.min(6, Number(maxCandidates) || 6)),
+  });
+  const candidates = mapAlternativesToCompetitorCandidates(mappedAlternatives, { lang: fallbackCtx.lang, maxCandidates });
+  if (!candidates.length) {
+    return {
+      candidates: [],
+      reason: 'aurora_alternatives_empty',
+      source: 'aurora_alternatives',
+    };
+  }
+  return {
+    candidates,
+    reason: null,
+    source: 'aurora_alternatives',
+    queries: [productInput.slice(0, 160)],
+  };
+}
+
 function scheduleProductIntelCompetitorEnrichBackfill({
   productUrl,
   parsedProduct = null,
@@ -2495,7 +2629,7 @@ function scheduleProductIntelCompetitorEnrichBackfill({
           ? payloadSnapshot.evidence.science.key_ingredients
           : [];
 
-      const competitorOut = await buildRealtimeCompetitorCandidates({
+      let competitorOut = await buildRealtimeCompetitorCandidates({
         productUrl: urlText,
         parsedProduct: anchorForRecall,
         keyIngredients,
@@ -2506,7 +2640,27 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
         logger,
       });
-      if (!Array.isArray(competitorOut?.candidates) || !competitorOut.candidates.length) return;
+      let competitorSource = 'catalog_recall';
+      if (!Array.isArray(competitorOut?.candidates) || !competitorOut.candidates.length) {
+        const fallbackOut = await buildAuroraFallbackCompetitorCandidates({
+          productUrl: urlText,
+          anchorProduct: anchorForRecall,
+          profileSummary,
+          lang,
+          maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+          logger,
+        });
+        if (!Array.isArray(fallbackOut?.candidates) || !fallbackOut.candidates.length) return;
+        competitorOut = {
+          candidates: fallbackOut.candidates,
+          queries: uniqCaseInsensitiveStrings([
+            ...(Array.isArray(competitorOut?.queries) ? competitorOut.queries : []),
+            ...(Array.isArray(fallbackOut?.queries) ? fallbackOut.queries : []),
+          ], 8),
+          reason: fallbackOut.reason || competitorOut?.reason || null,
+        };
+        competitorSource = fallbackOut.source || 'aurora_alternatives';
+      }
 
       const existingEvidence =
         payloadSnapshot.evidence && typeof payloadSnapshot.evidence === 'object' && !Array.isArray(payloadSnapshot.evidence)
@@ -2516,8 +2670,14 @@ function scheduleProductIntelCompetitorEnrichBackfill({
       const existingEvidenceMissing = stripCompetitorMissingTokens(existingEvidence.missing_info || []);
       const asyncNote =
         String(lang || '').toUpperCase() === 'CN'
-          ? `竞品异步补全：${competitorOut.candidates.slice(0, 3).map((x) => x.name).join('、')}`
-          : `Competitors backfilled async: ${competitorOut.candidates.slice(0, 3).map((x) => x.name).join(', ')}`;
+          ? `竞品异步补全（${competitorSource === 'aurora_alternatives' ? 'Aurora 候选' : 'catalog'}）：${competitorOut.candidates
+            .slice(0, 3)
+            .map((x) => x.name)
+            .join('、')}`
+          : `Competitors backfilled async (${competitorSource === 'aurora_alternatives' ? 'Aurora alternatives' : 'catalog'}): ${competitorOut.candidates
+            .slice(0, 3)
+            .map((x) => x.name)
+            .join(', ')}`;
 
       const mergedPayload = {
         ...payloadSnapshot,
@@ -2543,6 +2703,7 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         source_meta: {
           ...(sourceMeta && typeof sourceMeta === 'object' && !Array.isArray(sourceMeta) ? sourceMeta : {}),
           competitor_async_enriched: true,
+          competitor_async_source: competitorSource,
           competitor_queries: Array.isArray(competitorOut.queries) ? competitorOut.queries : [],
         },
         last_success_at: new Date().toISOString(),
@@ -11309,6 +11470,48 @@ function mountAuroraBffRoutes(app, { logger }) {
       const shouldRunRealtimeUrlFirst = PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && /^https?:\/\//i.test(realtimeUrlInput);
 
       if (shouldRunRealtimeUrlFirst) {
+        const kbKeys = [];
+        const primaryKbKey = buildProductIntelKbKey({
+          productUrl: realtimeUrlInput,
+          parsedProduct,
+          lang: ctx.lang,
+        });
+        const urlOnlyKbKey = buildProductIntelKbKey({
+          productUrl: realtimeUrlInput,
+          parsedProduct: null,
+          lang: ctx.lang,
+        });
+        for (const key of [primaryKbKey, urlOnlyKbKey]) {
+          const kbKey = String(key || '').trim();
+          if (!kbKey) continue;
+          if (kbKeys.includes(kbKey)) continue;
+          kbKeys.push(kbKey);
+        }
+        for (const kbKey of kbKeys) {
+          // eslint-disable-next-line no-await-in-loop
+          const kbEntry = await getProductIntelKbEntry(kbKey);
+          const kbAnalysis =
+            kbEntry && kbEntry.analysis && typeof kbEntry.analysis === 'object' && !Array.isArray(kbEntry.analysis)
+              ? kbEntry.analysis
+              : null;
+          if (!kbAnalysis || !shouldServeProductIntelKbPayload(kbAnalysis)) continue;
+          const kbPayload = enrichProductAnalysisPayload(kbAnalysis, { lang: ctx.lang, profileSummary });
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: null,
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `analyze_${ctx.request_id}`,
+                type: 'product_analysis',
+                payload: kbPayload,
+              },
+            ],
+            session_patch: {},
+            events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze', mode: 'url_realtime_product_intel_kb_hit' })],
+          });
+          return res.json(envelope);
+        }
+
         const realtimeNorm = await buildProductAnalysisFromUrlIngredients({
           productUrl: realtimeUrlInput,
           lang: ctx.lang,

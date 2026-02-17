@@ -314,6 +314,7 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
   const lower = uniqueStrings(keyIngredients.map((x) => String(x || '').trim()).filter(Boolean)).join(' | ').toLowerCase();
   const hasNiacinamide = /\bniacinamide\b|烟酰胺/.test(lower);
   const hasZincPca = /\bzinc\b.*\bpca\b|锌\s*pca/.test(lower);
+  const hasBarrierSupport = /\b(ceramide|panthenol|allantoin|hyaluron|glycerin|beta[-\s]?glucan)\b|神经酰胺|泛醇|尿囊素|玻尿酸|甘油/.test(lower);
   const hasStrongActives =
     /\b(retinol|retinal|tretinoin|adapalene)\b|维a|阿达帕林/.test(lower) ||
     /\baha\b|\bbha\b|\bpha\b|\bglycolic\b|\blactic\b|果酸|水杨酸|杏仁酸|乳酸|葡糖酸内酯/.test(lower);
@@ -323,12 +324,31 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
 
   const out = [];
 
-  if (tags.length) {
+  const priorityTargets = [];
+  if (cn) {
+    if (skinType === 'oily') priorityTargets.push('减少多余油脂分泌与闷痘负担');
+    if (skinType === 'dry') priorityTargets.push('提升保湿与锁水');
+    if (sensitivity === 'high' || sensitivity === 'medium') priorityTargets.push('降低刺激暴露与泛红风险');
+    if (barrier === 'impaired') priorityTargets.push('修复并稳定皮肤屏障');
+    if (goals.includes('acne')) priorityTargets.push('兼顾痘痘/闭口管理');
+    if (goals.includes('brightening')) priorityTargets.push('兼顾提亮与色沉管理');
+  } else {
+    if (skinType === 'oily') priorityTargets.push('manage excess sebum and reduce clog-prone load');
+    if (skinType === 'dry') priorityTargets.push('improve hydration and moisture retention');
+    if (sensitivity === 'high' || sensitivity === 'medium') priorityTargets.push('lower irritation exposure and redness risk');
+    if (barrier === 'impaired') priorityTargets.push('support barrier repair and stability');
+    if (goals.includes('acne')) priorityTargets.push('keep acne/comedone control on track');
+    if (goals.includes('brightening')) priorityTargets.push('keep brightening/pigment goals on track');
+  }
+
+  if (priorityTargets.length) {
     out.push(
       cn
-        ? `你的情况：${truncateText(tags.join(' / '), 80)}。`
-        : `Your profile: ${truncateText(tags.join(' / '), 120)}.`,
+        ? `匹配目标：${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('；'), 120)}。`
+        : `Profile priorities: ${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('; '), 180)}.`,
     );
+  } else if (tags.length) {
+    out.push(cn ? `你的情况：${truncateText(tags.join(' / '), 80)}。` : `Your profile: ${truncateText(tags.join(' / '), 120)}.`);
   }
 
   if (cn) {
@@ -339,6 +359,8 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
       out.push(`匹配点：你的目标包含${goalHint.join('、')}；烟酰胺/锌类通常更偏这条路线。`);
     } else if (skinType === 'oily' && (hasNiacinamide || hasZincPca)) {
       out.push('匹配点：油皮更常用烟酰胺/锌类来控油、改善痘印与毛孔观感。');
+    } else if (barrier === 'impaired' && hasBarrierSupport) {
+      out.push('匹配点：配方里有偏修护/保湿的成分，通常更适合屏障不稳时打底。');
     }
   } else {
     const goalHint = [];
@@ -348,6 +370,8 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
       out.push(`Fit: your goals include ${goalHint.join(' + ')}; niacinamide/zinc commonly align with that.`);
     } else if (skinType === 'oily' && (hasNiacinamide || hasZincPca)) {
       out.push('Fit: oily skin often uses niacinamide/zinc for oil control and the look of pores/marks.');
+    } else if (barrier === 'impaired' && hasBarrierSupport) {
+      out.push('Fit: this formula includes barrier-supportive humectant/soothing signals, which is useful for impaired barrier days.');
     }
   }
 
@@ -360,7 +384,7 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
     );
   }
 
-  return uniqueStrings(out.map((x) => truncateText(x, 200)).filter(Boolean)).slice(0, 2);
+  return uniqueStrings(out.map((x) => truncateText(x, 220)).filter(Boolean)).slice(0, 3);
 }
 
 function pickHeroIngredientFromEvidence(evidence, { lang = 'EN' } = {}) {
