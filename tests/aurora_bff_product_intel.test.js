@@ -7,6 +7,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'true';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
   });
 
@@ -14,6 +15,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_USE_MOCK;
     delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK;
+    delete process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL;
     delete process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     nock.cleanAll();
@@ -314,37 +316,25 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.missing_info).toContain('upstream_deep_scan_skipped_anchor_missing');
   });
 
-  test('/v1/product/analyze derives ingredient-based assessment from product URL when upstream deep-scan is missing', async () => {
+  test('/v1/product/analyze runs realtime URL product-intel first and backfills KB asynchronously', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
-    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      upsertProductIntelKbEntry,
+    }));
+
+    let auroraCalls = 0;
     nock('http://aurora.test')
       .persist()
       .post('/api/chat')
-      .reply(200, (_uri, body) => {
-        const query = typeof body?.query === 'string' ? body.query : '';
-        if (/Task:\s*Parse\b/i.test(query)) {
-          return {
-            schema_version: 'aurora.chat.v1',
-            intent: 'product',
-            structured: {
-              schema_version: 'aurora.structured.v1',
-              parse: { normalized_query: query, parse_confidence: 0, normalized_query_language: 'en-US' },
-            },
-          };
-        }
-        if (/Task:\s*Deep-scan\b/i.test(query)) {
-          return {
-            schema_version: 'aurora.chat.v1',
-            intent: 'clarify',
-            structured: {
-              schema_version: 'aurora.structured.v1',
-              parse: { normalized_query: query, parse_confidence: 0, normalized_query_language: 'en-US' },
-            },
-          };
-        }
+      .reply(200, () => {
+        auroraCalls += 1;
         return { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' };
       });
 
@@ -358,9 +348,36 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
            <p class="ingredients-flyout-content" data-original-ingredients="Aqua (Water), Glycerin, Copper Tripeptide-1, Acetyl Hexapeptide-8, Sodium Hyaluronate, Allantoin, Butylene Glycol, Phenoxyethanol"></p>
            <span class="title">Key ingredients</span>
            <div class="list">Copper Tripeptide-1, Acetyl Hexapeptide-8, Sodium Hyaluronate</div>
+           <div class="reviews">Hydrating and lightweight texture. Some users report pilling.</div>
+           <script type="application/ld+json">
+             {"aggregateRating":{"ratingValue":"4.4","reviewCount":"518"}}
+           </script>
          </body></html>`,
         { 'Content-Type': 'text/html' },
       );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'comp_1',
+            sku_id: 'comp_1',
+            brand: 'Good Molecules',
+            name: 'Super Peptide Serum',
+            display_name: 'Good Molecules Super Peptide Serum',
+          },
+          {
+            product_id: 'comp_2',
+            sku_id: 'comp_2',
+            brand: 'Geek & Gorgeous',
+            name: 'Peptide Hydration Serum',
+            display_name: 'Geek & Gorgeous Peptide Hydration Serum',
+          },
+        ],
+      });
 
     const app = require('../src/server');
     const res = await request(app)
@@ -377,7 +394,23 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.evidence.science.key_ingredients).toEqual(
       expect.arrayContaining(['Copper Tripeptide-1']),
     );
+    expect(Array.isArray(card.payload.evidence?.social_signals?.typical_positive)).toBe(true);
+    expect(card.payload.evidence.social_signals.typical_positive.length).toBeGreaterThan(0);
+    expect(Array.isArray(card.payload.competitors?.candidates)).toBe(true);
+    expect(card.payload.competitors.candidates.length).toBeGreaterThan(0);
+    expect(auroraCalls).toBe(0);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('url_ingredient_analysis_used');
+    expect(card.payload.missing_info).toContain('url_realtime_product_intel_used');
+    expect(card.payload.product_intel_contract_version).toBe('aurora.product_intel.contract.v1');
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(upsertProductIntelKbEntry).toHaveBeenCalledTimes(1);
+    expect(upsertProductIntelKbEntry.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        source: 'url_realtime_product_intel',
+        kb_key: expect.any(String),
+      }),
+    );
   });
 });
