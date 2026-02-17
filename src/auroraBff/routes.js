@@ -2356,10 +2356,91 @@ async function buildRealtimeCompetitorCandidates({
     return String(a?.name || '').localeCompare(String(b?.name || ''));
   });
 
-  const finalCandidates = candidates.slice(0, maxCandidates);
+  let finalCandidates = candidates.slice(0, maxCandidates);
   if (finalCandidates.length) return { candidates: finalCandidates, queries, reason: null };
+
+  const resolveResults = await Promise.all(
+    queries.map(async (queryText) => {
+      const resolved = await resolveAvailabilityProductByQuery({ query: queryText, lang, logger });
+      return { query: queryText, resolved };
+    }),
+  );
+  for (const row of resolveResults) {
+    const normalized = normalizeRecoCatalogProduct(row?.resolved?.product);
+    if (!normalized) continue;
+    const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+    if (!productId) continue;
+    if (anchorId && productId === anchorId) continue;
+    const lowerKey = `${productId}`.toLowerCase();
+    if (seenProduct.has(lowerKey)) continue;
+    seenProduct.add(lowerKey);
+
+    const brand = pickFirstTrimmed(normalized.brand);
+    const name = pickFirstTrimmed(normalized.display_name, normalized.name);
+    const candidateText = `${brand} ${name}`.trim().toLowerCase();
+    const nameTokens = tokenizeProductTextForSimilarity(candidateText);
+
+    const queryTokensForRow = tokenizeProductTextForSimilarity(String(row.query || ''));
+    const queryOverlap = queryTokensForRow.filter((token) => nameTokens.includes(token)).length;
+    const sameBrand = anchorBrand && brand && anchorBrand.toLowerCase() === brand.toLowerCase();
+    const sameCategory = categoryToken ? new RegExp(`\\b${categoryToken}\\b`, 'i').test(candidateText) : false;
+    const similarityRaw = 0.34 + Math.min(0.35, queryOverlap * 0.16) + (sameCategory ? 0.15 : 0) + (sameBrand ? 0.08 : 0);
+    const similarityScore = Number(Math.max(0.24, Math.min(0.9, similarityRaw)).toFixed(3));
+
+    candidates.push({
+      product_id: productId,
+      name: name || (isCn ? '未知产品' : 'Unknown product'),
+      ...(brand ? { brand } : {}),
+      why_candidate: uniqCaseInsensitiveStrings(
+        [
+          isCn ? 'catalog resolve 回退命中' : 'catalog resolve fallback hit',
+          sameCategory
+            ? isCn
+              ? `同品类（${categoryToken}）`
+              : `same category (${categoryToken})`
+            : '',
+          queryOverlap
+            ? isCn
+              ? '查询关键词相近'
+              : 'similar query keywords'
+            : '',
+          sameBrand
+            ? isCn
+              ? '同品牌相近线产品'
+              : 'same-brand nearby option'
+            : '',
+        ],
+        4,
+      ),
+      similarity_score: similarityScore,
+      compare_highlights: uniqCaseInsensitiveStrings(
+        [
+          isCn
+            ? '来自 resolve 回退结果，建议进一步比较配方细节。'
+            : 'Derived from resolve fallback; compare formula details before final pick.',
+          sameCategory
+            ? isCn
+              ? '同剂型/场景，可作为平替起点。'
+              : 'Same format/use-case, suitable as a dupe baseline.'
+            : '',
+        ],
+        2,
+      ),
+    });
+  }
+
+  candidates.sort((a, b) => {
+    const scoreA = Number.isFinite(Number(a?.similarity_score)) ? Number(a.similarity_score) : 0;
+    const scoreB = Number.isFinite(Number(b?.similarity_score)) ? Number(b.similarity_score) : 0;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return String(a?.name || '').localeCompare(String(b?.name || ''));
+  });
+  finalCandidates = candidates.slice(0, maxCandidates);
+  if (finalCandidates.length) return { candidates: finalCandidates, queries, reason: null };
+
   const allFailed = searchResults.every((row) => !(row?.searched?.ok));
-  return { candidates: [], queries, reason: allFailed ? 'catalog_search_failed' : 'catalog_search_empty' };
+  const resolveAllFailed = resolveResults.every((row) => !(row?.resolved?.ok));
+  return { candidates: [], queries, reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty' };
 }
 
 function canonicalizeProductUrlForIntelKb(rawUrl) {
