@@ -458,6 +458,73 @@ const EYE_SHADOW_BRUSH_SIGNALS_ES = [
   'pincel delineador',
 ];
 
+// Beauty (non-tool) product cues.
+// Used to avoid wrongly inheriting "beauty_tools" mission from previous turns
+// when the latest query clearly points to brand/product lookup (e.g., IPSA toner).
+const BEAUTY_PRODUCT_NON_TOOL_SIGNALS_ZH = [
+  '流金水',
+  '化妆水',
+  '爽肤水',
+  '精华',
+  '精华液',
+  '乳液',
+  '面霜',
+  '防晒',
+  '防晒霜',
+  '洁面',
+  '洗面奶',
+  '面膜',
+  '粉底液',
+  '气垫',
+  '口红',
+];
+const BEAUTY_PRODUCT_NON_TOOL_SIGNALS_EN = [
+  'serum',
+  'essence',
+  'toner',
+  'lotion',
+  'moisturizer',
+  'cleanser',
+  'sunscreen',
+  'cream',
+  'foundation',
+  'cushion',
+  'lipstick',
+];
+const BEAUTY_PRODUCT_NON_TOOL_SIGNALS_ES = [
+  'suero',
+  'esencia',
+  'tónico',
+  'loción',
+  'hidratante',
+  'limpiador',
+  'protector solar',
+  'crema',
+  'base',
+];
+const BEAUTY_PRODUCT_NON_TOOL_SIGNALS_FR = [
+  'sérum',
+  'serum',
+  'essence',
+  'tonique',
+  'lotion',
+  'hydratant',
+  'nettoyant',
+  'crème',
+  'creme',
+  'fond de teint',
+];
+const BEAUTY_PRODUCT_NON_TOOL_SIGNALS_JA = [
+  '化粧水',
+  '美容液',
+  '乳液',
+  'クリーム',
+  '日焼け止め',
+  'クレンザー',
+  'ファンデーション',
+];
+const BEAUTY_BRAND_ALIAS_SIGNALS = ['ipsa', '茵芙莎', 'winona', '薇诺娜'];
+
 function includesAny(haystack, needles) {
   if (!haystack) return false;
   const text = String(haystack);
@@ -483,6 +550,25 @@ function includesAny(haystack, needles) {
 
     return lowered.includes(n);
   });
+}
+
+function hasBeautyBrandOrProductSignal(text) {
+  const t = String(text || '');
+  if (!t) return false;
+
+  const hasBrandOrProductCue =
+    includesAny(t, BEAUTY_BRAND_ALIAS_SIGNALS) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_ZH) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_EN) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_ES) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_FR) ||
+    includesAny(t, BEAUTY_PRODUCT_NON_TOOL_SIGNALS_JA);
+
+  const lower = t.toLowerCase();
+  const hasAvailabilityCue =
+    /有货|库存|有没有|能买吗|哪里买|available|availability|in stock|where to buy/.test(lower);
+
+  return hasBrandOrProductCue || hasAvailabilityCue;
 }
 
 function isToyBreedContext(text) {
@@ -759,6 +845,13 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     (/\beye\s*shadow\b/i.test(latest) && /\bbrush\b/i.test(latest)) ||
     (/アイシャドウ/.test(latest) && /ブラシ/.test(latest));
 
+  const hasBeautyBrandOrProductSignalLocal = hasBeautyBrandOrProductSignal(latest);
+  const blockBeautyToolHistoryCarryover =
+    hasBeautyBrandOrProductSignalLocal &&
+    !hasBeautyToolSignalLocal &&
+    !hasEyeShadowBrushSignalLocal &&
+    !looksLikeFollowUpRefinement(latest);
+
   const hasWomenClothingSignal =
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_ZH) ||
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_EN) ||
@@ -820,6 +913,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     (historyMission === 'eye_shadow_brush' &&
       isShortFollowup &&
       // Do not let prior eye-brush history override a clearly different new mission.
+      !blockBeautyToolHistoryCarryover &&
       !hasToySignalLocal &&
       !hasPetSignalLocal &&
       !hasOuterwearSignal &&
@@ -831,6 +925,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     (historyMission === 'beauty_tools' &&
       isShortFollowup &&
       // Do not let prior makeup/beauty history override a clearly different new mission.
+      !blockBeautyToolHistoryCarryover &&
       !hasToySignalLocal &&
       !hasPetSignal &&
       !hasOuterwearSignal &&

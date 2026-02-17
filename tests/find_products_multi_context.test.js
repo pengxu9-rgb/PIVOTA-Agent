@@ -112,6 +112,36 @@ describe('find_products_multi context building', () => {
     expect(intent.scenario.name).toBe('eye_shadow_brush');
   });
 
+  test('brand/product lookup does not inherit prior beauty-tools mission', async () => {
+    const intent = extractIntentRuleBased('IPSA 流金水', [], [
+      { role: 'user', content: 'makeup brush set for foundation and powder' },
+      { role: 'assistant', content: 'Sure—here are options.' },
+      { role: 'user', content: 'IPSA 流金水' },
+    ]);
+    expect(intent.scenario.name).not.toBe('beauty_tools');
+    expect(intent.scenario.name).not.toBe('eye_shadow_brush');
+  });
+
+  test('context query expansion avoids brush terms for brand/product lookup follow-up', async () => {
+    const { intent, adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'IPSA 流金水' },
+        user: { recent_queries: [] },
+        messages: [
+          { role: 'user', content: 'makeup brush set for foundation and powder' },
+          { role: 'assistant', content: 'Sure—here are options.' },
+          { role: 'user', content: 'IPSA 流金水' },
+        ],
+      },
+      metadata: {},
+    });
+
+    expect(intent.scenario.name).not.toBe('beauty_tools');
+    const expanded = String(adjustedPayload?.search?.query || '');
+    expect(expanded.toLowerCase()).not.toContain('makeup brush');
+    expect(expanded).not.toContain('化妆刷');
+  });
+
   test('sleepwear query routes to human apparel (not pet)', async () => {
     const intent = extractIntentRuleBased('给我推荐一个睡觉很舒服，好看的睡衣', [], []);
     expect(intent.primary_domain).toBe('human_apparel');

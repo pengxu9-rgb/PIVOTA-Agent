@@ -109,6 +109,24 @@ function hasBeautyToolSignal(text) {
   return /\b(makeup|cosmetic)\b/.test(lower) && /\b(brush|brushes|sponge|puff)\b/.test(lower);
 }
 
+function hasBeautyBrandOrProductSignal(text) {
+  const t = String(text || '');
+  if (!t) return false;
+  const lower = t.toLowerCase();
+
+  const brandOrProductCue =
+    /ipsa|茵芙莎|winona|薇诺娜/.test(lower) ||
+    /流金水|化妆水|爽肤水|精华|精华液|乳液|面霜|防晒|防晒霜|洁面|洗面奶|面膜|化粧水|美容液|日焼け止め/.test(t) ||
+    /\b(serum|essence|toner|lotion|moisturizer|cleanser|sunscreen|cream|foundation|cushion|lipstick)\b/.test(lower) ||
+    /\b(suero|esencia|t[oó]nico|loci[oó]n|hidratante|limpiador|protector solar|crema|base)\b/.test(lower) ||
+    /\b(s[eé]rum|essence|tonique|lotion|hydratant|nettoyant|cr[eè]me|fond de teint)\b/.test(lower);
+
+  const availabilityCue =
+    /有货|库存|有没有|能买吗|哪里买|available|availability|in stock|where to buy/.test(lower);
+
+  return brandOrProductCue || availabilityCue;
+}
+
 function detectLanguageHeuristic(text) {
   const t = String(text || '');
   if (!t) return 'other';
@@ -201,6 +219,48 @@ function applyHardOverrides(latestQuery, intent) {
       },
     };
     return PivotaIntentV1Zod.parse(patched);
+  }
+
+  // Brand/product lookup (non-tool) should not stay locked in tool-first scenarios
+  // due to prior conversation history.
+  if (!hasBeautyToolSignal(q) && hasBeautyBrandOrProductSignal(q)) {
+    const scenarioName = String(intent?.scenario?.name || '');
+    const requiredCategories = Array.isArray(intent?.category?.required) ? intent.category.required : [];
+    const hasToolLockedScenario =
+      scenarioName === 'beauty_tools' ||
+      scenarioName === 'eye_shadow_brush' ||
+      requiredCategories.some((c) => /cosmetic_tools|eye_shadow_brush|eye_brush|brush/i.test(String(c || '')));
+
+    if (hasToolLockedScenario) {
+      const nextRequired = requiredCategories.filter(
+        (c) => !/cosmetic_tools|eye_shadow_brush|eye_brush|brush/i.test(String(c || '')),
+      );
+      const patched = {
+        ...intent,
+        language,
+        primary_domain: intent?.primary_domain === 'beauty' ? 'beauty' : intent?.primary_domain || 'other',
+        target_object: {
+          ...(intent.target_object || {}),
+          type: 'human',
+          age_group: intent?.target_object?.age_group || 'all',
+        },
+        category: {
+          required: nextRequired,
+          optional: Array.isArray(intent?.category?.optional) ? intent.category.optional : [],
+        },
+        scenario: {
+          name: 'general',
+          signals: [],
+        },
+        history_usage: {
+          ...(intent.history_usage || {}),
+          used: false,
+          reason:
+            'Detected brand/product lookup in latest query; skipped tool-first carryover from prior turns.',
+        },
+      };
+      return PivotaIntentV1Zod.parse(patched);
+    }
   }
 
   // Always normalize language to match the query (LLMs may default to English).
