@@ -903,6 +903,220 @@ function extractAgentProductsFromSearchResponse(raw) {
   return [];
 }
 
+function clamp01Score(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (n <= 0) return 0;
+  if (n >= 1) return 1;
+  return n;
+}
+
+function normalizeMaybePercentScore(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (n <= 0) return 0;
+  if (n > 100) return 1;
+  if (n > 5) return clamp01Score(n / 100);
+  if (n > 1) return clamp01Score(n / 5);
+  return clamp01Score(n);
+}
+
+function readNestedValue(obj, path) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return undefined;
+  const parts = String(path || '')
+    .split('.')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return undefined;
+  let cur = obj;
+  for (const part of parts) {
+    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return undefined;
+    if (!(part in cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function collectCatalogFieldValues(base, paths) {
+  const out = [];
+  for (const path of Array.isArray(paths) ? paths : []) {
+    const v = readNestedValue(base, path);
+    if (v == null) continue;
+    out.push(v);
+  }
+  return out;
+}
+
+function flattenStringsFromValue(value, max = 30) {
+  const out = [];
+  const stack = [value];
+  while (stack.length && out.length < max) {
+    const cur = stack.pop();
+    if (cur == null) continue;
+    if (typeof cur === 'string' || typeof cur === 'number') {
+      const s = String(cur).trim();
+      if (s) out.push(s);
+      continue;
+    }
+    if (Array.isArray(cur)) {
+      for (let i = cur.length - 1; i >= 0; i -= 1) stack.push(cur[i]);
+      continue;
+    }
+    if (cur && typeof cur === 'object') {
+      for (const key of Object.keys(cur)) stack.push(cur[key]);
+    }
+  }
+  return out;
+}
+
+function normalizeSkinTypeTag(raw) {
+  const t = String(raw || '').trim().toLowerCase();
+  if (!t) return '';
+  if (/\b(oily|oil[-\s]?control|sebum)\b/.test(t) || /油皮/.test(t)) return 'oily';
+  if (/\b(dry|dehydrated)\b/.test(t) || /干皮|缺水/.test(t)) return 'dry';
+  if (/\b(combo|combination)\b/.test(t) || /混合/.test(t)) return 'combination';
+  if (/\b(normal)\b/.test(t) || /中性/.test(t)) return 'normal';
+  if (/\b(sensitive|reactive)\b/.test(t) || /敏感/.test(t)) return 'sensitive';
+  if (/\b(acne|blemish|comedo|breakout)\b/.test(t) || /痘/.test(t)) return 'acne_prone';
+  if (/\b(barrier|impaired)\b/.test(t) || /屏障/.test(t)) return 'impaired_barrier';
+  return '';
+}
+
+function collectCandidateSkinTypeTags(base) {
+  const values = collectCatalogFieldValues(base, [
+    'skin_types',
+    'skinTypes',
+    'skin_type',
+    'skinType',
+    'suitable_for',
+    'suitableFor',
+    'fit_skin_types',
+    'fitSkinTypes',
+    'suitability_tags',
+    'target_skin',
+    'targetSkin',
+    'tags',
+    'subject.skin_types',
+    'subject.suitable_for',
+    'metadata.skin_types',
+    'attributes.skin_types',
+  ]);
+  const out = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const text of flattenStringsFromValue(value, 30)) {
+      const parts = String(text)
+        .split(/[|,/;]+/g)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      for (const part of parts.length ? parts : [text]) {
+        const tag = normalizeSkinTypeTag(part);
+        if (!tag || seen.has(tag)) continue;
+        seen.add(tag);
+        out.push(tag);
+      }
+    }
+  }
+  return out.slice(0, 8);
+}
+
+function normalizeIngredientTokensFromStrings(values) {
+  const out = [];
+  const seen = new Set();
+  const pushToken = (token) => {
+    const t = String(token || '').trim().toLowerCase();
+    if (!t || t.length < 3 || seen.has(t)) return;
+    seen.add(t);
+    out.push(t);
+  };
+  for (const raw of Array.isArray(values) ? values : []) {
+    const text = String(raw || '').trim();
+    if (!text) continue;
+    const splitList = splitInciList(text);
+    const segments = splitList.length ? splitList : [text];
+    for (const segment of segments) {
+      const tokens = tokenizeProductTextForSimilarity(segment);
+      for (const token of tokens) pushToken(token);
+    }
+  }
+  return out.slice(0, 36);
+}
+
+function collectCandidateIngredientTokens(base) {
+  const values = collectCatalogFieldValues(base, [
+    'key_ingredients',
+    'keyIngredients',
+    'active_ingredients',
+    'activeIngredients',
+    'hero_actives',
+    'heroActives',
+    'ingredients',
+    'inci',
+    'inci_list',
+    'subject.key_ingredients',
+    'subject.active_ingredients',
+    'metadata.key_ingredients',
+    'attributes.key_ingredients',
+  ]);
+  const flattened = [];
+  for (const value of values) flattened.push(...flattenStringsFromValue(value, 40));
+  return normalizeIngredientTokensFromStrings(flattened);
+}
+
+function extractCandidateSocialReference(base) {
+  const values = collectCatalogFieldValues(base, [
+    'social_score',
+    'socialScore',
+    'rating',
+    'rating_value',
+    'ratingValue',
+    'aggregate_rating',
+    'aggregateRating',
+    'social_stats.platform_scores',
+    'socialStats.platformScores',
+  ]);
+  const supportValues = collectCatalogFieldValues(base, [
+    'review_count',
+    'reviewCount',
+    'social_stats.mention_count',
+    'socialStats.mentionCount',
+    'social_stats.sample_size',
+    'socialStats.sampleSize',
+  ]);
+
+  const scoreSamples = [];
+  for (const value of values) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const v of Object.values(value)) {
+        const score = normalizeMaybePercentScore(v);
+        if (score != null) scoreSamples.push(score);
+      }
+      continue;
+    }
+    const score = normalizeMaybePercentScore(value);
+    if (score != null) scoreSamples.push(score);
+  }
+  let score = null;
+  if (scoreSamples.length) {
+    score = clamp01Score(scoreSamples.reduce((sum, v) => sum + v, 0) / scoreSamples.length);
+  }
+
+  let supportCount = null;
+  for (const value of supportValues) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    supportCount = supportCount == null ? n : Math.max(supportCount, n);
+  }
+
+  if (score != null && supportCount != null) {
+    // Use sample size as a small confidence bump; cap to avoid overpowering.
+    const supportBoost = Math.min(0.08, Math.log10(1 + supportCount) * 0.02);
+    score = clamp01Score(score + supportBoost);
+  }
+
+  return { score, support_count: supportCount };
+}
+
 function normalizeRecoCatalogProduct(raw) {
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
@@ -960,6 +1174,22 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.thumbnailUrl === 'string' && base.thumbnailUrl) ||
     '';
 
+  const category =
+    (typeof base.category === 'string' && base.category) ||
+    (typeof base.product_type === 'string' && base.product_type) ||
+    (typeof base.productType === 'string' && base.productType) ||
+    (base.subject &&
+    typeof base.subject === 'object' &&
+    !Array.isArray(base.subject) &&
+    typeof base.subject.category === 'string'
+      ? base.subject.category
+      : '') ||
+    '';
+
+  const ingredientTokens = collectCandidateIngredientTokens(base);
+  const skinTypeTags = collectCandidateSkinTypeTags(base);
+  const socialRef = extractCandidateSocialReference(base);
+
   const out = {
     product_id: String(productId || '').trim(),
     merchant_id: String(merchantId || '').trim() || null,
@@ -969,6 +1199,11 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(name || '').trim() ? { name: String(name).trim() } : {}),
     ...(String(displayName || '').trim() ? { display_name: String(displayName).trim() } : {}),
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
+    ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
+    ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
+    ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
+    ...(socialRef.score != null ? { social_ref_score: Number(socialRef.score.toFixed(3)) } : {}),
+    ...(socialRef.support_count != null ? { social_ref_support_count: Math.trunc(socialRef.support_count) } : {}),
   };
 
   const canonicalProductRef = normalizeCanonicalProductRef(
@@ -2379,11 +2614,128 @@ function inferProductCategoryToken(raw) {
   return categories.find((token) => new RegExp(`\\b${token}\\b`, 'i').test(text)) || '';
 }
 
+function computeTokenJaccardScore(a, b) {
+  const left = Array.from(new Set(Array.isArray(a) ? a.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : []));
+  const right = Array.from(new Set(Array.isArray(b) ? b.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : []));
+  if (!left.length || !right.length) return null;
+  const rightSet = new Set(right);
+  let inter = 0;
+  for (const token of left) {
+    if (rightSet.has(token)) inter += 1;
+  }
+  const union = left.length + right.length - inter;
+  if (!union) return null;
+  return clamp01Score(inter / union);
+}
+
+function buildProfileSkinTags(profileSummary) {
+  const profile = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : null;
+  if (!profile) return [];
+  const out = [];
+  const add = (value) => {
+    const tag = normalizeSkinTypeTag(value);
+    if (!tag) return;
+    if (!out.includes(tag)) out.push(tag);
+  };
+  add(profile.skinType);
+  const sensitivity = String(profile.sensitivity || '').trim().toLowerCase();
+  if (sensitivity === 'high' || sensitivity === 'medium' || sensitivity === 'sensitive' || sensitivity === 'reactive') {
+    add('sensitive');
+  } else {
+    add(sensitivity);
+  }
+  const barrier = String(profile.barrierStatus || '').trim().toLowerCase();
+  if (barrier === 'impaired' || barrier === 'damaged' || barrier === 'reactive') add('impaired_barrier');
+  else add(barrier);
+  for (const goal of Array.isArray(profile.goals) ? profile.goals : []) add(goal);
+  return out.slice(0, 8);
+}
+
+function computeSkinFitSimilarity(profileTags, candidateTags) {
+  const profile = Array.isArray(profileTags) ? profileTags.filter(Boolean) : [];
+  const candidate = Array.isArray(candidateTags) ? candidateTags.filter(Boolean) : [];
+  if (!profile.length) return 0.5;
+  if (!candidate.length) return 0.42;
+  const pSet = new Set(profile);
+  let matched = 0;
+  for (const tag of candidate) {
+    if (pSet.has(tag)) matched += 1;
+  }
+  const base = matched / Math.max(1, Math.min(profile.length, 3));
+  return clamp01Score(base);
+}
+
+function computeSocialReferenceScore({ baseScore, supportCount, hitCount, totalQueries }) {
+  const ratingScore = baseScore == null ? 0.5 : clamp01Score(baseScore);
+  const queryCap = Math.max(1, Math.min(4, Number(totalQueries) || 1));
+  const freq = Math.max(0, (Number(hitCount) || 0) - 1);
+  const coMention = queryCap <= 1 ? 0 : clamp01Score(freq / (queryCap - 1));
+  const supportBoost =
+    Number.isFinite(Number(supportCount)) && Number(supportCount) > 0
+      ? Math.min(0.06, Math.log10(1 + Number(supportCount)) * 0.016)
+      : 0;
+  return clamp01Score(ratingScore * 0.78 + coMention * 0.22 + supportBoost);
+}
+
+function scoreRealtimeCompetitorCandidate({
+  queryOverlap = 0,
+  ingredientNameOverlap = 0,
+  sameCategory = false,
+  sameBrand = false,
+  anchorIngredientTokens = [],
+  candidateIngredientTokens = [],
+  profileSkinTags = [],
+  candidateSkinTags = [],
+  candidateSocialScore = null,
+  candidateSocialSupportCount = null,
+  recallHitCount = 1,
+  totalQueries = 1,
+} = {}) {
+  const queryScore = clamp01Score(queryOverlap > 0 ? Math.min(1, queryOverlap / 3) : 0.25);
+  const ingredientNameScore = clamp01Score(ingredientNameOverlap > 0 ? Math.min(1, ingredientNameOverlap / 2) : 0);
+  const ingredientJaccard = computeTokenJaccardScore(anchorIngredientTokens, candidateIngredientTokens);
+  const ingredientSimilarity =
+    ingredientJaccard == null
+      ? clamp01Score(ingredientNameScore > 0 ? 0.4 + ingredientNameScore * 0.45 : 0.45)
+      : clamp01Score(ingredientJaccard * 0.65 + ingredientNameScore * 0.35);
+
+  const skinFitSimilarity = computeSkinFitSimilarity(profileSkinTags, candidateSkinTags);
+  const socialReferenceScore = computeSocialReferenceScore({
+    baseScore: candidateSocialScore,
+    supportCount: candidateSocialSupportCount,
+    hitCount: recallHitCount,
+    totalQueries,
+  });
+
+  const breakdown = {
+    category_score: sameCategory ? 1 : 0,
+    ingredient_similarity: Number(ingredientSimilarity.toFixed(3)),
+    skin_fit_similarity: Number(skinFitSimilarity.toFixed(3)),
+    social_reference_score: Number(socialReferenceScore.toFixed(3)),
+    query_overlap_score: Number(queryScore.toFixed(3)),
+    brand_score: sameBrand ? 1 : 0,
+  };
+
+  const weighted =
+    breakdown.category_score * 0.2 +
+    breakdown.ingredient_similarity * 0.24 +
+    breakdown.skin_fit_similarity * 0.17 +
+    breakdown.social_reference_score * 0.17 +
+    breakdown.query_overlap_score * 0.17 +
+    breakdown.brand_score * 0.05;
+
+  return {
+    similarity_score: Number(Math.max(0.22, Math.min(0.95, weighted)).toFixed(3)),
+    score_breakdown: breakdown,
+  };
+}
+
 async function buildRealtimeCompetitorCandidates({
   productUrl,
   parsedProduct = null,
   keyIngredients = [],
   anchorProduct = null,
+  profileSummary = null,
   lang = 'EN',
   timeoutMs = PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS,
   maxQueries = PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES,
@@ -2438,8 +2790,24 @@ async function buildRealtimeCompetitorCandidates({
   );
 
   const queryTokens = tokenizeProductTextForSimilarity(queries.join(' | '));
-  const ingredientTokens = tokenizeProductTextForSimilarity(keyIngredients.slice(0, 5).join(' | '));
+  const ingredientTokens = tokenizeProductTextForSimilarity(keyIngredients.slice(0, 6).join(' | '));
+  const anchorIngredientTokens = ingredientTokens;
+  const profileSkinTags = buildProfileSkinTags(profileSummary);
   const categoryToken = inferProductCategoryToken(`${baseInput} ${queries.join(' ')}`);
+  const totalQueriesForRecall = Math.max(1, queries.length);
+
+  const recallHitCountByProduct = new Map();
+  for (const row of searchResults) {
+    const list = Array.isArray(row?.searched?.products) ? row.searched.products : [];
+    for (const product of list) {
+      const normalized = normalizeRecoCatalogProduct(product);
+      if (!normalized) continue;
+      const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+      if (!productId) continue;
+      const key = String(productId).toLowerCase();
+      recallHitCountByProduct.set(key, (recallHitCountByProduct.get(key) || 0) + 1);
+    }
+  }
 
   const seenProduct = new Set();
   const candidates = [];
@@ -2464,14 +2832,21 @@ async function buildRealtimeCompetitorCandidates({
       const ingredientOverlap = ingredientTokens.filter((token) => nameTokens.includes(token)).length;
       const sameBrand = anchorBrand && brand && anchorBrand.toLowerCase() === brand.toLowerCase();
       const sameCategory = categoryToken ? new RegExp(`\\b${categoryToken}\\b`, 'i').test(candidateText) : false;
-
-      const similarityRaw =
-        0.3 +
-        Math.min(0.32, queryOverlap * 0.12) +
-        Math.min(0.14, ingredientOverlap * 0.07) +
-        (sameCategory ? 0.12 : 0) +
-        (sameBrand ? 0.08 : 0);
-      const similarityScore = Number(Math.max(0.22, Math.min(0.93, similarityRaw)).toFixed(3));
+      const scored = scoreRealtimeCompetitorCandidate({
+        queryOverlap,
+        ingredientNameOverlap: ingredientOverlap,
+        sameCategory,
+        sameBrand,
+        anchorIngredientTokens,
+        candidateIngredientTokens: Array.isArray(normalized.ingredient_tokens) ? normalized.ingredient_tokens : [],
+        profileSkinTags,
+        candidateSkinTags: Array.isArray(normalized.skin_type_tags) ? normalized.skin_type_tags : [],
+        candidateSocialScore: normalized.social_ref_score,
+        candidateSocialSupportCount: normalized.social_ref_support_count,
+        recallHitCount: recallHitCountByProduct.get(lowerKey) || 1,
+        totalQueries: totalQueriesForRecall,
+      });
+      const similarityScore = scored.similarity_score;
 
       const whyCandidate = uniqCaseInsensitiveStrings(
         [
@@ -2484,6 +2859,26 @@ async function buildRealtimeCompetitorCandidates({
             ? isCn
               ? '与关键活性关键词重合'
               : 'overlap with key-active tokens'
+            : '',
+          scored.score_breakdown.ingredient_similarity >= 0.62
+            ? isCn
+              ? '关键成分相似度较高'
+              : 'high key-ingredient similarity'
+            : '',
+          scored.score_breakdown.skin_fit_similarity >= 0.6
+            ? isCn
+              ? '对当前肤质/敏感度适配度较高'
+              : 'better match for current skin profile'
+            : '',
+          scored.score_breakdown.social_reference_score >= 0.65
+            ? isCn
+              ? '社媒评分/被对比频次信号较强'
+              : 'strong social rating/comparison-reference signal'
+            : '',
+          (recallHitCountByProduct.get(lowerKey) || 0) > 1
+            ? isCn
+              ? '多查询重复召回（对比参考热度更高）'
+              : 'appears across multiple comparison queries'
             : '',
           sameBrand
             ? isCn
@@ -2511,13 +2906,23 @@ async function buildRealtimeCompetitorCandidates({
               ? '同剂型/场景，可作为平替起点。'
               : 'Same format/use-case, suitable as a dupe baseline.'
             : '',
-          ingredientOverlap
+          scored.score_breakdown.ingredient_similarity >= 0.55
             ? isCn
-              ? '部分关键活性可能重合，需比较浓度与配方结构。'
-              : 'Likely overlap in key actives; compare concentration and formula structure.'
+              ? '关键成分相似度较高，仍需比较浓度与配方结构。'
+              : 'Ingredient similarity is high; still compare concentration and formula structure.'
+            : '',
+          scored.score_breakdown.skin_fit_similarity >= 0.6
+            ? isCn
+              ? '与用户画像（肤质/敏感度/屏障）匹配度较高。'
+              : 'Closer alignment with user skin profile (type/sensitivity/barrier).'
+            : '',
+          scored.score_breakdown.social_reference_score >= 0.65
+            ? isCn
+              ? '社媒评分/参考对比信号较强，可优先进入 dupe 比较。'
+              : 'Strong social reference signal; prioritize for dupe comparison.'
             : '',
         ],
-        2,
+        3,
       );
 
       candidates.push({
@@ -2526,6 +2931,7 @@ async function buildRealtimeCompetitorCandidates({
         ...(brand ? { brand } : {}),
         why_candidate: whyCandidate,
         similarity_score: similarityScore,
+        score_breakdown: scored.score_breakdown,
         ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
       });
     }
@@ -2564,10 +2970,24 @@ async function buildRealtimeCompetitorCandidates({
 
     const queryTokensForRow = tokenizeProductTextForSimilarity(String(row.query || ''));
     const queryOverlap = queryTokensForRow.filter((token) => nameTokens.includes(token)).length;
+    const ingredientOverlap = ingredientTokens.filter((token) => nameTokens.includes(token)).length;
     const sameBrand = anchorBrand && brand && anchorBrand.toLowerCase() === brand.toLowerCase();
     const sameCategory = categoryToken ? new RegExp(`\\b${categoryToken}\\b`, 'i').test(candidateText) : false;
-    const similarityRaw = 0.34 + Math.min(0.35, queryOverlap * 0.16) + (sameCategory ? 0.15 : 0) + (sameBrand ? 0.08 : 0);
-    const similarityScore = Number(Math.max(0.24, Math.min(0.9, similarityRaw)).toFixed(3));
+    const scored = scoreRealtimeCompetitorCandidate({
+      queryOverlap,
+      ingredientNameOverlap: ingredientOverlap,
+      sameCategory,
+      sameBrand,
+      anchorIngredientTokens,
+      candidateIngredientTokens: Array.isArray(normalized.ingredient_tokens) ? normalized.ingredient_tokens : [],
+      profileSkinTags,
+      candidateSkinTags: Array.isArray(normalized.skin_type_tags) ? normalized.skin_type_tags : [],
+      candidateSocialScore: normalized.social_ref_score,
+      candidateSocialSupportCount: normalized.social_ref_support_count,
+      recallHitCount: recallHitCountByProduct.get(lowerKey) || 1,
+      totalQueries: totalQueriesForRecall,
+    });
+    const similarityScore = scored.similarity_score;
 
     candidates.push({
       product_id: productId,
@@ -2586,6 +3006,21 @@ async function buildRealtimeCompetitorCandidates({
               ? '查询关键词相近'
               : 'similar query keywords'
             : '',
+          scored.score_breakdown.ingredient_similarity >= 0.6
+            ? isCn
+              ? '关键成分相似度较高'
+              : 'high key-ingredient similarity'
+            : '',
+          scored.score_breakdown.skin_fit_similarity >= 0.6
+            ? isCn
+              ? '与用户画像匹配度较高'
+              : 'better match for user skin profile'
+            : '',
+          scored.score_breakdown.social_reference_score >= 0.65
+            ? isCn
+              ? '社媒评分/参考对比信号较强'
+              : 'strong social rating/comparison-reference signal'
+            : '',
           sameBrand
             ? isCn
               ? '同品牌相近线产品'
@@ -2595,6 +3030,7 @@ async function buildRealtimeCompetitorCandidates({
         4,
       ),
       similarity_score: similarityScore,
+      score_breakdown: scored.score_breakdown,
       compare_highlights: uniqCaseInsensitiveStrings(
         [
           isCn
@@ -2605,8 +3041,13 @@ async function buildRealtimeCompetitorCandidates({
               ? '同剂型/场景，可作为平替起点。'
               : 'Same format/use-case, suitable as a dupe baseline.'
             : '',
+          scored.score_breakdown.ingredient_similarity >= 0.55
+            ? isCn
+              ? '关键成分相似度较高，建议进入 dupe 对比。'
+              : 'Ingredient similarity is high; candidate is suitable for dupe compare.'
+            : '',
         ],
-        2,
+        3,
       ),
     });
   }
@@ -2976,6 +3417,7 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         parsedProduct: anchorForRecall,
         keyIngredients,
         anchorProduct: anchorForRecall,
+        profileSummary,
         lang,
         timeoutMs: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS,
         maxQueries: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_QUERIES,
@@ -3210,6 +3652,7 @@ async function buildProductAnalysisFromUrlIngredients({
     parsedProduct: parsedProductObj,
     keyIngredients,
     anchorProduct,
+    profileSummary,
     lang,
     logger,
   });
@@ -18245,6 +18688,8 @@ const __internal = {
   isSpecificAvailabilityQuery,
   resolveAvailabilityProductByQuery,
   searchPivotaBackendProducts,
+  normalizeRecoCatalogProduct,
+  scoreRealtimeCompetitorCandidate,
   buildProductCatalogQueryCandidates,
   mapCatalogProductToAnchorProduct,
   resolveCatalogProductForProductInput,

@@ -164,6 +164,70 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(mapped.display_name).toContain('The Ordinary');
   });
 
+  test('catalog normalization extracts social/ingredient/skin signals for competitor scoring', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const normalized = __internal.normalizeRecoCatalogProduct({
+      product_id: 'comp_social_1',
+      brand: 'Brand Social',
+      name: 'Blemish Balance Serum',
+      key_ingredients: ['Niacinamide', 'Zinc PCA', 'Panthenol'],
+      skin_types: ['oily', 'sensitive'],
+      social_stats: {
+        platform_scores: { Reddit: 0.82, TikTok: 0.75 },
+        mention_count: 380,
+      },
+      review_count: 540,
+      rating_value: 4.4,
+    });
+
+    expect(normalized).toBeTruthy();
+    expect(Array.isArray(normalized.ingredient_tokens)).toBe(true);
+    expect(normalized.ingredient_tokens).toEqual(expect.arrayContaining(['niacinamide', 'zinc']));
+    expect(Array.isArray(normalized.skin_type_tags)).toBe(true);
+    expect(normalized.skin_type_tags).toEqual(expect.arrayContaining(['oily', 'sensitive']));
+    expect(typeof normalized.social_ref_score).toBe('number');
+    expect(normalized.social_ref_score).toBeGreaterThan(0.6);
+  });
+
+  test('competitor scoring rewards ingredient + skin-fit + social-reference alignment', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+
+    const strong = __internal.scoreRealtimeCompetitorCandidate({
+      queryOverlap: 2,
+      ingredientNameOverlap: 2,
+      sameCategory: true,
+      sameBrand: false,
+      anchorIngredientTokens: ['niacinamide', 'zinc', 'panthenol'],
+      candidateIngredientTokens: ['niacinamide', 'zinc', 'panthenol', 'glycerin'],
+      profileSkinTags: ['oily', 'sensitive', 'impaired_barrier'],
+      candidateSkinTags: ['oily', 'sensitive'],
+      candidateSocialScore: 0.82,
+      candidateSocialSupportCount: 420,
+      recallHitCount: 3,
+      totalQueries: 3,
+    });
+
+    const weak = __internal.scoreRealtimeCompetitorCandidate({
+      queryOverlap: 0,
+      ingredientNameOverlap: 0,
+      sameCategory: false,
+      sameBrand: false,
+      anchorIngredientTokens: ['niacinamide', 'zinc', 'panthenol'],
+      candidateIngredientTokens: ['fragrance', 'alcohol'],
+      profileSkinTags: ['oily', 'sensitive', 'impaired_barrier'],
+      candidateSkinTags: ['dry'],
+      candidateSocialScore: 0.35,
+      candidateSocialSupportCount: 5,
+      recallHitCount: 1,
+      totalQueries: 3,
+    });
+
+    expect(strong.similarity_score).toBeGreaterThan(weak.similarity_score);
+    expect(strong.score_breakdown.ingredient_similarity).toBeGreaterThan(weak.score_breakdown.ingredient_similarity);
+    expect(strong.score_breakdown.skin_fit_similarity).toBeGreaterThan(weak.score_breakdown.skin_fit_similarity);
+    expect(strong.score_breakdown.social_reference_score).toBeGreaterThan(weak.score_breakdown.social_reference_score);
+  });
+
   test('/v1/product/parse falls back to catalog resolve when upstream parse is unavailable', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
