@@ -164,6 +164,7 @@ const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
 const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
+const { normalizeKey: normalizeProductIntelKbKey, upsertProductIntelKbEntry } = require('./productIntelKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   _internals: productGroundingResolverInternals = {},
@@ -323,7 +324,8 @@ const PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS = (() => {
   return Math.max(800, Math.min(12000, v));
 })();
 const PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED = (() => {
-  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS || 'false')
+  const explicitRealtimeFlag = String(process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL || '').trim();
+  const raw = String(explicitRealtimeFlag || process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -332,6 +334,27 @@ const PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_MAX_BYTES || 900000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 900000;
   return Math.max(120000, Math.min(2_000_000, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_TIMEOUT_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(300, Math.min(5000, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAX_QUERIES || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(4, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAX_CANDIDATES || 4);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4;
+  return Math.max(1, Math.min(8, v));
+})();
+const PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
   process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
@@ -1955,6 +1978,423 @@ function deriveKeyIngredientsForAnalysis(inciList, keyHints) {
   return picked.slice(0, 10);
 }
 
+function normalizeInciIngredientName(raw) {
+  const source = String(raw || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!source) return '';
+  return source
+    .split(/\s+/)
+    .map((token) => {
+      const t = String(token || '').trim();
+      if (!t) return '';
+      if (/^[A-Z0-9+%(),./-]+$/.test(t)) return t;
+      return t
+        .split('-')
+        .map((part) => {
+          const s = String(part || '').trim();
+          if (!s) return '';
+          if (/^[A-Z0-9]+$/.test(s)) return s;
+          return `${s.slice(0, 1).toUpperCase()}${s.slice(1).toLowerCase()}`;
+        })
+        .join('-');
+    })
+    .join(' ')
+    .trim();
+}
+
+function countRegexMatches(text, regex) {
+  if (!(regex instanceof RegExp)) return 0;
+  const rawFlags = String(regex.flags || '');
+  const flags = rawFlags.includes('g') ? rawFlags : `${rawFlags}g`;
+  const re = new RegExp(regex.source, flags);
+  let count = 0;
+  while (re.exec(text)) {
+    count += 1;
+    if (count >= 2000) break;
+  }
+  return count;
+}
+
+function collectThemeCountsFromText(text, definitions) {
+  const out = [];
+  for (const def of Array.isArray(definitions) ? definitions : []) {
+    const label = String(def?.label || '').trim();
+    if (!label) continue;
+    const patterns = Array.isArray(def?.patterns) ? def.patterns : [];
+    let count = 0;
+    for (const re of patterns) count += countRegexMatches(text, re);
+    if (count > 0) out.push({ label, count });
+  }
+  out.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return String(a.label || '').localeCompare(String(b.label || ''));
+  });
+  return out;
+}
+
+function extractAggregateRatingFromHtml(html) {
+  const source = String(html || '');
+  if (!source) return { rating_value: null, review_count: null };
+
+  const ratingRaw =
+    source.match(/"ratingValue"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?/i)?.[1] ||
+    source.match(/itemprop\s*=\s*"ratingValue"[^>]*content\s*=\s*"([0-9]+(?:\.[0-9]+)?)"/i)?.[1] ||
+    null;
+  const reviewRaw =
+    source.match(/"reviewCount"\s*:\s*"?([0-9]{1,8})"?/i)?.[1] ||
+    source.match(/itemprop\s*=\s*"reviewCount"[^>]*content\s*=\s*"([0-9]{1,8})"/i)?.[1] ||
+    null;
+
+  let ratingValue = ratingRaw != null ? Number(ratingRaw) : null;
+  if (!Number.isFinite(ratingValue)) ratingValue = null;
+  if (ratingValue != null && ratingValue > 5 && ratingValue <= 10) ratingValue = ratingValue / 2;
+  if (ratingValue != null && (ratingValue < 0 || ratingValue > 5)) ratingValue = null;
+
+  let reviewCount = reviewRaw != null ? Number(reviewRaw) : null;
+  if (!Number.isFinite(reviewCount) || reviewCount < 0) reviewCount = null;
+  if (reviewCount != null) reviewCount = Math.trunc(reviewCount);
+
+  return { rating_value: ratingValue, review_count: reviewCount };
+}
+
+function extractRealtimeSocialSignalsFromHtml(html, { lang = 'EN', riskNotes = [] } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const sourceText = stripHtmlToText(html).toLowerCase();
+  const text = sourceText.length > 240000 ? sourceText.slice(0, 240000) : sourceText;
+
+  const positiveThemes = collectThemeCountsFromText(text, [
+    { label: isCn ? '补水保湿' : 'hydration', patterns: [/\bhydrat(?:e|ing|ion)\b/gi, /\bmoisturi(?:z|s)(?:e|ing|er)\b/gi, /补水|保湿/gi] },
+    { label: isCn ? '舒缓温和' : 'soothing', patterns: [/\bsoothing?\b/gi, /\bcalm(?:ing)?\b/gi, /舒缓|温和/gi] },
+    { label: isCn ? '肤感轻薄' : 'lightweight texture', patterns: [/\blightweight\b/gi, /\bnon[-\s]?greasy\b/gi, /清爽|轻薄/gi] },
+    { label: isCn ? '紧致细纹' : 'firming', patterns: [/\bfirm(?:ing|ness)?\b/gi, /\bfine lines?\b/gi, /紧致|细纹/gi] },
+    { label: isCn ? '提亮均匀' : 'brightening', patterns: [/\bbrighten(?:ing)?\b/gi, /\beven tone\b/gi, /提亮|均匀肤色/gi] },
+  ]);
+  const negativeThemes = collectThemeCountsFromText(text, [
+    { label: isCn ? '搓泥/黏腻' : 'sticky or pilling', patterns: [/\bsticky\b/gi, /\bpill(?:ing)?\b/gi, /搓泥|黏腻|粘腻/gi] },
+    { label: isCn ? '刺痛泛红' : 'stinging or redness', patterns: [/\bsting(?:ing)?\b/gi, /\bred(?:ness)?\b/gi, /\birritat(?:e|ion)\b/gi, /刺痛|泛红|刺激/gi] },
+    { label: isCn ? '爆痘/闷痘' : 'breakout concerns', patterns: [/\bbreak ?out(?:s)?\b/gi, /\bclog(?:ged)? pores?\b/gi, /爆痘|闷痘/gi] },
+    { label: isCn ? '偏干/拔干' : 'drying feel', patterns: [/\bdry(?:ing|ness)?\b/gi, /\btight(?:ness)?\b/gi, /拔干|干燥|紧绷/gi] },
+  ]);
+
+  const rating = extractAggregateRatingFromHtml(html);
+  const positiveLabels = positiveThemes.slice(0, 5).map((row) => row.label);
+  const negativeLabels = negativeThemes.slice(0, 5).map((row) => row.label);
+  const totalPos = positiveThemes.reduce((sum, row) => sum + Number(row.count || 0), 0);
+  const totalNeg = negativeThemes.reduce((sum, row) => sum + Number(row.count || 0), 0);
+
+  const combinedRiskText = `${String(riskNotes.join(' | ') || '').toLowerCase()} | ${negativeLabels.join(' | ').toLowerCase()} | ${text}`;
+  const riskForGroups = uniqCaseInsensitiveStrings(
+    [
+      /\bsting|red|irritat|sensitive|刺痛|泛红|刺激/.test(combinedRiskText)
+        ? isCn
+          ? '敏感肌：先低频试用并观察刺痛/泛红。'
+          : 'Sensitive skin: start low and monitor for stinging/redness.'
+        : '',
+      /\bbreakout|clog|acne|闷痘|爆痘/.test(combinedRiskText)
+        ? isCn
+          ? '易痘肌：关注是否闷痘，避免厚重叠加。'
+          : 'Acne-prone skin: watch for clogging/breakout feedback.'
+        : '',
+      /\bdry|tight|barrier|干燥|紧绷|屏障/.test(combinedRiskText)
+        ? isCn
+          ? '屏障不稳：加强保湿封层，降低活性叠加。'
+          : 'Impaired barrier: prioritize moisturizer and reduce active layering.'
+        : '',
+    ],
+    4,
+  );
+
+  const platformScores = {};
+  if (rating.rating_value != null) {
+    platformScores.BrandSite = Number(Math.max(0, Math.min(1, rating.rating_value / 5)).toFixed(3));
+  } else if (totalPos > 0 || totalNeg > 0) {
+    const base = 0.52 + (totalPos - totalNeg) / Math.max(6, totalPos + totalNeg);
+    platformScores.BrandSite = Number(Math.max(0.35, Math.min(0.8, base)).toFixed(3));
+  }
+
+  const notes = uniqCaseInsensitiveStrings(
+    [
+      rating.rating_value != null
+        ? isCn
+          ? `页面可见评分约 ${rating.rating_value.toFixed(1)}/5${rating.review_count != null ? `（样本 ${rating.review_count}）` : ''}。`
+          : `Visible page rating is about ${rating.rating_value.toFixed(1)}/5${rating.review_count != null ? ` (n=${rating.review_count})` : ''}.`
+        : '',
+      totalPos || totalNeg
+        ? isCn
+          ? `页面文本信号汇总：正向主题 ${totalPos}，负向主题 ${totalNeg}。`
+          : `On-page text signals: positive themes ${totalPos}, negative themes ${totalNeg}.`
+        : '',
+      isCn
+        ? '说明：该社媒信号来自产品页公开文本，非全平台实时抓取。'
+        : 'Note: these social signals are aggregated from public product-page text, not full cross-platform crawl.',
+    ],
+    3,
+  );
+
+  return {
+    platform_scores: platformScores,
+    typical_positive: positiveLabels,
+    typical_negative: negativeLabels,
+    risk_for_groups: riskForGroups,
+    notes,
+    has_signal: Boolean(Object.keys(platformScores).length || positiveLabels.length || negativeLabels.length || riskForGroups.length),
+    review_count: rating.review_count,
+  };
+}
+
+function tokenizeProductTextForSimilarity(raw) {
+  const stopWords = new Set([
+    'the', 'and', 'for', 'with', 'from', 'this', 'that', 'serum', 'cream', 'mask', 'toner', 'lotion', 'face', 'skin',
+    'product', 'multi', 'plus', 'care', 'daily', 'night', 'day',
+  ]);
+  return Array.from(
+    new Set(
+      String(raw || '')
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3 && !stopWords.has(token)),
+    ),
+  );
+}
+
+function inferProductCategoryToken(raw) {
+  const text = String(raw || '').toLowerCase();
+  if (!text) return '';
+  const categories = ['serum', 'essence', 'cream', 'moisturizer', 'cleanser', 'toner', 'sunscreen', 'spf', 'mask', 'oil'];
+  return categories.find((token) => new RegExp(`\\b${token}\\b`, 'i').test(text)) || '';
+}
+
+async function buildRealtimeCompetitorCandidates({
+  productUrl,
+  parsedProduct = null,
+  keyIngredients = [],
+  anchorProduct = null,
+  lang = 'EN',
+  logger,
+} = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  if (!PIVOTA_BACKEND_BASE_URL) {
+    return { candidates: [], queries: [], reason: 'pivota_backend_not_configured' };
+  }
+
+  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const anchorObj = anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct) ? anchorProduct : parsedProductObj;
+  const anchorId = pickFirstTrimmed(anchorObj?.product_id, anchorObj?.sku_id);
+  const anchorBrand = pickFirstTrimmed(anchorObj?.brand);
+  const anchorText = buildProductInputText(anchorObj, null) || '';
+
+  const baseInput = buildProductInputText(parsedProductObj, null) || String(productUrl || '').trim();
+  const fromCatalogQueries = buildProductCatalogQueryCandidates({
+    inputText: baseInput,
+    inputUrl: productUrl,
+    parsedProduct: parsedProductObj,
+  });
+  const ingredientQuery = normalizeProductCatalogQuery(
+    `${keyIngredients.slice(0, 2).join(' ')} ${inferProductCategoryToken(`${anchorText} ${baseInput}`)}`,
+  );
+
+  const queries = [];
+  const seenQuery = new Set();
+  for (const raw of [...fromCatalogQueries, ingredientQuery]) {
+    const q = normalizeProductCatalogQuery(raw);
+    if (!q) continue;
+    if (/^https?:\/\//i.test(q)) continue;
+    const key = q.toLowerCase();
+    if (seenQuery.has(key)) continue;
+    seenQuery.add(key);
+    queries.push(q);
+    if (queries.length >= PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES) break;
+  }
+  if (!queries.length) return { candidates: [], queries: [], reason: 'query_missing' };
+
+  const searchResults = await Promise.all(
+    queries.map(async (queryText) => {
+      const searched = await searchPivotaBackendProducts({
+        query: queryText,
+        limit: 6,
+        logger,
+        timeoutMs: PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS,
+      });
+      return { query: queryText, searched };
+    }),
+  );
+
+  const queryTokens = tokenizeProductTextForSimilarity(queries.join(' | '));
+  const ingredientTokens = tokenizeProductTextForSimilarity(keyIngredients.slice(0, 5).join(' | '));
+  const categoryToken = inferProductCategoryToken(`${baseInput} ${queries.join(' ')}`);
+
+  const seenProduct = new Set();
+  const candidates = [];
+  for (const row of searchResults) {
+    const list = Array.isArray(row?.searched?.products) ? row.searched.products : [];
+    for (const product of list) {
+      const normalized = normalizeRecoCatalogProduct(product);
+      if (!normalized) continue;
+      const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+      if (!productId) continue;
+      if (anchorId && productId === anchorId) continue;
+      const lowerKey = `${productId}`.toLowerCase();
+      if (seenProduct.has(lowerKey)) continue;
+      seenProduct.add(lowerKey);
+
+      const brand = pickFirstTrimmed(normalized.brand);
+      const name = pickFirstTrimmed(normalized.display_name, normalized.name);
+      const candidateText = `${brand} ${name}`.trim().toLowerCase();
+      const nameTokens = tokenizeProductTextForSimilarity(candidateText);
+
+      const queryOverlap = queryTokens.filter((token) => nameTokens.includes(token)).length;
+      const ingredientOverlap = ingredientTokens.filter((token) => nameTokens.includes(token)).length;
+      const sameBrand = anchorBrand && brand && anchorBrand.toLowerCase() === brand.toLowerCase();
+      const sameCategory = categoryToken ? new RegExp(`\\b${categoryToken}\\b`, 'i').test(candidateText) : false;
+
+      const similarityRaw =
+        0.3 +
+        Math.min(0.32, queryOverlap * 0.12) +
+        Math.min(0.14, ingredientOverlap * 0.07) +
+        (sameCategory ? 0.12 : 0) +
+        (sameBrand ? 0.08 : 0);
+      const similarityScore = Number(Math.max(0.22, Math.min(0.93, similarityRaw)).toFixed(3));
+
+      const whyCandidate = uniqCaseInsensitiveStrings(
+        [
+          sameCategory
+            ? isCn
+              ? `同品类（${categoryToken}）`
+              : `same category (${categoryToken})`
+            : '',
+          ingredientOverlap
+            ? isCn
+              ? '与关键活性关键词重合'
+              : 'overlap with key-active tokens'
+            : '',
+          sameBrand
+            ? isCn
+              ? '同品牌相近线产品'
+              : 'same-brand nearby option'
+            : '',
+          queryOverlap
+            ? isCn
+              ? '产品名/诉求关键词相近'
+              : 'similar name/claim keywords'
+            : '',
+          !sameCategory && !ingredientOverlap && !sameBrand && !queryOverlap
+            ? isCn
+              ? 'catalog 文本召回候选'
+              : 'catalog text-match candidate'
+            : '',
+        ],
+        4,
+      );
+
+      const compareHighlights = uniqCaseInsensitiveStrings(
+        [
+          sameCategory
+            ? isCn
+              ? '同剂型/场景，可作为平替起点。'
+              : 'Same format/use-case, suitable as a dupe baseline.'
+            : '',
+          ingredientOverlap
+            ? isCn
+              ? '部分关键活性可能重合，需比较浓度与配方结构。'
+              : 'Likely overlap in key actives; compare concentration and formula structure.'
+            : '',
+        ],
+        2,
+      );
+
+      candidates.push({
+        product_id: productId,
+        name: name || (isCn ? '未知产品' : 'Unknown product'),
+        ...(brand ? { brand } : {}),
+        why_candidate: whyCandidate,
+        similarity_score: similarityScore,
+        ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+      });
+    }
+  }
+
+  candidates.sort((a, b) => {
+    const scoreA = Number.isFinite(Number(a?.similarity_score)) ? Number(a.similarity_score) : 0;
+    const scoreB = Number.isFinite(Number(b?.similarity_score)) ? Number(b.similarity_score) : 0;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return String(a?.name || '').localeCompare(String(b?.name || ''));
+  });
+
+  const finalCandidates = candidates.slice(0, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
+  if (finalCandidates.length) return { candidates: finalCandidates, queries, reason: null };
+  const allFailed = searchResults.every((row) => !(row?.searched?.ok));
+  return { candidates: [], queries, reason: allFailed ? 'catalog_search_failed' : 'catalog_search_empty' };
+}
+
+function canonicalizeProductUrlForIntelKb(rawUrl) {
+  const text = String(rawUrl || '').trim();
+  if (!text) return '';
+  try {
+    const parsed = new URL(text);
+    parsed.hash = '';
+    const trackingParams = ['fbclid', 'gclid', 'igshid', 'mc_cid', 'mc_eid', 'ref', 'ref_src'];
+    for (const key of Array.from(parsed.searchParams.keys())) {
+      const lower = String(key || '').toLowerCase();
+      if (lower.startsWith('utm_') || trackingParams.includes(lower)) parsed.searchParams.delete(key);
+    }
+    if (typeof parsed.searchParams.sort === 'function') parsed.searchParams.sort();
+    return parsed.toString();
+  } catch {
+    return text;
+  }
+}
+
+function buildProductIntelKbKey({ productUrl, parsedProduct, lang = 'EN' } = {}) {
+  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const anchorId = pickFirstTrimmed(parsedProductObj?.product_id, parsedProductObj?.sku_id);
+  const langCode = String(lang || 'EN').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const normalizedUrl = canonicalizeProductUrlForIntelKb(productUrl);
+  const keyRaw = anchorId ? `product:${anchorId}|lang:${langCode}` : normalizedUrl ? `url:${normalizedUrl}|lang:${langCode}` : '';
+  return normalizeProductIntelKbKey(keyRaw);
+}
+
+function scheduleProductIntelKbBackfill({
+  productUrl,
+  parsedProduct = null,
+  payload = null,
+  lang = 'EN',
+  source = 'url_realtime_product_intel',
+  sourceMeta = null,
+  logger,
+} = {}) {
+  if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED) return;
+  const kbKey = buildProductIntelKbKey({ productUrl, parsedProduct, lang });
+  if (!kbKey) return;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+
+  let analysisSnapshot = null;
+  try {
+    analysisSnapshot = JSON.parse(JSON.stringify(payload));
+  } catch {
+    analysisSnapshot = null;
+  }
+  if (!analysisSnapshot || typeof analysisSnapshot !== 'object' || Array.isArray(analysisSnapshot)) return;
+
+  const sourceMetaObj = sourceMeta && typeof sourceMeta === 'object' && !Array.isArray(sourceMeta) ? sourceMeta : null;
+  setImmediate(() => {
+    upsertProductIntelKbEntry({
+      kb_key: kbKey,
+      analysis: analysisSnapshot,
+      source,
+      source_meta: sourceMetaObj,
+      last_success_at: new Date().toISOString(),
+      last_error: null,
+    }).catch((err) => {
+      logger?.warn(
+        { err: err?.message || String(err), kb_key: kbKey },
+        'aurora bff: async product-intel kb backfill failed',
+      );
+    });
+  });
+}
+
 async function buildProductAnalysisFromUrlIngredients({
   productUrl,
   lang = 'EN',
@@ -1998,9 +2438,11 @@ async function buildProductAnalysisFromUrlIngredients({
   if (!inciList.length) return null;
 
   const keyHints = extractKeyIngredientsFromHtml(html);
-  const keyIngredients = deriveKeyIngredientsForAnalysis(inciList, keyHints);
+  const normalizedInci = uniqCaseInsensitiveStrings(inciList.map((item) => normalizeInciIngredientName(item)).filter(Boolean), 120);
+  const keyIngredients = deriveKeyIngredientsForAnalysis(normalizedInci, keyHints.map((item) => normalizeInciIngredientName(item)));
   const mechanisms = deriveIngredientMechanisms(keyIngredients, lang);
-  const riskNotes = deriveIngredientRiskNotes(inciList, profileSummary || {}, lang);
+  const riskNotes = deriveIngredientRiskNotes(normalizedInci, profileSummary || {}, lang);
+  const socialSignals = extractRealtimeSocialSignalsFromHtml(html, { lang, riskNotes });
 
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const skinType = String(profileSummary?.skinType || '').trim().toLowerCase();
@@ -2008,7 +2450,7 @@ async function buildProductAnalysisFromUrlIngredients({
   const barrier = String(profileSummary?.barrierStatus || '').trim().toLowerCase();
   const highSensitivity = sensitivity === 'high' || barrier === 'impaired';
   const mediumSensitivity = sensitivity === 'medium';
-  const lowerInci = inciList.join(' | ').toLowerCase();
+  const lowerInci = normalizedInci.join(' | ').toLowerCase();
   const hasAcidLike = /\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|retinol|retinal|adapalene|tretinoin)\b/.test(lowerInci);
   const hasFragranceLike = /\b(fragrance|parfum|linalool|limonene|citral|geraniol)\b/.test(lowerInci);
 
@@ -2033,11 +2475,13 @@ async function buildProductAnalysisFromUrlIngredients({
     return `Your profile: ${[skinType || 'unknown skinType', `sensitivity=${sensitivity || 'unknown'}`, `barrier=${barrier || 'unknown'}`].join(' / ')}`;
   })();
 
+  const hostName = String(parsedUrl.hostname || '').replace(/^www\./i, '');
+  const pageTitle = extractPageTitleFromHtml(html);
   const reasons = uniqCaseInsensitiveStrings(
     [
       isCn
-        ? `已从产品页解析到 INCI 成分表（共 ${inciList.length} 项），用于本次评估。`
-        : `I extracted the INCI list directly from the product page (${inciList.length} entries) for this assessment.`,
+        ? `已从产品页解析到 INCI 成分表（共 ${normalizedInci.length} 项），用于本次评估。`
+        : `I extracted the INCI list directly from the product page (${normalizedInci.length} entries) for this assessment.`,
       keyIngredients.length
         ? isCn
           ? `识别到的关键成分：${keyIngredients.slice(0, 5).join('、')}。`
@@ -2045,6 +2489,11 @@ async function buildProductAnalysisFromUrlIngredients({
         : '',
       profileNote,
       riskNotes.length ? riskNotes[0] : '',
+      socialSignals.typical_positive.length
+        ? isCn
+          ? `页面舆情信号偏正向：${socialSignals.typical_positive.slice(0, 2).join('、')}。`
+          : `On-page sentiment leans positive: ${socialSignals.typical_positive.slice(0, 2).join(', ')}.`
+        : '',
       isCn
         ? '边界说明：成分浓度与批次差异不可见，建议先做局部测试并从低频开始。'
         : 'Boundary: concentration and batch variance are unknown; patch test first and start at low frequency.',
@@ -2052,8 +2501,6 @@ async function buildProductAnalysisFromUrlIngredients({
     5,
   );
 
-  const hostName = String(parsedUrl.hostname || '').replace(/^www\./i, '');
-  const pageTitle = extractPageTitleFromHtml(html);
   const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
   const anchorBrand = pickFirstTrimmed(
     parsedProductObj?.brand,
@@ -2069,29 +2516,52 @@ async function buildProductAnalysisFromUrlIngredients({
     joinBrandAndName(anchorBrand, anchorName),
     anchorName,
   );
+  const anchorProduct = {
+    ...(parsedProductObj?.product_id ? { product_id: String(parsedProductObj.product_id).trim() } : {}),
+    ...(parsedProductObj?.sku_id ? { sku_id: String(parsedProductObj.sku_id).trim() } : {}),
+    ...(anchorBrand ? { brand: anchorBrand } : {}),
+    ...(anchorName ? { name: anchorName } : {}),
+    ...(anchorDisplayName ? { display_name: anchorDisplayName } : {}),
+    url: parsedUrl.toString(),
+  };
+
+  const competitorOut = await buildRealtimeCompetitorCandidates({
+    productUrl: parsedUrl.toString(),
+    parsedProduct: parsedProductObj,
+    keyIngredients,
+    anchorProduct,
+    lang,
+    logger,
+  });
+  const competitorCandidates = Array.isArray(competitorOut?.candidates) ? competitorOut.candidates : [];
+  const competitorMissing = !competitorCandidates.length;
+  const socialMissing = !socialSignals.has_signal;
 
   const confidence = Number(
     Math.max(
       0.35,
       Math.min(
-        0.78,
-        0.42 + (inciList.length >= 15 ? 0.12 : 0.04) + (keyIngredients.length >= 4 ? 0.1 : 0.04) + (riskNotes.length ? 0.04 : 0),
+        0.84,
+        0.42 +
+          (normalizedInci.length >= 15 ? 0.12 : 0.04) +
+          (keyIngredients.length >= 4 ? 0.1 : 0.04) +
+          (riskNotes.length ? 0.04 : 0) +
+          (socialMissing ? 0 : 0.05) +
+          (competitorMissing ? 0 : 0.05),
       ),
     ).toFixed(3),
   );
+
+  const evidenceMissingInfo = ['concentration_unknown'];
+  if (socialMissing) evidenceMissingInfo.push('social_signals_missing');
+  if (competitorMissing) evidenceMissingInfo.push('competitors_missing');
+  if (competitorOut?.reason) evidenceMissingInfo.push(`competitor_recall_${String(competitorOut.reason).toLowerCase()}`);
 
   const raw = {
     assessment: {
       verdict,
       reasons,
-      anchor_product: {
-        ...(parsedProductObj?.product_id ? { product_id: String(parsedProductObj.product_id).trim() } : {}),
-        ...(parsedProductObj?.sku_id ? { sku_id: String(parsedProductObj.sku_id).trim() } : {}),
-        ...(anchorBrand ? { brand: anchorBrand } : {}),
-        ...(anchorName ? { name: anchorName } : {}),
-        ...(anchorDisplayName ? { display_name: anchorDisplayName } : {}),
-        url: parsedUrl.toString(),
-      },
+      anchor_product: anchorProduct,
     },
     evidence: {
       science: {
@@ -2101,27 +2571,60 @@ async function buildProductAnalysisFromUrlIngredients({
         risk_notes: riskNotes,
       },
       social_signals: {
-        typical_positive: [],
-        typical_negative: [],
-        risk_for_groups: [],
+        ...(Object.keys(socialSignals.platform_scores || {}).length
+          ? { platform_scores: socialSignals.platform_scores }
+          : {}),
+        typical_positive: socialSignals.typical_positive,
+        typical_negative: socialSignals.typical_negative,
+        risk_for_groups: socialSignals.risk_for_groups,
       },
-      expert_notes: [
-        isCn
-          ? `证据来源：${hostName || 'product page'} 官方产品页成分表抓取。`
-          : `Evidence source: ingredient list parsed from ${hostName || 'product page'}.`,
-      ],
+      expert_notes: uniqCaseInsensitiveStrings(
+        [
+          isCn
+            ? `证据来源：${hostName || 'product page'} 官方产品页成分表抓取。`
+            : `Evidence source: ingredient list parsed from ${hostName || 'product page'}.`,
+          ...socialSignals.notes,
+          competitorOut?.queries?.length
+            ? isCn
+              ? `竞品召回查询：${competitorOut.queries.join(' | ')}`
+              : `Competitor recall queries: ${competitorOut.queries.join(' | ')}`
+            : '',
+        ],
+        4,
+      ),
       confidence,
-      missing_info: ['social_signals_missing', 'competitors_missing', 'concentration_unknown'],
+      missing_info: evidenceMissingInfo,
     },
     confidence,
-    missing_info: ['upstream_analysis_missing', 'url_ingredient_analysis_used', 'social_signals_missing', 'competitors_missing'],
+    missing_info: uniqCaseInsensitiveStrings(
+      [
+        'upstream_analysis_missing',
+        'url_ingredient_analysis_used',
+        'url_realtime_product_intel_used',
+        ...(socialMissing ? ['social_signals_missing'] : []),
+        ...(competitorMissing ? ['competitors_missing'] : []),
+        competitorOut?.reason ? `competitor_recall_${String(competitorOut.reason).toLowerCase()}` : '',
+      ],
+      12,
+    ),
+    ...(competitorCandidates.length ? { competitors: { candidates: competitorCandidates } } : {}),
   };
 
   const norm = normalizeProductAnalysis(raw);
   const payloadMissing = Array.isArray(norm.payload?.missing_info) ? norm.payload.missing_info : [];
+  const mergedMissingInfo = Array.from(
+    new Set([
+      ...payloadMissing,
+      'url_ingredient_analysis_used',
+      'url_realtime_product_intel_used',
+      ...(socialMissing ? ['social_signals_missing'] : []),
+      ...(competitorMissing ? ['competitors_missing'] : []),
+      ...(competitorOut?.reason ? [`competitor_recall_${String(competitorOut.reason).toLowerCase()}`] : []),
+    ]),
+  );
   const nextPayload = {
     ...(norm.payload && typeof norm.payload === 'object' ? norm.payload : {}),
-    missing_info: Array.from(new Set([...payloadMissing, 'url_ingredient_analysis_used'])),
+    missing_info: mergedMissingInfo,
   };
   const nextFieldMissing = Array.isArray(norm.field_missing) ? norm.field_missing.filter((item) => {
     const field = String(item?.field || '').trim();
@@ -2130,6 +2633,15 @@ async function buildProductAnalysisFromUrlIngredients({
   return {
     payload: nextPayload,
     field_missing: nextFieldMissing,
+    source_meta: {
+      analyzer: 'url_realtime_product_intel_v1',
+      source_url: parsedUrl.toString(),
+      source_host: hostName || null,
+      competitor_queries: competitorOut?.queries || [],
+      competitor_reason: competitorOut?.reason || null,
+      social_signal_present: !socialMissing,
+      competitor_count: competitorCandidates.length,
+    },
   };
 }
 
@@ -10630,6 +11142,66 @@ function mountAuroraBffRoutes(app, { logger }) {
       let anchorId = parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id);
       let primaryAnchorResolution = null;
       let catalogFallback = null;
+      let realtimeUrlNormMeta = null;
+      const realtimeUrlInput = String(parsed.data.url || '').trim();
+      const shouldRunRealtimeUrlFirst = PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && /^https?:\/\//i.test(realtimeUrlInput);
+
+      if (shouldRunRealtimeUrlFirst) {
+        const realtimeNorm = await buildProductAnalysisFromUrlIngredients({
+          productUrl: realtimeUrlInput,
+          lang: ctx.lang,
+          profileSummary,
+          parsedProduct,
+          logger,
+        });
+        if (realtimeNorm && realtimeNorm.payload && realtimeNorm.payload.assessment) {
+          realtimeUrlNormMeta = realtimeNorm.source_meta || null;
+          let realtimePayload = enrichProductAnalysisPayload(realtimeNorm.payload, { lang: ctx.lang, profileSummary });
+          if (realtimePayload && typeof realtimePayload === 'object') {
+            const missingInfo = Array.isArray(realtimePayload.missing_info) ? realtimePayload.missing_info : [];
+            realtimePayload = {
+              ...realtimePayload,
+              missing_info: Array.from(new Set([...missingInfo, 'url_realtime_product_intel_used'])),
+            };
+          }
+          const assessment = realtimePayload?.assessment && typeof realtimePayload.assessment === 'object'
+            ? realtimePayload.assessment
+            : null;
+          if (assessment && !assessment.anchor_product && !assessment.anchorProduct && parsedProduct) {
+            realtimePayload = { ...realtimePayload, assessment: { ...assessment, anchor_product: parsedProduct } };
+          }
+
+          const kbBackfillAnchor =
+            assessment && typeof assessment.anchor_product === 'object' && !Array.isArray(assessment.anchor_product)
+              ? assessment.anchor_product
+              : parsedProduct;
+          scheduleProductIntelKbBackfill({
+            productUrl: realtimeUrlInput,
+            parsedProduct: kbBackfillAnchor,
+            payload: realtimePayload,
+            lang: ctx.lang,
+            source: 'url_realtime_product_intel',
+            sourceMeta: realtimeUrlNormMeta,
+            logger,
+          });
+
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: null,
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `analyze_${ctx.request_id}`,
+                type: 'product_analysis',
+                payload: realtimePayload,
+                ...(realtimeNorm.field_missing?.length ? { field_missing: realtimeNorm.field_missing.slice(0, 8) } : {}),
+              },
+            ],
+            session_patch: {},
+            events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze', mode: 'url_realtime_product_intel' })],
+          });
+          return res.json(envelope);
+        }
+      }
 
       // If caller only provided a name/url, try to parse into an anchor product first to improve KB hit rate.
       if (!anchorId && input) {
@@ -10923,6 +11495,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
         if (urlNorm && urlNorm.payload && urlNorm.payload.assessment) {
+          realtimeUrlNormMeta = urlNorm.source_meta || realtimeUrlNormMeta;
           const mergedMissingInfo = Array.from(
             new Set([
               ...(Array.isArray(norm?.payload?.missing_info) ? norm.payload.missing_info : []),
@@ -10949,6 +11522,22 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (a && !a.anchor_product && !a.anchorProduct) {
           payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
         }
+      }
+      if (realtimeUrlNormMeta && parsed.data.url && payload && typeof payload === 'object') {
+        const assessment = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
+        const kbBackfillAnchor =
+          assessment && typeof assessment.anchor_product === 'object' && !Array.isArray(assessment.anchor_product)
+            ? assessment.anchor_product
+            : parsedProduct;
+        scheduleProductIntelKbBackfill({
+          productUrl: parsed.data.url,
+          parsedProduct: kbBackfillAnchor,
+          payload,
+          lang: ctx.lang,
+          source: 'url_realtime_product_intel',
+          sourceMeta: realtimeUrlNormMeta,
+          logger,
+        });
       }
 
       const envelope = buildEnvelope(ctx, {
