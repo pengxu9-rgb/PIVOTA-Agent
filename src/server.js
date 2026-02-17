@@ -1753,6 +1753,120 @@ function tokenizeSearchTextForMatch(raw) {
     .filter((token) => token.length >= 2);
 }
 
+const SEARCH_QUERY_NOISE_RE =
+  /有货|库存|有没有|有無|有沒|有没|是否有|能买|能买吗|哪里买|哪裡買|相關|相关|related|推荐|推薦|recommend(?:ed|ation|ations)?|products?|items?|show\s+me|where\s+to\s+buy|in\s+stock|instock|availability|available|search|find|please|商品|产品|買|购买|買う|买/gimu;
+const SEARCH_QUERY_STOP_TOKENS = new Set([
+  'a',
+  'an',
+  'and',
+  'any',
+  'available',
+  'availability',
+  'beauty',
+  'buy',
+  'find',
+  'for',
+  'how',
+  'i',
+  'in',
+  'instock',
+  'is',
+  'item',
+  'items',
+  'me',
+  'my',
+  'of',
+  'on',
+  'or',
+  'please',
+  'product',
+  'products',
+  'recommend',
+  'recommended',
+  'related',
+  'search',
+  'show',
+  'stock',
+  'the',
+  'to',
+  'where',
+  'with',
+  'you',
+  'your',
+  '可以买',
+  '能买吗',
+  'products',
+  '买',
+  '产品',
+  '商品',
+  '推荐',
+  '相關',
+  '相关',
+  '有货',
+  '库存',
+  '有没有',
+  '哪里买',
+  '哪裡買',
+  '护肤',
+  '化妆',
+  '化妆品',
+  '美妆',
+]);
+
+function sanitizeSearchQueryForRelevance(raw) {
+  return String(raw || '')
+    .replace(SEARCH_QUERY_NOISE_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractSearchAnchorTokens(queryText) {
+  const sanitized = sanitizeSearchQueryForRelevance(queryText);
+  const resolverInput = sanitized || String(queryText || '');
+  const resolverNormalized = normalizeResolverText(resolverInput);
+  const resolverTokens = Array.isArray(tokenizeResolverQuery(resolverNormalized))
+    ? tokenizeResolverQuery(resolverNormalized)
+    : [];
+  const looseTokens = tokenizeSearchTextForMatch(resolverInput);
+
+  const anchors = [];
+  const seen = new Set();
+  for (const token of [...resolverTokens, ...looseTokens]) {
+    const normalized = normalizeSearchTextForMatch(token);
+    if (!normalized || SEARCH_QUERY_STOP_TOKENS.has(normalized)) continue;
+    if (/^[0-9]+$/.test(normalized)) continue;
+
+    const isLatin = /^[a-z0-9]+$/.test(normalized);
+    if (isLatin && normalized.length < 3) continue;
+    if (!isLatin && normalized.length < 2) continue;
+
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    anchors.push(normalized);
+    if (anchors.length >= 10) break;
+  }
+  return anchors;
+}
+
+function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
+  const raw = String(queryText || '').trim();
+  if (!raw) return false;
+  const anchors = Array.isArray(anchorTokens) ? anchorTokens : extractSearchAnchorTokens(raw);
+  if (!anchors.length) return false;
+
+  const lower = raw.toLowerCase();
+  if (/(ipsa|茵芙莎|winona|薇诺娜|the ordinary|sk[\s-]?ii|流金水|神仙水|time reset aqua)/i.test(lower)) {
+    return true;
+  }
+  if (/(有货|库存|有没有|哪里买|能买|能买吗|where to buy|in stock|available|availability)/i.test(lower)) {
+    return true;
+  }
+  if (anchors.length <= 2 && raw.length <= 48 && !/(推荐|recommend|best|适合|怎么|教程|搭配|guide|tips)/i.test(lower)) {
+    return true;
+  }
+  return false;
+}
+
 function buildFallbackCandidateText(product) {
   if (!product || typeof product !== 'object') return '';
   const parts = [
@@ -1773,6 +1887,17 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
 
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return true;
+
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  if (isLookupStyleSearchQuery(queryText, anchorTokens) && anchorTokens.length > 0) {
+    for (const product of products.slice(0, 8)) {
+      if (!hasUsableSearchProduct(product)) continue;
+      const candidateText = buildFallbackCandidateText(product);
+      if (!candidateText) continue;
+      if (anchorTokens.some((token) => candidateText.includes(token))) return true;
+    }
+    return false;
+  }
 
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const longQuery = queryTokens.length >= 2;
@@ -5262,7 +5387,10 @@ async function proxyAgentSearchToBackend(req, res) {
       offset: parseQueryNumber(queryParams?.offset),
     });
     const primaryUsableCount = countUsableSearchProducts(normalized?.products);
-    const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
+    const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
+    const primaryRelevant = queryText ? isProxySearchFallbackRelevant(normalized, queryText) : true;
+    const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
+    const shouldFallback = primaryUnusable || primaryIrrelevant;
 
     if (shouldFallback) {
       if (allowSecondaryFallback && !skipSecondaryFallback) {
@@ -5293,7 +5421,11 @@ async function proxyAgentSearchToBackend(req, res) {
           const fallback = await queryFindProductsMultiFallback({
             queryParams,
             checkoutToken,
-            reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
+            reason: primaryUnusable
+              ? primaryUsableCount > 0
+                ? 'insufficient_primary'
+                : 'empty_or_unusable_primary'
+              : 'primary_irrelevant',
           });
           if (
             fallback &&
@@ -5313,6 +5445,17 @@ async function proxyAgentSearchToBackend(req, res) {
       }
     }
 
+    if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
+      return res.status(200).json(
+        buildProxySearchSoftFallbackResponse({
+          queryParams,
+          reason: skipSecondaryFallback ? 'primary_irrelevant_skip_secondary' : 'primary_irrelevant_no_fallback',
+          upstreamStatus: resp.status,
+          route: 'proxy_search_primary_irrelevant',
+        }),
+      );
+    }
+
     if (Number(resp.status) >= 500) {
       return res.status(200).json(
         buildProxySearchSoftFallbackResponse({
@@ -5328,7 +5471,11 @@ async function proxyAgentSearchToBackend(req, res) {
       withProxySearchFallbackMetadata(normalized, {
         applied: false,
         reason:
-          shouldFallback && skipSecondaryFallback
+          primaryIrrelevant
+            ? skipSecondaryFallback
+              ? 'primary_irrelevant_skip_secondary'
+              : 'primary_irrelevant_no_fallback'
+            : shouldFallback && skipSecondaryFallback
             ? 'resolver_miss_skip_secondary'
             : shouldFallback
               ? 'fallback_not_better'
@@ -10200,7 +10347,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
-      const shouldFallback = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
+      const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
+      const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
+      const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
+      const shouldFallback = primaryUnusable || primaryIrrelevant;
       const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation);
 
@@ -10236,7 +10386,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const fallback = await queryFindProductsMultiFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               checkoutToken,
-              reason: primaryUsableCount > 0 ? 'insufficient_primary' : 'empty_or_unusable_primary',
+              reason: primaryUnusable
+                ? primaryUsableCount > 0
+                  ? 'insufficient_primary'
+                  : 'empty_or_unusable_primary'
+                : 'primary_irrelevant',
             });
             if (
               fallback &&
@@ -10257,10 +10411,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
 
         if (!replacedByFallback) {
-          upstreamData = withProxySearchFallbackMetadata(upstreamData, {
-            applied: false,
-            reason: skipSecondaryFallback ? 'resolver_miss_skip_secondary' : 'fallback_not_better',
-          });
+          if (primaryIrrelevant) {
+            upstreamData = buildProxySearchSoftFallbackResponse({
+              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
+              reason: skipSecondaryFallback ? 'primary_irrelevant_skip_secondary' : 'primary_irrelevant_no_fallback',
+              upstreamStatus: response.status,
+              route: 'invoke_primary_irrelevant',
+            });
+          } else {
+            upstreamData = withProxySearchFallbackMetadata(upstreamData, {
+              applied: false,
+              reason: skipSecondaryFallback ? 'resolver_miss_skip_secondary' : 'fallback_not_better',
+            });
+          }
         }
       }
     }
