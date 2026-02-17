@@ -1913,6 +1913,162 @@ function extractPageTitleFromHtml(html) {
   return stripHtmlToText(m[1]);
 }
 
+function slugToCandidateProductName(raw) {
+  const text = String(raw || '')
+    .replace(/\.[a-z0-9]{2,8}$/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\d{5,}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  return text
+    .split(' ')
+    .map((token) => {
+      const t = String(token || '').trim();
+      if (!t) return '';
+      if (/^[A-Z0-9%+]+$/.test(t)) return t;
+      return `${t.slice(0, 1).toUpperCase()}${t.slice(1).toLowerCase()}`;
+    })
+    .join(' ')
+    .trim();
+}
+
+function extractOnPageRelatedProducts(html, { baseUrl, anchorName = '', max = 4 } = {}) {
+  const source = String(html || '');
+  const base = String(baseUrl || '').trim();
+  if (!source || !base) return [];
+
+  let parsedBase = null;
+  try {
+    parsedBase = new URL(base);
+  } catch {
+    parsedBase = null;
+  }
+  if (!parsedBase) return [];
+
+  const generic = new Set([
+    'shop now',
+    'add to cart',
+    'learn more',
+    'read more',
+    'details',
+    'discover',
+    'ingredients',
+    'reviews',
+    'view',
+    'buy',
+    'product',
+  ]);
+  const productPathLike = /(product|serum|cream|moistur|cleanser|toner|mask|spf|sunscreen|retinol|niacinamide|peptide)/i;
+  const anchorKey = String(anchorName || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  const seen = new Set();
+  const out = [];
+  const re = /<a[^>]+href\s*=\s*["']([^"']{2,600})["'][^>]*>([\s\S]{1,400}?)<\/a>/gi;
+  let m = re.exec(source);
+  while (m) {
+    const hrefRaw = decodeHtmlEntitiesBasic(m[1] || '');
+    const textRaw = stripHtmlToText(m[2] || '');
+    let absUrl = '';
+    try {
+      const u = new URL(hrefRaw, parsedBase);
+      if (!/^https?:$/i.test(u.protocol)) {
+        m = re.exec(source);
+        continue;
+      }
+      if (u.hostname.replace(/^www\./i, '') !== parsedBase.hostname.replace(/^www\./i, '')) {
+        m = re.exec(source);
+        continue;
+      }
+      absUrl = u.toString();
+      const pathLower = String(u.pathname || '').toLowerCase();
+      if (!productPathLike.test(pathLower) && !/\.html$/i.test(pathLower)) {
+        m = re.exec(source);
+        continue;
+      }
+    } catch {
+      m = re.exec(source);
+      continue;
+    }
+
+    const textNorm = String(textRaw || '').replace(/\s+/g, ' ').trim();
+    const slugName = (() => {
+      try {
+        const u = new URL(absUrl);
+        const parts = String(u.pathname || '')
+          .split('/')
+          .map((x) => x.trim())
+          .filter(Boolean);
+        return parts.length ? slugToCandidateProductName(parts[parts.length - 1]) : '';
+      } catch {
+        return '';
+      }
+    })();
+
+    let name = textNorm;
+    if (!name || name.length < 4 || generic.has(name.toLowerCase())) name = slugName;
+    if (!name || name.length < 4 || name.length > 120) {
+      m = re.exec(source);
+      continue;
+    }
+    const nameKey = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (!nameKey) {
+      m = re.exec(source);
+      continue;
+    }
+    if (anchorKey && nameKey === anchorKey) {
+      m = re.exec(source);
+      continue;
+    }
+    if (seen.has(nameKey)) {
+      m = re.exec(source);
+      continue;
+    }
+    seen.add(nameKey);
+    out.push({ name, url: absUrl });
+    if (out.length >= Math.max(1, Math.min(8, Number(max) || 4))) break;
+
+    m = re.exec(source);
+  }
+
+  return out;
+}
+
+function buildOnPageCompetitorCandidates({
+  html,
+  productUrl,
+  anchorProduct = null,
+  lang = 'EN',
+  maxCandidates = 4,
+} = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const anchorObj = anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct) ? anchorProduct : null;
+  const anchorBrand = pickFirstTrimmed(anchorObj?.brand);
+  const anchorName = pickFirstTrimmed(anchorObj?.name, anchorObj?.display_name);
+  const rows = extractOnPageRelatedProducts(html, {
+    baseUrl: productUrl,
+    anchorName,
+    max: Math.max(1, Math.min(8, Number(maxCandidates) || 4)),
+  });
+  return rows.map((row, idx) => ({
+    ...(anchorBrand ? { brand: anchorBrand } : {}),
+    name: row.name,
+    similarity_score: Number(Math.max(0.35, Math.min(0.72, 0.66 - idx * 0.07)).toFixed(3)),
+    why_candidate: [
+      isCn ? '来自同站产品页的相关产品链接' : 'related product link found on the same product page',
+    ],
+    compare_highlights: [
+      isCn
+        ? '同品牌同场景候选，建议再对比成分与浓度。'
+        : 'Same-brand/context candidate; compare INCI and concentration before final pick.',
+      row.url,
+    ],
+  }));
+}
+
 function deriveIngredientMechanisms(ingredients, lang = 'EN') {
   const isCn = String(lang || '').toUpperCase() === 'CN';
   const pool = Array.isArray(ingredients) ? ingredients.map((v) => String(v || '').toLowerCase()) : [];
@@ -2937,7 +3093,23 @@ async function buildProductAnalysisFromUrlIngredients({
     lang,
     logger,
   });
-  const competitorCandidates = Array.isArray(competitorOut?.candidates) ? competitorOut.candidates : [];
+  let competitorCandidates = Array.isArray(competitorOut?.candidates) ? competitorOut.candidates : [];
+  let competitorSource = 'catalog';
+  let competitorReason = competitorOut?.reason ? String(competitorOut.reason) : null;
+  if (!competitorCandidates.length) {
+    const onPageCandidates = buildOnPageCompetitorCandidates({
+      html,
+      productUrl: parsedUrl.toString(),
+      anchorProduct,
+      lang,
+      maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+    });
+    if (onPageCandidates.length) {
+      competitorCandidates = onPageCandidates;
+      competitorSource = 'on_page_related';
+      competitorReason = null;
+    }
+  }
   const competitorMissing = !competitorCandidates.length;
   const socialMissing = !socialSignals.has_signal;
 
@@ -2959,7 +3131,7 @@ async function buildProductAnalysisFromUrlIngredients({
   const evidenceMissingInfo = ['concentration_unknown'];
   if (socialMissing) evidenceMissingInfo.push('social_signals_missing');
   if (competitorMissing) evidenceMissingInfo.push('competitors_missing');
-  if (competitorOut?.reason) evidenceMissingInfo.push(`competitor_recall_${String(competitorOut.reason).toLowerCase()}`);
+  if (competitorMissing && competitorReason) evidenceMissingInfo.push(`competitor_recall_${String(competitorReason).toLowerCase()}`);
 
   const raw = {
     assessment: {
@@ -2993,6 +3165,11 @@ async function buildProductAnalysisFromUrlIngredients({
               ? `竞品召回查询：${competitorOut.queries.join(' | ')}`
               : `Competitor recall queries: ${competitorOut.queries.join(' | ')}`
             : '',
+          competitorSource === 'on_page_related'
+            ? isCn
+              ? '竞品候选来自同页面相关产品链接（主链路退化补全）。'
+              : 'Competitor candidates were recovered from related links on the same page.'
+            : '',
         ],
         4,
       ),
@@ -3007,7 +3184,7 @@ async function buildProductAnalysisFromUrlIngredients({
         'url_realtime_product_intel_used',
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
-        competitorOut?.reason ? `competitor_recall_${String(competitorOut.reason).toLowerCase()}` : '',
+        competitorMissing && competitorReason ? `competitor_recall_${String(competitorReason).toLowerCase()}` : '',
       ],
       12,
     ),
@@ -3023,7 +3200,7 @@ async function buildProductAnalysisFromUrlIngredients({
       'url_realtime_product_intel_used',
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
-      ...(competitorOut?.reason ? [`competitor_recall_${String(competitorOut.reason).toLowerCase()}`] : []),
+      ...(competitorMissing && competitorReason ? [`competitor_recall_${String(competitorReason).toLowerCase()}`] : []),
     ]),
   );
   const nextPayload = {
@@ -3042,7 +3219,8 @@ async function buildProductAnalysisFromUrlIngredients({
       source_url: parsedUrl.toString(),
       source_host: hostName || null,
       competitor_queries: competitorOut?.queries || [],
-      competitor_reason: competitorOut?.reason || null,
+      competitor_reason: competitorReason || null,
+      competitor_source: competitorSource,
       social_signal_present: !socialMissing,
       competitor_count: competitorCandidates.length,
     },
