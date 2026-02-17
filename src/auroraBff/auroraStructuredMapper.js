@@ -170,13 +170,47 @@ function hostToBrand(hostname) {
   return humanizeSlugText(token);
 }
 
-function inferProductFromUrlLike(value) {
+function extractUrlFromText(value) {
+  const raw = asString(value);
+  if (!raw) return null;
+  const m = raw.match(/https?:\/\/[^\s"'<>)]+/i);
+  return m ? asString(m[0]) : null;
+}
+
+function stripParsePromptEcho(value) {
   const raw = asString(value);
   if (!raw) return null;
 
+  let out = raw.replace(/\s+/g, ' ').trim();
+  if (!out) return null;
+
+  const lower = out.toLowerCase();
+  const hasPromptEcho =
+    lower.includes("task: parse the user's product input into a normalized product entity") ||
+    lower.includes('return only a json object with keys: product') ||
+    lower.includes('input:');
+
+  if (hasPromptEcho) {
+    const idx = lower.lastIndexOf('input:');
+    if (idx >= 0 && idx + 6 < out.length) {
+      const tail = out.slice(idx + 6).trim();
+      if (tail) out = tail;
+    }
+  }
+
+  const url = extractUrlFromText(out);
+  if (url) return url;
+  return out;
+}
+
+function inferProductFromUrlLike(value) {
+  const raw = stripParsePromptEcho(value) || asString(value);
+  if (!raw) return null;
+  const candidateUrl = extractUrlFromText(raw) || raw;
+
   let parsed = null;
   try {
-    parsed = new URL(raw);
+    parsed = new URL(candidateUrl);
   } catch {
     return null;
   }
@@ -212,15 +246,18 @@ function ensureProductDisplayName(product) {
   const p = asPlainObject(product);
   if (!p) return null;
 
-  const brand = asString(p.brand);
-  const name = asString(p.name) || asString(p.display_name || p.displayName);
-  const displayName = asString(p.display_name || p.displayName) || joinBrandAndName(brand, name);
+  const brand = stripParsePromptEcho(asString(p.brand));
+  const name = stripParsePromptEcho(asString(p.name) || asString(p.display_name || p.displayName));
+  const displayName =
+    stripParsePromptEcho(asString(p.display_name || p.displayName)) || joinBrandAndName(brand, name);
+  const normalizedUrl = extractUrlFromText(stripParsePromptEcho(asString(p.url)));
 
   return {
     ...p,
     ...(brand ? { brand } : {}),
     ...(name ? { name } : {}),
     ...(displayName ? { display_name: displayName } : {}),
+    ...(normalizedUrl ? { url: normalizedUrl } : {}),
   };
 }
 
@@ -260,12 +297,13 @@ function mapAuroraProductParse(upstreamStructured) {
     if (firstCandidate) break;
   }
 
-  const parseInput = pickFirstString(
+  const parseInputRaw = pickFirstString(
     parse && (parse.normalized_query || parse.normalizedQuery),
     parse && (parse.input || parse.query || parse.url),
     structured && (structured.normalized_query || structured.normalizedQuery),
     structured && (structured.input || structured.query || structured.url || structured.anchor_product_url),
   );
+  const parseInput = stripParsePromptEcho(parseInputRaw) || parseInputRaw;
   const urlFallback = inferProductFromUrlLike(parseInput);
   const product =
     ensureProductDisplayName(anchor) ||
