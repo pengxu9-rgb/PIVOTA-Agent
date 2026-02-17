@@ -739,6 +739,26 @@ function normalizeCompetitorCandidates(rawCandidates) {
 
     const whyCandidate = uniqueStrings(asStringArray(row.why_candidate ?? row.whyCandidate));
     const compareHighlights = uniqueStrings(asStringArray(row.compare_highlights ?? row.compareHighlights));
+    const scoreBreakdownRaw = asPlainObject(row.score_breakdown ?? row.scoreBreakdown);
+    const scoreBreakdown = scoreBreakdownRaw
+      ? (() => {
+        const picked = {};
+        const keys = [
+          'category_score',
+          'ingredient_similarity',
+          'skin_fit_similarity',
+          'social_reference_score',
+          'query_overlap_score',
+          'brand_score',
+        ];
+        for (const key of keys) {
+          const n = asNumberOrNull(scoreBreakdownRaw[key]);
+          if (n == null) continue;
+          picked[key] = clamp01(n);
+        }
+        return Object.keys(picked).length ? picked : null;
+      })()
+      : null;
 
     out.push({
       ...(row.product_id ? { product_id: String(row.product_id).trim() } : {}),
@@ -748,6 +768,7 @@ function normalizeCompetitorCandidates(rawCandidates) {
       ...(row.display_name ? { display_name: String(row.display_name).trim() } : {}),
       ...(similarity != null ? { similarity_score: similarity } : {}),
       why_candidate: whyCandidate,
+      ...(scoreBreakdown ? { score_breakdown: scoreBreakdown } : {}),
       ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
     });
     if (out.length >= 10) break;
