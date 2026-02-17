@@ -306,6 +306,33 @@ const CATALOG_AVAIL_SEARCH_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
   return Math.max(300, Math.min(6000, v));
 })();
+const PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_INTEL_CATALOG_FALLBACK_MAX_QUERIES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK_MAX_QUERIES || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(6, v));
+})();
+const PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_TIMEOUT_MS || 3500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3500;
+  return Math.max(800, Math.min(12000, v));
+})();
+const PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_MAX_BYTES || 900000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900000;
+  return Math.max(120000, Math.min(2_000_000, v));
+})();
 const PIVOTA_BACKEND_AGENT_API_KEY = String(
   process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
     process.env.PIVOTA_BACKEND_API_KEY ||
@@ -1459,6 +1486,650 @@ function buildBrandPlaceholderProduct({ brandId, brandName, lang } = {}) {
     display_name: name,
     image_url: '',
     category: isCn ? '品牌' : 'Brand',
+  };
+}
+
+function normalizeProductCatalogQuery(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return '';
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    // ignore malformed URI fragments
+  }
+  s = s
+    .replace(/\+/g, ' ')
+    .replace(/[_]+/g, ' ')
+    .replace(/[|]+/g, ' ')
+    .replace(/\.(html?|php|aspx?)$/i, ' ')
+    .replace(/\b(en|cn|zh|us|uk|jp|kr|fr|de|es|pt|it|ca|au)\b/gi, ' ')
+    .replace(/\b(product|products|item|items)\b/gi, ' ')
+    .replace(/[-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (s.length > 160) s = s.slice(0, 160).trim();
+  return s;
+}
+
+function extractProductCatalogQueryFromUrl(rawUrl) {
+  const urlText = String(rawUrl || '').trim();
+  if (!urlText) return null;
+  let parsed = null;
+  try {
+    parsed = new URL(urlText);
+  } catch {
+    return null;
+  }
+
+  const hostLabels = String(parsed.hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '')
+    .split('.')
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const hostStop = new Set(['com', 'net', 'org', 'co', 'io', 'ai', 'shop', 'store', 'www', 'cn', 'cc', 'us', 'uk']);
+  const hostToken = normalizeProductCatalogQuery(hostLabels.filter((x) => !hostStop.has(x)).join(' '));
+
+  const pathTokens = String(parsed.pathname || '')
+    .split('/')
+    .map((x) => normalizeProductCatalogQuery(x))
+    .filter(Boolean);
+  const tailToken = normalizeProductCatalogQuery(pathTokens.slice(-2).join(' '));
+
+  const queryToken = normalizeProductCatalogQuery(
+    parsed.searchParams.get('product') ||
+      parsed.searchParams.get('name') ||
+      parsed.searchParams.get('title') ||
+      parsed.searchParams.get('sku') ||
+      '',
+  );
+
+  return {
+    raw_url: urlText,
+    host_token: hostToken,
+    tail_token: tailToken,
+    query_token: queryToken,
+  };
+}
+
+function buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct } = {}) {
+  const out = [];
+  const seen = new Set();
+  const add = (value, { normalize = true } = {}) => {
+    let s = String(value || '').trim();
+    if (!s) return;
+    if (normalize) s = normalizeProductCatalogQuery(s);
+    if (!s) return;
+    const key = s.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(s);
+  };
+
+  const productObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  if (productObj) {
+    add(joinBrandAndName(productObj.brand, productObj.name || productObj.display_name || productObj.displayName || ''));
+    add(productObj.display_name || productObj.displayName || productObj.name || '');
+    add(productObj.sku_id || productObj.product_id || '');
+  }
+
+  const urlCandidate =
+    String(inputUrl || '').trim() ||
+    (/^https?:\/\//i.test(String(inputText || '').trim()) ? String(inputText || '').trim() : '');
+  const fromUrl = extractProductCatalogQueryFromUrl(urlCandidate);
+  if (fromUrl) {
+    add(fromUrl.raw_url, { normalize: false });
+    if (fromUrl.host_token && fromUrl.tail_token) add(`${fromUrl.host_token} ${fromUrl.tail_token}`);
+    add(fromUrl.tail_token);
+    add(fromUrl.query_token);
+    add(fromUrl.host_token);
+  }
+
+  add(inputText);
+
+  return out.slice(0, Math.max(1, PRODUCT_INTEL_CATALOG_FALLBACK_MAX_QUERIES));
+}
+
+function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}) {
+  const normalized = normalizeRecoCatalogProduct(rawProduct);
+  if (!normalized || typeof normalized !== 'object') return null;
+  const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+  if (!productId) return null;
+  const brand = pickFirstTrimmed(normalized.brand);
+  const name = pickFirstTrimmed(normalized.name, normalized.display_name, fallbackName);
+  const displayName = pickFirstTrimmed(normalized.display_name, joinBrandAndName(brand, name), name);
+  return {
+    product_id: productId,
+    ...(normalized.sku_id ? { sku_id: normalized.sku_id } : {}),
+    ...(brand ? { brand } : {}),
+    ...(name ? { name } : {}),
+    ...(displayName ? { display_name: displayName } : {}),
+    ...(normalized.image_url ? { image_url: normalized.image_url } : {}),
+    ...(normalized.product_group_id ? { product_group_id: normalized.product_group_id } : {}),
+    ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+    ...(normalized.canonical_product_ref ? { canonical_product_ref: normalized.canonical_product_ref } : {}),
+    category: 'product',
+  };
+}
+
+async function resolveCatalogProductForProductInput({ inputText, inputUrl, parsedProduct, lang = 'EN', logger } = {}) {
+  if (!PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED) {
+    return {
+      ok: false,
+      reason: 'catalog_fallback_disabled',
+      source: null,
+      query_used: null,
+      product: null,
+      attempts: [],
+    };
+  }
+
+  const queries = buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct });
+  if (!queries.length) {
+    return {
+      ok: false,
+      reason: 'query_missing',
+      source: null,
+      query_used: null,
+      product: null,
+      attempts: [],
+    };
+  }
+
+  const attempts = [];
+
+  for (const query of queries) {
+    const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
+    attempts.push({
+      mode: 'resolve',
+      query,
+      ok: Boolean(resolved && resolved.ok && resolved.product),
+      reason: resolved && resolved.resolve_reason_code ? resolved.resolve_reason_code : resolved && resolved.reason ? resolved.reason : null,
+      latency_ms: Number.isFinite(Number(resolved && resolved.latency_ms)) ? Math.trunc(Number(resolved.latency_ms)) : null,
+    });
+    if (resolved && resolved.ok && resolved.product) {
+      return {
+        ok: true,
+        reason: null,
+        source: 'resolve',
+        query_used: query,
+        product: resolved.product,
+        attempts,
+      };
+    }
+  }
+
+  for (const query of queries) {
+    const searched = await searchPivotaBackendProducts({
+      query,
+      limit: 3,
+      logger,
+      timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
+    });
+    const first = Array.isArray(searched && searched.products)
+      ? searched.products.find((p) => p && typeof p === 'object' && String(p.product_id || '').trim())
+      : null;
+    attempts.push({
+      mode: 'search',
+      query,
+      ok: Boolean(first),
+      reason: searched && searched.reason ? String(searched.reason) : null,
+      latency_ms: Number.isFinite(Number(searched && searched.latency_ms)) ? Math.trunc(Number(searched.latency_ms)) : null,
+    });
+    if (first) {
+      return {
+        ok: true,
+        reason: null,
+        source: 'search',
+        query_used: query,
+        product: first,
+        attempts,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    reason: 'catalog_no_match',
+    source: null,
+    query_used: queries[0] || null,
+    product: null,
+    attempts,
+  };
+}
+
+async function resolvePrimaryAnalyzeAnchorForProductInput({ inputText, inputUrl, parsedProduct, lang = 'EN', logger } = {}) {
+  const queries = buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct }).slice(0, 2);
+  if (!queries.length) {
+    return {
+      ok: false,
+      reason: 'query_missing',
+      source: null,
+      query_used: null,
+      product: null,
+      attempts: [],
+    };
+  }
+
+  const attempts = [];
+  for (const query of queries) {
+    const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
+    const reasonCode =
+      resolved && resolved.resolve_reason_code
+        ? String(resolved.resolve_reason_code)
+        : resolved && resolved.reason
+          ? String(resolved.reason)
+          : null;
+    attempts.push({
+      mode: 'resolve',
+      query,
+      ok: Boolean(resolved && resolved.ok && resolved.product),
+      reason: reasonCode,
+      latency_ms: Number.isFinite(Number(resolved && resolved.latency_ms)) ? Math.trunc(Number(resolved.latency_ms)) : null,
+    });
+    if (resolved && resolved.ok && resolved.product) {
+      return {
+        ok: true,
+        reason: null,
+        source: 'resolve',
+        query_used: query,
+        product: resolved.product,
+        attempts,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    reason: attempts.length ? String(attempts[attempts.length - 1].reason || 'catalog_no_match') : 'catalog_no_match',
+    source: null,
+    query_used: queries[0] || null,
+    product: null,
+    attempts,
+  };
+}
+
+function decodeHtmlEntitiesBasic(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  const base = text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+  return base.replace(/&#(\d+);/g, (_, code) => {
+    const n = Number(code);
+    if (!Number.isFinite(n) || n <= 0) return _;
+    try {
+      return String.fromCodePoint(n);
+    } catch {
+      return _;
+    }
+  });
+}
+
+function stripHtmlToText(value) {
+  return decodeHtmlEntitiesBasic(String(value || ''))
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function uniqCaseInsensitiveStrings(items, max = 80) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(items) ? items : []) {
+    const s = String(raw || '').trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function splitInciList(raw) {
+  const text = stripHtmlToText(raw)
+    .replace(/\b(ingredients?|inci)\s*[:：]\s*/gi, '')
+    .replace(/\s*\|\s*/g, ', ')
+    .trim();
+  if (!text) return [];
+  const rows = text
+    .split(/[,;•·]\s*/)
+    .map((item) =>
+      String(item || '')
+        .replace(/\.\s*(overview|discover|build|shop|how to use|can i use|faq)\b[\s\S]*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter((item) => item.length >= 2 && item.length <= 120)
+    .filter((item) => !/[?!:]/.test(item))
+    .filter((item) => !/\b(overview|discover|regimen|build my regimen|shop now|add to cart|how to use|faq)\b/i.test(item))
+    .filter((item) => item.split(/\s+/).length <= 8);
+  return uniqCaseInsensitiveStrings(rows, 120);
+}
+
+function extractInciListFromHtml(html) {
+  const text = String(html || '');
+  if (!text) return [];
+
+  const patterns = [
+    /data-original-ingredients\s*=\s*"([^"]{40,8000})"/i,
+    /data-original-ingredients\s*=\s*'([^']{40,8000})'/i,
+    /class="[^"]*ingredients[^"]*"[^>]*>\s*([\s\S]{40,6000}?)\s*<\/p>/i,
+    />\s*Ingredients\s*<\/[^>]+>\s*<[^>]*>\s*([\s\S]{40,6000}?)\s*<\/(?:p|div)>/i,
+    /"ingredients"\s*:\s*"([^"]{40,8000})"/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    const list = splitInciList(m && m[1] ? m[1] : '');
+    if (list.length >= 5) return list;
+  }
+  return [];
+}
+
+function extractKeyIngredientsFromHtml(html) {
+  const text = String(html || '');
+  if (!text) return [];
+  const patterns = [
+    />\s*Key ingredients\s*<\/[^>]+>\s*<[^>]*class="[^"]*list[^"]*"[^>]*>([\s\S]{10,3000})<\/div>/i,
+    /"key_ingredients"\s*:\s*"([^"]{10,3000})"/i,
+    /"hero_actives"\s*:\s*\[([^\]]{10,3000})\]/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    const list = splitInciList(m && m[1] ? m[1] : '');
+    if (list.length) return list.slice(0, 20);
+  }
+  return [];
+}
+
+function extractPageTitleFromHtml(html) {
+  const text = String(html || '');
+  if (!text) return '';
+  const m = text.match(/<title[^>]*>([^<]{3,300})<\/title>/i);
+  if (!m || !m[1]) return '';
+  return stripHtmlToText(m[1]);
+}
+
+function deriveIngredientMechanisms(ingredients, lang = 'EN') {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const pool = Array.isArray(ingredients) ? ingredients.map((v) => String(v || '').toLowerCase()) : [];
+  const joined = pool.join(' | ');
+  const out = [];
+  if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide|pentapeptide)\b/.test(joined)) {
+    out.push(
+      isCn
+        ? '多肽类通常用于支持皮肤紧致与细纹观感改善（具体效果与浓度/配方相关）。'
+        : 'Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration).',
+    );
+  }
+  if (/\b(hyaluronate|hyaluronic|glycerin|trehalose|urea|sodium pca|pca)\b/.test(joined)) {
+    out.push(
+      isCn
+        ? '保湿剂/吸湿剂组合较完整，通常更偏向补水与维持角质层含水。'
+        : 'Humectant blend suggests hydration support and moisture retention.',
+    );
+  }
+  if (/\b(allantoin|panthenol|betaine)\b/.test(joined)) {
+    out.push(
+      isCn ? '含舒缓相关成分，通常更利于降低刺激感。' : 'Includes soothing-support ingredients that can improve tolerance.',
+    );
+  }
+  return uniqCaseInsensitiveStrings(out, 4);
+}
+
+function deriveIngredientRiskNotes(ingredients, profileSummary, lang = 'EN') {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const list = Array.isArray(ingredients) ? ingredients.map((v) => String(v || '').trim()) : [];
+  const joined = list.join(' | ').toLowerCase();
+  const risks = [];
+
+  const hasRetinoid = /\b(retinol|retinal|retinoate|adapalene|tretinoin)\b/.test(joined);
+  const hasAcid = /\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|citric acid)\b/.test(joined);
+  const hasFragrance = /\b(fragrance|parfum|linalool|limonene|citral|geraniol)\b/.test(joined);
+  const hasAlcoholDenat = /\balcohol denat\b/.test(joined);
+  const hasEssentialOil = /\b(essential oil|lavender oil|citrus peel oil|eucalyptus oil|menthol)\b/.test(joined);
+
+  const sensitivity = String(profileSummary?.sensitivity || '').trim().toLowerCase();
+  const barrier = String(profileSummary?.barrierStatus || '').trim().toLowerCase();
+  const sensitiveProfile = sensitivity === 'high' || sensitivity === 'medium' || barrier === 'impaired';
+
+  if (hasRetinoid) risks.push(isCn ? '含维A类成分，初期更可能出现刺激/干燥。' : 'Contains retinoid-like ingredients with higher irritation/dryness risk early on.');
+  if (hasAcid) risks.push(isCn ? '含酸类成分，频率与叠加需更谨慎。' : 'Contains exfoliating acids; frequency and layering need caution.');
+  if (hasFragrance || hasEssentialOil) {
+    risks.push(
+      isCn
+        ? '可能含香精/香料相关成分，敏感肌更建议先做局部测试。'
+        : 'May include fragrance-related ingredients; patch testing is recommended for sensitive skin.',
+    );
+  }
+  if (hasAlcoholDenat && sensitiveProfile) {
+    risks.push(
+      isCn
+        ? '敏感或屏障不稳时，酒精变性配方可能增加刺痛概率。'
+        : 'With sensitive or impaired barrier, denatured alcohol can increase stinging risk.',
+    );
+  }
+  return uniqCaseInsensitiveStrings(risks, 4);
+}
+
+function deriveKeyIngredientsForAnalysis(inciList, keyHints) {
+  const hints = uniqCaseInsensitiveStrings(Array.isArray(keyHints) ? keyHints : [], 12);
+  const inci = uniqCaseInsensitiveStrings(Array.isArray(inciList) ? inciList : [], 120);
+  const picked = [];
+  const seen = new Set();
+
+  const add = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    const key = s.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    picked.push(s);
+  };
+
+  for (const item of hints) add(item);
+
+  const activePatterns = [
+    /\b(peptide|tripeptide|tetrapeptide|hexapeptide|pentapeptide|niacinamide|salicylic|glycolic|lactic|mandelic|retinol|retinal|adapalene|tretinoin|azelaic|tranexamic|ascorbic|vitamin c|ceramide|panthenol|hyaluronate|hyaluronic|allantoin)\b/i,
+  ];
+  for (const item of inci) {
+    if (activePatterns.some((re) => re.test(item))) add(item);
+    if (picked.length >= 10) break;
+  }
+  if (!picked.length) {
+    for (const item of inci) {
+      if (/^aqua|^water$/i.test(item)) continue;
+      add(item);
+      if (picked.length >= 8) break;
+    }
+  }
+  return picked.slice(0, 10);
+}
+
+async function buildProductAnalysisFromUrlIngredients({
+  productUrl,
+  lang = 'EN',
+  profileSummary = null,
+  parsedProduct = null,
+  logger,
+} = {}) {
+  const urlText = String(productUrl || '').trim();
+  if (!/^https?:\/\//i.test(urlText)) return null;
+
+  let parsedUrl = null;
+  try {
+    parsedUrl = new URL(urlText);
+  } catch {
+    return null;
+  }
+
+  let html = '';
+  try {
+    const resp = await axios.get(parsedUrl.toString(), {
+      timeout: PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
+      maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+      maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+      responseType: 'text',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; AuroraBff/1.0; +https://aurora.pivota.cc)',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+    html = typeof resp?.data === 'string' ? resp.data : '';
+  } catch (err) {
+    logger?.warn(
+      { url: parsedUrl.toString(), err: err?.message || String(err) },
+      'aurora bff: product URL ingredient extraction failed',
+    );
+    return null;
+  }
+
+  const inciList = extractInciListFromHtml(html);
+  if (!inciList.length) return null;
+
+  const keyHints = extractKeyIngredientsFromHtml(html);
+  const keyIngredients = deriveKeyIngredientsForAnalysis(inciList, keyHints);
+  const mechanisms = deriveIngredientMechanisms(keyIngredients, lang);
+  const riskNotes = deriveIngredientRiskNotes(inciList, profileSummary || {}, lang);
+
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const skinType = String(profileSummary?.skinType || '').trim().toLowerCase();
+  const sensitivity = String(profileSummary?.sensitivity || '').trim().toLowerCase();
+  const barrier = String(profileSummary?.barrierStatus || '').trim().toLowerCase();
+  const highSensitivity = sensitivity === 'high' || barrier === 'impaired';
+  const mediumSensitivity = sensitivity === 'medium';
+  const lowerInci = inciList.join(' | ').toLowerCase();
+  const hasAcidLike = /\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|retinol|retinal|adapalene|tretinoin)\b/.test(lowerInci);
+  const hasFragranceLike = /\b(fragrance|parfum|linalool|limonene|citral|geraniol)\b/.test(lowerInci);
+
+  const verdict =
+    highSensitivity && (hasAcidLike || hasFragranceLike)
+      ? isCn
+        ? '谨慎'
+        : 'Caution'
+      : mediumSensitivity && hasAcidLike
+        ? isCn
+          ? '谨慎'
+          : 'Caution'
+        : isCn
+          ? '较适配'
+          : 'Likely Suitable';
+
+  const profileNote = (() => {
+    if (!skinType && !sensitivity && !barrier) return '';
+    if (isCn) {
+      return `你的画像：${[skinType || '未知肤质', `敏感度 ${sensitivity || '未知'}`, `屏障 ${barrier || '未知'}`].join(' / ')}`;
+    }
+    return `Your profile: ${[skinType || 'unknown skinType', `sensitivity=${sensitivity || 'unknown'}`, `barrier=${barrier || 'unknown'}`].join(' / ')}`;
+  })();
+
+  const reasons = uniqCaseInsensitiveStrings(
+    [
+      isCn
+        ? `已从产品页解析到 INCI 成分表（共 ${inciList.length} 项），用于本次评估。`
+        : `I extracted the INCI list directly from the product page (${inciList.length} entries) for this assessment.`,
+      keyIngredients.length
+        ? isCn
+          ? `识别到的关键成分：${keyIngredients.slice(0, 5).join('、')}。`
+          : `Detected key ingredients: ${keyIngredients.slice(0, 5).join(', ')}.`
+        : '',
+      profileNote,
+      riskNotes.length ? riskNotes[0] : '',
+      isCn
+        ? '边界说明：成分浓度与批次差异不可见，建议先做局部测试并从低频开始。'
+        : 'Boundary: concentration and batch variance are unknown; patch test first and start at low frequency.',
+    ],
+    5,
+  );
+
+  const hostName = String(parsedUrl.hostname || '').replace(/^www\./i, '');
+  const pageTitle = extractPageTitleFromHtml(html);
+  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const anchorBrand = pickFirstTrimmed(
+    parsedProductObj?.brand,
+    pageTitle.includes('|') ? pageTitle.split('|').slice(-1)[0] : '',
+  );
+  const anchorName = pickFirstTrimmed(
+    parsedProductObj?.name,
+    pageTitle.includes('|') ? pageTitle.split('|')[0] : pageTitle,
+    parsedProductObj?.display_name,
+  );
+  const anchorDisplayName = pickFirstTrimmed(
+    parsedProductObj?.display_name,
+    joinBrandAndName(anchorBrand, anchorName),
+    anchorName,
+  );
+
+  const confidence = Number(
+    Math.max(
+      0.35,
+      Math.min(
+        0.78,
+        0.42 + (inciList.length >= 15 ? 0.12 : 0.04) + (keyIngredients.length >= 4 ? 0.1 : 0.04) + (riskNotes.length ? 0.04 : 0),
+      ),
+    ).toFixed(3),
+  );
+
+  const raw = {
+    assessment: {
+      verdict,
+      reasons,
+      anchor_product: {
+        ...(parsedProductObj?.product_id ? { product_id: String(parsedProductObj.product_id).trim() } : {}),
+        ...(parsedProductObj?.sku_id ? { sku_id: String(parsedProductObj.sku_id).trim() } : {}),
+        ...(anchorBrand ? { brand: anchorBrand } : {}),
+        ...(anchorName ? { name: anchorName } : {}),
+        ...(anchorDisplayName ? { display_name: anchorDisplayName } : {}),
+        url: parsedUrl.toString(),
+      },
+    },
+    evidence: {
+      science: {
+        key_ingredients: keyIngredients,
+        mechanisms,
+        fit_notes: profileNote ? [profileNote] : [],
+        risk_notes: riskNotes,
+      },
+      social_signals: {
+        typical_positive: [],
+        typical_negative: [],
+        risk_for_groups: [],
+      },
+      expert_notes: [
+        isCn
+          ? `证据来源：${hostName || 'product page'} 官方产品页成分表抓取。`
+          : `Evidence source: ingredient list parsed from ${hostName || 'product page'}.`,
+      ],
+      confidence,
+      missing_info: ['social_signals_missing', 'competitors_missing', 'concentration_unknown'],
+    },
+    confidence,
+    missing_info: ['upstream_analysis_missing', 'url_ingredient_analysis_used', 'social_signals_missing', 'competitors_missing'],
+  };
+
+  const norm = normalizeProductAnalysis(raw);
+  const payloadMissing = Array.isArray(norm.payload?.missing_info) ? norm.payload.missing_info : [];
+  const nextPayload = {
+    ...(norm.payload && typeof norm.payload === 'object' ? norm.payload : {}),
+    missing_info: Array.from(new Set([...payloadMissing, 'url_ingredient_analysis_used'])),
+  };
+  const nextFieldMissing = Array.isArray(norm.field_missing) ? norm.field_missing.filter((item) => {
+    const field = String(item?.field || '').trim();
+    return field !== 'assessment' && field !== 'evidence';
+  }) : [];
+  return {
+    payload: nextPayload,
+    field_missing: nextFieldMissing,
   };
 }
 
@@ -9839,11 +10510,41 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const structured = getUpstreamStructuredOrJson(upstream);
-      const mapped = structured && structured.parse && typeof structured.parse === 'object'
-        ? mapAuroraProductParse(structured)
-        : structured;
+      const mapped =
+        structured && typeof structured === 'object' && !Array.isArray(structured)
+          ? mapAuroraProductParse(structured)
+          : structured;
       const norm = normalizeProductParse(mapped);
-      const payload = norm.payload;
+      let payload = norm.payload;
+      let fieldMissing = Array.isArray(norm.field_missing) ? norm.field_missing.slice() : [];
+
+      // Fallback: if upstream parse misses the product entity, reuse catalog resolve/search capability.
+      if (PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !payload.product && input) {
+        const catalogFallback = await resolveCatalogProductForProductInput({
+          inputText: input,
+          inputUrl: parsed.data.url || null,
+          parsedProduct: null,
+          lang: ctx.lang,
+          logger,
+        });
+        if (catalogFallback.ok && catalogFallback.product) {
+          const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: String(input || '') });
+          if (fallbackAnchor) {
+            const existingMissing = Array.isArray(payload.missing_info) ? payload.missing_info : [];
+            payload = {
+              ...payload,
+              product: fallbackAnchor,
+              confidence:
+                Number.isFinite(Number(payload.confidence)) && Number(payload.confidence) > 0
+                  ? Number(payload.confidence)
+                  : 0.55,
+              missing_info: Array.from(new Set([...existingMissing, 'catalog_fallback_used'])),
+            };
+            fieldMissing = fieldMissing.filter((item) => String(item && item.field ? item.field : '').trim() !== 'product');
+            fieldMissing.push({ field: 'parse.fallback', reason: `catalog_${catalogFallback.source || 'resolve'}` });
+          }
+        }
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -9853,7 +10554,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             card_id: `parse_${ctx.request_id}`,
             type: 'product_parse',
             payload,
-            ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+            ...(fieldMissing.length ? { field_missing: fieldMissing.slice(0, 8) } : {}),
           },
         ],
         session_patch: {},
@@ -9927,6 +10628,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const input = parsed.data.url || parsed.data.name || JSON.stringify(parsed.data.product || {});
       let parsedProduct = parsed.data.product || null;
       let anchorId = parsedProduct && (parsedProduct.sku_id || parsedProduct.product_id);
+      let primaryAnchorResolution = null;
+      let catalogFallback = null;
 
       // If caller only provided a name/url, try to parse into an anchor product first to improve KB hit rate.
       if (!anchorId && input) {
@@ -9953,7 +10656,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             return a;
           })();
           const parseMapped =
-            parseStructured && parseStructured.parse && typeof parseStructured.parse === 'object'
+            parseStructured && typeof parseStructured === 'object' && !Array.isArray(parseStructured)
               ? mapAuroraProductParse(parseStructured)
               : parseStructured;
           const parseNorm = normalizeProductParse(parseMapped);
@@ -9967,10 +10670,118 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
+      // Main-chain anchor resolution: if parse did not yield an ID, try catalog resolve once (fast path).
+      if (!anchorId && input) {
+        primaryAnchorResolution = await resolvePrimaryAnalyzeAnchorForProductInput({
+          inputText: input,
+          inputUrl: parsed.data.url || null,
+          parsedProduct,
+          lang: ctx.lang,
+          logger,
+        });
+        if (primaryAnchorResolution.ok && primaryAnchorResolution.product) {
+          const resolvedAnchor = mapCatalogProductToAnchorProduct(primaryAnchorResolution.product, {
+            fallbackName: String(input || ''),
+          });
+          if (resolvedAnchor) {
+            parsedProduct = parsedProduct || resolvedAnchor;
+            anchorId =
+              resolvedAnchor && (resolvedAnchor.sku_id || resolvedAnchor.product_id)
+                ? String(resolvedAnchor.sku_id || resolvedAnchor.product_id)
+                : anchorId;
+          }
+        }
+      }
+
+      // Second-stage fallback: reuse catalog resolve/search when upstream parse cannot provide anchor.
+      if (PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !anchorId && input) {
+        catalogFallback = await resolveCatalogProductForProductInput({
+          inputText: input,
+          inputUrl: parsed.data.url || null,
+          parsedProduct,
+          lang: ctx.lang,
+          logger,
+        });
+        if (catalogFallback.ok && catalogFallback.product) {
+          const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: String(input || '') });
+          if (fallbackAnchor) {
+            parsedProduct = parsedProduct || fallbackAnchor;
+            anchorId =
+              fallbackAnchor && (fallbackAnchor.sku_id || fallbackAnchor.product_id)
+                ? String(fallbackAnchor.sku_id || fallbackAnchor.product_id)
+                : anchorId;
+          }
+        }
+      }
+
+      const productDescriptor = buildProductInputText(parsedProduct, null) || parsed.data.name || input;
+
+      // Fast return when the product is outside current catalog/KB and no fallback mode is enabled.
+      // This keeps latency predictable and makes the main-chain limitation explicit.
+      if (!anchorId && !PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && !(PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && parsed.data.url)) {
+        const isCn = String(ctx.lang || '').toUpperCase() === 'CN';
+        const anchorResolveReason =
+          primaryAnchorResolution && primaryAnchorResolution.reason
+            ? `anchor_resolve_${String(primaryAnchorResolution.reason || '').toLowerCase()}`
+            : null;
+        const missingInfo = Array.from(
+          new Set(
+            [
+              'anchor_product_missing',
+              'catalog_product_missing',
+              'upstream_deep_scan_skipped_anchor_missing',
+              parsed.data.url ? 'url_not_indexed_in_catalog' : null,
+              anchorResolveReason,
+            ].filter(Boolean),
+          ),
+        );
+        const fallbackUnknownPayload = {
+          assessment: {
+            verdict: isCn ? '未知' : 'Unknown',
+            reasons: isCn
+              ? [
+                  '这个产品目前还不在可解析的 catalog/KB 索引中，暂时无法走主链路 Deep Scan。',
+                  '请提供完整 INCI 成分表，或先把该产品入库后再分析。',
+                ]
+              : [
+                  'This product is not indexed in the current catalog/KB yet, so the main deep-scan path cannot run.',
+                  'Please share the full INCI list, or index this product first and then re-run analysis.',
+                ],
+            ...(parsedProduct && typeof parsedProduct === 'object' ? { anchor_product: parsedProduct } : {}),
+          },
+          evidence: {
+            science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+            social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+            expert_notes: [],
+            confidence: null,
+            missing_info: ['evidence_missing'],
+          },
+          confidence: null,
+          missing_info: missingInfo,
+        };
+        const normNoAnchor = normalizeProductAnalysis(fallbackUnknownPayload);
+        const payloadNoAnchor = enrichProductAnalysisPayload(normNoAnchor.payload, { lang: ctx.lang, profileSummary });
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `analyze_${ctx.request_id}`,
+              type: 'product_analysis',
+              payload: payloadNoAnchor,
+              ...(normNoAnchor.field_missing?.length ? { field_missing: normNoAnchor.field_missing.slice(0, 8) } : {}),
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze', mode: 'catalog_missing_fast_return' })],
+        });
+        return res.json(envelope);
+      }
+
       const query = `${prefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
         `Return ONLY a JSON object with keys: assessment, evidence, confidence (0..1), missing_info (string[]).\n` +
         `Evidence must include science/social_signals/expert_notes.\n` +
-        `Product: ${input}`;
+        `Product: ${productDescriptor}`;
 
       const runDeepScan = async ({ queryText, timeoutMs }) => {
         try {
@@ -10013,9 +10824,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         (upstreamAnswerObj.assessment != null ||
           upstreamAnswerObj.evidence != null ||
           upstreamAnswerObj.analyze != null ||
+          upstreamAnswerObj.analysis != null ||
+          upstreamAnswerObj.product_analysis != null ||
+          upstreamAnswerObj.productAnalysis != null ||
           upstreamAnswerObj.confidence != null ||
           upstreamAnswerObj.missing_info != null ||
-          upstreamAnswerObj.missingInfo != null);
+          upstreamAnswerObj.missingInfo != null ||
+          upstreamAnswerObj.verdict != null ||
+          upstreamAnswerObj.reasons != null ||
+          upstreamAnswerObj.science_evidence != null ||
+          upstreamAnswerObj.scienceEvidence != null ||
+          upstreamAnswerObj.social_signals != null ||
+          upstreamAnswerObj.socialSignals != null ||
+          upstreamAnswerObj.expert_notes != null ||
+          upstreamAnswerObj.expertNotes != null);
 
       // Prefer answer JSON when `structured` exists but is missing `analyze`.
       const structuredOrJson =
@@ -10025,9 +10847,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? upstreamAnswerObj
             : upstreamStructured || upstreamAnswerObj;
 
-      const mapped = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
-        ? mapAuroraProductAnalysis(structuredOrJson)
-        : structuredOrJson;
+      const mapped =
+        structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
+          ? mapAuroraProductAnalysis(structuredOrJson)
+          : structuredOrJson;
       let norm = normalizeProductAnalysis(mapped);
 
       // If personalized scan fails (often due to upstream echoing context or dropping analysis),
@@ -10071,9 +10894,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             : answer2 && typeof answer2 === 'object' && !Array.isArray(answer2)
               ? answer2
               : structured2 || answer2;
-        const mapped2 = structuredOrJson2 && structuredOrJson2.analyze && typeof structuredOrJson2.analyze === 'object'
-          ? mapAuroraProductAnalysis(structuredOrJson2)
-          : structuredOrJson2;
+        const mapped2 =
+          structuredOrJson2 && typeof structuredOrJson2 === 'object' && !Array.isArray(structuredOrJson2)
+            ? mapAuroraProductAnalysis(structuredOrJson2)
+            : structuredOrJson2;
         const norm2 = normalizeProductAnalysis(mapped2);
         if (norm2 && norm2.payload && norm2.payload.assessment) {
           const missingInfo = Array.isArray(norm2.payload.missing_info) ? norm2.payload.missing_info : [];
@@ -10084,7 +10908,42 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
+      const needsUrlIngredientAnalysis = (() => {
+        const assessment = norm && norm.payload && typeof norm.payload === 'object' ? norm.payload.assessment : null;
+        if (!assessment || typeof assessment !== 'object') return true;
+        const verdict = String(assessment.verdict || '').trim().toLowerCase();
+        return !verdict || verdict === 'unknown' || verdict === '未知';
+      })();
+      if (PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && needsUrlIngredientAnalysis && parsed.data.url) {
+        const urlNorm = await buildProductAnalysisFromUrlIngredients({
+          productUrl: parsed.data.url,
+          lang: ctx.lang,
+          profileSummary,
+          parsedProduct,
+          logger,
+        });
+        if (urlNorm && urlNorm.payload && urlNorm.payload.assessment) {
+          const mergedMissingInfo = Array.from(
+            new Set([
+              ...(Array.isArray(norm?.payload?.missing_info) ? norm.payload.missing_info : []),
+              ...(Array.isArray(urlNorm.payload.missing_info) ? urlNorm.payload.missing_info : []),
+            ]),
+          );
+          norm = {
+            payload: { ...urlNorm.payload, missing_info: mergedMissingInfo },
+            field_missing: mergeFieldMissing(urlNorm.field_missing, norm.field_missing),
+          };
+        }
+      }
+
       let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang, profileSummary });
+      if (catalogFallback && catalogFallback.ok && payload && typeof payload === 'object') {
+        const missingInfo = Array.isArray(payload.missing_info) ? payload.missing_info : [];
+        payload = {
+          ...payload,
+          missing_info: Array.from(new Set([...missingInfo, `catalog_anchor_fallback_${catalogFallback.source || 'used'}`])),
+        };
+      }
       if (parsedProduct && payload && typeof payload === 'object') {
         const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
         if (a && !a.anchor_product && !a.anchorProduct) {
@@ -10831,9 +11690,20 @@ function mountAuroraBffRoutes(app, { logger }) {
               (upAnswerObj.assessment != null ||
                 upAnswerObj.evidence != null ||
                 upAnswerObj.analyze != null ||
+                upAnswerObj.analysis != null ||
+                upAnswerObj.product_analysis != null ||
+                upAnswerObj.productAnalysis != null ||
                 upAnswerObj.confidence != null ||
                 upAnswerObj.missing_info != null ||
-                upAnswerObj.missingInfo != null);
+                upAnswerObj.missingInfo != null ||
+                upAnswerObj.verdict != null ||
+                upAnswerObj.reasons != null ||
+                upAnswerObj.science_evidence != null ||
+                upAnswerObj.scienceEvidence != null ||
+                upAnswerObj.social_signals != null ||
+                upAnswerObj.socialSignals != null ||
+                upAnswerObj.expert_notes != null ||
+                upAnswerObj.expertNotes != null);
             const structuredOrJson =
               upStructured && upStructured.analyze && typeof upStructured.analyze === 'object'
                 ? upStructured
@@ -10841,9 +11711,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ? upAnswerObj
                   : upStructured || upAnswerObj;
 
-            const mappedAnalyze = structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
-              ? mapAuroraProductAnalysis(structuredOrJson)
-              : structuredOrJson;
+            const mappedAnalyze =
+              structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
+                ? mapAuroraProductAnalysis(structuredOrJson)
+                : structuredOrJson;
             const normAnalyze = normalizeProductAnalysis(mappedAnalyze);
             const keyIngredientsNow = (() => {
               const ev = normAnalyze.payload && typeof normAnalyze.payload === 'object' ? normAnalyze.payload.evidence : null;
@@ -15582,7 +16453,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                     ? extractJsonObjectByKeys(parseUpstream.answer, ['product', 'parse', 'anchor_product', 'anchorProduct'])
                     : null;
               const parseMapped =
-                parseStructured && parseStructured.parse && typeof parseStructured.parse === 'object'
+                parseStructured && typeof parseStructured === 'object' && !Array.isArray(parseStructured)
                   ? mapAuroraProductParse(parseStructured)
                   : parseStructured;
               const parseNorm = normalizeProductParse(parseMapped);
@@ -15645,7 +16516,20 @@ function mountAuroraBffRoutes(app, { logger }) {
             (deepAnswerObj.assessment != null ||
               deepAnswerObj.evidence != null ||
               deepAnswerObj.analyze != null ||
-              deepAnswerObj.confidence != null);
+              deepAnswerObj.analysis != null ||
+              deepAnswerObj.product_analysis != null ||
+              deepAnswerObj.productAnalysis != null ||
+              deepAnswerObj.confidence != null ||
+              deepAnswerObj.missing_info != null ||
+              deepAnswerObj.missingInfo != null ||
+              deepAnswerObj.verdict != null ||
+              deepAnswerObj.reasons != null ||
+              deepAnswerObj.science_evidence != null ||
+              deepAnswerObj.scienceEvidence != null ||
+              deepAnswerObj.social_signals != null ||
+              deepAnswerObj.socialSignals != null ||
+              deepAnswerObj.expert_notes != null ||
+              deepAnswerObj.expertNotes != null);
 
           const structuredOrJson =
             deepStructured && deepStructured.analyze && typeof deepStructured.analyze === 'object'
@@ -15654,7 +16538,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? deepAnswerObj
                 : deepStructured || deepAnswerObj;
           const mapped =
-            structuredOrJson && structuredOrJson.analyze && typeof structuredOrJson.analyze === 'object'
+            structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
               ? mapAuroraProductAnalysis(structuredOrJson)
               : structuredOrJson;
           let norm = normalizeProductAnalysis(mapped);
@@ -15701,7 +16585,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ? deepAnswer2
                   : deepStructured2 || deepAnswer2;
             const mapped2 =
-              structuredOrJson2 && structuredOrJson2.analyze && typeof structuredOrJson2.analyze === 'object'
+              structuredOrJson2 && typeof structuredOrJson2 === 'object' && !Array.isArray(structuredOrJson2)
                 ? mapAuroraProductAnalysis(structuredOrJson2)
                 : structuredOrJson2;
             const norm2 = normalizeProductAnalysis(mapped2);
@@ -15713,6 +16597,37 @@ function mountAuroraBffRoutes(app, { logger }) {
                   missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])),
                 },
                 field_missing: norm2.field_missing,
+              };
+            }
+          }
+
+          const productUrlForFallback =
+            anchorProductUrl ||
+            (/^https?:\/\//i.test(String(productInput || '').trim()) ? String(productInput || '').trim() : '');
+          const needsUrlIngredientAnalysis = (() => {
+            const assessment = norm && norm.payload && typeof norm.payload === 'object' ? norm.payload.assessment : null;
+            if (!assessment || typeof assessment !== 'object') return true;
+            const verdict = String(assessment.verdict || '').trim().toLowerCase();
+            return !verdict || verdict === 'unknown' || verdict === '未知';
+          })();
+          if (PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && needsUrlIngredientAnalysis && productUrlForFallback) {
+            const urlNorm = await buildProductAnalysisFromUrlIngredients({
+              productUrl: productUrlForFallback,
+              lang: ctx.lang,
+              profileSummary,
+              parsedProduct,
+              logger,
+            });
+            if (urlNorm && urlNorm.payload && urlNorm.payload.assessment) {
+              const mergedMissingInfo = Array.from(
+                new Set([
+                  ...(Array.isArray(norm?.payload?.missing_info) ? norm.payload.missing_info : []),
+                  ...(Array.isArray(urlNorm.payload.missing_info) ? urlNorm.payload.missing_info : []),
+                ]),
+              );
+              norm = {
+                payload: { ...urlNorm.payload, missing_info: mergedMissingInfo },
+                field_missing: mergeFieldMissing(urlNorm.field_missing, norm.field_missing),
               };
             }
           }
@@ -15935,6 +16850,9 @@ const __internal = {
   isSpecificAvailabilityQuery,
   resolveAvailabilityProductByQuery,
   searchPivotaBackendProducts,
+  buildProductCatalogQueryCandidates,
+  mapCatalogProductToAnchorProduct,
+  resolveCatalogProductForProductInput,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
