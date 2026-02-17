@@ -413,4 +413,82 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       }),
     );
   });
+
+  test('/v1/product/analyze schedules async competitor enrich when first-pass competitor recall fails', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      upsertProductIntelKbEntry,
+    }));
+
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/chat')
+      .reply(200, { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' });
+
+    nock('https://brand.example')
+      .get('/product-2.html')
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Peptide Serum | Brand</title></head>
+         <body>
+           <p class="ingredients-flyout-content" data-original-ingredients="Aqua (Water), Glycerin, Copper Tripeptide-1, Sodium Hyaluronate, Allantoin"></p>
+           <div class="reviews">Hydrating texture. Lightweight finish.</div>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(2)
+      .delayConnection(1500)
+      .reply(200, { products: [] });
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'async_comp_1',
+            sku_id: 'async_comp_1',
+            brand: 'Brand B',
+            name: 'Peptide Lift Serum',
+            display_name: 'Brand B Peptide Lift Serum',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_ingredient_async_comp_1')
+      .send({ url: 'https://brand.example/product-2.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('competitors_missing');
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const lastWrite = upsertProductIntelKbEntry.mock.calls[upsertProductIntelKbEntry.mock.calls.length - 1][0];
+    expect(lastWrite).toEqual(
+      expect.objectContaining({
+        source: 'url_realtime_product_intel',
+      }),
+    );
+    expect(lastWrite.source_meta).toEqual(expect.objectContaining({ competitor_async_enriched: true }));
+    expect(Array.isArray(lastWrite.analysis?.competitors?.candidates)).toBe(true);
+    expect(lastWrite.analysis.competitors.candidates.length).toBeGreaterThan(0);
+  });
 });
