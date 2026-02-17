@@ -2302,6 +2302,7 @@ function buildOnPageCompetitorCandidates({
   html,
   productUrl,
   anchorProduct = null,
+  profileSummary = null,
   lang = 'EN',
   maxCandidates = 4,
 } = {}) {
@@ -2309,25 +2310,71 @@ function buildOnPageCompetitorCandidates({
   const anchorObj = anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct) ? anchorProduct : null;
   const anchorBrand = pickFirstTrimmed(anchorObj?.brand);
   const anchorName = pickFirstTrimmed(anchorObj?.name, anchorObj?.display_name);
+  const anchorText = `${anchorBrand || ''} ${anchorName || ''}`.trim();
+  const anchorTokens = tokenizeProductTextForSimilarity(anchorText);
+  const anchorCategory = inferProductCategoryToken(anchorText);
+  const profileSkinTags = buildProfileSkinTags(profileSummary);
   const rows = extractOnPageRelatedProducts(html, {
     baseUrl: productUrl,
     anchorName,
     max: Math.max(1, Math.min(8, Number(maxCandidates) || 4)),
   });
-  return rows.map((row, idx) => ({
-    ...(anchorBrand ? { brand: anchorBrand } : {}),
-    name: row.name,
-    similarity_score: Number(Math.max(0.35, Math.min(0.72, 0.66 - idx * 0.07)).toFixed(3)),
-    why_candidate: [
-      isCn ? '来自同站产品页的相关产品链接' : 'related product link found on the same product page',
-    ],
-    compare_highlights: [
-      isCn
-        ? '同品牌同场景候选，建议再对比成分与浓度。'
-        : 'Same-brand/context candidate; compare INCI and concentration before final pick.',
-      row.url,
-    ],
-  }));
+  const totalQueries = Math.max(1, rows.length);
+  return rows.map((row, idx) => {
+    const rowTokens = tokenizeProductTextForSimilarity(`${anchorBrand || ''} ${String(row.name || '')}`);
+    const queryOverlap = rowTokens.filter((token) => anchorTokens.includes(token)).length;
+    const rowCategory = inferProductCategoryToken(row.name || '');
+    const sameCategory = Boolean(anchorCategory && rowCategory && anchorCategory === rowCategory);
+    const scored = scoreRealtimeCompetitorCandidate({
+      queryOverlap,
+      ingredientNameOverlap: 0,
+      sameCategory,
+      sameBrand: Boolean(anchorBrand),
+      anchorIngredientTokens: [],
+      candidateIngredientTokens: [],
+      profileSkinTags,
+      candidateSkinTags: [],
+      candidateSocialScore: null,
+      candidateSocialSupportCount: null,
+      recallHitCount: Math.max(1, totalQueries - idx),
+      totalQueries,
+    });
+    const fallbackSimilarity = Number(Math.max(0.35, Math.min(0.72, 0.66 - idx * 0.07)).toFixed(3));
+    const similarityScore = Number(Math.max(scored.similarity_score, fallbackSimilarity).toFixed(3));
+    return {
+      ...(anchorBrand ? { brand: anchorBrand } : {}),
+      name: row.name,
+      similarity_score: similarityScore,
+      score_breakdown: scored.score_breakdown,
+      why_candidate: uniqCaseInsensitiveStrings(
+        [
+          isCn ? '来自同站产品页的相关产品链接' : 'related product link found on the same product page',
+          sameCategory
+            ? isCn
+              ? '同品类同场景'
+              : 'same category/use-case'
+            : '',
+          scored.score_breakdown.query_overlap_score >= 0.45
+            ? isCn
+              ? '与锚点产品命名关键词相近'
+              : 'name tokens overlap with anchor product'
+            : '',
+          scored.score_breakdown.skin_fit_similarity >= 0.6
+            ? isCn
+              ? '与当前肤质画像匹配度较高'
+              : 'better aligned with current skin profile'
+            : '',
+        ],
+        4,
+      ),
+      compare_highlights: [
+        isCn
+          ? '同品牌同场景候选，建议再对比成分与浓度。'
+          : 'Same-brand/context candidate; compare INCI and concentration before final pick.',
+        row.url,
+      ],
+    };
+  });
 }
 
 function deriveIngredientMechanisms(ingredients, lang = 'EN') {
@@ -3664,6 +3711,7 @@ async function buildProductAnalysisFromUrlIngredients({
       html,
       productUrl: parsedUrl.toString(),
       anchorProduct,
+      profileSummary,
       lang,
       maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
     });

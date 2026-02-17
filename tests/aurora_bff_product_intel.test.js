@@ -807,6 +807,10 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(names.some((n) => n.includes('multi-peptide eye serum') || n.includes('hyaluronic acid'))).toBe(true);
     expect(names.some((n) => n.includes('skip to main content'))).toBe(false);
     expect(names.some((n) => n.includes('contact us'))).toBe(false);
+    const first = competitors[0] || {};
+    expect(first.score_breakdown && typeof first.score_breakdown).toBe('object');
+    expect(typeof first.score_breakdown.query_overlap_score).toBe('number');
+    expect(typeof first.score_breakdown.skin_fit_similarity).toBe('number');
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).not.toContain('competitors_missing');
   });
