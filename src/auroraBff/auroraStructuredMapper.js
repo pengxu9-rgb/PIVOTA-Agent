@@ -416,11 +416,65 @@ function mapAuroraProductAnalysis(upstreamStructured) {
   if (!anchor) missing_info.push('anchor_product_missing');
   if (!analyze) missing_info.push('analysis_missing');
 
+  const alternatives = structured && Array.isArray(structured.alternatives) ? structured.alternatives : [];
+  const competitorCandidates = [];
+  for (const row of alternatives) {
+    const alt = asPlainObject(row);
+    if (!alt) continue;
+
+    const product = asPlainObject(alt.product) || null;
+    const name = pickFirstString(product && (product.name || product.display_name || product.displayName));
+    const brand = pickFirstString(product && product.brand);
+    const displayName =
+      pickFirstString(product && (product.display_name || product.displayName)) ||
+      joinBrandAndName(brand, name) ||
+      null;
+    if (!displayName && !name) continue;
+
+    const tradeoff = asPlainObject(alt.tradeoffs);
+    const missingActives = tradeoff ? asStringArray(tradeoff.missing_actives || tradeoff.missingActives) : [];
+    const addedBenefits = tradeoff ? asStringArray(tradeoff.added_benefits || tradeoff.addedBenefits) : [];
+    const textureDiff = tradeoff ? asStringArray(tradeoff.texture_finish_differences || tradeoff.textureFinishDifferences) : [];
+    const priceDeltaUsd = tradeoff ? asNumberOrNull(tradeoff.price_delta_usd || tradeoff.priceDeltaUsd) : null;
+    const similarityRaw = asNumberOrNull(alt.similarity_score ?? alt.similarityScore);
+    const similarity01 =
+      similarityRaw == null ? null : similarityRaw > 1 ? Math.max(0, Math.min(1, similarityRaw / 100)) : Math.max(0, Math.min(1, similarityRaw));
+
+    const whyCandidate = uniqueStrings([
+      ...asStringArray(alt.reasons),
+      ...(missingActives.length ? [`Shares similar use-case; differs on actives (${missingActives.slice(0, 3).join(', ')})`] : []),
+      ...(addedBenefits.length ? [`Adds benefits (${addedBenefits.slice(0, 3).join(', ')})`] : []),
+      ...(priceDeltaUsd != null ? [`Price delta vs anchor: ${priceDeltaUsd} USD`] : []),
+    ]).slice(0, 4);
+
+    const compareHighlights = uniqueStrings([
+      ...textureDiff,
+      ...(missingActives.length ? [`Missing actives: ${missingActives.slice(0, 4).join(', ')}`] : []),
+      ...(addedBenefits.length ? [`Added benefits: ${addedBenefits.slice(0, 4).join(', ')}`] : []),
+    ]).slice(0, 4);
+
+    competitorCandidates.push({
+      ...(product && (product.product_id || product.productId)
+        ? { product_id: pickFirstString(product.product_id, product.productId) }
+        : {}),
+      ...(product && (product.sku_id || product.skuId)
+        ? { sku_id: pickFirstString(product.sku_id, product.skuId) }
+        : {}),
+      ...(name ? { name } : {}),
+      ...(brand ? { brand } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(similarity01 != null ? { similarity_score: similarity01 } : {}),
+      why_candidate: whyCandidate,
+      ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+    });
+  }
+
   return {
     assessment: Object.keys(assessment).length ? assessment : null,
     evidence: evidenceOut.evidence,
     confidence,
     missing_info,
+    ...(competitorCandidates.length ? { competitors: { candidates: competitorCandidates.slice(0, 8) } } : {}),
   };
 }
 

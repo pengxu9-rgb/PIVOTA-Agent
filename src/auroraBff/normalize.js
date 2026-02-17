@@ -172,12 +172,27 @@ function normalizeProductAnalysis(raw) {
   const missing_info = uniqueStrings(asStringArray(o.missing_info ?? o.missingInfo));
   if (evOut.evidence.missing_info?.length) missing_info.push(...evOut.evidence.missing_info);
 
+  const competitorsRaw = asPlainObject(o.competitors);
+  const competitorCandidates = [];
+  if (competitorsRaw && Array.isArray(competitorsRaw.candidates)) {
+    for (const item of competitorsRaw.candidates) {
+      const row = asPlainObject(item);
+      if (!row) continue;
+      competitorCandidates.push(row);
+      if (competitorCandidates.length >= 12) break;
+    }
+  }
+  if (competitorsRaw && !competitorCandidates.length) {
+    field_missing.push({ field: 'competitors.candidates', reason: 'upstream_missing_or_empty' });
+  }
+
   return {
     payload: {
       assessment,
       evidence: evOut.evidence,
       confidence,
       missing_info: uniqueStrings(missing_info),
+      ...(competitorCandidates.length ? { competitors: { candidates: competitorCandidates } } : {}),
     },
     field_missing,
   };
@@ -580,6 +595,607 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   return uniqueStrings(out);
 }
 
+const PRODUCT_INTEL_CONTRACT_VERSION = 'aurora.product_intel.contract.v1';
+const PRODUCT_INTEL_BLOCK_VERSION = 'aurora.product_intel.block.v1';
+
+function clamp01(value) {
+  const n = asNumberOrNull(value);
+  if (n == null) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function mapConfidenceLevel(score) {
+  const s = clamp01(score);
+  if (s >= 0.75) return 'high';
+  if (s >= 0.4) return 'med';
+  return 'low';
+}
+
+function buildBlockConfidence({
+  coverage = 0,
+  source_quality = 0.7,
+  freshness = 1,
+  consistency = 0.7,
+  reasons = [],
+  missing_fields = [],
+} = {}) {
+  const cv = clamp01(coverage);
+  const sq = clamp01(source_quality);
+  const fr = clamp01(freshness);
+  const cs = clamp01(consistency);
+  const score = Number((0.45 * cv + 0.2 * sq + 0.2 * fr + 0.15 * cs).toFixed(3));
+
+  const outReasons = uniqueStrings([
+    ...asStringArray(reasons),
+    cv < 0.9 ? `coverage=${Math.round(cv * 100)}%` : '',
+    sq < 0.9 ? `source_quality=${Math.round(sq * 100)}%` : '',
+    fr < 0.95 ? `freshness=${Math.round(fr * 100)}%` : '',
+    cs < 0.9 ? `consistency=${Math.round(cs * 100)}%` : '',
+    missing_fields && missing_fields.length ? `missing_fields=${missing_fields.slice(0, 4).join(',')}` : '',
+  ]);
+
+  return {
+    score,
+    level: mapConfidenceLevel(score),
+    reasons: outReasons.slice(0, 8),
+  };
+}
+
+function buildEvidenceItem({
+  source_type = 'expert_kb',
+  source_name = null,
+  url = null,
+  captured_at = null,
+  time_window = null,
+  excerpt = '',
+  data = null,
+} = {}) {
+  const out = {
+    source_type,
+    ...(source_name ? { source_name } : {}),
+    ...(url ? { url } : {}),
+    ...(captured_at ? { captured_at } : {}),
+    ...(time_window && typeof time_window === 'object' ? { time_window } : {}),
+    ...(excerpt ? { excerpt: truncateText(excerpt, 240) } : {}),
+    ...(data && typeof data === 'object' && !Array.isArray(data) ? { data } : {}),
+  };
+  return out;
+}
+
+function normalizePlatformName(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return null;
+  if (s === 'red') return 'XHS';
+  if (s === 'reddit') return 'Reddit';
+  if (s === 'tiktok') return 'TikTok';
+  if (s === 'youtube') return 'YouTube';
+  if (s === 'instagram') return 'Instagram';
+  return raw;
+}
+
+function inferIngredientFunctions(name, contextText) {
+  const token = `${String(name || '').toLowerCase()} ${String(contextText || '').toLowerCase()}`;
+  const out = [];
+  if (/\bniacinamide\b|烟酰胺/.test(token)) out.push('barrier_support', 'oil_control', 'tone_evening');
+  if (/\b(retinol|retinal|adapalene|tretinoin)\b|维a/.test(token)) out.push('retinoid', 'texture_refine');
+  if (/\b(hyaluronic|sodium hyaluronate|glycerin|panthenol|urea|betaine)\b|玻尿酸|甘油/.test(token)) {
+    out.push('humectant_hydration');
+  }
+  if (/\b(ceramide|cholesterol|fatty acid)\b|神经酰胺/.test(token)) out.push('barrier_lipid_support');
+  if (/\b(salicylic|bha|aha|pha|glycolic|lactic|mandelic)\b|果酸|水杨酸/.test(token)) out.push('exfoliation');
+  if (/\b(vitamin c|ascorbic|ascorbyl)\b|维c/.test(token)) out.push('antioxidant_brightening');
+  if (/\b(peptide)\b|肽/.test(token)) out.push('peptide_support');
+  return uniqueStrings(out).slice(0, 4);
+}
+
+function inferIngredientRisks(name, contextText) {
+  const token = `${String(name || '').toLowerCase()} ${String(contextText || '').toLowerCase()}`;
+  const out = [];
+  if (/\birritat|stinging|burn|high_irritation|刺激|刺痛|泛红/.test(token)) out.push('irritant');
+  if (/\ballerg|敏感|过敏/.test(token)) out.push('allergen');
+  if (/\b(fragrance|parfum|essential oil|limonene|linalool|citral)\b|香精|精油/.test(token)) out.push('fragrance');
+  if (/\b(retinol|retinal|adapalene|tretinoin)\b|维a/.test(token)) out.push('retinoid');
+  if (/\b(salicylic|bha|aha|pha|glycolic|lactic|mandelic)\b|果酸|水杨酸/.test(token)) out.push('exfoliating_acid');
+  if (/\bcomedo|pore clog|闷痘|爆痘/.test(token)) out.push('comedogenic_risk');
+  return uniqueStrings(out).slice(0, 5);
+}
+
+function normalizeCompetitorCandidates(rawCandidates) {
+  const out = [];
+  for (const item of Array.isArray(rawCandidates) ? rawCandidates : []) {
+    const row = asPlainObject(item);
+    if (!row) continue;
+    const nameRaw = row.name ?? row.display_name ?? row.displayName;
+    const name = typeof nameRaw === 'string' ? nameRaw.trim() : '';
+    if (!name) continue;
+
+    const similarityRaw = asNumberOrNull(row.similarity_score ?? row.similarityScore);
+    const similarity =
+      similarityRaw == null ? null : similarityRaw > 1 ? clamp01(similarityRaw / 100) : clamp01(similarityRaw);
+
+    const whyCandidate = uniqueStrings(asStringArray(row.why_candidate ?? row.whyCandidate));
+    const compareHighlights = uniqueStrings(asStringArray(row.compare_highlights ?? row.compareHighlights));
+
+    out.push({
+      ...(row.product_id ? { product_id: String(row.product_id).trim() } : {}),
+      ...(row.sku_id ? { sku_id: String(row.sku_id).trim() } : {}),
+      ...(row.brand ? { brand: String(row.brand).trim() } : {}),
+      name,
+      ...(row.display_name ? { display_name: String(row.display_name).trim() } : {}),
+      ...(similarity != null ? { similarity_score: similarity } : {}),
+      why_candidate: whyCandidate,
+      ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+    });
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+function buildIngredientIntelBlock(payload, { generatedAt = new Date().toISOString() } = {}) {
+  const p = asPlainObject(payload) || {};
+  const ev = asPlainObject(p.evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const keyIngredients = asStringArray(science.key_ingredients ?? science.keyIngredients);
+  const mechanisms = asStringArray(science.mechanisms);
+  const fitNotes = asStringArray(science.fit_notes ?? science.fitNotes);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+
+  const missingFields = [];
+  const warnings = [];
+  if (!keyIngredients.length) missingFields.push('evidence.science.key_ingredients');
+  if (!mechanisms.length && !fitNotes.length) warnings.push('science_mechanisms_missing');
+  if (!riskNotes.length) warnings.push('risk_notes_missing');
+
+  const contextText = uniqueStrings([...mechanisms, ...fitNotes, ...riskNotes]).join(' | ');
+  const inciNormalized = keyIngredients.slice(0, 40).map((name) => ({
+    inci: name,
+    functions: inferIngredientFunctions(name, contextText),
+    risks: inferIngredientRisks(name, contextText),
+    suitability_tags: [],
+  }));
+
+  const actives = keyIngredients.slice(0, 8).map((name, idx) => ({
+    name,
+    rationale: truncateText(
+      mechanisms[idx] ||
+        fitNotes[idx] ||
+        `Evidence-derived active from science.key_ingredients (${name}).`,
+      180,
+    ),
+  }));
+
+  const redFlags = uniqueStrings([
+    ...riskNotes.map((r) => humanizeRiskLine(r, 'EN')),
+    ...inciNormalized.flatMap((x) => asStringArray(x.risks)),
+  ]).slice(0, 8);
+
+  const evidenceItems = [];
+  if (keyIngredients.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'expert_kb',
+        source_name: 'aurora_structured',
+        captured_at: generatedAt,
+        excerpt: `Science key ingredients: ${keyIngredients.slice(0, 8).join(', ')}`,
+        data: { key_ingredients: keyIngredients.slice(0, 16) },
+      }),
+    );
+  }
+  if (mechanisms.length || fitNotes.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'expert_kb',
+        source_name: 'aurora_structured',
+        captured_at: generatedAt,
+        excerpt: uniqueStrings([...mechanisms, ...fitNotes]).slice(0, 2).join(' | '),
+        data: { mechanisms: mechanisms.slice(0, 8), fit_notes: fitNotes.slice(0, 8) },
+      }),
+    );
+  }
+  if (riskNotes.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'expert_kb',
+        source_name: 'aurora_structured',
+        captured_at: generatedAt,
+        excerpt: `Risk notes: ${riskNotes.slice(0, 3).join(' | ')}`,
+        data: { risk_notes: riskNotes.slice(0, 8) },
+      }),
+    );
+  }
+
+  const confidence = buildBlockConfidence({
+    coverage: (keyIngredients.length ? 0.55 : 0) + (mechanisms.length || fitNotes.length ? 0.25 : 0) + (riskNotes.length ? 0.2 : 0),
+    source_quality: keyIngredients.length ? 0.82 : 0.55,
+    freshness: 0.9,
+    consistency: 0.76,
+    reasons: ['evidence_first=science'],
+    missing_fields: missingFields,
+  });
+
+  return {
+    block: {
+      ...(keyIngredients.length ? { inci_raw: keyIngredients.join(', ') } : {}),
+      ...(inciNormalized.length ? { inci_normalized: inciNormalized } : { inci_normalized: [] }),
+      ...(actives.length ? { actives } : { actives: [] }),
+      ...(redFlags.length ? { red_flags: redFlags } : { red_flags: [] }),
+      _meta: {
+        generated_at: generatedAt,
+        freshness_ttl_hours: 24 * 14,
+        version: PRODUCT_INTEL_BLOCK_VERSION,
+        confidence,
+        evidence: evidenceItems,
+        ...(missingFields.length ? { missing_fields: missingFields } : {}),
+        ...(warnings.length ? { warnings } : {}),
+      },
+    },
+    confidence,
+  };
+}
+
+function buildSkinFitBlock(payload, { profileSummary = null, generatedAt = new Date().toISOString() } = {}) {
+  const p = asPlainObject(payload) || {};
+  const ev = asPlainObject(p.evidence) || {};
+  const science = asPlainObject(ev.science) || {};
+  const assessment = asPlainObject(p.assessment) || {};
+  const profile = asPlainObject(profileSummary ?? p.profile_summary ?? p.profileSummary) || {};
+
+  const verdict = String(assessment.verdict || '').trim().toLowerCase();
+  const reasons = asStringArray(assessment.reasons);
+  const howToUse = asStringArray(assessment.how_to_use ?? assessment.howToUse);
+  const riskNotes = asStringArray(science.risk_notes ?? science.riskNotes);
+
+  const profileSkinType = typeof profile.skinType === 'string' ? profile.skinType.trim() : '';
+  const profileSensitivity = typeof profile.sensitivity === 'string' ? profile.sensitivity.trim().toLowerCase() : '';
+  const profileBarrier = typeof profile.barrierStatus === 'string' ? profile.barrierStatus.trim().toLowerCase() : '';
+  const profileGoals = asStringArray(profile.goals);
+
+  const riskJoined = uniqueStrings(riskNotes.map((x) => String(x || '').toLowerCase())).join(' | ');
+  const hasIrritationRisk = /\birrit|sting|burn|high_irritation|刺激|刺痛|泛红/.test(riskJoined);
+  const hasFragranceRisk = /\bfragrance|parfum|essential oil|香精|精油/.test(riskJoined);
+  const isCautionVerdict = /\b(caution|avoid|mismatch|risky|unknown|不适配|谨慎|未知)\b/.test(verdict);
+
+  const suitableFor = [];
+  if (profileSkinType && !isCautionVerdict) suitableFor.push(profileSkinType);
+  if (profileGoals.length && !isCautionVerdict) suitableFor.push(...profileGoals.map((g) => `goal:${g}`));
+
+  const notRecommendedFor = [];
+  if (hasIrritationRisk || profileSensitivity === 'high') notRecommendedFor.push('high_sensitivity');
+  if (hasIrritationRisk || profileBarrier === 'impaired') notRecommendedFor.push('impaired_barrier');
+  if (hasFragranceRisk) notRecommendedFor.push('fragrance_sensitive');
+
+  const contraindications = [];
+  if (hasIrritationRisk) {
+    contraindications.push({
+      condition: 'high_sensitivity_or_impaired_barrier',
+      why: truncateText(
+        reasons[0] || riskNotes[0] || 'Irritation signal found in science risk notes; ramp slowly and patch test.',
+        200,
+      ),
+    });
+  }
+  if (hasFragranceRisk) {
+    contraindications.push({
+      condition: 'fragrance_sensitivity',
+      why: truncateText(riskNotes.find((x) => /fragrance|parfum|香精|精油/i.test(String(x || ''))) || 'Fragrance-related risk token found.', 200),
+    });
+  }
+
+  const routineTips = uniqueStrings([
+    ...howToUse,
+    ...(hasIrritationRisk ? ['Start with low frequency and pause if stinging/redness occurs.'] : []),
+  ]).slice(0, 5);
+
+  const missingFields = [];
+  if (!profileSkinType) missingFields.push('profile.skinType');
+  if (!profileSensitivity) missingFields.push('profile.sensitivity');
+  if (!profileBarrier) missingFields.push('profile.barrierStatus');
+  if (!reasons.length && !riskNotes.length) missingFields.push('assessment.reasons_or_science.risk_notes');
+
+  const warnings = [];
+  if (!profileGoals.length) warnings.push('profile.goals_missing');
+
+  const evidenceItems = [];
+  if (reasons.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'expert_kb',
+        source_name: 'aurora_assessment',
+        captured_at: generatedAt,
+        excerpt: reasons.slice(0, 2).join(' | '),
+        data: { assessment_reasons: reasons.slice(0, 6), verdict: assessment.verdict || null },
+      }),
+    );
+  }
+  if (riskNotes.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'expert_kb',
+        source_name: 'aurora_science',
+        captured_at: generatedAt,
+        excerpt: `Risk notes: ${riskNotes.slice(0, 3).join(' | ')}`,
+        data: { risk_notes: riskNotes.slice(0, 8) },
+      }),
+    );
+  }
+  if (profileSkinType || profileSensitivity || profileBarrier || profileGoals.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'catalog',
+        source_name: 'user_profile',
+        captured_at: generatedAt,
+        excerpt: `Profile context: skinType=${profileSkinType || 'unknown'}, sensitivity=${profileSensitivity || 'unknown'}, barrier=${profileBarrier || 'unknown'}`,
+        data: {
+          skinType: profileSkinType || null,
+          sensitivity: profileSensitivity || null,
+          barrierStatus: profileBarrier || null,
+          goals: profileGoals,
+        },
+      }),
+    );
+  }
+
+  const confidence = buildBlockConfidence({
+    coverage: (reasons.length ? 0.4 : 0) + (riskNotes.length ? 0.25 : 0) + (profileSkinType || profileSensitivity || profileBarrier ? 0.35 : 0),
+    source_quality: 0.74,
+    freshness: 0.92,
+    consistency: hasIrritationRisk && !isCautionVerdict ? 0.62 : 0.72,
+    reasons: ['rules_first=skin_fit'],
+    missing_fields: missingFields,
+  });
+
+  return {
+    block: {
+      suitable_for: uniqueStrings(suitableFor).slice(0, 8),
+      not_recommended_for: uniqueStrings(notRecommendedFor).slice(0, 8),
+      contraindications: contraindications.slice(0, 6),
+      ...(routineTips.length ? { routine_tips: routineTips } : { routine_tips: [] }),
+      _meta: {
+        generated_at: generatedAt,
+        freshness_ttl_hours: 24 * 14,
+        version: PRODUCT_INTEL_BLOCK_VERSION,
+        confidence,
+        evidence: evidenceItems,
+        ...(missingFields.length ? { missing_fields: missingFields } : {}),
+        ...(warnings.length ? { warnings } : {}),
+      },
+    },
+    confidence,
+  };
+}
+
+function buildSocialSignalsBlock(payload, { generatedAt = new Date().toISOString() } = {}) {
+  const p = asPlainObject(payload) || {};
+  const ev = asPlainObject(p.evidence) || {};
+  const social = asPlainObject(ev.social_signals || ev.socialSignals) || {};
+
+  const platformScores = asRecordOfNumbers(social.platform_scores ?? social.platformScores) || {};
+  const positives = asStringArray(social.typical_positive ?? social.typicalPositive);
+  const negatives = asStringArray(social.typical_negative ?? social.typicalNegative);
+  const riskForGroups = asStringArray(social.risk_for_groups ?? social.riskForGroups);
+
+  const platforms = [];
+  for (const [rawName, rawScore] of Object.entries(platformScores)) {
+    const name = normalizePlatformName(rawName);
+    if (!name || String(rawName).toLowerCase() === 'burn_rate') continue;
+    const score01 = rawScore > 1 ? clamp01(rawScore / 100) : clamp01(rawScore);
+    platforms.push({
+      name,
+      mention_count: null,
+      sample_size: null,
+      time_window: null,
+      sentiment: {
+        pos: Number(score01.toFixed(3)),
+        neu: Number(Math.max(0, 1 - score01).toFixed(3)),
+        neg: 0,
+      },
+      top_topics: positives.slice(0, 4).map((topic) => ({ topic, count: null, polarity: 'pos' })),
+      risk_terms: riskForGroups.slice(0, 4).map((term) => ({ term, count: null })),
+    });
+  }
+
+  const missingFields = [];
+  if (!Object.keys(platformScores).length) missingFields.push('evidence.social_signals.platform_scores');
+  if (!positives.length && !negatives.length) missingFields.push('evidence.social_signals.topics');
+  if (!riskForGroups.length) missingFields.push('evidence.social_signals.risk_for_groups');
+
+  const warnings = [];
+  if (platforms.length) warnings.push('social_sample_size_missing');
+  warnings.push('social_time_window_missing');
+
+  const evidenceItems = [];
+  if (Object.keys(platformScores).length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'social',
+        source_name: 'aurora_social_signals',
+        captured_at: generatedAt,
+        excerpt: `Platform scores: ${Object.entries(platformScores)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')}`,
+        data: { platform_scores: platformScores },
+      }),
+    );
+  }
+  if (positives.length || negatives.length || riskForGroups.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'social',
+        source_name: 'aurora_social_signals',
+        captured_at: generatedAt,
+        excerpt: uniqueStrings([
+          positives.length ? `Positive: ${positives.slice(0, 3).join(', ')}` : '',
+          negatives.length ? `Negative: ${negatives.slice(0, 3).join(', ')}` : '',
+          riskForGroups.length ? `Risk groups: ${riskForGroups.slice(0, 2).join(', ')}` : '',
+        ]).join(' | '),
+        data: {
+          typical_positive: positives.slice(0, 8),
+          typical_negative: negatives.slice(0, 8),
+          risk_for_groups: riskForGroups.slice(0, 8),
+        },
+      }),
+    );
+  }
+
+  const confidence = buildBlockConfidence({
+    coverage: (Object.keys(platformScores).length ? 0.45 : 0) + (positives.length || negatives.length ? 0.3 : 0) + (riskForGroups.length ? 0.25 : 0),
+    source_quality: Object.keys(platformScores).length ? 0.58 : 0.46,
+    freshness: 0.7,
+    consistency: 0.66,
+    reasons: ['social_aggregation=partial'],
+    missing_fields: missingFields,
+  });
+
+  return {
+    block: {
+      platforms,
+      overall_summary: {
+        top_pos_themes: positives.slice(0, 5),
+        top_neg_themes: negatives.slice(0, 5),
+        watchouts: riskForGroups.slice(0, 5),
+      },
+      _meta: {
+        generated_at: generatedAt,
+        freshness_ttl_hours: 48,
+        version: PRODUCT_INTEL_BLOCK_VERSION,
+        confidence,
+        evidence: evidenceItems,
+        ...(missingFields.length ? { missing_fields: missingFields } : {}),
+        ...(warnings.length ? { warnings } : {}),
+      },
+    },
+    confidence,
+  };
+}
+
+function buildCompetitorsBlock(payload, { generatedAt = new Date().toISOString() } = {}) {
+  const p = asPlainObject(payload) || {};
+  const candidatesIn = normalizeCompetitorCandidates(asPlainObject(p.competitors)?.candidates);
+  const assessment = asPlainObject(p.assessment) || {};
+  const anchor = asPlainObject(assessment.anchor_product || assessment.anchorProduct) || null;
+
+  const missingFields = [];
+  if (!candidatesIn.length) missingFields.push('competitors.candidates');
+
+  const warnings = [];
+  if (!candidatesIn.length && anchor) warnings.push('no_competitor_candidates_from_upstream');
+
+  const evidenceItems = [];
+  if (candidatesIn.length) {
+    evidenceItems.push(
+      buildEvidenceItem({
+        source_type: 'catalog',
+        source_name: 'aurora_alternatives',
+        captured_at: generatedAt,
+        excerpt: `Candidates: ${candidatesIn.slice(0, 3).map((x) => x.name).join(', ')}`,
+        data: { candidates: candidatesIn.slice(0, 8) },
+      }),
+    );
+  }
+
+  const confidence = buildBlockConfidence({
+    coverage: candidatesIn.length ? Math.min(1, 0.5 + Math.min(0.5, candidatesIn.length * 0.1)) : 0.2,
+    source_quality: candidatesIn.length ? 0.68 : 0.48,
+    freshness: 0.86,
+    consistency: 0.72,
+    reasons: ['competitor_recall=upstream_alternatives'],
+    missing_fields: missingFields,
+  });
+
+  return {
+    block: {
+      candidates: candidatesIn,
+      _meta: {
+        generated_at: generatedAt,
+        freshness_ttl_hours: 24 * 7,
+        version: PRODUCT_INTEL_BLOCK_VERSION,
+        confidence,
+        evidence: evidenceItems,
+        ...(missingFields.length ? { missing_fields: missingFields } : {}),
+        ...(warnings.length ? { warnings } : {}),
+      },
+    },
+    confidence,
+  };
+}
+
+function buildBlockMissingInfo(blockName, blockMeta) {
+  const out = [];
+  const meta = asPlainObject(blockMeta) || {};
+  const missing = asStringArray(meta.missing_fields ?? meta.missingFields);
+  if (missing.length) {
+    for (const field of missing.slice(0, 5)) out.push(`${blockName}.${field}`);
+  }
+  const confidence = asPlainObject(meta.confidence) || {};
+  const level = String(confidence.level || '').trim().toLowerCase();
+  if (level === 'low') out.push(`${blockName}_low_confidence`);
+  return uniqueStrings(out);
+}
+
+function buildProductIntelContract(payload, { lang = 'EN', profileSummary = null } = {}) {
+  const p = asPlainObject(payload);
+  if (!p) return null;
+  const generatedAt = new Date().toISOString();
+
+  const ingredientOut = buildIngredientIntelBlock(p, { generatedAt });
+  const skinFitOut = buildSkinFitBlock(p, { profileSummary, generatedAt });
+  const socialOut = buildSocialSignalsBlock(p, { generatedAt });
+  const competitorsOut = buildCompetitorsBlock(p, { generatedAt });
+
+  const assessment = asPlainObject(p.assessment) || {};
+  const anchorProduct = asPlainObject(assessment.anchor_product || assessment.anchorProduct) || asPlainObject(p.product) || null;
+
+  const confidenceByBlock = {
+    ingredient_intel: ingredientOut.confidence,
+    skin_fit: skinFitOut.confidence,
+    social_signals: socialOut.confidence,
+    competitors: competitorsOut.confidence,
+  };
+
+  const missingInfo = uniqueStrings([
+    ...buildBlockMissingInfo('ingredient_intel', ingredientOut.block?._meta),
+    ...buildBlockMissingInfo('skin_fit', skinFitOut.block?._meta),
+    ...buildBlockMissingInfo('social_signals', socialOut.block?._meta),
+    ...buildBlockMissingInfo('competitors', competitorsOut.block?._meta),
+  ]);
+
+  return {
+    version: PRODUCT_INTEL_CONTRACT_VERSION,
+    ...(anchorProduct ? { product: anchorProduct } : {}),
+    ingredient_intel: ingredientOut.block,
+    skin_fit: skinFitOut.block,
+    social_signals: socialOut.block,
+    competitors: competitorsOut.block,
+    confidence_by_block: confidenceByBlock,
+    missing_info: missingInfo,
+    language: String(lang || 'EN').toUpperCase() === 'CN' ? 'CN' : 'EN',
+  };
+}
+
+function attachProductIntelContract(payload, { lang = 'EN', profileSummary = null } = {}) {
+  const p = asPlainObject(payload);
+  if (!p) return payload;
+  const intel = buildProductIntelContract(p, { lang, profileSummary });
+  if (!intel) return payload;
+
+  const mergedMissingInfo = uniqueStrings([
+    ...asStringArray(p.missing_info ?? p.missingInfo),
+    ...asStringArray(intel.missing_info),
+  ]);
+
+  return {
+    ...p,
+    ...(intel.product ? { product: intel.product } : {}),
+    ingredient_intel: intel.ingredient_intel,
+    skin_fit: intel.skin_fit,
+    social_signals: intel.social_signals,
+    competitors: intel.competitors,
+    confidence_by_block: intel.confidence_by_block,
+    product_intel_contract_version: intel.version,
+    missing_info: mergedMissingInfo,
+  };
+}
+
 function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = null } = {}) {
   const p = asPlainObject(payload);
   if (!p) return payload;
@@ -618,13 +1234,14 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
       reasons.push('Send the product link or full INCI ingredient list and I’ll re-run a deeper scan.');
     }
 
-    return {
+    const fallbackPayload = {
       ...p,
       assessment: {
         verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
         reasons: uniqueStrings(reasons).slice(0, 5),
       },
     };
+    return attachProductIntelContract(fallbackPayload, { lang, profileSummary });
   }
 
   const verdict =
@@ -717,7 +1334,7 @@ function enrichProductAnalysisPayload(payload, { lang = 'EN', profileSummary = n
     ...(hero && typeof hero === 'object' ? { hero_ingredient: hero } : {}),
     reasons: uniqueStrings(reasons).slice(0, maxReasons),
   };
-  return { ...p, assessment: outAssessment };
+  return attachProductIntelContract({ ...p, assessment: outAssessment }, { lang, profileSummary });
 }
 
 function normalizeDupeCompare(raw) {
