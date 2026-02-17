@@ -746,4 +746,84 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).not.toContain('competitors_missing');
   });
+
+  test('/v1/product/analyze ignores stale KB competitors that only contain nav-noise names', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    const getProductIntelKbEntry = jest.fn().mockResolvedValue({
+      kb_key: 'url:https://brand.example/product-6.html|lang:EN',
+      analysis: {
+        assessment: { verdict: 'Likely Suitable', reasons: ['kb entry'] },
+        evidence: {
+          science: { key_ingredients: ['Copper Tripeptide-1'], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.7,
+          missing_info: [],
+        },
+        confidence: 0.7,
+        missing_info: ['url_realtime_product_intel_used'],
+        competitors: {
+          candidates: [
+            { name: 'Skip to main content' },
+            { name: 'Contact Us' },
+          ],
+        },
+      },
+      source: 'url_realtime_product_intel',
+      source_meta: { competitor_async_enriched: true },
+    });
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      getProductIntelKbEntry,
+      upsertProductIntelKbEntry,
+    }));
+
+    nock('https://brand.example')
+      .get('/product-6.html')
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Peptide Serum | Brand</title></head>
+         <body>
+           <a href="#main-content">Skip to main content</a>
+           <a href="/en-al/multi-peptide-eye-serum-100700.html">Multi-Peptide Eye Serum</a>
+           <p class="ingredients-flyout-content" data-original-ingredients="Aqua (Water), Glycerin, Copper Tripeptide-1, Sodium Hyaluronate, Allantoin"></p>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(503, { error: 'temporary unavailable' });
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(503, { error: 'temporary unavailable' });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_kb_noise_filter_1')
+      .send({ url: 'https://brand.example/product-6.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    const names = (card.payload?.competitors?.candidates || []).map((x) => String(x?.name || '').toLowerCase());
+    expect(names.some((n) => n.includes('skip to main content'))).toBe(false);
+    expect(names.some((n) => n.includes('contact us'))).toBe(false);
+    expect(names.some((n) => n.includes('multi-peptide eye serum'))).toBe(true);
+
+    const valueMomentMode = Array.isArray(res.body.events)
+      ? (res.body.events.find((e) => e && e.event_name === 'value_moment')?.data?.mode || '')
+      : '';
+    expect(valueMomentMode).toBe('url_realtime_product_intel');
+  });
 });

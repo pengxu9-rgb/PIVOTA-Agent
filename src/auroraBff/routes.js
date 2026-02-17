@@ -2692,14 +2692,70 @@ function scheduleProductIntelKbBackfill({
   });
 }
 
+function isLikelyNoiseCompetitorName(name) {
+  const text = String(name || '').trim().toLowerCase();
+  if (!text) return true;
+  if (text.length < 4) return true;
+  if (/^skip to\b/i.test(text)) return true;
+  if (/^(contact us|home|menu|search|my account|sign in|footer|header)$/i.test(text)) return true;
+  if (/\b(skip to main content|skip to footer content|contact us)\b/i.test(text)) return true;
+  return false;
+}
+
+function sanitizeCompetitorCandidates(candidates, max = 10) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(candidates) ? candidates : []) {
+    const row = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+    if (!row) continue;
+    const name = pickFirstTrimmed(row.name, row.display_name);
+    if (!name || isLikelyNoiseCompetitorName(name)) continue;
+    const brand = pickFirstTrimmed(row.brand);
+    const key = `${String(brand || '').toLowerCase()}::${String(name).toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...row, name });
+    if (out.length >= Math.max(1, Math.min(12, Number(max) || 10))) break;
+  }
+  return out;
+}
+
+function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!p) return payload;
+  const competitorsObj = p.competitors && typeof p.competitors === 'object' && !Array.isArray(p.competitors) ? p.competitors : null;
+  const rawCandidates = Array.isArray(competitorsObj?.candidates) ? competitorsObj.candidates : [];
+  if (!rawCandidates.length) return payload;
+  const cleanCandidates = sanitizeCompetitorCandidates(rawCandidates, max);
+  const rawLen = rawCandidates.length;
+  const cleanLen = cleanCandidates.length;
+  const hasChanged = cleanLen !== rawLen;
+  if (!hasChanged) return payload;
+
+  const missingInfo = Array.isArray(p.missing_info) ? p.missing_info : [];
+  const nextMissingInfo = cleanLen
+    ? stripCompetitorMissingTokens(missingInfo)
+    : uniqCaseInsensitiveStrings([...missingInfo, 'competitors_missing', 'competitor_candidates_filtered_noise'], 16);
+
+  return {
+    ...p,
+    competitors: {
+      ...(competitorsObj || {}),
+      candidates: cleanCandidates,
+    },
+    missing_info: nextMissingInfo,
+  };
+}
+
 function hasCompetitorCandidatesInPayload(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
   if (!p) return false;
-  const candidates =
+  const competitors =
     p.competitors && typeof p.competitors === 'object' && !Array.isArray(p.competitors)
-      ? p.competitors.candidates
+      ? p.competitors
       : null;
-  return Array.isArray(candidates) && candidates.length > 0;
+  const cleanCandidates = sanitizeCompetitorCandidates(competitors?.candidates, 10);
+  return cleanCandidates.length > 0;
 }
 
 function stripCompetitorMissingTokens(items) {
@@ -2924,6 +2980,15 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         };
         competitorSource = fallbackOut.source || 'aurora_alternatives';
       }
+      const asyncCandidates = sanitizeCompetitorCandidates(
+        competitorOut?.candidates,
+        PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+      );
+      if (!asyncCandidates.length) return;
+      competitorOut = {
+        ...competitorOut,
+        candidates: asyncCandidates,
+      };
 
       const existingEvidence =
         payloadSnapshot.evidence && typeof payloadSnapshot.evidence === 'object' && !Array.isArray(payloadSnapshot.evidence)
@@ -3136,6 +3201,7 @@ async function buildProductAnalysisFromUrlIngredients({
       competitorReason = null;
     }
   }
+  competitorCandidates = sanitizeCompetitorCandidates(competitorCandidates, PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES);
   const competitorMissing = !competitorCandidates.length;
   const socialMissing = !socialSignals.has_signal;
 
@@ -11779,8 +11845,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             kbEntry && kbEntry.analysis && typeof kbEntry.analysis === 'object' && !Array.isArray(kbEntry.analysis)
               ? kbEntry.analysis
               : null;
-          if (!kbAnalysis || !shouldServeProductIntelKbPayload(kbAnalysis)) continue;
-          const kbPayload = enrichProductAnalysisPayload(kbAnalysis, { lang: ctx.lang, profileSummary });
+          const kbAnalysisSanitized = sanitizeCompetitorsInPayload(kbAnalysis, {
+            max: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+          });
+          if (!kbAnalysisSanitized || !shouldServeProductIntelKbPayload(kbAnalysisSanitized)) continue;
+          const kbPayload = enrichProductAnalysisPayload(kbAnalysisSanitized, { lang: ctx.lang, profileSummary });
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
             suggested_chips: [],
