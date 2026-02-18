@@ -14,6 +14,8 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       CREATOR_CATALOG_AUTO_SYNC_RETRIES: process.env.CREATOR_CATALOG_AUTO_SYNC_RETRIES,
       CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS:
         process.env.CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+      CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS:
+        process.env.CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
       CREATOR_CATALOG_SYNC_ADMIN_KEY: process.env.CREATOR_CATALOG_SYNC_ADMIN_KEY,
       PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
@@ -25,6 +27,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS = '120000';
     process.env.CREATOR_CATALOG_AUTO_SYNC_RETRIES = '1';
     process.env.CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS = '1';
+    process.env.CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS = '600';
     process.env.CREATOR_CATALOG_SYNC_ADMIN_KEY = 'admin_sync_key';
     process.env.PIVOTA_API_BASE = 'https://example-pivota.test';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
@@ -49,6 +52,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     restore('CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS');
     restore('CREATOR_CATALOG_AUTO_SYNC_RETRIES');
     restore('CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS');
+    restore('CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS');
     restore('CREATOR_CATALOG_SYNC_ADMIN_KEY');
     restore('PIVOTA_API_BASE');
     restore('AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED');
@@ -75,6 +79,39 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       expect.objectContaining({
         ok: true,
         attempts: 2,
+      }),
+    );
+  });
+
+  test('skips non-retryable merchants during cooldown window', async () => {
+    process.env.CATALOG_SYNC_MERCHANT_IDS = 'merch_bad,merch_good';
+
+    const axiosPost = jest
+      .fn()
+      .mockRejectedValueOnce({
+        response: { status: 404, data: { detail: 'Shopify API error: 404 - {"errors":"Not Found"}' } },
+        message: 'Request failed with status code 404',
+      })
+      .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 5 } } })
+      .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 6 } } });
+    jest.doMock('axios', () => ({ post: axiosPost }));
+
+    const app = require('../src/server');
+    await app._debug.runCreatorCatalogAutoSync();
+    await app._debug.runCreatorCatalogAutoSync();
+
+    expect(axiosPost).toHaveBeenCalledTimes(3);
+    expect(app._debug.catalogSyncState.per_merchant.merch_bad).toEqual(
+      expect.objectContaining({
+        ok: false,
+        skipped: true,
+        status: 404,
+      }),
+    );
+    expect(app._debug.catalogSyncState.per_merchant.merch_good).toEqual(
+      expect.objectContaining({
+        ok: true,
+        attempts: 1,
       }),
     );
   });

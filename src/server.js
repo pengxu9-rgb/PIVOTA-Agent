@@ -158,6 +158,11 @@ const CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS = parsePositiveInt(
   3000,
   { min: 100, max: 60 * 1000 },
 );
+const CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS = parsePositiveInt(
+  process.env.CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+  6 * 60 * 60,
+  { min: 60, max: 7 * 24 * 60 * 60 },
+);
 
 function getCreatorCatalogAutoSyncIntervalConfig() {
   const maxIntervalMinutes = Math.max(
@@ -1648,6 +1653,33 @@ function isCatalogSyncRetryableError(err) {
   return message.includes('timeout') || message.includes('timed out');
 }
 
+function isCatalogSyncNonRetryableError(err) {
+  const status = Number(err?.response?.status || 0);
+  if (status === 400 || status === 401 || status === 403 || status === 404) return true;
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (code === 'ENOTFOUND') return true;
+  return false;
+}
+
+function summarizeCatalogSyncMerchantState() {
+  const rows = Object.entries(catalogSyncState.per_merchant || {}).map(([merchantId, state]) => ({
+    merchant_id: merchantId,
+    ok: state?.ok === true,
+    skipped: state?.skipped === true,
+    status: Number.isFinite(Number(state?.status)) ? Number(state.status) : null,
+    attempts: Number.isFinite(Number(state?.attempts)) ? Number(state.attempts) : null,
+    last_run_at: state?.last_run_at || null,
+    blocked_until: state?.blocked_until || null,
+    error: state?.error ? String(state.error) : null,
+  }));
+  rows.sort((a, b) => {
+    const ta = Date.parse(String(a.last_run_at || '')) || 0;
+    const tb = Date.parse(String(b.last_run_at || '')) || 0;
+    return tb - ta;
+  });
+  return rows.slice(0, 20);
+}
+
 async function runCreatorCatalogAutoSync() {
   const enabled = CREATOR_CATALOG_AUTO_SYNC_ENABLED;
   if (!enabled) return;
@@ -1685,6 +1717,35 @@ async function runCreatorCatalogAutoSync() {
   catalogSyncState.last_error = null;
 
   for (const merchantId of merchantIds) {
+    const nowMs = Date.now();
+    const existingState = catalogSyncState.per_merchant[merchantId];
+    const blockedUntilMs = Number(existingState?.blocked_until_ms || 0);
+    if (blockedUntilMs > nowMs) {
+      catalogSyncState.per_merchant[merchantId] = {
+        ...(existingState && typeof existingState === 'object' ? existingState : {}),
+        ok: false,
+        skipped: true,
+        last_run_at: new Date().toISOString(),
+        status: Number.isFinite(Number(existingState?.status)) ? Number(existingState.status) : null,
+        attempts: 0,
+        duration_ms: 0,
+        error:
+          existingState?.error ||
+          'Skipped due to temporary cooldown after non-retryable sync error',
+        blocked_until_ms: blockedUntilMs,
+        blocked_until:
+          existingState?.blocked_until || new Date(blockedUntilMs).toISOString(),
+      };
+      logger.info(
+        {
+          merchantId,
+          blocked_until: new Date(blockedUntilMs).toISOString(),
+        },
+        'Creator catalog auto sync skipped due to non-retryable cooldown',
+      );
+      continue;
+    }
+
     const url = `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
       merchantId,
     )}?limit=${encodeURIComponent(String(limit))}&ttl_seconds=${encodeURIComponent(String(ttlSeconds))}`;
@@ -1731,10 +1792,15 @@ async function runCreatorCatalogAutoSync() {
     if (!err && res) {
       catalogSyncState.per_merchant[merchantId] = {
         ok: true,
+        skipped: false,
         last_run_at: new Date().toISOString(),
         attempts: attempt,
         duration_ms: Math.max(0, Date.now() - startedAtMs),
         summary: res.data && res.data.summary ? res.data.summary : res.data,
+        status: Number.isFinite(Number(res.status)) ? Number(res.status) : 200,
+        error: null,
+        blocked_until_ms: null,
+        blocked_until: null,
       };
       catalogSyncState.last_success_at = new Date().toISOString();
       logger.info(
@@ -1755,15 +1821,22 @@ async function runCreatorCatalogAutoSync() {
         (data && data.detail && typeof data.detail === 'object' && data.detail.message) ||
         (data && typeof data.detail === 'string' ? data.detail : null) ||
         err.message;
+      const nonRetryable = isCatalogSyncNonRetryableError(err);
+      const blockedUntilMs = nonRetryable
+        ? Date.now() + CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS * 1000
+        : null;
       catalogSyncState.per_merchant[merchantId] = {
         ok: false,
+        skipped: false,
         last_run_at: new Date().toISOString(),
         attempts: attempt,
         duration_ms: Math.max(0, Date.now() - startedAtMs),
         status: status || null,
         error: message,
+        blocked_until_ms: blockedUntilMs,
+        blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
       };
-      catalogSyncState.last_error = message;
+      catalogSyncState.last_error = `${merchantId}: ${message}`;
       logger.warn(
         {
           merchantId,
@@ -1772,6 +1845,8 @@ async function runCreatorCatalogAutoSync() {
           attempts: attempt,
           timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
           max_attempts: maxAttempts,
+          non_retryable: nonRetryable,
+          blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
         },
         'Creator catalog auto sync failed',
       );
@@ -5656,12 +5731,14 @@ const healthRouteHandler = (req, res) => {
       request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
       retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
       retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+      non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
       target_source: catalogSyncState.target_source,
       target_count: catalogSyncState.target_count,
       target_sample: catalogSyncState.target_sample,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
+      per_merchant: summarizeCatalogSyncMerchantState(),
     },
     features: {
       product_search: true,
@@ -7907,12 +7984,14 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
       request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
       retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
       retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+      non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
       target_source: catalogSyncState.target_source,
       target_count: catalogSyncState.target_count,
       target_sample: catalogSyncState.target_sample,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
+      per_merchant: summarizeCatalogSyncMerchantState(),
     },
     resolver: {
       alias_dependency: aliasDependency,
@@ -8146,12 +8225,14 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
         retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
         retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+        non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
         target_source: catalogSyncState.target_source,
         target_count: catalogSyncState.target_count,
         target_sample: catalogSyncState.target_sample,
         last_run_at: catalogSyncState.last_run_at,
         last_success_at: catalogSyncState.last_success_at,
         last_error: catalogSyncState.last_error,
+        per_merchant: summarizeCatalogSyncMerchantState(),
       },
       totals: {
         total_rows: parseCount(globalTotalsRow.total_rows),
