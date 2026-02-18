@@ -375,6 +375,21 @@ const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 6;
   return Math.max(1, Math.min(10, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_PREFERRED_COUNT || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(6, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_TIMEOUT_MS || 1100);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1100;
+  return Math.max(300, Math.min(3500, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_MAX_QUERIES || 2);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2;
+  return Math.max(1, Math.min(4, v));
+})();
 const PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL || 'true')
     .trim()
@@ -3225,7 +3240,7 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
     ? uniqCaseInsensitiveStrings(
         [
           ...stripCompetitorMissingTokens(missingInfo),
-          ...(cleanLen < 2 ? ['competitors_low_coverage'] : []),
+          ...(cleanLen < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
         ],
         16,
       )
@@ -3260,6 +3275,13 @@ function hasLowCoverageCompetitorsInPayload(payload, { preferredCount = 2 } = {}
   const target = Math.max(1, Math.min(10, Number(preferredCount) || 2));
   const count = getCompetitorCandidatesFromPayload(payload, { max: 10 }).length;
   return count > 0 && count < target;
+}
+
+function hasLowCoverageCompetitorToken(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!p) return false;
+  const missingInfo = Array.isArray(p.missing_info) ? p.missing_info : [];
+  return missingInfo.some((raw) => String(raw || '').trim().toLowerCase() === 'competitors_low_coverage');
 }
 
 function stripCompetitorMissingTokens(items) {
@@ -3423,7 +3445,7 @@ function scheduleProductIntelCompetitorEnrichBackfill({
   if (!/^https?:\/\//i.test(urlText)) return;
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
   if (forceEnhance) {
-    if (!hasLowCoverageCompetitorsInPayload(payload, { preferredCount: 2 })) return;
+    if (!hasLowCoverageCompetitorsInPayload(payload, { preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT })) return;
   } else if (hasCompetitorCandidatesInPayload(payload)) {
     return;
   }
@@ -3530,7 +3552,9 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         missing_info: uniqCaseInsensitiveStrings(
           [
             ...stripCompetitorMissingTokens(payloadSnapshot.missing_info || []),
-            ...(Array.isArray(competitorOut.candidates) && competitorOut.candidates.length < 2 ? ['competitors_low_coverage'] : []),
+            ...(Array.isArray(competitorOut.candidates) && competitorOut.candidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT
+              ? ['competitors_low_coverage']
+              : []),
             'competitor_async_backfill_used',
           ],
           16,
@@ -3563,6 +3587,146 @@ function scheduleProductIntelCompetitorEnrichBackfill({
       );
     }
   });
+}
+
+async function maybeSyncRepairLowCoverageCompetitors({
+  productUrl,
+  payload,
+  parsedProduct = null,
+  profileSummary = null,
+  lang = 'EN',
+  logger,
+} = {}) {
+  const urlText = String(productUrl || '').trim();
+  if (!/^https?:\/\//i.test(urlText)) return { payload, enhanced: false, reason: 'url_missing' };
+
+  const payloadObj = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!payloadObj) return { payload, enhanced: false, reason: 'payload_missing' };
+
+  const preferredCount = PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT;
+  const existingCandidates = getCompetitorCandidatesFromPayload(payloadObj, {
+    max: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+  });
+  if (!existingCandidates.length) return { payload: payloadObj, enhanced: false, reason: 'competitors_missing' };
+  if (existingCandidates.length >= preferredCount) return { payload: payloadObj, enhanced: false, reason: 'coverage_ok' };
+  if (!hasLowCoverageCompetitorToken(payloadObj)) return { payload: payloadObj, enhanced: false, reason: 'coverage_token_missing' };
+
+  const assessment =
+    payloadObj.assessment && typeof payloadObj.assessment === 'object' && !Array.isArray(payloadObj.assessment)
+      ? payloadObj.assessment
+      : null;
+  const assessmentAnchor =
+    assessment &&
+    assessment.anchor_product &&
+    typeof assessment.anchor_product === 'object' &&
+    !Array.isArray(assessment.anchor_product)
+      ? assessment.anchor_product
+      : null;
+  const anchorForRecall =
+    assessmentAnchor ||
+    (parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null);
+  const keyIngredients =
+    payloadObj.evidence &&
+    payloadObj.evidence.science &&
+    Array.isArray(payloadObj.evidence.science.key_ingredients)
+      ? payloadObj.evidence.science.key_ingredients
+      : [];
+
+  let competitorOut = null;
+  try {
+    competitorOut = await buildRealtimeCompetitorCandidates({
+      productUrl: urlText,
+      parsedProduct: anchorForRecall,
+      keyIngredients,
+      anchorProduct: anchorForRecall,
+      profileSummary,
+      lang,
+      timeoutMs: PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS,
+      maxQueries: PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES,
+      maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      logger,
+    });
+  } catch (err) {
+    logger?.warn(
+      { err: err?.message || String(err), url: urlText },
+      'aurora bff: sync competitor repair failed',
+    );
+    return { payload: payloadObj, enhanced: false, reason: 'realtime_recall_failed' };
+  }
+
+  const recalledCandidates = sanitizeCompetitorCandidates(
+    competitorOut?.candidates,
+    PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+  );
+  if (!recalledCandidates.length) {
+    return { payload: payloadObj, enhanced: false, reason: competitorOut?.reason || 'realtime_recall_empty' };
+  }
+
+  const existingKey = existingCandidates.map((row) => {
+    const id = pickFirstTrimmed(row?.product_id, row?.sku_id);
+    const name = pickFirstTrimmed(row?.name, row?.display_name);
+    return `${String(id || '').toLowerCase()}::${String(name || '').toLowerCase()}`;
+  });
+  const mergedCandidates = sanitizeCompetitorCandidates(
+    [...recalledCandidates, ...existingCandidates],
+    PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+  );
+  const mergedKey = mergedCandidates.map((row) => {
+    const id = pickFirstTrimmed(row?.product_id, row?.sku_id);
+    const name = pickFirstTrimmed(row?.name, row?.display_name);
+    return `${String(id || '').toLowerCase()}::${String(name || '').toLowerCase()}`;
+  });
+
+  const changed = mergedKey.join('|') !== existingKey.join('|');
+  const coverageImproved = mergedCandidates.length >= preferredCount;
+  if (!changed && !coverageImproved) {
+    return { payload: payloadObj, enhanced: false, reason: 'no_delta' };
+  }
+
+  const existingMissingInfo = Array.isArray(payloadObj.missing_info) ? payloadObj.missing_info : [];
+  const mergedMissingInfo = uniqCaseInsensitiveStrings(
+    [
+      ...stripCompetitorMissingTokens(existingMissingInfo),
+      ...(mergedCandidates.length < preferredCount ? ['competitors_low_coverage'] : []),
+      'competitor_sync_enrich_used',
+    ],
+    16,
+  );
+
+  const evidenceObj =
+    payloadObj.evidence && typeof payloadObj.evidence === 'object' && !Array.isArray(payloadObj.evidence)
+      ? payloadObj.evidence
+      : {};
+  const evidenceMissing = uniqCaseInsensitiveStrings(
+    [
+      ...stripCompetitorMissingTokens(evidenceObj.missing_info || []),
+      ...(mergedCandidates.length < preferredCount ? ['competitors_low_coverage'] : []),
+    ],
+    16,
+  );
+  const existingExpertNotes = Array.isArray(evidenceObj.expert_notes) ? evidenceObj.expert_notes : [];
+  const syncNote =
+    String(lang || '').toUpperCase() === 'CN'
+      ? `竞品主链路实时补全：${mergedCandidates
+        .slice(0, 3)
+        .map((x) => x.name)
+        .join('、')}`
+      : `Competitors refreshed on main path: ${mergedCandidates
+        .slice(0, 3)
+        .map((x) => x.name)
+        .join(', ')}`;
+
+  const mergedPayload = {
+    ...payloadObj,
+    competitors: { candidates: mergedCandidates },
+    evidence: {
+      ...evidenceObj,
+      expert_notes: uniqCaseInsensitiveStrings([...existingExpertNotes, syncNote], 8),
+      missing_info: evidenceMissing,
+    },
+    missing_info: mergedMissingInfo,
+  };
+  return { payload: mergedPayload, enhanced: true, reason: null };
 }
 
 async function buildProductAnalysisFromUrlIngredients({
@@ -3743,7 +3907,9 @@ async function buildProductAnalysisFromUrlIngredients({
   const evidenceMissingInfo = ['concentration_unknown'];
   if (socialMissing) evidenceMissingInfo.push('social_signals_missing');
   if (competitorMissing) evidenceMissingInfo.push('competitors_missing');
-  if (!competitorMissing && competitorCandidates.length < 2) evidenceMissingInfo.push('competitors_low_coverage');
+  if (!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT) {
+    evidenceMissingInfo.push('competitors_low_coverage');
+  }
   if (competitorMissing && competitorReason) evidenceMissingInfo.push(`competitor_recall_${String(competitorReason).toLowerCase()}`);
 
   const raw = {
@@ -3797,7 +3963,7 @@ async function buildProductAnalysisFromUrlIngredients({
         'url_realtime_product_intel_used',
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
-        ...(!competitorMissing && competitorCandidates.length < 2 ? ['competitors_low_coverage'] : []),
+        ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
         competitorMissing && competitorReason ? `competitor_recall_${String(competitorReason).toLowerCase()}` : '',
       ],
       12,
@@ -3814,7 +3980,7 @@ async function buildProductAnalysisFromUrlIngredients({
       'url_realtime_product_intel_used',
       ...(socialMissing ? ['social_signals_missing'] : []),
       ...(competitorMissing ? ['competitors_missing'] : []),
-      ...(!competitorMissing && competitorCandidates.length < 2 ? ['competitors_low_coverage'] : []),
+      ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
       ...(competitorMissing && competitorReason ? [`competitor_recall_${String(competitorReason).toLowerCase()}`] : []),
     ]),
   );
@@ -12372,12 +12538,49 @@ function mountAuroraBffRoutes(app, { logger }) {
             max: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
           });
           if (!kbAnalysisSanitized || !shouldServeProductIntelKbPayload(kbAnalysisSanitized)) continue;
-          const kbPayload = enrichProductAnalysisPayload(kbAnalysisSanitized, { lang: ctx.lang, profileSummary });
+          let kbPayload = enrichProductAnalysisPayload(kbAnalysisSanitized, { lang: ctx.lang, profileSummary });
+          let syncCoverageRepairApplied = false;
+
+          if (
+            hasLowCoverageCompetitorToken(kbPayload) &&
+            hasLowCoverageCompetitorsInPayload(kbPayload, { preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT })
+          ) {
+            // Fast main-path repair for stale low-coverage KB entries: keep latency bounded.
+            const syncRepair = await maybeSyncRepairLowCoverageCompetitors({
+              productUrl: realtimeUrlInput,
+              payload: kbPayload,
+              parsedProduct,
+              profileSummary,
+              lang: ctx.lang,
+              logger,
+            });
+            if (syncRepair && syncRepair.enhanced && syncRepair.payload) {
+              kbPayload = enrichProductAnalysisPayload(syncRepair.payload, { lang: ctx.lang, profileSummary });
+              syncCoverageRepairApplied = true;
+            }
+          }
+
           const kbAssessment = kbPayload?.assessment && typeof kbPayload.assessment === 'object' ? kbPayload.assessment : null;
           const kbBackfillAnchor =
             kbAssessment && typeof kbAssessment.anchor_product === 'object' && !Array.isArray(kbAssessment.anchor_product)
               ? kbAssessment.anchor_product
               : parsedProduct;
+          if (syncCoverageRepairApplied) {
+            scheduleProductIntelKbBackfill({
+              productUrl: realtimeUrlInput,
+              parsedProduct: kbBackfillAnchor,
+              payload: kbPayload,
+              lang: ctx.lang,
+              source: 'url_realtime_product_intel_kb_sync_enrich',
+              sourceMeta: {
+                ...(kbEntry && typeof kbEntry.source_meta === 'object' && !Array.isArray(kbEntry.source_meta) ? kbEntry.source_meta : {}),
+                competitor_sync_enriched: true,
+                competitor_sync_timeout_ms: PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS,
+                competitor_sync_max_queries: PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES,
+              },
+              logger,
+            });
+          }
           scheduleProductIntelCompetitorEnrichBackfill({
             productUrl: realtimeUrlInput,
             parsedProduct: kbBackfillAnchor,
@@ -12386,7 +12589,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
             source: 'url_realtime_product_intel',
             sourceMeta: kbEntry && typeof kbEntry.source_meta === 'object' ? kbEntry.source_meta : null,
-            forceEnhance: hasLowCoverageCompetitorsInPayload(kbPayload, { preferredCount: 2 }),
+            forceEnhance: hasLowCoverageCompetitorsInPayload(kbPayload, {
+              preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
+            }),
             logger,
           });
           const envelope = buildEnvelope(ctx, {
@@ -12400,7 +12605,12 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             ],
             session_patch: {},
-            events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze', mode: 'url_realtime_product_intel_kb_hit' })],
+            events: [
+              makeEvent(ctx, 'value_moment', {
+                kind: 'product_analyze',
+                mode: syncCoverageRepairApplied ? 'url_realtime_product_intel_kb_hit_sync_enriched' : 'url_realtime_product_intel_kb_hit',
+              }),
+            ],
           });
           return res.json(envelope);
         }
@@ -12450,7 +12660,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary,
             source: 'url_realtime_product_intel',
             sourceMeta: realtimeUrlNormMeta,
-            forceEnhance: hasLowCoverageCompetitorsInPayload(realtimePayload, { preferredCount: 2 }),
+            forceEnhance: hasLowCoverageCompetitorsInPayload(realtimePayload, {
+              preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
+            }),
             logger,
           });
 
@@ -12815,7 +13027,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           profileSummary,
           source: 'url_realtime_product_intel',
           sourceMeta: realtimeUrlNormMeta,
-          forceEnhance: hasLowCoverageCompetitorsInPayload(payload, { preferredCount: 2 }),
+          forceEnhance: hasLowCoverageCompetitorsInPayload(payload, {
+            preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
+          }),
           logger,
         });
       }

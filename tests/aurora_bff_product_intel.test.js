@@ -660,6 +660,110 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(upsertProductIntelKbEntry).not.toHaveBeenCalled();
   });
 
+  test('/v1/product/analyze sync-repairs low-coverage KB competitors before returning', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    const getProductIntelKbEntry = jest.fn().mockResolvedValue({
+      kb_key: 'url:https://brand.example/product-7.html|lang:EN',
+      analysis: {
+        assessment: {
+          verdict: 'Likely Suitable',
+          reasons: ['KB hit with low competitor coverage.'],
+          anchor_product: {
+            brand: 'The Ordinary',
+            name: 'Multi-Peptide + Copper Peptides 1% Serum',
+            display_name: 'The Ordinary Multi-Peptide + Copper Peptides 1% Serum',
+            url: 'https://brand.example/product-7.html',
+          },
+        },
+        evidence: {
+          science: { key_ingredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate'], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: ['hydration'], typical_negative: [], risk_for_groups: [] },
+          expert_notes: ['kb low coverage'],
+          confidence: 0.71,
+          missing_info: ['competitors_low_coverage'],
+        },
+        confidence: 0.71,
+        missing_info: ['url_realtime_product_intel_used', 'competitors_low_coverage'],
+        competitors: {
+          candidates: [
+            {
+              product_id: 'kb_only_1',
+              brand: 'The Ordinary',
+              name: 'Ultra-lightweight hydration Rice Lipids + Ectoin Microemulsion',
+              similarity_score: 0.45,
+              why_candidate: ['related product link found on the same product page'],
+            },
+          ],
+        },
+      },
+      source: 'url_realtime_product_intel',
+      source_meta: { competitor_async_enriched: true },
+    });
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      getProductIntelKbEntry,
+      upsertProductIntelKbEntry,
+    }));
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'sync_comp_1',
+            sku_id: 'sync_comp_1',
+            brand: 'Brand Sync',
+            name: 'Copper Peptide Serum',
+            display_name: 'Brand Sync Copper Peptide Serum',
+            key_ingredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate'],
+            skin_types: ['oily', 'sensitive'],
+            social_stats: { platform_scores: { Reddit: 0.76 }, mention_count: 180 },
+          },
+          {
+            product_id: 'sync_comp_2',
+            sku_id: 'sync_comp_2',
+            brand: 'Brand Repair',
+            name: 'Barrier Support Peptide Serum',
+            display_name: 'Brand Repair Barrier Support Peptide Serum',
+            key_ingredients: ['Panthenol', 'Copper Tripeptide-1'],
+            skin_types: ['sensitive', 'impaired_barrier'],
+            social_stats: { platform_scores: { TikTok: 0.72 }, mention_count: 120 },
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_intel_kb_sync_repair_1')
+      .send({ url: 'https://brand.example/product-7.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(Array.isArray(card.payload?.competitors?.candidates)).toBe(true);
+    expect(card.payload.competitors.candidates.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).not.toContain('competitors_low_coverage');
+
+    const valueMomentMode = Array.isArray(res.body.events)
+      ? (res.body.events.find((e) => e && e.event_name === 'value_moment')?.data?.mode || '')
+      : '';
+    expect(valueMomentMode).toBe('url_realtime_product_intel_kb_hit_sync_enriched');
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(upsertProductIntelKbEntry).toHaveBeenCalled();
+    const hasSyncBackfill = upsertProductIntelKbEntry.mock.calls.some((args) => args?.[0]?.source === 'url_realtime_product_intel_kb_sync_enrich');
+    expect(hasSyncBackfill).toBe(true);
+  });
+
   test('/v1/product/analyze async competitor enrich falls back to aurora alternatives when catalog recall fails', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
