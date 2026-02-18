@@ -143,6 +143,21 @@ const CREATOR_CATALOG_AUTO_SYNC_ENABLED = (() => {
   if (!raw) return String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
   return ['1', 'true', 'yes', 'on'].includes(raw);
 })();
+const CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS = parsePositiveInt(
+  process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+  120000,
+  { min: 1000, max: 10 * 60 * 1000 },
+);
+const CREATOR_CATALOG_AUTO_SYNC_RETRIES = parsePositiveInt(
+  process.env.CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+  1,
+  { min: 0, max: 5 },
+);
+const CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS = parsePositiveInt(
+  process.env.CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+  3000,
+  { min: 100, max: 60 * 1000 },
+);
 
 function getCreatorCatalogAutoSyncIntervalConfig() {
   const maxIntervalMinutes = Math.max(
@@ -1615,6 +1630,24 @@ const catalogSyncState = {
   target_sample: [],
 };
 
+function isCatalogSyncRetryableError(err) {
+  const status = Number(err?.response?.status || 0);
+  if (status === 429 || status >= 500) return true;
+
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (
+    code === 'ECONNABORTED' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNRESET' ||
+    code === 'EAI_AGAIN'
+  ) {
+    return true;
+  }
+
+  const message = String(err?.message || '').trim().toLowerCase();
+  return message.includes('timeout') || message.includes('timed out');
+}
+
 async function runCreatorCatalogAutoSync() {
   const enabled = CREATOR_CATALOG_AUTO_SYNC_ENABLED;
   if (!enabled) return;
@@ -1646,6 +1679,7 @@ async function runCreatorCatalogAutoSync() {
     5000,
   );
   const ttlSeconds = CREATOR_CATALOG_CACHE_TTL_SECONDS;
+  const maxAttempts = Math.max(1, Number(CREATOR_CATALOG_AUTO_SYNC_RETRIES || 0) + 1);
 
   catalogSyncState.last_run_at = new Date().toISOString();
   catalogSyncState.last_error = null;
@@ -1654,19 +1688,67 @@ async function runCreatorCatalogAutoSync() {
     const url = `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
       merchantId,
     )}?limit=${encodeURIComponent(String(limit))}&ttl_seconds=${encodeURIComponent(String(ttlSeconds))}`;
-    try {
-      const res = await axios.post(url, null, {
-        headers: { 'X-ADMIN-KEY': adminKey },
-        timeout: 30000,
-      });
+    const startedAtMs = Date.now();
+    let attempt = 0;
+    let res = null;
+    let err = null;
+    for (attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        res = await axios.post(url, null, {
+          headers: { 'X-ADMIN-KEY': adminKey },
+          timeout: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+        });
+        err = null;
+        break;
+      } catch (attemptErr) {
+        err = attemptErr;
+        const retryable = isCatalogSyncRetryableError(attemptErr);
+        if (attempt < maxAttempts && retryable) {
+          const delayMs = Math.min(
+            CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS * Math.pow(2, attempt - 1),
+            30000,
+          );
+          logger.warn(
+            {
+              merchantId,
+              attempt,
+              max_attempts: maxAttempts,
+              retry_in_ms: delayMs,
+              timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+              status: attemptErr?.response?.status || null,
+              code: attemptErr?.code || null,
+              error: attemptErr?.message || String(attemptErr),
+            },
+            'Creator catalog auto sync attempt failed; retrying',
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (!err && res) {
       catalogSyncState.per_merchant[merchantId] = {
         ok: true,
         last_run_at: new Date().toISOString(),
+        attempts: attempt,
+        duration_ms: Math.max(0, Date.now() - startedAtMs),
         summary: res.data && res.data.summary ? res.data.summary : res.data,
       };
       catalogSyncState.last_success_at = new Date().toISOString();
-      logger.info({ merchantId, limit, ttl_seconds: ttlSeconds }, 'Creator catalog auto sync succeeded');
-    } catch (err) {
+      logger.info(
+        {
+          merchantId,
+          limit,
+          ttl_seconds: ttlSeconds,
+          attempts: attempt,
+          duration_ms: Math.max(0, Date.now() - startedAtMs),
+          timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+        },
+        'Creator catalog auto sync succeeded',
+      );
+    } else if (err) {
       const status = err.response?.status;
       const data = err.response?.data;
       const message =
@@ -1676,11 +1758,23 @@ async function runCreatorCatalogAutoSync() {
       catalogSyncState.per_merchant[merchantId] = {
         ok: false,
         last_run_at: new Date().toISOString(),
+        attempts: attempt,
+        duration_ms: Math.max(0, Date.now() - startedAtMs),
         status: status || null,
         error: message,
       };
       catalogSyncState.last_error = message;
-      logger.warn({ merchantId, status, message }, 'Creator catalog auto sync failed');
+      logger.warn(
+        {
+          merchantId,
+          status,
+          message,
+          attempts: attempt,
+          timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+          max_attempts: maxAttempts,
+        },
+        'Creator catalog auto sync failed',
+      );
     }
   }
 }
@@ -5541,6 +5635,9 @@ const healthRouteHandler = (req, res) => {
       interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+      request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+      retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+      retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
       target_source: catalogSyncState.target_source,
       target_count: catalogSyncState.target_count,
       target_sample: catalogSyncState.target_sample,
@@ -7789,6 +7886,9 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
       interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+      request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+      retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+      retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
       target_source: catalogSyncState.target_source,
       target_count: catalogSyncState.target_count,
       target_sample: catalogSyncState.target_sample,
@@ -8025,6 +8125,9 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
         interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
         cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+        request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+        retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+        retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
         target_source: catalogSyncState.target_source,
         target_count: catalogSyncState.target_count,
         target_sample: catalogSyncState.target_sample,
@@ -12330,6 +12433,9 @@ module.exports._debug = {
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
   resolveCatalogSyncMerchantIds,
+  runCreatorCatalogAutoSync,
+  isCatalogSyncRetryableError,
+  catalogSyncState,
 };
 
 if (require.main === module) {

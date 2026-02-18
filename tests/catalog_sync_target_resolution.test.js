@@ -3,6 +3,10 @@ describe('catalog sync merchant target resolution', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.doMock('../src/auroraBff/routes', () => ({
+      mountAuroraBffRoutes: () => {},
+      __internal: {},
+    }));
     prevEnv = {
       CATALOG_SYNC_MERCHANT_IDS: process.env.CATALOG_SYNC_MERCHANT_IDS,
       CREATOR_CATALOG_MERCHANT_IDS: process.env.CREATOR_CATALOG_MERCHANT_IDS,
@@ -15,6 +19,7 @@ describe('catalog sync merchant target resolution', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../src/auroraBff/routes');
     jest.dontMock('../src/db');
     jest.resetModules();
     if (!prevEnv) return;
@@ -133,5 +138,29 @@ describe('catalog sync merchant target resolution', () => {
     expect(result.source).toBe('creator_configs_fallback');
     expect(Array.isArray(result.merchantIds)).toBe(true);
     expect(result.merchantIds).toContain('merch_efbc46b4619cfbdf');
+  });
+
+  test('keeps strict mode and ignores onboarding-only merchants', async () => {
+    const queryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM merchant_stores')) return { rows: [] };
+      if (text.includes('FROM merchant_onboarding')) {
+        return {
+          rows: [{ merchant_id: 'merch_not_shopify_ready' }],
+        };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('../src/db', () => ({ query: queryMock }));
+
+    delete process.env.CATALOG_SYNC_MERCHANT_IDS;
+    delete process.env.CATALOG_SYNC_DISCOVERY_RELAXED;
+    process.env.DATABASE_URL = 'postgres://test';
+
+    const app = require('../src/server');
+    const result = await app._debug.resolveCatalogSyncMerchantIds();
+
+    expect(result.source).toBe('creator_configs_fallback');
+    expect(result.merchantIds).not.toContain('merch_not_shopify_ready');
   });
 });
