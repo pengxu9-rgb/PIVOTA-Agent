@@ -2227,6 +2227,19 @@ function shouldAllowSecondaryFallback(operation) {
   return true;
 }
 
+function shouldBypassSecondaryFallbackSkipOnPrimaryException({ err }) {
+  const status = Number(err?.response?.status || err?.status || 0);
+  if (Number.isFinite(status) && status >= 500) return true;
+
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'EAI_AGAIN') {
+    return true;
+  }
+
+  const message = String(err?.message || '').trim();
+  return /timeout|timed out|socket hang up|aborted|network error/i.test(message);
+}
+
 function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
   if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
@@ -5485,8 +5498,11 @@ async function proxyAgentSearchToBackend(req, res) {
   } catch (err) {
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
     const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi');
+    const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
+    const allowSecondaryFallbackOnException =
+      allowSecondaryFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
     if (queryText) {
-      if (allowSecondaryFallback && !skipSecondaryFallback) {
+      if (allowSecondaryFallbackOnException) {
         try {
           const resolverFallback = await queryResolveSearchFallback({
             queryParams,
@@ -5509,7 +5525,7 @@ async function proxyAgentSearchToBackend(req, res) {
         }
       }
 
-      if (allowSecondaryFallback && !skipSecondaryFallback) {
+      if (allowSecondaryFallbackOnException) {
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams,
@@ -10221,6 +10237,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
         const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
         const allowSecondaryFallback = shouldAllowSecondaryFallback(operation);
+        const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
+        const allowSecondaryFallbackOnException =
+          allowSecondaryFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
         if (queryText) {
           const fallbackReason =
             upstreamStatus
@@ -10229,7 +10248,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 ? 'upstream_timeout'
                 : 'upstream_exception';
 
-          if (allowSecondaryFallback && !skipSecondaryFallback) {
+          if (allowSecondaryFallbackOnException) {
             try {
               const resolverFallback = await queryResolveSearchFallback({
                 queryParams: resolverQueryParams,
@@ -10262,7 +10281,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }
           }
 
-          if (!response && allowSecondaryFallback && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED && !skipSecondaryFallback) {
+          if (!response && allowSecondaryFallbackOnException && PROXY_SEARCH_INVOKE_FALLBACK_ENABLED) {
             try {
               const fallback = await queryFindProductsMultiFallback({
                 queryParams: resolverQueryParams,

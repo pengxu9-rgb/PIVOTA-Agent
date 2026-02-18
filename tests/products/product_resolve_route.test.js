@@ -367,6 +367,34 @@ describe('POST /agent/v1/products/resolve', () => {
         ]),
       }),
     );
+
+    const ipsaCnResp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'ipsa的产品有吗？',
+        lang: 'cn',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(ipsaCnResp.status).toBe(200);
+    expect(ipsaCnResp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        reason: 'stable_alias_ref',
+        product_ref: {
+          product_id: '9886500127048',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+      }),
+    );
+    expect(ipsaCnResp.body.metadata).toEqual(
+      expect.objectContaining({
+        stable_alias_match_id: 'ipsa_time_reset_aqua',
+      }),
+    );
   });
 
   test('resolves stable alias when hints.product_ref is opaque uuid and alias is known', async () => {

@@ -50,6 +50,8 @@ const LATIN_STOPWORDS = new Set([
   'selling',
   'stock',
 ]);
+const CJK_GENERIC_QUERY_TOKENS_RE =
+  /(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买|有吗|吗|呢|呀|吧|嘛|相关|推荐|有货|库存|的?(?:产品|商品))/g;
 const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
 const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
 const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
@@ -97,6 +99,9 @@ const KNOWN_STABLE_PRODUCT_REFS = [
       'IPSA Time Reset Aqua',
       'ipsa time reset aqua',
       'Time Reset Aqua',
+      'IPSA',
+      'ipsa',
+      '茵芙莎',
       'ipsa reset aqua',
       'e7c90e06-8673-4c97-835d-074a26ab2162',
       'e7c90e0686734c97835d074a26ab2162',
@@ -112,6 +117,12 @@ function stripCommonCjkQueryAffixes(compact) {
   const s = String(compact || '');
   if (!s) return '';
   return s.replace(CJK_QUERY_PREFIX_RE, '').replace(CJK_QUERY_SUFFIX_RE, '');
+}
+
+function stripGenericCjkQueryTokens(value) {
+  const s = String(value || '');
+  if (!s) return '';
+  return s.replace(CJK_GENERIC_QUERY_TOKENS_RE, '').trim();
 }
 
 function sleep(ms) {
@@ -182,6 +193,7 @@ function resolveKnownStableProductRef({ query, normalizedQuery, queryTokens }) {
   if (!normalized || !Array.isArray(queryTokens) || queryTokens.length === 0) return null;
 
   const compactQuery = compactNoSpaces(normalized);
+  const compactQueryStripped = stripGenericCjkQueryTokens(stripCommonCjkQueryAffixes(compactQuery));
   let best = null;
 
   for (const entry of KNOWN_STABLE_ALIAS_ENTRIES) {
@@ -198,6 +210,24 @@ function resolveKnownStableProductRef({ query, normalizedQuery, queryTokens }) {
       if (ratio >= 0.72) {
         score = 0.97;
         reason = 'alias_contains';
+      }
+    }
+
+    if (!score && compactQueryStripped) {
+      if (compactQueryStripped === entry.compact) {
+        score = 0.985;
+        reason = 'alias_compact_stripped_exact';
+      } else if (
+        compactQueryStripped.includes(entry.compact) ||
+        entry.compact.includes(compactQueryStripped)
+      ) {
+        const a = compactQueryStripped.length;
+        const b = entry.compact.length;
+        const ratio = Math.min(a, b) / Math.max(a, b);
+        if (ratio >= 0.66) {
+          score = 0.95;
+          reason = 'alias_compact_stripped_contains';
+        }
       }
     }
 
@@ -328,6 +358,8 @@ function normalizeTextForResolver(input) {
     .replace(/[＋+]/g, ' plus ')
     .replace(/[%％]/g, ' percent ')
     .replace(/&/g, ' and ')
+    .replace(/([a-z0-9])([\u4E00-\u9FFF])/g, '$1 $2')
+    .replace(/([\u4E00-\u9FFF])([a-z0-9])/g, '$1 $2')
     .replace(/['’`]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ')
@@ -345,8 +377,13 @@ function tokenizeNormalizedResolverQuery(normalized) {
   const out = [];
   const seen = new Set();
   for (const tok of parts) {
-    const t = String(tok || '').trim();
+    let t = String(tok || '').trim();
     if (!t) continue;
+
+    if (HAS_HAN_RE.test(t)) {
+      t = stripGenericCjkQueryTokens(t);
+      if (!t) continue;
+    }
 
     const isNumeric = /^[0-9]+$/.test(t);
     const isLatin = /^[a-z0-9]+$/.test(t);
