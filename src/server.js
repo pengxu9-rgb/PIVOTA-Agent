@@ -1371,7 +1371,7 @@ async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown', o
   const baseWhere = `
     merchant_id = ANY($1)
     AND (expires_at IS NULL OR expires_at > now())
-    AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+    AND ${buildSellableStatusPredicate("product_data->>'status'")}
     AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
   `;
 
@@ -3607,9 +3607,41 @@ async function getActivePromotions(now = new Date(), creatorId = null) {
     }));
 }
 
+const SELLABLE_PRODUCT_STATUS_VALUES = [
+  'active',
+  'published',
+  'online',
+  'live',
+  'enabled',
+  'available',
+];
+
+const NON_SELLABLE_PRODUCT_STATUS_VALUES = new Set([
+  'inactive',
+  'disabled',
+  'deleted',
+  'archived',
+  'archive',
+  'draft',
+  'hidden',
+  'unpublished',
+  'blocked',
+]);
+
+function buildSellableStatusPredicate(statusExpr) {
+  const expr = `lower(coalesce(${statusExpr}, ''))`;
+  const allowed = SELLABLE_PRODUCT_STATUS_VALUES.map((value) => `'${value}'`).join(', ');
+  return `(${expr} = '' OR ${expr} IN (${allowed}))`;
+}
+
 function isStatusActive(status) {
-  const normalized = String(status || 'active').toLowerCase();
-  return normalized === 'active';
+  const normalized = String(status || '').trim().toLowerCase();
+  if (!normalized) return true;
+  if (SELLABLE_PRODUCT_STATUS_VALUES.includes(normalized)) return true;
+  if (NON_SELLABLE_PRODUCT_STATUS_VALUES.has(normalized)) return false;
+  // Unknown status should fail-open to avoid dropping sellable catalogs due
+  // partner-specific status enums.
+  return true;
 }
 
 function isProductSellable(product, options = {}) {
@@ -3826,7 +3858,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, opt
   const baseWhere = `
     merchant_id = ANY($1)
     AND (expires_at IS NULL OR expires_at > now())
-    AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+    AND ${buildSellableStatusPredicate("product_data->>'status'")}
   `;
 
   const rowsRes = await query(
@@ -3840,10 +3872,34 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, opt
     [config.merchantIds, fetchLimit],
   );
 
-  const baseProducts = (rowsRes.rows || [])
+  let baseProducts = (rowsRes.rows || [])
     .map((r) => r.product_data)
     .filter(Boolean)
     .filter((p) => isProductSellable(p, { inStockOnly }));
+
+  if (baseProducts.length === 0) {
+    try {
+      const relaxedRowsRes = await query(
+        `
+          SELECT product_data
+          FROM products_cache
+          WHERE merchant_id = ANY($1)
+          ORDER BY cached_at DESC NULLS LAST, id DESC
+          LIMIT $2
+        `,
+        [config.merchantIds, fetchLimit],
+      );
+      baseProducts = (relaxedRowsRes.rows || [])
+        .map((r) => r.product_data)
+        .filter(Boolean)
+        .filter((p) => isProductSellable(p, { inStockOnly }));
+    } catch (err) {
+      logger.warn(
+        { err: err.message, creatorId },
+        'Creator featured strict cache query empty and relaxed fallback failed',
+      );
+    }
+  }
 
   // Ensure explicit creator picks are always present in the featured pool,
   // even when they are older than the default cached_at window.
@@ -3977,7 +4033,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const baseWhere = `
     merchant_id = ANY($1)
     AND (expires_at IS NULL OR expires_at > now())
-    AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+    AND ${buildSellableStatusPredicate("product_data->>'status'")}
   `;
 
   const terms = tokenizeQueryForCache(q);
@@ -4159,6 +4215,62 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   const retrievalSources = [
     { source: 'lexical_cache', used: true, count: lexicalProducts.length, candidate_count: rawProducts.length },
   ];
+
+  if (lexicalProducts.length === 0) {
+    try {
+      const relaxedWhere = [
+        'merchant_id = ANY($1)',
+        queryWhere,
+        ...(underwearClause ? [underwearClause] : []),
+        ...(petClause ? [petClause] : []),
+      ].join(' AND ');
+      const relaxedRowsSql = `
+        SELECT product_data
+        FROM products_cache
+        WHERE ${relaxedWhere}
+        ORDER BY cached_at DESC NULLS LAST, id DESC
+        OFFSET $${afterPetIdx}
+        LIMIT $${afterPetIdx + 1}
+      `;
+      const relaxedRowsRes = await query(relaxedRowsSql, rowsParams);
+      const relaxedProductsRaw = (relaxedRowsRes.rows || [])
+        .map((r) => r.product_data)
+        .filter(Boolean)
+        .filter((p) => isProductSellable(p, { inStockOnly }));
+      const seen = new Set();
+      const relaxedProducts = [];
+      for (const product of relaxedProductsRaw) {
+        const key = productKey(product);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        relaxedProducts.push(product);
+        if (relaxedProducts.length >= safeLimit) break;
+      }
+      retrievalSources.push({
+        source: 'lexical_cache_relaxed',
+        used: true,
+        count: relaxedProducts.length,
+        candidate_count: relaxedProductsRaw.length,
+      });
+      if (relaxedProducts.length > 0) {
+        await applyShopifyCurrencyOverride(relaxedProducts);
+        return {
+          products: relaxedProducts,
+          total: Math.max(total, relaxedProducts.length),
+          page: safePage,
+          page_size: safeLimit,
+          merchantIds: config.merchantIds,
+          retrieval_sources: retrievalSources,
+        };
+      }
+    } catch (err) {
+      retrievalSources.push({
+        source: 'lexical_cache_relaxed',
+        used: false,
+        error: String(err && err.message ? err.message : err),
+      });
+    }
+  }
 
   // If lexical returned nothing for pet intent (common for non-English queries
   // against an English catalog), do a pet-constrained browse fallback so we can
@@ -4353,6 +4465,152 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   };
 }
 
+async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, options = {}) {
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
+  const offset = (safePage - 1) * safeLimit;
+  const q = String(queryText || '').trim().toLowerCase();
+  const inStockOnly = options?.inStockOnly !== false;
+
+  const terms = tokenizeQueryForCache(q);
+  if (terms.length === 0) {
+    return await loadCrossMerchantBrowseFromCache(safePage, safeLimit, { inStockOnly });
+  }
+
+  const skuLike = looksSkuLikeQuery(q);
+  const whereParts = [];
+  const params = [];
+  let idx = 1;
+
+  const matchFields = [
+    "lower(coalesce(pc.product_data->>'title',''))",
+    "lower(coalesce(pc.product_data->>'description',''))",
+    "lower(coalesce(pc.product_data->>'product_type',''))",
+    "lower(coalesce(pc.product_data->>'sku',''))",
+    "lower(coalesce(pc.product_data->>'vendor',''))",
+  ];
+
+  for (const t of terms) {
+    params.push(`%${t}%`);
+    const ors = matchFields.map((field) => `${field} LIKE $${idx}`).join(' OR ');
+    const termParts = [`(${ors})`];
+    if (skuLike) {
+      termParts.push(`lower(CAST(pc.product_data AS TEXT)) LIKE $${idx}`);
+    }
+    whereParts.push(`(${termParts.join(' OR ')})`);
+    idx += 1;
+  }
+
+  const queryWhere = whereParts.length ? `(${whereParts.join(' OR ')})` : 'TRUE';
+  const baseWhere = `
+    (pc.expires_at IS NULL OR pc.expires_at > now())
+    AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
+    AND mo.status NOT IN ('deleted', 'rejected')
+    AND mo.psp_connected = true
+  `;
+
+  const pageFetch = Math.min(Math.max(safeLimit * 4, 80), 400);
+  const pageOffset = Math.max(0, offset);
+
+  const countSql = `
+    SELECT COUNT(*)::int AS total
+    FROM products_cache pc
+    JOIN merchant_onboarding mo
+      ON mo.merchant_id = pc.merchant_id
+    WHERE ${baseWhere}
+      AND ${queryWhere}
+  `;
+
+  const rowsSql = `
+    SELECT pc.merchant_id,
+           mo.business_name AS merchant_name,
+           pc.product_data
+    FROM products_cache pc
+    JOIN merchant_onboarding mo
+      ON mo.merchant_id = pc.merchant_id
+    WHERE ${baseWhere}
+      AND ${queryWhere}
+    ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+    OFFSET $${idx}
+    LIMIT $${idx + 1}
+  `;
+
+  const [countRes, rowsRes] = await Promise.all([
+    query(countSql, params),
+    query(rowsSql, [...params, pageOffset, pageFetch]),
+  ]);
+
+  const total = Number(countRes.rows?.[0]?.total || 0);
+  const rawProducts = (rowsRes.rows || [])
+    .map((row) => {
+      const product = row.product_data;
+      if (!product) return null;
+
+      const merchantId = String(row.merchant_id || '').trim();
+      const merchantName = row.merchant_name ? String(row.merchant_name).trim() : '';
+      const out = { ...product };
+      if (merchantId && !out.merchant_id && !out.merchantId) out.merchant_id = merchantId;
+      if (merchantName && !out.merchant_name && !out.merchantName) out.merchant_name = merchantName;
+      return out;
+    })
+    .filter(Boolean)
+    .filter((product) => isProductSellable(product, { inStockOnly }));
+
+  const scored = rawProducts
+    .map((product) => {
+      const title = String(product.title || '').toLowerCase();
+      const desc = String(product.description || '').toLowerCase();
+      const ptype = String(product.product_type || product.productType || '').toLowerCase();
+      const sku = String(product.sku || '').toLowerCase();
+      const tags = Array.isArray(product.tags) ? product.tags.join(' ').toLowerCase() : String(product.tags || '').toLowerCase();
+      const blob = `${title} ${ptype} ${sku} ${tags} ${desc}`;
+
+      let score = 0;
+      for (const t of terms) {
+        if (title.includes(t)) score += 3;
+        else if (ptype.includes(t)) score += 2;
+        else if (blob.includes(t)) score += 1;
+      }
+      score += scoreByTagFacetOverlap(terms, product).score;
+      if (skuLike) {
+        const q0 = q.replace(/[^a-z0-9-]+/g, '');
+        if (q0 && sku === q0) score += 6;
+        else if (q0 && blob.includes(q0)) score += 3;
+      }
+      return { product, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const seen = new Set();
+  const unique = [];
+  for (const row of scored) {
+    const product = row.product;
+    const mid = String(product.merchant_id || product.merchantId || '').trim();
+    const pid = String(product.id || product.product_id || product.productId || '').trim();
+    const key = `${mid}::${pid || JSON.stringify(product).slice(0, 64)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(product);
+    if (unique.length >= safeLimit) break;
+  }
+
+  await applyShopifyCurrencyOverride(unique);
+  return {
+    products: unique,
+    total,
+    page: safePage,
+    page_size: unique.length,
+    retrieval_sources: [
+      {
+        source: 'lexical_cache',
+        used: true,
+        count: unique.length,
+        candidate_count: rawProducts.length,
+      },
+    ],
+  };
+}
+
 async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = {}) {
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.min(Math.max(1, Number(limit || 20)), 100);
@@ -4370,7 +4628,7 @@ async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = 
         SELECT id, expires_at, merchant_id, product_data
         FROM products_cache
         WHERE expires_at > now()
-          AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+          AND ${buildSellableStatusPredicate("product_data->>'status'")}
         ORDER BY expires_at DESC, id DESC
         LIMIT $1
       ) pc
@@ -4444,7 +4702,7 @@ async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, opt
         ON mo.merchant_id = pc.merchant_id
       WHERE pc.merchant_id = $1
         AND (pc.expires_at IS NULL OR pc.expires_at > now())
-        AND COALESCE(lower(pc.product_data->>'status'), 'active') = 'active'
+        AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
         AND mo.status NOT IN ('deleted', 'rejected')
         AND mo.psp_connected = true
       ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
@@ -9365,6 +9623,77 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           );
         }
 	      }
+
+      // Shopping Agent query search (no explicit merchant scope): prefer cache-first
+      // lexical recall so we avoid upstream timeout cascades for common brand queries.
+      const isCrossMerchantQuerySearch =
+        !isCreatorUi && queryText.length > 0 && !hasMerchantScope;
+      if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
+        try {
+          const page = search.page || 1;
+          const limit = search.limit || search.page_size || 20;
+          const fromCache = await searchCrossMerchantFromCache(queryText, page, limit, { inStockOnly });
+          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
+          const merchantsReturned = uniqueStrings(
+            (fromCache.products || []).map((p) => p?.merchant_id || p?.merchantId),
+          );
+
+          const upstreamData = {
+            products: fromCache.products,
+            total: fromCache.total,
+            page: fromCache.page,
+            page_size: fromCache.page_size,
+            reply: null,
+            metadata: {
+              query_source: 'cache_cross_merchant_search',
+              fetched_at: new Date().toISOString(),
+              merchants_searched: merchantsReturned.length,
+              ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
+              ...(ROUTE_DEBUG_ENABLED
+                ? {
+                    route_debug: {
+                      cross_merchant_cache: {
+                        attempted: true,
+                        mode: 'search',
+                        query: queryText,
+                        page,
+                        limit,
+                        in_stock_only: inStockOnly,
+                        cache_hit: cacheHit,
+                        retrieval_sources: fromCache.retrieval_sources || null,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          };
+
+          const withPolicy = effectiveIntent
+            ? applyFindProductsMultiPolicy({
+                response: upstreamData,
+                intent: effectiveIntent,
+                requestPayload: effectivePayload,
+                metadata,
+                rawUserQuery,
+              })
+            : upstreamData;
+
+          const promotions = await getActivePromotions(now, creatorId);
+          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          if (cacheHit) {
+            return res.json(enriched);
+          }
+          logger.info(
+            { source, page, limit, inStockOnly, query: queryText },
+            'Cross-merchant cache search returned empty; falling back to upstream',
+          );
+        } catch (err) {
+          logger.warn(
+            { err: err.message, source, query: queryText },
+            'Cross-merchant cache search failed; falling back to upstream',
+          );
+        }
+      }
 	    }
 
 	    if (operation === 'find_products' && process.env.DATABASE_URL) {
@@ -10960,6 +11289,7 @@ module.exports = app;
 module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
+  searchCrossMerchantFromCache,
 };
 
 if (require.main === module) {
