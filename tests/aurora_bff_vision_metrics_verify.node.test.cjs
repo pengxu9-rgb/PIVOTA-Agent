@@ -23,6 +23,11 @@ const {
   recordRecoCandidate,
   recordRecoExplanationAlignment,
   recordRecoGuardrailCircuitOpen,
+  recordRecoEmployeeFeedback,
+  recordRecoInterleaveClick,
+  recordRecoInterleaveWin,
+  recordRecoExplorationSlot,
+  recordRecoAsyncUpdate,
   setRecoGuardrailRates,
 } = require('../src/auroraBff/visionMetrics');
 
@@ -219,4 +224,62 @@ test('vision metrics: reco guardrail counters and gauges are exported with block
   assert.match(metrics, /reco_competitors_same_brand_rate 0\.5\b/);
   assert.match(metrics, /reco_competitors_on_page_source_rate 0\.25\b/);
   assert.match(metrics, /reco_explanation_alignment_at3 0\.8\b/);
+});
+
+test('vision metrics: dogfood reco feedback/interleave/exploration/async counters are exported', () => {
+  resetVisionMetrics();
+  recordRecoEmployeeFeedback({
+    block: 'competitors',
+    feedbackType: 'relevant',
+    mode: 'main_path',
+  });
+  recordRecoInterleaveClick({
+    block: 'dupes',
+    attribution: 'A',
+    mode: 'main_path',
+  });
+  recordRecoInterleaveWin({
+    block: 'dupes',
+    ranker: 'ranker_v1',
+    categoryBucket: 'serum',
+    priceBand: 'mid',
+    mode: 'main_path',
+  });
+  recordRecoExplorationSlot({
+    block: 'related_products',
+    mode: 'main_path',
+    delta: 2,
+  });
+  recordRecoAsyncUpdate({
+    block: 'competitors',
+    result: 'applied',
+    mode: 'main_path',
+    changedCount: 3,
+  });
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(
+    metrics,
+    /reco_employee_feedback_total\{block="competitors",feedback_type="relevant",mode="main_path"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /reco_interleave_click_total\{block="dupes",attribution="a",mode="main_path"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /reco_interleave_win_total\{block="dupes",ranker="ranker_v1",category_bucket="serum",price_band="mid",mode="main_path"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /reco_exploration_slot_total\{block="related_products",mode="main_path"\} 2/,
+  );
+  assert.match(
+    metrics,
+    /reco_async_update_total\{block="competitors",result="applied",mode="main_path"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /reco_async_update_items_changed_count\{block="competitors",mode="main_path"\} 3/,
+  );
 });

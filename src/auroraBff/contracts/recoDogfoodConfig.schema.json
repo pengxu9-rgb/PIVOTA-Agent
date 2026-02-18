@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aurora.pivota/contracts/recoDogfoodConfig.schema.json",
+  "type": "object",
+  "required": ["dogfood_mode", "exploration", "ui", "retrieval", "interleave", "async"],
+  "properties": {
+    "dogfood_mode": { "type": "boolean" },
+    "exploration": {
+      "type": "object",
+      "required": ["enabled", "rate_per_block", "max_explore_items"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "rate_per_block": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_explore_items": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "required": ["show_employee_feedback_controls", "allow_block_internal_rerank_on_async", "lock_top_n_on_first_paint"],
+      "properties": {
+        "show_employee_feedback_controls": { "type": "boolean" },
+        "allow_block_internal_rerank_on_async": { "type": "boolean" },
+        "lock_top_n_on_first_paint": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "retrieval": {
+      "type": "object",
+      "required": ["pool_size"],
+      "properties": {
+        "pool_size": {
+          "type": "object",
+          "required": ["competitors", "dupes", "related_products"],
+          "properties": {
+            "competitors": { "type": "integer", "minimum": 1 },
+            "dupes": { "type": "integer", "minimum": 1 },
+            "related_products": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "interleave": {
+      "type": "object",
+      "required": ["enabled", "rankerA", "rankerB"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "rankerA": { "type": "string", "minLength": 1 },
+        "rankerB": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "async": {
+      "type": "object",
+      "required": ["poll_ttl_ms"],
+      "properties": {
+        "poll_ttl_ms": { "type": "integer", "minimum": 1000 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

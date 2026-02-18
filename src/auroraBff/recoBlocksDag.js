@@ -1,5 +1,8 @@
 const { routeCandidates } = require('./competitorBlockRouter');
 const { attachExplanations } = require('./recoScoreExplain');
+const { extractWhitelistedSocialChannels } = require('./socialSummaryUserVisible');
+const { teamDraftInterleave } = require('./recoInterleave');
+const { selectExplorationCandidates } = require('./recoExploration');
 
 const DEFAULT_BUDGET_MS = 1200;
 const SOURCE_NAMES = [
@@ -21,6 +24,15 @@ const DEFAULT_TIMEOUTS_MS = {
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pickFirstString(...values) {
+  for (const value of values) {
+    const text = String(value == null ? '' : value).trim();
+    if (!text) continue;
+    return text;
+  }
+  return '';
 }
 
 function toSafeInt(value, fallback, min, max) {
@@ -203,6 +215,9 @@ function stripInternalCandidateFields(rows, maxCandidates) {
   return dedupeCandidates(rows, maxCandidates).map((row) => {
     const next = { ...row };
     delete next.__dag_source;
+    delete next.social_raw;
+    delete next.socialRaw;
+    delete next.__social_channels_used;
     return next;
   });
 }
@@ -218,6 +233,24 @@ function addFallbackToken(fallbacks, token) {
   if (!token) return;
   if (fallbacks.includes(token)) return;
   fallbacks.push(token);
+}
+
+function collectSocialChannelsFromPools(pools, max = 5) {
+  const out = [];
+  const seen = new Set();
+  for (const pool of Array.isArray(pools) ? pools : []) {
+    for (const row of Array.isArray(pool) ? pool : []) {
+      const channels = extractWhitelistedSocialChannels(row?.social_raw ?? row?.socialRaw ?? null);
+      for (const channel of channels) {
+        const key = String(channel || '').trim().toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(key);
+        if (out.length >= max) return out;
+      }
+    }
+  }
+  return out;
 }
 
 function buildConfidenceEntry(score, reasons) {
@@ -259,6 +292,105 @@ function buildConfidencePatch({ compCount, relCount, dupeCount, timedOutBlocks, 
       dupeCount ? ['dupe_candidates_available'] : ['dupe_candidates_sparse'],
     ),
   };
+}
+
+function normalizeDogfoodConfig(raw) {
+  const src = isPlainObject(raw) ? raw : {};
+  const explorationSrc = isPlainObject(src.exploration) ? src.exploration : {};
+  const interleaveSrc = isPlainObject(src.interleave) ? src.interleave : {};
+  const uiSrc = isPlainObject(src.ui) ? src.ui : {};
+  const retrievalSrc = isPlainObject(src.retrieval) ? src.retrieval : {};
+  const poolSrc = isPlainObject(retrievalSrc.pool_size) ? retrievalSrc.pool_size : {};
+  return {
+    dogfood_mode: src.dogfood_mode === true,
+    exploration: {
+      enabled: explorationSrc.enabled === true,
+      rate_per_block: clamp01(explorationSrc.rate_per_block == null ? 0 : explorationSrc.rate_per_block),
+      max_explore_items: toSafeInt(explorationSrc.max_explore_items, 0, 0, 5),
+    },
+    interleave: {
+      enabled: interleaveSrc.enabled === true,
+      rankerA: String(interleaveSrc.rankerA || 'ranker_v1').trim() || 'ranker_v1',
+      rankerB: String(interleaveSrc.rankerB || 'ranker_v2').trim() || 'ranker_v2',
+    },
+    ui: {
+      lock_top_n_on_first_paint: toSafeInt(uiSrc.lock_top_n_on_first_paint, 3, 0, 12),
+      show_employee_feedback_controls: uiSrc.show_employee_feedback_controls === true,
+      allow_block_internal_rerank_on_async: uiSrc.allow_block_internal_rerank_on_async === true,
+    },
+    retrieval: {
+      pool_size: {
+        competitors: toSafeInt(poolSrc.competitors, 120, 1, 5000),
+        dupes: toSafeInt(poolSrc.dupes, 80, 1, 3000),
+        related_products: toSafeInt(poolSrc.related_products, 80, 1, 3000),
+      },
+    },
+  };
+}
+
+function scoreTotalOf(row) {
+  return normalizeScore(
+    row?.score_breakdown?.score_total ?? row?.similarity_score ?? row?.similarityScore,
+    0,
+  );
+}
+
+function sortByRankerA(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .slice()
+    .sort((a, b) => {
+      const sa = scoreTotalOf(a);
+      const sb = scoreTotalOf(b);
+      if (sb !== sa) return sb - sa;
+      return String(a?.name || '').localeCompare(String(b?.name || ''));
+    });
+}
+
+function sortByRankerB(rows, block) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  return list.sort((a, b) => {
+    const socialA = normalizeScore(a?.score_breakdown?.social_reference_strength, 0);
+    const socialB = normalizeScore(b?.score_breakdown?.social_reference_strength, 0);
+    const priceA = normalizeScore(a?.score_breakdown?.price_distance, 0);
+    const priceB = normalizeScore(b?.score_breakdown?.price_distance, 0);
+    const ingredientA = normalizeScore(a?.score_breakdown?.ingredient_functional_similarity, 0);
+    const ingredientB = normalizeScore(b?.score_breakdown?.ingredient_functional_similarity, 0);
+    const categoryA = normalizeScore(a?.score_breakdown?.category_use_case_match, 0);
+    const categoryB = normalizeScore(b?.score_breakdown?.category_use_case_match, 0);
+
+    const rankBScoreA =
+      (block === 'related_products' ? socialA * 0.45 + categoryA * 0.35 + priceA * 0.2 : 0) +
+      (block === 'dupes' ? priceA * 0.55 + ingredientA * 0.25 + socialA * 0.2 : 0) +
+      (block === 'competitors' ? socialA * 0.5 + ingredientA * 0.35 + categoryA * 0.15 : 0);
+    const rankBScoreB =
+      (block === 'related_products' ? socialB * 0.45 + categoryB * 0.35 + priceB * 0.2 : 0) +
+      (block === 'dupes' ? priceB * 0.55 + ingredientB * 0.25 + socialB * 0.2 : 0) +
+      (block === 'competitors' ? socialB * 0.5 + ingredientB * 0.35 + categoryB * 0.15 : 0);
+
+    if (rankBScoreB !== rankBScoreA) return rankBScoreB - rankBScoreA;
+    return String(a?.name || '').localeCompare(String(b?.name || ''));
+  });
+}
+
+function buildTrackingMapByBlock(rowsByBlock, interleaveAttributionByBlock, explorationKeysByBlock) {
+  const out = {};
+  for (const [block, rows] of Object.entries(rowsByBlock || {})) {
+    const attr = isPlainObject(interleaveAttributionByBlock?.[block]) ? interleaveAttributionByBlock[block] : {};
+    const exploreSet = new Set(Array.isArray(explorationKeysByBlock?.[block]) ? explorationKeysByBlock[block] : []);
+    const blockMap = {};
+    for (let i = 0; i < (Array.isArray(rows) ? rows : []).length; i += 1) {
+      const row = rows[i];
+      const key = buildCandidateKey(row, i);
+      if (!key) continue;
+      blockMap[key] = {
+        attribution: ['A', 'B', 'both', 'explore'].includes(String(attr[key] || '')) ? attr[key] : 'both',
+        was_exploration_slot: exploreSet.has(key),
+        rank_position: i + 1,
+      };
+    }
+    out[block] = blockMap;
+  }
+  return out;
 }
 
 function applyLightweightRerank(candidates, { ingredientIndexPresent = false, skinFitPresent = false } = {}) {
@@ -388,12 +520,56 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     allow_same_brand_dupes: false,
     ...(isPlainObject(ctx.router_ctx) ? ctx.router_ctx : {}),
   };
-  const maxCandidates = toSafeInt(
+  const outputMaxCandidates = toSafeInt(
     ctx.max_candidates,
     Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAX_CANDIDATES || 4),
     1,
     10,
   );
+  const dogfoodConfig = normalizeDogfoodConfig(ctx.dogfood_config);
+  const poolSize = {
+    competitors: toSafeInt(
+      ctx.pool_size?.competitors,
+      dogfoodConfig.retrieval.pool_size.competitors,
+      1,
+      5000,
+    ),
+    dupes: toSafeInt(
+      ctx.pool_size?.dupes,
+      dogfoodConfig.retrieval.pool_size.dupes,
+      1,
+      3000,
+    ),
+    related_products: toSafeInt(
+      ctx.pool_size?.related_products,
+      dogfoodConfig.retrieval.pool_size.related_products,
+      1,
+      3000,
+    ),
+  };
+  const finalCapByBlock = {
+    competitors: Math.max(
+      1,
+      Math.min(
+        12,
+        outputMaxCandidates + (dogfoodConfig.dogfood_mode && dogfoodConfig.exploration.enabled ? dogfoodConfig.exploration.max_explore_items : 0),
+      ),
+    ),
+    dupes: Math.max(
+      1,
+      Math.min(
+        12,
+        outputMaxCandidates + (dogfoodConfig.dogfood_mode && dogfoodConfig.exploration.enabled ? dogfoodConfig.exploration.max_explore_items : 0),
+      ),
+    ),
+    related_products: Math.max(
+      1,
+      Math.min(
+        12,
+        outputMaxCandidates + (dogfoodConfig.dogfood_mode && dogfoodConfig.exploration.enabled ? dogfoodConfig.exploration.max_explore_items : 0),
+      ),
+    ),
+  };
   const totalBudgetMs = toSafeInt(budgetMs, DEFAULT_BUDGET_MS, 120, 12000);
   const deadlineMs = Date.now() + totalBudgetMs;
   const diagnostics = {
@@ -403,6 +579,9 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     blocks: {},
     timed_out_blocks: [],
     fallbacks_used: [],
+    interleave_enabled: false,
+    exploration_enabled: false,
+    exploration_inserted_count_by_block: {},
   };
 
   for (const source of SOURCE_NAMES) diagnostics.blocks[source] = createEmptyStat();
@@ -580,7 +759,7 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
       const onPageRouted = routeCandidates(buildAnchorForRouter(anchor), onPageCandidates, routerCtx);
       relPool = dedupeCandidates(
         [...relPool, ...(Array.isArray(onPageRouted?.rel_pool) ? onPageRouted.rel_pool : [])],
-        maxCandidates,
+        poolSize.related_products,
       );
     }
   }
@@ -592,13 +771,17 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
       const dupeRouted = routeCandidates(buildAnchorForRouter(anchor), kbDupes, routerCtx);
       const nextDupes = Array.isArray(dupeRouted?.dupe_pool) ? dupeRouted.dupe_pool : [];
       if (nextDupes.length) {
-        dupePool = dedupeCandidates(nextDupes, maxCandidates);
+        dupePool = dedupeCandidates(nextDupes, poolSize.dupes);
       }
     }
   }
 
   compPool = compPool.filter((row) => extractSourceType(row) !== 'on_page_related');
   dupePool = dupePool.filter((row) => extractSourceType(row) !== 'on_page_related');
+  compPool = dedupeCandidates(compPool, poolSize.competitors);
+  relPool = dedupeCandidates(relPool, poolSize.related_products);
+  dupePool = dedupeCandidates(dupePool, poolSize.dupes);
+  const socialChannelsUsed = collectSocialChannelsFromPools([compPool, relPool, dupePool], 5);
 
   const explainAnchor = buildAnchorForExplain(
     anchor,
@@ -613,11 +796,92 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
   relPool = attachExplanations('related_products', explainAnchor, relPool, explainOpts);
   dupePool = attachExplanations('dupes', explainAnchor, dupePool, explainOpts);
 
-  const blocksWithInternal = {
-    competitors: { candidates: dedupeCandidates(compPool, maxCandidates) },
-    related_products: { candidates: dedupeCandidates(relPool, maxCandidates) },
-    dupes: { candidates: dedupeCandidates(dupePool, maxCandidates) },
+  let rowsByBlock = {
+    competitors: sortByRankerA(compPool),
+    related_products: sortByRankerA(relPool),
+    dupes: sortByRankerA(dupePool),
   };
+  let interleaveAttributionByBlock = {
+    competitors: {},
+    related_products: {},
+    dupes: {},
+  };
+  let explorationKeysByBlock = {
+    competitors: [],
+    related_products: [],
+    dupes: [],
+  };
+
+  const interleaveEnabled = Boolean(dogfoodConfig.dogfood_mode && dogfoodConfig.interleave.enabled);
+  if (interleaveEnabled) {
+    diagnostics.interleave_enabled = true;
+    const seedBase = `${mode}:${pickFirstString(anchor?.brand_id, anchor?.brandId, anchor?.brand, 'unknown')}`;
+    for (const blockName of ['competitors', 'related_products', 'dupes']) {
+      const rankedA = sortByRankerA(rowsByBlock[blockName]);
+      const rankedB = sortByRankerB(rowsByBlock[blockName], blockName);
+      const interleave = teamDraftInterleave({
+        rankedA,
+        rankedB,
+        limit: poolSize[blockName] || rankedA.length,
+        seed: `${seedBase}:${blockName}`,
+      });
+      rowsByBlock[blockName] = Array.isArray(interleave.interleaved) ? interleave.interleaved : rankedA;
+      interleaveAttributionByBlock[blockName] = isPlainObject(interleave.attribution) ? interleave.attribution : {};
+    }
+  } else {
+    for (const blockName of ['competitors', 'related_products', 'dupes']) {
+      const defaultAttr = {};
+      for (let i = 0; i < rowsByBlock[blockName].length; i += 1) {
+        const key = buildCandidateKey(rowsByBlock[blockName][i], i);
+        defaultAttr[key] = 'both';
+      }
+      interleaveAttributionByBlock[blockName] = defaultAttr;
+    }
+  }
+
+  const explorationEnabled = Boolean(dogfoodConfig.dogfood_mode && dogfoodConfig.exploration.enabled);
+  if (explorationEnabled) {
+    diagnostics.exploration_enabled = true;
+    for (const blockName of ['competitors', 'related_products', 'dupes']) {
+      const selection = selectExplorationCandidates({
+        block: blockName,
+        ranked: rowsByBlock[blockName],
+        gatedPool: rowsByBlock[blockName],
+        ratePerBlock: dogfoodConfig.exploration.rate_per_block,
+        maxExploreItems: dogfoodConfig.exploration.max_explore_items,
+      });
+      rowsByBlock[blockName] = Array.isArray(selection.list) ? selection.list : rowsByBlock[blockName];
+      explorationKeysByBlock[blockName] = Array.from(selection.explorationKeys || []);
+      diagnostics.exploration_inserted_count_by_block[blockName] = Number(selection.insertedCount || 0);
+      for (const key of explorationKeysByBlock[blockName]) {
+        if (!interleaveAttributionByBlock[blockName][key]) interleaveAttributionByBlock[blockName][key] = 'explore';
+      }
+    }
+  } else {
+    diagnostics.exploration_inserted_count_by_block = {
+      competitors: 0,
+      related_products: 0,
+      dupes: 0,
+    };
+  }
+
+  rowsByBlock.competitors = rowsByBlock.competitors.filter((row) => extractSourceType(row) !== 'on_page_related');
+  rowsByBlock.dupes = rowsByBlock.dupes.filter((row) => extractSourceType(row) !== 'on_page_related');
+
+  const blocksWithInternal = {
+    competitors: { candidates: dedupeCandidates(rowsByBlock.competitors, finalCapByBlock.competitors) },
+    related_products: { candidates: dedupeCandidates(rowsByBlock.related_products, finalCapByBlock.related_products) },
+    dupes: { candidates: dedupeCandidates(rowsByBlock.dupes, finalCapByBlock.dupes) },
+  };
+  const trackingByBlock = buildTrackingMapByBlock(
+    {
+      competitors: blocksWithInternal.competitors.candidates,
+      related_products: blocksWithInternal.related_products.candidates,
+      dupes: blocksWithInternal.dupes.candidates,
+    },
+    interleaveAttributionByBlock,
+    explorationKeysByBlock,
+  );
 
   for (const sourceName of SOURCE_NAMES) {
     diagnostics.blocks[sourceName].returned = countReturnedBySource(blocksWithInternal, sourceName);
@@ -651,6 +915,20 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     ),
     mode,
     on_page_mode: onPageMode,
+    dogfood_mode: dogfoodConfig.dogfood_mode,
+    dogfood_features_effective: {
+      interleave: diagnostics.interleave_enabled,
+      exploration: diagnostics.exploration_enabled,
+      async_rerank: Boolean(dogfoodConfig.ui.allow_block_internal_rerank_on_async && dogfoodConfig.dogfood_mode),
+      show_employee_feedback_controls: Boolean(dogfoodConfig.ui.show_employee_feedback_controls && dogfoodConfig.dogfood_mode),
+    },
+    interleave: {
+      enabled: diagnostics.interleave_enabled,
+      rankerA: dogfoodConfig.interleave.rankerA,
+      rankerB: dogfoodConfig.interleave.rankerB,
+    },
+    exploration_inserted_count_by_block: diagnostics.exploration_inserted_count_by_block,
+    ...(socialChannelsUsed.length ? { social_channels_used: socialChannelsUsed } : {}),
   };
 
   logger?.info?.(
@@ -665,12 +943,17 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
   );
 
   return {
-    competitors: { candidates: stripInternalCandidateFields(blocksWithInternal.competitors.candidates, maxCandidates) },
-    related_products: { candidates: stripInternalCandidateFields(blocksWithInternal.related_products.candidates, maxCandidates) },
-    dupes: { candidates: stripInternalCandidateFields(blocksWithInternal.dupes.candidates, maxCandidates) },
+    competitors: { candidates: stripInternalCandidateFields(blocksWithInternal.competitors.candidates, finalCapByBlock.competitors) },
+    related_products: { candidates: stripInternalCandidateFields(blocksWithInternal.related_products.candidates, finalCapByBlock.related_products) },
+    dupes: { candidates: stripInternalCandidateFields(blocksWithInternal.dupes.candidates, finalCapByBlock.dupes) },
     diagnostics,
     provenance_patch: provenancePatch,
     confidence_patch: confidencePatch,
+    tracking: {
+      by_block: trackingByBlock,
+      exploration_keys_by_block: explorationKeysByBlock,
+      interleave_attribution_by_block: interleaveAttributionByBlock,
+    },
     internal_reason_codes: Array.isArray(routed?.internal_reason_codes) ? routed.internal_reason_codes : [],
     catalog_queries: Array.from(
       new Set([

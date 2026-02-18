@@ -79,6 +79,11 @@ const {
   recordRecoCandidate,
   recordRecoExplanationAlignment,
   recordRecoGuardrailCircuitOpen,
+  recordRecoEmployeeFeedback,
+  recordRecoInterleaveClick,
+  recordRecoInterleaveWin,
+  recordRecoExplorationSlot,
+  recordRecoAsyncUpdate,
   setRecoGuardrailRates,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
@@ -114,6 +119,9 @@ const {
   AuthVerifyRequestSchema,
   AuthPasswordSetRequestSchema,
   AuthPasswordLoginRequestSchema,
+  RecoEmployeeFeedbackRequestSchema,
+  RecoInterleaveClickRequestSchema,
+  RecoAsyncUpdatesRequestSchema,
 } = require('./schemas');
 const {
   getProfileForIdentity,
@@ -168,6 +176,15 @@ const {
 const { validateRecoBlocksResponse } = require('./contracts/recoBlocksValidator');
 const { routeCandidates } = require('./competitorBlockRouter');
 const { recoBlocks, social_enrich_async, skin_fit_heavy_async } = require('./recoBlocksDag');
+const { buildRecoDogfoodConfig } = require('./recoDogfoodConfig');
+const {
+  createAsyncTicket,
+  applyAsyncBlockPatch,
+  getAsyncUpdates,
+  registerRecoTrackingSnapshot,
+  getRecoTrackingMetadata,
+} = require('./recoAsyncUpdateStore');
+const { recordRecoEmployeeFeedback: writeRecoEmployeeFeedbackEvent } = require('./recoEmployeeFeedbackStore');
 const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = require('./recoScoreExplain');
 const { extractWhitelistedSocialChannels } = require('./socialSummaryUserVisible');
 const { simulateConflicts } = require('./routineRules');
@@ -476,6 +493,7 @@ const AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const RECO_DOGFOOD_CONFIG = buildRecoDogfoodConfig(process.env);
 const PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL || 'true')
     .trim()
@@ -4217,6 +4235,262 @@ function buildRecoBlocksRouterCtx() {
   };
 }
 
+function getRecoDogfoodSessionId(req, ctx, explicitSessionId = '') {
+  const fromBody = pickFirstTrimmed(explicitSessionId);
+  if (fromBody) return fromBody;
+  const fromHeader = pickFirstTrimmed(
+    req?.get?.('X-Session-ID'),
+    req?.get?.('x-session-id'),
+    req?.headers?.['x-session-id'],
+  );
+  if (fromHeader) return fromHeader;
+  return pickFirstTrimmed(ctx?.aurora_uid, ctx?.trace_id, ctx?.request_id, 'anonymous');
+}
+
+function normalizeDogfoodFeaturesEffective(raw = null, { autoRollback = false } = {}) {
+  const src = isPlainObject(raw) ? raw : {};
+  const baseline = {
+    interleave: Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.interleave.enabled),
+    exploration: Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.exploration.enabled),
+    async_rerank: Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.ui.allow_block_internal_rerank_on_async),
+    show_employee_feedback_controls: Boolean(
+      RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.ui.show_employee_feedback_controls,
+    ),
+  };
+  const merged = {
+    interleave: src.interleave == null ? baseline.interleave : Boolean(src.interleave),
+    exploration: src.exploration == null ? baseline.exploration : Boolean(src.exploration),
+    async_rerank: src.async_rerank == null ? baseline.async_rerank : Boolean(src.async_rerank),
+    show_employee_feedback_controls:
+      src.show_employee_feedback_controls == null
+        ? baseline.show_employee_feedback_controls
+        : Boolean(src.show_employee_feedback_controls),
+  };
+  if (!autoRollback) return merged;
+  return {
+    ...merged,
+    interleave: false,
+    exploration: false,
+    async_rerank: false,
+    show_employee_feedback_controls: false,
+  };
+}
+
+function getRecoBlockCandidates(payload, block) {
+  const obj = isPlainObject(payload?.[block]) ? payload[block] : {};
+  return Array.isArray(obj.candidates) ? obj.candidates : [];
+}
+
+function scheduleDogfoodAsyncBlockPatches({
+  ticketId,
+  payload,
+  mode = 'main_path',
+  logger,
+  allowAsyncRerank = false,
+} = {}) {
+  if (!RECO_DOGFOOD_CONFIG.dogfood_mode) return;
+  if (!allowAsyncRerank) return;
+  const ticket = String(ticketId || '').trim();
+  if (!ticket) return;
+  const sourcePayload = isPlainObject(payload) ? payload : {};
+  setTimeout(() => {
+    for (const block of ['competitors', 'related_products', 'dupes']) {
+      const rows = getRecoBlockCandidates(sourcePayload, block);
+      if (!rows.length) {
+        recordRecoAsyncUpdate({ block, result: 'skipped', mode, changedCount: 0 });
+        continue;
+      }
+      const nextRows = rows.map((row, idx) => {
+        if (!isPlainObject(row)) return row;
+        if (idx > 0) return row;
+        const refs = Array.isArray(row.evidence_refs) ? row.evidence_refs : [];
+        const hasAsyncRef = refs.some((item) => String(item?.id || '').trim().toLowerCase() === 'async_enrich_stub');
+        if (hasAsyncRef) return row;
+        return {
+          ...row,
+          evidence_refs: [
+            ...refs,
+            { id: 'async_enrich_stub', source_type: 'social' },
+          ].slice(0, 6),
+        };
+      });
+      const patch = applyAsyncBlockPatch({
+        ticketId: ticket,
+        block,
+        nextCandidates: nextRows,
+      });
+      recordRecoAsyncUpdate({
+        block,
+        result: patch.applied ? 'applied' : patch.reason === 'no_change' ? 'noop' : 'skipped',
+        mode,
+        changedCount: patch.changedCount || 0,
+      });
+      logger?.info?.(
+        {
+          event_name: 'reco_async_update',
+          ticket_id: ticket,
+          block,
+          mode,
+          result: patch.applied ? 'applied' : patch.reason || 'skipped',
+          changed_count: Number(patch.changedCount || 0),
+        },
+        'aurora bff: reco async update',
+      );
+    }
+  }, 280);
+}
+
+function augmentProductAnalysisPayloadForDogfood({
+  payload,
+  req,
+  ctx,
+  mode = 'main_path',
+  cardId = '',
+  sessionId = '',
+  logger,
+} = {}) {
+  const p = isPlainObject(payload) ? payload : null;
+  if (!p) return payload;
+
+  const provenance = isPlainObject(p.provenance) ? { ...p.provenance } : {};
+  const autoRollback = provenance.auto_rollback_flag === true || provenance.guardrail_circuit_open === true;
+  const featuresEffective = normalizeDogfoodFeaturesEffective(provenance.dogfood_features_effective, {
+    autoRollback,
+  });
+  provenance.dogfood_mode = Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode);
+  provenance.dogfood_features_effective = featuresEffective;
+  provenance.interleave = isPlainObject(provenance.interleave)
+    ? provenance.interleave
+    : {
+      enabled: featuresEffective.interleave,
+      rankerA: RECO_DOGFOOD_CONFIG.interleave.rankerA,
+      rankerB: RECO_DOGFOOD_CONFIG.interleave.rankerB,
+    };
+  provenance.lock_top_n_on_first_paint = RECO_DOGFOOD_CONFIG.ui.lock_top_n_on_first_paint;
+
+  const anchorProductId = pickFirstTrimmed(
+    p?.assessment?.anchor_product?.product_id,
+    p?.assessment?.anchor_product?.sku_id,
+    p?.assessment?.anchor_product?.name,
+  );
+  const blocks = {
+    competitors: getRecoBlockCandidates(p, 'competitors'),
+    related_products: getRecoBlockCandidates(p, 'related_products'),
+    dupes: getRecoBlockCandidates(p, 'dupes'),
+  };
+
+  const trackingPayload = isPlainObject(p.candidate_tracking)
+    ? p.candidate_tracking
+    : isPlainObject(p.tracking)
+      ? p.tracking
+      : null;
+  const trackingByBlock = isPlainObject(trackingPayload?.by_block) ? trackingPayload.by_block : null;
+  const interleaveAttributionByBlock = isPlainObject(trackingPayload?.interleave_attribution_by_block)
+    ? trackingPayload.interleave_attribution_by_block
+    : null;
+  const explorationKeysByBlock = isPlainObject(trackingPayload?.exploration_keys_by_block)
+    ? trackingPayload.exploration_keys_by_block
+    : null;
+
+  if (RECO_DOGFOOD_CONFIG.dogfood_mode) {
+    registerRecoTrackingSnapshot({
+      requestId: ctx?.request_id,
+      sessionId: getRecoDogfoodSessionId(req, ctx, sessionId),
+      anchorProductId,
+      blocks,
+      trackingByBlock,
+      interleaveAttribution: interleaveAttributionByBlock,
+      explorationKeys: explorationKeysByBlock,
+      ttlMs: RECO_DOGFOOD_CONFIG.async.poll_ttl_ms,
+    });
+
+    const ticket = createAsyncTicket({
+      requestId: ctx?.request_id,
+      cardId,
+      lockTopN: RECO_DOGFOOD_CONFIG.ui.lock_top_n_on_first_paint,
+      initialPayload: {
+        competitors: p.competitors,
+        related_products: p.related_products,
+        dupes: p.dupes,
+        provenance,
+      },
+      ttlMs: RECO_DOGFOOD_CONFIG.async.poll_ttl_ms,
+    });
+    provenance.async_ticket_id = ticket.ticketId;
+    scheduleDogfoodAsyncBlockPatches({
+      ticketId: ticket.ticketId,
+      payload: p,
+      mode,
+      logger,
+      allowAsyncRerank: featuresEffective.async_rerank === true,
+    });
+  }
+
+  for (const block of ['competitors', 'related_products', 'dupes']) {
+    const map = isPlainObject(trackingByBlock?.[block]) ? trackingByBlock[block] : null;
+    if (!map) continue;
+    const explorationCount = Object.values(map).reduce(
+      (sum, entry) => sum + (isPlainObject(entry) && entry.was_exploration_slot === true ? 1 : 0),
+      0,
+    );
+    if (explorationCount > 0) {
+      recordRecoExplorationSlot({
+        block,
+        mode,
+        delta: explorationCount,
+      });
+    }
+  }
+
+  const nextPayload = {
+    ...p,
+    provenance,
+  };
+  delete nextPayload.candidate_tracking;
+  delete nextPayload.candidate_tracking_internal;
+  delete nextPayload.internal_attribution;
+  delete nextPayload.tracking;
+  if (isPlainObject(nextPayload.provenance)) {
+    nextPayload.provenance = { ...nextPayload.provenance };
+    delete nextPayload.provenance.candidate_tracking;
+    delete nextPayload.provenance.candidate_tracking_internal;
+    delete nextPayload.provenance.internal_attribution;
+    delete nextPayload.provenance.internal_reason_codes;
+  }
+  return nextPayload;
+}
+
+function augmentEnvelopeProductAnalysisCardsForDogfood({
+  envelope,
+  req,
+  ctx,
+  mode = 'main_path',
+  sessionId = '',
+  logger,
+} = {}) {
+  const env = isPlainObject(envelope) ? { ...envelope } : envelope;
+  if (!isPlainObject(env)) return envelope;
+  const cards = Array.isArray(env.cards) ? env.cards : [];
+  env.cards = cards.map((card) => {
+    if (!isPlainObject(card)) return card;
+    const type = String(card.type || '').trim().toLowerCase();
+    if (type !== 'product_analysis') return card;
+    return {
+      ...card,
+      payload: augmentProductAnalysisPayloadForDogfood({
+        payload: card.payload,
+        req,
+        ctx,
+        mode,
+        cardId: card.card_id,
+        sessionId,
+        logger,
+      }),
+    };
+  });
+  return env;
+}
+
 async function fetchProductPageHtmlForReco({
   productUrl,
   timeoutMs = AURORA_BFF_RECO_BLOCKS_TIMEOUT_ON_PAGE_RELATED_MS,
@@ -4364,6 +4638,8 @@ async function runRecoBlocksForUrl({
       max_candidates: maxCandidates,
       timeouts_ms: buildRecoBlocksTimeouts(),
       router_ctx: buildRecoBlocksRouterCtx(),
+      dogfood_config: RECO_DOGFOOD_CONFIG,
+      pool_size: RECO_DOGFOOD_CONFIG.retrieval.pool_size,
       sources: sourceFns,
     },
     budgetMs,
@@ -5195,6 +5471,7 @@ async function buildProductAnalysisFromUrlIngredients({
   let dagReasonCodes = [];
   let dagConfidencePatch = null;
   let dagProvenancePatch = null;
+  let dagTracking = null;
 
   const dagOut = await runRecoBlocksForUrl({
     productUrl: parsedUrl.toString(),
@@ -5235,6 +5512,10 @@ async function buildProductAnalysisFromUrlIngredients({
     dagProvenancePatch =
       dagOut.provenance_patch && typeof dagOut.provenance_patch === 'object' && !Array.isArray(dagOut.provenance_patch)
         ? dagOut.provenance_patch
+        : null;
+    dagTracking =
+      dagOut.tracking && typeof dagOut.tracking === 'object' && !Array.isArray(dagOut.tracking)
+        ? dagOut.tracking
         : null;
     competitorSource = 'reco_blocks_dag';
     dagReasonCodes = summarizeRouterReasonCodes(routedPools.routed);
@@ -5416,6 +5697,7 @@ async function buildProductAnalysisFromUrlIngredients({
     ...(competitorCandidates.length ? { competitors: { candidates: competitorCandidates } } : {}),
     ...(relatedCandidates.length ? { related_products: { candidates: relatedCandidates } } : {}),
     ...(dupeCandidates.length ? { dupes: { candidates: dupeCandidates } } : {}),
+    ...(dagTracking ? { candidate_tracking: dagTracking } : {}),
   };
 
   const norm = normalizeProductAnalysis(raw);
@@ -13326,6 +13608,191 @@ function mountAuroraBffRoutes(app, { logger }) {
     });
   });
 
+  app.post('/v1/reco/employee-feedback', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    if (!RECO_DOGFOOD_CONFIG.dogfood_mode) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    try {
+      const parsed = RecoEmployeeFeedbackRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'BAD_REQUEST',
+          details: parsed.error.format(),
+        });
+      }
+      const sessionId = getRecoDogfoodSessionId(req, ctx, parsed.data.session_id);
+      const requestId = pickFirstTrimmed(parsed.data.request_id, ctx.request_id);
+      const metadata = getRecoTrackingMetadata({
+        requestId,
+        sessionId,
+        block: parsed.data.block,
+        candidateProductId: parsed.data.candidate_product_id,
+        candidateName: parsed.data.candidate_name,
+      });
+      const event = writeRecoEmployeeFeedbackEvent(
+        {
+          anchor_product_id: parsed.data.anchor_product_id,
+          block: parsed.data.block,
+          candidate_product_id: parsed.data.candidate_product_id || '',
+          candidate_name: parsed.data.candidate_name || '',
+          feedback_type: parsed.data.feedback_type,
+          wrong_block_target: parsed.data.wrong_block_target || null,
+          reason_tags: Array.isArray(parsed.data.reason_tags) ? parsed.data.reason_tags : [],
+          was_exploration_slot:
+            parsed.data.was_exploration_slot == null
+              ? Boolean(metadata?.was_exploration_slot)
+              : Boolean(parsed.data.was_exploration_slot),
+          rank_position:
+            parsed.data.rank_position == null
+              ? Number(metadata?.rank_position || 1)
+              : Number(parsed.data.rank_position),
+          pipeline_version: parsed.data.pipeline_version || RECO_DOGFOOD_CONFIG.interleave.rankerA,
+          models: parsed.data.models || 'unknown',
+          request_id: requestId,
+          session_id: sessionId,
+          timestamp: parsed.data.timestamp || Date.now(),
+        },
+        { logger },
+      );
+      recordRecoEmployeeFeedback({
+        block: event.block,
+        feedbackType: event.feedback_type,
+        mode: 'main_path',
+      });
+      return res.status(200).json({
+        ok: true,
+        event,
+      });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err) }, 'aurora bff: reco employee feedback failed');
+      return res.status(500).json({ ok: false, error: 'RECO_EMPLOYEE_FEEDBACK_FAILED' });
+    }
+  });
+
+  app.post('/v1/reco/interleave/click', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    if (!RECO_DOGFOOD_CONFIG.dogfood_mode) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    try {
+      const parsed = RecoInterleaveClickRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'BAD_REQUEST',
+          details: parsed.error.format(),
+        });
+      }
+      const sessionId = getRecoDogfoodSessionId(req, ctx, parsed.data.session_id);
+      const requestId = pickFirstTrimmed(parsed.data.request_id, ctx.request_id);
+      const metadata = getRecoTrackingMetadata({
+        requestId,
+        sessionId,
+        block: parsed.data.block,
+        candidateProductId: parsed.data.candidate_product_id,
+        candidateName: parsed.data.candidate_name,
+      });
+      const attribution = String(metadata?.attribution || 'both');
+      recordRecoInterleaveClick({
+        block: parsed.data.block,
+        attribution,
+        mode: 'main_path',
+      });
+      if (attribution === 'A' || attribution === 'B') {
+        recordRecoInterleaveWin({
+          block: parsed.data.block,
+          ranker: attribution === 'A' ? RECO_DOGFOOD_CONFIG.interleave.rankerA : RECO_DOGFOOD_CONFIG.interleave.rankerB,
+          categoryBucket: parsed.data.category_bucket || 'unknown',
+          priceBand: parsed.data.price_band || 'unknown',
+          mode: 'main_path',
+        });
+      } else {
+        recordRecoInterleaveWin({
+          block: parsed.data.block,
+          ranker: 'tie',
+          categoryBucket: parsed.data.category_bucket || 'unknown',
+          priceBand: parsed.data.price_band || 'unknown',
+          mode: 'main_path',
+        });
+      }
+      logger?.info?.(
+        {
+          event_name: 'reco_interleave_click',
+          request_id: requestId,
+          session_id: sessionId,
+          block: parsed.data.block,
+          attribution,
+          candidate_product_id: parsed.data.candidate_product_id || '',
+          was_exploration_slot: Boolean(metadata?.was_exploration_slot),
+          rank_position: Number(metadata?.rank_position || 0),
+        },
+        'aurora bff: reco interleave click',
+      );
+      return res.status(200).json({
+        ok: true,
+        attribution,
+        was_exploration_slot: Boolean(metadata?.was_exploration_slot),
+        rank_position: Number(metadata?.rank_position || 0),
+      });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err) }, 'aurora bff: reco interleave click failed');
+      return res.status(500).json({ ok: false, error: 'RECO_INTERLEAVE_CLICK_FAILED' });
+    }
+  });
+
+  app.get('/v1/reco/async-updates', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    if (!RECO_DOGFOOD_CONFIG.dogfood_mode) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    try {
+      const parsed = RecoAsyncUpdatesRequestSchema.safeParse({
+        ticket_id: req.query.ticket_id,
+        since_version: req.query.since_version,
+      });
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'BAD_REQUEST',
+          details: parsed.error.format(),
+        });
+      }
+      const sinceVersionRaw = parsed.data.since_version;
+      const sinceVersion = Number.isFinite(Number(sinceVersionRaw))
+        ? Math.max(0, Math.trunc(Number(sinceVersionRaw)))
+        : 0;
+      const out = getAsyncUpdates({
+        ticketId: parsed.data.ticket_id,
+        sinceVersion,
+      });
+      if (!out.ok) {
+        return res.status(404).json({
+          ok: false,
+          error: out.reason || 'TICKET_NOT_FOUND',
+          version: Number(out.version || 0),
+        });
+      }
+      const mode = 'main_path';
+      for (const block of ['competitors', 'related_products', 'dupes']) {
+        const patchRows = Array.isArray(out?.payload_patch?.[block]?.candidates)
+          ? out.payload_patch[block].candidates
+          : [];
+        recordRecoAsyncUpdate({
+          block,
+          result: out.has_update ? 'applied' : 'noop',
+          mode,
+          changedCount: out.has_update ? patchRows.length : 0,
+        });
+      }
+      return res.status(200).json(out);
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), request_id: ctx.request_id }, 'aurora bff: reco async updates failed');
+      return res.status(500).json({ ok: false, error: 'RECO_ASYNC_UPDATES_FAILED' });
+    }
+  });
+
   app.post('/v1/auth/start', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     try {
@@ -13915,6 +14382,27 @@ function mountAuroraBffRoutes(app, { logger }) {
 
   app.post('/v1/product/analyze', async (req, res) => {
     const ctx = buildRequestContext(req, {});
+    const productAnalyzeSessionId = getRecoDogfoodSessionId(
+      req,
+      ctx,
+      pickFirstTrimmed(
+        req?.body?.session?.session_id,
+        req?.body?.session?.sessionId,
+        req?.body?.session?.id,
+      ),
+    );
+    const sendProductAnalyzeEnvelope = (envelope, statusCode = 200, mode = 'main_path') => {
+      const augmented = augmentEnvelopeProductAnalysisCardsForDogfood({
+        envelope,
+        req,
+        ctx,
+        mode,
+        sessionId: productAnalyzeSessionId,
+        logger,
+      });
+      if (statusCode >= 400) return res.status(statusCode).json(augmented);
+      return res.json(augmented);
+    };
     try {
       requireAuroraUid(ctx);
       const parsed = ProductAnalyzeRequestSchema.safeParse(req.body || {});
@@ -13926,7 +14414,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
         });
-        return res.status(400).json(envelope);
+        return sendProductAnalyzeEnvelope(envelope, 400, 'main_path');
       }
 
       const incomingSession =
@@ -14103,7 +14591,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             mode: syncCoverageRepairApplied ? 'sync_repair' : 'main_path',
             product_url: realtimeUrlInput,
           });
-          return res.json(envelope);
+          return sendProductAnalyzeEnvelope(
+            envelope,
+            200,
+            syncCoverageRepairApplied ? 'sync_repair' : 'main_path',
+          );
         }
 
         const realtimeNorm = await buildProductAnalysisFromUrlIngredients({
@@ -14186,7 +14678,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             mode: 'main_path',
             product_url: realtimeUrlInput,
           });
-          return res.json(envelope);
+          return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
         }
       }
 
@@ -14337,7 +14829,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: {},
           events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze', mode: 'catalog_missing_fast_return' })],
         });
-        return res.json(envelope);
+        return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
       }
 
       const query = `${prefix}Task: Deep-scan this product for suitability vs the user's profile.\n` +
@@ -14587,7 +15079,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           product_url: String(parsed.data.url || '').trim(),
         });
       }
-      return res.json(envelope);
+      return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
     } catch (err) {
       const status = err.status || 500;
       const envelope = buildEnvelope(ctx, {
@@ -18213,8 +18705,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       ...ctx,
       accept_language: String(req.get('Accept-Language') || req.get('accept-language') || '').trim(),
     };
+    let chatSessionId = getRecoDogfoodSessionId(req, ctx, '');
     const sendChatEnvelope = (envelope, statusCode = 200) => {
-      const normalized = applyReplyTemplates({ envelope, ctx: templateCtx });
+      const dogfoodAugmented = augmentEnvelopeProductAnalysisCardsForDogfood({
+        envelope,
+        req,
+        ctx,
+        mode: 'main_path',
+        sessionId: chatSessionId,
+        logger,
+      });
+      const normalized = applyReplyTemplates({ envelope: dogfoodAugmented, ctx: templateCtx });
       emitAudit(normalized, templateCtx, { logger });
       if (statusCode >= 400) return res.status(statusCode).json(normalized);
       return res.json(normalized);
@@ -18232,6 +18733,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return sendChatEnvelope(envelope, 400);
       }
+
+      chatSessionId = getRecoDogfoodSessionId(
+        req,
+        ctx,
+        pickFirstTrimmed(
+          parsed.data?.session?.session_id,
+          parsed.data?.session?.sessionId,
+          parsed.data?.session?.id,
+        ),
+      );
 
       const identity = await resolveIdentity(req, ctx);
 
@@ -20524,6 +21035,14 @@ const __internal = {
   scoreRealtimeCompetitorCandidate,
   routeCandidates,
   recoBlocks,
+  augmentProductAnalysisPayloadForDogfood,
+  augmentEnvelopeProductAnalysisCardsForDogfood,
+  getRecoDogfoodSessionId,
+  getRecoTrackingMetadata,
+  registerRecoTrackingSnapshot,
+  createAsyncTicket,
+  applyAsyncBlockPatch,
+  getAsyncUpdates,
   runRecoBlocksForUrl,
   applyRecoGuardrailToProductAnalysisPayload,
   getRecoGuardrailCircuitSnapshot,

@@ -201,4 +201,48 @@ describe('recoScoreExplain', () => {
     const refs = out[0].evidence_refs.map((r) => String(r.source_type || '').toLowerCase());
     expect(refs).toEqual(expect.arrayContaining(['taxonomy', 'ingredient', 'price', 'social']));
   });
+
+  test('attaches social_summary_user_visible for whitelisted social signals', () => {
+    const out = attachExplanations('competitors', makeAnchor(), [makeCandidate({
+      social_raw: {
+        channels: ['reddit', 'xhs', 'retailer_product_page'],
+        co_mention_strength: 0.71,
+        sentiment_proxy: 0.76,
+        topic_keywords: ['barrier repair', 'hydration', 'oily skin'],
+      },
+      score_breakdown: {
+        category_use_case_match: 0.8,
+        ingredient_functional_similarity: 0.8,
+        skin_fit_similarity: 0.8,
+        social_reference_strength: 0.8,
+        price_distance: 0.7,
+        quality: 0.8,
+      },
+    })], { lang: 'EN' });
+
+    expect(out[0].social_summary_user_visible).toBeTruthy();
+    expect(Array.isArray(out[0].social_summary_user_visible.themes)).toBe(true);
+    expect(out[0].social_summary_user_visible.themes.length).toBeLessThanOrEqual(3);
+    expect(out[0].social_summary_user_visible.top_keywords.length).toBeLessThanOrEqual(6);
+    expect(out[0].social_raw).toBeUndefined();
+  });
+
+  test('does not attach social_summary_user_visible when social signal is low', () => {
+    const out = attachExplanations('competitors', makeAnchor(), [makeCandidate({
+      social_raw: {
+        channels: ['reddit'],
+        co_mention_strength: 0.1,
+        topic_keywords: ['ok'],
+      },
+      score_breakdown: {
+        category_use_case_match: 0.7,
+        ingredient_functional_similarity: 0.7,
+        skin_fit_similarity: 0.7,
+        social_reference_strength: 0.2,
+        price_distance: 0.7,
+        quality: 0.7,
+      },
+    })], { lang: 'EN' });
+    expect(out[0].social_summary_user_visible).toBeUndefined();
+  });
 });

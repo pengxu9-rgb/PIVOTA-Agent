@@ -15,6 +15,7 @@ function buildValidPayload() {
               'Key ingredient functions are highly similar.',
               'Price band is close to the anchor product.',
             ],
+            boundary_user_visible: 'Competitors are cross-brand by default.',
           },
           score_breakdown: {
             category_use_case_match: 0.9,
@@ -29,6 +30,12 @@ function buildValidPayload() {
           source: { type: 'catalog_search', name: 'pivota_catalog' },
           evidence_refs: [{ id: 'ev_1', source_type: 'catalog' }],
           price_band: 'mid',
+          social_summary_user_visible: {
+            themes: ['Barrier repair', 'Hydration'],
+            top_keywords: ['barrier', 'hydration', 'soothing'],
+            sentiment_hint: 'Overall social discussion is mostly positive.',
+            volume_bucket: 'mid',
+          },
         },
       ],
     },
@@ -100,6 +107,21 @@ function buildValidPayload() {
       pipeline: 'aurora_product_intel_main_path',
       source: 'aurora_bff_routes',
       validation_mode: 'soft_fail',
+      social_channels_used: ['reddit', 'xiaohongshu'],
+      dogfood_mode: true,
+      dogfood_features_effective: {
+        interleave: true,
+        exploration: true,
+        async_rerank: true,
+        show_employee_feedback_controls: true,
+      },
+      interleave: {
+        enabled: true,
+        rankerA: 'ranker_v1',
+        rankerB: 'ranker_v2',
+      },
+      async_ticket_id: 'ticket_1',
+      lock_top_n_on_first_paint: 3,
     },
     missing_info_internal: [],
     missing_info: [],
@@ -134,5 +156,29 @@ describe('Aurora reco blocks response contract (v2)', () => {
     payload.competitors.candidates[0].why_candidate = ['same category'];
     const validation = validateRecoBlocksResponse(payload);
     expect(validation.ok).toBe(true);
+  });
+
+  test('fails when social summary exceeds length limits', () => {
+    const payload = buildValidPayload();
+    payload.competitors.candidates[0].social_summary_user_visible = {
+      themes: ['a', 'b', 'c', 'd'],
+      top_keywords: ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'],
+      volume_bucket: 'mid',
+    };
+    const validation = validateRecoBlocksResponse(payload);
+    expect(validation.ok).toBe(false);
+    expect(validation.errors.join(' ')).toMatch(/themes|top_keywords/i);
+  });
+
+  test('fails when social summary contains internal count-like fields', () => {
+    const payload = buildValidPayload();
+    payload.competitors.candidates[0].social_summary_user_visible = {
+      themes: ['Hydration'],
+      volume_bucket: 'low',
+      mention_count: 123,
+    };
+    const validation = validateRecoBlocksResponse(payload);
+    expect(validation.ok).toBe(false);
+    expect(validation.errors.join(' ')).toMatch(/social_summary_user_visible/i);
   });
 });

@@ -330,6 +330,80 @@ const AuthPasswordLoginRequestSchema = z
   })
   .strict();
 
+const RecoEmployeeFeedbackRequestSchema = z
+  .object({
+    anchor_product_id: z.string().min(1),
+    block: z.enum(['competitors', 'dupes', 'related_products']),
+    candidate_product_id: z.string().min(1).optional(),
+    candidate_name: z.string().min(1).optional(),
+    feedback_type: z.enum(['relevant', 'not_relevant', 'wrong_block']),
+    wrong_block_target: z.enum(['competitors', 'dupes', 'related_products']).optional(),
+    reason_tags: z.array(z.string().min(1)).max(12).optional(),
+    was_exploration_slot: z.boolean().optional(),
+    rank_position: z.number().int().min(1).max(100).optional(),
+    pipeline_version: z.string().min(1).optional(),
+    models: z.union([z.string().min(1), z.record(z.string(), z.any())]).optional(),
+    request_id: z.string().min(1).optional(),
+    session_id: z.string().min(1).optional(),
+    timestamp: z.number().int().positive().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.candidate_product_id && !value.candidate_name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'candidate_product_id or candidate_name is required',
+        path: ['candidate_product_id'],
+      });
+    }
+    if (value.feedback_type !== 'wrong_block' && value.wrong_block_target) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'wrong_block_target only allowed when feedback_type is wrong_block',
+        path: ['wrong_block_target'],
+      });
+    }
+    if (value.feedback_type === 'wrong_block' && !value.wrong_block_target) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'wrong_block_target required when feedback_type is wrong_block',
+        path: ['wrong_block_target'],
+      });
+    }
+  });
+
+const RecoInterleaveClickRequestSchema = z
+  .object({
+    anchor_product_id: z.string().min(1),
+    block: z.enum(['competitors', 'dupes', 'related_products']),
+    candidate_product_id: z.string().min(1).optional(),
+    candidate_name: z.string().min(1).optional(),
+    request_id: z.string().min(1),
+    session_id: z.string().min(1),
+    pipeline_version: z.string().min(1).optional(),
+    models: z.union([z.string().min(1), z.record(z.string(), z.any())]).optional(),
+    category_bucket: z.string().min(1).optional(),
+    price_band: z.string().min(1).optional(),
+    timestamp: z.number().int().positive().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.candidate_product_id && !value.candidate_name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'candidate_product_id or candidate_name is required',
+        path: ['candidate_product_id'],
+      });
+    }
+  });
+
+const RecoAsyncUpdatesRequestSchema = z
+  .object({
+    ticket_id: z.string().min(1),
+    since_version: z.union([z.string().min(1), z.number().int().min(0)]).optional(),
+  })
+  .strict();
+
 module.exports = {
   LanguageSchema,
   TriggerSourceSchema,
@@ -361,4 +435,7 @@ module.exports = {
   AuthVerifyRequestSchema,
   AuthPasswordSetRequestSchema,
   AuthPasswordLoginRequestSchema,
+  RecoEmployeeFeedbackRequestSchema,
+  RecoInterleaveClickRequestSchema,
+  RecoAsyncUpdatesRequestSchema,
 };

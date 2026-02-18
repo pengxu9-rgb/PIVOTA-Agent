@@ -46,9 +46,17 @@ export type EvidenceRef = {
   [key: string]: unknown;
 };
 
+export type SocialSummaryUserVisible = {
+  themes: string[];
+  top_keywords?: string[];
+  sentiment_hint?: string;
+  volume_bucket: 'low' | 'mid' | 'high' | 'unknown';
+};
+
 export type WhyCandidateObject = {
   summary: string;
   reasons_user_visible: string[];
+  boundary_user_visible?: string;
 };
 
 export type RecoCandidate = {
@@ -63,6 +71,7 @@ export type RecoCandidate = {
   source: CandidateSource;
   evidence_refs: EvidenceRef[];
   price_band: PriceBand;
+  social_summary_user_visible?: SocialSummaryUserVisible;
   compare_highlights?: string[];
   [key: string]: unknown;
 };
@@ -79,6 +88,22 @@ export type RecoBlocksProvenance = {
   pipeline: string;
   source: string;
   validation_mode: string;
+  social_channels_used?: string[];
+  dogfood_mode?: boolean;
+  dogfood_features_effective?: {
+    interleave?: boolean;
+    exploration?: boolean;
+    async_rerank?: boolean;
+    show_employee_feedback_controls?: boolean;
+  };
+  interleave?: {
+    enabled?: boolean;
+    rankerA?: string;
+    rankerB?: string;
+    [key: string]: unknown;
+  };
+  async_ticket_id?: string;
+  lock_top_n_on_first_paint?: number;
   [key: string]: unknown;
 };
 

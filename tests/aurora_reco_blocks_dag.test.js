@@ -196,4 +196,43 @@ describe('aurora reco blocks dag', () => {
     expect(out?.diagnostics?.blocks?.catalog_ann).toBeTruthy();
     expect(typeof out.diagnostics.blocks.catalog_ann.duration_ms).toBe('number');
   });
+
+  test('dogfood exploration/interleave still preserve hard redlines in competitors', async () => {
+    const out = await recoBlocks(
+      makeAnchor({ brand_id: 'anchor_brand' }),
+      {
+        mode: 'main_path',
+        dogfood_config: {
+          dogfood_mode: true,
+          exploration: { enabled: true, rate_per_block: 0.5, max_explore_items: 2 },
+          interleave: { enabled: true, rankerA: 'ranker_v1', rankerB: 'ranker_v2' },
+          ui: { lock_top_n_on_first_paint: 3, show_employee_feedback_controls: true, allow_block_internal_rerank_on_async: true },
+          retrieval: { pool_size: { competitors: 50, dupes: 20, related_products: 20 } },
+        },
+        sources: {
+          catalog_ann: async () => ({
+            candidates: [
+              makeCandidate({ product_id: 'cross_brand_ok', brand_id: 'other_1', source: { type: 'catalog_search' } }),
+              makeCandidate({ product_id: 'same_brand_bad', brand_id: 'anchor_brand', source: { type: 'catalog_search' } }),
+              makeCandidate({ product_id: 'on_page_bad', brand_id: 'other_2', source: { type: 'on_page_related' } }),
+            ],
+          }),
+          ingredient_index: async () => ({ candidates: [] }),
+          skin_fit_light: async () => ({ candidates: [] }),
+          kb_backfill: async () => ({ candidates: [], competitors: [], dupes: [] }),
+          dupe_pipeline: async () => ({ candidates: [] }),
+          on_page_related: async () => ({ candidates: [] }),
+        },
+      },
+      260,
+    );
+
+    const competitors = Array.isArray(out?.competitors?.candidates) ? out.competitors.candidates : [];
+    expect(competitors.some((x) => String(x?.brand_id || '').toLowerCase() === 'anchor_brand')).toBe(false);
+    expect(competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related')).toBe(false);
+    expect(out?.diagnostics?.interleave_enabled).toBe(true);
+    expect(out?.diagnostics?.exploration_enabled).toBe(true);
+    expect(out?.provenance_patch?.dogfood_mode).toBe(true);
+    expect(out?.tracking?.by_block?.competitors).toBeTruthy();
+  });
 });

@@ -177,9 +177,50 @@
         },
         "reasons_user_visible": {
           "$ref": "#/$defs/stringArray"
+        },
+        "boundary_user_visible": {
+          "type": "string"
         }
       },
       "additionalProperties": true
+    },
+    "socialSummaryUserVisible": {
+      "type": "object",
+      "required": [
+        "themes",
+        "volume_bucket"
+      ],
+      "properties": {
+        "themes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 3
+        },
+        "top_keywords": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 6
+        },
+        "sentiment_hint": {
+          "type": "string"
+        },
+        "volume_bucket": {
+          "type": "string",
+          "enum": [
+            "low",
+            "mid",
+            "high",
+            "unknown"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "candidateSource": {
       "type": "object",
@@ -282,6 +323,9 @@
             "luxury",
             "unknown"
           ]
+        },
+        "social_summary_user_visible": {
+          "$ref": "#/$defs/socialSummaryUserVisible"
         }
       },
       "additionalProperties": true
@@ -334,6 +378,56 @@
         },
         "validation_mode": {
           "type": "string"
+        },
+        "social_channels_used": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5
+        },
+        "dogfood_mode": {
+          "type": "boolean"
+        },
+        "dogfood_features_effective": {
+          "type": "object",
+          "properties": {
+            "interleave": {
+              "type": "boolean"
+            },
+            "exploration": {
+              "type": "boolean"
+            },
+            "async_rerank": {
+              "type": "boolean"
+            },
+            "show_employee_feedback_controls": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "interleave": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "rankerA": {
+              "type": "string"
+            },
+            "rankerB": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "async_ticket_id": {
+          "type": "string"
+        },
+        "lock_top_n_on_first_paint": {
+          "type": "number",
+          "minimum": 0
         }
       },
       "additionalProperties": true

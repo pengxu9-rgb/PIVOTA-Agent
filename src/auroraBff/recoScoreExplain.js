@@ -1,3 +1,5 @@
+const { buildSocialSummaryUserVisible } = require('./socialSummaryUserVisible');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -272,6 +274,7 @@ function normalizeWhyCandidateObject(raw, { lang = 'EN' } = {}) {
 
   if (isPlainObject(raw)) {
     const summary = sanitizeUserReasonText(raw.summary) || sanitizeUserReasonText(raw.reason) || fallbackSummary;
+    const boundaryUserVisible = sanitizeUserReasonText(raw.boundary_user_visible ?? raw.boundaryUserVisible);
     const reasons = uniqStrings([
       ...(Array.isArray(raw.reasons_user_visible) ? raw.reasons_user_visible : []),
       ...(Array.isArray(raw.reasons) ? raw.reasons : []),
@@ -282,6 +285,7 @@ function normalizeWhyCandidateObject(raw, { lang = 'EN' } = {}) {
     return {
       summary,
       reasons_user_visible: reasons.length ? reasons : [fallbackSummary],
+      ...(boundaryUserVisible ? { boundary_user_visible: boundaryUserVisible } : {}),
     };
   }
 
@@ -296,6 +300,23 @@ function normalizeWhyCandidateObject(raw, { lang = 'EN' } = {}) {
     summary,
     reasons_user_visible: reasons.length ? reasons : [fallbackSummary],
   };
+}
+
+function buildBoundaryUserVisible(block, lang) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  if (block === 'related_products') {
+    return isCn
+      ? '同品牌/同页面关联项仅用于参考，不等同于跨品牌替代。'
+      : 'Related products are contextual references and not cross-brand substitutes.';
+  }
+  if (block === 'dupes') {
+    return isCn
+      ? '平替偏向预算友好，仍需关注配方差异与耐受性。'
+      : 'Dupe suggestions prioritize price-fit; verify formula differences and tolerance.';
+  }
+  return isCn
+    ? '竞品默认跨品牌，用于同品类/功效/价位的横向比较。'
+    : 'Competitors are cross-brand by default for side-by-side category/benefit/price comparison.';
 }
 
 function sourceQualityByType(sourceType) {
@@ -708,12 +729,24 @@ function attachExplanations(block, anchor, rankedList, opts = {}) {
     const whyObject = {
       summary: sanitizeUserReasonText(buildSummary(block, row.name, topFeatures, lang)) || normalizeWhyCandidateObject(null, { lang }).summary,
       reasons_user_visible: reasons.length ? reasons : normalizeWhyCandidateObject(row.why_candidate, { lang }).reasons_user_visible,
+      boundary_user_visible:
+        sanitizeUserReasonText(
+          (isPlainObject(row.why_candidate) && row.why_candidate.boundary_user_visible)
+            ? row.why_candidate.boundary_user_visible
+            : buildBoundaryUserVisible(block, lang),
+        ) || buildBoundaryUserVisible(block, lang),
     };
+
+    const socialSummary = buildSocialSummaryUserVisible(row.social_raw ?? row.socialRaw, { lang });
 
     const next = {
       ...row,
       why_candidate: whyObject,
+      ...(socialSummary ? { social_summary_user_visible: socialSummary } : {}),
     };
+    delete next.social_raw;
+    delete next.socialRaw;
+    if (!socialSummary) delete next.social_summary_user_visible;
     delete next._score_meta;
     return next;
   });

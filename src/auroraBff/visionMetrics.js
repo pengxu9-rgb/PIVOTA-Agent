@@ -90,6 +90,12 @@ const recoGuardrailViolationCounter = new Map();
 const recoCandidateCounter = new Map();
 const recoExplanationAlignmentCounter = new Map();
 const recoGuardrailCircuitOpenCounter = new Map();
+const recoEmployeeFeedbackCounter = new Map();
+const recoInterleaveClickCounter = new Map();
+const recoInterleaveWinCounter = new Map();
+const recoExplorationSlotCounter = new Map();
+const recoAsyncUpdateCounter = new Map();
+const recoAsyncUpdateChangedItemsCounter = new Map();
 let recoCompetitorsSameBrandRateGauge = 0;
 let recoCompetitorsOnPageSourceRateGauge = 0;
 let recoExplanationAlignmentAt3Gauge = 0;
@@ -394,6 +400,38 @@ function normalizeRecoBrandRelation(brandRelation) {
 
 function normalizeRecoAligned(aligned) {
   return aligned ? 'true' : 'false';
+}
+
+function normalizeRecoFeedbackType(feedbackType) {
+  const token = cleanMetricToken(feedbackType, 'unknown');
+  if (token === 'relevant' || token === 'not_relevant' || token === 'wrong_block') return token;
+  return 'unknown';
+}
+
+function normalizeRecoAttribution(attribution) {
+  const token = cleanMetricToken(attribution, 'unknown');
+  if (token === 'a' || token === 'b' || token === 'both' || token === 'explore') return token;
+  return 'unknown';
+}
+
+function normalizeRecoRanker(ranker) {
+  return cleanMetricToken(ranker, 'unknown');
+}
+
+function normalizeRecoCategoryBucket(bucket) {
+  return cleanMetricToken(bucket, 'unknown');
+}
+
+function normalizeRecoPriceBand(priceBand) {
+  const token = cleanMetricToken(priceBand, 'unknown');
+  if (token === 'budget' || token === 'mid' || token === 'premium' || token === 'luxury' || token === 'unknown') return token;
+  return 'unknown';
+}
+
+function normalizeRecoAsyncResult(result) {
+  const token = cleanMetricToken(result, 'unknown');
+  if (token === 'applied' || token === 'skipped' || token === 'noop' || token === 'error') return token;
+  return 'unknown';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -751,6 +789,90 @@ function recordRecoGuardrailCircuitOpen({ mode } = {}) {
     { mode: normalizeRecoMode(mode) },
     1,
   );
+}
+
+function recordRecoEmployeeFeedback({ block, feedbackType, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    recoEmployeeFeedbackCounter,
+    {
+      block: normalizeRecoBlock(block),
+      feedback_type: normalizeRecoFeedbackType(feedbackType),
+      mode: normalizeRecoMode(mode),
+    },
+    amount,
+  );
+}
+
+function recordRecoInterleaveClick({ block, attribution, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    recoInterleaveClickCounter,
+    {
+      block: normalizeRecoBlock(block),
+      attribution: normalizeRecoAttribution(attribution),
+      mode: normalizeRecoMode(mode),
+    },
+    amount,
+  );
+}
+
+function recordRecoInterleaveWin({ block, ranker, categoryBucket, priceBand, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    recoInterleaveWinCounter,
+    {
+      block: normalizeRecoBlock(block),
+      ranker: normalizeRecoRanker(ranker),
+      category_bucket: normalizeRecoCategoryBucket(categoryBucket),
+      price_band: normalizeRecoPriceBand(priceBand),
+      mode: normalizeRecoMode(mode),
+    },
+    amount,
+  );
+}
+
+function recordRecoExplorationSlot({ block, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    recoExplorationSlotCounter,
+    {
+      block: normalizeRecoBlock(block),
+      mode: normalizeRecoMode(mode),
+    },
+    amount,
+  );
+}
+
+function recordRecoAsyncUpdate({ block, result, mode, changedCount = 0, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  const safeChanged = Number.isFinite(Number(changedCount))
+    ? Math.max(0, Math.trunc(Number(changedCount)))
+    : 0;
+  incCounter(
+    recoAsyncUpdateCounter,
+    {
+      block: normalizeRecoBlock(block),
+      result: normalizeRecoAsyncResult(result),
+      mode: normalizeRecoMode(mode),
+    },
+    amount,
+  );
+  if (safeChanged > 0) {
+    incCounter(
+      recoAsyncUpdateChangedItemsCounter,
+      {
+        block: normalizeRecoBlock(block),
+        mode: normalizeRecoMode(mode),
+      },
+      safeChanged,
+    );
+  }
 }
 
 function clampRatio01(value, fallback = 0) {
@@ -1415,6 +1537,30 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE reco_guardrail_circuit_open_total counter');
   renderCounter(lines, 'reco_guardrail_circuit_open_total', recoGuardrailCircuitOpenCounter);
 
+  lines.push('# HELP reco_employee_feedback_total Total employee feedback events by block and feedback type.');
+  lines.push('# TYPE reco_employee_feedback_total counter');
+  renderCounter(lines, 'reco_employee_feedback_total', recoEmployeeFeedbackCounter);
+
+  lines.push('# HELP reco_interleave_click_total Total interleave click events by block and attribution.');
+  lines.push('# TYPE reco_interleave_click_total counter');
+  renderCounter(lines, 'reco_interleave_click_total', recoInterleaveClickCounter);
+
+  lines.push('# HELP reco_interleave_win_total Total interleave wins by ranker/category bucket/price band.');
+  lines.push('# TYPE reco_interleave_win_total counter');
+  renderCounter(lines, 'reco_interleave_win_total', recoInterleaveWinCounter);
+
+  lines.push('# HELP reco_exploration_slot_total Total exploration slots inserted by block.');
+  lines.push('# TYPE reco_exploration_slot_total counter');
+  renderCounter(lines, 'reco_exploration_slot_total', recoExplorationSlotCounter);
+
+  lines.push('# HELP reco_async_update_total Total async updates attempted/applied by block.');
+  lines.push('# TYPE reco_async_update_total counter');
+  renderCounter(lines, 'reco_async_update_total', recoAsyncUpdateCounter);
+
+  lines.push('# HELP reco_async_update_items_changed_count Total changed candidate items from async updates by block.');
+  lines.push('# TYPE reco_async_update_items_changed_count counter');
+  renderCounter(lines, 'reco_async_update_items_changed_count', recoAsyncUpdateChangedItemsCounter);
+
   lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
   lines.push('# TYPE reco_competitors_same_brand_rate gauge');
   lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
@@ -1608,6 +1754,12 @@ function resetVisionMetrics() {
   recoCandidateCounter.clear();
   recoExplanationAlignmentCounter.clear();
   recoGuardrailCircuitOpenCounter.clear();
+  recoEmployeeFeedbackCounter.clear();
+  recoInterleaveClickCounter.clear();
+  recoInterleaveWinCounter.clear();
+  recoExplorationSlotCounter.clear();
+  recoAsyncUpdateCounter.clear();
+  recoAsyncUpdateChangedItemsCounter.clear();
   recoCompetitorsSameBrandRateGauge = 0;
   recoCompetitorsOnPageSourceRateGauge = 0;
   recoExplanationAlignmentAt3Gauge = 0;
@@ -1691,6 +1843,12 @@ function snapshotVisionMetrics() {
     recoCandidates: Array.from(recoCandidateCounter.entries()),
     recoExplanationAlignment: Array.from(recoExplanationAlignmentCounter.entries()),
     recoGuardrailCircuitOpen: Array.from(recoGuardrailCircuitOpenCounter.entries()),
+    recoEmployeeFeedback: Array.from(recoEmployeeFeedbackCounter.entries()),
+    recoInterleaveClick: Array.from(recoInterleaveClickCounter.entries()),
+    recoInterleaveWin: Array.from(recoInterleaveWinCounter.entries()),
+    recoExplorationSlot: Array.from(recoExplorationSlotCounter.entries()),
+    recoAsyncUpdate: Array.from(recoAsyncUpdateCounter.entries()),
+    recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
     recoCompetitorsSameBrandRateGauge,
     recoCompetitorsOnPageSourceRateGauge,
     recoExplanationAlignmentAt3Gauge,
@@ -1736,6 +1894,11 @@ module.exports = {
   recordRecoCandidate,
   recordRecoExplanationAlignment,
   recordRecoGuardrailCircuitOpen,
+  recordRecoEmployeeFeedback,
+  recordRecoInterleaveClick,
+  recordRecoInterleaveWin,
+  recordRecoExplorationSlot,
+  recordRecoAsyncUpdate,
   setRecoGuardrailRates,
   observeUpstreamLatency,
   recordVisionDecision,
