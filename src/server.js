@@ -138,6 +138,11 @@ const CREATOR_CATALOG_CACHE_TTL_SECONDS = parsePositiveInt(
   7 * 24 * 60 * 60,
   { min: 300, max: 30 * 24 * 60 * 60 },
 );
+const CREATOR_CATALOG_AUTO_SYNC_ENABLED = (() => {
+  const raw = String(process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED || '').trim().toLowerCase();
+  if (!raw) return String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+})();
 
 function getCreatorCatalogAutoSyncIntervalConfig() {
   const maxIntervalMinutes = Math.max(
@@ -290,7 +295,7 @@ const PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS =
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
-    parseTimeoutMs(process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS, 3200),
+    parseTimeoutMs(process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS, 4500),
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
 );
@@ -299,7 +304,7 @@ const PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = Math.max(
   Math.min(
     parseTimeoutMs(
       process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
-      Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 3500),
+      Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 4500),
     ),
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
@@ -1484,7 +1489,7 @@ const catalogSyncState = {
 };
 
 async function runCreatorCatalogAutoSync() {
-  const enabled = process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true';
+  const enabled = CREATOR_CATALOG_AUTO_SYNC_ENABLED;
   if (!enabled) return;
   if (!PIVOTA_API_BASE) return;
 
@@ -2319,10 +2324,14 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     }
   }
 
+  const candidateTitle = Array.isArray(resolved?.candidates)
+    ? String(resolved.candidates?.[0]?.title || '').trim()
+    : '';
   const title = String(
     detail?.title ||
       detail?.name ||
       detail?.display_name ||
+      candidateTitle ||
       queryText,
   ).trim();
 
@@ -5392,7 +5401,7 @@ const healthRouteHandler = (req, res) => {
         }
       : undefined,
     catalog_sync: {
-      enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+      enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
       interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
@@ -7633,10 +7642,10 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
       resolver_query_is_strong: strongResolverQuery,
       resolver_timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
       db_configured: Boolean(process.env.DATABASE_URL),
-      catalog_auto_sync_enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+      catalog_auto_sync_enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
     },
     catalog_sync: {
-      enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+      enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
       interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
@@ -7863,10 +7872,10 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
       },
       gateway: {
         api_base: PIVOTA_API_BASE,
-        catalog_auto_sync_enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+        catalog_auto_sync_enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
       },
       catalog_sync: {
-        enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+        enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
         interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
         interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
         cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
@@ -12185,7 +12194,7 @@ if (require.main === module) {
         Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INITIAL_DELAY_MS || 15000) || 15000,
         0,
       );
-      if (process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true') {
+      if (CREATOR_CATALOG_AUTO_SYNC_ENABLED) {
         if (autoSyncIntervalConfig.clamped) {
           logger.warn(
             {
