@@ -4478,30 +4478,91 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   }
 
   const skuLike = looksSkuLikeQuery(q);
-  const whereParts = [];
-  const params = [];
-  let idx = 1;
-
-  const matchFields = [
-    "lower(coalesce(pc.product_data->>'title',''))",
-    "lower(coalesce(pc.product_data->>'description',''))",
-    "lower(coalesce(pc.product_data->>'product_type',''))",
-    "lower(coalesce(pc.product_data->>'sku',''))",
-    "lower(coalesce(pc.product_data->>'vendor',''))",
-  ];
-
-  for (const t of terms) {
-    params.push(`%${t}%`);
-    const ors = matchFields.map((field) => `${field} LIKE $${idx}`).join(' OR ');
-    const termParts = [`(${ors})`];
-    if (skuLike) {
-      termParts.push(`lower(CAST(pc.product_data AS TEXT)) LIKE $${idx}`);
+  const buildQueryFilter = (fieldPrefix = 'pc.') => {
+    const matchFields = [
+      `lower(coalesce(${fieldPrefix}product_data->>'title',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'description',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'product_type',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'sku',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'vendor',''))`,
+    ];
+    const whereParts = [];
+    const params = [];
+    let idx = 1;
+    for (const t of terms) {
+      params.push(`%${t}%`);
+      const ors = matchFields.map((field) => `${field} LIKE $${idx}`).join(' OR ');
+      const termParts = [`(${ors})`];
+      if (skuLike) {
+        termParts.push(`lower(CAST(${fieldPrefix}product_data AS TEXT)) LIKE $${idx}`);
+      }
+      whereParts.push(`(${termParts.join(' OR ')})`);
+      idx += 1;
     }
-    whereParts.push(`(${termParts.join(' OR ')})`);
-    idx += 1;
-  }
+    return {
+      params,
+      idx,
+      queryWhere: whereParts.length ? `(${whereParts.join(' OR ')})` : 'TRUE',
+    };
+  };
+  const toRankedUniqueProducts = (rows = []) => {
+    const rawProducts = (rows || [])
+      .map((row) => {
+        const product = row.product_data;
+        if (!product) return null;
 
-  const queryWhere = whereParts.length ? `(${whereParts.join(' OR ')})` : 'TRUE';
+        const merchantId = String(row.merchant_id || '').trim();
+        const merchantName = row.merchant_name ? String(row.merchant_name).trim() : '';
+        const out = { ...product };
+        if (merchantId && !out.merchant_id && !out.merchantId) out.merchant_id = merchantId;
+        if (merchantName && !out.merchant_name && !out.merchantName) out.merchant_name = merchantName;
+        return out;
+      })
+      .filter(Boolean)
+      .filter((product) => isProductSellable(product, { inStockOnly }));
+
+    const scored = rawProducts
+      .map((product) => {
+        const title = String(product.title || '').toLowerCase();
+        const desc = String(product.description || '').toLowerCase();
+        const ptype = String(product.product_type || product.productType || '').toLowerCase();
+        const sku = String(product.sku || '').toLowerCase();
+        const tags = Array.isArray(product.tags) ? product.tags.join(' ').toLowerCase() : String(product.tags || '').toLowerCase();
+        const blob = `${title} ${ptype} ${sku} ${tags} ${desc}`;
+
+        let score = 0;
+        for (const t of terms) {
+          if (title.includes(t)) score += 3;
+          else if (ptype.includes(t)) score += 2;
+          else if (blob.includes(t)) score += 1;
+        }
+        score += scoreByTagFacetOverlap(terms, product).score;
+        if (skuLike) {
+          const q0 = q.replace(/[^a-z0-9-]+/g, '');
+          if (q0 && sku === q0) score += 6;
+          else if (q0 && blob.includes(q0)) score += 3;
+        }
+        return { product, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const seen = new Set();
+    const unique = [];
+    for (const row of scored) {
+      const product = row.product;
+      const mid = String(product.merchant_id || product.merchantId || '').trim();
+      const pid = String(product.id || product.product_id || product.productId || '').trim();
+      const key = `${mid}::${pid || JSON.stringify(product).slice(0, 64)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(product);
+      if (unique.length >= safeLimit) break;
+    }
+    return { products: unique, candidateCount: rawProducts.length };
+  };
+
+  const strictFilter = buildQueryFilter('pc.');
+  const queryWhere = strictFilter.queryWhere;
   const baseWhere = `
     (pc.expires_at IS NULL OR pc.expires_at > now())
     AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
@@ -4531,84 +4592,97 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     WHERE ${baseWhere}
       AND ${queryWhere}
     ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
-    OFFSET $${idx}
-    LIMIT $${idx + 1}
+    OFFSET $${strictFilter.idx}
+    LIMIT $${strictFilter.idx + 1}
   `;
 
+  const retrievalSources = [];
   const [countRes, rowsRes] = await Promise.all([
-    query(countSql, params),
-    query(rowsSql, [...params, pageOffset, pageFetch]),
+    query(countSql, strictFilter.params),
+    query(rowsSql, [...strictFilter.params, pageOffset, pageFetch]),
   ]);
 
-  const total = Number(countRes.rows?.[0]?.total || 0);
-  const rawProducts = (rowsRes.rows || [])
-    .map((row) => {
-      const product = row.product_data;
-      if (!product) return null;
+  const strictTotal = Number(countRes.rows?.[0]?.total || 0);
+  const strictRanked = toRankedUniqueProducts(rowsRes.rows || []);
+  retrievalSources.push({
+    source: 'lexical_cache',
+    used: true,
+    count: strictRanked.products.length,
+    candidate_count: strictRanked.candidateCount,
+    total: strictTotal,
+  });
 
-      const merchantId = String(row.merchant_id || '').trim();
-      const merchantName = row.merchant_name ? String(row.merchant_name).trim() : '';
-      const out = { ...product };
-      if (merchantId && !out.merchant_id && !out.merchantId) out.merchant_id = merchantId;
-      if (merchantName && !out.merchant_name && !out.merchantName) out.merchant_name = merchantName;
-      return out;
-    })
-    .filter(Boolean)
-    .filter((product) => isProductSellable(product, { inStockOnly }));
-
-  const scored = rawProducts
-    .map((product) => {
-      const title = String(product.title || '').toLowerCase();
-      const desc = String(product.description || '').toLowerCase();
-      const ptype = String(product.product_type || product.productType || '').toLowerCase();
-      const sku = String(product.sku || '').toLowerCase();
-      const tags = Array.isArray(product.tags) ? product.tags.join(' ').toLowerCase() : String(product.tags || '').toLowerCase();
-      const blob = `${title} ${ptype} ${sku} ${tags} ${desc}`;
-
-      let score = 0;
-      for (const t of terms) {
-        if (title.includes(t)) score += 3;
-        else if (ptype.includes(t)) score += 2;
-        else if (blob.includes(t)) score += 1;
-      }
-      score += scoreByTagFacetOverlap(terms, product).score;
-      if (skuLike) {
-        const q0 = q.replace(/[^a-z0-9-]+/g, '');
-        if (q0 && sku === q0) score += 6;
-        else if (q0 && blob.includes(q0)) score += 3;
-      }
-      return { product, score };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const seen = new Set();
-  const unique = [];
-  for (const row of scored) {
-    const product = row.product;
-    const mid = String(product.merchant_id || product.merchantId || '').trim();
-    const pid = String(product.id || product.product_id || product.productId || '').trim();
-    const key = `${mid}::${pid || JSON.stringify(product).slice(0, 64)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(product);
-    if (unique.length >= safeLimit) break;
+  if (strictRanked.products.length > 0) {
+    await applyShopifyCurrencyOverride(strictRanked.products);
+    return {
+      products: strictRanked.products,
+      total: strictTotal,
+      page: safePage,
+      page_size: strictRanked.products.length,
+      retrieval_sources: retrievalSources,
+    };
   }
 
-  await applyShopifyCurrencyOverride(unique);
-  return {
-    products: unique,
-    total,
-    page: safePage,
-    page_size: unique.length,
-    retrieval_sources: [
-      {
-        source: 'lexical_cache',
-        used: true,
-        count: unique.length,
-        candidate_count: rawProducts.length,
-      },
-    ],
-  };
+  try {
+    const relaxedFilter = buildQueryFilter('');
+    const relaxedBaseWhere = `
+      (expires_at IS NULL OR expires_at > now())
+      AND ${buildSellableStatusPredicate("product_data->>'status'")}
+      AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+    `;
+    const relaxedCountSql = `
+      SELECT COUNT(*)::int AS total
+      FROM products_cache
+      WHERE ${relaxedBaseWhere}
+        AND ${relaxedFilter.queryWhere}
+    `;
+    const relaxedRowsSql = `
+      SELECT merchant_id,
+             NULL::text AS merchant_name,
+             product_data
+      FROM products_cache
+      WHERE ${relaxedBaseWhere}
+        AND ${relaxedFilter.queryWhere}
+      ORDER BY cached_at DESC NULLS LAST, id DESC
+      OFFSET $${relaxedFilter.idx}
+      LIMIT $${relaxedFilter.idx + 1}
+    `;
+    const [relaxedCountRes, relaxedRowsRes] = await Promise.all([
+      query(relaxedCountSql, relaxedFilter.params),
+      query(relaxedRowsSql, [...relaxedFilter.params, pageOffset, pageFetch]),
+    ]);
+    const relaxedTotal = Number(relaxedCountRes.rows?.[0]?.total || 0);
+    const relaxedRanked = toRankedUniqueProducts(relaxedRowsRes.rows || []);
+    retrievalSources.push({
+      source: 'lexical_cache_relaxed_no_onboarding',
+      used: true,
+      count: relaxedRanked.products.length,
+      candidate_count: relaxedRanked.candidateCount,
+      total: relaxedTotal,
+    });
+
+    await applyShopifyCurrencyOverride(relaxedRanked.products);
+    return {
+      products: relaxedRanked.products,
+      total: Math.max(strictTotal, relaxedTotal, relaxedRanked.products.length),
+      page: safePage,
+      page_size: relaxedRanked.products.length,
+      retrieval_sources: retrievalSources,
+    };
+  } catch (err) {
+    retrievalSources.push({
+      source: 'lexical_cache_relaxed_no_onboarding',
+      used: false,
+      error: String(err && err.message ? err.message : err),
+    });
+    return {
+      products: [],
+      total: strictTotal,
+      page: safePage,
+      page_size: 0,
+      retrieval_sources: retrievalSources,
+    };
+  }
 }
 
 async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = {}) {
@@ -9378,6 +9452,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
   try {
     let creatorCacheRouteDebug = null;
+    let crossMerchantCacheRouteDebug = null;
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
     let productDetailMerchantId = null;
@@ -9574,6 +9649,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const limit = search.limit || search.page_size || 20;
           const fromCache = await loadCrossMerchantBrowseFromCache(page, limit, { inStockOnly });
           const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
+          crossMerchantCacheRouteDebug = {
+            attempted: true,
+            mode: 'browse',
+            page,
+            limit,
+            in_stock_only: inStockOnly,
+            cache_hit: cacheHit,
+            products_count: Array.isArray(fromCache.products) ? fromCache.products.length : 0,
+            total: Number(fromCache.total || 0),
+          };
           const merchantsReturned = uniqueStrings(
             (fromCache.products || []).map((p) => p?.merchant_id || p?.merchantId),
           );
@@ -9591,14 +9676,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               ...(ROUTE_DEBUG_ENABLED
                 ? {
                     route_debug: {
-                      cross_merchant_cache: {
-                        attempted: true,
-                        mode: 'browse',
-                        page,
-                        limit,
-                        in_stock_only: inStockOnly,
-                        cache_hit: cacheHit,
-                      },
+                      cross_merchant_cache: crossMerchantCacheRouteDebug,
                     },
                   }
                 : {}),
@@ -9617,6 +9695,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             'Cross-merchant cache browse returned empty; falling back to upstream',
           );
         } catch (err) {
+          crossMerchantCacheRouteDebug = {
+            attempted: true,
+            mode: 'browse',
+            page: search.page || 1,
+            limit: search.limit || search.page_size || 20,
+            in_stock_only: inStockOnly,
+            cache_hit: false,
+            error: String(err && err.message ? err.message : err),
+          };
           logger.warn(
             { err: err.message, source },
             'Cross-merchant cache browse failed; falling back to upstream',
@@ -9634,6 +9721,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const limit = search.limit || search.page_size || 20;
           const fromCache = await searchCrossMerchantFromCache(queryText, page, limit, { inStockOnly });
           const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
+          crossMerchantCacheRouteDebug = {
+            attempted: true,
+            mode: 'search',
+            query: queryText,
+            page,
+            limit,
+            in_stock_only: inStockOnly,
+            cache_hit: cacheHit,
+            products_count: Array.isArray(fromCache.products) ? fromCache.products.length : 0,
+            total: Number(fromCache.total || 0),
+            retrieval_sources: fromCache.retrieval_sources || null,
+          };
           const merchantsReturned = uniqueStrings(
             (fromCache.products || []).map((p) => p?.merchant_id || p?.merchantId),
           );
@@ -9652,16 +9751,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               ...(ROUTE_DEBUG_ENABLED
                 ? {
                     route_debug: {
-                      cross_merchant_cache: {
-                        attempted: true,
-                        mode: 'search',
-                        query: queryText,
-                        page,
-                        limit,
-                        in_stock_only: inStockOnly,
-                        cache_hit: cacheHit,
-                        retrieval_sources: fromCache.retrieval_sources || null,
-                      },
+                      cross_merchant_cache: crossMerchantCacheRouteDebug,
                     },
                   }
                 : {}),
@@ -9688,6 +9778,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             'Cross-merchant cache search returned empty; falling back to upstream',
           );
         } catch (err) {
+          crossMerchantCacheRouteDebug = {
+            attempted: true,
+            mode: 'search',
+            query: queryText,
+            page: search.page || 1,
+            limit: search.limit || search.page_size || 20,
+            in_stock_only: inStockOnly,
+            cache_hit: false,
+            error: String(err && err.message ? err.message : err),
+          };
           logger.warn(
             { err: err.message, source, query: queryText },
             'Cross-merchant cache search failed; falling back to upstream',
@@ -10672,14 +10772,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       if (!response) throw err;
     }
     let upstreamData = response.data;
-    if (operation === 'find_products_multi' && ROUTE_DEBUG_ENABLED && creatorCacheRouteDebug) {
+    if (
+      operation === 'find_products_multi' &&
+      ROUTE_DEBUG_ENABLED &&
+      (creatorCacheRouteDebug || crossMerchantCacheRouteDebug)
+    ) {
       upstreamData = {
         ...upstreamData,
         metadata: {
           ...(upstreamData.metadata || {}),
           route_debug: {
             ...((upstreamData.metadata && upstreamData.metadata.route_debug) || {}),
-            creator_cache: creatorCacheRouteDebug,
+            ...(creatorCacheRouteDebug ? { creator_cache: creatorCacheRouteDebug } : {}),
+            ...(crossMerchantCacheRouteDebug ? { cross_merchant_cache: crossMerchantCacheRouteDebug } : {}),
           },
         },
       };

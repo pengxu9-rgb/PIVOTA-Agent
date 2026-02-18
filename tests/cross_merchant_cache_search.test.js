@@ -77,4 +77,55 @@ describe('cross-merchant cache lexical search', () => {
       }),
     );
   });
+
+  test('falls back to relaxed cache query when onboarding join returns empty', async () => {
+    jest.doMock('../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        const isStrictJoinQuery = text.includes('JOIN merchant_onboarding mo');
+        const isCountQuery = text.includes('COUNT(*)::int AS total');
+
+        if (isStrictJoinQuery && isCountQuery) return { rows: [{ total: 0 }] };
+        if (isStrictJoinQuery) return { rows: [] };
+
+        if (!isStrictJoinQuery && isCountQuery && text.includes('FROM products_cache')) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (!isStrictJoinQuery && text.includes('FROM products_cache')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_relaxed_1',
+                merchant_name: null,
+                product_data: {
+                  id: 'prod_ipsa_relaxed',
+                  product_id: 'prod_ipsa_relaxed',
+                  merchant_id: 'merch_relaxed_1',
+                  title: 'IPSA Relaxed Cache Item',
+                  description: 'Fallback from products_cache only',
+                  status: 'active',
+                  inventory_quantity: 5,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../src/server');
+    const { searchCrossMerchantFromCache } = app._debug;
+
+    const result = await searchCrossMerchantFromCache('ipsa', 1, 10, { inStockOnly: true });
+    const ids = (result.products || []).map((p) => String(p.product_id || p.id || ''));
+
+    expect(ids).toContain('prod_ipsa_relaxed');
+    expect(result.retrieval_sources || []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'lexical_cache', count: 0 }),
+        expect.objectContaining({ source: 'lexical_cache_relaxed_no_onboarding', used: true, count: 1 }),
+      ]),
+    );
+  });
 });
