@@ -127,6 +127,42 @@ function parseTimeoutMs(envValue, fallbackMs) {
   return Number.isFinite(n) && n > 0 ? n : fallbackMs;
 }
 
+function parsePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+const CREATOR_CATALOG_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
+  7 * 24 * 60 * 60,
+  { min: 300, max: 30 * 24 * 60 * 60 },
+);
+
+function getCreatorCatalogAutoSyncIntervalConfig() {
+  const maxIntervalMinutes = Math.max(
+    1,
+    Math.min(360, Math.floor(CREATOR_CATALOG_CACHE_TTL_SECONDS / 4 / 60)),
+  );
+  const configuredRaw = String(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || '').trim();
+  const configuredMinutes = configuredRaw ? parsePositiveInt(configuredRaw, null, { min: 1, max: 24 * 60 }) : null;
+  if (configuredMinutes == null) {
+    return {
+      intervalMinutes: maxIntervalMinutes,
+      maxIntervalMinutes,
+      configuredMinutes: null,
+      clamped: false,
+    };
+  }
+  const intervalMinutes = Math.min(configuredMinutes, maxIntervalMinutes);
+  return {
+    intervalMinutes,
+    maxIntervalMinutes,
+    configuredMinutes,
+    clamped: configuredMinutes > maxIntervalMinutes,
+  };
+}
+
 // Upstream request timeouts.
 // NOTE: Shopify pricing flows can involve multiple sequential upstream calls; the gateway
 // timeout must not be lower than the backend's own HTTP client timeouts.
@@ -1468,6 +1504,7 @@ async function runCreatorCatalogAutoSync() {
     Number(process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT || 200) || 200,
     5000,
   );
+  const ttlSeconds = CREATOR_CATALOG_CACHE_TTL_SECONDS;
 
   catalogSyncState.last_run_at = new Date().toISOString();
   catalogSyncState.last_error = null;
@@ -1475,7 +1512,7 @@ async function runCreatorCatalogAutoSync() {
   for (const merchantId of merchantIds) {
     const url = `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
       merchantId,
-    )}?limit=${encodeURIComponent(String(limit))}`;
+    )}?limit=${encodeURIComponent(String(limit))}&ttl_seconds=${encodeURIComponent(String(ttlSeconds))}`;
     try {
       const res = await axios.post(url, null, {
         headers: { 'X-ADMIN-KEY': adminKey },
@@ -1487,7 +1524,7 @@ async function runCreatorCatalogAutoSync() {
         summary: res.data && res.data.summary ? res.data.summary : res.data,
       };
       catalogSyncState.last_success_at = new Date().toISOString();
-      logger.info({ merchantId, limit }, 'Creator catalog auto sync succeeded');
+      logger.info({ merchantId, limit, ttl_seconds: ttlSeconds }, 'Creator catalog auto sync succeeded');
     } catch (err) {
       const status = err.response?.status;
       const data = err.response?.data;
@@ -1694,6 +1731,41 @@ function parseQueryStringArray(value) {
     .flatMap((item) => String(item || '').split(','))
     .map((item) => String(item || '').trim())
     .filter(Boolean);
+}
+
+function isShoppingSource(source) {
+  const normalized = String(source || '').trim().toLowerCase();
+  return normalized === 'shopping_agent' || normalized === 'shopping-agent-ui';
+}
+
+function applyShoppingCatalogQueryGuards(queryParams, source) {
+  const params =
+    queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
+      ? { ...queryParams }
+      : {};
+  if (!isShoppingSource(source)) return params;
+  return {
+    ...params,
+    allow_external_seed: true,
+    allow_stale_cache: false,
+    external_seed_strategy: 'supplement_internal_first',
+  };
+}
+
+function isExternalSeedProduct(product) {
+  if (!product || typeof product !== 'object') return false;
+  const merchantId = String(product.merchant_id || product.merchantId || '').trim();
+  const source = String(product.source || '').trim().toLowerCase();
+  return merchantId === 'external_seed' || source === 'external_seed';
+}
+
+function buildSearchProductKey(product) {
+  if (!product || typeof product !== 'object') return '';
+  const merchantId = String(product.merchant_id || product.merchantId || '').trim();
+  const productId = String(
+    product.product_id || product.productId || product.id || product.platform_product_id || '',
+  ).trim();
+  return `${merchantId}::${productId}`;
 }
 
 function extractSearchQueryText(rawQuery) {
@@ -1977,6 +2049,68 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   }
 
   return { search };
+}
+
+async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount }) {
+  const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
+  const queryText = extractSearchQueryText(query);
+  if (!queryText) {
+    return {
+      products: [],
+      metadata: { attempted: false, applied: false, reason: 'empty_query', requested_count: Number(neededCount || 0) },
+    };
+  }
+
+  const requestedCount = Math.max(1, Number(neededCount || 1));
+  const limit = Math.min(Math.max(requestedCount * 4, 20), 200);
+  const upstreamParams = {
+    merchant_id: 'external_seed',
+    query: queryText,
+    ...(query.category ? { category: query.category } : {}),
+    ...(query.min_price != null ? { min_price: query.min_price } : {}),
+    ...(query.max_price != null ? { max_price: query.max_price } : {}),
+    in_stock_only: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
+    limit,
+    offset: 0,
+    allow_external_seed: true,
+    allow_stale_cache: false,
+    external_seed_strategy: 'supplement_internal_first',
+  };
+
+  const url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
+  const resp = await axios({
+    method: 'GET',
+    url,
+    params: upstreamParams,
+    headers: {
+      ...(checkoutToken
+        ? { 'X-Checkout-Token': checkoutToken }
+        : {
+            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+          }),
+    },
+    timeout: Math.min(4500, getUpstreamTimeoutMs('find_products_multi')),
+    validateStatus: () => true,
+  });
+
+  const normalized = normalizeAgentProductsListResponse(resp.data, {
+    limit,
+    offset: 0,
+  });
+  const products = Array.isArray(normalized?.products) ? normalized.products.filter((p) => isExternalSeedProduct(p)) : [];
+
+  return {
+    products,
+    metadata: {
+      attempted: true,
+      applied: products.length > 0,
+      reason: products.length > 0 ? 'external_seed_candidates_found' : 'no_external_seed_candidates',
+      requested_count: requestedCount,
+      fetched_count: products.length,
+      upstream_status: Number(resp.status || 0) || 0,
+    },
+  };
 }
 
 async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason }) {
@@ -5209,7 +5343,9 @@ const healthRouteHandler = (req, res) => {
       : undefined,
     catalog_sync: {
       enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
-      interval_minutes: Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || 60) || 60,
+      interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
+      interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
+      cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
@@ -5713,6 +5849,7 @@ async function proxyAgentSearchToBackend(req, res) {
   const url = `${PIVOTA_API_BASE}${req.path}`;
   const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
   const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
+  const guardedQueryParams = applyShoppingCatalogQueryGuards(queryParams, source);
   const resolverFirstMetadata = source ? { source } : null;
   let resolverFirstResult = null;
   const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
@@ -5723,8 +5860,8 @@ async function proxyAgentSearchToBackend(req, res) {
 
   if (shouldAttemptResolverFirst) {
     try {
-      resolverFirstResult = await queryResolveSearchFallback({
-        queryParams,
+        resolverFirstResult = await queryResolveSearchFallback({
+        queryParams: guardedQueryParams,
         checkoutToken,
         reason: 'resolver_first',
       });
@@ -5759,7 +5896,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const resp = await axios({
       method: 'GET',
       url,
-      params: queryParams,
+      params: guardedQueryParams,
       headers: {
         ...(checkoutToken
           ? { 'X-Checkout-Token': checkoutToken }
@@ -5773,8 +5910,8 @@ async function proxyAgentSearchToBackend(req, res) {
     });
 
     const normalized = normalizeAgentProductsListResponse(resp.data, {
-      limit: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size),
-      offset: parseQueryNumber(queryParams?.offset),
+      limit: parseQueryNumber(guardedQueryParams?.limit ?? guardedQueryParams?.page_size),
+      offset: parseQueryNumber(guardedQueryParams?.offset),
     });
     const primaryUsableCount = countUsableSearchProducts(normalized?.products);
     const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
@@ -5786,7 +5923,7 @@ async function proxyAgentSearchToBackend(req, res) {
       if (allowSecondaryFallback && !skipSecondaryFallback) {
         try {
           const resolverFallback = await queryResolveSearchFallback({
-            queryParams,
+            queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_primary',
           });
@@ -5809,7 +5946,7 @@ async function proxyAgentSearchToBackend(req, res) {
       if (allowSecondaryFallback && !skipSecondaryFallback) {
         try {
           const fallback = await queryFindProductsMultiFallback({
-            queryParams,
+            queryParams: guardedQueryParams,
             checkoutToken,
             reason: primaryUnusable
               ? primaryUsableCount > 0
@@ -5838,7 +5975,7 @@ async function proxyAgentSearchToBackend(req, res) {
     if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
       return res.status(200).json(
         buildProxySearchSoftFallbackResponse({
-          queryParams,
+          queryParams: guardedQueryParams,
           reason: skipSecondaryFallback ? 'primary_irrelevant_skip_secondary' : 'primary_irrelevant_no_fallback',
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_irrelevant',
@@ -5849,7 +5986,7 @@ async function proxyAgentSearchToBackend(req, res) {
     if (Number(resp.status) >= 500) {
       return res.status(200).json(
         buildProxySearchSoftFallbackResponse({
-          queryParams,
+          queryParams: guardedQueryParams,
           reason: 'primary_status_5xx',
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_status',
@@ -5882,7 +6019,7 @@ async function proxyAgentSearchToBackend(req, res) {
       if (allowSecondaryFallbackOnException) {
         try {
           const resolverFallback = await queryResolveSearchFallback({
-            queryParams,
+            queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_exception',
           });
@@ -5905,7 +6042,7 @@ async function proxyAgentSearchToBackend(req, res) {
       if (allowSecondaryFallbackOnException) {
         try {
           const fallback = await queryFindProductsMultiFallback({
-            queryParams,
+            queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'primary_request_failed',
           });
@@ -5932,7 +6069,7 @@ async function proxyAgentSearchToBackend(req, res) {
     if (queryText) {
       return res.status(200).json(
         buildProxySearchSoftFallbackResponse({
-          queryParams,
+          queryParams: guardedQueryParams,
           reason: err?.code === 'ECONNABORTED' ? 'primary_timeout' : 'primary_exception',
           upstreamStatus: statusCode,
           upstreamCode: code || err?.code || null,
@@ -7450,6 +7587,9 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
     },
     catalog_sync: {
       enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+      interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
+      interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
+      cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
@@ -7677,6 +7817,9 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
       },
       catalog_sync: {
         enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+        interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
+        interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
+        cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
         last_run_at: catalogSyncState.last_run_at,
         last_success_at: catalogSyncState.last_success_at,
         last_error: catalogSyncState.last_error,
@@ -10180,7 +10323,85 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
           const fromCache = await searchCrossMerchantFromCache(queryText, page, limit, { inStockOnly });
-          const cacheHit = Array.isArray(fromCache.products) && fromCache.products.length > 0;
+          const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
+          const cacheHit = internalProducts.length > 0;
+          let supplementedProducts = internalProducts;
+          let supplementMeta = {
+            attempted: false,
+            applied: false,
+            added_count: 0,
+            reason: 'not_needed',
+          };
+          if (
+            isShoppingSource(source) &&
+            Number(page) === 1 &&
+            internalProducts.length < Number(limit || 0)
+          ) {
+            const neededCount = Math.max(0, Number(limit || 0) - internalProducts.length);
+            if (neededCount > 0) {
+              supplementMeta = {
+                attempted: true,
+                applied: false,
+                added_count: 0,
+                reason: 'supplement_pending',
+              };
+              try {
+                const supplement = await fetchExternalSeedSupplementFromBackend({
+                  queryParams: {
+                    query: queryText,
+                    ...(search.category ? { category: search.category } : {}),
+                    ...(search.price_min != null || search.min_price != null
+                      ? { min_price: search.price_min ?? search.min_price }
+                      : {}),
+                    ...(search.price_max != null || search.max_price != null
+                      ? { max_price: search.price_max ?? search.max_price }
+                      : {}),
+                    in_stock_only: inStockOnly,
+                  },
+                  checkoutToken,
+                  neededCount,
+                });
+                const seen = new Set(
+                  internalProducts
+                    .map((product) => buildSearchProductKey(product))
+                    .filter(Boolean),
+                );
+                const supplementCandidates = Array.isArray(supplement?.products) ? supplement.products : [];
+                const toAppend = [];
+                for (const product of supplementCandidates) {
+                  if (!isExternalSeedProduct(product)) continue;
+                  const key = buildSearchProductKey(product);
+                  if (!key || seen.has(key)) continue;
+                  seen.add(key);
+                  toAppend.push(product);
+                  if (toAppend.length >= neededCount) break;
+                }
+                supplementedProducts = internalProducts.concat(toAppend);
+                supplementMeta = {
+                  ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
+                  attempted: true,
+                  applied: toAppend.length > 0,
+                  added_count: toAppend.length,
+                  reason: toAppend.length > 0 ? 'supplemented_external_seed' : 'no_external_candidates',
+                };
+              } catch (supplementErr) {
+                supplementMeta = {
+                  attempted: true,
+                  applied: false,
+                  added_count: 0,
+                  reason: 'supplement_error',
+                  error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
+                };
+                logger.warn(
+                  { err: supplementErr?.message || String(supplementErr), query: queryText },
+                  'Cross-merchant cache search supplement failed; returning internal cache results',
+                );
+              }
+            }
+          }
+          const effectiveProducts = supplementedProducts;
+          const effectiveCacheHit = effectiveProducts.length > 0;
+          const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
           crossMerchantCacheRouteDebug = {
             attempted: true,
             mode: 'search',
@@ -10188,25 +10409,36 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             page,
             limit,
             in_stock_only: inStockOnly,
-            cache_hit: cacheHit,
-            products_count: Array.isArray(fromCache.products) ? fromCache.products.length : 0,
+            cache_hit: effectiveCacheHit,
+            products_count: effectiveProducts.length,
+            internal_products_count: internalProducts.length,
+            external_products_count: externalCount,
             total: Number(fromCache.total || 0),
             retrieval_sources: fromCache.retrieval_sources || null,
+            supplement: supplementMeta,
           };
           const merchantsReturned = uniqueStrings(
-            (fromCache.products || []).map((p) => p?.merchant_id || p?.merchantId),
+            effectiveProducts.map((p) => p?.merchant_id || p?.merchantId),
           );
 
           const upstreamData = {
-            products: fromCache.products,
-            total: fromCache.total,
+            products: effectiveProducts,
+            total: Math.max(Number(fromCache.total || 0), effectiveProducts.length),
             page: fromCache.page,
-            page_size: fromCache.page_size,
+            page_size: effectiveProducts.length,
             reply: null,
             metadata: {
-              query_source: 'cache_cross_merchant_search',
+              query_source: supplementMeta.applied
+                ? 'cache_cross_merchant_search_supplemented'
+                : 'cache_cross_merchant_search',
               fetched_at: new Date().toISOString(),
               merchants_searched: merchantsReturned.length,
+              source_breakdown: {
+                internal_count: effectiveProducts.length - externalCount,
+                external_seed_count: externalCount,
+                stale_cache_used: false,
+                strategy_applied: isShoppingSource(source) ? 'supplement_internal_first' : 'cache_only',
+              },
               ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
               ...(ROUTE_DEBUG_ENABLED
                 ? {
@@ -10230,7 +10462,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          if (cacheHit) {
+          if (effectiveCacheHit) {
             return res.json(enriched);
           }
           logger.info(
@@ -10351,6 +10583,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           limit,
           offset,
         };
+        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
         break;
       }
 
@@ -10410,6 +10643,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           limit,
           offset,
         };
+        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
         break;
       }
       
@@ -11876,12 +12110,24 @@ if (require.main === module) {
         `Pivota Agent gateway listening on http://localhost:${PORT}, proxying to ${PIVOTA_API_BASE}`,
       );
 
-      const intervalMin = Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES || 60) || 60;
+      const autoSyncIntervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
+      const intervalMin = autoSyncIntervalConfig.intervalMinutes;
       const initialDelayMs = Math.max(
         Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INITIAL_DELAY_MS || 15000) || 15000,
         0,
       );
       if (process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true') {
+        if (autoSyncIntervalConfig.clamped) {
+          logger.warn(
+            {
+              configured_interval_minutes: autoSyncIntervalConfig.configuredMinutes,
+              effective_interval_minutes: autoSyncIntervalConfig.intervalMinutes,
+              max_allowed_interval_minutes: autoSyncIntervalConfig.maxIntervalMinutes,
+              cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+            },
+            'CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES exceeds ttl guardrail; clamping to safe interval',
+          );
+        }
         setTimeout(() => {
           runCreatorCatalogAutoSync();
           setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
