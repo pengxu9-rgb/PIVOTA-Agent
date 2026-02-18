@@ -7463,6 +7463,274 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
   });
 });
 
+app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    return res.status(503).json({
+      ok: false,
+      error: 'DB_NOT_CONFIGURED',
+      message: 'DATABASE_URL is not configured on gateway',
+    });
+  }
+
+  const queryText = String(req.query.q || req.query.query || '').trim();
+  const merchantId = String(req.query.merchant_id || req.query.merchantId || '').trim();
+  const requestedLimit = parseQueryNumber(req.query.limit_merchants ?? req.query.limitMerchants);
+  const limitMerchants = Math.min(Math.max(1, Number(requestedLimit || 20)), 200);
+  const startedAt = Date.now();
+
+  const creatorMerchantIds = getCreatorCatalogMerchantIds();
+  const matchFields = [
+    "lower(coalesce(product_data->>'title',''))",
+    "lower(coalesce(product_data->>'description',''))",
+    "lower(coalesce(product_data->>'product_type',''))",
+    "lower(coalesce(product_data->>'sku',''))",
+    "lower(coalesce(product_data->>'vendor',''))",
+    "lower(coalesce(product_data->>'brand',''))",
+  ];
+
+  const parseCount = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  try {
+    const idRes = await query(
+      `
+        SELECT
+          current_database() AS database_name,
+          current_schema() AS schema_name,
+          current_user AS user_name,
+          inet_server_addr()::text AS server_addr,
+          inet_server_port()::text AS server_port
+      `,
+      [],
+    );
+    const idRow = idRes.rows?.[0] || {};
+    const dbIdentity = {
+      database_name: idRow.database_name || null,
+      schema_name: idRow.schema_name || null,
+      user_name: idRow.user_name || null,
+      server_addr: idRow.server_addr || null,
+      server_port: idRow.server_port || null,
+    };
+    const dbFingerprint = createHash('sha256')
+      .update(
+        [
+          dbIdentity.database_name || '',
+          dbIdentity.schema_name || '',
+          dbIdentity.server_addr || '',
+          dbIdentity.server_port || '',
+          dbIdentity.user_name || '',
+        ].join('|'),
+      )
+      .digest('hex')
+      .slice(0, 16);
+
+    const globalTotalsRes = await query(
+      `
+        SELECT
+          COUNT(*)::bigint AS total_rows,
+          COUNT(*) FILTER (WHERE (expires_at IS NULL OR expires_at > now()))::bigint AS not_expired_rows,
+          COUNT(*) FILTER (
+            WHERE (expires_at IS NULL OR expires_at > now())
+              AND ${buildSellableStatusPredicate("product_data->>'status'")}
+              AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+          )::bigint AS sellable_rows,
+          MAX(cached_at) AS latest_cached_at,
+          MAX(expires_at) AS latest_expires_at
+        FROM products_cache
+      `,
+      [],
+    );
+    const globalTotalsRow = globalTotalsRes.rows?.[0] || {};
+
+    const byMerchantRes = await query(
+      `
+        SELECT
+          merchant_id,
+          COUNT(*)::bigint AS total_rows,
+          COUNT(*) FILTER (WHERE (expires_at IS NULL OR expires_at > now()))::bigint AS not_expired_rows,
+          COUNT(*) FILTER (
+            WHERE (expires_at IS NULL OR expires_at > now())
+              AND ${buildSellableStatusPredicate("product_data->>'status'")}
+              AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+          )::bigint AS sellable_rows,
+          MAX(cached_at) AS latest_cached_at,
+          MAX(expires_at) AS latest_expires_at
+        FROM products_cache
+        GROUP BY merchant_id
+        ORDER BY sellable_rows DESC, total_rows DESC, merchant_id ASC
+        LIMIT $1
+      `,
+      [limitMerchants],
+    );
+
+    const creatorMerchantStats = creatorMerchantIds.length
+      ? await query(
+          `
+            SELECT
+              merchant_id,
+              COUNT(*)::bigint AS total_rows,
+              COUNT(*) FILTER (WHERE (expires_at IS NULL OR expires_at > now()))::bigint AS not_expired_rows,
+              COUNT(*) FILTER (
+                WHERE (expires_at IS NULL OR expires_at > now())
+                  AND ${buildSellableStatusPredicate("product_data->>'status'")}
+                  AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
+              )::bigint AS sellable_rows,
+              MAX(cached_at) AS latest_cached_at
+            FROM products_cache
+            WHERE merchant_id = ANY($1)
+            GROUP BY merchant_id
+            ORDER BY merchant_id ASC
+          `,
+          [creatorMerchantIds],
+        )
+      : { rows: [] };
+
+    const onboardingByCreator = creatorMerchantIds.length
+      ? await query(
+          `
+            SELECT merchant_id, status, psp_connected
+            FROM merchant_onboarding
+            WHERE merchant_id = ANY($1)
+            ORDER BY merchant_id ASC
+          `,
+          [creatorMerchantIds],
+        )
+      : { rows: [] };
+
+    const scopedWhereParts = [];
+    const scopedParams = [];
+    let scopedIdx = 1;
+    if (merchantId) {
+      scopedWhereParts.push(`merchant_id = $${scopedIdx}`);
+      scopedParams.push(merchantId);
+      scopedIdx += 1;
+    }
+    const scopedWhere = scopedWhereParts.length ? `WHERE ${scopedWhereParts.join(' AND ')}` : '';
+
+    let queryProbe = null;
+    if (queryText) {
+      const qValue = `%${String(queryText).toLowerCase()}%`;
+      const fieldOrs = matchFields.map((field) => `${field} LIKE $${scopedIdx}`).join(' OR ');
+
+      const fieldLikeSql = `
+        SELECT COUNT(*)::bigint AS field_like_rows
+        FROM products_cache
+        ${scopedWhere}
+        ${scopedWhere ? 'AND' : 'WHERE'} (${fieldOrs})
+      `;
+      const jsonLikeSql = `
+        SELECT COUNT(*)::bigint AS json_like_rows
+        FROM products_cache
+        ${scopedWhere}
+        ${scopedWhere ? 'AND' : 'WHERE'} lower(CAST(product_data AS TEXT)) LIKE $${scopedIdx}
+      `;
+      const sampleSql = `
+        SELECT
+          merchant_id,
+          product_data->>'title' AS title,
+          product_data->>'status' AS status,
+          COALESCE(product_data->>'product_id', product_data->>'id') AS product_id,
+          cached_at,
+          expires_at
+        FROM products_cache
+        ${scopedWhere}
+        ${scopedWhere ? 'AND' : 'WHERE'} lower(CAST(product_data AS TEXT)) LIKE $${scopedIdx}
+        ORDER BY cached_at DESC NULLS LAST, id DESC
+        LIMIT 5
+      `;
+
+      const queryParams = [...scopedParams, qValue];
+      const [fieldLikeRes, jsonLikeRes, sampleRes] = await Promise.all([
+        query(fieldLikeSql, queryParams),
+        query(jsonLikeSql, queryParams),
+        query(sampleSql, queryParams),
+      ]);
+
+      queryProbe = {
+        query: queryText,
+        merchant_scope: merchantId || null,
+        field_like_rows: parseCount(fieldLikeRes.rows?.[0]?.field_like_rows),
+        json_like_rows: parseCount(jsonLikeRes.rows?.[0]?.json_like_rows),
+        sample_rows: (sampleRes.rows || []).map((row) => ({
+          merchant_id: row.merchant_id || null,
+          product_id: row.product_id || null,
+          title: row.title || null,
+          status: row.status || null,
+          cached_at: row.cached_at || null,
+          expires_at: row.expires_at || null,
+        })),
+      };
+    }
+
+    return res.json({
+      ok: true,
+      timing_ms: Math.max(0, Date.now() - startedAt),
+      db: {
+        ...dbIdentity,
+        fingerprint: dbFingerprint,
+      },
+      gateway: {
+        api_base: PIVOTA_API_BASE,
+        catalog_auto_sync_enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+      },
+      catalog_sync: {
+        enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+        last_run_at: catalogSyncState.last_run_at,
+        last_success_at: catalogSyncState.last_success_at,
+        last_error: catalogSyncState.last_error,
+      },
+      totals: {
+        total_rows: parseCount(globalTotalsRow.total_rows),
+        not_expired_rows: parseCount(globalTotalsRow.not_expired_rows),
+        sellable_rows: parseCount(globalTotalsRow.sellable_rows),
+        latest_cached_at: globalTotalsRow.latest_cached_at || null,
+        latest_expires_at: globalTotalsRow.latest_expires_at || null,
+      },
+      creator_merchants: {
+        configured: creatorMerchantIds,
+        cache_rows: (creatorMerchantStats.rows || []).map((row) => ({
+          merchant_id: row.merchant_id || null,
+          total_rows: parseCount(row.total_rows),
+          not_expired_rows: parseCount(row.not_expired_rows),
+          sellable_rows: parseCount(row.sellable_rows),
+          latest_cached_at: row.latest_cached_at || null,
+        })),
+        onboarding: (onboardingByCreator.rows || []).map((row) => ({
+          merchant_id: row.merchant_id || null,
+          status: row.status || null,
+          psp_connected: row.psp_connected === true,
+        })),
+      },
+      merchants_top: (byMerchantRes.rows || []).map((row) => ({
+        merchant_id: row.merchant_id || null,
+        total_rows: parseCount(row.total_rows),
+        not_expired_rows: parseCount(row.not_expired_rows),
+        sellable_rows: parseCount(row.sellable_rows),
+        latest_cached_at: row.latest_cached_at || null,
+        latest_expires_at: row.latest_expires_at || null,
+      })),
+      query_probe: queryProbe,
+    });
+  } catch (err) {
+    const code = String(err?.code || '').trim() || null;
+    if (code === '42P01') {
+      return res.status(500).json({
+        ok: false,
+        error: 'PRODUCTS_CACHE_TABLE_MISSING',
+        message: err?.message || 'products_cache table does not exist',
+      });
+    }
+    return res.status(500).json({
+      ok: false,
+      error: 'CATALOG_CACHE_DIAGNOSTIC_FAILED',
+      code,
+      message: err?.message || String(err),
+    });
+  }
+});
+
 // ---------------- Main invoke endpoint ----------------
 
 app.post('/agent/shop/v1/invoke', async (req, res) => {

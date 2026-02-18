@@ -6,6 +6,10 @@ describe('GET /api/admin/search-diagnostics', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.doMock('../src/auroraBff/routes', () => ({
+      mountAuroraBffRoutes: () => {},
+      __internal: {},
+    }));
     nock.cleanAll();
     nock.disableNetConnect();
     nock.enableNetConnect((host) => {

@@ -6,6 +6,10 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.doMock('../../src/auroraBff/routes', () => ({
+      mountAuroraBffRoutes: () => {},
+      __internal: {},
+    }));
     nock.cleanAll();
     nock.disableNetConnect();
     nock.enableNetConnect((host) => {
