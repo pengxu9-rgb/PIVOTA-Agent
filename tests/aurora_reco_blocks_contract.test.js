@@ -8,14 +8,23 @@ function buildValidPayload() {
           product_id: 'p_comp_1',
           brand: 'Brand A',
           name: 'Peptide Serum A',
-          why_candidate: ['same_category'],
+          why_candidate: {
+            summary: 'Strong category and ingredient match.',
+            reasons_user_visible: [
+              'Strong category/use-case match with the anchor product.',
+              'Key ingredient functions are highly similar.',
+              'Price band is close to the anchor product.',
+            ],
+          },
           score_breakdown: {
-            category_score: 0.9,
-            ingredient_similarity: 0.8,
+            category_use_case_match: 0.9,
+            ingredient_functional_similarity: 0.8,
             skin_fit_similarity: 0.75,
-            social_reference_score: 0.7,
-            query_overlap_score: 0.65,
-            brand_score: 0.5,
+            social_reference_strength: 0.7,
+            price_distance: 0.65,
+            brand_constraint: 1,
+            quality: 0.72,
+            score_total: 0.79,
           },
           source: { type: 'catalog_search', name: 'pivota_catalog' },
           evidence_refs: [{ id: 'ev_1', source_type: 'catalog' }],
@@ -27,14 +36,25 @@ function buildValidPayload() {
       candidates: [
         {
           name: 'Peptide Serum B',
-          why_candidate: ['on_page_related'],
+          why_candidate: {
+            summary: 'Related by brand and co-view patterns.',
+            reasons_user_visible: [
+              'High brand affinity indicates strong relation.',
+              'Strong co-view signal.',
+              'Strong KB routine association.',
+            ],
+          },
           score_breakdown: {
-            category_score: 0.8,
-            ingredient_similarity: 0.5,
+            category_use_case_match: 0.8,
+            ingredient_functional_similarity: 0.5,
             skin_fit_similarity: 0.4,
-            social_reference_score: 0.4,
-            query_overlap_score: 0.6,
-            brand_score: 0.3,
+            social_reference_strength: 0.4,
+            price_distance: 0.6,
+            brand_constraint: 0,
+            brand_affinity: 1,
+            co_view: 0.7,
+            kb_routine: 0.5,
+            score_total: 0.795,
           },
           source: { type: 'on_page_related' },
           evidence_refs: [],
@@ -46,14 +66,22 @@ function buildValidPayload() {
       candidates: [
         {
           name: 'Peptide Serum C',
-          why_candidate: ['high_similarity'],
+          why_candidate: {
+            summary: 'High functional similarity with better pricing.',
+            reasons_user_visible: [
+              'Strong category/use-case match with the anchor product.',
+              'Key ingredient functions are highly similar.',
+              'More budget-friendly with strong dupe potential.',
+            ],
+          },
           score_breakdown: {
-            category_score: 0.9,
-            ingredient_similarity: 0.9,
+            category_use_case_match: 0.9,
+            ingredient_functional_similarity: 0.9,
             skin_fit_similarity: 0.8,
-            social_reference_score: 0.7,
-            query_overlap_score: 0.7,
-            brand_score: 0.4,
+            social_reference_strength: 0.7,
+            price_distance: 0.8,
+            brand_constraint: 1,
+            score_total: 0.84,
           },
           source: { type: 'dupe_engine' },
           evidence_refs: [{ id: 'ev_dupe_1' }],
@@ -99,5 +127,12 @@ describe('Aurora reco blocks response contract (v2)', () => {
     const validation = validateRecoBlocksResponse(payload);
     expect(validation.ok).toBe(false);
     expect(validation.errors.join(' ')).toMatch(/source/i);
+  });
+
+  test('accepts legacy why_candidate array (dual-compat)', () => {
+    const payload = buildValidPayload();
+    payload.competitors.candidates[0].why_candidate = ['same category'];
+    const validation = validateRecoBlocksResponse(payload);
+    expect(validation.ok).toBe(true);
   });
 });

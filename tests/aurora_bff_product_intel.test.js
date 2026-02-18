@@ -1130,8 +1130,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(names.some((n) => n.includes('contact us'))).toBe(false);
     const first = related[0] || {};
     expect(first.score_breakdown && typeof first.score_breakdown).toBe('object');
-    expect(typeof first.score_breakdown.query_overlap_score).toBe('number');
+    expect(typeof first.score_breakdown.category_use_case_match).toBe('number');
     expect(typeof first.score_breakdown.skin_fit_similarity).toBe('number');
+    expect(first.why_candidate && typeof first.why_candidate).toBe('object');
+    expect(typeof first.why_candidate.summary).toBe('string');
+    expect(Array.isArray(first.why_candidate.reasons_user_visible)).toBe(true);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('alternatives_unavailable');
   });

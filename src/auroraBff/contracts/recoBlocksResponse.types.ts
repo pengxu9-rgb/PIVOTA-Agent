@@ -24,12 +24,17 @@ export type CandidateSource = {
 };
 
 export type ScoreBreakdown = {
-  category_score?: number;
-  ingredient_similarity?: number;
+  category_use_case_match?: number;
+  ingredient_functional_similarity?: number;
   skin_fit_similarity?: number;
-  social_reference_score?: number;
-  query_overlap_score?: number;
-  brand_score?: number;
+  social_reference_strength?: number;
+  price_distance?: number;
+  brand_constraint?: number;
+  quality?: number;
+  score_total?: number;
+  brand_affinity?: number;
+  co_view?: number;
+  kb_routine?: number;
   [key: string]: number | undefined;
 };
 
@@ -41,6 +46,11 @@ export type EvidenceRef = {
   [key: string]: unknown;
 };
 
+export type WhyCandidateObject = {
+  summary: string;
+  reasons_user_visible: string[];
+};
+
 export type RecoCandidate = {
   product_id?: string;
   sku_id?: string;
@@ -48,7 +58,7 @@ export type RecoCandidate = {
   display_name?: string;
   brand?: string;
   similarity_score?: number;
-  why_candidate: string[];
+  why_candidate: WhyCandidateObject | string[];
   score_breakdown: ScoreBreakdown;
   source: CandidateSource;
   evidence_refs: EvidenceRef[];

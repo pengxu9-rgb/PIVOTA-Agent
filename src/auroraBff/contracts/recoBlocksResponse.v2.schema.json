@@ -104,12 +104,12 @@
     "scoreBreakdown": {
       "type": "object",
       "properties": {
-        "category_score": {
+        "category_use_case_match": {
           "type": "number",
           "minimum": 0,
           "maximum": 1
         },
-        "ingredient_similarity": {
+        "ingredient_functional_similarity": {
           "type": "number",
           "minimum": 0,
           "maximum": 1
@@ -119,17 +119,42 @@
           "minimum": 0,
           "maximum": 1
         },
-        "social_reference_score": {
+        "social_reference_strength": {
           "type": "number",
           "minimum": 0,
           "maximum": 1
         },
-        "query_overlap_score": {
+        "price_distance": {
           "type": "number",
           "minimum": 0,
           "maximum": 1
         },
-        "brand_score": {
+        "brand_constraint": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "quality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "score_total": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "brand_affinity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "co_view": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "kb_routine": {
           "type": "number",
           "minimum": 0,
           "maximum": 1
@@ -138,6 +163,23 @@
       "additionalProperties": {
         "type": "number"
       }
+    },
+    "whyCandidateObject": {
+      "type": "object",
+      "required": [
+        "summary",
+        "reasons_user_visible"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasons_user_visible": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "additionalProperties": true
     },
     "candidateSource": {
       "type": "object",
@@ -207,7 +249,14 @@
           "maximum": 1
         },
         "why_candidate": {
-          "$ref": "#/$defs/stringArray"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/stringArray"
+            },
+            {
+              "$ref": "#/$defs/whyCandidateObject"
+            }
+          ]
         },
         "score_breakdown": {
           "$ref": "#/$defs/scoreBreakdown"

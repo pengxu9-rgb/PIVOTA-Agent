@@ -71,6 +71,13 @@ describe('aurora reco blocks dag', () => {
     expect(
       related.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
     ).toBe(true);
+    const firstRelated = related[0] || {};
+    expect(firstRelated.why_candidate).toBeTruthy();
+    expect(typeof firstRelated.why_candidate.summary).toBe('string');
+    expect(Array.isArray(firstRelated.why_candidate.reasons_user_visible)).toBe(true);
+    expect(firstRelated.score_breakdown && typeof firstRelated.score_breakdown).toBe('object');
+    expect(typeof firstRelated.score_breakdown.category_use_case_match).toBe('number');
+    expect(typeof firstRelated.score_breakdown.score_total).toBe('number');
     expect(Array.isArray(out?.diagnostics?.timed_out_blocks)).toBe(true);
     expect(out.diagnostics.timed_out_blocks).toContain('catalog_ann');
   });
@@ -148,6 +155,12 @@ describe('aurora reco blocks dag', () => {
 
     const dupes = Array.isArray(out?.dupes?.candidates) ? out.dupes.candidates : [];
     expect(dupes.map((x) => x.product_id)).toContain('kb_dupe_1');
+    const firstDupe = dupes[0] || {};
+    expect(firstDupe.why_candidate).toBeTruthy();
+    expect(typeof firstDupe.why_candidate.summary).toBe('string');
+    expect(Array.isArray(firstDupe.evidence_refs)).toBe(true);
+    expect(firstDupe.score_breakdown && typeof firstDupe.score_breakdown).toBe('object');
+    expect(typeof firstDupe.score_breakdown.ingredient_functional_similarity).toBe('number');
     expect(Array.isArray(out?.provenance_patch?.fallbacks_used)).toBe(true);
     expect(out.provenance_patch.fallbacks_used).toContain('kb_backfill_dupes');
   });

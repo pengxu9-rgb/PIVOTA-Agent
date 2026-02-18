@@ -1,4 +1,5 @@
 const { routeCandidates } = require('./competitorBlockRouter');
+const { attachExplanations } = require('./recoScoreExplain');
 
 const DEFAULT_BUDGET_MS = 1200;
 const SOURCE_NAMES = [
@@ -158,6 +159,16 @@ function buildAnchorForRouter(anchor) {
   };
 }
 
+function buildAnchorForExplain(anchor, ingredientMeta, skinFitMeta) {
+  const ingredientObj = isPlainObject(ingredientMeta) ? ingredientMeta : {};
+  const skinObj = isPlainObject(skinFitMeta) ? skinFitMeta : {};
+  return {
+    ...buildAnchorForRouter(anchor),
+    ingredient_tokens: Array.isArray(ingredientObj.key_ingredients) ? ingredientObj.key_ingredients : [],
+    profile_skin_tags: Array.isArray(skinObj.profile_skin_tags) ? skinObj.profile_skin_tags : [],
+  };
+}
+
 function buildCandidateKey(row, index) {
   const item = isPlainObject(row) ? row : {};
   const ref =
@@ -259,7 +270,7 @@ function applyLightweightRerank(candidates, { ingredientIndexPresent = false, sk
       const breakdown = isPlainObject(item.score_breakdown) ? item.score_breakdown : {};
       const base = normalizeScore(item.similarity_score ?? item.similarityScore, 0.4);
       const ingredientSimilarity = normalizeScore(
-        breakdown.ingredient_similarity ?? breakdown.ingredientSimilarity,
+        breakdown.ingredient_functional_similarity ?? breakdown.ingredient_similarity ?? breakdown.ingredientSimilarity,
         0,
       );
       const skinFitSimilarity = normalizeScore(
@@ -267,7 +278,7 @@ function applyLightweightRerank(candidates, { ingredientIndexPresent = false, sk
         0,
       );
       const socialScore = normalizeScore(
-        breakdown.social_reference_score ?? breakdown.socialReferenceScore,
+        breakdown.social_reference_strength ?? breakdown.social_reference_score ?? breakdown.socialReferenceScore,
         0,
       );
       const boost = (ingredientIndexPresent ? ingredientSimilarity * 0.08 : 0)
@@ -588,6 +599,19 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
 
   compPool = compPool.filter((row) => extractSourceType(row) !== 'on_page_related');
   dupePool = dupePool.filter((row) => extractSourceType(row) !== 'on_page_related');
+
+  const explainAnchor = buildAnchorForExplain(
+    anchor,
+    stageResult.ingredient_index?.meta,
+    stageResult.skin_fit_light?.meta,
+  );
+  const explainOpts = {
+    lang: ctx.lang || 'EN',
+    max_evidence_refs: 6,
+  };
+  compPool = attachExplanations('competitors', explainAnchor, compPool, explainOpts);
+  relPool = attachExplanations('related_products', explainAnchor, relPool, explainOpts);
+  dupePool = attachExplanations('dupes', explainAnchor, dupePool, explainOpts);
 
   const blocksWithInternal = {
     competitors: { candidates: dedupeCandidates(compPool, maxCandidates) },

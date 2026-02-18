@@ -1,3 +1,5 @@
+const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = require('./recoScoreExplain');
+
 function uniqueStrings(items) {
   const out = [];
   const seen = new Set();
@@ -863,7 +865,6 @@ function inferIngredientRisks(name, contextText) {
 }
 
 const PRICE_BAND_ENUM = new Set(['budget', 'mid', 'premium', 'luxury', 'unknown']);
-const DEFAULT_CANDIDATE_WHY = 'selected_from_available_signals';
 
 function normalizeCandidateSource(source) {
   const obj = asPlainObject(source);
@@ -910,31 +911,20 @@ function inferPriceBand(rawBand, row) {
 }
 
 function normalizeScoreBreakdown(raw, similarityHint = null) {
-  const obj = asPlainObject(raw);
-  const keys = [
-    'category_score',
-    'ingredient_similarity',
+  const out = normalizeCanonicalScoreBreakdown(raw, { similarityHint });
+  const requiredKeys = [
+    'category_use_case_match',
+    'ingredient_functional_similarity',
     'skin_fit_similarity',
-    'social_reference_score',
-    'query_overlap_score',
-    'brand_score',
+    'social_reference_strength',
+    'price_distance',
+    'brand_constraint',
+    'score_total',
   ];
-  const out = {};
-  if (obj) {
-    for (const [key, value] of Object.entries(obj)) {
-      const n = asNumberOrNull(value);
-      if (n == null) continue;
-      out[key] = clamp01(n);
-    }
-  }
-  if (!Object.keys(out).length && similarityHint != null) {
-    const hint = clamp01(similarityHint);
-    out.category_score = hint;
-    out.ingredient_similarity = hint;
-  }
-  for (const key of keys) {
+  for (const key of requiredKeys) {
     if (out[key] == null) out[key] = 0;
   }
+  if (out.quality == null) out.quality = 0;
   return out;
 }
 
@@ -951,8 +941,9 @@ function normalizeCompetitorCandidates(rawCandidates) {
     const similarity =
       similarityRaw == null ? null : similarityRaw > 1 ? clamp01(similarityRaw / 100) : clamp01(similarityRaw);
 
-    const whyCandidate = uniqueStrings(asStringArray(row.why_candidate ?? row.whyCandidate));
-    if (!whyCandidate.length) whyCandidate.push(DEFAULT_CANDIDATE_WHY);
+    const whyCandidate = normalizeWhyCandidateObject(row.why_candidate ?? row.whyCandidate, {
+      lang: 'EN',
+    });
     const compareHighlights = uniqueStrings(asStringArray(row.compare_highlights ?? row.compareHighlights));
     const scoreBreakdown = normalizeScoreBreakdown(row.score_breakdown ?? row.scoreBreakdown, similarity);
     const source = normalizeCandidateSource(row.source ?? row.source_type ?? row.sourceType);

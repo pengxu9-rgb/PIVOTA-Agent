@@ -163,6 +163,7 @@ const {
 const { validateRecoBlocksResponse } = require('./contracts/recoBlocksValidator');
 const { routeCandidates } = require('./competitorBlockRouter');
 const { recoBlocks, social_enrich_async, skin_fit_heavy_async } = require('./recoBlocksDag');
+const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = require('./recoScoreExplain');
 const { simulateConflicts } = require('./routineRules');
 const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
@@ -3333,29 +3334,21 @@ function inferRecoPriceBand(rawBand, row) {
 }
 
 function normalizeRecoScoreBreakdown(raw, similarityHint = null) {
-  const out = {};
-  const src = isPlainObject(raw) ? raw : {};
-  for (const [key, value] of Object.entries(src)) {
-    const n = normalizeMaybePercentScore(value);
-    if (n == null) continue;
-    out[key] = n;
-  }
-  if (!Object.keys(out).length) {
-    const hint = normalizeMaybePercentScore(similarityHint);
-    out.category_score = hint == null ? 0 : hint;
-    out.ingredient_similarity = hint == null ? 0 : hint;
-  }
+  const hint = normalizeMaybePercentScore(similarityHint);
+  const out = normalizeCanonicalScoreBreakdown(raw, { similarityHint: hint });
   const requiredKeys = [
-    'category_score',
-    'ingredient_similarity',
+    'category_use_case_match',
+    'ingredient_functional_similarity',
     'skin_fit_similarity',
-    'social_reference_score',
-    'query_overlap_score',
-    'brand_score',
+    'social_reference_strength',
+    'price_distance',
+    'brand_constraint',
+    'score_total',
   ];
   for (const key of requiredKeys) {
     if (out[key] == null) out[key] = 0;
   }
+  if (out.quality == null) out.quality = 0;
   return out;
 }
 
@@ -3363,13 +3356,9 @@ function normalizeRecoCandidateForContract(item) {
   const row = isPlainObject(item) ? item : null;
   if (!row) return null;
   const similarityRaw = normalizeMaybePercentScore(row.similarity_score ?? row.similarityScore);
-  const whyCandidate = uniqCaseInsensitiveStrings([
-    ...(Array.isArray(row.why_candidate) ? row.why_candidate : []),
-    ...(Array.isArray(row.whyCandidate) ? row.whyCandidate : []),
-    ...(typeof row.why_candidate === 'string' ? [row.why_candidate] : []),
-    ...(typeof row.whyCandidate === 'string' ? [row.whyCandidate] : []),
-  ]);
-  if (!whyCandidate.length) whyCandidate.push('selected_from_available_signals');
+  const whyCandidate = normalizeWhyCandidateObject(row.why_candidate ?? row.whyCandidate, {
+    lang: 'EN',
+  });
   const source = normalizeRecoSourceObject(row.source ?? row.source_type ?? row.sourceType);
   const evidenceRefs = normalizeRecoEvidenceRefs(row.evidence_refs ?? row.evidenceRefs);
   const priceBand = inferRecoPriceBand(row.price_band ?? row.priceBand, row);
@@ -3701,6 +3690,7 @@ async function runRecoBlocksForUrl({
     buildRouterAnchorFromProductLike(anchorObj),
     {
       mode,
+      lang,
       on_page_mode: AURORA_BFF_RECO_BLOCKS_ON_PAGE_MODE,
       logger,
       max_candidates: maxCandidates,
