@@ -271,6 +271,54 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(guardedSearch.isDone()).toBe(true);
   });
 
+  test('injects creator catalog guard params on upstream query', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const guardedSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === 'ipsa toner' &&
+          String(q.allow_external_seed) === 'true' &&
+          String(q.allow_stale_cache) === 'false' &&
+          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa toner',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(guardedSearch.isDone()).toBe(true);
+  });
+
   test('supplements first-page cache hits with external seed candidates', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

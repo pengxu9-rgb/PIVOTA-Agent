@@ -1968,9 +1968,33 @@ function parseQueryStringArray(value) {
     .filter(Boolean);
 }
 
+function normalizeAgentSource(source) {
+  return String(source || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-');
+}
+
 function isShoppingSource(source) {
-  const normalized = String(source || '').trim().toLowerCase();
-  return normalized === 'shopping_agent' || normalized === 'shopping-agent-ui';
+  const normalized = normalizeAgentSource(source);
+  return normalized === 'shopping-agent' || normalized === 'shopping-agent-ui';
+}
+
+function isCreatorUiSource(source) {
+  return normalizeAgentSource(source) === 'creator-agent-ui';
+}
+
+function isCatalogGuardSource(source) {
+  return isShoppingSource(source) || normalizeAgentSource(source) === 'creator-agent';
+}
+
+function isResolverFirstCatalogSource(source) {
+  return isShoppingSource(source) || normalizeAgentSource(source) === 'creator-agent';
+}
+
+function isAuroraSource(source) {
+  const normalized = normalizeAgentSource(source);
+  return normalized === 'aurora-chatbox' || normalized === 'aurora-bff';
 }
 
 function applyShoppingCatalogQueryGuards(queryParams, source) {
@@ -1978,7 +2002,7 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
       ? { ...queryParams }
       : {};
-  if (!isShoppingSource(source)) return params;
+  if (!isCatalogGuardSource(source)) return params;
   return {
     ...params,
     allow_external_seed: true,
@@ -2707,21 +2731,15 @@ function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
   if (!String(queryText || '').trim()) return false;
 
-  const source = String(metadata?.source || '').trim().toLowerCase();
-  if (source === 'creator-agent-ui' || source === 'creator_agent_ui') return false;
+  const source = normalizeAgentSource(metadata?.source);
+  if (isCreatorUiSource(source)) return false;
   if (!source) return true;
-  const isShoppingSource =
-    source === 'shopping_agent' ||
-    source === 'shopping-agent-ui';
-  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && isShoppingSource) {
+  const isCatalogSource = isResolverFirstCatalogSource(source);
+  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && isCatalogSource) {
     return isStrongResolverFirstQuery(queryText);
   }
 
-  return (
-    isShoppingSource ||
-    source === 'aurora_chatbox' ||
-    source === 'aurora_bff'
-  );
+  return isCatalogSource || isAuroraSource(source);
 }
 
 function normalizeAgentProductDetailResponse(raw) {
@@ -5450,7 +5468,7 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   // Creator cache routes require a known creator_id. When the caller is the
   // creator UI and doesn't provide one, default to the first configured creator
   // so cache-based search works out of the box.
-  if (!creatorId && source === 'creator-agent-ui') {
+  if (!creatorId && isCreatorUiSource(source)) {
     creatorId = getDefaultCreatorId();
   }
 
@@ -10395,10 +10413,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	      const source = metadata?.source;
 	      const search = effectivePayload.search || effectivePayload || {};
 	      const queryText = String(search.query || '').trim();
-	      const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
+	      const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = search.in_stock_only !== false;
 
-      const isCreatorUi = source === 'creator-agent-ui';
+      const isCreatorUi = isCreatorUiSource(source);
       if (isCreatorUiColdStart && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
@@ -10963,7 +10981,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const priceMax = search.price_max ?? search.max_price;
 
         const shouldScopeToCreatorCatalog =
-          metadata?.source === 'creator-agent-ui' &&
+          isCreatorUiSource(metadata?.source) &&
           !merchantId &&
           merchantIds.length === 0 &&
           !searchAllMerchantsExplicit &&
@@ -10994,7 +11012,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         // Creator UI: prefer cache-based similarity so "Find more" stays consistent
         // with the creator pool even when upstream has stale/partial cache.
         const source = metadata?.source;
-        const isCreatorUi = source === 'creator-agent-ui';
+        const isCreatorUi = isCreatorUiSource(source);
         if (isCreatorUi && process.env.DATABASE_URL) {
           try {
             const sim = payload.similar || {};
