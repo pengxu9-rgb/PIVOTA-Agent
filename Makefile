@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-round1-pack gold-label-import eval-gold eval-gold-round1 train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-celeba-parsing eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed preference-round1-pack preference-round1-real-pack
+.PHONY: bench stability test golden loadtest privacy-check reco-guardrail-eval release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-round1-pack gold-label-import eval-gold eval-gold-round1 train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-celeba-parsing eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed preference-round1-pack preference-round1-real-pack
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -142,7 +142,7 @@ stability:
 	python3 scripts/perturb_stability.py --lang $(AURORA_LANG) --out $(if $(OUT),$(OUT),artifacts/stability_report.json) $(IMAGES)
 
 test:
-	python3 -m pytest -q tests/test_e2e_contract.py tests/test_perturb_stability.py tests/test_release_gate_discovery.py tests/test_release_gate_bench_sanity.py
+	python3 -m pytest -q tests/test_e2e_contract.py tests/test_perturb_stability.py tests/test_release_gate_discovery.py tests/test_release_gate_bench_sanity.py tests/test_release_gate_reco_guardrail.py
 
 golden:
 	UPDATE_GOLDEN=1 python3 -m pytest -q tests/test_e2e_contract.py
@@ -160,6 +160,9 @@ privacy-check:
 	npm run test:aurora-bff:unit
 	node scripts/e2e_local_skin_analyze.cjs > tmp/privacy_check_stdout.log 2> tmp/privacy_check_stderr.log
 	python3 scripts/log_scan.py --quiet
+
+reco-guardrail-eval:
+	node scripts/eval_reco_guardrail.js --in tests/testdata/reco_guardrail/clean_samples.jsonl --out-json artifacts/reco_guardrail_report.json --out-md artifacts/reco_guardrail_report.md --k 5 --fail-on-redline
 
 release-gate:
 	python3 scripts/generate_release_gate.py

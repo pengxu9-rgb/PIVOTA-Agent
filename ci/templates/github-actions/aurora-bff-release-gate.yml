@@ -46,6 +46,12 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Reco guardrail gate (fail-fast)
+        shell: bash
+        run: |
+          set -euo pipefail
+          make reco-guardrail-eval
+
       - name: Aurora BFF unit tests (offline)
         run: npm run test:aurora-bff:unit
 
@@ -109,4 +115,3 @@ jobs:
         run: |
           set -euo pipefail
           BASE="$BASE_URL" bash scripts/smoke_aurora_bff_runtime.sh
-

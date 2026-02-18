@@ -75,6 +75,11 @@ const {
   recordSkinmaskFallback,
   observeSkinmaskInferLatency,
   recordGeometrySanitizerDropReason,
+  recordRecoGuardrailViolation,
+  recordRecoCandidate,
+  recordRecoExplanationAlignment,
+  recordRecoGuardrailCircuitOpen,
+  setRecoGuardrailRates,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
 const {
@@ -164,6 +169,7 @@ const { validateRecoBlocksResponse } = require('./contracts/recoBlocksValidator'
 const { routeCandidates } = require('./competitorBlockRouter');
 const { recoBlocks, social_enrich_async, skin_fit_heavy_async } = require('./recoBlocksDag');
 const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = require('./recoScoreExplain');
+const { extractWhitelistedSocialChannels } = require('./socialSummaryUserVisible');
 const { simulateConflicts } = require('./routineRules');
 const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
@@ -441,6 +447,34 @@ const AURORA_BFF_RECO_BLOCKS_ON_PAGE_MODE = (() => {
     .trim()
     .toLowerCase();
   return raw === 'always' ? 'always' : 'fallback_only';
+})();
+const AURORA_BFF_RECO_GUARD_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_GUARD_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(1, Math.min(20, v));
+})();
+const AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS || 600000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 600000;
+  return Math.max(1000, Math.min(60 * 60 * 1000, v));
+})();
+const AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_KB_ASYNC_BACKFILL || 'true')
@@ -1130,6 +1164,65 @@ function collectCandidateIngredientTokens(base) {
   return normalizeIngredientTokensFromStrings(flattened);
 }
 
+function normalizeSocialTopicKeyword(raw) {
+  const text = String(raw == null ? '' : raw).trim();
+  if (!text) return '';
+  const token = text.replace(/^#/, '').trim();
+  if (!token) return '';
+  if (token.length < 2 || token.length > 40) return '';
+  if (/https?:\/\//i.test(token)) return '';
+  if (/@/.test(token)) return '';
+  if (/^(?:route_|dedupe_|internal_|fallback_|ref_)/i.test(token)) return '';
+  if (/^[0-9\-_:/.]+$/.test(token)) return '';
+  if (/完美平替|100%\s*(?:相同|一样|identical|same)|miracle\s+dupe|无敌平替/i.test(token)) return '';
+  return token;
+}
+
+function collectSocialTopicKeywords(base) {
+  const values = collectCatalogFieldValues(base, [
+    'topic_keywords',
+    'topicKeywords',
+    'top_keywords',
+    'topKeywords',
+    'keywords',
+    'social.top_keywords',
+    'social.topKeywords',
+    'social_stats.top_keywords',
+    'socialStats.topKeywords',
+    'social_stats.topics',
+    'socialStats.topics',
+    'social.topics',
+  ]);
+  const out = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const text of flattenStringsFromValue(value, 40)) {
+      const segments = String(text)
+        .split(/[|,/;]+/g)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      for (const segment of segments.length ? segments : [text]) {
+        const keyword = normalizeSocialTopicKeyword(segment);
+        if (!keyword) continue;
+        const key = keyword.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(keyword);
+        if (out.length >= 12) return out;
+      }
+    }
+  }
+  return out;
+}
+
+function normalizeSocialSentimentProxy(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (n >= -1 && n <= 1) return clamp01Score((n + 1) / 2);
+  return normalizeMaybePercentScore(n);
+}
+
 function extractCandidateSocialReference(base) {
   const values = collectCatalogFieldValues(base, [
     'social_score',
@@ -1150,10 +1243,38 @@ function extractCandidateSocialReference(base) {
     'social_stats.sample_size',
     'socialStats.sampleSize',
   ]);
+  const sentimentValues = collectCatalogFieldValues(base, [
+    'sentiment_proxy',
+    'sentimentProxy',
+    'social.sentiment_proxy',
+    'social.sentimentProxy',
+    'social.sentiment',
+    'social_stats.sentiment',
+    'socialStats.sentiment',
+  ]);
+  const contextMatchValues = collectCatalogFieldValues(base, [
+    'context_match',
+    'contextMatch',
+    'social.context_match',
+    'social.contextMatch',
+    'social_stats.context_match',
+    'socialStats.contextMatch',
+  ]);
+  const channelValues = collectCatalogFieldValues(base, [
+    'social_channels',
+    'socialChannels',
+    'platforms',
+    'social.platforms',
+    'social_stats.platforms',
+    'socialStats.platforms',
+  ]);
+  const topicKeywords = collectSocialTopicKeywords(base);
 
   const scoreSamples = [];
+  const platformScoreKeys = [];
   for (const value of values) {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
+      platformScoreKeys.push(...Object.keys(value));
       for (const v of Object.values(value)) {
         const score = normalizeMaybePercentScore(v);
         if (score != null) scoreSamples.push(score);
@@ -1181,7 +1302,42 @@ function extractCandidateSocialReference(base) {
     score = clamp01Score(score + supportBoost);
   }
 
-  return { score, support_count: supportCount };
+  let sentimentProxy = null;
+  for (const value of sentimentValues) {
+    const normalized = normalizeSocialSentimentProxy(value);
+    if (normalized == null) continue;
+    sentimentProxy = sentimentProxy == null ? normalized : (sentimentProxy + normalized) / 2;
+  }
+  if (sentimentProxy != null) sentimentProxy = clamp01Score(sentimentProxy);
+
+  let contextMatch = null;
+  for (const value of contextMatchValues) {
+    const normalized = normalizeMaybePercentScore(value);
+    if (normalized == null) continue;
+    contextMatch = contextMatch == null ? normalized : Math.max(contextMatch, normalized);
+  }
+
+  const channelHints = [
+    ...platformScoreKeys,
+    ...channelValues.flatMap((value) => flattenStringsFromValue(value, 20)),
+  ];
+  const channels = extractWhitelistedSocialChannels({
+    channels: channelHints,
+  });
+
+  const socialRaw = {
+    ...(score != null ? { co_mention_strength: Number(score.toFixed(3)) } : {}),
+    ...(topicKeywords.length ? { topic_keywords: topicKeywords } : {}),
+    ...(sentimentProxy != null ? { sentiment_proxy: Number(sentimentProxy.toFixed(3)) } : {}),
+    ...(contextMatch != null ? { context_match: Number(contextMatch.toFixed(3)) } : {}),
+    ...(channels.length ? { channels } : {}),
+  };
+
+  return {
+    score,
+    support_count: supportCount,
+    social_raw: Object.keys(socialRaw).length ? socialRaw : null,
+  };
 }
 
 function normalizeRecoCatalogProduct(raw) {
@@ -1271,6 +1427,7 @@ function normalizeRecoCatalogProduct(raw) {
     ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
     ...(socialRef.score != null ? { social_ref_score: Number(socialRef.score.toFixed(3)) } : {}),
     ...(socialRef.support_count != null ? { social_ref_support_count: Math.trunc(socialRef.support_count) } : {}),
+    ...(socialRef.social_raw ? { social_raw: socialRef.social_raw } : {}),
   };
 
   const canonicalProductRef = normalizeCanonicalProductRef(
@@ -1292,6 +1449,80 @@ const recoCatalogFailFastState = {
   last_failed_at: 0,
   last_probe_started_at: 0,
 };
+
+const recoGuardrailCircuitStateByMode = new Map();
+
+function normalizeRecoGuardMode(mode) {
+  const token = String(mode || '').trim().toLowerCase();
+  if (token === 'main_path' || token === 'sync_repair' || token === 'async_backfill') return token;
+  return AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE ? 'main_path' : 'unknown';
+}
+
+function getRecoGuardrailCircuitState(mode) {
+  const modeKey = normalizeRecoGuardMode(mode);
+  let state = recoGuardrailCircuitStateByMode.get(modeKey);
+  if (!state) {
+    state = {
+      mode: modeKey,
+      consecutive_violations: 0,
+      open_until_ms: 0,
+      last_opened_at: 0,
+      last_violation_at: 0,
+      last_violations: [],
+    };
+    recoGuardrailCircuitStateByMode.set(modeKey, state);
+  }
+  return state;
+}
+
+function getRecoGuardrailCircuitSnapshot(mode, nowMs = Date.now()) {
+  const state = getRecoGuardrailCircuitState(mode);
+  const openUntil = Number(state.open_until_ms || 0);
+  const open = Boolean(AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED && openUntil > nowMs);
+  return {
+    mode: state.mode,
+    open,
+    open_until_ms: open ? openUntil : 0,
+    consecutive_violations: Number(state.consecutive_violations || 0),
+    threshold: AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD,
+    cooldown_ms: AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS,
+    last_opened_at: Number(state.last_opened_at || 0),
+    last_violation_at: Number(state.last_violation_at || 0),
+    last_violations: Array.isArray(state.last_violations) ? state.last_violations.slice(0, 8) : [],
+  };
+}
+
+function markRecoGuardrailCircuitSuccess(mode) {
+  const state = getRecoGuardrailCircuitState(mode);
+  const nowMs = Date.now();
+  if (Number(state.open_until_ms || 0) > nowMs) return;
+  state.consecutive_violations = 0;
+  state.last_violations = [];
+}
+
+function markRecoGuardrailCircuitViolation(mode, violations = [], nowMs = Date.now()) {
+  const state = getRecoGuardrailCircuitState(mode);
+  state.consecutive_violations = Number(state.consecutive_violations || 0) + 1;
+  state.last_violation_at = nowMs;
+  state.last_violations = uniqCaseInsensitiveStrings(
+    Array.isArray(violations) ? violations : [],
+    8,
+  );
+  let opened = false;
+  if (
+    AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED &&
+    state.consecutive_violations >= AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD
+  ) {
+    state.open_until_ms = nowMs + AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS;
+    state.last_opened_at = nowMs;
+    state.consecutive_violations = 0;
+    opened = true;
+  }
+  return {
+    opened,
+    snapshot: getRecoGuardrailCircuitSnapshot(mode, nowMs),
+  };
+}
 
 function getRecoCatalogFailFastSnapshot(nowMs = Date.now()) {
   const openUntilMs = Number(recoCatalogFailFastState.open_until_ms || 0);
@@ -3047,6 +3278,7 @@ async function buildRealtimeCompetitorCandidates({
         ...(brand ? { brand } : {}),
         source: { type: 'catalog_search' },
         source_type: 'catalog_search',
+        ...(normalized.social_raw ? { social_raw: normalized.social_raw } : {}),
         why_candidate: whyCandidate,
         similarity_score: similarityScore,
         score_breakdown: scored.score_breakdown,
@@ -3113,6 +3345,7 @@ async function buildRealtimeCompetitorCandidates({
       ...(brand ? { brand } : {}),
       source: { type: 'catalog_resolve_fallback' },
       source_type: 'catalog_resolve_fallback',
+      ...(normalized.social_raw ? { social_raw: normalized.social_raw } : {}),
       why_candidate: uniqCaseInsensitiveStrings(
         [
           isCn ? 'catalog resolve 回退命中' : 'catalog resolve fallback hit',
@@ -3314,6 +3547,43 @@ function normalizeRecoEvidenceRefs(raw) {
   return out;
 }
 
+function normalizeRecoSocialSummaryKeyword(raw) {
+  const text = String(raw == null ? '' : raw).trim();
+  if (!text) return '';
+  if (text.length < 2 || text.length > 40) return '';
+  if (/https?:\/\//i.test(text)) return '';
+  if (/@/.test(text)) return '';
+  if (/^(?:route_|dedupe_|internal_|fallback_|ref_)/i.test(text)) return '';
+  if (/完美平替|100%\s*(?:相同|一样|identical|same)|miracle\s+dupe|无敌平替/i.test(text)) return '';
+  return text;
+}
+
+const RECO_SOCIAL_VOLUME_BUCKETS = new Set(['low', 'mid', 'high', 'unknown']);
+
+function normalizeRecoSocialSummaryUserVisible(raw) {
+  const obj = isPlainObject(raw) ? raw : null;
+  if (!obj) return null;
+  const themes = uniqCaseInsensitiveStrings(Array.isArray(obj.themes) ? obj.themes : [])
+    .slice(0, 3);
+  if (!themes.length) return null;
+
+  const topKeywords = uniqCaseInsensitiveStrings(
+    (Array.isArray(obj.top_keywords) ? obj.top_keywords : [])
+      .map((item) => normalizeRecoSocialSummaryKeyword(item))
+      .filter(Boolean),
+  ).slice(0, 6);
+  const sentimentHint = typeof obj.sentiment_hint === 'string' ? obj.sentiment_hint.trim() : '';
+  const volumeRaw = String(obj.volume_bucket || '').trim().toLowerCase();
+  const volumeBucket = RECO_SOCIAL_VOLUME_BUCKETS.has(volumeRaw) ? volumeRaw : 'unknown';
+
+  return {
+    themes,
+    ...(topKeywords.length ? { top_keywords: topKeywords } : {}),
+    ...(sentimentHint ? { sentiment_hint: sentimentHint } : {}),
+    volume_bucket: volumeBucket,
+  };
+}
+
 function inferRecoPriceBand(rawBand, row) {
   const explicit = String(rawBand || '').trim().toLowerCase();
   if (RECO_PRICE_BANDS.has(explicit)) return explicit;
@@ -3362,7 +3632,10 @@ function normalizeRecoCandidateForContract(item) {
   const source = normalizeRecoSourceObject(row.source ?? row.source_type ?? row.sourceType);
   const evidenceRefs = normalizeRecoEvidenceRefs(row.evidence_refs ?? row.evidenceRefs);
   const priceBand = inferRecoPriceBand(row.price_band ?? row.priceBand, row);
-  return {
+  const socialSummary = normalizeRecoSocialSummaryUserVisible(
+    row.social_summary_user_visible ?? row.socialSummaryUserVisible,
+  );
+  const next = {
     ...row,
     ...(similarityRaw != null ? { similarity_score: similarityRaw } : {}),
     why_candidate: whyCandidate,
@@ -3370,7 +3643,14 @@ function normalizeRecoCandidateForContract(item) {
     source,
     evidence_refs: evidenceRefs,
     price_band: priceBand,
+    ...(socialSummary ? { social_summary_user_visible: socialSummary } : {}),
   };
+  delete next.social_raw;
+  delete next.socialRaw;
+  delete next.__dag_source;
+  delete next.__social_channels_used;
+  if (!socialSummary) delete next.social_summary_user_visible;
+  return next;
 }
 
 function normalizeRecoBlockForContract(rawBlock, { max = 10 } = {}) {
@@ -3422,6 +3702,12 @@ function normalizeRecoConfidenceByBlock(raw) {
 
 function normalizeRecoProvenance(raw, payload) {
   const src = isPlainObject(raw) ? raw : {};
+  const socialChannelsUsed = extractWhitelistedSocialChannels({
+    channels: [
+      ...(Array.isArray(src.social_channels_used) ? src.social_channels_used : []),
+      ...(Array.isArray(src.socialChannelsUsed) ? src.socialChannelsUsed : []),
+    ],
+  });
   const contractVersion =
     (typeof src.contract_version === 'string' && src.contract_version.trim()) ||
     (typeof payload?.product_intel_contract_version === 'string' && payload.product_intel_contract_version.trim()) ||
@@ -3434,10 +3720,381 @@ function normalizeRecoProvenance(raw, payload) {
     pipeline: (typeof src.pipeline === 'string' && src.pipeline.trim()) || 'aurora_product_intel_main_path',
     source: (typeof src.source === 'string' && src.source.trim()) || 'aurora_bff_routes',
     validation_mode: (typeof src.validation_mode === 'string' && src.validation_mode.trim()) || 'soft_fail',
+    ...(socialChannelsUsed.length ? { social_channels_used: socialChannelsUsed } : {}),
   };
 }
 
-function finalizeProductAnalysisRecoContract(payload, { logger } = {}) {
+function normalizeRecoGuardBrandId(value) {
+  return String(value == null ? '' : value).trim().toLowerCase();
+}
+
+function getRecoGuardAnchorBrandId(payload) {
+  const p = isPlainObject(payload) ? payload : {};
+  const assessment = isPlainObject(p.assessment) ? p.assessment : {};
+  const anchor = isPlainObject(assessment.anchor_product || assessment.anchorProduct)
+    ? (assessment.anchor_product || assessment.anchorProduct)
+    : {};
+  return pickFirstTrimmed(
+    anchor.brand_id,
+    anchor.brandId,
+    anchor.brand,
+    anchor.brand_name,
+    anchor.brandName,
+    p.anchor_brand_id,
+    p.anchorBrandId,
+  );
+}
+
+function getRecoGuardCandidateBrandId(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  return pickFirstTrimmed(row.brand_id, row.brandId, row.brand, row.brand_name, row.brandName);
+}
+
+function getRecoGuardCandidateSourceType(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  return String((row.source && row.source.type) || row.source_type || row.sourceType || '')
+    .trim()
+    .toLowerCase();
+}
+
+function getRecoGuardTopFeatureKeys(block) {
+  const token = String(block || '').trim().toLowerCase();
+  if (token === 'related_products') return ['brand_affinity', 'co_view', 'kb_routine'];
+  if (token === 'dupes') {
+    return [
+      'category_use_case_match',
+      'ingredient_functional_similarity',
+      'skin_fit_similarity',
+      'social_reference_strength',
+      'price_distance',
+      'brand_constraint',
+    ];
+  }
+  return [
+    'category_use_case_match',
+    'ingredient_functional_similarity',
+    'skin_fit_similarity',
+    'social_reference_strength',
+    'price_distance',
+    'quality',
+    'brand_constraint',
+  ];
+}
+
+const RECO_GUARD_FEATURE_REASON_KEYWORDS = {
+  category_use_case_match: ['category', 'use-case', 'scenario', '品类', '场景'],
+  ingredient_functional_similarity: ['ingredient', 'active', '成分', '活性'],
+  skin_fit_similarity: ['skin profile', 'skin type', 'sensitive', '肤质', '敏感'],
+  social_reference_strength: ['social', 'public', 'community', '社交', '反馈'],
+  price_distance: ['price', 'budget', 'cost', '价格', '预算'],
+  quality: ['source quality', 'evidence', '来源质量', '证据'],
+  brand_constraint: ['cross-brand', '品牌'],
+  brand_affinity: ['brand affinity', '品牌关联'],
+  co_view: ['co-view', '共现'],
+  kb_routine: ['routine', '组合', '搭配'],
+};
+
+function normalizeRecoGuardWhyCandidateText(whyCandidate) {
+  if (!whyCandidate) return '';
+  if (Array.isArray(whyCandidate)) return whyCandidate.map((item) => String(item || '').toLowerCase()).join(' | ');
+  if (isPlainObject(whyCandidate)) {
+    const reasons = Array.isArray(whyCandidate.reasons_user_visible) ? whyCandidate.reasons_user_visible : [];
+    const summary = typeof whyCandidate.summary === 'string' ? whyCandidate.summary : '';
+    return [summary, ...reasons].map((item) => String(item || '').toLowerCase()).join(' | ');
+  }
+  return String(whyCandidate || '').toLowerCase();
+}
+
+function isRecoGuardExplanationAlignedAt3(candidate, block) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const scoreBreakdown = isPlainObject(row.score_breakdown) ? row.score_breakdown : {};
+  const scored = [];
+  for (const key of getRecoGuardTopFeatureKeys(block)) {
+    const value = normalizeMaybePercentScore(scoreBreakdown[key]);
+    if (value == null) continue;
+    scored.push({ key, value });
+  }
+  if (!scored.length) return false;
+  scored.sort((a, b) => {
+    if (b.value !== a.value) return b.value - a.value;
+    return a.key.localeCompare(b.key);
+  });
+  const reasonsText = normalizeRecoGuardWhyCandidateText(row.why_candidate);
+  if (!reasonsText.trim()) return false;
+  const top3 = scored.slice(0, 3);
+  return top3.every((item) =>
+    (RECO_GUARD_FEATURE_REASON_KEYWORDS[item.key] || []).some((keyword) =>
+      reasonsText.includes(String(keyword || '').trim().toLowerCase()),
+    ),
+  );
+}
+
+function observeRecoGuardrailBlockMetrics(payload, { mode = 'main_path', anchorBrandId = '' } = {}) {
+  const p = isPlainObject(payload) ? payload : {};
+  const modeToken = normalizeRecoGuardMode(mode);
+  const anchorBrandToken = normalizeRecoGuardBrandId(anchorBrandId || getRecoGuardAnchorBrandId(p));
+  let competitorsTotal = 0;
+  let competitorsSameBrand = 0;
+  let competitorsOnPage = 0;
+  let alignmentTotal = 0;
+  let alignmentAligned = 0;
+
+  for (const block of ['competitors', 'related_products', 'dupes']) {
+    const blockObj = isPlainObject(p[block]) ? p[block] : {};
+    const candidates = Array.isArray(blockObj.candidates) ? blockObj.candidates : [];
+    for (const candidate of candidates) {
+      const sourceType = getRecoGuardCandidateSourceType(candidate) || 'unknown';
+      const candidateBrandToken = normalizeRecoGuardBrandId(getRecoGuardCandidateBrandId(candidate));
+      const brandRelation =
+        anchorBrandToken && candidateBrandToken
+          ? anchorBrandToken === candidateBrandToken
+            ? 'same_brand'
+            : 'cross_brand'
+          : 'unknown';
+      recordRecoCandidate({
+        block,
+        sourceType,
+        brandRelation,
+        mode: modeToken,
+      });
+
+      const aligned = isRecoGuardExplanationAlignedAt3(candidate, block);
+      recordRecoExplanationAlignment({
+        block,
+        aligned,
+        mode: modeToken,
+      });
+      alignmentTotal += 1;
+      if (aligned) alignmentAligned += 1;
+
+      if (block === 'competitors') {
+        competitorsTotal += 1;
+        if (sourceType === 'on_page_related') competitorsOnPage += 1;
+        if (brandRelation === 'same_brand') competitorsSameBrand += 1;
+      }
+    }
+  }
+
+  const sameBrandRate = competitorsTotal > 0 ? competitorsSameBrand / competitorsTotal : 0;
+  const onPageRate = competitorsTotal > 0 ? competitorsOnPage / competitorsTotal : 0;
+  const alignmentRate = alignmentTotal > 0 ? alignmentAligned / alignmentTotal : 0;
+  setRecoGuardrailRates({
+    competitorsSameBrandRate: sameBrandRate,
+    competitorsOnPageSourceRate: onPageRate,
+    explanationAlignmentAt3: alignmentRate,
+  });
+  return {
+    competitors_total: competitorsTotal,
+    competitors_same_brand_hits: competitorsSameBrand,
+    competitors_on_page_hits: competitorsOnPage,
+    explanation_alignment_at3: alignmentRate,
+  };
+}
+
+function applyRecoGuardrailToProductAnalysisPayload(
+  payload,
+  { logger, requestId = 'unknown', mode = 'main_path' } = {},
+) {
+  const p = isPlainObject(payload) ? payload : null;
+  if (!p) return payload;
+  const modeToken = normalizeRecoGuardMode(mode);
+  const anchorBrandId = normalizeRecoGuardBrandId(getRecoGuardAnchorBrandId(p));
+  const telemetry = observeRecoGuardrailBlockMetrics(p, { mode: modeToken, anchorBrandId });
+  if (!AURORA_BFF_RECO_GUARD_ENABLED) return p;
+
+  const competitorsObj = isPlainObject(p.competitors) ? p.competitors : {};
+  const rawCandidates = Array.isArray(competitorsObj.candidates) ? competitorsObj.candidates : [];
+  const nowMs = Date.now();
+  const circuitBefore = getRecoGuardrailCircuitSnapshot(modeToken, nowMs);
+  let circuitOpen = Boolean(circuitBefore.open);
+  let circuitUntilMs = Number(circuitBefore.open_until_ms || 0);
+  let autoRollbackFlag = false;
+  const violations = [];
+  let filteredCandidates = [];
+
+  if (circuitOpen && AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED) {
+    autoRollbackFlag = true;
+    filteredCandidates = [];
+  } else {
+    for (const candidate of rawCandidates) {
+      const sourceType = getRecoGuardCandidateSourceType(candidate);
+      const candidateBrandId = normalizeRecoGuardBrandId(getRecoGuardCandidateBrandId(candidate));
+      const sameBrandBlocked =
+        AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE &&
+        Boolean(anchorBrandId) &&
+        Boolean(candidateBrandId) &&
+        anchorBrandId === candidateBrandId;
+      const onPageBlocked = sourceType === 'on_page_related';
+      if (!sameBrandBlocked && !onPageBlocked) {
+        filteredCandidates.push(candidate);
+        continue;
+      }
+      if (sameBrandBlocked) {
+        violations.push({
+          violation_type: 'same_brand',
+          source_type: sourceType || 'unknown',
+          candidate_brand_id: candidateBrandId || '',
+        });
+      }
+      if (onPageBlocked) {
+        violations.push({
+          violation_type: 'on_page_source',
+          source_type: sourceType || 'unknown',
+          candidate_brand_id: candidateBrandId || '',
+        });
+      }
+    }
+  }
+
+  const violationTypes = uniqCaseInsensitiveStrings(
+    violations.map((item) => item.violation_type),
+    8,
+  );
+  let circuitOpenedNow = false;
+  if (violations.length && !circuitOpen) {
+    const circuitUpdate = markRecoGuardrailCircuitViolation(modeToken, violationTypes, nowMs);
+    circuitOpenedNow = Boolean(circuitUpdate.opened);
+    circuitOpen = Boolean(circuitUpdate.snapshot.open);
+    circuitUntilMs = Number(circuitUpdate.snapshot.open_until_ms || 0);
+    if (circuitOpenedNow) {
+      autoRollbackFlag = true;
+      filteredCandidates = [];
+      recordRecoGuardrailCircuitOpen({ mode: modeToken });
+      logger?.warn(
+        {
+          event_name: 'reco_guardrail_circuit_opened',
+          request_id: requestId,
+          mode: modeToken,
+          block: 'competitors',
+          circuit_open: true,
+          circuit_until_ms: circuitUntilMs,
+          auto_rollback_flag: true,
+        },
+        'aurora bff: reco guardrail circuit opened',
+      );
+    }
+  } else if (!circuitOpen) {
+    markRecoGuardrailCircuitSuccess(modeToken);
+  }
+
+  const effectiveCandidates =
+    circuitOpen && AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED ? [] : filteredCandidates;
+  const hasSanitizeAction = effectiveCandidates.length !== rawCandidates.length || violations.length > 0;
+  const guardrailApplied = Boolean(hasSanitizeAction || (circuitOpen && AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED));
+
+  for (const violation of violations) {
+    recordRecoGuardrailViolation({
+      block: 'competitors',
+      violationType: violation.violation_type,
+      mode: modeToken,
+      action: circuitOpen ? 'circuit_drop' : 'sanitize',
+    });
+    logger?.warn(
+      {
+        event_name: 'reco_guardrail_violation',
+        request_id: requestId,
+        mode: modeToken,
+        block: 'competitors',
+        violation_type: violation.violation_type,
+        source_type: violation.source_type || 'unknown',
+        anchor_brand_id: anchorBrandId || '',
+        candidate_brand_id: violation.candidate_brand_id || '',
+        action: circuitOpen ? 'circuit_drop' : 'sanitize',
+        circuit_open: Boolean(circuitOpen),
+        circuit_until_ms: circuitOpen ? circuitUntilMs : 0,
+        auto_rollback_flag: Boolean(autoRollbackFlag),
+      },
+      'aurora bff: reco guardrail violation',
+    );
+  }
+
+  const existingCodes = getProductAnalysisInternalMissingCodes(p);
+  const guardCodes = [];
+  if (guardrailApplied) guardCodes.push('reco_guardrail_applied');
+  if (violationTypes.includes('same_brand')) guardCodes.push('reco_guardrail_same_brand_filtered');
+  if (violationTypes.includes('on_page_source')) guardCodes.push('reco_guardrail_on_page_filtered');
+  if (circuitOpen) guardCodes.push('reco_guardrail_circuit_open');
+  const nextInternalCodes = uniqCaseInsensitiveStrings(
+    [...existingCodes, ...guardCodes],
+    32,
+  );
+
+  const confidenceByBlock = normalizeRecoConfidenceByBlock(p.confidence_by_block);
+  if (guardrailApplied) {
+    const prevCompetitorConfidence = isPlainObject(confidenceByBlock.competitors)
+      ? confidenceByBlock.competitors
+      : normalizeRecoConfidenceEntry(null, 'competitors_default');
+    const reasons = uniqCaseInsensitiveStrings(
+      [
+        ...((Array.isArray(prevCompetitorConfidence.reasons) ? prevCompetitorConfidence.reasons : [])),
+        ...(violationTypes.includes('same_brand') ? ['guardrail_same_brand_filtered'] : []),
+        ...(violationTypes.includes('on_page_source') ? ['guardrail_on_page_filtered'] : []),
+        ...(circuitOpen ? ['guardrail_circuit_open'] : []),
+      ],
+      8,
+    );
+    confidenceByBlock.competitors = {
+      score: Math.min(circuitOpen ? 0.05 : 0.2, Number(prevCompetitorConfidence.score) || 1),
+      level: 'low',
+      reasons: reasons.length ? reasons : ['guardrail_applied'],
+    };
+  }
+
+  const provenanceObj = isPlainObject(p.provenance) ? p.provenance : {};
+  const nextProvenance = {
+    ...provenanceObj,
+    guardrail_applied: guardrailApplied,
+    guardrail_violations: uniqCaseInsensitiveStrings(
+      [
+        ...(Array.isArray(provenanceObj.guardrail_violations) ? provenanceObj.guardrail_violations : []),
+        ...violationTypes,
+        ...(circuitOpen ? ['circuit_open'] : []),
+      ],
+      8,
+    ),
+    guardrail_circuit_open: Boolean(circuitOpen),
+    guardrail_circuit_until_ms: circuitOpen ? circuitUntilMs : 0,
+    auto_rollback_flag: Boolean(autoRollbackFlag),
+  };
+
+  logger?.info?.(
+    {
+      event_name: 'reco_guardrail_gate_result',
+      request_id: requestId,
+      mode: modeToken,
+      block: 'competitors',
+      violation_count: violations.length,
+      action: circuitOpen ? 'circuit_drop' : hasSanitizeAction ? 'sanitize' : 'pass',
+      circuit_open: Boolean(circuitOpen),
+      circuit_until_ms: circuitOpen ? circuitUntilMs : 0,
+      auto_rollback_flag: Boolean(autoRollbackFlag),
+      candidates_before: rawCandidates.length,
+      candidates_after: effectiveCandidates.length,
+      competitors_same_brand_rate: telemetry.competitors_total > 0
+        ? telemetry.competitors_same_brand_hits / telemetry.competitors_total
+        : 0,
+      competitors_on_page_source_rate: telemetry.competitors_total > 0
+        ? telemetry.competitors_on_page_hits / telemetry.competitors_total
+        : 0,
+      explanation_alignment_at3: telemetry.explanation_alignment_at3,
+    },
+    'aurora bff: reco guardrail gate result',
+  );
+
+  return applyProductAnalysisGapContract({
+    ...p,
+    competitors: {
+      ...competitorsObj,
+      candidates: effectiveCandidates,
+    },
+    confidence_by_block: confidenceByBlock,
+    provenance: nextProvenance,
+    internal_debug_codes: nextInternalCodes,
+    missing_info_internal: nextInternalCodes,
+  });
+}
+
+function finalizeProductAnalysisRecoContract(payload, { logger, requestId = 'unknown', mode = 'main_path' } = {}) {
   const p = isPlainObject(payload) ? payload : {};
   const internalCodes = uniqCaseInsensitiveStrings(
     [
@@ -3459,7 +4116,13 @@ function finalizeProductAnalysisRecoContract(payload, { logger } = {}) {
   });
 
   const validation = validateRecoBlocksResponse(normalized);
-  if (validation.ok) return normalized;
+  if (validation.ok) {
+    return applyRecoGuardrailToProductAnalysisPayload(normalized, {
+      logger,
+      requestId,
+      mode,
+    });
+  }
 
   const fallbackCodes = uniqCaseInsensitiveStrings(
     [...internalCodes, 'reco_blocks_schema_invalid'],
@@ -3469,7 +4132,7 @@ function finalizeProductAnalysisRecoContract(payload, { logger } = {}) {
     { errors: validation.errors.slice(0, 8) },
     'aurora bff: reco blocks schema invalid; soft-fail fallback applied',
   );
-  return applyProductAnalysisGapContract({
+  const fallbackPayload = applyProductAnalysisGapContract({
     ...normalized,
     competitors: { candidates: [] },
     related_products: { candidates: [] },
@@ -3478,6 +4141,11 @@ function finalizeProductAnalysisRecoContract(payload, { logger } = {}) {
     provenance: normalizeRecoProvenance(normalized.provenance, normalized),
     missing_info_internal: fallbackCodes,
     internal_debug_codes: fallbackCodes,
+  });
+  return applyRecoGuardrailToProductAnalysisPayload(fallbackPayload, {
+    logger,
+    requestId,
+    mode,
   });
 }
 
@@ -13402,7 +14070,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
             logger,
           });
-          kbPayload = finalizeProductAnalysisRecoContract(kbPayload, { logger });
+          kbPayload = finalizeProductAnalysisRecoContract(kbPayload, {
+            logger,
+            requestId: ctx.request_id,
+            mode: syncCoverageRepairApplied ? 'sync_repair' : 'main_path',
+          });
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
             suggested_chips: [],
@@ -13484,7 +14156,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
             logger,
           });
-          realtimePayload = finalizeProductAnalysisRecoContract(realtimePayload, { logger });
+          realtimePayload = finalizeProductAnalysisRecoContract(realtimePayload, {
+            logger,
+            requestId: ctx.request_id,
+            mode: 'main_path',
+          });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: null,
@@ -13645,7 +14321,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const normNoAnchor = normalizeProductAnalysis(fallbackUnknownPayload);
         const payloadNoAnchor = finalizeProductAnalysisRecoContract(
           enrichProductAnalysisPayload(normNoAnchor.payload, { lang: ctx.lang, profileSummary }),
-          { logger },
+          { logger, requestId: ctx.request_id, mode: 'main_path' },
         );
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
@@ -13879,7 +14555,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
       }
-      payload = finalizeProductAnalysisRecoContract(payload, { logger });
+      payload = finalizeProductAnalysisRecoContract(payload, {
+        logger,
+        requestId: ctx.request_id,
+        mode: 'main_path',
+      });
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -19341,7 +20021,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const norm = normalizeProductAnalysis(mapped);
         const payload = finalizeProductAnalysisRecoContract(
           enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang }),
-          { logger },
+          { logger, requestId: ctx.request_id, mode: 'main_path' },
         );
         derivedCards.push({
           card_id: `analyze_${ctx.request_id}`,
@@ -19611,7 +20291,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
             }
           }
-          payload = finalizeProductAnalysisRecoContract(payload, { logger });
+          payload = finalizeProductAnalysisRecoContract(payload, {
+            logger,
+            requestId: ctx.request_id,
+            mode: 'main_path',
+          });
 
           if (payload) {
             derivedCards.push({
@@ -19696,7 +20380,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (!card || typeof card !== 'object' || Array.isArray(card)) return card;
           const type = String(card.type || '').trim().toLowerCase();
           if (type !== 'product_analysis') return card;
-          const payload = finalizeProductAnalysisRecoContract(card.payload, { logger });
+          const payload = finalizeProductAnalysisRecoContract(card.payload, {
+            logger,
+            requestId: ctx.request_id,
+            mode: 'main_path',
+          });
           return { ...card, payload };
         })
         : cardsForEnvelopeRaw;
@@ -19837,6 +20525,8 @@ const __internal = {
   routeCandidates,
   recoBlocks,
   runRecoBlocksForUrl,
+  applyRecoGuardrailToProductAnalysisPayload,
+  getRecoGuardrailCircuitSnapshot,
   buildProductCatalogQueryCandidates,
   mapCatalogProductToAnchorProduct,
   resolveCatalogProductForProductInput,

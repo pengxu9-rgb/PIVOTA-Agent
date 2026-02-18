@@ -86,6 +86,13 @@ const templateAppliedCounter = new Map();
 const templateFallbackCounter = new Map();
 const antiTemplateViolationCounter = new Map();
 const actionableReplyCounter = new Map();
+const recoGuardrailViolationCounter = new Map();
+const recoCandidateCounter = new Map();
+const recoExplanationAlignmentCounter = new Map();
+const recoGuardrailCircuitOpenCounter = new Map();
+let recoCompetitorsSameBrandRateGauge = 0;
+let recoCompetitorsOnPageSourceRateGauge = 0;
+let recoExplanationAlignmentAt3Gauge = 0;
 let chipsTruncatedCount = 0;
 let fieldMissingAddedCount = 0;
 let modulesInteractionCount = 0;
@@ -353,6 +360,40 @@ function normalizeAntiTemplateRule(rule) {
 
 function normalizeBoolLabel(value) {
   return value ? 'true' : 'false';
+}
+
+function normalizeRecoBlock(block) {
+  const token = cleanMetricToken(block, 'unknown');
+  if (token === 'competitors' || token === 'related_products' || token === 'dupes') return token;
+  return 'unknown';
+}
+
+function normalizeRecoViolationType(violationType) {
+  const token = cleanMetricToken(violationType, 'unknown');
+  if (token === 'same_brand' || token === 'on_page_source') return token;
+  return 'unknown';
+}
+
+function normalizeRecoGuardAction(action) {
+  const token = cleanMetricToken(action, 'sanitize');
+  if (token === 'sanitize' || token === 'circuit_open' || token === 'circuit_drop') return token;
+  return 'sanitize';
+}
+
+function normalizeRecoMode(mode) {
+  const token = cleanMetricToken(mode, 'unknown');
+  if (token === 'main_path' || token === 'sync_repair' || token === 'async_backfill') return token;
+  return 'unknown';
+}
+
+function normalizeRecoBrandRelation(brandRelation) {
+  const token = cleanMetricToken(brandRelation, 'unknown');
+  if (token === 'same_brand' || token === 'cross_brand' || token === 'unknown') return token;
+  return 'unknown';
+}
+
+function normalizeRecoAligned(aligned) {
+  return aligned ? 'true' : 'false';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -660,6 +701,75 @@ function recordActionableReply({ actionable, delta } = {}) {
     { actionable: normalizeBoolLabel(Boolean(actionable)) },
     amount,
   );
+}
+
+function recordRecoGuardrailViolation({ block, violationType, mode, action } = {}) {
+  incCounter(
+    recoGuardrailViolationCounter,
+    {
+      block: normalizeRecoBlock(block),
+      violation_type: normalizeRecoViolationType(violationType),
+      mode: normalizeRecoMode(mode),
+      action: normalizeRecoGuardAction(action),
+    },
+    1,
+  );
+}
+
+function recordRecoCandidate({ block, sourceType, brandRelation, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    recoCandidateCounter,
+    {
+      block: normalizeRecoBlock(block),
+      source_type: cleanMetricToken(sourceType, 'unknown'),
+      brand_relation: normalizeRecoBrandRelation(brandRelation),
+      mode: normalizeRecoMode(mode),
+    },
+    amount,
+  );
+}
+
+function recordRecoExplanationAlignment({ block, aligned, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    recoExplanationAlignmentCounter,
+    {
+      block: normalizeRecoBlock(block),
+      aligned: normalizeRecoAligned(Boolean(aligned)),
+      mode: normalizeRecoMode(mode),
+    },
+    amount,
+  );
+}
+
+function recordRecoGuardrailCircuitOpen({ mode } = {}) {
+  incCounter(
+    recoGuardrailCircuitOpenCounter,
+    { mode: normalizeRecoMode(mode) },
+    1,
+  );
+}
+
+function clampRatio01(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(1, n));
+}
+
+function setRecoGuardrailRates({
+  competitorsSameBrandRate,
+  competitorsOnPageSourceRate,
+  explanationAlignmentAt3,
+} = {}) {
+  recoCompetitorsSameBrandRateGauge = clampRatio01(competitorsSameBrandRate, recoCompetitorsSameBrandRateGauge);
+  recoCompetitorsOnPageSourceRateGauge = clampRatio01(
+    competitorsOnPageSourceRate,
+    recoCompetitorsOnPageSourceRateGauge,
+  );
+  recoExplanationAlignmentAt3Gauge = clampRatio01(explanationAlignmentAt3, recoExplanationAlignmentAt3Gauge);
 }
 
 function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
@@ -1289,6 +1399,34 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE session_patch_profile_emitted_total counter');
   renderCounter(lines, 'session_patch_profile_emitted_total', sessionPatchProfileEmittedCounter);
 
+  lines.push('# HELP reco_guardrail_violation_total Total guardrail violations detected for reco blocks.');
+  lines.push('# TYPE reco_guardrail_violation_total counter');
+  renderCounter(lines, 'reco_guardrail_violation_total', recoGuardrailViolationCounter);
+
+  lines.push('# HELP reco_candidate_total Total reco candidates observed by block/source/brand relation.');
+  lines.push('# TYPE reco_candidate_total counter');
+  renderCounter(lines, 'reco_candidate_total', recoCandidateCounter);
+
+  lines.push('# HELP reco_explanation_alignment_total Total explanation alignment samples by block/aligned/mode.');
+  lines.push('# TYPE reco_explanation_alignment_total counter');
+  renderCounter(lines, 'reco_explanation_alignment_total', recoExplanationAlignmentCounter);
+
+  lines.push('# HELP reco_guardrail_circuit_open_total Total times reco guardrail circuit opened.');
+  lines.push('# TYPE reco_guardrail_circuit_open_total counter');
+  renderCounter(lines, 'reco_guardrail_circuit_open_total', recoGuardrailCircuitOpenCounter);
+
+  lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
+  lines.push('# TYPE reco_competitors_same_brand_rate gauge');
+  lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
+
+  lines.push('# HELP reco_competitors_on_page_source_rate Last observed on_page_related source rate in competitors block.');
+  lines.push('# TYPE reco_competitors_on_page_source_rate gauge');
+  lines.push(`reco_competitors_on_page_source_rate ${recoCompetitorsOnPageSourceRateGauge}`);
+
+  lines.push('# HELP reco_explanation_alignment_at3 Last observed explanation alignment@3 across reco blocks.');
+  lines.push('# TYPE reco_explanation_alignment_at3 gauge');
+  lines.push(`reco_explanation_alignment_at3 ${recoExplanationAlignmentAt3Gauge}`);
+
   lines.push('# HELP upstream_call_total Total number of upstream calls by path and status.');
   lines.push('# TYPE upstream_call_total counter');
   renderCounter(lines, 'upstream_call_total', upstreamCallsCounter);
@@ -1466,6 +1604,13 @@ function resetVisionMetrics() {
   templateFallbackCounter.clear();
   antiTemplateViolationCounter.clear();
   actionableReplyCounter.clear();
+  recoGuardrailViolationCounter.clear();
+  recoCandidateCounter.clear();
+  recoExplanationAlignmentCounter.clear();
+  recoGuardrailCircuitOpenCounter.clear();
+  recoCompetitorsSameBrandRateGauge = 0;
+  recoCompetitorsOnPageSourceRateGauge = 0;
+  recoExplanationAlignmentAt3Gauge = 0;
   chipsTruncatedCount = 0;
   fieldMissingAddedCount = 0;
   modulesInteractionCount = 0;
@@ -1542,6 +1687,13 @@ function snapshotVisionMetrics() {
     templateFallback: Array.from(templateFallbackCounter.entries()),
     antiTemplateViolation: Array.from(antiTemplateViolationCounter.entries()),
     actionableReply: Array.from(actionableReplyCounter.entries()),
+    recoGuardrailViolations: Array.from(recoGuardrailViolationCounter.entries()),
+    recoCandidates: Array.from(recoCandidateCounter.entries()),
+    recoExplanationAlignment: Array.from(recoExplanationAlignmentCounter.entries()),
+    recoGuardrailCircuitOpen: Array.from(recoGuardrailCircuitOpenCounter.entries()),
+    recoCompetitorsSameBrandRateGauge,
+    recoCompetitorsOnPageSourceRateGauge,
+    recoExplanationAlignmentAt3Gauge,
     chipsTruncatedCount,
     fieldMissingAddedCount,
     modulesInteractionCount,
@@ -1580,6 +1732,11 @@ module.exports = {
   recordFieldMissingAdded,
   recordAntiTemplateViolation,
   recordActionableReply,
+  recordRecoGuardrailViolation,
+  recordRecoCandidate,
+  recordRecoExplanationAlignment,
+  recordRecoGuardrailCircuitOpen,
+  setRecoGuardrailRates,
   observeUpstreamLatency,
   recordVisionDecision,
   observeVisionLatency,

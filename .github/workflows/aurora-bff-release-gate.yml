@@ -45,6 +45,12 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Reco guardrail gate (fail-fast)
+        shell: bash
+        run: |
+          set -euo pipefail
+          make reco-guardrail-eval
+
       - name: P0 compliance gates (fail-fast)
         shell: bash
         run: |

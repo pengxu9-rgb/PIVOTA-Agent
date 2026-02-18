@@ -19,6 +19,11 @@ const {
   recordFieldMissingAdded,
   recordAntiTemplateViolation,
   recordActionableReply,
+  recordRecoGuardrailViolation,
+  recordRecoCandidate,
+  recordRecoExplanationAlignment,
+  recordRecoGuardrailCircuitOpen,
+  setRecoGuardrailRates,
 } = require('../src/auroraBff/visionMetrics');
 
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
@@ -151,4 +156,67 @@ test('vision metrics: template-system counters and rates are exported', () => {
   assert.match(metrics, /template_applied_rate 0\.6666666666666666/);
   assert.match(metrics, /template_fallback_rate 0\.3333333333333333/);
   assert.match(metrics, /actionable_reply_rate 0\.5/);
+});
+
+test('vision metrics: reco guardrail counters and gauges are exported with block labels', () => {
+  resetVisionMetrics();
+  recordRecoGuardrailViolation({
+    block: 'competitors',
+    violationType: 'same_brand',
+    mode: 'main_path',
+    action: 'sanitize',
+  });
+  recordRecoGuardrailViolation({
+    block: 'competitors',
+    violationType: 'on_page_source',
+    mode: 'sync_repair',
+    action: 'sanitize',
+  });
+  recordRecoCandidate({
+    block: 'competitors',
+    sourceType: 'catalog_search',
+    brandRelation: 'cross_brand',
+    mode: 'main_path',
+  });
+  recordRecoCandidate({
+    block: 'related_products',
+    sourceType: 'on_page_related',
+    brandRelation: 'same_brand',
+    mode: 'main_path',
+    delta: 2,
+  });
+  recordRecoExplanationAlignment({
+    block: 'competitors',
+    aligned: true,
+    mode: 'main_path',
+  });
+  recordRecoExplanationAlignment({
+    block: 'dupes',
+    aligned: false,
+    mode: 'async_backfill',
+  });
+  recordRecoGuardrailCircuitOpen({ mode: 'main_path' });
+  setRecoGuardrailRates({
+    competitorsSameBrandRate: 0.5,
+    competitorsOnPageSourceRate: 0.25,
+    explanationAlignmentAt3: 0.8,
+  });
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(
+    metrics,
+    /reco_guardrail_violation_total\{block="competitors",violation_type="same_brand",mode="main_path",action="sanitize"\} 1/,
+  );
+  assert.match(
+    metrics,
+    /reco_candidate_total\{block="related_products",source_type="on_page_related",brand_relation="same_brand",mode="main_path"\} 2/,
+  );
+  assert.match(
+    metrics,
+    /reco_explanation_alignment_total\{block="dupes",aligned="false",mode="async_backfill"\} 1/,
+  );
+  assert.match(metrics, /reco_guardrail_circuit_open_total\{mode="main_path"\} 1/);
+  assert.match(metrics, /reco_competitors_same_brand_rate 0\.5\b/);
+  assert.match(metrics, /reco_competitors_on_page_source_rate 0\.25\b/);
+  assert.match(metrics, /reco_explanation_alignment_at3 0\.8\b/);
 });

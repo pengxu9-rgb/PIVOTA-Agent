@@ -64,6 +64,10 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
   'competitor_async_backfill_used',
   'profile_context_dropped_for_reliability',
   'competitor_candidates_filtered_noise',
+  'reco_guardrail_applied',
+  'reco_guardrail_same_brand_filtered',
+  'reco_guardrail_on_page_filtered',
+  'reco_guardrail_circuit_open',
 ]);
 
 const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
@@ -73,6 +77,7 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
   'skin_fit.',
   'social_signals.',
   'competitors.',
+  'reco_guardrail_',
 ];
 
 function mapProductAnalysisGapCode(code) {
@@ -899,6 +904,40 @@ function normalizeEvidenceRefs(raw) {
   return out;
 }
 
+function normalizeSocialSummaryKeyword(raw) {
+  const text = String(raw == null ? '' : raw).trim();
+  if (!text) return '';
+  if (text.length < 2 || text.length > 40) return '';
+  if (/https?:\/\//i.test(text)) return '';
+  if (/@/.test(text)) return '';
+  if (/^(?:route_|dedupe_|internal_|fallback_|ref_)/i.test(text)) return '';
+  if (/完美平替|100%\s*(?:相同|一样|identical|same)|miracle\s+dupe|无敌平替/i.test(text)) return '';
+  return text;
+}
+
+const SOCIAL_SUMMARY_VOLUME_BUCKETS = new Set(['low', 'mid', 'high', 'unknown']);
+
+function normalizeSocialSummaryUserVisible(raw) {
+  const obj = asPlainObject(raw);
+  if (!obj) return null;
+  const themes = uniqueStrings(asStringArray(obj.themes)).slice(0, 3);
+  if (!themes.length) return null;
+  const topKeywords = uniqueStrings(
+    asStringArray(obj.top_keywords)
+      .map((item) => normalizeSocialSummaryKeyword(item))
+      .filter(Boolean),
+  ).slice(0, 6);
+  const sentimentHint = typeof obj.sentiment_hint === 'string' ? obj.sentiment_hint.trim() : '';
+  const volumeRaw = String(obj.volume_bucket || '').trim().toLowerCase();
+  const volumeBucket = SOCIAL_SUMMARY_VOLUME_BUCKETS.has(volumeRaw) ? volumeRaw : 'unknown';
+  return {
+    themes,
+    ...(topKeywords.length ? { top_keywords: topKeywords } : {}),
+    ...(sentimentHint ? { sentiment_hint: sentimentHint } : {}),
+    volume_bucket: volumeBucket,
+  };
+}
+
 function inferPriceBand(rawBand, row) {
   const explicit = String(rawBand || '').trim().toLowerCase();
   if (PRICE_BAND_ENUM.has(explicit)) return explicit;
@@ -949,6 +988,9 @@ function normalizeCompetitorCandidates(rawCandidates) {
     const source = normalizeCandidateSource(row.source ?? row.source_type ?? row.sourceType);
     const evidenceRefs = normalizeEvidenceRefs(row.evidence_refs ?? row.evidenceRefs);
     const priceBand = inferPriceBand(row.price_band ?? row.priceBand, row);
+    const socialSummary = normalizeSocialSummaryUserVisible(
+      row.social_summary_user_visible ?? row.socialSummaryUserVisible,
+    );
 
     out.push({
       ...(row.product_id ? { product_id: String(row.product_id).trim() } : {}),
@@ -962,6 +1004,7 @@ function normalizeCompetitorCandidates(rawCandidates) {
       source,
       evidence_refs: evidenceRefs,
       price_band: priceBand,
+      ...(socialSummary ? { social_summary_user_visible: socialSummary } : {}),
       ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
     });
     if (out.length >= 10) break;

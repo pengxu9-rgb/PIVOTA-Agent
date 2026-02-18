@@ -528,9 +528,138 @@ def _privacy_check() -> CheckResult:
     )
 
 
+def _reco_guardrail_check(discovery: DiscoveryResult) -> CheckResult:
+    path = discovery.selected.path if discovery.selected else None
+    if path is None:
+        if discovery.candidates:
+            return CheckResult(
+                name="reco_guardrail",
+                status="FAIL",
+                details_md="Candidates found but none were usable.\n\n" + _render_discovery_md(discovery),
+                source_path=None,
+            )
+        return CheckResult(
+            name="reco_guardrail",
+            status="MISSING",
+            details_md="No reco guardrail report found.\n\n"
+            "Run `make reco-guardrail-eval` (default: writes `artifacts/reco_guardrail_report.json`).\n\n"
+            + _render_discovery_md(discovery),
+            source_path=None,
+        )
+    try:
+        exists = path.exists()
+    except Exception as e:
+        return CheckResult(
+            name="reco_guardrail",
+            status="FAIL",
+            details_md=f"Selected reco guardrail report is not accessible: `{e}`\n\n" + _render_discovery_md(discovery),
+            source_path=path,
+        )
+    if not exists:
+        return CheckResult(
+            name="reco_guardrail",
+            status="MISSING",
+            details_md="Selected reco guardrail report path does not exist.\n\n" + _render_discovery_md(discovery),
+            source_path=path,
+        )
+    try:
+        data = _read_json(path)
+    except Exception as e:
+        return CheckResult(
+            name="reco_guardrail",
+            status="FAIL",
+            details_md=f"Failed to parse reco guardrail JSON: `{e}`\n\n" + _render_discovery_md(discovery),
+            source_path=path,
+        )
+
+    metrics = data.get("metrics") or {}
+    gates = data.get("gates") or {}
+    by_block = data.get("by_block") or {}
+    samples = data.get("samples") or {}
+
+    hard_fail = bool(gates.get("hard_fail"))
+    violations = gates.get("violations") if isinstance(gates.get("violations"), list) else []
+    warnings = gates.get("warnings") if isinstance(gates.get("warnings"), list) else []
+    same_brand_rate = float(metrics.get("competitors_same_brand_rate") or 0.0)
+    on_page_rate = float(metrics.get("competitors_on_page_source_rate") or 0.0)
+    alignment_at_3 = metrics.get("explanation_alignment_at_3")
+    recall_at_k = metrics.get("recall_at_k")
+    ndcg_at_k = metrics.get("ndcg_at_k")
+
+    status = "PASS"
+    reasons = []
+    if hard_fail:
+        status = "FAIL"
+        reasons.append("hard redline triggered by reco guardrail report")
+    if same_brand_rate > 0:
+        status = "FAIL"
+        reasons.append(f"competitors_same_brand_rate {same_brand_rate:.6f} > 0")
+    if on_page_rate > 0:
+        status = "FAIL"
+        reasons.append(f"competitors_on_page_source_rate {on_page_rate:.6f} > 0")
+
+    alignment_min = _parse_float_env("RELEASE_RECO_GUARDRAIL_ALIGNMENT_MIN", 0.95)
+    warn_as_fail = _parse_bool_env("RELEASE_RECO_GUARDRAIL_WARN_AS_FAIL", False)
+    if isinstance(alignment_at_3, (int, float)) and alignment_min is not None and float(alignment_at_3) < float(alignment_min):
+        msg = f"explanation_alignment_at_3 {float(alignment_at_3):.6f} < threshold {float(alignment_min):.6f}"
+        if warn_as_fail:
+            status = "FAIL"
+            reasons.append(msg)
+        else:
+            warnings = [*warnings, "explanation_alignment_below_threshold", msg]
+
+    rows = [
+        ("hard_fail", str(hard_fail).lower()),
+        ("violations", ", ".join([str(v) for v in violations]) if violations else "none"),
+        ("warnings", ", ".join([str(v) for v in warnings]) if warnings else "none"),
+        ("competitors_same_brand_rate", f"{same_brand_rate:.6f}"),
+        ("competitors_on_page_source_rate", f"{on_page_rate:.6f}"),
+        (
+            "explanation_alignment_at_3",
+            f"{float(alignment_at_3):.6f}" if isinstance(alignment_at_3, (int, float)) else "n/a",
+        ),
+        ("recall_at_k", f"{float(recall_at_k):.6f}" if isinstance(recall_at_k, (int, float)) else "n/a"),
+        ("ndcg_at_k", f"{float(ndcg_at_k):.6f}" if isinstance(ndcg_at_k, (int, float)) else "n/a"),
+        ("total_samples", str(int(samples.get("total") or 0))),
+    ]
+
+    md: List[str] = []
+    md.append(f"Source: `{_fmt_path(path)}`")
+    if discovery.selected is not None:
+        md.append(f"- Discovered via: `{discovery.selected_via}`")
+        md.append(f"- mtime: `{discovery.selected.mtime_iso}`")
+        if discovery.override_error:
+            md.append(f"- Override ignored: `{discovery.override_error}`")
+    md.append("")
+    md.append(_render_kv_table(rows))
+    md.append("")
+    md.append("- Budget: hard redlines require `competitors_same_brand_rate == 0` and `competitors_on_page_source_rate == 0`.")
+    md.append("- Budget: `RELEASE_RECO_GUARDRAIL_ALIGNMENT_MIN` (default: `0.95`; warn-only unless `RELEASE_RECO_GUARDRAIL_WARN_AS_FAIL=true`).")
+    md.append("")
+    md.append("| block | candidates | alignment@3 | same_brand_hits | on_page_hits |")
+    md.append("|---|---:|---:|---:|---:|")
+    for block in ("competitors", "related_products", "dupes"):
+        stat = by_block.get(block) if isinstance(by_block, dict) else None
+        stat = stat if isinstance(stat, dict) else {}
+        candidates = int(stat.get("candidates") or 0)
+        alignment = stat.get("alignment") if isinstance(stat.get("alignment"), dict) else {}
+        alignment_rate = alignment.get("rate")
+        same_hits = int(stat.get("same_brand_hits") or 0)
+        on_page_hits = int(stat.get("on_page_hits") or 0)
+        alignment_str = f"{float(alignment_rate):.6f}" if isinstance(alignment_rate, (int, float)) else "n/a"
+        md.append(f"| {block} | {candidates} | {alignment_str} | {same_hits} | {on_page_hits} |")
+
+    if reasons:
+        md.append("")
+        md.append("Reasons:")
+        for item in reasons:
+            md.append(f"- {item}")
+    return CheckResult(name="reco_guardrail", status=status, details_md="\n".join(md), source_path=path)
+
+
 def _overall_verdict(checks: Sequence[CheckResult]) -> Tuple[str, List[str]]:
     allow_missing = _parse_bool_env("RELEASE_GATE_ALLOW_MISSING", False)
-    required = set(_parse_csv_env("RELEASE_GATE_REQUIRED", ["bench", "stability", "loadtest", "privacy"]))
+    required = set(_parse_csv_env("RELEASE_GATE_REQUIRED", ["bench", "stability", "loadtest", "privacy", "reco_guardrail"]))
 
     missing = [c.name for c in checks if c.name in required and c.status == "MISSING"]
     failed = [c.name for c in checks if c.status == "FAIL"]
@@ -576,6 +705,7 @@ def _render_release_gate_md(checks: Sequence[CheckResult]) -> str:
     lines.append("- `make stability OUT=artifacts/stability_report.json`")
     lines.append("- `make loadtest OUT=artifacts/loadtest_report.md`")
     lines.append("- `make privacy-check`")
+    lines.append("- `make reco-guardrail-eval`")
     lines.append("- `make runtime-smoke` (optional; hits `BASE` — checks key `/v1/*` flows + `/v1/events` ingest)")
     lines.append("")
     lines.append("## Env flags (diagnosis rollout)")
@@ -589,10 +719,11 @@ def _render_release_gate_md(checks: Sequence[CheckResult]) -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Generate RELEASE_GATE.md from existing bench/loadtest/stability/privacy outputs.")
+    ap = argparse.ArgumentParser(description="Generate RELEASE_GATE.md from existing bench/loadtest/stability/privacy/reco-guardrail outputs.")
     ap.add_argument("--bench", type=str, default="", help="Path to bench JSON (default: artifacts/bench_analyze.json if present).")
     ap.add_argument("--stability", type=str, default="", help="Path to stability_report.json (or use env RELEASE_STABILITY_REPORT_PATH; otherwise auto-discovery).")
     ap.add_argument("--loadtest", type=str, default="", help="Path to loadtest_report.md (or use env RELEASE_LOADTEST_REPORT_PATH; otherwise auto-discovery).")
+    ap.add_argument("--reco-guardrail", type=str, default="", help="Path to reco_guardrail_report.json (or use env RELEASE_RECO_GUARDRAIL_REPORT_PATH; otherwise auto-discovery).")
     ap.add_argument("--debug", action="store_true", help="Print artifact discovery candidates (paths + mtimes).")
     ap.add_argument("--out", type=str, default=str(REPO_ROOT / "RELEASE_GATE.md"), help="Output markdown path.")
     args = ap.parse_args(list(argv) if argv is not None else None)
@@ -624,13 +755,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ],
         patterns=["**/loadtest_report*.md"],
     )
+    reco_guardrail_discovery = discover_artifact(
+        name="reco_guardrail_report",
+        repo_root=REPO_ROOT,
+        explicit_path=str(args.reco_guardrail or ""),
+        env_override_name="RELEASE_RECO_GUARDRAIL_REPORT_PATH",
+        default_rel_paths=[
+            "reco_guardrail_report.json",
+            "artifacts/reco_guardrail_report.json",
+            "outputs/reco_guardrail_report.json",
+            "scripts/outputs/reco_guardrail_report.json",
+        ],
+        patterns=["**/reco_guardrail_report*.json"],
+    )
 
     if args.debug:
         print("== release gate artifact discovery ==")
         print(f"repo_root={REPO_ROOT}")
         print(f"cwd={Path.cwd().resolve()}")
         print("")
-        for d in (stability_discovery, loadtest_discovery):
+        for d in (stability_discovery, loadtest_discovery, reco_guardrail_discovery):
             print(f"[{d.name}] selected_via={d.selected_via}")
             if d.override_kind == "env":
                 print(f"  env_override={d.override_name} value={d.override_value!r} error={d.override_error!r}")
@@ -654,6 +798,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _stability_check(stability_discovery),
         _loadtest_check(loadtest_discovery),
         _privacy_check(),
+        _reco_guardrail_check(reco_guardrail_discovery),
     ]
 
     out_path = Path(args.out)

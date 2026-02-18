@@ -20,6 +20,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS;
     delete process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED;
+    delete process.env.AURORA_BFF_RECO_GUARD_ENABLED;
+    delete process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED;
+    delete process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD;
+    delete process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS;
+    delete process.env.AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.AURORA_DECISION_BASE_URL;
     nock.cleanAll();
@@ -191,6 +196,305 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(normalized.skin_type_tags).toEqual(expect.arrayContaining(['oily', 'sensitive']));
     expect(typeof normalized.social_ref_score).toBe('number');
     expect(normalized.social_ref_score).toBeGreaterThan(0.6);
+    expect(normalized.social_raw).toBeTruthy();
+    expect(Array.isArray(normalized.social_raw.channels)).toBe(true);
+    expect(normalized.social_raw.channels).toEqual(expect.arrayContaining(['reddit', 'tiktok']));
+  });
+
+  test('attachExplanations emits user-visible social summary only for whitelisted channels', () => {
+    const { attachExplanations } = require('../src/auroraBff/recoScoreExplain');
+    const out = attachExplanations(
+      'competitors',
+      {
+        brand_id: 'anchor_brand',
+        category_taxonomy: ['serum'],
+        price: 88,
+        ingredient_tokens: ['niacinamide', 'panthenol'],
+        profile_skin_tags: ['oily', 'sensitive'],
+      },
+      [
+        {
+          product_id: 'comp_social_summary_1',
+          name: 'Signal Candidate',
+          brand_id: 'other_brand',
+          category_taxonomy: ['serum'],
+          source: { type: 'catalog_search' },
+          price: 79,
+          social_raw: {
+            channels: ['reddit', 'xhs', 'retailer_product_page'],
+            co_mention_strength: 0.66,
+            sentiment_proxy: 0.71,
+            topic_keywords: ['barrier repair', 'hydration', '完美平替', '@noise'],
+            mention_count: 999,
+          },
+          score_breakdown: {
+            category_use_case_match: 0.9,
+            ingredient_functional_similarity: 0.8,
+            skin_fit_similarity: 0.7,
+            social_reference_strength: 0.8,
+            price_distance: 0.8,
+            quality: 0.75,
+          },
+        },
+      ],
+      { lang: 'EN' },
+    );
+    const summary = out[0].social_summary_user_visible;
+    expect(summary).toBeTruthy();
+    expect(summary.themes.length).toBeLessThanOrEqual(3);
+    expect(summary.top_keywords.length).toBeLessThanOrEqual(6);
+    expect(JSON.stringify(summary).toLowerCase()).not.toMatch(/mention_count|@noise|完美平替/);
+  });
+
+  test('reco guardrail sanitizes polluted competitors and writes low-confidence provenance', () => {
+    process.env.AURORA_BFF_RECO_GUARD_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD = '99';
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const logger = { warn: jest.fn(), info: jest.fn() };
+    const payload = {
+      assessment: {
+        anchor_product: { brand_id: 'anchor_brand' },
+      },
+      competitors: {
+        candidates: [
+          {
+            product_id: 'same_brand_1',
+            brand_id: 'anchor_brand',
+            name: 'Anchor Leakage',
+            source: { type: 'catalog_search' },
+            score_breakdown: { category_use_case_match: 0.8, ingredient_functional_similarity: 0.7, price_distance: 0.6 },
+            why_candidate: { summary: 'Leak', reasons_user_visible: ['category match', 'ingredient overlap', 'price close'] },
+          },
+          {
+            product_id: 'on_page_1',
+            brand_id: 'other_brand_1',
+            name: 'On page leakage',
+            source: { type: 'on_page_related' },
+            score_breakdown: { category_use_case_match: 0.8, ingredient_functional_similarity: 0.7, price_distance: 0.6 },
+            why_candidate: { summary: 'Leak', reasons_user_visible: ['category match', 'ingredient overlap', 'price close'] },
+          },
+          {
+            product_id: 'clean_1',
+            brand_id: 'other_brand_2',
+            name: 'Clean Candidate',
+            source: { type: 'catalog_search' },
+            score_breakdown: { category_use_case_match: 0.82, ingredient_functional_similarity: 0.74, price_distance: 0.63 },
+            why_candidate: { summary: 'Clean', reasons_user_visible: ['category match', 'ingredient overlap', 'price close'] },
+          },
+        ],
+      },
+      related_products: { candidates: [] },
+      dupes: { candidates: [] },
+      confidence_by_block: {
+        competitors: { score: 0.72, level: 'high', reasons: ['baseline'] },
+      },
+      provenance: {
+        generated_at: new Date().toISOString(),
+        contract_version: 'aurora.product_intel.contract.v2',
+        pipeline: 'reco_blocks_dag.v1',
+        source: 'test',
+        validation_mode: 'soft_fail',
+      },
+      missing_info_internal: [],
+      missing_info: [],
+    };
+
+    const out = __internal.applyRecoGuardrailToProductAnalysisPayload(payload, {
+      logger,
+      requestId: 'req_guard_1',
+      mode: 'main_path',
+    });
+
+    expect(Array.isArray(out?.competitors?.candidates)).toBe(true);
+    expect(out.competitors.candidates.map((x) => x.product_id)).toEqual(['clean_1']);
+    expect(out?.confidence_by_block?.competitors?.level).toBe('low');
+    expect(Array.isArray(out?.provenance?.guardrail_violations)).toBe(true);
+    expect(out.provenance.guardrail_violations).toEqual(
+      expect.arrayContaining(['same_brand', 'on_page_source']),
+    );
+    expect(out.provenance.guardrail_applied).toBe(true);
+    expect(Array.isArray(out.missing_info)).toBe(true);
+    expect(out.missing_info).not.toEqual(
+      expect.arrayContaining([
+        'reco_guardrail_same_brand_filtered',
+        'reco_guardrail_on_page_filtered',
+      ]),
+    );
+  });
+
+  test('reco guardrail circuit open degrades subsequent competitors to empty', () => {
+    process.env.AURORA_BFF_RECO_GUARD_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD = '1';
+    process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS = '600000';
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const logger = { warn: jest.fn(), info: jest.fn() };
+
+    const pollutedPayload = {
+      assessment: { anchor_product: { brand_id: 'anchor_brand' } },
+      competitors: {
+        candidates: [
+          {
+            product_id: 'same_brand_1',
+            brand_id: 'anchor_brand',
+            name: 'Anchor Leakage',
+            source: { type: 'catalog_search' },
+            score_breakdown: { category_use_case_match: 0.8 },
+            why_candidate: { summary: 'Leak', reasons_user_visible: ['category match'] },
+          },
+        ],
+      },
+      related_products: { candidates: [] },
+      dupes: { candidates: [] },
+      confidence_by_block: { competitors: { score: 0.6, level: 'med', reasons: ['baseline'] } },
+      provenance: {
+        generated_at: new Date().toISOString(),
+        contract_version: 'aurora.product_intel.contract.v2',
+        pipeline: 'reco_blocks_dag.v1',
+        source: 'test',
+        validation_mode: 'soft_fail',
+      },
+      missing_info_internal: [],
+      missing_info: [],
+    };
+    const first = __internal.applyRecoGuardrailToProductAnalysisPayload(pollutedPayload, {
+      logger,
+      requestId: 'req_guard_circuit_1',
+      mode: 'main_path',
+    });
+    expect(Array.isArray(first?.competitors?.candidates) ? first.competitors.candidates.length : 0).toBe(0);
+    expect(first?.provenance?.guardrail_circuit_open).toBe(true);
+
+    const cleanPayload = {
+      assessment: { anchor_product: { brand_id: 'anchor_brand' } },
+      competitors: {
+        candidates: [
+          {
+            product_id: 'clean_1',
+            brand_id: 'other_brand_1',
+            name: 'Clean Candidate',
+            source: { type: 'catalog_search' },
+            score_breakdown: { category_use_case_match: 0.82 },
+            why_candidate: { summary: 'Clean', reasons_user_visible: ['category match'] },
+          },
+        ],
+      },
+      related_products: { candidates: [] },
+      dupes: { candidates: [] },
+      confidence_by_block: { competitors: { score: 0.66, level: 'med', reasons: ['baseline'] } },
+      provenance: {
+        generated_at: new Date().toISOString(),
+        contract_version: 'aurora.product_intel.contract.v2',
+        pipeline: 'reco_blocks_dag.v1',
+        source: 'test',
+        validation_mode: 'soft_fail',
+      },
+      missing_info_internal: [],
+      missing_info: [],
+    };
+    const second = __internal.applyRecoGuardrailToProductAnalysisPayload(cleanPayload, {
+      logger,
+      requestId: 'req_guard_circuit_2',
+      mode: 'main_path',
+    });
+    expect(Array.isArray(second?.competitors?.candidates) ? second.competitors.candidates.length : 0).toBe(0);
+    expect(second?.provenance?.guardrail_circuit_open).toBe(true);
+    expect(second?.provenance?.auto_rollback_flag).toBe(true);
+    expect(second?.confidence_by_block?.competitors?.level).toBe('low');
+
+    const snap = __internal.getRecoGuardrailCircuitSnapshot('main_path');
+    expect(snap.open).toBe(true);
+  });
+
+  test('/v1/product/analyze sanitizes polluted competitors from KB via runtime guardrail', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_BFF_RECO_GUARD_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED = 'false';
+
+    const getProductIntelKbEntry = jest.fn().mockResolvedValue({
+      kb_key: 'url:https://brand.example/guardrail-kb-hit.html|lang:EN',
+      analysis: {
+        assessment: {
+          verdict: 'Likely Suitable',
+          reasons: ['KB hit with polluted competitors.'],
+          anchor_product: {
+            brand_id: 'anchor_brand',
+            brand: 'Anchor Brand',
+            name: 'Anchor Serum',
+            url: 'https://brand.example/guardrail-kb-hit.html',
+          },
+        },
+        evidence: {
+          science: { key_ingredients: ['Niacinamide'], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: ['hydration'], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.73,
+          missing_info: [],
+        },
+        confidence: 0.73,
+        missing_info: ['url_realtime_product_intel_used'],
+        competitors: {
+          candidates: [
+            {
+              product_id: 'polluted_same_brand',
+              brand_id: 'anchor_brand',
+              brand: 'Anchor Brand',
+              name: 'Anchor Leakage',
+              source: { type: 'catalog_search' },
+            },
+            {
+              product_id: 'polluted_on_page',
+              brand_id: 'other_brand_1',
+              brand: 'Other Brand 1',
+              name: 'On-page Leakage',
+              source: { type: 'on_page_related' },
+            },
+            {
+              product_id: 'clean_competitor',
+              brand_id: 'other_brand_2',
+              brand: 'Other Brand 2',
+              name: 'Clean Competitor',
+              source: { type: 'catalog_search' },
+            },
+          ],
+        },
+      },
+      source: 'url_realtime_product_intel',
+      source_meta: { competitor_async_enriched: true },
+    });
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      getProductIntelKbEntry,
+      upsertProductIntelKbEntry,
+    }));
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_kb_guardrail_1')
+      .send({ url: 'https://brand.example/guardrail-kb-hit.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(Array.isArray(card.payload?.competitors?.candidates)).toBe(true);
+    const competitors = card.payload.competitors.candidates || [];
+    expect(competitors.map((x) => x.product_id)).toEqual(['clean_competitor']);
+    expect(
+      competitors.some((x) => String(x?.brand_id || x?.brand || '').toLowerCase() === 'anchor_brand'),
+    ).toBe(false);
+    expect(
+      competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
+    ).toBe(false);
+    expect(typeof card.payload?.provenance?.guardrail_applied).toBe('boolean');
+    expect(card.payload.internal_debug_codes).toBeUndefined();
+    expect(card.payload.missing_info_internal).toBeUndefined();
   });
 
   test('competitor scoring rewards ingredient + skin-fit + social-reference alignment', () => {
