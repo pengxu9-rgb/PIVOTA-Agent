@@ -155,6 +155,7 @@ const {
 const {
   normalizeProductParse,
   normalizeProductAnalysis,
+  applyProductAnalysisGapContract,
   enrichProductAnalysisPayload,
   normalizeDupeCompare,
   normalizeRecoGenerate,
@@ -3235,7 +3236,7 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
   const hasChanged = cleanLen !== rawLen;
   if (!hasChanged) return payload;
 
-  const missingInfo = Array.isArray(p.missing_info) ? p.missing_info : [];
+  const missingInfo = getProductAnalysisInternalMissingCodes(p);
   const nextMissingInfo = cleanLen
     ? uniqCaseInsensitiveStrings(
         [
@@ -3246,14 +3247,14 @@ function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
       )
     : uniqCaseInsensitiveStrings([...missingInfo, 'competitors_missing', 'competitor_candidates_filtered_noise'], 16);
 
-  return {
+  return applyProductAnalysisGapContract({
     ...p,
     competitors: {
       ...(competitorsObj || {}),
       candidates: cleanCandidates,
     },
-    missing_info: nextMissingInfo,
-  };
+    internal_debug_codes: nextMissingInfo,
+  });
 }
 
 function getCompetitorCandidatesFromPayload(payload, { max = 10 } = {}) {
@@ -3280,8 +3281,23 @@ function hasLowCoverageCompetitorsInPayload(payload, { preferredCount = 2 } = {}
 function hasLowCoverageCompetitorToken(payload) {
   const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
   if (!p) return false;
-  const missingInfo = Array.isArray(p.missing_info) ? p.missing_info : [];
-  return missingInfo.some((raw) => String(raw || '').trim().toLowerCase() === 'competitors_low_coverage');
+  const missingInfo = getProductAnalysisInternalMissingCodes(p);
+  return missingInfo.some((raw) => {
+    const token = String(raw || '').trim().toLowerCase();
+    return token === 'competitors_low_coverage' || token === 'alternatives_limited';
+  });
+}
+
+function getProductAnalysisInternalMissingCodes(payload) {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!p) return [];
+  return uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(p.internal_debug_codes) ? p.internal_debug_codes : []),
+      ...(Array.isArray(p.missing_info) ? p.missing_info : []),
+    ],
+    32,
+  );
 }
 
 function stripCompetitorMissingTokens(items) {
@@ -3306,12 +3322,15 @@ function shouldServeProductIntelKbPayload(payload) {
   const assessment = p.assessment && typeof p.assessment === 'object' && !Array.isArray(p.assessment) ? p.assessment : null;
   if (!assessment) return false;
 
-  const missingInfo = Array.isArray(p.missing_info) ? p.missing_info : [];
+  const missingInfo = getProductAnalysisInternalMissingCodes(p);
   const hasCompetitors = hasCompetitorCandidatesInPayload(p);
   const competitorMissing = missingInfo.some((raw) => {
     const token = String(raw || '').trim().toLowerCase();
     if (!token) return false;
-    return token === 'competitors_missing' || token === 'competitors.competitors.candidates' || token.startsWith('competitor_recall_');
+    return token === 'competitors_missing'
+      || token === 'competitors.competitors.candidates'
+      || token === 'alternatives_unavailable'
+      || token.startsWith('competitor_recall_');
   });
   if (competitorMissing && !hasCompetitors) return false;
   return true;
@@ -3550,9 +3569,9 @@ function scheduleProductIntelCompetitorEnrichBackfill({
           expert_notes: uniqCaseInsensitiveStrings([...existingExpertNotes, asyncNote], 6),
           missing_info: existingEvidenceMissing,
         },
-        missing_info: uniqCaseInsensitiveStrings(
+        internal_debug_codes: uniqCaseInsensitiveStrings(
           [
-            ...stripCompetitorMissingTokens(payloadSnapshot.missing_info || []),
+            ...stripCompetitorMissingTokens(getProductAnalysisInternalMissingCodes(payloadSnapshot)),
             ...(Array.isArray(competitorOut.candidates) && competitorOut.candidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT
               ? ['competitors_low_coverage']
               : []),
@@ -3722,7 +3741,7 @@ async function maybeSyncRepairLowCoverageCompetitors({
     return { payload: payloadObj, enhanced: false, reason: 'no_delta' };
   }
 
-  const existingMissingInfo = Array.isArray(payloadObj.missing_info) ? payloadObj.missing_info : [];
+  const existingMissingInfo = getProductAnalysisInternalMissingCodes(payloadObj);
   const mergedMissingInfo = uniqCaseInsensitiveStrings(
     [
       ...stripCompetitorMissingTokens(existingMissingInfo),
@@ -3762,7 +3781,7 @@ async function maybeSyncRepairLowCoverageCompetitors({
       expert_notes: uniqCaseInsensitiveStrings([...existingExpertNotes, syncNote], 8),
       missing_info: evidenceMissing,
     },
-    missing_info: mergedMissingInfo,
+    internal_debug_codes: mergedMissingInfo,
   };
   return { payload: mergedPayload, enhanced: true, reason: null };
 }
@@ -4010,10 +4029,10 @@ async function buildProductAnalysisFromUrlIngredients({
   };
 
   const norm = normalizeProductAnalysis(raw);
-  const payloadMissing = Array.isArray(norm.payload?.missing_info) ? norm.payload.missing_info : [];
-  const mergedMissingInfo = Array.from(
+  const payloadInternalCodes = Array.isArray(norm.payload?.internal_debug_codes) ? norm.payload.internal_debug_codes : [];
+  const mergedInternalCodes = Array.from(
     new Set([
-      ...payloadMissing,
+      ...payloadInternalCodes,
       'url_ingredient_analysis_used',
       'url_realtime_product_intel_used',
       ...(socialMissing ? ['social_signals_missing'] : []),
@@ -4022,10 +4041,10 @@ async function buildProductAnalysisFromUrlIngredients({
       ...(competitorMissing && competitorReason ? [`competitor_recall_${String(competitorReason).toLowerCase()}`] : []),
     ]),
   );
-  const nextPayload = {
+  const nextPayload = applyProductAnalysisGapContract({
     ...(norm.payload && typeof norm.payload === 'object' ? norm.payload : {}),
-    missing_info: mergedMissingInfo,
-  };
+    internal_debug_codes: mergedInternalCodes,
+  });
   const nextFieldMissing = Array.isArray(norm.field_missing) ? norm.field_missing.filter((item) => {
     const field = String(item?.field || '').trim();
     return field !== 'assessment' && field !== 'evidence';
@@ -12578,16 +12597,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (!kbAnalysisSanitized || !shouldServeProductIntelKbPayload(kbAnalysisSanitized)) continue;
           let kbPayload = enrichProductAnalysisPayload(kbAnalysisSanitized, { lang: ctx.lang, profileSummary });
           if (kbPayload && typeof kbPayload === 'object' && !Array.isArray(kbPayload)) {
-            const missingInfo = Array.isArray(kbPayload.missing_info) ? kbPayload.missing_info : [];
-            const cleanedMissingInfo = uniqCaseInsensitiveStrings(
-              missingInfo.filter((raw) => String(raw || '').trim().toLowerCase() !== 'competitor_sync_enrich_used'),
+            const internalCodes = getProductAnalysisInternalMissingCodes(kbPayload);
+            const cleanedInternalCodes = uniqCaseInsensitiveStrings(
+              internalCodes.filter((raw) => String(raw || '').trim().toLowerCase() !== 'competitor_sync_enrich_used'),
               16,
             );
-            if (cleanedMissingInfo.length !== missingInfo.length) {
-              kbPayload = {
+            if (cleanedInternalCodes.length !== internalCodes.length) {
+              kbPayload = applyProductAnalysisGapContract({
                 ...kbPayload,
-                missing_info: cleanedMissingInfo,
-              };
+                internal_debug_codes: cleanedInternalCodes,
+              });
             }
           }
           let syncCoverageRepairApplied = false;
@@ -12677,11 +12696,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           realtimeUrlNormMeta = realtimeNorm.source_meta || null;
           let realtimePayload = enrichProductAnalysisPayload(realtimeNorm.payload, { lang: ctx.lang, profileSummary });
           if (realtimePayload && typeof realtimePayload === 'object') {
-            const missingInfo = Array.isArray(realtimePayload.missing_info) ? realtimePayload.missing_info : [];
-            realtimePayload = {
+            const internalCodes = getProductAnalysisInternalMissingCodes(realtimePayload);
+            realtimePayload = applyProductAnalysisGapContract({
               ...realtimePayload,
-              missing_info: Array.from(new Set([...missingInfo, 'url_realtime_product_intel_used'])),
-            };
+              internal_debug_codes: Array.from(new Set([...internalCodes, 'url_realtime_product_intel_used'])),
+            });
           }
           const assessment = realtimePayload?.assessment && typeof realtimePayload.assessment === 'object'
             ? realtimePayload.assessment
@@ -13004,9 +13023,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             : structuredOrJson2;
         const norm2 = normalizeProductAnalysis(mapped2);
         if (norm2 && norm2.payload && norm2.payload.assessment) {
-          const missingInfo = Array.isArray(norm2.payload.missing_info) ? norm2.payload.missing_info : [];
+          const internalCodes = getProductAnalysisInternalMissingCodes(norm2.payload);
           norm = {
-            payload: { ...norm2.payload, missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])) },
+            payload: applyProductAnalysisGapContract({
+              ...norm2.payload,
+              internal_debug_codes: Array.from(new Set([...internalCodes, 'profile_context_dropped_for_reliability'])),
+            }),
             field_missing: norm2.field_missing,
           };
         }
@@ -13034,8 +13056,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...(Array.isArray(urlNorm.payload.missing_info) ? urlNorm.payload.missing_info : []),
             ]),
           );
+          const mergedInternalCodes = Array.from(
+            new Set([
+              ...getProductAnalysisInternalMissingCodes(norm?.payload),
+              ...getProductAnalysisInternalMissingCodes(urlNorm.payload),
+            ]),
+          );
           norm = {
-            payload: { ...urlNorm.payload, missing_info: mergedMissingInfo },
+            payload: applyProductAnalysisGapContract({
+              ...urlNorm.payload,
+              missing_info: mergedMissingInfo,
+              internal_debug_codes: mergedInternalCodes,
+            }),
             field_missing: mergeFieldMissing(urlNorm.field_missing, norm.field_missing),
           };
         }
@@ -13043,11 +13075,11 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let payload = enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang, profileSummary });
       if (catalogFallback && catalogFallback.ok && payload && typeof payload === 'object') {
-        const missingInfo = Array.isArray(payload.missing_info) ? payload.missing_info : [];
-        payload = {
+        const internalCodes = getProductAnalysisInternalMissingCodes(payload);
+        payload = applyProductAnalysisGapContract({
           ...payload,
-          missing_info: Array.from(new Set([...missingInfo, `catalog_anchor_fallback_${catalogFallback.source || 'used'}`])),
-        };
+          internal_debug_codes: Array.from(new Set([...internalCodes, `catalog_anchor_fallback_${catalogFallback.source || 'used'}`])),
+        });
       }
       if (parsedProduct && payload && typeof payload === 'object') {
         const a = payload.assessment && typeof payload.assessment === 'object' ? payload.assessment : null;
@@ -18741,12 +18773,12 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : structuredOrJson2;
             const norm2 = normalizeProductAnalysis(mapped2);
             if (norm2 && norm2.payload && norm2.payload.assessment) {
-              const missingInfo = Array.isArray(norm2.payload.missing_info) ? norm2.payload.missing_info : [];
+              const internalCodes = getProductAnalysisInternalMissingCodes(norm2.payload);
               norm = {
-                payload: {
+                payload: applyProductAnalysisGapContract({
                   ...norm2.payload,
-                  missing_info: Array.from(new Set([...missingInfo, 'profile_context_dropped_for_reliability'])),
-                },
+                  internal_debug_codes: Array.from(new Set([...internalCodes, 'profile_context_dropped_for_reliability'])),
+                }),
                 field_missing: norm2.field_missing,
               };
             }
@@ -18776,8 +18808,18 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ...(Array.isArray(urlNorm.payload.missing_info) ? urlNorm.payload.missing_info : []),
                 ]),
               );
+              const mergedInternalCodes = Array.from(
+                new Set([
+                  ...getProductAnalysisInternalMissingCodes(norm?.payload),
+                  ...getProductAnalysisInternalMissingCodes(urlNorm.payload),
+                ]),
+              );
               norm = {
-                payload: { ...urlNorm.payload, missing_info: mergedMissingInfo },
+                payload: applyProductAnalysisGapContract({
+                  ...urlNorm.payload,
+                  missing_info: mergedMissingInfo,
+                  internal_debug_codes: mergedInternalCodes,
+                }),
                 field_missing: mergeFieldMissing(urlNorm.field_missing, norm.field_missing),
               };
             }

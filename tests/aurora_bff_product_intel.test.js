@@ -415,8 +415,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card).toBeTruthy();
     expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('catalog_product_missing');
-    expect(card.payload.missing_info).toContain('upstream_deep_scan_skipped_anchor_missing');
+    expect(card.payload.missing_info).toContain('product_not_resolved');
+    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
+    expect(card.payload.internal_debug_codes).toEqual(
+      expect.arrayContaining(['catalog_product_missing', 'upstream_deep_scan_skipped_anchor_missing']),
+    );
   });
 
   test('/v1/product/analyze runs realtime URL product-intel first and backfills KB asynchronously', async () => {
@@ -505,8 +508,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.competitors.candidates.length).toBeGreaterThan(0);
     expect(auroraCalls).toBe(0);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('url_ingredient_analysis_used');
-    expect(card.payload.missing_info).toContain('url_realtime_product_intel_used');
+    expect(card.payload.missing_info).toContain('ingredient_concentration_unknown');
+    expect(card.payload.missing_info).not.toEqual(
+      expect.arrayContaining(['upstream_analysis_missing', 'url_ingredient_analysis_used', 'url_realtime_product_intel_used']),
+    );
+    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
+    expect(card.payload.internal_debug_codes).toEqual(
+      expect.arrayContaining(['url_ingredient_analysis_used', 'url_realtime_product_intel_used']),
+    );
     expect(card.payload.product_intel_contract_version).toBe('aurora.product_intel.contract.v1');
 
     await new Promise((resolve) => setImmediate(resolve));
@@ -584,7 +593,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('competitors_missing');
+    expect(card.payload.missing_info).toContain('alternatives_unavailable');
+    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
+    expect(card.payload.internal_debug_codes).toContain('competitors_missing');
 
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -946,7 +957,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('competitors_missing');
+    expect(card.payload.missing_info).toContain('alternatives_unavailable');
+    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
+    expect(card.payload.internal_debug_codes).toContain('competitors_missing');
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThanOrEqual(2);

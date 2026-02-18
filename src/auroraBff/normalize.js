@@ -30,6 +30,97 @@ function asNumberOrNull(value) {
   return n;
 }
 
+const PRODUCT_ANALYSIS_GAP_MAP = {
+  'concentration_unknown': 'ingredient_concentration_unknown',
+  'social_signals_missing': 'social_data_limited',
+  'competitors_missing': 'alternatives_unavailable',
+  'competitors.competitors.candidates': 'alternatives_unavailable',
+  'competitors_low_coverage': 'alternatives_limited',
+  'catalog_product_missing': 'product_not_resolved',
+  'upstream_deep_scan_skipped_anchor_missing': 'product_not_resolved',
+  'evidence_missing': 'evidence_limited',
+  'analysis_missing': 'analysis_limited',
+  'upstream_missing_or_unstructured': 'analysis_limited',
+  'upstream_missing_or_empty': 'analysis_limited',
+  'skin_fit.profile.skintype': 'profile_skin_type_missing',
+  'skin_fit.profile.sensitivity': 'profile_sensitivity_missing',
+  'skin_fit.profile.barrierstatus': 'profile_barrier_status_missing',
+  'skin_fit.profile.goals': 'profile_goals_missing',
+  'profile.skintype': 'profile_skin_type_missing',
+  'profile.sensitivity': 'profile_sensitivity_missing',
+  'profile.barrierstatus': 'profile_barrier_status_missing',
+  'profile.goals': 'profile_goals_missing',
+};
+
+const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
+  'upstream_analysis_missing',
+  'url_ingredient_analysis_used',
+  'url_realtime_product_intel_used',
+  'catalog_fallback_used',
+  'competitor_sync_enrich_used',
+  'competitor_async_backfill_used',
+  'profile_context_dropped_for_reliability',
+  'competitor_candidates_filtered_noise',
+]);
+
+const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
+  'competitor_recall_',
+  'catalog_anchor_fallback_',
+  'ingredient_intel.',
+  'skin_fit.',
+  'social_signals.',
+  'competitors.',
+];
+
+function mapProductAnalysisGapCode(code) {
+  const raw = String(code || '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  return PRODUCT_ANALYSIS_GAP_MAP[lower] || raw;
+}
+
+function isInternalProductAnalysisGapCode(code) {
+  const lower = String(code || '').trim().toLowerCase();
+  if (!lower) return true;
+  if (PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT.has(lower)) return true;
+  if (PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES.some((prefix) => lower.startsWith(prefix))) return true;
+  return false;
+}
+
+function splitProductAnalysisGaps(rawCodes) {
+  const internalDebugCodes = uniqueStrings(asStringArray(rawCodes));
+  const userFacingGaps = [];
+  for (const raw of internalDebugCodes) {
+    const mapped = mapProductAnalysisGapCode(raw);
+    if (!mapped) continue;
+    if (isInternalProductAnalysisGapCode(mapped)) continue;
+    userFacingGaps.push(mapped);
+  }
+  const userFacing = uniqueStrings(userFacingGaps);
+  return {
+    missing_info: userFacing,
+    user_facing_gaps: userFacing,
+    internal_debug_codes: internalDebugCodes,
+  };
+}
+
+function applyProductAnalysisGapContract(payload) {
+  const p = asPlainObject(payload);
+  if (!p) return payload;
+  const mergedRawCodes = uniqueStrings([
+    ...asStringArray(p.missing_info ?? p.missingInfo),
+    ...asStringArray(p.user_facing_gaps ?? p.userFacingGaps),
+    ...asStringArray(p.internal_debug_codes ?? p.internalDebugCodes),
+  ]);
+  const gaps = splitProductAnalysisGaps(mergedRawCodes);
+  return {
+    ...p,
+    missing_info: gaps.missing_info,
+    user_facing_gaps: gaps.user_facing_gaps,
+    internal_debug_codes: gaps.internal_debug_codes,
+  };
+}
+
 function asRecordOfNumbers(value) {
   const o = asPlainObject(value);
   if (!o) return undefined;
@@ -147,12 +238,15 @@ function normalizeProductAnalysis(raw) {
   const o = asPlainObject(raw);
   if (!o) {
     const evOut = normalizeEvidence(null);
+    const gaps = splitProductAnalysisGaps(['upstream_missing_or_unstructured', ...(evOut.evidence?.missing_info || [])]);
     return {
       payload: {
         assessment: null,
         evidence: evOut.evidence,
         confidence: null,
-        missing_info: uniqueStrings(['upstream_missing_or_unstructured', ...(evOut.evidence?.missing_info || [])]),
+        missing_info: gaps.missing_info,
+        user_facing_gaps: gaps.user_facing_gaps,
+        internal_debug_codes: gaps.internal_debug_codes,
       },
       field_missing: [{ field: 'assessment', reason: 'upstream_missing_or_unstructured' }, ...evOut.field_missing],
     };
@@ -169,8 +263,13 @@ function normalizeProductAnalysis(raw) {
   const confidence = asNumberOrNull(o.confidence);
   if (confidence == null) field_missing.push({ field: 'confidence', reason: 'upstream_missing_or_invalid' });
 
-  const missing_info = uniqueStrings(asStringArray(o.missing_info ?? o.missingInfo));
+  const missing_info = uniqueStrings([
+    ...asStringArray(o.missing_info ?? o.missingInfo),
+    ...asStringArray(o.user_facing_gaps ?? o.userFacingGaps),
+    ...asStringArray(o.internal_debug_codes ?? o.internalDebugCodes),
+  ]);
   if (evOut.evidence.missing_info?.length) missing_info.push(...evOut.evidence.missing_info);
+  const gaps = splitProductAnalysisGaps(missing_info);
 
   const competitorsRaw = asPlainObject(o.competitors);
   const competitorCandidates = [];
@@ -191,7 +290,9 @@ function normalizeProductAnalysis(raw) {
       assessment,
       evidence: evOut.evidence,
       confidence,
-      missing_info: uniqueStrings(missing_info),
+      missing_info: gaps.missing_info,
+      user_facing_gaps: gaps.user_facing_gaps,
+      internal_debug_codes: gaps.internal_debug_codes,
       ...(competitorCandidates.length ? { competitors: { candidates: competitorCandidates } } : {}),
     },
     field_missing,
@@ -1223,10 +1324,13 @@ function attachProductIntelContract(payload, { lang = 'EN', profileSummary = nul
   const intel = buildProductIntelContract(p, { lang, profileSummary });
   if (!intel) return payload;
 
-  const mergedMissingInfo = uniqueStrings([
+  const mergedDebugCodes = uniqueStrings([
     ...asStringArray(p.missing_info ?? p.missingInfo),
+    ...asStringArray(p.user_facing_gaps ?? p.userFacingGaps),
+    ...asStringArray(p.internal_debug_codes ?? p.internalDebugCodes),
     ...asStringArray(intel.missing_info),
   ]);
+  const gaps = splitProductAnalysisGaps(mergedDebugCodes);
 
   return {
     ...p,
@@ -1237,7 +1341,9 @@ function attachProductIntelContract(payload, { lang = 'EN', profileSummary = nul
     competitors: intel.competitors,
     confidence_by_block: intel.confidence_by_block,
     product_intel_contract_version: intel.version,
-    missing_info: mergedMissingInfo,
+    missing_info: gaps.missing_info,
+    user_facing_gaps: gaps.user_facing_gaps,
+    internal_debug_codes: gaps.internal_debug_codes,
   };
 }
 
@@ -1506,6 +1612,7 @@ module.exports = {
   normalizeEvidence,
   normalizeProductParse,
   normalizeProductAnalysis,
+  applyProductAnalysisGapContract,
   enrichProductAnalysisPayload,
   normalizeDupeCompare,
   normalizeRecoGenerate,
