@@ -1656,8 +1656,34 @@ function isCatalogSyncRetryableError(err) {
 function isCatalogSyncNonRetryableError(err) {
   const status = Number(err?.response?.status || 0);
   if (status === 400 || status === 401 || status === 403 || status === 404) return true;
+
+  const detailStatus = Number(
+    err?.response?.data?.status ||
+      err?.response?.data?.error?.status ||
+      err?.response?.data?.detail?.status ||
+      0,
+  );
+  if (detailStatus === 400 || detailStatus === 401 || detailStatus === 403 || detailStatus === 404) {
+    return true;
+  }
+
   const code = String(err?.code || '').trim().toUpperCase();
   if (code === 'ENOTFOUND') return true;
+
+  const message = String(
+    err?.response?.data?.detail?.message ||
+      err?.response?.data?.detail ||
+      err?.response?.data?.error?.message ||
+      err?.message ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (!message) return false;
+  if (message.includes('shopify api error: 404')) return true;
+  if (message.includes('\"errors\":\"not found\"')) return true;
+  if (message.includes("errors':'not found")) return true;
+  if (message.includes('shopify') && message.includes('not found')) return true;
   return false;
 }
 
@@ -1764,7 +1790,8 @@ async function runCreatorCatalogAutoSync() {
       } catch (attemptErr) {
         err = attemptErr;
         const retryable = isCatalogSyncRetryableError(attemptErr);
-        if (attempt < maxAttempts && retryable) {
+        const nonRetryable = isCatalogSyncNonRetryableError(attemptErr);
+        if (attempt < maxAttempts && retryable && !nonRetryable) {
           const delayMs = Math.min(
             CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS * Math.pow(2, attempt - 1),
             30000,
@@ -1778,6 +1805,7 @@ async function runCreatorCatalogAutoSync() {
               timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
               status: attemptErr?.response?.status || null,
               code: attemptErr?.code || null,
+              non_retryable: nonRetryable,
               error: attemptErr?.message || String(attemptErr),
             },
             'Creator catalog auto sync attempt failed; retrying',

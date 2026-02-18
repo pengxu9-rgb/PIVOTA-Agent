@@ -89,8 +89,13 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     const axiosPost = jest
       .fn()
       .mockRejectedValueOnce({
-        response: { status: 404, data: { detail: 'Shopify API error: 404 - {"errors":"Not Found"}' } },
-        message: 'Request failed with status code 404',
+        response: {
+          status: 502,
+          data: {
+            detail: 'Shopify API error: 404 - {"errors":"Not Found"}',
+          },
+        },
+        message: 'Request failed with status code 502',
       })
       .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 5 } } })
       .mockResolvedValueOnce({ status: 200, data: { summary: { synced: 6 } } });
@@ -105,7 +110,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
       expect.objectContaining({
         ok: false,
         skipped: true,
-        status: 404,
+        status: 502,
       }),
     );
     expect(app._debug.catalogSyncState.per_merchant.merch_good).toEqual(
