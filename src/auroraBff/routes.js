@@ -3658,7 +3658,45 @@ async function maybeSyncRepairLowCoverageCompetitors({
     competitorOut?.candidates,
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   );
-  if (!recalledCandidates.length) {
+
+  let onPageCandidates = [];
+  if (recalledCandidates.length < preferredCount) {
+    try {
+      const resp = await axios.get(urlText, {
+        timeout: Math.max(800, PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS),
+        maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+        maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
+        responseType: 'text',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AuroraBff/1.0; +https://aurora.pivota.cc)',
+          Accept: 'text/html,application/xhtml+xml',
+        },
+        validateStatus: (status) => status >= 200 && status < 400,
+      });
+      const html = typeof resp?.data === 'string' ? resp.data : '';
+      if (html) {
+        onPageCandidates = buildOnPageCompetitorCandidates({
+          html,
+          productUrl: urlText,
+          anchorProduct: anchorForRecall,
+          profileSummary,
+          lang,
+          maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+        });
+      }
+    } catch (err) {
+      logger?.debug?.(
+        { err: err?.message || String(err), url: urlText },
+        'aurora bff: sync competitor on-page fallback skipped',
+      );
+    }
+  }
+
+  const recoveredCandidates = sanitizeCompetitorCandidates(
+    [...recalledCandidates, ...onPageCandidates],
+    PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+  );
+  if (!recoveredCandidates.length) {
     return { payload: payloadObj, enhanced: false, reason: competitorOut?.reason || 'realtime_recall_empty' };
   }
 
@@ -3668,7 +3706,7 @@ async function maybeSyncRepairLowCoverageCompetitors({
     return `${String(id || '').toLowerCase()}::${String(name || '').toLowerCase()}`;
   });
   const mergedCandidates = sanitizeCompetitorCandidates(
-    [...recalledCandidates, ...existingCandidates],
+    [...recoveredCandidates, ...existingCandidates],
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   );
   const mergedKey = mergedCandidates.map((row) => {
