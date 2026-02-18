@@ -293,8 +293,10 @@ const PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
   1200,
 );
-const PROXY_SEARCH_RESOLVER_DETAIL_ENABLED =
-  String(process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED || '').toLowerCase() === 'true';
+const PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = (() => {
+  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  return String(process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED || defaultValue).toLowerCase() === 'true';
+})();
 const PROXY_SEARCH_RESOLVER_FIRST_ENABLED = (() => {
   const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
   return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED || defaultValue).toLowerCase() === 'true';
@@ -2571,7 +2573,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   };
 }
 
-async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, fetchDetail = false }) {
+async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, fetchDetail = true }) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
   if (!queryText) return null;
@@ -2660,15 +2662,27 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
   }
 
   let detail = null;
+  let detailSource = null;
   if (fetchDetail && PROXY_SEARCH_RESOLVER_DETAIL_ENABLED) {
     try {
-      detail = await fetchProductDetailFromUpstream({
+      const detailFromCache = await fetchProductDetailFromProductsCache({
         merchantId: resolvedMerchantId,
         productId: resolvedProductId,
-        checkoutToken,
-        timeoutMs: PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
-        noRetry: true,
       });
+      if (detailFromCache?.product) {
+        detail = detailFromCache.product;
+        detailSource = 'products_cache';
+      }
+      if (!detail) {
+        detail = await fetchProductDetailFromUpstream({
+          merchantId: resolvedMerchantId,
+          productId: resolvedProductId,
+          checkoutToken,
+          timeoutMs: PROXY_SEARCH_RESOLVER_DETAIL_TIMEOUT_MS,
+          noRetry: true,
+        });
+        if (detail) detailSource = 'upstream';
+      }
     } catch (err) {
       logger.warn(
         {
@@ -2676,9 +2690,39 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
           merchant_id: resolvedMerchantId,
           product_id: resolvedProductId,
         },
-        'proxy agent search resolver fallback detail fetch failed; returning minimal row',
+        'proxy agent search resolver fallback detail fetch failed',
       );
     }
+  }
+
+  if (fetchDetail && PROXY_SEARCH_RESOLVER_DETAIL_ENABLED && !detail) {
+    const missResult = {
+      status: 200,
+      usableCount: 0,
+      data: null,
+      resolved: false,
+      resolve_reason: resolved?.reason || null,
+      resolve_reason_code: 'detail_unavailable',
+      resolve_confidence:
+        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
+      resolve_latency_ms:
+        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+      resolve_sources: resolveSources,
+    };
+    setProxySearchResolverCacheEntry(
+      resolverCacheKey,
+      missResult,
+      PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS,
+    );
+    logger.info(
+      {
+        query: queryText,
+        merchant_id: resolvedMerchantId,
+        product_id: resolvedProductId,
+      },
+      'proxy agent search resolver fallback skipped unresolved detail candidate',
+    );
+    return missResult;
   }
 
   const candidateTitle = Array.isArray(resolved?.candidates)
@@ -2729,6 +2773,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
         Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
       resolve_latency_ms:
         Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+      ...(detailSource ? { resolve_detail_source: detailSource } : {}),
     },
   });
 

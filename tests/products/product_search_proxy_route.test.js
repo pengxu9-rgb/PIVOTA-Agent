@@ -22,12 +22,22 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED,
+      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
+        process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
+      PROXY_SEARCH_RESOLVER_DETAIL_ENABLED: process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED,
+      PROXY_SEARCH_INVOKE_FALLBACK_ENABLED:
+        process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
+    delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    delete process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
+    delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
     delete process.env.DATABASE_URL;
   });
@@ -56,6 +66,30 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED =
         prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED =
+        prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY =
+        prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED =
+        prevEnv.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
+        prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
     }
   });
 
@@ -302,6 +336,74 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         proxy_search_fallback: expect.objectContaining({
           applied: true,
           reason: 'resolver_after_primary',
+        }),
+      }),
+    );
+  });
+
+  test('skips resolver fallback row when detail cannot be hydrated', async () => {
+    const queryText = 'IPSA Time Reset Aqua';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886500127048';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: true,
+        product_ref: {
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        confidence: 1,
+        reason: 'stable_alias_ref',
+        metadata: { latency_ms: 13 },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(404, {
+        status: 'error',
+        error: { code: 'PRODUCT_NOT_FOUND', message: 'Product not found' },
+      });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(500, {
+        status: 'error',
+        detail: 'Search failed',
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_status_5xx',
         }),
       }),
     );
