@@ -3293,6 +3293,7 @@ function stripCompetitorMissingTokens(items) {
     if (token === 'competitors.competitors.candidates') continue;
     if (token === 'competitors_low_coverage') continue;
     if (token === 'competitor_candidates_filtered_noise') continue;
+    if (token === 'competitor_sync_enrich_used') continue;
     if (/^competitor_recall_/i.test(token)) continue;
     out.push(token);
   }
@@ -3726,7 +3727,6 @@ async function maybeSyncRepairLowCoverageCompetitors({
     [
       ...stripCompetitorMissingTokens(existingMissingInfo),
       ...(mergedCandidates.length < preferredCount ? ['competitors_low_coverage'] : []),
-      'competitor_sync_enrich_used',
     ],
     16,
   );
@@ -12577,6 +12577,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           if (!kbAnalysisSanitized || !shouldServeProductIntelKbPayload(kbAnalysisSanitized)) continue;
           let kbPayload = enrichProductAnalysisPayload(kbAnalysisSanitized, { lang: ctx.lang, profileSummary });
+          if (kbPayload && typeof kbPayload === 'object' && !Array.isArray(kbPayload)) {
+            const missingInfo = Array.isArray(kbPayload.missing_info) ? kbPayload.missing_info : [];
+            const cleanedMissingInfo = uniqCaseInsensitiveStrings(
+              missingInfo.filter((raw) => String(raw || '').trim().toLowerCase() !== 'competitor_sync_enrich_used'),
+              16,
+            );
+            if (cleanedMissingInfo.length !== missingInfo.length) {
+              kbPayload = {
+                ...kbPayload,
+                missing_info: cleanedMissingInfo,
+              };
+            }
+          }
           let syncCoverageRepairApplied = false;
 
           if (
