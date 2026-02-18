@@ -6,6 +6,7 @@ describe('catalog sync merchant target resolution', () => {
     prevEnv = {
       CATALOG_SYNC_MERCHANT_IDS: process.env.CATALOG_SYNC_MERCHANT_IDS,
       CREATOR_CATALOG_MERCHANT_IDS: process.env.CREATOR_CATALOG_MERCHANT_IDS,
+      CATALOG_SYNC_DISCOVERY_RELAXED: process.env.CATALOG_SYNC_DISCOVERY_RELAXED,
       DATABASE_URL: process.env.DATABASE_URL,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
         process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
@@ -28,6 +29,12 @@ describe('catalog sync merchant target resolution', () => {
     } else {
       process.env.CREATOR_CATALOG_MERCHANT_IDS =
         prevEnv.CREATOR_CATALOG_MERCHANT_IDS;
+    }
+    if (prevEnv.CATALOG_SYNC_DISCOVERY_RELAXED === undefined) {
+      delete process.env.CATALOG_SYNC_DISCOVERY_RELAXED;
+    } else {
+      process.env.CATALOG_SYNC_DISCOVERY_RELAXED =
+        prevEnv.CATALOG_SYNC_DISCOVERY_RELAXED;
     }
     if (prevEnv.DATABASE_URL === undefined) {
       delete process.env.DATABASE_URL;
@@ -60,10 +67,10 @@ describe('catalog sync merchant target resolution', () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  test('discovers approved connected merchants from onboarding', async () => {
+  test('discovers merchants with active shopify store credentials', async () => {
     const queryMock = jest.fn(async (sql) => {
       const text = String(sql || '');
-      if (text.includes('FROM merchant_onboarding')) {
+      if (text.includes('FROM merchant_stores')) {
         return {
           rows: [
             { merchant_id: 'merch_live_1' },
@@ -83,7 +90,33 @@ describe('catalog sync merchant target resolution', () => {
 
     expect(result).toEqual({
       merchantIds: ['merch_live_1', 'merch_live_2'],
-      source: 'merchant_onboarding',
+      source: 'merchant_stores_shopify_active',
+    });
+  });
+
+  test('can use relaxed onboarding fallback when enabled', async () => {
+    const queryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM merchant_stores')) return { rows: [] };
+      if (text.includes('FROM merchant_onboarding')) {
+        return {
+          rows: [{ merchant_id: 'merch_relaxed_1' }],
+        };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('../src/db', () => ({ query: queryMock }));
+
+    delete process.env.CATALOG_SYNC_MERCHANT_IDS;
+    process.env.CATALOG_SYNC_DISCOVERY_RELAXED = 'true';
+    process.env.DATABASE_URL = 'postgres://test';
+
+    const app = require('../src/server');
+    const result = await app._debug.resolveCatalogSyncMerchantIds();
+
+    expect(result).toEqual({
+      merchantIds: ['merch_relaxed_1'],
+      source: 'merchant_onboarding_relaxed',
     });
   });
 

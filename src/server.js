@@ -1499,6 +1499,40 @@ function getCatalogSyncMerchantIdsFromEnv() {
 async function discoverCatalogSyncMerchantIdsFromDb(limit = 5000) {
   if (!process.env.DATABASE_URL) return { merchantIds: [], source: 'db_not_configured' };
   const normalizedLimit = Math.min(Math.max(1, Number(limit || 5000)), 5000);
+  const allowRelaxedFallback =
+    String(process.env.CATALOG_SYNC_DISCOVERY_RELAXED || '').trim().toLowerCase() === 'true';
+
+  try {
+    const shopifyStoresRes = await query(
+      `
+        SELECT DISTINCT merchant_id
+        FROM merchant_stores
+        WHERE COALESCE(NULLIF(trim(merchant_id), ''), '') <> ''
+          AND lower(COALESCE(platform, '')) = 'shopify'
+          AND lower(COALESCE(status, '')) = 'active'
+          AND COALESCE(NULLIF(trim(domain), ''), '') <> ''
+          AND COALESCE(NULLIF(trim(api_key), ''), '') <> ''
+        ORDER BY merchant_id ASC
+        LIMIT $1
+      `,
+      [normalizedLimit],
+    );
+    const shopifyStoreMerchantIds = uniqueStrings(
+      (shopifyStoresRes.rows || []).map((row) => row?.merchant_id),
+    );
+    if (shopifyStoreMerchantIds.length) {
+      return { merchantIds: shopifyStoreMerchantIds, source: 'merchant_stores_shopify_active' };
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err) },
+      'Catalog sync merchant discovery via merchant_stores failed',
+    );
+  }
+
+  if (!allowRelaxedFallback) {
+    return { merchantIds: [], source: 'merchant_stores_empty' };
+  }
 
   try {
     const onboardingRes = await query(
@@ -1517,12 +1551,12 @@ async function discoverCatalogSyncMerchantIdsFromDb(limit = 5000) {
       (onboardingRes.rows || []).map((row) => row?.merchant_id),
     );
     if (onboardingMerchantIds.length) {
-      return { merchantIds: onboardingMerchantIds, source: 'merchant_onboarding' };
+      return { merchantIds: onboardingMerchantIds, source: 'merchant_onboarding_relaxed' };
     }
   } catch (err) {
     logger.warn(
       { err: err?.message || String(err) },
-      'Catalog sync merchant discovery via merchant_onboarding failed; falling back',
+      'Catalog sync merchant discovery via merchant_onboarding failed in relaxed mode',
     );
   }
 
@@ -1542,16 +1576,16 @@ async function discoverCatalogSyncMerchantIdsFromDb(limit = 5000) {
       (cacheRes.rows || []).map((row) => row?.merchant_id),
     );
     if (cacheMerchantIds.length) {
-      return { merchantIds: cacheMerchantIds, source: 'products_cache' };
+      return { merchantIds: cacheMerchantIds, source: 'products_cache_relaxed' };
     }
   } catch (err) {
     logger.warn(
       { err: err?.message || String(err) },
-      'Catalog sync merchant discovery via products_cache failed',
+      'Catalog sync merchant discovery via products_cache failed in relaxed mode',
     );
   }
 
-  return { merchantIds: [], source: 'db_empty' };
+  return { merchantIds: [], source: 'db_empty_relaxed' };
 }
 
 async function resolveCatalogSyncMerchantIds() {
