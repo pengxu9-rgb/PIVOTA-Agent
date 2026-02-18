@@ -283,8 +283,13 @@ const PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = (() => {
   const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
   return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY || defaultValue).toLowerCase() === 'true';
 })();
-const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED =
-  String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED || 'false').toLowerCase() === 'true';
+const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = (() => {
+  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  return (
+    String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED || defaultValue)
+      .toLowerCase() === 'true'
+  );
+})();
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
