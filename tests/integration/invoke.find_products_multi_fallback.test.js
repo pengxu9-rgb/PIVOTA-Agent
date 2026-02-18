@@ -19,6 +19,8 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
+        process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
       PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
         process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
       PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS:
@@ -51,6 +53,12 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY =
+        prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
     }
     if (prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
@@ -161,6 +169,66 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         }),
       }),
     );
+  });
+
+  test('does not run resolver-first for non-strong shopping queries when strong-only is enabled', async () => {
+    const queryText = 'ipsa toner for dry skin';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'merch_efbc46b4619cfbdf',
+        product_id: '9886500127048',
+      },
+      confidence: 0.98,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 11 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: resolverSpy,
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'prod_ipsa_toner_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'IPSA toner for dry skin',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resolverSpy).not.toHaveBeenCalled();
   });
 
   test('skips secondary fallback chain when resolver miss already has no positive sources', async () => {

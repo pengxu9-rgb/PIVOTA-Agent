@@ -238,6 +238,10 @@ const PROXY_SEARCH_RESOLVER_FIRST_ENABLED = (() => {
   const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
   return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED || defaultValue).toLowerCase() === 'true';
 })();
+const PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = (() => {
+  const defaultValue = process.env.NODE_ENV === 'test' ? 'false' : 'true';
+  return String(process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY || defaultValue).toLowerCase() === 'true';
+})();
 const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED =
   String(process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
@@ -2240,6 +2244,41 @@ function shouldBypassSecondaryFallbackSkipOnPrimaryException({ err }) {
   return /timeout|timed out|socket hang up|aborted|network error/i.test(message);
 }
 
+function isUuidLikeSearchQuery(value) {
+  const s = String(value || '').trim();
+  if (!s) return false;
+  return (
+    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(s) ||
+    /^[0-9a-f]{32}$/i.test(s)
+  );
+}
+
+function isStrongResolverFirstQuery(queryText) {
+  const raw = String(queryText || '').trim();
+  if (!raw) return false;
+  if (isUuidLikeSearchQuery(raw)) return true;
+  if (!resolveStableAliasByQuery) return false;
+
+  try {
+    const normalized = normalizeResolverText(raw);
+    const tokens = tokenizeResolverQuery(normalized);
+    if (!normalized || !tokens.length) return false;
+    const match = resolveStableAliasByQuery({
+      query: raw,
+      normalizedQuery: normalized,
+      queryTokens: tokens,
+    });
+    return Boolean(
+      match &&
+      match.product_ref &&
+      String(match.product_ref.product_id || '').trim() &&
+      String(match.product_ref.merchant_id || '').trim()
+    );
+  } catch {
+    return false;
+  }
+}
+
 function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
   if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
@@ -2248,9 +2287,15 @@ function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
   const source = String(metadata?.source || '').trim().toLowerCase();
   if (source === 'creator-agent-ui' || source === 'creator_agent_ui') return false;
   if (!source) return true;
-  return (
+  const isShoppingSource =
     source === 'shopping_agent' ||
-    source === 'shopping-agent-ui' ||
+    source === 'shopping-agent-ui';
+  if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && isShoppingSource) {
+    return isStrongResolverFirstQuery(queryText);
+  }
+
+  return (
+    isShoppingSource ||
     source === 'aurora_chatbox' ||
     source === 'aurora_bff'
   );
@@ -7269,6 +7314,153 @@ app.get('/api/admin/missing-catalog-products', requireAdmin, async (req, res) =>
   }
 
   return res.json({ ok: true, rows: out.rows });
+});
+
+app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
+  const queryText = String(req.query.q || req.query.query || '').trim();
+  if (!queryText) {
+    return res.status(400).json({
+      error: 'MISSING_QUERY',
+      message: 'Provide q or query parameter',
+    });
+  }
+
+  const lang = String(req.query.lang || 'en').trim().toLowerCase() || 'en';
+  const source = String(req.query.source || 'shopping_agent').trim().toLowerCase() || 'shopping_agent';
+  const requestedLimit = parseQueryNumber(req.query.limit);
+  const limit = Math.min(Math.max(1, Number(requestedLimit || 10)), 50);
+  const inStockOnlyRaw = parseQueryBoolean(req.query.in_stock_only ?? req.query.inStockOnly);
+  const inStockOnly = inStockOnlyRaw !== false;
+  const startedAt = Date.now();
+
+  const resolverMeta = { source };
+  const resolverFirstWouldApply = shouldUseResolverFirstSearch({
+    operation: 'find_products_multi',
+    metadata: resolverMeta,
+    queryText,
+  });
+  const strongResolverQuery = isStrongResolverFirstQuery(queryText);
+
+  const buildResolverView = (result) => ({
+    resolved: Boolean(result?.resolved),
+    reason: result?.reason || null,
+    product_ref: result?.product_ref || null,
+    confidence: Number.isFinite(Number(result?.confidence)) ? Number(result.confidence) : null,
+    latency_ms: Number.isFinite(Number(result?.metadata?.latency_ms))
+      ? Number(result.metadata.latency_ms)
+      : null,
+    sources: Array.isArray(result?.metadata?.sources) ? result.metadata.sources : [],
+  });
+
+  let resolverWithAlias = null;
+  let resolverWithoutAlias = null;
+  try {
+    resolverWithAlias = await resolveProductRef({
+      query: queryText,
+      lang,
+      hints: null,
+      options: {
+        search_all_merchants: true,
+        timeout_ms: Math.max(PROXY_SEARCH_RESOLVER_TIMEOUT_MS, 1600),
+        upstream_retries: 0,
+        stable_alias_short_circuit: true,
+      },
+      pivotaApiBase: PIVOTA_API_BASE,
+      pivotaApiKey: PIVOTA_API_KEY,
+      checkoutToken: null,
+    });
+  } catch (err) {
+    resolverWithAlias = { resolved: false, reason: 'resolver_exception', metadata: { sources: [], error: err?.message || String(err) } };
+  }
+
+  try {
+    resolverWithoutAlias = await resolveProductRef({
+      query: queryText,
+      lang,
+      hints: null,
+      options: {
+        search_all_merchants: true,
+        timeout_ms: Math.max(PROXY_SEARCH_RESOLVER_TIMEOUT_MS, 1600),
+        upstream_retries: 0,
+        stable_alias_short_circuit: false,
+      },
+      pivotaApiBase: PIVOTA_API_BASE,
+      pivotaApiKey: PIVOTA_API_KEY,
+      checkoutToken: null,
+    });
+  } catch (err) {
+    resolverWithoutAlias = { resolved: false, reason: 'resolver_exception', metadata: { sources: [], error: err?.message || String(err) } };
+  }
+
+  let crossMerchantCache = {
+    ok: false,
+    reason: 'db_not_configured',
+    total: 0,
+    products_count: 0,
+    retrieval_sources: [],
+    sample_products: [],
+  };
+  if (process.env.DATABASE_URL) {
+    try {
+      const fromCache = await searchCrossMerchantFromCache(queryText, 1, limit, { inStockOnly });
+      crossMerchantCache = {
+        ok: true,
+        reason: null,
+        total: Number(fromCache.total || 0),
+        products_count: Array.isArray(fromCache.products) ? fromCache.products.length : 0,
+        retrieval_sources: fromCache.retrieval_sources || [],
+        sample_products: (fromCache.products || []).slice(0, 3).map((item) => ({
+          product_id: item?.product_id || item?.id || null,
+          merchant_id: item?.merchant_id || item?.merchantId || null,
+          title: item?.title || item?.name || null,
+          status: item?.status || null,
+        })),
+      };
+    } catch (err) {
+      crossMerchantCache = {
+        ok: false,
+        reason: 'cache_query_failed',
+        error: err?.message || String(err),
+        total: 0,
+        products_count: 0,
+        retrieval_sources: [],
+        sample_products: [],
+      };
+    }
+  }
+
+  const aliasDependency =
+    Boolean(resolverWithAlias?.resolved) &&
+    !Boolean(resolverWithoutAlias?.resolved);
+
+  return res.json({
+    ok: true,
+    query: queryText,
+    language: lang,
+    source,
+    timing_ms: Math.max(0, Date.now() - startedAt),
+    config: {
+      resolver_first_enabled: PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      resolver_first_strong_only: PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
+      resolver_first_would_apply: resolverFirstWouldApply,
+      resolver_query_is_strong: strongResolverQuery,
+      resolver_timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
+      db_configured: Boolean(process.env.DATABASE_URL),
+      catalog_auto_sync_enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+    },
+    catalog_sync: {
+      enabled: process.env.CREATOR_CATALOG_AUTO_SYNC_ENABLED === 'true',
+      last_run_at: catalogSyncState.last_run_at,
+      last_success_at: catalogSyncState.last_success_at,
+      last_error: catalogSyncState.last_error,
+    },
+    resolver: {
+      alias_dependency: aliasDependency,
+      with_stable_alias: buildResolverView(resolverWithAlias),
+      without_stable_alias: buildResolverView(resolverWithoutAlias),
+    },
+    cross_merchant_cache: crossMerchantCache,
+  });
 });
 
 // ---------------- Main invoke endpoint ----------------
