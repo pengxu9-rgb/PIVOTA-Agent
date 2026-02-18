@@ -32,7 +32,7 @@
     "db:setup": "node src/db/cli.js all",
     "lint:dicts": "node scripts/lint-dicts.js",
     "pretest": "npm run lint:dicts && npm run lint:kb:us && npm run lint:kb:jp && npm run external:lint && npm run internal:lint",
-    "test": "jest --runInBand",
+    "test": "AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED=false jest --runInBand",
     "eval:layer1:us": "node src/eval/layer1/us/runEval.js",
     "eval:layer2_3:us": "node src/eval/layer2_3/us/runEval.js",
     "contract:export": "node scripts/export-contracts-us.js && node scripts/export-contracts-jp.js",
