@@ -345,4 +345,85 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
     expect(externalSupplement.isDone()).toBe(false);
   });
+
+  test('skips external-only supplement for lookup query when internal cache is empty', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '') === 'ipsa')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'ext_not_ipsa_1',
+            product_id: 'ext_not_ipsa_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Silken Lip Conditioning Mask',
+            status: 'active',
+          },
+        ],
+        total: 1,
+      });
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(
+        (q) =>
+          String(q.search_all_merchants || '') === 'true' &&
+          String(q.query || '') === 'ipsa',
+      )
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_ipsa_upstream_1',
+            product_id: 'prod_ipsa_upstream_1',
+            merchant_id: 'merch_1',
+            title: 'IPSA Time Reset Aqua',
+            status: 'active',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(
+      (resp.body.products || []).some((p) => String(p.merchant_id || '') === 'external_seed'),
+    ).toBe(false);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(externalSupplement.isDone()).toBe(false);
+  });
 });

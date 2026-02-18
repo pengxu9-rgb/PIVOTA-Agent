@@ -1991,6 +1991,37 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
   return false;
 }
 
+function isSupplementCandidateRelevant(product, queryText, options = {}) {
+  if (!product || typeof product !== 'object') return false;
+  const candidateText = buildFallbackCandidateText(product);
+  if (!candidateText) return false;
+
+  const normalizedQuery =
+    typeof options.normalizedQuery === 'string'
+      ? options.normalizedQuery
+      : normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return true;
+
+  const anchorTokens = Array.isArray(options.anchorTokens)
+    ? options.anchorTokens
+    : extractSearchAnchorTokens(queryText);
+  if (isLookupStyleSearchQuery(queryText, anchorTokens) && anchorTokens.length > 0) {
+    return anchorTokens.some((token) => candidateText.includes(token));
+  }
+
+  if (candidateText.includes(normalizedQuery)) return true;
+
+  const queryTokens = Array.isArray(options.queryTokens)
+    ? options.queryTokens
+    : Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  if (!queryTokens.length) return true;
+  if (queryTokens.length === 1) {
+    return candidateText.includes(queryTokens[0]);
+  }
+  const overlapCount = queryTokens.filter((token) => candidateText.includes(token)).length;
+  return overlapCount >= 2;
+}
+
 function shouldFallbackProxySearch(normalized, statusCode) {
   if (Number(statusCode) >= 500) return true;
   if (Number(statusCode) < 200 || Number(statusCode) >= 300) return false;
@@ -2098,16 +2129,35 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     limit,
     offset: 0,
   });
-  const products = Array.isArray(normalized?.products) ? normalized.products.filter((p) => isExternalSeedProduct(p)) : [];
+  const products = Array.isArray(normalized?.products)
+    ? normalized.products.filter((p) => isExternalSeedProduct(p))
+    : [];
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const relevantProducts = products.filter((p) =>
+    isSupplementCandidateRelevant(p, queryText, {
+      normalizedQuery,
+      anchorTokens,
+      queryTokens,
+    }),
+  );
+  const filteredOutIrrelevantCount = Math.max(0, products.length - relevantProducts.length);
 
   return {
-    products,
+    products: relevantProducts,
     metadata: {
       attempted: true,
-      applied: products.length > 0,
-      reason: products.length > 0 ? 'external_seed_candidates_found' : 'no_external_seed_candidates',
+      applied: relevantProducts.length > 0,
+      reason:
+        relevantProducts.length > 0
+          ? 'external_seed_candidates_found'
+          : filteredOutIrrelevantCount > 0
+            ? 'external_seed_candidates_filtered_irrelevant'
+            : 'no_external_seed_candidates',
       requested_count: requestedCount,
-      fetched_count: products.length,
+      fetched_count: relevantProducts.length,
+      filtered_out_irrelevant_count: filteredOutIrrelevantCount,
       upstream_status: Number(resp.status || 0) || 0,
     },
   };
@@ -10324,6 +10374,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const limit = search.limit || search.page_size || 20;
           const fromCache = await searchCrossMerchantFromCache(queryText, page, limit, { inStockOnly });
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
+          const lookupAnchorTokens = extractSearchAnchorTokens(queryText);
+          const isLookupQuery = isLookupStyleSearchQuery(queryText, lookupAnchorTokens);
           const cacheHit = internalProducts.length > 0;
           let supplementedProducts = internalProducts;
           let supplementMeta = {
@@ -10339,68 +10391,84 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ) {
             const neededCount = Math.max(0, Number(limit || 0) - internalProducts.length);
             if (neededCount > 0) {
-              supplementMeta = {
-                attempted: true,
-                applied: false,
-                added_count: 0,
-                reason: 'supplement_pending',
-              };
-              try {
-                const supplement = await fetchExternalSeedSupplementFromBackend({
-                  queryParams: {
-                    query: queryText,
-                    ...(search.category ? { category: search.category } : {}),
-                    ...(search.price_min != null || search.min_price != null
-                      ? { min_price: search.price_min ?? search.min_price }
-                      : {}),
-                    ...(search.price_max != null || search.max_price != null
-                      ? { max_price: search.price_max ?? search.max_price }
-                      : {}),
-                    in_stock_only: inStockOnly,
-                  },
-                  checkoutToken,
-                  neededCount,
-                });
-                const seen = new Set(
-                  internalProducts
-                    .map((product) => buildSearchProductKey(product))
-                    .filter(Boolean),
-                );
-                const supplementCandidates = Array.isArray(supplement?.products) ? supplement.products : [];
-                const toAppend = [];
-                for (const product of supplementCandidates) {
-                  if (!isExternalSeedProduct(product)) continue;
-                  const key = buildSearchProductKey(product);
-                  if (!key || seen.has(key)) continue;
-                  seen.add(key);
-                  toAppend.push(product);
-                  if (toAppend.length >= neededCount) break;
-                }
-                supplementedProducts = internalProducts.concat(toAppend);
+              const shouldSkipSupplementForLookupNoInternal =
+                isLookupQuery && internalProducts.length === 0;
+              if (shouldSkipSupplementForLookupNoInternal) {
                 supplementMeta = {
-                  ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
-                  attempted: true,
-                  applied: toAppend.length > 0,
-                  added_count: toAppend.length,
-                  reason: toAppend.length > 0 ? 'supplemented_external_seed' : 'no_external_candidates',
+                  attempted: false,
+                  applied: false,
+                  added_count: 0,
+                  reason: 'lookup_query_no_internal_skip_supplement',
                 };
-              } catch (supplementErr) {
+              } else {
                 supplementMeta = {
                   attempted: true,
                   applied: false,
                   added_count: 0,
-                  reason: 'supplement_error',
-                  error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
+                  reason: 'supplement_pending',
                 };
-                logger.warn(
-                  { err: supplementErr?.message || String(supplementErr), query: queryText },
-                  'Cross-merchant cache search supplement failed; returning internal cache results',
-                );
+                try {
+                  const supplement = await fetchExternalSeedSupplementFromBackend({
+                    queryParams: {
+                      query: queryText,
+                      ...(search.category ? { category: search.category } : {}),
+                      ...(search.price_min != null || search.min_price != null
+                        ? { min_price: search.price_min ?? search.min_price }
+                        : {}),
+                      ...(search.price_max != null || search.max_price != null
+                        ? { max_price: search.price_max ?? search.max_price }
+                        : {}),
+                      in_stock_only: inStockOnly,
+                    },
+                    checkoutToken,
+                    neededCount,
+                  });
+                  const seen = new Set(
+                    internalProducts
+                      .map((product) => buildSearchProductKey(product))
+                      .filter(Boolean),
+                  );
+                  const supplementCandidates = Array.isArray(supplement?.products) ? supplement.products : [];
+                  const toAppend = [];
+                  for (const product of supplementCandidates) {
+                    if (!isExternalSeedProduct(product)) continue;
+                    const key = buildSearchProductKey(product);
+                    if (!key || seen.has(key)) continue;
+                    seen.add(key);
+                    toAppend.push(product);
+                    if (toAppend.length >= neededCount) break;
+                  }
+                  supplementedProducts = internalProducts.concat(toAppend);
+                  supplementMeta = {
+                    ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
+                    attempted: true,
+                    applied: toAppend.length > 0,
+                    added_count: toAppend.length,
+                    reason: toAppend.length > 0 ? 'supplemented_external_seed' : 'no_external_candidates',
+                  };
+                } catch (supplementErr) {
+                  supplementMeta = {
+                    attempted: true,
+                    applied: false,
+                    added_count: 0,
+                    reason: 'supplement_error',
+                    error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
+                  };
+                  logger.warn(
+                    { err: supplementErr?.message || String(supplementErr), query: queryText },
+                    'Cross-merchant cache search supplement failed; returning internal cache results',
+                  );
+                }
               }
             }
           }
           const effectiveProducts = supplementedProducts;
-          const effectiveCacheHit = effectiveProducts.length > 0;
+          const cacheRelevant = queryText
+            ? isProxySearchFallbackRelevant({ products: effectiveProducts }, queryText)
+            : true;
+          const effectiveCacheHit =
+            effectiveProducts.length > 0 &&
+            (!isShoppingSource(source) || cacheRelevant);
           const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
           crossMerchantCacheRouteDebug = {
             attempted: true,
@@ -10413,6 +10481,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             products_count: effectiveProducts.length,
             internal_products_count: internalProducts.length,
             external_products_count: externalCount,
+            cache_relevant: cacheRelevant,
             total: Number(fromCache.total || 0),
             retrieval_sources: fromCache.retrieval_sources || null,
             supplement: supplementMeta,
