@@ -1486,11 +1486,99 @@ function getCreatorCatalogMerchantIds() {
   return uniqueStrings(all);
 }
 
+function getCatalogSyncMerchantIdsFromEnv() {
+  const raw = String(
+    process.env.CATALOG_SYNC_MERCHANT_IDS ||
+      process.env.CREATOR_CATALOG_MERCHANT_IDS ||
+      '',
+  ).trim();
+  if (!raw) return [];
+  return uniqueStrings(raw.split(','));
+}
+
+async function discoverCatalogSyncMerchantIdsFromDb(limit = 5000) {
+  if (!process.env.DATABASE_URL) return { merchantIds: [], source: 'db_not_configured' };
+  const normalizedLimit = Math.min(Math.max(1, Number(limit || 5000)), 5000);
+
+  try {
+    const onboardingRes = await query(
+      `
+        SELECT DISTINCT merchant_id
+        FROM merchant_onboarding
+        WHERE COALESCE(NULLIF(trim(merchant_id), ''), '') <> ''
+          AND lower(COALESCE(status, '')) = 'approved'
+          AND COALESCE(psp_connected, false) = true
+        ORDER BY merchant_id ASC
+        LIMIT $1
+      `,
+      [normalizedLimit],
+    );
+    const onboardingMerchantIds = uniqueStrings(
+      (onboardingRes.rows || []).map((row) => row?.merchant_id),
+    );
+    if (onboardingMerchantIds.length) {
+      return { merchantIds: onboardingMerchantIds, source: 'merchant_onboarding' };
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err) },
+      'Catalog sync merchant discovery via merchant_onboarding failed; falling back',
+    );
+  }
+
+  try {
+    const cacheRes = await query(
+      `
+        SELECT DISTINCT merchant_id
+        FROM products_cache
+        WHERE COALESCE(NULLIF(trim(merchant_id), ''), '') <> ''
+          AND merchant_id <> 'external_seed'
+        ORDER BY merchant_id ASC
+        LIMIT $1
+      `,
+      [normalizedLimit],
+    );
+    const cacheMerchantIds = uniqueStrings(
+      (cacheRes.rows || []).map((row) => row?.merchant_id),
+    );
+    if (cacheMerchantIds.length) {
+      return { merchantIds: cacheMerchantIds, source: 'products_cache' };
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err) },
+      'Catalog sync merchant discovery via products_cache failed',
+    );
+  }
+
+  return { merchantIds: [], source: 'db_empty' };
+}
+
+async function resolveCatalogSyncMerchantIds() {
+  const envMerchantIds = getCatalogSyncMerchantIdsFromEnv();
+  if (envMerchantIds.length) {
+    return { merchantIds: envMerchantIds, source: 'env' };
+  }
+
+  const discovered = await discoverCatalogSyncMerchantIdsFromDb();
+  if (discovered.merchantIds.length) return discovered;
+
+  const creatorMerchantIds = getCreatorCatalogMerchantIds();
+  if (creatorMerchantIds.length) {
+    return { merchantIds: creatorMerchantIds, source: 'creator_configs_fallback' };
+  }
+
+  return { merchantIds: [], source: discovered.source || 'none' };
+}
+
 const catalogSyncState = {
   last_run_at: null,
   last_success_at: null,
   last_error: null,
   per_merchant: {},
+  target_source: null,
+  target_count: 0,
+  target_sample: [],
 };
 
 async function runCreatorCatalogAutoSync() {
@@ -1504,9 +1592,18 @@ async function runCreatorCatalogAutoSync() {
     return;
   }
 
-  const merchantIds = getCreatorCatalogMerchantIds();
+  const merchantTarget = await resolveCatalogSyncMerchantIds();
+  const merchantIds = merchantTarget.merchantIds;
+  catalogSyncState.target_source = merchantTarget.source || null;
+  catalogSyncState.target_count = merchantIds.length;
+  catalogSyncState.target_sample = merchantIds.slice(0, 20);
   if (!merchantIds.length) {
-    logger.warn('CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no creator merchantIds are configured');
+    logger.warn(
+      {
+        target_source: merchantTarget.source || null,
+      },
+      'CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no sync target merchants were resolved',
+    );
     return;
   }
 
@@ -5410,6 +5507,9 @@ const healthRouteHandler = (req, res) => {
       interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+      target_source: catalogSyncState.target_source,
+      target_count: catalogSyncState.target_count,
+      target_sample: catalogSyncState.target_sample,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
@@ -6274,7 +6374,8 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
     (Array.isArray(preferMerchantsRaw) && preferMerchantsRaw.length > 0) ||
     (typeof preferMerchantsRaw === 'string' && preferMerchantsRaw.trim().length > 0);
   if (shouldDefaultPreferMerchants && !hasPreferMerchants) {
-    const defaultMerchants = getCreatorCatalogMerchantIds();
+    const defaultMerchantsResult = await resolveCatalogSyncMerchantIds();
+    const defaultMerchants = defaultMerchantsResult.merchantIds;
     if (defaultMerchants.length) {
       options = {
         ...options,
@@ -7654,6 +7755,9 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
       interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+      target_source: catalogSyncState.target_source,
+      target_count: catalogSyncState.target_count,
+      target_sample: catalogSyncState.target_sample,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
@@ -7683,6 +7787,7 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
   const startedAt = Date.now();
 
   const creatorMerchantIds = getCreatorCatalogMerchantIds();
+  let syncTargetMerchants = { merchantIds: [], source: 'not_resolved' };
   const matchFields = [
     "lower(coalesce(product_data->>'title',''))",
     "lower(coalesce(product_data->>'description',''))",
@@ -7698,6 +7803,8 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
   };
 
   try {
+    syncTargetMerchants = await resolveCatalogSyncMerchantIds();
+
     const idRes = await query(
       `
         SELECT
@@ -7884,6 +7991,9 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         interval_minutes: getCreatorCatalogAutoSyncIntervalConfig().intervalMinutes,
         interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
         cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+        target_source: catalogSyncState.target_source,
+        target_count: catalogSyncState.target_count,
+        target_sample: catalogSyncState.target_sample,
         last_run_at: catalogSyncState.last_run_at,
         last_success_at: catalogSyncState.last_success_at,
         last_error: catalogSyncState.last_error,
@@ -7909,6 +8019,12 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
           status: row.status || null,
           psp_connected: row.psp_connected === true,
         })),
+      },
+      sync_targets: {
+        source: syncTargetMerchants.source || null,
+        merchants: Array.isArray(syncTargetMerchants.merchantIds)
+          ? syncTargetMerchants.merchantIds
+          : [],
       },
       merchants_top: (byMerchantRes.rows || []).map((row) => ({
         merchant_id: row.merchant_id || null,
@@ -7964,7 +8080,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         : null;
     const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
     const effectiveIntent = findProductsMultiCtx?.intent || null;
-    const rawUserQuery = findProductsMultiCtx?.rawUserQuery || payload?.search?.query || '';
+    const rawUserQuery =
+      findProductsMultiCtx?.rawUserQuery ||
+      effectivePayload?.search?.query ||
+      effectivePayload?.query ||
+      payload?.search?.query ||
+      payload?.query ||
+      '';
 
   // Redundant allowlist check for semantics clarity.
   if (!OperationEnum.options.includes(operation)) {
@@ -8049,7 +8171,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       
       switch (operation) {
         case 'find_products': {
-          const search = effectivePayload.search || {};
+          const search = effectivePayload.search || effectivePayload || {};
           const products = searchProducts(
             search.merchant_id || DEFAULT_MERCHANT_ID,
             search.query,
@@ -8097,7 +8219,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
 
         case 'find_products_multi': {
-          const search = effectivePayload.search || {};
+          const search = effectivePayload.search || effectivePayload || {};
           const merchantId = String(search.merchant_id || search.merchantId || '').trim();
           const merchantIdsRaw = search.merchant_ids || search.merchantIds;
           const merchantIds = Array.isArray(merchantIdsRaw)
@@ -9744,7 +9866,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		      const shouldSkipSearch = !requestedMerchantId && groupMembers.length > 0;
 		      if (!shouldSkipSearch) {
       const searchUrl = `${PIVOTA_API_BASE}/agent/v1/products/search`;
-      const configuredMerchantIds = getCreatorCatalogMerchantIds();
+      const configuredMerchantTarget = await resolveCatalogSyncMerchantIds();
+      const configuredMerchantIds = configuredMerchantTarget.merchantIds;
 
       const queryParams = {
         ...(requestedMerchantId ? { merchant_id: requestedMerchantId } : {}),
@@ -10133,7 +10256,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     // from products_cache (same source as creator categories / merchant portal).
 	    if (operation === 'find_products_multi') {
 	      const source = metadata?.source;
-	      const search = effectivePayload.search || {};
+	      const search = effectivePayload.search || effectivePayload || {};
 	      const queryText = String(search.query || '').trim();
 	      const isCreatorUiColdStart = source === 'creator-agent-ui' && queryText.length === 0;
       const inStockOnly = search.in_stock_only !== false;
@@ -10671,7 +10794,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
 
       case 'products.recommendations': {
-        const search = effectivePayload.search || {};
+        const search = effectivePayload.search || effectivePayload || {};
         queryParams = {
           ...(search.merchant_id && { merchant_id: search.merchant_id }),
           ...(search.platform_product_id && { platform_product_id: search.platform_product_id }),
@@ -10683,7 +10806,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
       case 'find_products_multi': {
         // Cross-merchant search via Agent Search endpoint.
-        const search = effectivePayload.search || {};
+        const search = effectivePayload.search || effectivePayload || {};
         const page = Math.max(1, Number(search.page || 1) || 1);
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
         const offset = (page - 1) * limit;
@@ -11861,7 +11984,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       ) {
         try {
           const fallbackQuery = buildPetFallbackQuery(effectiveIntent, rawUserQuery);
-          const search = effectivePayload.search || {};
+          const search = effectivePayload.search || effectivePayload || {};
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
           const inStockOnly = search.in_stock_only !== false;
@@ -11912,7 +12035,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     if (operation === 'find_products_multi') {
       try {
-        const search = effectivePayload.search || {};
+        const search = effectivePayload.search || effectivePayload || {};
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
         const reranked = await maybeRerankFindProductsMultiResponse({
           response: maybePolicy,
@@ -12172,6 +12295,7 @@ module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
+  resolveCatalogSyncMerchantIds,
 };
 
 if (require.main === module) {

@@ -1470,15 +1470,33 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
 
 async function buildFindProductsMultiContext({ payload, metadata }) {
   const search = payload?.search || {};
+  const topLevelSearchCompat = {
+    ...(payload?.query != null ? { query: payload.query } : {}),
+    ...(payload?.page != null ? { page: payload.page } : {}),
+    ...(payload?.limit != null ? { limit: payload.limit } : {}),
+    ...(payload?.page_size != null ? { page_size: payload.page_size } : {}),
+    ...(payload?.in_stock_only != null ? { in_stock_only: payload.in_stock_only } : {}),
+    ...(payload?.category != null ? { category: payload.category } : {}),
+    ...(payload?.merchant_id != null ? { merchant_id: payload.merchant_id } : {}),
+    ...(payload?.merchant_ids != null ? { merchant_ids: payload.merchant_ids } : {}),
+    ...(payload?.search_all_merchants != null ? { search_all_merchants: payload.search_all_merchants } : {}),
+    ...(payload?.price_min != null ? { price_min: payload.price_min } : {}),
+    ...(payload?.price_max != null ? { price_max: payload.price_max } : {}),
+    ...(payload?.min_price != null ? { min_price: payload.min_price } : {}),
+    ...(payload?.max_price != null ? { max_price: payload.max_price } : {}),
+  };
   const recentQueries = payload?.user?.recent_queries || [];
   const recentMessages = payload?.messages || [];
 
   // Some clients (chat-style UIs) may send the user utterance only in `messages`
   // and leave `search.query` empty. If so, derive query from the last user message.
   const queryFromSearch = String(search.query || '').trim();
+  const queryFromPayload = String(payload?.query || '').trim();
   const queryFromMessages = extractLatestUserTextFromMessages(recentMessages);
   const latestUserQuery = looksLikeRealQuery(queryFromSearch)
     ? queryFromSearch
+    : looksLikeRealQuery(queryFromPayload)
+      ? queryFromPayload
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
@@ -1608,6 +1626,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...(pruned ? { recent_queries: pruned } : {}),
     },
     search: {
+      ...topLevelSearchCompat,
       ...(payload?.search || {}),
       ...(expandedQuery ? { query: expandedQuery } : {}),
     },

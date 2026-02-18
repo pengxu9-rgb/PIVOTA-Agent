@@ -151,6 +151,78 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('accepts top-level payload query for find_products_multi', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_ipsa_1',
+                  product_id: 'prod_ipsa_1',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Time Reset Aqua',
+                  description: 'Hydrating toner',
+                  status: 'published',
+                  inventory_quantity: 9,
+                  price: 39,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          query: 'ipsa的产品有吗？',
+          page: 1,
+          limit: 1,
+          in_stock_only: true,
+        },
+        metadata: {
+          source: 'shopping_agent',
+          entry: 'home',
+          scope: { catalog: 'global', region: 'US', language: 'zh' },
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_cross_merchant_search',
+      }),
+    );
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(String(resp.body.products[0].title || '').toLowerCase()).toContain('ipsa');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('injects shopping catalog guard params on upstream query', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
