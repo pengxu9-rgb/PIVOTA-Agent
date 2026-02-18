@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aurora.pivota/contracts/recoBlocksResponse.v2.schema.json",
+  "title": "Aurora Reco Blocks Response v2",
+  "type": "object",
+  "required": [
+    "competitors",
+    "related_products",
+    "dupes",
+    "confidence_by_block",
+    "provenance",
+    "missing_info_internal"
+  ],
+  "properties": {
+    "competitors": {
+      "$ref": "#/$defs/recoBlock"
+    },
+    "related_products": {
+      "$ref": "#/$defs/recoBlock"
+    },
+    "dupes": {
+      "$ref": "#/$defs/recoBlock"
+    },
+    "confidence_by_block": {
+      "$ref": "#/$defs/confidenceByBlock"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "missing_info_internal": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "missing_info": {
+      "$ref": "#/$defs/stringArray"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "required": [
+        "score",
+        "level",
+        "reasons"
+      ],
+      "properties": {
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "med",
+            "high"
+          ]
+        },
+        "reasons": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blockMeta": {
+      "type": "object",
+      "properties": {
+        "generated_at": {
+          "type": "string"
+        },
+        "freshness_ttl_hours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "version": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "missing_fields": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "warnings": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "additionalProperties": true
+    },
+    "scoreBreakdown": {
+      "type": "object",
+      "properties": {
+        "category_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ingredient_similarity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "skin_fit_similarity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "social_reference_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "query_overlap_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "brand_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "candidateSource": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidenceRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "excerpt": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "why_candidate",
+        "score_breakdown",
+        "source",
+        "evidence_refs",
+        "price_band"
+      ],
+      "properties": {
+        "product_id": {
+          "type": "string"
+        },
+        "sku_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "string"
+        },
+        "similarity_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "why_candidate": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "score_breakdown": {
+          "$ref": "#/$defs/scoreBreakdown"
+        },
+        "compare_highlights": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "source": {
+          "$ref": "#/$defs/candidateSource"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceRef"
+          }
+        },
+        "price_band": {
+          "type": "string",
+          "enum": [
+            "budget",
+            "mid",
+            "premium",
+            "luxury",
+            "unknown"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "recoBlock": {
+      "type": "object",
+      "required": [
+        "candidates"
+      ],
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        },
+        "_meta": {
+          "$ref": "#/$defs/blockMeta"
+        }
+      },
+      "additionalProperties": true
+    },
+    "confidenceByBlock": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/confidence"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "generated_at",
+        "contract_version",
+        "pipeline",
+        "source",
+        "validation_mode"
+      ],
+      "properties": {
+        "generated_at": {
+          "type": "string"
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "pipeline": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "validation_mode": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

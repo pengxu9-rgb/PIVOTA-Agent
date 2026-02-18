@@ -34,6 +34,7 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'concentration_unknown': 'ingredient_concentration_unknown',
   'social_signals_missing': 'social_data_limited',
   'competitors_missing': 'alternatives_unavailable',
+  'competitors.candidates': 'alternatives_unavailable',
   'competitors.competitors.candidates': 'alternatives_unavailable',
   'competitors_low_coverage': 'alternatives_limited',
   'catalog_product_missing': 'product_not_resolved',
@@ -101,6 +102,7 @@ function splitProductAnalysisGaps(rawCodes) {
     missing_info: userFacing,
     user_facing_gaps: userFacing,
     internal_debug_codes: internalDebugCodes,
+    missing_info_internal: internalDebugCodes,
   };
 }
 
@@ -111,6 +113,7 @@ function applyProductAnalysisGapContract(payload) {
     ...asStringArray(p.missing_info ?? p.missingInfo),
     ...asStringArray(p.user_facing_gaps ?? p.userFacingGaps),
     ...asStringArray(p.internal_debug_codes ?? p.internalDebugCodes),
+    ...asStringArray(p.missing_info_internal ?? p.missingInfoInternal),
   ]);
   const gaps = splitProductAnalysisGaps(mergedRawCodes);
   return {
@@ -118,6 +121,7 @@ function applyProductAnalysisGapContract(payload) {
     missing_info: gaps.missing_info,
     user_facing_gaps: gaps.user_facing_gaps,
     internal_debug_codes: gaps.internal_debug_codes,
+    missing_info_internal: gaps.missing_info_internal,
   };
 }
 
@@ -247,6 +251,7 @@ function normalizeProductAnalysis(raw) {
         missing_info: gaps.missing_info,
         user_facing_gaps: gaps.user_facing_gaps,
         internal_debug_codes: gaps.internal_debug_codes,
+        missing_info_internal: gaps.missing_info_internal,
       },
       field_missing: [{ field: 'assessment', reason: 'upstream_missing_or_unstructured' }, ...evOut.field_missing],
     };
@@ -267,6 +272,7 @@ function normalizeProductAnalysis(raw) {
     ...asStringArray(o.missing_info ?? o.missingInfo),
     ...asStringArray(o.user_facing_gaps ?? o.userFacingGaps),
     ...asStringArray(o.internal_debug_codes ?? o.internalDebugCodes),
+    ...asStringArray(o.missing_info_internal ?? o.missingInfoInternal),
   ]);
   if (evOut.evidence.missing_info?.length) missing_info.push(...evOut.evidence.missing_info);
   const gaps = splitProductAnalysisGaps(missing_info);
@@ -285,6 +291,34 @@ function normalizeProductAnalysis(raw) {
     field_missing.push({ field: 'competitors.candidates', reason: 'upstream_missing_or_empty' });
   }
 
+  const relatedRaw = asPlainObject(o.related_products ?? o.relatedProducts);
+  const relatedCandidates = [];
+  if (relatedRaw && Array.isArray(relatedRaw.candidates)) {
+    for (const item of relatedRaw.candidates) {
+      const row = asPlainObject(item);
+      if (!row) continue;
+      relatedCandidates.push(row);
+      if (relatedCandidates.length >= 12) break;
+    }
+  }
+  if (relatedRaw && !relatedCandidates.length) {
+    field_missing.push({ field: 'related_products.candidates', reason: 'upstream_missing_or_empty' });
+  }
+
+  const dupesRaw = asPlainObject(o.dupes);
+  const dupeCandidates = [];
+  if (dupesRaw && Array.isArray(dupesRaw.candidates)) {
+    for (const item of dupesRaw.candidates) {
+      const row = asPlainObject(item);
+      if (!row) continue;
+      dupeCandidates.push(row);
+      if (dupeCandidates.length >= 12) break;
+    }
+  }
+  if (dupesRaw && !dupeCandidates.length) {
+    field_missing.push({ field: 'dupes.candidates', reason: 'upstream_missing_or_empty' });
+  }
+
   return {
     payload: {
       assessment,
@@ -293,7 +327,10 @@ function normalizeProductAnalysis(raw) {
       missing_info: gaps.missing_info,
       user_facing_gaps: gaps.user_facing_gaps,
       internal_debug_codes: gaps.internal_debug_codes,
+      missing_info_internal: gaps.missing_info_internal,
       ...(competitorCandidates.length ? { competitors: { candidates: competitorCandidates } } : {}),
+      ...(relatedCandidates.length ? { related_products: { candidates: relatedCandidates } } : {}),
+      ...(dupeCandidates.length ? { dupes: { candidates: dupeCandidates } } : {}),
     },
     field_missing,
   };
@@ -720,7 +757,7 @@ function buildReasonsFromEvidence(evidence, { lang = 'EN', verdict = '' } = {}) 
   return uniqueStrings(out);
 }
 
-const PRODUCT_INTEL_CONTRACT_VERSION = 'aurora.product_intel.contract.v1';
+const PRODUCT_INTEL_CONTRACT_VERSION = 'aurora.product_intel.contract.v2';
 const PRODUCT_INTEL_BLOCK_VERSION = 'aurora.product_intel.block.v1';
 
 function clamp01(value) {
@@ -825,6 +862,82 @@ function inferIngredientRisks(name, contextText) {
   return uniqueStrings(out).slice(0, 5);
 }
 
+const PRICE_BAND_ENUM = new Set(['budget', 'mid', 'premium', 'luxury', 'unknown']);
+const DEFAULT_CANDIDATE_WHY = 'selected_from_available_signals';
+
+function normalizeCandidateSource(source) {
+  const obj = asPlainObject(source);
+  if (obj) {
+    const type = String(obj.type || '').trim();
+    if (type) {
+      return {
+        type,
+        ...(typeof obj.name === 'string' && obj.name.trim() ? { name: obj.name.trim() } : {}),
+        ...(typeof obj.url === 'string' && obj.url.trim() ? { url: obj.url.trim() } : {}),
+      };
+    }
+  }
+  if (typeof source === 'string' && source.trim()) return { type: source.trim() };
+  return { type: 'unknown' };
+}
+
+function normalizeEvidenceRefs(raw) {
+  const out = [];
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const obj = asPlainObject(item);
+    if (obj) {
+      out.push(obj);
+      if (out.length >= 8) break;
+      continue;
+    }
+    if (typeof item === 'string' && item.trim()) {
+      out.push({ id: item.trim() });
+      if (out.length >= 8) break;
+    }
+  }
+  return out;
+}
+
+function inferPriceBand(rawBand, row) {
+  const explicit = String(rawBand || '').trim().toLowerCase();
+  if (PRICE_BAND_ENUM.has(explicit)) return explicit;
+  const price = asNumberOrNull(row?.price ?? row?.price_value ?? row?.priceValue ?? row?.amount);
+  if (price == null || price <= 0) return 'unknown';
+  if (price < 20) return 'budget';
+  if (price < 55) return 'mid';
+  if (price < 110) return 'premium';
+  return 'luxury';
+}
+
+function normalizeScoreBreakdown(raw, similarityHint = null) {
+  const obj = asPlainObject(raw);
+  const keys = [
+    'category_score',
+    'ingredient_similarity',
+    'skin_fit_similarity',
+    'social_reference_score',
+    'query_overlap_score',
+    'brand_score',
+  ];
+  const out = {};
+  if (obj) {
+    for (const [key, value] of Object.entries(obj)) {
+      const n = asNumberOrNull(value);
+      if (n == null) continue;
+      out[key] = clamp01(n);
+    }
+  }
+  if (!Object.keys(out).length && similarityHint != null) {
+    const hint = clamp01(similarityHint);
+    out.category_score = hint;
+    out.ingredient_similarity = hint;
+  }
+  for (const key of keys) {
+    if (out[key] == null) out[key] = 0;
+  }
+  return out;
+}
+
 function normalizeCompetitorCandidates(rawCandidates) {
   const out = [];
   for (const item of Array.isArray(rawCandidates) ? rawCandidates : []) {
@@ -839,27 +952,12 @@ function normalizeCompetitorCandidates(rawCandidates) {
       similarityRaw == null ? null : similarityRaw > 1 ? clamp01(similarityRaw / 100) : clamp01(similarityRaw);
 
     const whyCandidate = uniqueStrings(asStringArray(row.why_candidate ?? row.whyCandidate));
+    if (!whyCandidate.length) whyCandidate.push(DEFAULT_CANDIDATE_WHY);
     const compareHighlights = uniqueStrings(asStringArray(row.compare_highlights ?? row.compareHighlights));
-    const scoreBreakdownRaw = asPlainObject(row.score_breakdown ?? row.scoreBreakdown);
-    const scoreBreakdown = scoreBreakdownRaw
-      ? (() => {
-        const picked = {};
-        const keys = [
-          'category_score',
-          'ingredient_similarity',
-          'skin_fit_similarity',
-          'social_reference_score',
-          'query_overlap_score',
-          'brand_score',
-        ];
-        for (const key of keys) {
-          const n = asNumberOrNull(scoreBreakdownRaw[key]);
-          if (n == null) continue;
-          picked[key] = clamp01(n);
-        }
-        return Object.keys(picked).length ? picked : null;
-      })()
-      : null;
+    const scoreBreakdown = normalizeScoreBreakdown(row.score_breakdown ?? row.scoreBreakdown, similarity);
+    const source = normalizeCandidateSource(row.source ?? row.source_type ?? row.sourceType);
+    const evidenceRefs = normalizeEvidenceRefs(row.evidence_refs ?? row.evidenceRefs);
+    const priceBand = inferPriceBand(row.price_band ?? row.priceBand, row);
 
     out.push({
       ...(row.product_id ? { product_id: String(row.product_id).trim() } : {}),
@@ -869,7 +967,10 @@ function normalizeCompetitorCandidates(rawCandidates) {
       ...(row.display_name ? { display_name: String(row.display_name).trim() } : {}),
       ...(similarity != null ? { similarity_score: similarity } : {}),
       why_candidate: whyCandidate,
-      ...(scoreBreakdown ? { score_breakdown: scoreBreakdown } : {}),
+      score_breakdown: scoreBreakdown,
+      source,
+      evidence_refs: evidenceRefs,
+      price_band: priceBand,
       ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
     });
     if (out.length >= 10) break;
@@ -1214,24 +1315,44 @@ function buildSocialSignalsBlock(payload, { generatedAt = new Date().toISOString
   };
 }
 
-function buildCompetitorsBlock(payload, { generatedAt = new Date().toISOString() } = {}) {
+function readRecoRawBlock(payload, blockName) {
   const p = asPlainObject(payload) || {};
-  const candidatesIn = normalizeCompetitorCandidates(asPlainObject(p.competitors)?.candidates);
+  if (blockName === 'related_products') return asPlainObject(p.related_products ?? p.relatedProducts);
+  if (blockName === 'dupes') return asPlainObject(p.dupes);
+  return asPlainObject(p.competitors);
+}
+
+function buildRecoCandidatesBlock(
+  payload,
+  {
+    blockName = 'competitors',
+    generatedAt = new Date().toISOString(),
+    sourceType = 'catalog',
+    sourceName = 'aurora_alternatives',
+    reasons = [],
+    sourceQualityWhenPresent = 0.68,
+    sourceQualityWhenMissing = 0.48,
+    missingWarning = '',
+  } = {},
+) {
+  const p = asPlainObject(payload) || {};
+  const blockRaw = readRecoRawBlock(p, blockName);
+  const candidatesIn = normalizeCompetitorCandidates(blockRaw?.candidates);
   const assessment = asPlainObject(p.assessment) || {};
   const anchor = asPlainObject(assessment.anchor_product || assessment.anchorProduct) || null;
 
   const missingFields = [];
-  if (!candidatesIn.length) missingFields.push('competitors.candidates');
+  if (!candidatesIn.length) missingFields.push(`${blockName}.candidates`);
 
   const warnings = [];
-  if (!candidatesIn.length && anchor) warnings.push('no_competitor_candidates_from_upstream');
+  if (!candidatesIn.length && anchor && missingWarning) warnings.push(missingWarning);
 
   const evidenceItems = [];
   if (candidatesIn.length) {
     evidenceItems.push(
       buildEvidenceItem({
-        source_type: 'catalog',
-        source_name: 'aurora_alternatives',
+        source_type: sourceType,
+        source_name: sourceName,
         captured_at: generatedAt,
         excerpt: `Candidates: ${candidatesIn.slice(0, 3).map((x) => x.name).join(', ')}`,
         data: { candidates: candidatesIn.slice(0, 8) },
@@ -1241,10 +1362,10 @@ function buildCompetitorsBlock(payload, { generatedAt = new Date().toISOString()
 
   const confidence = buildBlockConfidence({
     coverage: candidatesIn.length ? Math.min(1, 0.5 + Math.min(0.5, candidatesIn.length * 0.1)) : 0.2,
-    source_quality: candidatesIn.length ? 0.68 : 0.48,
+    source_quality: candidatesIn.length ? sourceQualityWhenPresent : sourceQualityWhenMissing,
     freshness: 0.86,
     consistency: 0.72,
-    reasons: ['competitor_recall=upstream_alternatives'],
+    reasons,
     missing_fields: missingFields,
   });
 
@@ -1265,12 +1386,55 @@ function buildCompetitorsBlock(payload, { generatedAt = new Date().toISOString()
   };
 }
 
+function buildCompetitorsBlock(payload, { generatedAt = new Date().toISOString() } = {}) {
+  return buildRecoCandidatesBlock(payload, {
+    blockName: 'competitors',
+    generatedAt,
+    sourceType: 'catalog',
+    sourceName: 'aurora_alternatives',
+    reasons: ['competitor_recall=upstream_alternatives'],
+    sourceQualityWhenPresent: 0.68,
+    sourceQualityWhenMissing: 0.48,
+    missingWarning: 'no_competitor_candidates_from_upstream',
+  });
+}
+
+function buildRelatedProductsBlock(payload, { generatedAt = new Date().toISOString() } = {}) {
+  return buildRecoCandidatesBlock(payload, {
+    blockName: 'related_products',
+    generatedAt,
+    sourceType: 'catalog',
+    sourceName: 'aurora_related_products',
+    reasons: ['related_products=upstream_or_router'],
+    sourceQualityWhenPresent: 0.64,
+    sourceQualityWhenMissing: 0.44,
+    missingWarning: 'related_products_missing',
+  });
+}
+
+function buildDupesBlock(payload, { generatedAt = new Date().toISOString() } = {}) {
+  return buildRecoCandidatesBlock(payload, {
+    blockName: 'dupes',
+    generatedAt,
+    sourceType: 'catalog',
+    sourceName: 'aurora_dupe_candidates',
+    reasons: ['dupes=upstream_or_router'],
+    sourceQualityWhenPresent: 0.66,
+    sourceQualityWhenMissing: 0.46,
+    missingWarning: 'dupes_missing',
+  });
+}
+
 function buildBlockMissingInfo(blockName, blockMeta) {
   const out = [];
   const meta = asPlainObject(blockMeta) || {};
   const missing = asStringArray(meta.missing_fields ?? meta.missingFields);
   if (missing.length) {
-    for (const field of missing.slice(0, 5)) out.push(`${blockName}.${field}`);
+    for (const field of missing.slice(0, 5)) {
+      const token = String(field || '').trim();
+      if (!token) continue;
+      out.push(token.startsWith(`${blockName}.`) ? token : `${blockName}.${token}`);
+    }
   }
   const confidence = asPlainObject(meta.confidence) || {};
   const level = String(confidence.level || '').trim().toLowerCase();
@@ -1287,15 +1451,20 @@ function buildProductIntelContract(payload, { lang = 'EN', profileSummary = null
   const skinFitOut = buildSkinFitBlock(p, { profileSummary, generatedAt });
   const socialOut = buildSocialSignalsBlock(p, { generatedAt });
   const competitorsOut = buildCompetitorsBlock(p, { generatedAt });
+  const relatedOut = buildRelatedProductsBlock(p, { generatedAt });
+  const dupesOut = buildDupesBlock(p, { generatedAt });
 
   const assessment = asPlainObject(p.assessment) || {};
   const anchorProduct = asPlainObject(assessment.anchor_product || assessment.anchorProduct) || asPlainObject(p.product) || null;
+  const sourceMeta = asPlainObject(p.source_meta ?? p.sourceMeta) || {};
 
   const confidenceByBlock = {
     ingredient_intel: ingredientOut.confidence,
     skin_fit: skinFitOut.confidence,
     social_signals: socialOut.confidence,
     competitors: competitorsOut.confidence,
+    related_products: relatedOut.confidence,
+    dupes: dupesOut.confidence,
   };
 
   const missingInfo = uniqueStrings([
@@ -1303,7 +1472,20 @@ function buildProductIntelContract(payload, { lang = 'EN', profileSummary = null
     ...buildBlockMissingInfo('skin_fit', skinFitOut.block?._meta),
     ...buildBlockMissingInfo('social_signals', socialOut.block?._meta),
     ...buildBlockMissingInfo('competitors', competitorsOut.block?._meta),
+    ...buildBlockMissingInfo('related_products', relatedOut.block?._meta),
+    ...buildBlockMissingInfo('dupes', dupesOut.block?._meta),
   ]);
+
+  const provenance = {
+    generated_at: generatedAt,
+    contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+    pipeline: 'aurora_product_intel_main_path',
+    source:
+      (typeof sourceMeta.analyzer === 'string' && sourceMeta.analyzer.trim()) ||
+      (typeof sourceMeta.source === 'string' && sourceMeta.source.trim()) ||
+      'aurora_bff_normalize',
+    validation_mode: 'soft_fail',
+  };
 
   return {
     version: PRODUCT_INTEL_CONTRACT_VERSION,
@@ -1312,8 +1494,12 @@ function buildProductIntelContract(payload, { lang = 'EN', profileSummary = null
     skin_fit: skinFitOut.block,
     social_signals: socialOut.block,
     competitors: competitorsOut.block,
+    related_products: relatedOut.block,
+    dupes: dupesOut.block,
     confidence_by_block: confidenceByBlock,
+    provenance,
     missing_info: missingInfo,
+    missing_info_internal: missingInfo,
     language: String(lang || 'EN').toUpperCase() === 'CN' ? 'CN' : 'EN',
   };
 }
@@ -1323,12 +1509,41 @@ function attachProductIntelContract(payload, { lang = 'EN', profileSummary = nul
   if (!p) return payload;
   const intel = buildProductIntelContract(p, { lang, profileSummary });
   if (!intel) return payload;
+  const inputProvenance = asPlainObject(p.provenance) || {};
+  const mergedProvenance = {
+    ...intel.provenance,
+    ...inputProvenance,
+    generated_at:
+      (typeof inputProvenance.generated_at === 'string' && inputProvenance.generated_at.trim()) ||
+      intel.provenance.generated_at,
+    contract_version: intel.provenance.contract_version,
+    pipeline:
+      (typeof inputProvenance.pipeline === 'string' && inputProvenance.pipeline.trim()) ||
+      intel.provenance.pipeline,
+    source:
+      (typeof inputProvenance.source === 'string' && inputProvenance.source.trim()) ||
+      intel.provenance.source,
+    validation_mode:
+      (typeof inputProvenance.validation_mode === 'string' && inputProvenance.validation_mode.trim()) ||
+      intel.provenance.validation_mode,
+  };
+  const inputConfidenceByBlock = asPlainObject(p.confidence_by_block || p.confidenceByBlock) || {};
+  const mergedConfidenceByBlock = {
+    ...(asPlainObject(intel.confidence_by_block) || {}),
+  };
+  for (const [key, value] of Object.entries(inputConfidenceByBlock)) {
+    if (!key) continue;
+    if (!asPlainObject(value)) continue;
+    mergedConfidenceByBlock[key] = value;
+  }
 
   const mergedDebugCodes = uniqueStrings([
     ...asStringArray(p.missing_info ?? p.missingInfo),
     ...asStringArray(p.user_facing_gaps ?? p.userFacingGaps),
     ...asStringArray(p.internal_debug_codes ?? p.internalDebugCodes),
+    ...asStringArray(p.missing_info_internal ?? p.missingInfoInternal),
     ...asStringArray(intel.missing_info),
+    ...asStringArray(intel.missing_info_internal),
   ]);
   const gaps = splitProductAnalysisGaps(mergedDebugCodes);
 
@@ -1339,11 +1554,15 @@ function attachProductIntelContract(payload, { lang = 'EN', profileSummary = nul
     skin_fit: intel.skin_fit,
     social_signals: intel.social_signals,
     competitors: intel.competitors,
-    confidence_by_block: intel.confidence_by_block,
+    related_products: intel.related_products,
+    dupes: intel.dupes,
+    confidence_by_block: mergedConfidenceByBlock,
+    provenance: mergedProvenance,
     product_intel_contract_version: intel.version,
     missing_info: gaps.missing_info,
     user_facing_gaps: gaps.user_facing_gaps,
     internal_debug_codes: gaps.internal_debug_codes,
+    missing_info_internal: gaps.missing_info_internal,
   };
 }
 

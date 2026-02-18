@@ -145,6 +145,27 @@ function recommendationHasPurchasePath(item) {
   return false;
 }
 
+function sanitizeProductAnalysisPayloadForPublic(payload) {
+  const p = isPlainObject(payload) ? payload : {};
+  const next = { ...p };
+  delete next.missing_info_internal;
+  delete next.internal_debug_codes;
+  return next;
+}
+
+function stripInternalProductAnalysisFields(envelope) {
+  if (!isPlainObject(envelope)) return envelope;
+  const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
+  for (const card of cards) {
+    if (!isPlainObject(card)) continue;
+    const type = String(card.type || '').trim().toLowerCase();
+    if (type !== 'product_analysis') continue;
+    card.payload = sanitizeProductAnalysisPayloadForPublic(card.payload);
+  }
+  envelope.cards = cards;
+  return envelope;
+}
+
 function enforceCardFieldMissing(card) {
   if (!isPlainObject(card)) return;
   if (!Array.isArray(card.field_missing)) card.field_missing = [];
@@ -238,6 +259,7 @@ function buildEnvelope(ctx, input) {
   };
 
   clampSuggestedChips(envelope);
+  stripInternalProductAnalysisFields(envelope);
   FieldMissingEnforcer(envelope);
   normalizeNextState(envelope);
   const templateValidation = validateTemplateOutput(envelope, { warnOnly: true });

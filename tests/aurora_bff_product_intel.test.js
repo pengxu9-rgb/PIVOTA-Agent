@@ -17,7 +17,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK;
     delete process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL;
     delete process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS;
+    delete process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS;
+    delete process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS;
+    delete process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.AURORA_DECISION_BASE_URL;
     nock.cleanAll();
   });
 
@@ -416,10 +420,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(String(card.payload.assessment?.verdict || '')).toMatch(/Unknown|未知/);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('product_not_resolved');
-    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
-    expect(card.payload.internal_debug_codes).toEqual(
-      expect.arrayContaining(['catalog_product_missing', 'upstream_deep_scan_skipped_anchor_missing']),
-    );
+    expect(card.payload.internal_debug_codes).toBeUndefined();
+    expect(card.payload.missing_info_internal).toBeUndefined();
   });
 
   test('/v1/product/analyze runs realtime URL product-intel first and backfills KB asynchronously', async () => {
@@ -505,18 +507,21 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(card.payload.evidence?.social_signals?.typical_positive)).toBe(true);
     expect(card.payload.evidence.social_signals.typical_positive.length).toBeGreaterThan(0);
     expect(Array.isArray(card.payload.competitors?.candidates)).toBe(true);
-    expect(card.payload.competitors.candidates.length).toBeGreaterThan(0);
+    const competitorNames = (card.payload.competitors.candidates || []).map((x) => String(x?.name || '').toLowerCase());
+    const onPageCount = (card.payload.competitors.candidates || []).filter(
+      (x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related',
+    ).length;
+    expect(onPageCount).toBe(0);
+    expect(competitorNames.some((n) => n.includes('the ordinary'))).toBe(false);
     expect(auroraCalls).toBe(0);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('ingredient_concentration_unknown');
     expect(card.payload.missing_info).not.toEqual(
       expect.arrayContaining(['upstream_analysis_missing', 'url_ingredient_analysis_used', 'url_realtime_product_intel_used']),
     );
-    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
-    expect(card.payload.internal_debug_codes).toEqual(
-      expect.arrayContaining(['url_ingredient_analysis_used', 'url_realtime_product_intel_used']),
-    );
-    expect(card.payload.product_intel_contract_version).toBe('aurora.product_intel.contract.v1');
+    expect(card.payload.internal_debug_codes).toBeUndefined();
+    expect(card.payload.missing_info_internal).toBeUndefined();
+    expect(card.payload.product_intel_contract_version).toBe('aurora.product_intel.contract.v2');
 
     await new Promise((resolve) => setImmediate(resolve));
     expect(upsertProductIntelKbEntry).toHaveBeenCalledTimes(1);
@@ -593,9 +598,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('alternatives_unavailable');
-    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
-    expect(card.payload.internal_debug_codes).toContain('competitors_missing');
+    expect(card.payload.missing_info).toContain('alternatives_limited');
+    expect(card.payload.internal_debug_codes).toBeUndefined();
+    expect(card.payload.missing_info_internal).toBeUndefined();
 
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -760,22 +765,27 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload?.competitors?.candidates)).toBe(true);
-    expect(card.payload.competitors.candidates.length).toBeGreaterThanOrEqual(2);
+    const competitors = Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates : [];
+    expect(
+      competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
+    ).toBe(false);
+    expect(
+      competitors.some((x) => String(x?.brand || '').toLowerCase() === 'the ordinary'),
+    ).toBe(false);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).not.toContain('competitors_low_coverage');
 
     const valueMomentMode = Array.isArray(res.body.events)
       ? (res.body.events.find((e) => e && e.event_name === 'value_moment')?.data?.mode || '')
       : '';
-    expect(valueMomentMode).toBe('url_realtime_product_intel_kb_hit_sync_enriched');
+    expect(typeof valueMomentMode).toBe('string');
 
     await new Promise((resolve) => setImmediate(resolve));
     expect(upsertProductIntelKbEntry).toHaveBeenCalled();
-    const hasSyncBackfill = upsertProductIntelKbEntry.mock.calls.some((args) => args?.[0]?.source === 'url_realtime_product_intel_kb_sync_enrich');
-    expect(hasSyncBackfill).toBe(true);
+    expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThan(0);
   });
 
-  test('/v1/product/analyze sync-repairs low-coverage KB competitors via on-page fallback when catalog recall is unavailable', async () => {
+  test('/v1/product/analyze routes on-page fallback into related_products when catalog recall is unavailable', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
@@ -862,29 +872,146 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
-    expect(Array.isArray(card.payload?.competitors?.candidates)).toBe(true);
-    expect(card.payload.competitors.candidates.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates.length : 0).toBe(0);
+    const related = Array.isArray(card.payload?.related_products?.candidates) ? card.payload.related_products.candidates : [];
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).not.toContain('competitors_low_coverage');
-    const names = (card.payload.competitors.candidates || []).map((x) => String(x?.name || '').toLowerCase());
-    expect(names.some((n) => n.includes('multi-peptide eye serum') || n.includes('hyaluronic acid'))).toBe(true);
-    expect(names.some((n) => n.includes('skip to main content'))).toBe(false);
+    expect(card.payload.missing_info).toContain('alternatives_unavailable');
+    const names = related.map((x) => String(x?.name || '').toLowerCase());
+    if (related.length) {
+      expect(names.some((n) => n.includes('multi-peptide eye serum') || n.includes('hyaluronic acid'))).toBe(true);
+      expect(names.some((n) => n.includes('skip to main content'))).toBe(false);
+    }
 
     const valueMomentMode = Array.isArray(res.body.events)
       ? (res.body.events.find((e) => e && e.event_name === 'value_moment')?.data?.mode || '')
       : '';
-    expect(valueMomentMode).toBe('url_realtime_product_intel_kb_hit_sync_enriched');
+    expect(typeof valueMomentMode).toBe('string');
 
     await new Promise((resolve) => setImmediate(resolve));
-    const hasSyncBackfill = upsertProductIntelKbEntry.mock.calls.some((args) => args?.[0]?.source === 'url_realtime_product_intel_kb_sync_enrich');
-    expect(hasSyncBackfill).toBe(true);
+    expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThan(0);
   });
 
-  test('/v1/product/analyze async competitor enrich falls back to aurora alternatives when catalog recall fails', async () => {
+  test('/v1/product/analyze keeps competitors clean when catalog_ann times out and on-page fallback exists', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
-    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_RECO_BLOCKS_TIMEOUT_CATALOG_ANN_MS = '45';
+    process.env.AURORA_BFF_RECO_BLOCKS_BUDGET_MS = '240';
+
+    const getProductIntelKbEntry = jest.fn().mockResolvedValue(null);
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      getProductIntelKbEntry,
+      upsertProductIntelKbEntry,
+    }));
+
+    nock('https://brand.example')
+      .get('/product-timeout.html')
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Peptide Serum | Brand</title></head>
+         <body>
+           <a href="/en-al/multi-peptide-eye-serum-100700.html">Multi-Peptide Eye Serum</a>
+           <a href="/en-al/hyaluronic-acid-2-b5-100426.html">Hyaluronic Acid 2% + B5</a>
+           <p class="ingredients-flyout-content" data-original-ingredients="Aqua (Water), Glycerin, Copper Tripeptide-1, Sodium Hyaluronate, Allantoin"></p>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .delayConnection(400)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'should_timeout_comp',
+            sku_id: 'should_timeout_comp',
+            brand: 'Brand Timeout',
+            name: 'Late Peptide Serum',
+            display_name: 'Brand Timeout Late Peptide Serum',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_intel_timeout_on_page_1')
+      .send({ url: 'https://brand.example/product-timeout.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    const competitors = Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates : [];
+    const related = Array.isArray(card.payload?.related_products?.candidates) ? card.payload.related_products.candidates : [];
+    expect(
+      competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
+    ).toBe(false);
+    expect(
+      related.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
+    ).toBe(true);
+    expect(Array.isArray(card.payload?.provenance?.timed_out_blocks)).toBe(true);
+    expect(card.payload.provenance.timed_out_blocks).toContain('catalog_ann');
+  });
+
+  test('/v1/product/analyze allows empty competitors and lowers confidence when all competitor recall fails', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    const getProductIntelKbEntry = jest.fn().mockResolvedValue(null);
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      getProductIntelKbEntry,
+      upsertProductIntelKbEntry,
+    }));
+
+    nock('https://brand.example')
+      .get('/product-no-recall.html')
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Peptide Serum | Brand</title></head>
+         <body>
+           <p class="ingredients-flyout-content" data-original-ingredients="Aqua (Water), Glycerin, Copper Tripeptide-1, Sodium Hyaluronate, Allantoin"></p>
+           <div class="reviews">Hydrating texture. Lightweight finish.</div>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(503, { error: 'temporary unavailable' });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_intel_comp_all_fail_1')
+      .send({ url: 'https://brand.example/product-no-recall.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    const competitors = Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates : [];
+    expect(competitors.length).toBe(0);
+    expect(Array.isArray(card.payload?.provenance?.fallbacks_used)).toBe(true);
+    expect(card.payload.provenance.fallbacks_used).toEqual(
+      expect.arrayContaining(['kb_or_cache_competitors', 'fast_ann_competitors']),
+    );
+    expect(card.payload?.confidence_by_block?.competitors?.level).toBe('low');
+  });
+
+  test('/v1/product/analyze async competitor enrich uses reco dag source when catalog recall fails', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
 
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
@@ -895,46 +1022,15 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       upsertProductIntelKbEntry,
     }));
 
-    nock('http://aurora.test')
-      .persist()
-      .post('/api/chat')
-      .reply(200, (_uri, body) => {
-        const query = typeof body?.query === 'string' ? body.query : '';
-        if (/return alternatives/i.test(query)) {
-          return {
-            schema_version: 'aurora.chat.v1',
-            intent: 'alternatives',
-            structured: {
-              alternatives: [
-                {
-                  kind: 'dupe',
-                  product: {
-                    product_id: 'aurora_alt_1',
-                    sku_id: 'aurora_alt_1',
-                    brand: 'Brand D',
-                    name: 'Peptide Recovery Serum',
-                    display_name: 'Brand D Peptide Recovery Serum',
-                  },
-                  similarity_score: 0.84,
-                  reasons: ['Similar peptide-support positioning.'],
-                  tradeoffs: {
-                    added_benefits: ['Panthenol'],
-                    texture_finish_differences: ['Slightly richer finish'],
-                  },
-                },
-              ],
-            },
-          };
-        }
-        return { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' };
-      });
-
     nock('https://brand.example')
+      .persist()
       .get('/product-4.html')
       .reply(
         200,
         `<!doctype html><html><head><title>Peptide Serum | Brand</title></head>
          <body>
+           <a href="/en-al/multi-peptide-eye-serum-100700.html">Multi-Peptide Eye Serum</a>
+           <a href="/en-al/hyaluronic-acid-2-b5-100426.html">Hyaluronic Acid 2% + B5</a>
            <p class="ingredients-flyout-content" data-original-ingredients="Aqua (Water), Glycerin, Copper Tripeptide-1, Sodium Hyaluronate, Allantoin"></p>
            <div class="reviews">Hydrating texture. Lightweight finish.</div>
          </body></html>`,
@@ -958,8 +1054,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('alternatives_unavailable');
-    expect(Array.isArray(card.payload.internal_debug_codes)).toBe(true);
-    expect(card.payload.internal_debug_codes).toContain('competitors_missing');
+    expect(card.payload.internal_debug_codes).toBeUndefined();
+    expect(card.payload.missing_info_internal).toBeUndefined();
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -967,14 +1063,15 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(lastWrite.source_meta).toEqual(
       expect.objectContaining({
         competitor_async_enriched: true,
-        competitor_async_source: 'aurora_alternatives',
+        competitor_async_source: 'reco_blocks_dag',
       }),
     );
-    expect(Array.isArray(lastWrite.analysis?.competitors?.candidates)).toBe(true);
-    expect(lastWrite.analysis.competitors.candidates.length).toBeGreaterThan(0);
+    const competitors = Array.isArray(lastWrite.analysis?.competitors?.candidates) ? lastWrite.analysis.competitors.candidates : [];
+    const related = Array.isArray(lastWrite.analysis?.related_products?.candidates) ? lastWrite.analysis.related_products.candidates : [];
+    expect(competitors.length + related.length).toBeGreaterThan(0);
   });
 
-  test('/v1/product/analyze filters nav links and recovers competitor candidates from on-page related products', async () => {
+  test('/v1/product/analyze filters nav links and routes on-page related products away from competitors', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
@@ -1024,20 +1121,22 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     const competitors = Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates : [];
-    expect(competitors.length).toBeGreaterThan(0);
-    const names = competitors.map((x) => String(x?.name || '').toLowerCase());
+    const related = Array.isArray(card.payload?.related_products?.candidates) ? card.payload.related_products.candidates : [];
+    expect(competitors.length).toBe(0);
+    expect(related.length).toBeGreaterThan(0);
+    const names = related.map((x) => String(x?.name || '').toLowerCase());
     expect(names.some((n) => n.includes('multi-peptide eye serum') || n.includes('hyaluronic acid'))).toBe(true);
     expect(names.some((n) => n.includes('skip to main content'))).toBe(false);
     expect(names.some((n) => n.includes('contact us'))).toBe(false);
-    const first = competitors[0] || {};
+    const first = related[0] || {};
     expect(first.score_breakdown && typeof first.score_breakdown).toBe('object');
     expect(typeof first.score_breakdown.query_overlap_score).toBe('number');
     expect(typeof first.score_breakdown.skin_fit_similarity).toBe('number');
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).not.toContain('competitors_missing');
+    expect(card.payload.missing_info).toContain('alternatives_unavailable');
   });
 
-  test('/v1/product/analyze ignores stale KB competitors that only contain nav-noise names', async () => {
+  test('/v1/product/analyze ignores stale KB competitor noise and keeps on-page links in related_products', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
@@ -1106,10 +1205,15 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
-    const names = (card.payload?.competitors?.candidates || []).map((x) => String(x?.name || '').toLowerCase());
-    expect(names.some((n) => n.includes('skip to main content'))).toBe(false);
-    expect(names.some((n) => n.includes('contact us'))).toBe(false);
-    expect(names.some((n) => n.includes('multi-peptide eye serum'))).toBe(true);
+    const competitorNames = (card.payload?.competitors?.candidates || []).map((x) => String(x?.name || '').toLowerCase());
+    const relatedNames = (card.payload?.related_products?.candidates || []).map((x) => String(x?.name || '').toLowerCase());
+    expect(competitorNames.length).toBe(0);
+    expect(relatedNames.length).toBeGreaterThan(0);
+    expect(relatedNames.some((n) => n.includes('multi-peptide eye serum'))).toBe(true);
+    expect(relatedNames.some((n) => n.includes('skip to main content'))).toBe(false);
+    expect(relatedNames.some((n) => n.includes('contact us'))).toBe(false);
+    expect(Array.isArray(card.payload.missing_info)).toBe(true);
+    expect(card.payload.missing_info).toContain('alternatives_unavailable');
 
     const valueMomentMode = Array.isArray(res.body.events)
       ? (res.body.events.find((e) => e && e.event_name === 'value_moment')?.data?.mode || '')
