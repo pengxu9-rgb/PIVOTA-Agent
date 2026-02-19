@@ -102,6 +102,10 @@ const prelabelInvalidJsonCounter = new Map();
 const prelabelCacheHitCounter = new Map();
 const prelabelSuggestionsGeneratedCounter = new Map();
 const prelabelQueueItemsServedCounter = new Map();
+const socialFetchRequestsCounter = new Map();
+const socialFetchSuccessCounter = new Map();
+const socialFetchTimeoutCounter = new Map();
+const socialKbBackfillCounter = new Map();
 const prelabelGeminiLatency = {
   count: 0,
   sum: 0,
@@ -112,6 +116,8 @@ let recoCompetitorsOnPageSourceRateGauge = 0;
 let recoExplanationAlignmentAt3Gauge = 0;
 let prelabelCacheHitRateGauge = 0;
 let prelabelOverturnedRateGauge = 0;
+let socialCacheHitRateGauge = 0;
+let socialChannelsCoverageGauge = 0;
 let chipsTruncatedCount = 0;
 let fieldMissingAddedCount = 0;
 let modulesInteractionCount = 0;
@@ -985,6 +991,54 @@ function setLlmSuggestionOverturnedRate(rate) {
   prelabelOverturnedRateGauge = clampRatio01(rate, prelabelOverturnedRateGauge);
 }
 
+function recordSocialFetchRequest({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    socialFetchRequestsCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordSocialFetchSuccess({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    socialFetchSuccessCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordSocialFetchTimeout({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    socialFetchTimeoutCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordSocialKbBackfill({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    socialKbBackfillCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function setSocialCacheHitRate(rate) {
+  socialCacheHitRateGauge = clampRatio01(rate, socialCacheHitRateGauge);
+}
+
+function setSocialChannelsCoverage(coverage) {
+  socialChannelsCoverageGauge = clampRatio01(coverage, socialChannelsCoverageGauge);
+}
+
 function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
   const safeProvider = cleanLabel(provider, 'unknown');
   const safeDecision = cleanLabel(decision, 'skip').toLowerCase();
@@ -1664,6 +1718,30 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE reco_explanation_alignment_at3 gauge');
   lines.push(`reco_explanation_alignment_at3 ${recoExplanationAlignmentAt3Gauge}`);
 
+  lines.push('# HELP social_fetch_requests_total Total social-source fetch requests for async social enrichment.');
+  lines.push('# TYPE social_fetch_requests_total counter');
+  renderCounter(lines, 'social_fetch_requests_total', socialFetchRequestsCounter);
+
+  lines.push('# HELP social_fetch_success_total Total successful social-source fetches for async social enrichment.');
+  lines.push('# TYPE social_fetch_success_total counter');
+  renderCounter(lines, 'social_fetch_success_total', socialFetchSuccessCounter);
+
+  lines.push('# HELP social_fetch_timeout_total Total timed-out social-source fetches for async social enrichment.');
+  lines.push('# TYPE social_fetch_timeout_total counter');
+  renderCounter(lines, 'social_fetch_timeout_total', socialFetchTimeoutCounter);
+
+  lines.push('# HELP social_kb_backfill_total Total async social KB backfill writes.');
+  lines.push('# TYPE social_kb_backfill_total counter');
+  renderCounter(lines, 'social_kb_backfill_total', socialKbBackfillCounter);
+
+  lines.push('# HELP social_cache_hit_rate Last observed social fetch cache hit ratio.');
+  lines.push('# TYPE social_cache_hit_rate gauge');
+  lines.push(`social_cache_hit_rate ${socialCacheHitRateGauge}`);
+
+  lines.push('# HELP social_channels_coverage_gauge Last observed social channel coverage ratio.');
+  lines.push('# TYPE social_channels_coverage_gauge gauge');
+  lines.push(`social_channels_coverage_gauge ${socialChannelsCoverageGauge}`);
+
   lines.push('# HELP prelabel_requests_total Total LLM prelabel suggestion requests by block/mode.');
   lines.push('# TYPE prelabel_requests_total counter');
   renderCounter(lines, 'prelabel_requests_total', prelabelRequestsCounter);
@@ -1899,6 +1977,10 @@ function resetVisionMetrics() {
   prelabelCacheHitCounter.clear();
   prelabelSuggestionsGeneratedCounter.clear();
   prelabelQueueItemsServedCounter.clear();
+  socialFetchRequestsCounter.clear();
+  socialFetchSuccessCounter.clear();
+  socialFetchTimeoutCounter.clear();
+  socialKbBackfillCounter.clear();
   prelabelGeminiLatency.count = 0;
   prelabelGeminiLatency.sum = 0;
   for (const key of prelabelGeminiLatency.buckets.keys()) prelabelGeminiLatency.buckets.set(key, 0);
@@ -1907,6 +1989,8 @@ function resetVisionMetrics() {
   recoExplanationAlignmentAt3Gauge = 0;
   prelabelCacheHitRateGauge = 0;
   prelabelOverturnedRateGauge = 0;
+  socialCacheHitRateGauge = 0;
+  socialChannelsCoverageGauge = 0;
   chipsTruncatedCount = 0;
   fieldMissingAddedCount = 0;
   modulesInteractionCount = 0;
@@ -1999,6 +2083,10 @@ function snapshotVisionMetrics() {
     prelabelCacheHit: Array.from(prelabelCacheHitCounter.entries()),
     prelabelSuggestionsGenerated: Array.from(prelabelSuggestionsGeneratedCounter.entries()),
     prelabelQueueItemsServed: Array.from(prelabelQueueItemsServedCounter.entries()),
+    socialFetchRequests: Array.from(socialFetchRequestsCounter.entries()),
+    socialFetchSuccess: Array.from(socialFetchSuccessCounter.entries()),
+    socialFetchTimeout: Array.from(socialFetchTimeoutCounter.entries()),
+    socialKbBackfill: Array.from(socialKbBackfillCounter.entries()),
     prelabelGeminiLatency: {
       count: prelabelGeminiLatency.count,
       sum: prelabelGeminiLatency.sum,
@@ -2006,6 +2094,8 @@ function snapshotVisionMetrics() {
     },
     prelabelCacheHitRateGauge,
     prelabelOverturnedRateGauge,
+    socialCacheHitRateGauge,
+    socialChannelsCoverageGauge,
     recoCompetitorsSameBrandRateGauge,
     recoCompetitorsOnPageSourceRateGauge,
     recoExplanationAlignmentAt3Gauge,
@@ -2066,6 +2156,12 @@ module.exports = {
   recordQueueItemsServed,
   setPrelabelCacheHitRate,
   setLlmSuggestionOverturnedRate,
+  recordSocialFetchRequest,
+  recordSocialFetchSuccess,
+  recordSocialFetchTimeout,
+  recordSocialKbBackfill,
+  setSocialCacheHitRate,
+  setSocialChannelsCoverage,
   observeUpstreamLatency,
   recordVisionDecision,
   observeVisionLatency,

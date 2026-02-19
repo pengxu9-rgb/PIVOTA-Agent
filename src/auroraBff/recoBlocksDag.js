@@ -3,6 +3,15 @@ const { attachExplanations } = require('./recoScoreExplain');
 const { extractWhitelistedSocialChannels } = require('./socialSummaryUserVisible');
 const { teamDraftInterleave } = require('./recoInterleave');
 const { selectExplorationCandidates } = require('./recoExploration');
+const { runSocialEnrichWorker, getSocialEnrichCacheStats } = require('./socialEnrichWorker');
+const {
+  recordSocialFetchRequest,
+  recordSocialFetchSuccess,
+  recordSocialFetchTimeout,
+  recordSocialKbBackfill,
+  setSocialCacheHitRate,
+  setSocialChannelsCoverage,
+} = require('./visionMetrics');
 
 const DEFAULT_BUDGET_MS = 1200;
 const SOURCE_NAMES = [
@@ -965,14 +974,80 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
 
 function social_enrich_async(input = {}) {
   const logger = isPlainObject(input) && isPlainObject(input.logger) ? input.logger : null;
+  const mode = pickFirstString(input.mode, 'main_path') || 'main_path';
   setImmediate(() => {
-    logger?.info?.(
-      {
-        url: input.product_url || null,
-        mode: input.mode || 'main_path',
-      },
-      'aurora bff: social_enrich_async stub scheduled',
-    );
+    void (async () => {
+      recordSocialFetchRequest({ mode });
+      let out = null;
+      try {
+        out = await runSocialEnrichWorker({
+          payload: isPlainObject(input.payload) ? input.payload : null,
+          logger,
+          lang: pickFirstString(input.lang, 'EN') || 'EN',
+          mode,
+          anchor_product: isPlainObject(input.anchor_product) ? input.anchor_product : null,
+          profile_summary: isPlainObject(input.profile_summary) ? input.profile_summary : null,
+          kb_key: pickFirstString(input.kb_key),
+          source: pickFirstString(input.source),
+          source_meta: isPlainObject(input.source_meta) ? input.source_meta : null,
+          skip_kb_write: input.skip_kb_write === true,
+          timeout_ms: input.timeout_ms,
+          ...(typeof input.fetch_fn === 'function' ? { fetch_fn: input.fetch_fn } : {}),
+          ...(typeof input.apply_async_patch === 'function' ? { apply_async_patch: input.apply_async_patch } : {}),
+          ...(typeof input.on_async_update === 'function' ? { on_async_update: input.on_async_update } : {}),
+        });
+      } catch (err) {
+        logger?.warn?.(
+          {
+            mode,
+            err: err?.message || String(err),
+          },
+          'aurora bff: social_enrich_async failed',
+        );
+      }
+
+      const cacheStats = getSocialEnrichCacheStats();
+      if (cacheStats && Number.isFinite(Number(cacheStats.hit_rate))) {
+        setSocialCacheHitRate(Number(cacheStats.hit_rate));
+      }
+
+      if (out && Array.isArray(out.channels_used)) {
+        const coverage = Math.max(0, Math.min(1, out.channels_used.length / 5));
+        setSocialChannelsCoverage(coverage);
+      }
+
+      if (out && out.ok) {
+        recordSocialFetchSuccess({ mode });
+        if (out.kb_backfilled) recordSocialKbBackfill({ mode });
+        logger?.info?.(
+          {
+            mode,
+            reason: out.reason || null,
+            from_cache: out.from_cache === true,
+            fetch_status: out.fetch_status || 'ok',
+            source_version: out.source_version || null,
+            channels_used: Array.isArray(out.channels_used) ? out.channels_used : [],
+            changed_blocks: Array.isArray(out.changed_blocks) ? out.changed_blocks : [],
+            kb_backfilled: out.kb_backfilled === true,
+          },
+          'aurora bff: social_enrich_async applied',
+        );
+        return;
+      }
+
+      const reason = String(out?.reason || '').trim().toLowerCase();
+      if (reason.includes('timeout')) recordSocialFetchTimeout({ mode });
+      logger?.info?.(
+        {
+          mode,
+          reason: out?.reason || 'unknown',
+          from_cache: out?.from_cache === true,
+          fetch_status: out?.fetch_status || 'skipped',
+          channels_used: Array.isArray(out?.channels_used) ? out.channels_used : [],
+        },
+        'aurora bff: social_enrich_async skipped',
+      );
+    })();
   });
 }
 

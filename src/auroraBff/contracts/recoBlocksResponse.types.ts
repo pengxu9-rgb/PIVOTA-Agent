@@ -89,6 +89,9 @@ export type RecoBlocksProvenance = {
   source: string;
   validation_mode: string;
   social_channels_used?: string[];
+  social_fetch_mode?: "kb_hit" | "async_refresh" | "stale_kb";
+  social_fresh_until?: string;
+  social_source_version?: string;
   dogfood_mode?: boolean;
   dogfood_features_effective?: {
     interleave?: boolean;

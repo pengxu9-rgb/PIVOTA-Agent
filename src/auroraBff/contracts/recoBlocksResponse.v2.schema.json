@@ -386,6 +386,20 @@
           },
           "maxItems": 5
         },
+        "social_fetch_mode": {
+          "type": "string",
+          "enum": [
+            "kb_hit",
+            "async_refresh",
+            "stale_kb"
+          ]
+        },
+        "social_fresh_until": {
+          "type": "string"
+        },
+        "social_source_version": {
+          "type": "string"
+        },
         "dogfood_mode": {
           "type": "boolean"
         },

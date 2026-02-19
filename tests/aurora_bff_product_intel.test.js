@@ -246,6 +246,67 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(JSON.stringify(summary).toLowerCase()).not.toMatch(/mention_count|@noise|完美平替/);
   });
 
+  test('KB social freshness state returns kb_hit when social coverage is fresh and complete', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const freshUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const state = __internal.resolveProductAnalysisSocialState({
+      competitors: {
+        candidates: [
+          {
+            social_summary_user_visible: {
+              themes: ['Barrier repair'],
+              top_keywords: ['hydration'],
+              volume_bucket: 'mid',
+            },
+          },
+        ],
+      },
+      related_products: { candidates: [] },
+      dupes: { candidates: [] },
+      provenance: {
+        generated_at: new Date().toISOString(),
+        social_fresh_until: freshUntil,
+        social_channels_used: ['reddit', 'xhs'],
+      },
+      evidence: {
+        social_signals: {
+          platform_scores: {
+            Reddit: 0.7,
+            Xiaohongshu: 0.6,
+          },
+        },
+      },
+    });
+    expect(state.fetchMode).toBe('kb_hit');
+    expect(state.shouldRefresh).toBe(false);
+  });
+
+  test('KB social freshness state returns stale_kb when coverage is missing', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const state = __internal.resolveProductAnalysisSocialState({
+      competitors: {
+        candidates: [
+          {
+            social_summary_user_visible: {
+              themes: ['Barrier repair'],
+              top_keywords: ['hydration'],
+              volume_bucket: 'mid',
+            },
+          },
+        ],
+      },
+      related_products: { candidates: [] },
+      dupes: { candidates: [] },
+      provenance: {
+        generated_at: new Date().toISOString(),
+        social_fresh_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        social_channels_used: ['reddit'],
+      },
+    });
+    expect(state.fetchMode).toBe('stale_kb');
+    expect(state.shouldRefresh).toBe(true);
+  });
+
   test('URL realtime helper extracts price from JSON-LD product offer', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const html = `

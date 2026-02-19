@@ -1,3 +1,5 @@
+const { normalizeSocialChannel, SOCIAL_CHANNEL_WHITELIST } = require('./socialSummaryUserVisible');
+
 function parseBool(value, fallback = false) {
   const raw = String(value == null ? '' : value).trim().toLowerCase();
   if (!raw) return fallback;
@@ -14,6 +16,33 @@ function clampFloat(value, fallback, min, max) {
   const n = Number(value);
   const out = Number.isFinite(n) ? n : fallback;
   return Math.max(min, Math.min(max, out));
+}
+
+function parseChannels(value, fallback) {
+  const allowed = new Set(
+    (Array.isArray(SOCIAL_CHANNEL_WHITELIST) ? SOCIAL_CHANNEL_WHITELIST : ['reddit', 'xiaohongshu', 'tiktok', 'youtube', 'instagram'])
+      .map((x) => String(x || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const list = Array.isArray(value)
+    ? value
+    : String(value == null ? '' : value)
+      .split(',')
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const raw of list) {
+    const canonical = normalizeSocialChannel(raw);
+    const token = canonical || String(raw || '').trim().toLowerCase();
+    if (!token || seen.has(token)) continue;
+    if (!allowed.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+    if (out.length >= 8) break;
+  }
+  if (out.length) return out;
+  return Array.isArray(fallback) ? fallback.slice(0, 8) : [];
 }
 
 function buildRecoDogfoodConfig(env = process.env) {
@@ -34,6 +63,8 @@ function buildRecoDogfoodConfig(env = process.env) {
   const explorationEnabled = parseBool(env.AURORA_BFF_RECO_DOGFOOD_EXPLORATION_ENABLED, true);
   const interleaveEnabled = parseBool(env.AURORA_BFF_RECO_INTERLEAVE_ENABLED, true);
   const prelabelEnabled = parseBool(env.AURORA_BFF_RECO_PRELABEL_ENABLED, true);
+  const socialEnabled = parseBool(env.AURORA_BFF_SOCIAL_SOURCE_ENABLED, true);
+  const defaultSocialChannels = ['reddit', 'xiaohongshu', 'tiktok', 'youtube', 'instagram'];
 
   return {
     dogfood_mode: dogfoodMode,
@@ -72,6 +103,15 @@ function buildRecoDogfoodConfig(env = process.env) {
         dupes: clampInt(env.AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_DUPES, 8, 1, 40),
         related_products: clampInt(env.AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_RELATED_PRODUCTS, 10, 1, 40),
       },
+    },
+    social: {
+      enabled: socialEnabled,
+      base_url: String(env.AURORA_BFF_SOCIAL_SOURCE_BASE_URL || '').trim(),
+      timeout_ms: clampInt(env.AURORA_BFF_SOCIAL_SOURCE_TIMEOUT_MS, 1800, 180, 12000),
+      ttl_ms: clampInt(env.AURORA_BFF_SOCIAL_SOURCE_TTL_MS, 72 * 60 * 60 * 1000, 5 * 60 * 1000, 14 * 24 * 60 * 60 * 1000),
+      concurrency: clampInt(env.AURORA_BFF_SOCIAL_SOURCE_CONCURRENCY, 8, 1, 64),
+      rate_per_min: clampInt(env.AURORA_BFF_SOCIAL_SOURCE_RATE_PER_MIN, 120, 1, 5000),
+      channels: parseChannels(env.AURORA_BFF_SOCIAL_SOURCE_CHANNELS, defaultSocialChannels),
     },
   };
 }

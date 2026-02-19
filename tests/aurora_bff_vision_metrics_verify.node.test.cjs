@@ -38,6 +38,12 @@ const {
   recordQueueItemsServed,
   setPrelabelCacheHitRate,
   setLlmSuggestionOverturnedRate,
+  recordSocialFetchRequest,
+  recordSocialFetchSuccess,
+  recordSocialFetchTimeout,
+  recordSocialKbBackfill,
+  setSocialCacheHitRate,
+  setSocialChannelsCoverage,
 } = require('../src/auroraBff/visionMetrics');
 
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
@@ -291,6 +297,26 @@ test('vision metrics: dogfood reco feedback/interleave/exploration/async counter
     metrics,
     /reco_async_update_items_changed_count\{block="competitors",mode="main_path"\} 3/,
   );
+});
+
+test('vision metrics: social fetch counters and gauges are exported', () => {
+  resetVisionMetrics();
+  recordSocialFetchRequest({ mode: 'main_path' });
+  recordSocialFetchRequest({ mode: 'sync_repair', delta: 2 });
+  recordSocialFetchSuccess({ mode: 'main_path' });
+  recordSocialFetchTimeout({ mode: 'sync_repair' });
+  recordSocialKbBackfill({ mode: 'main_path' });
+  setSocialCacheHitRate(0.66);
+  setSocialChannelsCoverage(0.4);
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /social_fetch_requests_total\{mode="main_path"\} 1/);
+  assert.match(metrics, /social_fetch_requests_total\{mode="sync_repair"\} 2/);
+  assert.match(metrics, /social_fetch_success_total\{mode="main_path"\} 1/);
+  assert.match(metrics, /social_fetch_timeout_total\{mode="sync_repair"\} 1/);
+  assert.match(metrics, /social_kb_backfill_total\{mode="main_path"\} 1/);
+  assert.match(metrics, /social_cache_hit_rate 0\.66\b/);
+  assert.match(metrics, /social_channels_coverage_gauge 0\.4\b/);
 });
 
 test('vision metrics: prelabel counters/gauges/histogram are exported', () => {

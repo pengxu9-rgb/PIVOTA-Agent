@@ -16,6 +16,10 @@ describe('aurora reco dogfood config', () => {
     expect(cfg.prelabel.max_candidates_per_block.competitors).toBe(10);
     expect(cfg.prelabel.max_candidates_per_block.dupes).toBe(8);
     expect(cfg.prelabel.max_candidates_per_block.related_products).toBe(10);
+    expect(cfg.social.enabled).toBe(true);
+    expect(cfg.social.timeout_ms).toBe(1800);
+    expect(cfg.social.ttl_ms).toBe(72 * 60 * 60 * 1000);
+    expect(cfg.social.channels).toEqual(['reddit', 'xiaohongshu', 'tiktok', 'youtube', 'instagram']);
   });
 
   test('dogfood env enables exploration/interleave and enlarged pools', () => {
@@ -41,6 +45,13 @@ describe('aurora reco dogfood config', () => {
       AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_COMPETITORS: '14',
       AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_DUPES: '11',
       AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_RELATED_PRODUCTS: '16',
+      AURORA_BFF_SOCIAL_SOURCE_ENABLED: 'true',
+      AURORA_BFF_SOCIAL_SOURCE_BASE_URL: 'https://social.example.com/',
+      AURORA_BFF_SOCIAL_SOURCE_TIMEOUT_MS: '2100',
+      AURORA_BFF_SOCIAL_SOURCE_TTL_MS: '86400000',
+      AURORA_BFF_SOCIAL_SOURCE_CONCURRENCY: '12',
+      AURORA_BFF_SOCIAL_SOURCE_RATE_PER_MIN: '240',
+      AURORA_BFF_SOCIAL_SOURCE_CHANNELS: 'reddit,xhs,yt,tiktok,instagram,on_page_related',
     });
     expect(cfg.dogfood_mode).toBe(true);
     expect(cfg.exploration.enabled).toBe(true);
@@ -67,5 +78,12 @@ describe('aurora reco dogfood config', () => {
       dupes: 420,
       related_products: 510,
     });
+    expect(cfg.social.enabled).toBe(true);
+    expect(cfg.social.base_url).toBe('https://social.example.com/');
+    expect(cfg.social.timeout_ms).toBe(2100);
+    expect(cfg.social.ttl_ms).toBe(86400000);
+    expect(cfg.social.concurrency).toBe(12);
+    expect(cfg.social.rate_per_min).toBe(240);
+    expect(cfg.social.channels).toEqual(['reddit', 'xiaohongshu', 'youtube', 'tiktok', 'instagram']);
   });
 });

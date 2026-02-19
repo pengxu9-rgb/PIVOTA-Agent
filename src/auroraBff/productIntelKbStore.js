@@ -58,6 +58,30 @@ function normalizeJsonbParam(value) {
   }
 }
 
+function deepMergeObjects(base, patch) {
+  const left = base && typeof base === 'object' && !Array.isArray(base) ? base : {};
+  const right = patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
+  const out = { ...left };
+  for (const [key, value] of Object.entries(right)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      out[key] = deepMergeObjects(left[key], value);
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function mergeProductIntelKbAnalysis({ existingAnalysis, patchAnalysis } = {}) {
+  const base = existingAnalysis && typeof existingAnalysis === 'object' && !Array.isArray(existingAnalysis)
+    ? existingAnalysis
+    : {};
+  const patch = patchAnalysis && typeof patchAnalysis === 'object' && !Array.isArray(patchAnalysis)
+    ? patchAnalysis
+    : {};
+  return deepMergeObjects(base, patch);
+}
+
 function mapRowToEntry(row) {
   if (!row) return null;
   const kbKey = normalizeKey(row.kb_key);
@@ -185,4 +209,8 @@ module.exports = {
   normalizeKey,
   getProductIntelKbEntry,
   upsertProductIntelKbEntry,
+  mergeProductIntelKbAnalysis,
+  __internal: {
+    deepMergeObjects,
+  },
 };
