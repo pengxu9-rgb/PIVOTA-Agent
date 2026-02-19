@@ -704,7 +704,7 @@ const PRODUCT_DETAIL_STALE_LOOKUP_ENABLED =
   String(process.env.PRODUCT_DETAIL_STALE_LOOKUP_ENABLED || 'true').toLowerCase() === 'true';
 const PRODUCT_DETAIL_STALE_MAX_AGE_HOURS = parsePositiveInt(
   process.env.PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
-  7 * 24,
+  30 * 24,
   { min: 1, max: 24 * 90 },
 );
 
@@ -12099,6 +12099,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const fromDb = await fetchProductDetailFromProductsCache({
             merchantId: productDetailMerchantId,
             productId: productDetailProductId,
+            includeExpired: true,
+            staleMaxAgeHours: PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
           });
           if (fromDb?.product) {
             PRODUCT_DETAIL_CACHE_METRICS.db_hits += 1;
