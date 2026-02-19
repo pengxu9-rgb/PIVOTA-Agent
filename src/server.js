@@ -2425,9 +2425,6 @@ function buildResolverQueryCandidates(queryText) {
 function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   const raw = String(queryText || '').trim();
   if (!raw) return false;
-  const anchors = Array.isArray(anchorTokens) ? anchorTokens : extractSearchAnchorTokens(raw);
-  if (!anchors.length) return false;
-
   const lower = raw.toLowerCase();
   if (/(ipsa|茵芙莎|winona|薇诺娜|the ordinary|sk[\s-]?ii|流金水|神仙水|time reset aqua)/i.test(lower)) {
     return true;
@@ -2435,6 +2432,8 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   if (/(有货|库存|有没有|哪里买|能买|能买吗|where to buy|in stock|available|availability)/i.test(lower)) {
     return true;
   }
+  const anchors = Array.isArray(anchorTokens) ? anchorTokens : extractSearchAnchorTokens(raw);
+  if (!anchors.length) return false;
   if (anchors.length <= 2 && raw.length <= 48 && !/(推荐|recommend|best|适合|怎么|教程|搭配|guide|tips)/i.test(lower)) {
     return true;
   }
@@ -2448,11 +2447,61 @@ function buildFallbackCandidateText(product) {
     product.name,
     product.display_name,
     product.brand,
+    product.vendor,
     product.product_name,
   ]
     .map((v) => String(v || '').trim())
     .filter(Boolean);
   return normalizeSearchTextForMatch(parts.join(' '));
+}
+
+const LOOKUP_EQUIVALENCE_FAMILIES = [
+  ['winona', '薇诺娜'],
+  ['ipsa', '茵芙莎', '流金水'],
+  ['time reset aqua', '流金水', 'ipsa'],
+  ['the ordinary', 'ordinary'],
+  ['sk ii', 'skii', '神仙水'],
+];
+
+function expandLookupAnchorTokens(queryText, anchorTokens) {
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const normalizedAnchors = Array.isArray(anchorTokens)
+    ? anchorTokens
+        .map((token) => normalizeSearchTextForMatch(token))
+        .filter(Boolean)
+    : [];
+  const expanded = new Set(normalizedAnchors);
+  const anchorSet = new Set(normalizedAnchors);
+  const queryTokens = new Set(tokenizeSearchTextForMatch(normalizedQuery));
+
+  for (const family of LOOKUP_EQUIVALENCE_FAMILIES) {
+    const normalizedFamilyTerms = family
+      .map((term) => normalizeSearchTextForMatch(term))
+      .filter(Boolean);
+    if (!normalizedFamilyTerms.length) continue;
+
+    const matched = normalizedFamilyTerms.some((term) => {
+      if (!term) return false;
+      if (anchorSet.has(term)) return true;
+      if (normalizedQuery.includes(term)) return true;
+      return !term.includes(' ') && queryTokens.has(term);
+    });
+    if (!matched) continue;
+
+    for (const term of normalizedFamilyTerms) {
+      expanded.add(term);
+      if (term.includes(' ')) {
+        for (const sub of term.split(' ')) {
+          const normalizedSub = normalizeSearchTextForMatch(sub);
+          if (normalizedSub && normalizedSub.length >= 2) {
+            expanded.add(normalizedSub);
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(expanded);
 }
 
 function isProxySearchFallbackRelevant(normalized, queryText) {
@@ -2463,12 +2512,13 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
   if (!normalizedQuery) return true;
 
   const anchorTokens = extractSearchAnchorTokens(queryText);
-  if (isLookupStyleSearchQuery(queryText, anchorTokens) && anchorTokens.length > 0) {
+  const lookupTokens = expandLookupAnchorTokens(queryText, anchorTokens);
+  if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
     for (const product of products.slice(0, 8)) {
       if (!hasUsableSearchProduct(product)) continue;
       const candidateText = buildFallbackCandidateText(product);
       if (!candidateText) continue;
-      if (anchorTokens.some((token) => candidateText.includes(token))) return true;
+      if (lookupTokens.some((token) => candidateText.includes(token))) return true;
     }
     return false;
   }
@@ -2503,8 +2553,9 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   const anchorTokens = Array.isArray(options.anchorTokens)
     ? options.anchorTokens
     : extractSearchAnchorTokens(queryText);
-  if (isLookupStyleSearchQuery(queryText, anchorTokens) && anchorTokens.length > 0) {
-    return anchorTokens.some((token) => candidateText.includes(token));
+  const lookupTokens = expandLookupAnchorTokens(queryText, anchorTokens);
+  if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
+    return lookupTokens.some((token) => candidateText.includes(token));
   }
 
   if (candidateText.includes(normalizedQuery)) return true;
@@ -4656,8 +4707,23 @@ function looksSkuLikeQuery(q) {
 }
 
 function tokenizeQueryForCache(q) {
-  const s = String(q || '').toLowerCase();
-  const raw = s.split(/[^a-z0-9]+/g).filter(Boolean);
+  const rawInput = String(q || '').trim();
+  const lowerInput = rawInput.toLowerCase();
+  const sanitizedInput = sanitizeSearchQueryForRelevance(rawInput);
+  const resolverInput = sanitizedInput || rawInput;
+  const resolverNormalized = normalizeResolverText(resolverInput);
+  const resolverTokens = Array.isArray(tokenizeResolverQuery(resolverNormalized))
+    ? tokenizeResolverQuery(resolverNormalized)
+    : [];
+  const latinTokens = lowerInput.split(/[^a-z0-9]+/g).filter(Boolean);
+  const cjkTokens = Array.from(
+    new Set(
+      (resolverInput.match(/[\u4e00-\u9fff]{2,}/g) || [])
+        .map((token) => String(token || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const raw = [...latinTokens, ...resolverTokens, ...cjkTokens];
   const stop = new Set([
     'a',
     'an',
@@ -4702,13 +4768,34 @@ function tokenizeQueryForCache(q) {
     'with',
     'you',
     'your',
+    '什么',
+    '有什麼',
+    '有什么',
+    '有沒有',
+    '有哪些',
+    '哪些',
+    '的吗',
+    '的嗎',
+    '有吗',
+    '有嗎',
+    '吗',
+    '嗎',
+    '呢',
+    '的',
+    '了',
   ]);
 
   const kept = [];
   for (const t of raw) {
-    if (stop.has(t)) continue;
-    if (t.length < 3 && t !== 'xs' && t !== 'xl') continue;
-    kept.push(t);
+    const normalizedToken = normalizeSearchTextForMatch(t);
+    if (!normalizedToken) continue;
+    if (stop.has(normalizedToken)) continue;
+    const isLatinToken = /^[a-z0-9]+$/.test(normalizedToken);
+    if (isLatinToken && normalizedToken.length < 3 && normalizedToken !== 'xs' && normalizedToken !== 'xl') {
+      continue;
+    }
+    if (!isLatinToken && normalizedToken.length < 2) continue;
+    kept.push(normalizedToken);
   }
 
   // Keep unique, preserve order.
@@ -4720,14 +4807,29 @@ function tokenizeQueryForCache(q) {
     uniq.push(t);
   }
 
+  const lookupExpanded = isLookupStyleSearchQuery(rawInput, extractSearchAnchorTokens(rawInput))
+    ? expandLookupAnchorTokens(rawInput, uniq)
+    : uniq;
+
+  const expandedSeen = new Set();
+  const expandedUniq = [];
+  for (const token of lookupExpanded) {
+    const normalizedToken = normalizeSearchTextForMatch(token);
+    if (!normalizedToken) continue;
+    if (stop.has(normalizedToken)) continue;
+    if (expandedSeen.has(normalizedToken)) continue;
+    expandedSeen.add(normalizedToken);
+    expandedUniq.push(normalizedToken);
+  }
+
   // Clamp to avoid pathological SQL, but ensure we don't drop "important" tokens
   // that often appear at the end (e.g. appended canonical keywords).
   // Strategy:
   // - If <= 8 tokens: return as-is.
   // - Else: take a balanced slice (first 4 + last 4), preserving order.
-  if (uniq.length <= 8) return uniq;
-  const first = uniq.slice(0, 4);
-  const last = uniq.slice(-4);
+  if (expandedUniq.length <= 8) return expandedUniq;
+  const first = expandedUniq.slice(0, 4);
+  const last = expandedUniq.slice(-4);
   const outSeen = new Set();
   const out = [];
   for (const t of [...first, ...last]) {

@@ -151,6 +151,80 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('treats zh brand lookup as relevant for en-vendor cached rows', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 10 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_winona_1',
+                  product_id: 'prod_winona_1',
+                  merchant_id: 'merch_1',
+                  title: 'Soothing Repair Serum',
+                  vendor: 'Winona',
+                  status: 'published',
+                  inventory_quantity: 9,
+                  price: 39,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '有什么薇诺娜的商品推荐吗？',
+            page: 1,
+            limit: 1,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          entry: 'home',
+          scope: { catalog: 'global', region: 'US', language: 'zh' },
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_cross_merchant_search',
+      }),
+    );
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(String(resp.body.products[0].merchant_id || '')).toBe('merch_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('accepts top-level payload query for find_products_multi', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
