@@ -4650,6 +4650,57 @@ function augmentEnvelopeProductAnalysisCardsForDogfood({
   return env;
 }
 
+async function augmentEnvelopeProductAnalysisCardsWithPrelabelSuggestions({
+  envelope,
+  logger,
+} = {}) {
+  if (!RECO_DOGFOOD_CONFIG.dogfood_mode || !RECO_DOGFOOD_CONFIG.prelabel?.enabled) return envelope;
+  const env = isPlainObject(envelope) ? { ...envelope } : envelope;
+  if (!isPlainObject(env)) return envelope;
+  const cards = Array.isArray(env.cards) ? env.cards : [];
+  if (!cards.length) return env;
+
+  env.cards = await Promise.all(
+    cards.map(async (card) => {
+      if (!isPlainObject(card)) return card;
+      const type = String(card.type || '').trim().toLowerCase();
+      if (type !== 'product_analysis') return card;
+      const payload = isPlainObject(card.payload) ? card.payload : null;
+      if (!payload) return card;
+
+      const anchorProductId = pickFirstTrimmed(
+        payload?.assessment?.anchor_product?.product_id,
+        payload?.assessment?.anchor_product?.sku_id,
+        payload?.assessment?.anchorProduct?.product_id,
+        payload?.assessment?.anchorProduct?.sku_id,
+      );
+      if (!anchorProductId) return card;
+
+      try {
+        const suggestions = await loadSuggestionsForAnchor({
+          anchor_product_id: anchorProductId,
+          limit: 220,
+        });
+        if (!Array.isArray(suggestions) || !suggestions.length) return card;
+        return {
+          ...card,
+          payload: attachPrelabelSuggestionsToPayload(payload, suggestions),
+        };
+      } catch (err) {
+        logger?.warn?.(
+          {
+            err: err?.message || String(err),
+            anchor_product_id: anchorProductId,
+          },
+          'aurora bff: attach prelabel suggestions failed',
+        );
+        return card;
+      }
+    }),
+  );
+  return env;
+}
+
 async function fetchProductPageHtmlForReco({
   productUrl,
   timeoutMs = AURORA_BFF_RECO_BLOCKS_TIMEOUT_ON_PAGE_RELATED_MS,
@@ -14908,13 +14959,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         req?.body?.session?.id,
       ),
     );
-    const sendProductAnalyzeEnvelope = (envelope, statusCode = 200, mode = 'main_path') => {
-      const augmented = augmentEnvelopeProductAnalysisCardsForDogfood({
+    const sendProductAnalyzeEnvelope = async (envelope, statusCode = 200, mode = 'main_path') => {
+      let augmented = augmentEnvelopeProductAnalysisCardsForDogfood({
         envelope,
         req,
         ctx,
         mode,
         sessionId: productAnalyzeSessionId,
+        logger,
+      });
+      augmented = await augmentEnvelopeProductAnalysisCardsWithPrelabelSuggestions({
+        envelope: augmented,
         logger,
       });
       if (statusCode >= 400) return res.status(statusCode).json(augmented);

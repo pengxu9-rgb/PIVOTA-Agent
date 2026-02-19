@@ -273,6 +273,48 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(fromAmount).toEqual({ amount: 42.5, currency: 'USD', unknown: false });
   });
 
+  test('attachPrelabelSuggestionsToPayload injects sanitized llm_suggestion by block + candidate id', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const payload = {
+      competitors: {
+        candidates: [
+          { product_id: 'comp_1', name: 'Competitor 1' },
+        ],
+      },
+      related_products: { candidates: [] },
+      dupes: { candidates: [] },
+    };
+    const out = __internal.attachPrelabelSuggestionsToPayload(payload, [
+      {
+        id: 'sug_1',
+        block: 'competitors',
+        candidate_product_id: 'comp_1',
+        suggested_label: 'relevant',
+        wrong_block_target: null,
+        confidence: 0.74,
+        rationale_user_visible: 'Matches category and ingredient profile.',
+        flags: ['needs_price_check'],
+        model_name: 'gemini-2.0-flash',
+        prompt_version: 'prelabel_v1',
+        input_hash: 'should_not_leak',
+      },
+    ]);
+
+    const suggestion = out?.competitors?.candidates?.[0]?.llm_suggestion;
+    expect(suggestion).toBeTruthy();
+    expect(suggestion).toEqual(
+      expect.objectContaining({
+        id: 'sug_1',
+        suggested_label: 'relevant',
+        confidence: 0.74,
+        rationale_user_visible: 'Matches category and ingredient profile.',
+        model_name: 'gemini-2.0-flash',
+        prompt_version: 'prelabel_v1',
+      }),
+    );
+    expect(suggestion.input_hash).toBeUndefined();
+  });
+
   test('reco guardrail sanitizes polluted competitors and writes low-confidence provenance', () => {
     process.env.AURORA_BFF_RECO_GUARD_ENABLED = 'true';
     process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED = 'true';
