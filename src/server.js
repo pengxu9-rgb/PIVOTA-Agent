@@ -47,16 +47,38 @@ const {
   scoreByTagFacetOverlap,
   scorePairOverlap,
 } = require('./services/productTagSignals');
-const { mountLookReplicatorRoutes } = require('./lookReplicator');
+const noopMountRoute = () => {};
+let mountLookReplicatorRoutes = noopMountRoute;
+try {
+  ({ mountLookReplicatorRoutes } = require('./lookReplicator'));
+} catch (err) {
+  logger.error(
+    { err: err?.message || String(err) },
+    'lookReplicator module failed to load; disabling look replicator routes',
+  );
+}
 const { mountOutcomeTelemetryRoutes, mountLookReplicatorEventRoutes, mountUiEventRoutes } = require('./telemetry');
 const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compatibility');
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
 const { mountRecommendationRoutes } = require('./recommendations/routes');
-const {
-  mountAuroraBffRoutes,
-  __internal: auroraBffInternal = {},
-} = require('./auroraBff/routes');
+let mountAuroraBffRoutes = noopMountRoute;
+let auroraBffInternal = {};
+try {
+  const auroraRoutes = require('./auroraBff/routes');
+  mountAuroraBffRoutes =
+    typeof auroraRoutes?.mountAuroraBffRoutes === 'function'
+      ? auroraRoutes.mountAuroraBffRoutes
+      : noopMountRoute;
+  auroraBffInternal = auroraRoutes?.__internal && typeof auroraRoutes.__internal === 'object'
+    ? auroraRoutes.__internal
+    : {};
+} catch (err) {
+  logger.error(
+    { err: err?.message || String(err) },
+    'auroraBff routes failed to load; disabling aurora routes for this process',
+  );
+}
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
 const {
@@ -204,16 +226,38 @@ const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS = Math.max(
     6000,
   ),
 );
-const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = Math.max(
+const FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS = Math.max(
   1500,
   Math.min(
-    parseTimeoutMs(
-      process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
-      Math.min(UPSTREAM_TIMEOUT_SEARCH_MS, 6000),
-    ),
-    7000,
+    parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS, 6500),
+    10000,
   ),
 );
+const FIND_PRODUCTS_MULTI_TIMEOUT_ALLOW_UNSAFE_LOWER =
+  String(process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER || 'false')
+    .toLowerCase() === 'true';
+const configuredFindProductsMultiTimeoutMs = parseTimeoutMs(
+  process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+  Math.min(UPSTREAM_TIMEOUT_SEARCH_MS, FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS),
+);
+let UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = Math.max(
+  1500,
+  Math.min(configuredFindProductsMultiTimeoutMs, 10000),
+);
+if (
+  !FIND_PRODUCTS_MULTI_TIMEOUT_ALLOW_UNSAFE_LOWER &&
+  UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS < FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS
+) {
+  logger.warn(
+    {
+      configured_timeout_ms: configuredFindProductsMultiTimeoutMs,
+      enforced_timeout_ms: FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS,
+      hint: 'Set UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER=true to bypass this floor.',
+    },
+    'UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS is below safe floor; clamping to reduce timeout-induced empty results',
+  );
+  UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS;
+}
 const UPSTREAM_TIMEOUT_FIND_PRODUCTS_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_RETRY_MS,
   Math.min(
@@ -225,7 +269,11 @@ const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_RETRY_MS,
   Math.min(
     UPSTREAM_TIMEOUT_SLOW_MS,
-    Math.max(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS + 1500, 7000),
+    Math.max(
+      UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS + 1800,
+      FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS + 1000,
+      8000,
+    ),
   ),
 );
 const UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT =
@@ -312,6 +360,8 @@ const PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = (() => {
       .toLowerCase() === 'true'
   );
 })();
+const PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
+  String(process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
@@ -322,17 +372,20 @@ const PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS =
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
-    parseTimeoutMs(process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS, 4500),
+    parseTimeoutMs(
+      process.env.PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS,
+      Math.min(
+        UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+        Math.max(5000, FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS - 500),
+      ),
+    ),
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
 );
 const PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = Math.max(
   1200,
   Math.min(
-    parseTimeoutMs(
-      process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
-      Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 4500),
-    ),
+    parseTimeoutMs(process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
 );
@@ -647,6 +700,13 @@ const PRODUCT_DETAIL_CACHE_MAX_ENTRIES = Math.max(
   50,
   Number(process.env.PRODUCT_DETAIL_CACHE_MAX_ENTRIES || 2000) || 2000,
 );
+const PRODUCT_DETAIL_STALE_LOOKUP_ENABLED =
+  String(process.env.PRODUCT_DETAIL_STALE_LOOKUP_ENABLED || 'true').toLowerCase() === 'true';
+const PRODUCT_DETAIL_STALE_MAX_AGE_HOURS = parsePositiveInt(
+  process.env.PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
+  7 * 24,
+  { min: 1, max: 24 * 90 },
+);
 
 function getProductDetailCacheEntry(cacheKey) {
   const key = String(cacheKey || '');
@@ -891,27 +951,68 @@ async function fetchProductDetailFromProductsCache(args) {
   const merchantId = String(args?.merchantId || '').trim();
   const productId = String(args?.productId || '').trim();
   if (!merchantId || !productId) return null;
+  const includeExpired = args?.includeExpired === true;
+  const staleMaxAgeHours = Math.max(
+    1,
+    Math.min(
+      24 * 90,
+      Number.isFinite(Number(args?.staleMaxAgeHours))
+        ? Number(args?.staleMaxAgeHours)
+        : PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
+    ),
+  );
 
   try {
-    const res = await query(
-      `
-        SELECT product_data, cached_at
-        FROM products_cache
-        WHERE merchant_id = $1
-          AND (expires_at IS NULL OR expires_at > now())
-          AND (
-            platform_product_id = $2
-            OR product_data->>'id' = $2
-            OR product_data->>'product_id' = $2
-            OR product_data->>'productId' = $2
-          )
-        ORDER BY cached_at DESC
-        LIMIT 1
-      `,
-      [merchantId, productId],
-    );
+    const fetchFresh = async () => {
+      const res = await query(
+        `
+          SELECT product_data, cached_at
+          FROM products_cache
+          WHERE merchant_id = $1
+            AND (expires_at IS NULL OR expires_at > now())
+            AND (
+              platform_product_id = $2
+              OR product_data->>'id' = $2
+              OR product_data->>'product_id' = $2
+              OR product_data->>'productId' = $2
+            )
+          ORDER BY cached_at DESC
+          LIMIT 1
+        `,
+        [merchantId, productId],
+      );
+      return res?.rows && res.rows[0] ? res.rows[0] : null;
+    };
 
-    const row = res?.rows && res.rows[0] ? res.rows[0] : null;
+    const fetchStale = async () => {
+      if (!PRODUCT_DETAIL_STALE_LOOKUP_ENABLED) return null;
+      const res = await query(
+        `
+          SELECT product_data, cached_at
+          FROM products_cache
+          WHERE merchant_id = $1
+            AND (cached_at IS NULL OR cached_at >= now() - ($3 * interval '1 hour'))
+            AND (
+              platform_product_id = $2
+              OR product_data->>'id' = $2
+              OR product_data->>'product_id' = $2
+              OR product_data->>'productId' = $2
+            )
+          ORDER BY cached_at DESC
+          LIMIT 1
+        `,
+        [merchantId, productId, staleMaxAgeHours],
+      );
+      return res?.rows && res.rows[0] ? res.rows[0] : null;
+    };
+
+    let row = await fetchFresh();
+    let staleFallbackUsed = false;
+    if (!row && includeExpired) {
+      row = await fetchStale();
+      staleFallbackUsed = Boolean(row);
+    }
+
     const productData = row?.product_data;
     if (!productData || typeof productData !== 'object') return null;
 
@@ -920,7 +1021,12 @@ async function fetchProductDetailFromProductsCache(args) {
       merchant_id: merchantId,
       product_id: String(productData.product_id || productData.id || productId).trim() || productId,
     };
-    return { product: normalized, cached_at: row?.cached_at || null };
+    return {
+      product: normalized,
+      cached_at: row?.cached_at || null,
+      stale_fallback_used: staleFallbackUsed,
+      stale_max_age_hours: staleFallbackUsed ? staleMaxAgeHours : null,
+    };
   } catch (err) {
     logger.warn(
       { err: err.message, merchantId, productId },
@@ -2288,6 +2394,34 @@ function extractSearchAnchorTokens(queryText) {
   return anchors;
 }
 
+function buildResolverQueryCandidates(queryText) {
+  const raw = String(queryText || '').trim();
+  if (!raw) return [];
+
+  const candidates = [];
+  const seen = new Set();
+  const pushCandidate = (value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
+
+  pushCandidate(raw);
+  const sanitized = sanitizeSearchQueryForRelevance(raw);
+  pushCandidate(sanitized);
+
+  const anchorTokens = extractSearchAnchorTokens(raw);
+  if (anchorTokens.length > 0) {
+    pushCandidate(anchorTokens.join(' '));
+    for (const token of anchorTokens.slice(0, 3)) {
+      pushCandidate(token);
+    }
+  }
+
+  return candidates.slice(0, 5);
+}
+
 function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   const raw = String(queryText || '').trim();
   if (!raw) return false;
@@ -2485,7 +2619,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
             ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
           }),
     },
-    timeout: Math.min(4500, getUpstreamTimeoutMs('find_products_multi')),
+    timeout: Math.min(6500, getUpstreamTimeoutMs('find_products_multi')),
     validateStatus: () => true,
   });
 
@@ -2603,39 +2737,115 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
   const cached = getProxySearchResolverCacheEntry(resolverCacheKey);
   if (cached) return cached;
 
+  const toResolveSources = (input) =>
+    Array.isArray(input?.metadata?.sources)
+      ? input.metadata.sources
+          .filter((item) => item && typeof item === 'object')
+          .map((item) => ({
+            source: String(item.source || '').trim() || null,
+            ok: item.ok === true,
+            count: Number.isFinite(Number(item.count)) ? Number(item.count) : null,
+            reason: String(item.reason || '').trim() || null,
+            error_code: String(item.error_code || '').trim() || null,
+          }))
+      : [];
+
+  const resolverQueryCandidates = buildResolverQueryCandidates(queryText);
   let resolved = null;
-  try {
-    resolved = await resolveProductRef({
-      query: queryText,
-      lang,
-      hints: null,
-      options: resolveOptions,
-      pivotaApiBase: PIVOTA_API_BASE,
-      pivotaApiKey: PIVOTA_API_KEY,
-      checkoutToken,
-    });
-  } catch (err) {
-    logger.warn(
-      { err: err?.message || String(err), query: queryText },
-      'proxy agent search resolver fallback failed',
-    );
-    return null;
+  let resolvedQueryUsed = queryText;
+  for (const candidateQuery of resolverQueryCandidates) {
+    const candidateText = String(candidateQuery || '').trim();
+    if (!candidateText) continue;
+
+    let stableAliasMatch = null;
+    if (resolveStableAliasByQuery) {
+      try {
+        const normalizedCandidate = normalizeResolverText(candidateText);
+        const candidateTokens = tokenizeResolverQuery(normalizedCandidate);
+        if (normalizedCandidate && candidateTokens.length > 0) {
+          stableAliasMatch = resolveStableAliasByQuery({
+            query: candidateText,
+            normalizedQuery: normalizedCandidate,
+            queryTokens: candidateTokens,
+          });
+        }
+      } catch {
+        stableAliasMatch = null;
+      }
+    }
+
+    if (
+      stableAliasMatch &&
+      stableAliasMatch.product_ref &&
+      String(stableAliasMatch.product_ref.product_id || '').trim() &&
+      String(stableAliasMatch.product_ref.merchant_id || '').trim()
+    ) {
+      resolved = {
+        resolved: true,
+        reason: 'stable_alias_match',
+        reason_code: 'stable_alias_match',
+        confidence: Number.isFinite(Number(stableAliasMatch.score))
+          ? Number(stableAliasMatch.score)
+          : 1,
+        product_ref: {
+          product_id: String(stableAliasMatch.product_ref.product_id || '').trim(),
+          merchant_id: String(stableAliasMatch.product_ref.merchant_id || '').trim(),
+        },
+        metadata: {
+          latency_ms: 0,
+          sources: [
+            {
+              source: 'stable_alias_ref',
+              ok: true,
+              reason: stableAliasMatch.reason || 'stable_alias_match',
+              count: 1,
+            },
+          ],
+          stable_alias_short_circuit: true,
+        },
+      };
+      resolvedQueryUsed = candidateText;
+      break;
+    }
+
+    try {
+      const candidateResolved = await resolveProductRef({
+        query: candidateText,
+        lang,
+        hints: null,
+        options: resolveOptions,
+        pivotaApiBase: PIVOTA_API_BASE,
+        pivotaApiKey: PIVOTA_API_KEY,
+        checkoutToken,
+      });
+      if (!resolved) {
+        resolved = candidateResolved;
+        resolvedQueryUsed = candidateText;
+      }
+      if (
+        candidateResolved &&
+        candidateResolved.resolved &&
+        candidateResolved.product_ref &&
+        String(candidateResolved.product_ref.product_id || '').trim() &&
+        String(candidateResolved.product_ref.merchant_id || '').trim()
+      ) {
+        resolved = candidateResolved;
+        resolvedQueryUsed = candidateText;
+        break;
+      }
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: candidateText },
+        'proxy agent search resolver fallback failed',
+      );
+      continue;
+    }
   }
 
   const resolvedRef = resolved && resolved.resolved ? resolved.product_ref : null;
   const resolvedProductId = String(resolvedRef?.product_id || '').trim();
   const resolvedMerchantId = String(resolvedRef?.merchant_id || '').trim();
-  const resolveSources = Array.isArray(resolved?.metadata?.sources)
-    ? resolved.metadata.sources
-        .filter((item) => item && typeof item === 'object')
-        .map((item) => ({
-          source: String(item.source || '').trim() || null,
-          ok: item.ok === true,
-          count: Number.isFinite(Number(item.count)) ? Number(item.count) : null,
-          reason: String(item.reason || '').trim() || null,
-          error_code: String(item.error_code || '').trim() || null,
-        }))
-    : [];
+  const resolveSources = toResolveSources(resolved);
   if (!resolvedProductId || !resolvedMerchantId) {
     const missResult = {
       status: 200,
@@ -2652,6 +2862,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
       resolve_latency_ms:
         Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
       resolve_sources: resolveSources,
+      resolve_query_used: resolvedQueryUsed || queryText,
     };
     setProxySearchResolverCacheEntry(
       resolverCacheKey,
@@ -2668,10 +2879,14 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
       const detailFromCache = await fetchProductDetailFromProductsCache({
         merchantId: resolvedMerchantId,
         productId: resolvedProductId,
+        includeExpired: true,
+        staleMaxAgeHours: PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
       });
       if (detailFromCache?.product) {
         detail = detailFromCache.product;
-        detailSource = 'products_cache';
+        detailSource = detailFromCache?.stale_fallback_used
+          ? 'products_cache_stale'
+          : 'products_cache';
       }
       if (!detail) {
         detail = await fetchProductDetailFromUpstream({
@@ -2708,6 +2923,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
       resolve_latency_ms:
         Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
       resolve_sources: resolveSources,
+      resolve_query_used: resolvedQueryUsed || queryText,
     };
     setProxySearchResolverCacheEntry(
       resolverCacheKey,
@@ -2717,6 +2933,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     logger.info(
       {
         query: queryText,
+        query_used: resolvedQueryUsed || queryText,
         merchant_id: resolvedMerchantId,
         product_id: resolvedProductId,
       },
@@ -2773,6 +2990,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
         Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
       resolve_latency_ms:
         Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+      resolve_query_used: resolvedQueryUsed || queryText,
       ...(detailSource ? { resolve_detail_source: detailSource } : {}),
     },
   });
@@ -2791,6 +3009,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     resolve_latency_ms:
       Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
     resolve_sources: resolveSources,
+    resolve_query_used: resolvedQueryUsed || queryText,
     data: withProxySearchFallbackMetadata(normalized, {
       applied: true,
       reason: reason || 'resolver_fallback',
@@ -2814,8 +3033,9 @@ function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
   return reasonCode === 'no_candidates' || reasonCode === 'upstream_timeout' || reasonCode === 'db_timeout';
 }
 
-function shouldSkipSecondaryFallbackAfterResolverMiss(result) {
+function shouldSkipSecondaryFallbackAfterResolverMiss(result, queryText = '') {
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
+  if (isStrongResolverFirstQuery(queryText)) return false;
   return shouldReducePrimaryTimeoutAfterResolverMiss(result);
 }
 
@@ -2824,6 +3044,11 @@ function shouldAllowSecondaryFallback(operation) {
     return PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
   }
   return true;
+}
+
+function shouldAllowResolverFallback(operation) {
+  if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
+  return PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
 }
 
 function shouldBypassSecondaryFallbackSkipOnPrimaryException({ err }) {
@@ -2854,24 +3079,30 @@ function isStrongResolverFirstQuery(queryText) {
   if (isUuidLikeSearchQuery(raw)) return true;
   if (!resolveStableAliasByQuery) return false;
 
-  try {
-    const normalized = normalizeResolverText(raw);
-    const tokens = tokenizeResolverQuery(normalized);
-    if (!normalized || !tokens.length) return false;
-    const match = resolveStableAliasByQuery({
-      query: raw,
-      normalizedQuery: normalized,
-      queryTokens: tokens,
-    });
-    return Boolean(
-      match &&
-      match.product_ref &&
-      String(match.product_ref.product_id || '').trim() &&
-      String(match.product_ref.merchant_id || '').trim()
-    );
-  } catch {
-    return false;
+  const queryCandidates = buildResolverQueryCandidates(raw);
+  for (const candidate of queryCandidates) {
+    try {
+      const normalized = normalizeResolverText(candidate);
+      const tokens = tokenizeResolverQuery(normalized);
+      if (!normalized || !tokens.length) continue;
+      const match = resolveStableAliasByQuery({
+        query: candidate,
+        normalizedQuery: normalized,
+        queryTokens: tokens,
+      });
+      if (
+        match &&
+        match.product_ref &&
+        String(match.product_ref.product_id || '').trim() &&
+        String(match.product_ref.merchant_id || '').trim()
+      ) {
+        return true;
+      }
+    } catch {
+      continue;
+    }
   }
+  return false;
 }
 
 function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
@@ -6353,8 +6584,12 @@ async function proxyAgentSearchToBackend(req, res) {
       shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult)
         ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
         : basePrimaryTimeoutMs;
-    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
+      resolverFirstResult,
+      queryText,
+    );
     const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi');
+    const allowResolverFallback = shouldAllowResolverFallback('find_products_multi');
 
     const resp = await axios({
       method: 'GET',
@@ -6383,7 +6618,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const shouldFallback = primaryUnusable || primaryIrrelevant;
 
     if (shouldFallback) {
-      if (allowSecondaryFallback && !skipSecondaryFallback) {
+      if (allowResolverFallback && !skipSecondaryFallback) {
         try {
           const resolverFallback = await queryResolveSearchFallback({
             queryParams: guardedQueryParams,
@@ -6473,13 +6708,19 @@ async function proxyAgentSearchToBackend(req, res) {
       }),
     );
   } catch (err) {
-    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+    const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
+      resolverFirstResult,
+      queryText,
+    );
     const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi');
+    const allowResolverFallback = shouldAllowResolverFallback('find_products_multi');
     const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
+    const allowResolverFallbackOnException =
+      allowResolverFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
     const allowSecondaryFallbackOnException =
       allowSecondaryFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
     if (queryText) {
-      if (allowSecondaryFallbackOnException) {
+      if (allowResolverFallbackOnException) {
         try {
           const resolverFallback = await queryResolveSearchFallback({
             queryParams: guardedQueryParams,
@@ -11873,9 +12114,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         const queryText = resolverQueryText || searchQueryText;
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
-        const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+        const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
+          resolverFirstResult,
+          queryText,
+        );
+        const allowResolverFallback = shouldAllowResolverFallback(operation);
         const allowSecondaryFallback = shouldAllowSecondaryFallback(operation);
         const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
+        const allowResolverFallbackOnException =
+          allowResolverFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
         const allowSecondaryFallbackOnException =
           allowSecondaryFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
         if (queryText) {
@@ -11886,7 +12133,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 ? 'upstream_timeout'
                 : 'upstream_exception';
 
-          if (allowSecondaryFallbackOnException) {
+          if (allowResolverFallbackOnException) {
             try {
               const resolverFallback = await queryResolveSearchFallback({
                 queryParams: resolverQueryParams,
@@ -12013,13 +12260,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
       const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
       const shouldFallback = primaryUnusable || primaryIrrelevant;
-      const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(resolverFirstResult);
+      const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
+        resolverFirstResult,
+        queryText,
+      );
+      const allowResolverFallback = shouldAllowResolverFallback(operation);
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation);
 
       if (shouldFallback) {
         let replacedByFallback = false;
 
-        if (allowSecondaryFallback && !skipSecondaryFallback) {
+        if (allowResolverFallback && !skipSecondaryFallback) {
           try {
             const resolverFallback = await queryResolveSearchFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,

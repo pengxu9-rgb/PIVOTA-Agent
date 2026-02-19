@@ -28,6 +28,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       PROXY_SEARCH_RESOLVER_DETAIL_ENABLED: process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED,
       PROXY_SEARCH_INVOKE_FALLBACK_ENABLED:
         process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
+      AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
+        process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -40,6 +42,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
     delete process.env.DATABASE_URL;
+    process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
   afterEach(() => {
@@ -90,6 +93,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
         prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
+    }
+    if (prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED === undefined) {
+      delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
+    } else {
+      process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED =
+        prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     }
   });
 
@@ -146,10 +155,169 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resolverSpy).not.toHaveBeenCalled();
   });
 
+  test('resolver-first retries sanitized candidate for noisy lookup query', async () => {
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = 'true';
+
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886500127048';
+    const resolverSpy = jest.fn().mockImplementation(async ({ query }) => {
+      if (String(query || '').trim() === 'ipsa') {
+        return {
+          resolved: true,
+          product_ref: {
+            merchant_id: resolvedMerchantId,
+            product_id: resolvedProductId,
+          },
+          confidence: 1,
+          reason: 'stable_alias_ref',
+          reason_code: 'stable_alias_match',
+          metadata: { latency_ms: 10, sources: [{ source: 'stable_alias_ref', ok: true, count: 1 }] },
+        };
+      }
+      return {
+        resolved: false,
+        reason: 'no_candidates',
+        reason_code: 'no_candidates',
+        metadata: { latency_ms: 5, sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }] },
+      };
+    });
+
+    jest.doMock('../../src/services/productGroundingResolver', () => {
+      const actual = jest.requireActual('../../src/services/productGroundingResolver');
+      return {
+        ...actual,
+        resolveProductRef: resolverSpy,
+      };
+    });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        product: {
+          id: resolvedProductId,
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: 'IPSA Time Reset Aqua',
+          price: 45,
+          currency: 'USD',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'ipsa的商品有吗？',
+        lang: 'zh',
+        limit: 5,
+        offset: 0,
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'resolver_first',
+        }),
+      }),
+    );
+  });
+
   test('prefers resolver fallback when primary search returns unusable shell rows', async () => {
     const queryText = 'The Ordinary Niacinamide 10% + Zinc 1%';
     const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
     const resolvedProductId = 'prod_pref_1';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: true,
+        product_ref: {
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        confidence: 1,
+        reason: 'stable_alias_ref',
+        metadata: { latency_ms: 8 },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        total: 1,
+        page: 1,
+        page_size: 1,
+        products: [
+          {
+            id: null,
+            product_id: null,
+            merchant_id: null,
+            merchant_name: null,
+            title: null,
+            name: null,
+          },
+        ],
+        metadata: {
+          source: 'agent_sdk_fixed_delegate',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        lang: 'en',
+        limit: 5,
+        offset: 0,
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'resolver_after_primary',
+        }),
+      }),
+    );
+  });
+
+  test('resolver fallback still works when invoke secondary fallback is disabled', async () => {
+    const queryText = 'The Ordinary Niacinamide 10% + Zinc 1%';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = 'prod_pref_1';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
 
     jest.doMock('../../src/services/productGroundingResolver', () => ({
       resolveProductRef: jest.fn().mockResolvedValue({
