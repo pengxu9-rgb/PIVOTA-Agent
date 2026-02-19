@@ -7,8 +7,65 @@ const MAX_MEM_ENTRIES = (() => {
   return Math.max(100, Math.min(20000, v));
 })();
 
+const DB_RETRY_COOLDOWN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PRELABEL_DB_RETRY_COOLDOWN_MS || 15000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 15000;
+  return Math.max(1000, Math.min(300000, v));
+})();
+
+const RECO_LABEL_SUGGESTIONS_TABLE_SQL = [
+  `
+  CREATE TABLE IF NOT EXISTS reco_label_suggestions (
+    id TEXT PRIMARY KEY,
+    anchor_product_id TEXT NOT NULL,
+    block TEXT NOT NULL,
+    candidate_product_id TEXT NOT NULL,
+    suggested_label TEXT NOT NULL,
+    wrong_block_target TEXT NULL,
+    confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
+    rationale_user_visible TEXT NOT NULL DEFAULT '',
+    flags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    model_name TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    request_id TEXT NULL,
+    session_id TEXT NULL,
+    snapshot JSONB NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_reco_label_suggestions_anchor_block
+    ON reco_label_suggestions(anchor_product_id, block)
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_reco_label_suggestions_candidate
+    ON reco_label_suggestions(candidate_product_id)
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_reco_label_suggestions_confidence
+    ON reco_label_suggestions(confidence DESC)
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_reco_label_suggestions_input_hash
+    ON reco_label_suggestions(input_hash)
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_reco_label_suggestions_created_at
+    ON reco_label_suggestions(created_at DESC)
+  `,
+  `
+  CREATE UNIQUE INDEX IF NOT EXISTS uniq_reco_label_suggestions_input_model_prompt_block
+    ON reco_label_suggestions(input_hash, model_name, prompt_version, block)
+  `,
+];
+
 const state = {
   dbUnavailable: false,
+  dbUnavailableUntilMs: 0,
+  tableReady: false,
+  tableInitPromise: null,
   memById: new Map(),
   memByInput: new Map(),
 };
@@ -94,6 +151,83 @@ function inputLookupKey({ inputHash, modelName, promptVersion, block }) {
   return `${normalizeString(inputHash, 128)}::${normalizeString(modelName, 120)}::${normalizeString(promptVersion, 120)}::${normalizeString(block, 64)}`.toLowerCase();
 }
 
+function isMissingTableError(err) {
+  return String(err?.code || '') === '42P01';
+}
+
+function markDbUnavailable(err) {
+  const code = String(err?.code || '');
+  if (code === 'NO_DATABASE' || code === '42P01') {
+    state.dbUnavailable = true;
+    state.dbUnavailableUntilMs = Date.now() + DB_RETRY_COOLDOWN_MS;
+  }
+}
+
+function shouldUseDbNow() {
+  if (!state.dbUnavailable) return true;
+  if (Date.now() >= Number(state.dbUnavailableUntilMs || 0)) {
+    state.dbUnavailable = false;
+    state.dbUnavailableUntilMs = 0;
+    return true;
+  }
+  return false;
+}
+
+async function ensureRecoLabelSuggestionsTable() {
+  if (state.tableReady) return true;
+  if (state.tableInitPromise) return state.tableInitPromise;
+  state.tableInitPromise = (async () => {
+    for (const stmt of RECO_LABEL_SUGGESTIONS_TABLE_SQL) {
+      await query(stmt);
+    }
+    state.tableReady = true;
+    return true;
+  })()
+    .catch((err) => {
+      markDbUnavailable(err);
+      return false;
+    })
+    .finally(() => {
+      state.tableInitPromise = null;
+    });
+  return state.tableInitPromise;
+}
+
+function selectMemRows({ anchor = '', blockToken = '', confCap = null, wrongBlockOnly = false, max = 120 } = {}) {
+  return Array.from(state.memById.values())
+    .filter((row) => (anchor ? row.anchor_product_id === anchor : true))
+    .filter((row) => (blockToken ? row.block === blockToken : true))
+    .filter((row) => (confCap == null ? true : row.confidence <= confCap))
+    .filter((row) => (wrongBlockOnly ? row.suggested_label === 'wrong_block' : true))
+    .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+    .slice(0, max);
+}
+
+function rowIdentity(row) {
+  const id = normalizeString(row?.id, 128);
+  if (id) return `id:${id}`;
+  return [
+    normalizeString(row?.anchor_product_id, 200),
+    normalizeString(row?.block, 64),
+    normalizeString(row?.candidate_product_id, 200),
+    normalizeString(row?.input_hash, 128),
+  ].join('::');
+}
+
+function mergeRows(primary = [], secondary = [], max = 120) {
+  const seen = new Set();
+  const out = [];
+  for (const row of [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])]) {
+    if (!row || typeof row !== 'object') continue;
+    const key = rowIdentity(row);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  out.sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime());
+  return out.slice(0, max);
+}
+
 function coerceSuggestion(entry = {}) {
   const nowIso = new Date().toISOString();
   const id = normalizeString(entry.id, 128) || crypto.randomUUID();
@@ -132,10 +266,10 @@ async function getSuggestionByInputHash({ inputHash, modelName, promptVersion, b
     }
   }
 
-  if (state.dbUnavailable) return null;
-  try {
+  if (!shouldUseDbNow()) return null;
+  const run = async () => {
     const ttl = Number.isFinite(Number(ttlMs)) ? Math.max(0, Math.trunc(Number(ttlMs))) : 0;
-    const res = await query(
+    return query(
       `
       SELECT id, anchor_product_id, block, candidate_product_id, suggested_label, wrong_block_target,
              confidence, rationale_user_visible, flags, model_name, prompt_version, input_hash,
@@ -157,11 +291,33 @@ async function getSuggestionByInputHash({ inputHash, modelName, promptVersion, b
         ttl,
       ],
     );
+  };
+  try {
+    const res = await run();
     const row = mapRow(res?.rows?.[0]);
     if (row) touchMem(row);
+    state.dbUnavailable = false;
+    state.dbUnavailableUntilMs = 0;
     return row || null;
   } catch (err) {
-    if (String(err?.code || '') === '42P01' || String(err?.code || '') === 'NO_DATABASE') state.dbUnavailable = true;
+    if (isMissingTableError(err)) {
+      const initialized = await ensureRecoLabelSuggestionsTable();
+      if (initialized) {
+        try {
+          const retry = await run();
+          const row = mapRow(retry?.rows?.[0]);
+          if (row) touchMem(row);
+          state.dbUnavailable = false;
+          state.dbUnavailableUntilMs = 0;
+          return row || null;
+        } catch (retryErr) {
+          markDbUnavailable(retryErr);
+          return null;
+        }
+      }
+    } else {
+      markDbUnavailable(err);
+    }
     return null;
   }
 }
@@ -169,55 +325,73 @@ async function getSuggestionByInputHash({ inputHash, modelName, promptVersion, b
 async function upsertSuggestion(entry = {}) {
   const normalized = coerceSuggestion(entry);
   touchMem(normalized);
-  if (state.dbUnavailable) return normalized;
+  if (!shouldUseDbNow()) return normalized;
+  const run = async () => query(
+    `
+    INSERT INTO reco_label_suggestions (
+      id, anchor_product_id, block, candidate_product_id, suggested_label, wrong_block_target,
+      confidence, rationale_user_visible, flags, model_name, prompt_version, input_hash,
+      request_id, session_id, snapshot, created_at, updated_at
+    )
+    VALUES (
+      $1, $2, $3, $4, $5, $6,
+      $7, $8, $9::jsonb, $10, $11, $12,
+      $13, $14, $15::jsonb, $16::timestamptz, $17::timestamptz
+    )
+    ON CONFLICT (input_hash, model_name, prompt_version, block) DO UPDATE SET
+      anchor_product_id = EXCLUDED.anchor_product_id,
+      candidate_product_id = EXCLUDED.candidate_product_id,
+      suggested_label = EXCLUDED.suggested_label,
+      wrong_block_target = EXCLUDED.wrong_block_target,
+      confidence = EXCLUDED.confidence,
+      rationale_user_visible = EXCLUDED.rationale_user_visible,
+      flags = EXCLUDED.flags,
+      request_id = EXCLUDED.request_id,
+      session_id = EXCLUDED.session_id,
+      snapshot = EXCLUDED.snapshot,
+      updated_at = now()
+    `,
+    [
+      normalized.id,
+      normalized.anchor_product_id,
+      normalized.block,
+      normalized.candidate_product_id,
+      normalized.suggested_label,
+      normalized.wrong_block_target,
+      normalized.confidence,
+      normalized.rationale_user_visible,
+      stableJson(normalized.flags),
+      normalized.model_name,
+      normalized.prompt_version,
+      normalized.input_hash,
+      normalized.request_id,
+      normalized.session_id,
+      stableJson(normalized.snapshot),
+      normalized.created_at,
+      normalized.updated_at,
+    ],
+  );
   try {
-    await query(
-      `
-      INSERT INTO reco_label_suggestions (
-        id, anchor_product_id, block, candidate_product_id, suggested_label, wrong_block_target,
-        confidence, rationale_user_visible, flags, model_name, prompt_version, input_hash,
-        request_id, session_id, snapshot, created_at, updated_at
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9::jsonb, $10, $11, $12,
-        $13, $14, $15::jsonb, $16::timestamptz, $17::timestamptz
-      )
-      ON CONFLICT (input_hash, model_name, prompt_version, block) DO UPDATE SET
-        anchor_product_id = EXCLUDED.anchor_product_id,
-        candidate_product_id = EXCLUDED.candidate_product_id,
-        suggested_label = EXCLUDED.suggested_label,
-        wrong_block_target = EXCLUDED.wrong_block_target,
-        confidence = EXCLUDED.confidence,
-        rationale_user_visible = EXCLUDED.rationale_user_visible,
-        flags = EXCLUDED.flags,
-        request_id = EXCLUDED.request_id,
-        session_id = EXCLUDED.session_id,
-        snapshot = EXCLUDED.snapshot,
-        updated_at = now()
-      `,
-      [
-        normalized.id,
-        normalized.anchor_product_id,
-        normalized.block,
-        normalized.candidate_product_id,
-        normalized.suggested_label,
-        normalized.wrong_block_target,
-        normalized.confidence,
-        normalized.rationale_user_visible,
-        stableJson(normalized.flags),
-        normalized.model_name,
-        normalized.prompt_version,
-        normalized.input_hash,
-        normalized.request_id,
-        normalized.session_id,
-        stableJson(normalized.snapshot),
-        normalized.created_at,
-        normalized.updated_at,
-      ],
-    );
+    await run();
+    state.dbUnavailable = false;
+    state.dbUnavailableUntilMs = 0;
   } catch (err) {
-    if (String(err?.code || '') === '42P01' || String(err?.code || '') === 'NO_DATABASE') state.dbUnavailable = true;
+    if (isMissingTableError(err)) {
+      const initialized = await ensureRecoLabelSuggestionsTable();
+      if (initialized) {
+        try {
+          await run();
+          state.dbUnavailable = false;
+          state.dbUnavailableUntilMs = 0;
+          return normalized;
+        } catch (retryErr) {
+          markDbUnavailable(retryErr);
+          return normalized;
+        }
+      }
+    } else {
+      markDbUnavailable(err);
+    }
   }
   return normalized;
 }
@@ -226,12 +400,9 @@ async function getSuggestionsByAnchor({ anchorProductId, block, limit = 120 } = 
   const anchor = normalizeString(anchorProductId, 200);
   const blockToken = normalizeString(block, 64);
   const max = Math.max(1, Math.min(500, Number(limit) || 120));
-  const memRows = Array.from(state.memById.values())
-    .filter((row) => row.anchor_product_id === anchor && (!blockToken || row.block === blockToken))
-    .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
-    .slice(0, max);
-  if (state.dbUnavailable) return memRows;
-  try {
+  const memRows = selectMemRows({ anchor, blockToken, max });
+  if (!shouldUseDbNow()) return memRows;
+  const run = async () => {
     const params = [anchor];
     let where = 'anchor_product_id = $1';
     if (blockToken) {
@@ -239,7 +410,7 @@ async function getSuggestionsByAnchor({ anchorProductId, block, limit = 120 } = 
       where += ` AND block = $${params.length}`;
     }
     params.push(max);
-    const res = await query(
+    return query(
       `
       SELECT id, anchor_product_id, block, candidate_product_id, suggested_label, wrong_block_target,
              confidence, rationale_user_visible, flags, model_name, prompt_version, input_hash,
@@ -251,11 +422,33 @@ async function getSuggestionsByAnchor({ anchorProductId, block, limit = 120 } = 
       `,
       params,
     );
+  };
+  try {
+    const res = await run();
     const rows = (Array.isArray(res?.rows) ? res.rows : []).map(mapRow).filter(Boolean);
     for (const row of rows) touchMem(row);
-    return rows;
+    state.dbUnavailable = false;
+    state.dbUnavailableUntilMs = 0;
+    return mergeRows(rows, memRows, max);
   } catch (err) {
-    if (String(err?.code || '') === '42P01' || String(err?.code || '') === 'NO_DATABASE') state.dbUnavailable = true;
+    if (isMissingTableError(err)) {
+      const initialized = await ensureRecoLabelSuggestionsTable();
+      if (initialized) {
+        try {
+          const retry = await run();
+          const rows = (Array.isArray(retry?.rows) ? retry.rows : []).map(mapRow).filter(Boolean);
+          for (const row of rows) touchMem(row);
+          state.dbUnavailable = false;
+          state.dbUnavailableUntilMs = 0;
+          return mergeRows(rows, memRows, max);
+        } catch (retryErr) {
+          markDbUnavailable(retryErr);
+          return memRows;
+        }
+      }
+    } else {
+      markDbUnavailable(err);
+    }
     return memRows;
   }
 }
@@ -270,19 +463,23 @@ async function listQueueCandidatesWithSuggestions({
   const max = Math.max(1, Math.min(500, Number(limit) || 100));
   const blockToken = normalizeString(block, 64);
   const anchor = normalizeString(anchorProductId, 200);
-  const confCap = Number.isFinite(Number(confidenceLte)) ? Math.max(0, Math.min(1, Number(confidenceLte))) : null;
+  const hasConfidenceCap =
+    confidenceLte != null &&
+    !(typeof confidenceLte === 'string' && !confidenceLte.trim());
+  const confCap = hasConfidenceCap && Number.isFinite(Number(confidenceLte))
+    ? Math.max(0, Math.min(1, Number(confidenceLte)))
+    : null;
+  const memRows = selectMemRows({
+    anchor,
+    blockToken,
+    confCap,
+    wrongBlockOnly,
+    max,
+  });
 
-  if (state.dbUnavailable) {
-    return Array.from(state.memById.values())
-      .filter((row) => (!blockToken || row.block === blockToken))
-      .filter((row) => (!anchor || row.anchor_product_id === anchor))
-      .filter((row) => (confCap == null ? true : row.confidence <= confCap))
-      .filter((row) => (wrongBlockOnly ? row.suggested_label === 'wrong_block' : true))
-      .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
-      .slice(0, max);
-  }
+  if (!shouldUseDbNow()) return memRows;
 
-  try {
+  const run = async () => {
     const params = [];
     const where = [];
     if (blockToken) {
@@ -302,7 +499,7 @@ async function listQueueCandidatesWithSuggestions({
       where.push(`s.suggested_label = $${params.length}`);
     }
     params.push(max);
-    const res = await query(
+    return query(
       `
       SELECT s.id, s.anchor_product_id, s.block, s.candidate_product_id, s.suggested_label, s.wrong_block_target,
              s.confidence, s.rationale_user_visible, s.flags, s.model_name, s.prompt_version, s.input_hash,
@@ -314,12 +511,34 @@ async function listQueueCandidatesWithSuggestions({
       `,
       params,
     );
+  };
+  try {
+    const res = await run();
     const rows = (Array.isArray(res?.rows) ? res.rows : []).map(mapRow).filter(Boolean);
     for (const row of rows) touchMem(row);
-    return rows;
+    state.dbUnavailable = false;
+    state.dbUnavailableUntilMs = 0;
+    return mergeRows(rows, memRows, max);
   } catch (err) {
-    if (String(err?.code || '') === '42P01' || String(err?.code || '') === 'NO_DATABASE') state.dbUnavailable = true;
-    return [];
+    if (isMissingTableError(err)) {
+      const initialized = await ensureRecoLabelSuggestionsTable();
+      if (initialized) {
+        try {
+          const retry = await run();
+          const rows = (Array.isArray(retry?.rows) ? retry.rows : []).map(mapRow).filter(Boolean);
+          for (const row of rows) touchMem(row);
+          state.dbUnavailable = false;
+          state.dbUnavailableUntilMs = 0;
+          return mergeRows(rows, memRows, max);
+        } catch (retryErr) {
+          markDbUnavailable(retryErr);
+          return memRows;
+        }
+      }
+    } else {
+      markDbUnavailable(err);
+    }
+    return memRows;
   }
 }
 
