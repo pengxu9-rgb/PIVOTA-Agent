@@ -2707,6 +2707,82 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   };
 }
 
+function buildResolverReferenceOnlyResult({
+  queryText,
+  resolved,
+  resolvedQueryUsed,
+  resolvedMerchantId,
+  resolvedProductId,
+  resolveSources,
+  reason,
+}) {
+  const candidateTitle = Array.isArray(resolved?.candidates)
+    ? String(resolved.candidates?.[0]?.title || '').trim()
+    : '';
+  const resolvedTitle = String(
+    candidateTitle ||
+      resolved?.title ||
+      resolved?.alias ||
+      resolvedQueryUsed ||
+      queryText,
+  ).trim();
+  const productRow = {
+    id: resolvedProductId,
+    product_id: resolvedProductId,
+    merchant_id: resolvedMerchantId,
+    platform_product_id: resolvedProductId,
+    ...(resolvedTitle ? { title: resolvedTitle, name: resolvedTitle } : {}),
+    canonical_product_ref: {
+      merchant_id: resolvedMerchantId,
+      product_id: resolvedProductId,
+    },
+  };
+
+  const normalized = normalizeAgentProductsListResponse({
+    status: 'success',
+    success: true,
+    products: [productRow],
+    total: 1,
+    page: 1,
+    page_size: 1,
+    metadata: {
+      query_source: 'agent_products_resolver_ref_fallback',
+      resolve_reason: resolved?.reason || null,
+      resolve_reason_code:
+        resolved?.reason_code ||
+        resolved?.metadata?.resolve_reason_code ||
+        'detail_unavailable_ref_only',
+      resolve_confidence:
+        Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
+      resolve_latency_ms:
+        Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+      resolve_query_used: resolvedQueryUsed || queryText,
+      resolve_detail_source: 'reference_only',
+    },
+  });
+
+  return {
+    status: 200,
+    usableCount: countUsableSearchProducts(normalized?.products),
+    resolved: true,
+    resolve_reason: resolved?.reason || null,
+    resolve_reason_code:
+      resolved?.reason_code ||
+      resolved?.metadata?.resolve_reason_code ||
+      'detail_unavailable_ref_only',
+    resolve_confidence:
+      Number.isFinite(Number(resolved?.confidence)) ? Number(resolved.confidence) : null,
+    resolve_latency_ms:
+      Number.isFinite(Number(resolved?.metadata?.latency_ms)) ? Number(resolved.metadata.latency_ms) : null,
+    resolve_sources: resolveSources,
+    resolve_query_used: resolvedQueryUsed || queryText,
+    data: withProxySearchFallbackMetadata(normalized, {
+      applied: true,
+      reason: reason || 'resolver_ref_only',
+    }),
+  };
+}
+
 async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, fetchDetail = true }) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
@@ -2791,6 +2867,18 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
           product_id: String(stableAliasMatch.product_ref.product_id || '').trim(),
           merchant_id: String(stableAliasMatch.product_ref.merchant_id || '').trim(),
         },
+        candidates: [
+          {
+            title: String(stableAliasMatch.title || stableAliasMatch.alias || candidateText || '').trim() || null,
+            product_ref: {
+              product_id: String(stableAliasMatch.product_ref.product_id || '').trim(),
+              merchant_id: String(stableAliasMatch.product_ref.merchant_id || '').trim(),
+            },
+            score: Number.isFinite(Number(stableAliasMatch.score))
+              ? Number(stableAliasMatch.score)
+              : 1,
+          },
+        ],
         metadata: {
           latency_ms: 0,
           sources: [
@@ -2911,6 +2999,33 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
   }
 
   if (fetchDetail && PROXY_SEARCH_RESOLVER_DETAIL_ENABLED && !detail) {
+    if (isLookupStyleSearchQuery(queryText, extractSearchAnchorTokens(queryText))) {
+      const refOnlyResult = buildResolverReferenceOnlyResult({
+        queryText,
+        resolved,
+        resolvedQueryUsed,
+        resolvedMerchantId,
+        resolvedProductId,
+        resolveSources,
+        reason,
+      });
+      setProxySearchResolverCacheEntry(
+        resolverCacheKey,
+        refOnlyResult,
+        PROXY_SEARCH_RESOLVER_MISS_CACHE_TTL_MS,
+      );
+      logger.info(
+        {
+          query: queryText,
+          query_used: resolvedQueryUsed || queryText,
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        'proxy agent search resolver fallback returned reference-only candidate (detail unavailable)',
+      );
+      return refOnlyResult;
+    }
+
     const missResult = {
       status: 200,
       usableCount: 0,
@@ -3115,7 +3230,11 @@ function shouldUseResolverFirstSearch({ operation, metadata, queryText }) {
   if (!source) return true;
   const isCatalogSource = isResolverFirstCatalogSource(source);
   if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && isCatalogSource) {
-    return isStrongResolverFirstQuery(queryText);
+    const anchorTokens = extractSearchAnchorTokens(queryText);
+    return (
+      isStrongResolverFirstQuery(queryText) ||
+      isLookupStyleSearchQuery(queryText, anchorTokens)
+    );
   }
 
   return isCatalogSource || isAuroraSource(source);
@@ -12519,13 +12638,26 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     let maybePolicy = upstreamData;
     if (operation === 'find_products_multi' && effectiveIntent) {
-      maybePolicy = applyFindProductsMultiPolicy({
-        response: upstreamData,
-        intent: effectiveIntent,
-        requestPayload: effectivePayload,
-        metadata,
-        rawUserQuery,
-      });
+      const upstreamMetadata =
+        upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+          ? (upstreamData.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
+              ? upstreamData.metadata
+              : {})
+          : {};
+      const policyQueryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const skipPolicyForLookupSoftFallback =
+        upstreamMetadata.query_source === 'agent_products_error_fallback' &&
+        isLookupStyleSearchQuery(policyQueryText, extractSearchAnchorTokens(policyQueryText));
+
+      maybePolicy = skipPolicyForLookupSoftFallback
+        ? upstreamData
+        : applyFindProductsMultiPolicy({
+            response: upstreamData,
+            intent: effectiveIntent,
+            requestPayload: effectivePayload,
+            metadata,
+            rawUserQuery,
+          });
 
       const effTarget = effectiveIntent?.target_object?.type || 'unknown';
       const productsAfterPolicy = Array.isArray(maybePolicy.products) ? maybePolicy.products : [];

@@ -509,7 +509,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('skips resolver fallback row when detail cannot be hydrated', async () => {
+  test('returns resolver reference-only row when lookup detail cannot be hydrated', async () => {
     const queryText = 'IPSA Time Reset Aqua';
     const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
     const resolvedProductId = '9886500127048';
@@ -565,13 +565,19 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_error_fallback',
+        query_source: 'agent_products_resolver_ref_fallback',
         proxy_search_fallback: expect.objectContaining({
           applied: true,
-          reason: 'primary_status_5xx',
+          reason: 'resolver_first',
         }),
       }),
     );

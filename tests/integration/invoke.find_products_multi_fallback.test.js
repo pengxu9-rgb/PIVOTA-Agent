@@ -268,8 +268,8 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('does not run resolver-first for non-strong shopping queries when strong-only is enabled', async () => {
-    const queryText = 'ipsa toner for dry skin';
+  test('does not run resolver-first for broad recommendation queries when strong-only is enabled', async () => {
+    const queryText = 'best toner for very dry sensitive skin under $30';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
 
@@ -297,7 +297,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
           {
             product_id: 'prod_ipsa_toner_1',
             merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'IPSA toner for dry skin',
+            title: 'Hydrating toner for sensitive skin',
           },
         ],
         total: 1,
@@ -683,6 +683,85 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         proxy_search_fallback: expect.objectContaining({
           applied: true,
           reason: 'resolver_after_primary',
+        }),
+      }),
+    );
+  });
+
+  test('returns resolver reference-only row when lookup detail is unavailable', async () => {
+    const queryText = 'ipsa的商品有吗';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886500127048';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: true,
+        product_ref: {
+          merchant_id: resolvedMerchantId,
+          product_id: resolvedProductId,
+        },
+        confidence: 1,
+        reason: 'stable_alias_ref',
+        reason_code: 'stable_alias_match',
+        candidates: [{ title: 'IPSA Time Reset Aqua' }],
+        metadata: { latency_ms: 9, sources: [{ source: 'stable_alias_ref', ok: true, count: 1 }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(404, {
+        status: 'error',
+        error: { code: 'PRODUCT_NOT_FOUND', message: 'Product not found' },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'zh' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_resolver_ref_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'resolver_first',
         }),
       }),
     );
