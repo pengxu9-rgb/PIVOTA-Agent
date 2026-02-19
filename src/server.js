@@ -11431,16 +11431,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
       // Shopping Agent query search (no explicit merchant scope): prefer cache-first
       // lexical recall so we avoid upstream timeout cascades for common brand queries.
+      const cacheQueryText = String(rawUserQuery || queryText || '').trim();
       const isCrossMerchantQuerySearch =
-        !isCreatorUi && queryText.length > 0 && !hasMerchantScope;
+        !isCreatorUi && cacheQueryText.length > 0 && !hasMerchantScope;
       if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
-          const fromCache = await searchCrossMerchantFromCache(queryText, page, limit, { inStockOnly });
+          const fromCache = await searchCrossMerchantFromCache(cacheQueryText, page, limit, {
+            inStockOnly,
+          });
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
-          const lookupAnchorTokens = extractSearchAnchorTokens(queryText);
-          const isLookupQuery = isLookupStyleSearchQuery(queryText, lookupAnchorTokens);
+          const lookupAnchorTokens = extractSearchAnchorTokens(cacheQueryText);
+          const isLookupQuery = isLookupStyleSearchQuery(cacheQueryText, lookupAnchorTokens);
           const cacheHit = internalProducts.length > 0;
           let supplementedProducts = internalProducts;
           let supplementMeta = {
@@ -11475,7 +11478,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 try {
                   const supplement = await fetchExternalSeedSupplementFromBackend({
                     queryParams: {
-                      query: queryText,
+                      query: cacheQueryText,
                       ...(search.category ? { category: search.category } : {}),
                       ...(search.price_min != null || search.min_price != null
                         ? { min_price: search.price_min ?? search.min_price }
@@ -11520,7 +11523,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
                   };
                   logger.warn(
-                    { err: supplementErr?.message || String(supplementErr), query: queryText },
+                    { err: supplementErr?.message || String(supplementErr), query: cacheQueryText },
                     'Cross-merchant cache search supplement failed; returning internal cache results',
                   );
                 }
@@ -11528,8 +11531,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }
           }
           const effectiveProducts = supplementedProducts;
-          const cacheRelevant = queryText
-            ? isProxySearchFallbackRelevant({ products: effectiveProducts }, queryText)
+          const cacheRelevant = cacheQueryText
+            ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
             : true;
           const effectiveCacheHit =
             effectiveProducts.length > 0 &&
@@ -11538,7 +11541,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           crossMerchantCacheRouteDebug = {
             attempted: true,
             mode: 'search',
-            query: queryText,
+            query: cacheQueryText,
+            upstream_query: queryText,
             page,
             limit,
             in_stock_only: inStockOnly,
@@ -11600,14 +11604,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             return res.json(enriched);
           }
           logger.info(
-            { source, page, limit, inStockOnly, query: queryText },
+            { source, page, limit, inStockOnly, query: cacheQueryText },
             'Cross-merchant cache search returned empty; falling back to upstream',
           );
         } catch (err) {
           crossMerchantCacheRouteDebug = {
             attempted: true,
             mode: 'search',
-            query: queryText,
+            query: cacheQueryText,
+            upstream_query: queryText,
             page: search.page || 1,
             limit: search.limit || search.page_size || 20,
             in_stock_only: inStockOnly,
@@ -11615,7 +11620,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             error: String(err && err.message ? err.message : err),
           };
           logger.warn(
-            { err: err.message, source, query: queryText },
+            { err: err.message, source, query: cacheQueryText },
             'Cross-merchant cache search failed; falling back to upstream',
           );
         }

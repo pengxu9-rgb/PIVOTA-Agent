@@ -19,6 +19,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
       FIND_PRODUCTS_MULTI_VECTOR_ENABLED: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED,
+      FIND_PRODUCTS_MULTI_ROUTE_DEBUG: process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       CREATOR_CATALOG_CACHE_TTL_SECONDS: process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
       CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES: process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES,
@@ -30,6 +31,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     process.env.API_MODE = 'REAL';
     process.env.DATABASE_URL = 'postgres://test';
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
+    process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
@@ -53,6 +55,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       delete process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED;
     } else {
       process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = prevEnv.FIND_PRODUCTS_MULTI_VECTOR_ENABLED;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_ROUTE_DEBUG === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = prevEnv.FIND_PRODUCTS_MULTI_ROUTE_DEBUG;
     }
     if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
@@ -111,7 +118,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((q) => String(q.search_all_merchants || '') === 'true')
       .reply(200, {
         status: 'success',
         success: true,
@@ -222,6 +229,84 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products.length).toBeGreaterThan(0);
     expect(String(resp.body.products[0].merchant_id || '')).toBe('merch_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('uses raw user query for cache relevance when policy expands upstream query', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 5 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_brush_1',
+                  product_id: 'prod_brush_1',
+                  merchant_id: 'merch_1',
+                  title: 'Professional Makeup Brush Set',
+                  description: 'Foundation brush and powder brush kit',
+                  product_type: 'cosmetic tools',
+                  status: 'published',
+                  inventory_quantity: 7,
+                  attributes: {
+                    pivota: {
+                      domain: 'beauty',
+                      target_object: 'human',
+                      category_path: ['beauty', 'cosmetic_tools'],
+                    },
+                  },
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '有什么化妆刷推荐吗？',
+            page: 1,
+            limit: 1,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(String(resp.body.products[0].title || '').toLowerCase()).toContain('brush');
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.query).toBe('有什么化妆刷推荐吗？');
+    expect(
+      String(resp.body.metadata?.route_debug?.cross_merchant_cache?.upstream_query || '').toLowerCase(),
+    ).toContain('makeup tools');
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
