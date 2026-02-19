@@ -12645,9 +12645,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               : {})
           : {};
       const policyQueryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const isLookupPolicyQuery = isLookupStyleSearchQuery(
+        policyQueryText,
+        extractSearchAnchorTokens(policyQueryText),
+      );
+      const querySource = String(upstreamMetadata.query_source || '').trim();
+      const isResolverLookupSource =
+        querySource === 'agent_products_resolver_ref_fallback' ||
+        querySource === 'agent_products_resolver_fallback';
       const skipPolicyForLookupSoftFallback =
-        upstreamMetadata.query_source === 'agent_products_error_fallback' &&
-        isLookupStyleSearchQuery(policyQueryText, extractSearchAnchorTokens(policyQueryText));
+        (querySource === 'agent_products_error_fallback' && isLookupPolicyQuery) ||
+        (isResolverLookupSource && isLookupPolicyQuery);
 
       maybePolicy = skipPolicyForLookupSoftFallback
         ? upstreamData

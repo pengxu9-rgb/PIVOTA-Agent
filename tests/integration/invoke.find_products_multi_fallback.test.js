@@ -765,6 +765,8 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         }),
       }),
     );
+    expect(resp.body.reason_codes || []).toHaveLength(0);
+    expect(resp.body.intent).toBeUndefined();
   });
 
   test('uses resolver fallback when primary rows are usable but irrelevant for brand lookup', async () => {
