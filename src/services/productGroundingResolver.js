@@ -51,9 +51,9 @@ const LATIN_STOPWORDS = new Set([
   'stock',
 ]);
 const CJK_GENERIC_QUERY_TOKENS_RE =
-  /(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买|有吗|吗|呢|呀|吧|嘛|相关|推荐|有货|库存|的?(?:产品|商品))/g;
+  /(?:有没有|有无|有沒|有没|有什么|有什麼|有啥|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买|有吗|吗|呢|呀|吧|嘛|相关|推薦|推荐|有货|库存|的?(?:产品|商品))/g;
 const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
-const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
+const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|有什么|有什麼|有啥|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
 const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
 const KNOWN_STABLE_PRODUCT_REFS = [
   {
@@ -82,6 +82,9 @@ const KNOWN_STABLE_PRODUCT_REFS = [
     aliases: [
       'Winona Soothing Repair Serum',
       'winona soothing repair serum',
+      'Winona',
+      'winona',
+      '薇诺娜',
       '薇诺娜 舒缓 修护 精华',
       '薇诺娜修护精华',
       'a39dd7a3-5d80-4cb3-82e1-3bf2707f65fc',

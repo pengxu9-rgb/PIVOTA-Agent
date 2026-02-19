@@ -6,6 +6,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.dontMock('../../src/services/productGroundingResolver');
     jest.doMock('../../src/auroraBff/routes', () => ({
       mountAuroraBffRoutes: () => {},
       __internal: {},
@@ -854,6 +855,85 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
     expect(resp.body.reason_codes || []).toHaveLength(0);
     expect(resp.body.intent).toBeUndefined();
+  });
+
+  test('resolves zh Winona brand query via stable alias fallback', async () => {
+    const queryText = '有什么薇诺娜的商品推荐吗？';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886500749640';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+
+    const searchScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        product: {
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: 'Winona Soothing Repair Serum',
+          brand: 'Winona',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'zh' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_resolver_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+        }),
+      }),
+    );
+    expect(searchScope.isDone()).toBe(false);
   });
 
   test('uses resolver fallback when primary rows are usable but irrelevant for brand lookup', async () => {
