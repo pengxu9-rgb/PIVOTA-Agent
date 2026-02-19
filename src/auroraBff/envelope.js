@@ -150,6 +150,30 @@ function sanitizeProductAnalysisPayloadForPublic(payload) {
   const next = { ...p };
   delete next.missing_info_internal;
   delete next.internal_debug_codes;
+  delete next.llm_raw_response;
+  delete next.suggestion_debug;
+  delete next.input_hash;
+  delete next.candidate_tracking;
+  delete next.candidate_tracking_internal;
+  delete next.internal_attribution;
+  delete next.tracking;
+
+  for (const block of ['competitors', 'related_products', 'dupes']) {
+    const blockObj = isPlainObject(next[block]) ? { ...next[block] } : null;
+    if (!blockObj) continue;
+    const rows = Array.isArray(blockObj.candidates) ? blockObj.candidates : [];
+    blockObj.candidates = rows.map((row) => {
+      const item = isPlainObject(row) ? { ...row } : row;
+      if (!isPlainObject(item)) return item;
+      delete item.internal_reason_codes;
+      delete item.ref_id;
+      delete item.input_hash;
+      delete item.suggestion_debug;
+      delete item.llm_raw_response;
+      return item;
+    });
+    next[block] = blockObj;
+  }
   return next;
 }
 

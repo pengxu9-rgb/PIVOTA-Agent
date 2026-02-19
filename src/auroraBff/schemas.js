@@ -343,6 +343,9 @@ const RecoEmployeeFeedbackRequestSchema = z
     rank_position: z.number().int().min(1).max(100).optional(),
     pipeline_version: z.string().min(1).optional(),
     models: z.union([z.string().min(1), z.record(z.string(), z.any())]).optional(),
+    suggestion_id: z.string().min(1).optional(),
+    llm_suggested_label: z.enum(['relevant', 'not_relevant', 'wrong_block']).optional(),
+    llm_confidence: z.number().min(0).max(1).optional(),
     request_id: z.string().min(1).optional(),
     session_id: z.string().min(1).optional(),
     timestamp: z.number().int().positive().optional(),
@@ -404,6 +407,45 @@ const RecoAsyncUpdatesRequestSchema = z
   })
   .strict();
 
+const InternalPrelabelRequestSchema = z
+  .object({
+    anchor_product_id: z.string().min(1),
+    blocks: z.array(z.enum(['competitors', 'dupes', 'related_products'])).max(3).optional(),
+    max_candidates_per_block: z
+      .object({
+        competitors: z.number().int().min(1).max(40).optional(),
+        dupes: z.number().int().min(1).max(40).optional(),
+        related_products: z.number().int().min(1).max(40).optional(),
+      })
+      .strict()
+      .optional(),
+    force_refresh: z.boolean().optional(),
+    snapshot_payload: z.record(z.string(), z.any()).optional(),
+    request_id: z.string().min(1).optional(),
+    session_id: z.string().min(1).optional(),
+  })
+  .strict();
+
+const PrelabelSuggestionsQuerySchema = z
+  .object({
+    anchor_product_id: z.string().min(1),
+    block: z.enum(['competitors', 'dupes', 'related_products']).optional(),
+    limit: z.union([z.string().min(1), z.number().int().min(1).max(500)]).optional(),
+  })
+  .strict();
+
+const LabelQueueQuerySchema = z
+  .object({
+    block: z.enum(['competitors', 'dupes', 'related_products']).optional(),
+    limit: z.union([z.string().min(1), z.number().int().min(1).max(500)]).optional(),
+    anchor_product_id: z.string().min(1).optional(),
+    low_confidence: z.union([z.string().min(1), z.boolean()]).optional(),
+    wrong_block_only: z.union([z.string().min(1), z.boolean()]).optional(),
+    exploration_only: z.union([z.string().min(1), z.boolean()]).optional(),
+    missing_info_only: z.union([z.string().min(1), z.boolean()]).optional(),
+  })
+  .strict();
+
 module.exports = {
   LanguageSchema,
   TriggerSourceSchema,
@@ -438,4 +480,7 @@ module.exports = {
   RecoEmployeeFeedbackRequestSchema,
   RecoInterleaveClickRequestSchema,
   RecoAsyncUpdatesRequestSchema,
+  InternalPrelabelRequestSchema,
+  PrelabelSuggestionsQuerySchema,
+  LabelQueueQuerySchema,
 };

@@ -29,6 +29,15 @@ const {
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
   setRecoGuardrailRates,
+  recordPrelabelRequest,
+  recordPrelabelSuccess,
+  recordPrelabelInvalidJson,
+  recordPrelabelCacheHit,
+  observePrelabelGeminiLatency,
+  recordSuggestionsGeneratedPerBlock,
+  recordQueueItemsServed,
+  setPrelabelCacheHitRate,
+  setLlmSuggestionOverturnedRate,
 } = require('../src/auroraBff/visionMetrics');
 
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
@@ -282,4 +291,29 @@ test('vision metrics: dogfood reco feedback/interleave/exploration/async counter
     metrics,
     /reco_async_update_items_changed_count\{block="competitors",mode="main_path"\} 3/,
   );
+});
+
+test('vision metrics: prelabel counters/gauges/histogram are exported', () => {
+  resetVisionMetrics();
+  recordPrelabelRequest({ block: 'competitors', mode: 'main_path', delta: 2 });
+  recordPrelabelSuccess({ block: 'competitors', mode: 'main_path', delta: 1 });
+  recordPrelabelInvalidJson({ block: 'competitors', mode: 'main_path', delta: 1 });
+  recordPrelabelCacheHit({ block: 'competitors', mode: 'main_path', delta: 1 });
+  recordSuggestionsGeneratedPerBlock({ block: 'competitors', mode: 'main_path', delta: 2 });
+  recordQueueItemsServed({ block: 'competitors', delta: 3 });
+  observePrelabelGeminiLatency({ latencyMs: 120 });
+  observePrelabelGeminiLatency({ latencyMs: 640 });
+  setPrelabelCacheHitRate(0.5);
+  setLlmSuggestionOverturnedRate(0.25);
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /prelabel_requests_total\{block="competitors",mode="main_path"\} 2/);
+  assert.match(metrics, /prelabel_success_total\{block="competitors",mode="main_path"\} 1/);
+  assert.match(metrics, /prelabel_invalid_json_total\{block="competitors",mode="main_path"\} 1/);
+  assert.match(metrics, /prelabel_cache_hit_total\{block="competitors",mode="main_path"\} 1/);
+  assert.match(metrics, /suggestions_generated_per_block\{block="competitors",mode="main_path"\} 2/);
+  assert.match(metrics, /queue_items_served\{block="competitors"\} 3/);
+  assert.match(metrics, /prelabel_cache_hit_rate 0\.5\b/);
+  assert.match(metrics, /llm_suggestion_overturned_rate 0\.25\b/);
+  assert.match(metrics, /prelabel_gemini_latency_ms_count 2/);
 });

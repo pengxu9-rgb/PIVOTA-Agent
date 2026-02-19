@@ -1,7 +1,12 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { query } = require('../db');
 
 const latestFeedbackByKey = new Map();
+const state = {
+  dbUnavailable: false,
+};
 
 function isoDateKey(d = new Date()) {
   const yyyy = String(d.getUTCFullYear());
@@ -36,6 +41,64 @@ function appendJsonlSink({ dir, row }) {
   fs.appendFileSync(filePath, `${JSON.stringify(row)}\n`);
 }
 
+function stableJson(value) {
+  try {
+    return JSON.stringify(value == null ? null : value);
+  } catch {
+    return 'null';
+  }
+}
+
+async function writeFeedbackToDb(normalized, logger) {
+  if (state.dbUnavailable) return;
+  try {
+    await query(
+      `
+      INSERT INTO reco_employee_feedback_events (
+        id, anchor_product_id, block, candidate_product_id, candidate_name, feedback_type, wrong_block_target,
+        reason_tags, was_exploration_slot, rank_position, pipeline_version, models,
+        request_id, session_id, suggestion_id, llm_suggested_label, llm_confidence,
+        timestamp_ms, received_at, created_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8::jsonb, $9, $10, $11, $12::jsonb,
+        $13, $14, $15, $16, $17,
+        $18, $19::timestamptz, now()
+      )
+      `,
+      [
+        crypto.randomUUID(),
+        normalized.anchor_product_id,
+        normalized.block,
+        normalized.candidate_product_id || null,
+        normalized.candidate_name || null,
+        normalized.feedback_type,
+        normalized.wrong_block_target || null,
+        stableJson(normalized.reason_tags),
+        normalized.was_exploration_slot === true,
+        normalized.rank_position,
+        normalized.pipeline_version || null,
+        stableJson(normalized.models),
+        normalized.request_id || null,
+        normalized.session_id || null,
+        normalized.suggestion_id || null,
+        normalized.llm_suggested_label || null,
+        Number.isFinite(Number(normalized.llm_confidence)) ? Number(normalized.llm_confidence) : null,
+        Number.isFinite(Number(normalized.timestamp)) ? Number(normalized.timestamp) : Date.now(),
+        normalized.received_at,
+      ],
+    );
+  } catch (err) {
+    const code = String(err?.code || '');
+    if (code === 'NO_DATABASE' || code === '42P01') {
+      state.dbUnavailable = true;
+      return;
+    }
+    logger?.warn?.({ err: err?.message || String(err) }, 'reco employee feedback db write failed');
+  }
+}
+
 function dedupeKey(event) {
   return [
     normalizeString(event.session_id, 'unknown'),
@@ -60,6 +123,9 @@ function recordRecoEmployeeFeedback(event, { logger } = {}) {
     rank_position: Number.isFinite(Number(event.rank_position)) ? Math.max(1, Math.trunc(Number(event.rank_position))) : 1,
     pipeline_version: normalizeString(event.pipeline_version, 'unknown'),
     models: event.models && typeof event.models === 'object' ? event.models : normalizeString(event.models, 'unknown'),
+    suggestion_id: normalizeString(event.suggestion_id) || null,
+    llm_suggested_label: normalizeString(event.llm_suggested_label) || null,
+    llm_confidence: Number.isFinite(Number(event.llm_confidence)) ? Math.max(0, Math.min(1, Number(event.llm_confidence))) : null,
     request_id: normalizeString(event.request_id),
     session_id: normalizeString(event.session_id),
     timestamp: Number.isFinite(Number(event.timestamp)) ? Number(event.timestamp) : Date.now(),
@@ -93,6 +159,12 @@ function recordRecoEmployeeFeedback(event, { logger } = {}) {
     }
   }
 
+  setImmediate(() => {
+    writeFeedbackToDb(normalized, logger).catch((err) => {
+      logger?.warn?.({ err: err?.message || String(err) }, 'reco employee feedback db write failed');
+    });
+  });
+
   logger?.info?.(
     {
       event_name: 'reco_employee_feedback',
@@ -113,5 +185,6 @@ module.exports = {
   __internal: {
     latestFeedbackByKey,
     dedupeKey,
+    state,
   },
 };

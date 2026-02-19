@@ -96,9 +96,22 @@ const recoInterleaveWinCounter = new Map();
 const recoExplorationSlotCounter = new Map();
 const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
+const prelabelRequestsCounter = new Map();
+const prelabelSuccessCounter = new Map();
+const prelabelInvalidJsonCounter = new Map();
+const prelabelCacheHitCounter = new Map();
+const prelabelSuggestionsGeneratedCounter = new Map();
+const prelabelQueueItemsServedCounter = new Map();
+const prelabelGeminiLatency = {
+  count: 0,
+  sum: 0,
+  buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+};
 let recoCompetitorsSameBrandRateGauge = 0;
 let recoCompetitorsOnPageSourceRateGauge = 0;
 let recoExplanationAlignmentAt3Gauge = 0;
+let prelabelCacheHitRateGauge = 0;
+let prelabelOverturnedRateGauge = 0;
 let chipsTruncatedCount = 0;
 let fieldMissingAddedCount = 0;
 let modulesInteractionCount = 0;
@@ -894,6 +907,84 @@ function setRecoGuardrailRates({
   recoExplanationAlignmentAt3Gauge = clampRatio01(explanationAlignmentAt3, recoExplanationAlignmentAt3Gauge);
 }
 
+function observePrelabelGeminiLatency({ latencyMs } = {}) {
+  const v = Number(latencyMs);
+  if (!Number.isFinite(v) || v < 0) return;
+  prelabelGeminiLatency.count += 1;
+  prelabelGeminiLatency.sum += v;
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    if (v <= bucket) prelabelGeminiLatency.buckets.set(bucket, (prelabelGeminiLatency.buckets.get(bucket) || 0) + 1);
+  }
+}
+
+function recordPrelabelRequest({ block, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    prelabelRequestsCounter,
+    { block: normalizeRecoBlock(block), mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordPrelabelSuccess({ block, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    prelabelSuccessCounter,
+    { block: normalizeRecoBlock(block), mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordPrelabelInvalidJson({ block, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    prelabelInvalidJsonCounter,
+    { block: normalizeRecoBlock(block), mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordPrelabelCacheHit({ block, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    prelabelCacheHitCounter,
+    { block: normalizeRecoBlock(block), mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordSuggestionsGeneratedPerBlock({ block, mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    prelabelSuggestionsGeneratedCounter,
+    { block: normalizeRecoBlock(block), mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordQueueItemsServed({ block, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    prelabelQueueItemsServedCounter,
+    { block: normalizeRecoBlock(block) },
+    amount,
+  );
+}
+
+function setPrelabelCacheHitRate(rate) {
+  prelabelCacheHitRateGauge = clampRatio01(rate, prelabelCacheHitRateGauge);
+}
+
+function setLlmSuggestionOverturnedRate(rate) {
+  prelabelOverturnedRateGauge = clampRatio01(rate, prelabelOverturnedRateGauge);
+}
+
 function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
   const safeProvider = cleanLabel(provider, 'unknown');
   const safeDecision = cleanLabel(decision, 'skip').toLowerCase();
@@ -1573,6 +1664,48 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE reco_explanation_alignment_at3 gauge');
   lines.push(`reco_explanation_alignment_at3 ${recoExplanationAlignmentAt3Gauge}`);
 
+  lines.push('# HELP prelabel_requests_total Total LLM prelabel suggestion requests by block/mode.');
+  lines.push('# TYPE prelabel_requests_total counter');
+  renderCounter(lines, 'prelabel_requests_total', prelabelRequestsCounter);
+
+  lines.push('# HELP prelabel_success_total Total successful LLM prelabel suggestions by block/mode.');
+  lines.push('# TYPE prelabel_success_total counter');
+  renderCounter(lines, 'prelabel_success_total', prelabelSuccessCounter);
+
+  lines.push('# HELP prelabel_invalid_json_total Total invalid-json prelabel fallbacks by block/mode.');
+  lines.push('# TYPE prelabel_invalid_json_total counter');
+  renderCounter(lines, 'prelabel_invalid_json_total', prelabelInvalidJsonCounter);
+
+  lines.push('# HELP prelabel_cache_hit_total Total prelabel cache hits by block/mode.');
+  lines.push('# TYPE prelabel_cache_hit_total counter');
+  renderCounter(lines, 'prelabel_cache_hit_total', prelabelCacheHitCounter);
+
+  lines.push('# HELP suggestions_generated_per_block Total generated suggestions by block/mode.');
+  lines.push('# TYPE suggestions_generated_per_block counter');
+  renderCounter(lines, 'suggestions_generated_per_block', prelabelSuggestionsGeneratedCounter);
+
+  lines.push('# HELP queue_items_served Total label-queue items served by block.');
+  lines.push('# TYPE queue_items_served counter');
+  renderCounter(lines, 'queue_items_served', prelabelQueueItemsServedCounter);
+
+  lines.push('# HELP prelabel_cache_hit_rate Last observed prelabel cache hit ratio.');
+  lines.push('# TYPE prelabel_cache_hit_rate gauge');
+  lines.push(`prelabel_cache_hit_rate ${prelabelCacheHitRateGauge}`);
+
+  lines.push('# HELP llm_suggestion_overturned_rate Last observed LLM suggestion overturned ratio.');
+  lines.push('# TYPE llm_suggestion_overturned_rate gauge');
+  lines.push(`llm_suggestion_overturned_rate ${prelabelOverturnedRateGauge}`);
+
+  lines.push('# HELP prelabel_gemini_latency_ms Gemini prelabel latency in milliseconds.');
+  lines.push('# TYPE prelabel_gemini_latency_ms histogram');
+  for (const bucket of LATENCY_BUCKETS_MS) {
+    const le = bucket === Infinity ? '+Inf' : String(bucket);
+    const value = prelabelGeminiLatency.buckets.get(bucket) || 0;
+    lines.push(`prelabel_gemini_latency_ms_bucket{le="${le}"} ${value}`);
+  }
+  lines.push(`prelabel_gemini_latency_ms_sum ${prelabelGeminiLatency.sum}`);
+  lines.push(`prelabel_gemini_latency_ms_count ${prelabelGeminiLatency.count}`);
+
   lines.push('# HELP upstream_call_total Total number of upstream calls by path and status.');
   lines.push('# TYPE upstream_call_total counter');
   renderCounter(lines, 'upstream_call_total', upstreamCallsCounter);
@@ -1760,9 +1893,20 @@ function resetVisionMetrics() {
   recoExplorationSlotCounter.clear();
   recoAsyncUpdateCounter.clear();
   recoAsyncUpdateChangedItemsCounter.clear();
+  prelabelRequestsCounter.clear();
+  prelabelSuccessCounter.clear();
+  prelabelInvalidJsonCounter.clear();
+  prelabelCacheHitCounter.clear();
+  prelabelSuggestionsGeneratedCounter.clear();
+  prelabelQueueItemsServedCounter.clear();
+  prelabelGeminiLatency.count = 0;
+  prelabelGeminiLatency.sum = 0;
+  for (const key of prelabelGeminiLatency.buckets.keys()) prelabelGeminiLatency.buckets.set(key, 0);
   recoCompetitorsSameBrandRateGauge = 0;
   recoCompetitorsOnPageSourceRateGauge = 0;
   recoExplanationAlignmentAt3Gauge = 0;
+  prelabelCacheHitRateGauge = 0;
+  prelabelOverturnedRateGauge = 0;
   chipsTruncatedCount = 0;
   fieldMissingAddedCount = 0;
   modulesInteractionCount = 0;
@@ -1849,6 +1993,19 @@ function snapshotVisionMetrics() {
     recoExplorationSlot: Array.from(recoExplorationSlotCounter.entries()),
     recoAsyncUpdate: Array.from(recoAsyncUpdateCounter.entries()),
     recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
+    prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
+    prelabelSuccess: Array.from(prelabelSuccessCounter.entries()),
+    prelabelInvalidJson: Array.from(prelabelInvalidJsonCounter.entries()),
+    prelabelCacheHit: Array.from(prelabelCacheHitCounter.entries()),
+    prelabelSuggestionsGenerated: Array.from(prelabelSuggestionsGeneratedCounter.entries()),
+    prelabelQueueItemsServed: Array.from(prelabelQueueItemsServedCounter.entries()),
+    prelabelGeminiLatency: {
+      count: prelabelGeminiLatency.count,
+      sum: prelabelGeminiLatency.sum,
+      buckets: Array.from(prelabelGeminiLatency.buckets.entries()),
+    },
+    prelabelCacheHitRateGauge,
+    prelabelOverturnedRateGauge,
     recoCompetitorsSameBrandRateGauge,
     recoCompetitorsOnPageSourceRateGauge,
     recoExplanationAlignmentAt3Gauge,
@@ -1900,6 +2057,15 @@ module.exports = {
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
   setRecoGuardrailRates,
+  recordPrelabelRequest,
+  recordPrelabelSuccess,
+  recordPrelabelInvalidJson,
+  recordPrelabelCacheHit,
+  observePrelabelGeminiLatency,
+  recordSuggestionsGeneratedPerBlock,
+  recordQueueItemsServed,
+  setPrelabelCacheHitRate,
+  setLlmSuggestionOverturnedRate,
   observeUpstreamLatency,
   recordVisionDecision,
   observeVisionLatency,

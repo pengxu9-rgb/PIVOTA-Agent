@@ -38,6 +38,9 @@ describe('aurora reco dogfood feedback/interleave/async routes', () => {
         candidate_product_id: 'cand_1',
         feedback_type: 'relevant',
         reason_tags: ['ingredient_mismatch'],
+        suggestion_id: 'sg_1',
+        llm_suggested_label: 'not_relevant',
+        llm_confidence: 0.22,
         request_id: 'req_1',
         session_id: 'sess_1',
       })
@@ -46,6 +49,9 @@ describe('aurora reco dogfood feedback/interleave/async routes', () => {
     expect(res.body.event).toBeTruthy();
     expect(res.body.event.block).toBe('competitors');
     expect(res.body.event.feedback_type).toBe('relevant');
+    expect(res.body.event.suggestion_id).toBe('sg_1');
+    expect(res.body.event.llm_suggested_label).toBe('not_relevant');
+    expect(res.body.event.llm_confidence).toBeCloseTo(0.22);
     expect(res.body.event.request_id).toBe('req_1');
     expect(res.body.event.session_id).toBe('sess_1');
   });

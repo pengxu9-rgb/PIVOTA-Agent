@@ -85,6 +85,15 @@ const {
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
   setRecoGuardrailRates,
+  recordPrelabelRequest,
+  recordPrelabelSuccess,
+  recordPrelabelInvalidJson,
+  recordPrelabelCacheHit,
+  observePrelabelGeminiLatency,
+  recordSuggestionsGeneratedPerBlock,
+  recordQueueItemsServed,
+  setPrelabelCacheHitRate,
+  setLlmSuggestionOverturnedRate,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
 const {
@@ -122,6 +131,9 @@ const {
   RecoEmployeeFeedbackRequestSchema,
   RecoInterleaveClickRequestSchema,
   RecoAsyncUpdatesRequestSchema,
+  InternalPrelabelRequestSchema,
+  PrelabelSuggestionsQuerySchema,
+  LabelQueueQuerySchema,
 } = require('./schemas');
 const {
   getProfileForIdentity,
@@ -185,6 +197,10 @@ const {
   getRecoTrackingMetadata,
 } = require('./recoAsyncUpdateStore');
 const { recordRecoEmployeeFeedback: writeRecoEmployeeFeedbackEvent } = require('./recoEmployeeFeedbackStore');
+const { generatePrelabelsForAnchor, loadSuggestionsForAnchor } = require('./recoPrelabelService');
+const { listQueueCandidatesWithSuggestions } = require('./recoLabelSuggestionStore');
+const { buildLabelQueue } = require('./recoLabelQueue');
+const { PRELABEL_PROMPT_VERSION } = require('./recoPrelabelPrompts');
 const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = require('./recoScoreExplain');
 const { extractWhitelistedSocialChannels } = require('./socialSummaryUserVisible');
 const { simulateConflicts } = require('./routineRules');
@@ -824,6 +840,9 @@ const AURORA_BFF_PDP_HOTSET_PREWARM_BOOTSTRAP_GAP_MS = (() => {
 
 const AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY = String(
   process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY || '',
+).trim();
+const AURORA_BFF_RECO_PRELABEL_ADMIN_KEY = String(
+  process.env.AURORA_BFF_RECO_PRELABEL_ADMIN_KEY || '',
 ).trim();
 
 function parsePdpHotsetFromEnv(raw) {
@@ -12126,6 +12145,20 @@ function hasPdpHotsetPrewarmAdminAccess(req) {
   }
 }
 
+function hasRecoPrelabelAdminAccess(req) {
+  if (!AURORA_BFF_RECO_PRELABEL_ADMIN_KEY) return false;
+  const provided = getPdpHotsetPrewarmAdminToken(req);
+  if (!provided) return false;
+  const expectedBuf = Buffer.from(AURORA_BFF_RECO_PRELABEL_ADMIN_KEY);
+  const providedBuf = Buffer.from(provided);
+  if (expectedBuf.length !== providedBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(expectedBuf, providedBuf);
+  } catch {
+    return false;
+  }
+}
+
 function normalizePdpCorePrefetchPayload(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const productRef = normalizeCanonicalProductRef(raw.product_ref, {
@@ -13567,6 +13600,132 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
   return { norm, upstreamDebug, alternativesDebug };
 }
 
+function parseBoolQueryValue(value, fallback = false) {
+  if (value == null) return fallback;
+  const token = String(value).trim().toLowerCase();
+  if (!token) return fallback;
+  if (token === '1' || token === 'true' || token === 'yes' || token === 'y' || token === 'on') return true;
+  if (token === '0' || token === 'false' || token === 'no' || token === 'n' || token === 'off') return false;
+  return fallback;
+}
+
+function parseIntQueryValue(value, fallback, min, max) {
+  const n = Number(value);
+  const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
+  return Math.max(min, Math.min(max, v));
+}
+
+function normalizeBlockToken(value) {
+  const token = String(value == null ? '' : value).trim().toLowerCase();
+  if (token === 'competitors' || token === 'dupes' || token === 'related_products') return token;
+  return '';
+}
+
+function buildSuggestionLookupByBlock(suggestions = []) {
+  const out = {
+    competitors: new Map(),
+    dupes: new Map(),
+    related_products: new Map(),
+  };
+  for (const row of Array.isArray(suggestions) ? suggestions : []) {
+    const block = normalizeBlockToken(row?.block);
+    if (!block || !out[block]) continue;
+    const key = String(row?.candidate_product_id || '').trim().toLowerCase();
+    if (!key) continue;
+    out[block].set(key, row);
+  }
+  return out;
+}
+
+function sanitizeSuggestionForPublic(row) {
+  const item = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+  if (!item) return null;
+  return {
+    id: String(item.id || '').trim(),
+    suggested_label: String(item.suggested_label || '').trim(),
+    wrong_block_target: item.wrong_block_target ? String(item.wrong_block_target).trim() : null,
+    confidence: Number.isFinite(Number(item.confidence)) ? Math.max(0, Math.min(1, Number(item.confidence))) : 0,
+    rationale_user_visible: String(item.rationale_user_visible || '').trim(),
+    flags: Array.isArray(item.flags) ? item.flags.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 10) : [],
+    model_name: String(item.model_name || '').trim(),
+    prompt_version: String(item.prompt_version || '').trim(),
+    updated_at: item.updated_at || null,
+  };
+}
+
+function attachPrelabelSuggestionsToPayload(payload, suggestions = []) {
+  const p = isPlainObject(payload) ? { ...payload } : {};
+  const lookup = buildSuggestionLookupByBlock(suggestions);
+  for (const block of ['competitors', 'dupes', 'related_products']) {
+    const blockObj = isPlainObject(p?.[block]) ? { ...p[block] } : null;
+    if (!blockObj) continue;
+    const rows = Array.isArray(blockObj.candidates) ? blockObj.candidates : [];
+    blockObj.candidates = rows.map((row, idx) => {
+      const item = isPlainObject(row) ? { ...row } : row;
+      if (!isPlainObject(item)) return item;
+      const key = String(item.product_id || item.sku_id || item.id || item.name || `idx:${idx + 1}`)
+        .trim()
+        .toLowerCase();
+      const suggestion = lookup[block].get(key);
+      if (!suggestion) return item;
+      return {
+        ...item,
+        llm_suggestion: sanitizeSuggestionForPublic(suggestion),
+      };
+    });
+    p[block] = blockObj;
+  }
+  return p;
+}
+
+function sanitizeProductAnalysisPayloadForPrelabel(payload) {
+  const p = isPlainObject(payload) ? { ...payload } : {};
+  delete p.missing_info_internal;
+  delete p.internal_debug_codes;
+  delete p.llm_raw_response;
+  delete p.suggestion_debug;
+  delete p.input_hash;
+  delete p.candidate_tracking;
+  delete p.candidate_tracking_internal;
+  delete p.internal_attribution;
+  delete p.tracking;
+  for (const block of ['competitors', 'dupes', 'related_products']) {
+    const blockObj = isPlainObject(p?.[block]) ? { ...p[block] } : null;
+    if (!blockObj) continue;
+    const rows = Array.isArray(blockObj.candidates) ? blockObj.candidates : [];
+    blockObj.candidates = rows.map((row) => {
+      const item = isPlainObject(row) ? { ...row } : row;
+      if (!isPlainObject(item)) return item;
+      delete item.ref_id;
+      delete item.internal_reason_codes;
+      delete item.input_hash;
+      delete item.llm_raw_response;
+      delete item.suggestion_debug;
+      return item;
+    });
+    p[block] = blockObj;
+  }
+  return p;
+}
+
+function buildPrelabelKbKey(anchorProductId, lang = 'EN') {
+  const anchor = String(anchorProductId || '').trim();
+  if (!anchor) return '';
+  const langCode = String(lang || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+  return normalizeProductIntelKbKey(`product:${anchor}|lang:${langCode}`);
+}
+
+function mapSuggestionForResponse(row) {
+  const item = sanitizeSuggestionForPublic(row);
+  if (!item) return null;
+  return {
+    ...item,
+    anchor_product_id: String(row?.anchor_product_id || '').trim(),
+    block: normalizeBlockToken(row?.block),
+    candidate_product_id: String(row?.candidate_product_id || '').trim(),
+  };
+}
+
 function mountAuroraBffRoutes(app, { logger }) {
   startPdpHotsetPrewarmLoop({ logger });
 
@@ -13606,6 +13765,192 @@ function mountAuroraBffRoutes(app, { logger }) {
       result,
       data: getPdpPrefetchStateSnapshot(),
     });
+  });
+
+  app.post('/internal/prelabel', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    if (!RECO_DOGFOOD_CONFIG.dogfood_mode || !RECO_DOGFOOD_CONFIG.prelabel?.enabled || !AURORA_BFF_RECO_PRELABEL_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasRecoPrelabelAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    const parsed = InternalPrelabelRequestSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: 'BAD_REQUEST', details: parsed.error.format() });
+    }
+    try {
+      const blocks = Array.isArray(parsed.data.blocks) && parsed.data.blocks.length
+        ? parsed.data.blocks
+        : ['competitors', 'dupes', 'related_products'];
+      const out = await generatePrelabelsForAnchor({
+        anchor_product_id: parsed.data.anchor_product_id,
+        blocks,
+        max_candidates_per_block: {
+          ...(RECO_DOGFOOD_CONFIG.prelabel?.max_candidates_per_block || {}),
+          ...(isPlainObject(parsed.data.max_candidates_per_block) ? parsed.data.max_candidates_per_block : {}),
+        },
+        force_refresh: parsed.data.force_refresh === true,
+        snapshot_payload: isPlainObject(parsed.data.snapshot_payload) ? parsed.data.snapshot_payload : null,
+        lang: ctx.lang,
+        request_id: pickFirstTrimmed(parsed.data.request_id, ctx.request_id),
+        session_id: pickFirstTrimmed(parsed.data.session_id, ctx.aurora_uid),
+        logger,
+        model_name: process.env.AURORA_BFF_RECO_PRELABEL_MODEL || 'gemini-2.0-flash',
+        prompt_version: PRELABEL_PROMPT_VERSION,
+        ttl_ms: RECO_DOGFOOD_CONFIG.prelabel?.ttl_ms,
+        gemini_timeout_ms: RECO_DOGFOOD_CONFIG.prelabel?.timeout_ms,
+      });
+
+      for (const block of ['competitors', 'dupes', 'related_products']) {
+        recordPrelabelRequest({ block, mode: 'main_path', delta: Number(out?.requested_by_block?.[block] || 0) });
+        recordPrelabelSuccess({ block, mode: 'main_path', delta: Number(out?.generated_by_block?.[block] || 0) });
+        recordPrelabelInvalidJson({ block, mode: 'main_path', delta: Number(out?.invalid_json_by_block?.[block] || 0) });
+        recordPrelabelCacheHit({ block, mode: 'main_path', delta: Number(out?.cache_hit_by_block?.[block] || 0) });
+        recordSuggestionsGeneratedPerBlock({ block, mode: 'main_path', delta: Number(out?.suggestions_by_block?.[block]?.length || 0) });
+      }
+      for (const latency of Array.isArray(out?.gemini_latency_ms) ? out.gemini_latency_ms : []) {
+        observePrelabelGeminiLatency({ latencyMs: latency });
+      }
+      const totalRequested = Number(out?.candidates_total || 0);
+      const totalHits = Number(out?.cache_hit_count || 0);
+      if (totalRequested > 0) setPrelabelCacheHitRate(totalHits / totalRequested);
+
+      return res.status(200).json({
+        ok: true,
+        data: out,
+      });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), request_id: ctx.request_id }, 'aurora bff: internal prelabel failed');
+      return res.status(500).json({ ok: false, error: 'PRELABEL_FAILED' });
+    }
+  });
+
+  app.get('/internal/prelabel/suggestions', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    if (!RECO_DOGFOOD_CONFIG.dogfood_mode || !RECO_DOGFOOD_CONFIG.prelabel?.enabled || !AURORA_BFF_RECO_PRELABEL_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasRecoPrelabelAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    const parsed = PrelabelSuggestionsQuerySchema.safeParse({
+      anchor_product_id: req.query.anchor_product_id || req.query.anchor,
+      block: req.query.block,
+      limit: req.query.limit,
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: 'BAD_REQUEST', details: parsed.error.format() });
+    }
+
+    try {
+      const limit = parseIntQueryValue(parsed.data.limit, 200, 1, 500);
+      const suggestions = await loadSuggestionsForAnchor({
+        anchor_product_id: parsed.data.anchor_product_id,
+        block: parsed.data.block || '',
+        limit,
+      });
+      const kbKey = buildPrelabelKbKey(parsed.data.anchor_product_id, ctx.lang);
+      let payload = null;
+      if (kbKey) {
+        const kbEntry = await getProductIntelKbEntry(kbKey);
+        if (isPlainObject(kbEntry?.analysis)) payload = kbEntry.analysis;
+      }
+      const payloadWithSuggestions = payload
+        ? sanitizeProductAnalysisPayloadForPrelabel(attachPrelabelSuggestionsToPayload(payload, suggestions))
+        : null;
+
+      return res.status(200).json({
+        ok: true,
+        anchor_product_id: parsed.data.anchor_product_id,
+        block: parsed.data.block || null,
+        suggestions: suggestions.map(mapSuggestionForResponse).filter(Boolean),
+        payload: payloadWithSuggestions,
+      });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), request_id: ctx.request_id }, 'aurora bff: prelabel suggestions fetch failed');
+      return res.status(500).json({ ok: false, error: 'PRELABEL_SUGGESTIONS_FAILED' });
+    }
+  });
+
+  app.get('/internal/label-queue', async (req, res) => {
+    const ctx = buildRequestContext(req, {});
+    if (!RECO_DOGFOOD_CONFIG.dogfood_mode || !RECO_DOGFOOD_CONFIG.prelabel?.enabled || !AURORA_BFF_RECO_PRELABEL_ADMIN_KEY) {
+      return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+    }
+    if (!hasRecoPrelabelAdminAccess(req)) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+    }
+    const parsed = LabelQueueQuerySchema.safeParse({
+      block: req.query.block,
+      limit: req.query.limit,
+      anchor_product_id: req.query.anchor_product_id || req.query.anchor,
+      low_confidence: req.query.low_confidence,
+      wrong_block_only: req.query.wrong_block_only,
+      exploration_only: req.query.exploration_only,
+      missing_info_only: req.query.missing_info_only,
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: 'BAD_REQUEST', details: parsed.error.format() });
+    }
+
+    try {
+      const limit = parseIntQueryValue(parsed.data.limit, 50, 1, 500);
+      const lowConfidence = parseBoolQueryValue(parsed.data.low_confidence, false);
+      const wrongBlockOnly = parseBoolQueryValue(parsed.data.wrong_block_only, false);
+      const explorationOnly = parseBoolQueryValue(parsed.data.exploration_only, false);
+      const missingInfoOnly = parseBoolQueryValue(parsed.data.missing_info_only, false);
+
+      const rows = await listQueueCandidatesWithSuggestions({
+        block: parsed.data.block || '',
+        limit: Math.max(limit * 3, 120),
+        anchorProductId: parsed.data.anchor_product_id || '',
+        confidenceLte: lowConfidence ? 0.45 : null,
+        wrongBlockOnly,
+      });
+
+      const queue = buildLabelQueue(rows, {
+        limit,
+        filters: {
+          block: parsed.data.block || '',
+          anchor_product_id: parsed.data.anchor_product_id || '',
+          low_confidence: lowConfidence,
+          wrong_block_only: wrongBlockOnly,
+          exploration_only: explorationOnly,
+          missing_info_only: missingInfoOnly,
+        },
+      });
+      const countsByBlock = { competitors: 0, dupes: 0, related_products: 0 };
+      for (const item of queue) {
+        const block = normalizeBlockToken(item?.block);
+        if (!block) continue;
+        countsByBlock[block] += 1;
+      }
+      for (const block of ['competitors', 'dupes', 'related_products']) {
+        if (countsByBlock[block] > 0) recordQueueItemsServed({ block, delta: countsByBlock[block] });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        items: queue.map((row) => ({
+          suggestion_id: row.id,
+          anchor_product_id: row.anchor_product_id,
+          block: row.block,
+          candidate_product_id: row.candidate_product_id,
+          suggested_label: row.suggested_label,
+          wrong_block_target: row.wrong_block_target,
+          confidence: row.confidence,
+          rationale_user_visible: row.rationale_user_visible,
+          flags: Array.isArray(row.flags) ? row.flags : [],
+          priority_score: row.priority_score,
+          review_url: `/chat/label-queue?anchor_product_id=${encodeURIComponent(String(row.anchor_product_id || ''))}`,
+          updated_at: row.updated_at || null,
+        })),
+      });
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), request_id: ctx.request_id }, 'aurora bff: label queue fetch failed');
+      return res.status(500).json({ ok: false, error: 'LABEL_QUEUE_FAILED' });
+    }
   });
 
   app.post('/v1/reco/employee-feedback', async (req, res) => {
@@ -13650,12 +13995,30 @@ function mountAuroraBffRoutes(app, { logger }) {
               : Number(parsed.data.rank_position),
           pipeline_version: parsed.data.pipeline_version || RECO_DOGFOOD_CONFIG.interleave.rankerA,
           models: parsed.data.models || 'unknown',
+          suggestion_id: parsed.data.suggestion_id || null,
+          llm_suggested_label: parsed.data.llm_suggested_label || null,
+          llm_confidence: parsed.data.llm_confidence == null ? null : Number(parsed.data.llm_confidence),
           request_id: requestId,
           session_id: sessionId,
           timestamp: parsed.data.timestamp || Date.now(),
         },
         { logger },
       );
+      if (event.llm_suggested_label) {
+        const suggested = String(event.llm_suggested_label || '').trim().toLowerCase();
+        const finalLabel = String(event.feedback_type || '').trim().toLowerCase();
+        if (suggested && finalLabel) {
+          if (!global.__auroraPrelabelFeedbackStats) {
+            global.__auroraPrelabelFeedbackStats = { total: 0, overturned: 0 };
+          }
+          global.__auroraPrelabelFeedbackStats.total += 1;
+          if (suggested !== finalLabel) global.__auroraPrelabelFeedbackStats.overturned += 1;
+          if (global.__auroraPrelabelFeedbackStats.total > 0) {
+            const rate = global.__auroraPrelabelFeedbackStats.overturned / global.__auroraPrelabelFeedbackStats.total;
+            setLlmSuggestionOverturnedRate(rate);
+          }
+        }
+      }
       recordRecoEmployeeFeedback({
         block: event.block,
         feedbackType: event.feedback_type,
@@ -21043,6 +21406,16 @@ const __internal = {
   createAsyncTicket,
   applyAsyncBlockPatch,
   getAsyncUpdates,
+  hasRecoPrelabelAdminAccess,
+  attachPrelabelSuggestionsToPayload,
+  sanitizeProductAnalysisPayloadForPrelabel,
+  buildPrelabelKbKey,
+  parseBoolQueryValue,
+  parseIntQueryValue,
+  mapSuggestionForResponse,
+  generatePrelabelsForAnchor,
+  loadSuggestionsForAnchor,
+  buildLabelQueue,
   runRecoBlocksForUrl,
   applyRecoGuardrailToProductAnalysisPayload,
   getRecoGuardrailCircuitSnapshot,

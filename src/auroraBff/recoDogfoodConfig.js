@@ -33,6 +33,7 @@ function buildRecoDogfoodConfig(env = process.env) {
 
   const explorationEnabled = parseBool(env.AURORA_BFF_RECO_DOGFOOD_EXPLORATION_ENABLED, true);
   const interleaveEnabled = parseBool(env.AURORA_BFF_RECO_INTERLEAVE_ENABLED, true);
+  const prelabelEnabled = parseBool(env.AURORA_BFF_RECO_PRELABEL_ENABLED, true);
 
   return {
     dogfood_mode: dogfoodMode,
@@ -60,6 +61,17 @@ function buildRecoDogfoodConfig(env = process.env) {
     },
     async: {
       poll_ttl_ms: clampInt(env.AURORA_BFF_RECO_ASYNC_POLL_TTL_MS, 600000, 5000, 3600000),
+    },
+    prelabel: {
+      enabled: dogfoodMode ? prelabelEnabled : false,
+      ttl_ms: clampInt(env.AURORA_BFF_RECO_PRELABEL_CACHE_TTL_MS, 24 * 60 * 60 * 1000, 60 * 1000, 7 * 24 * 60 * 60 * 1000),
+      timeout_ms: clampInt(env.AURORA_BFF_RECO_PRELABEL_TIMEOUT_MS, 5000, 1000, 20000),
+      max_anchors_per_request: clampInt(env.AURORA_BFF_RECO_PRELABEL_MAX_ANCHORS_PER_REQUEST, 1, 1, 10),
+      max_candidates_per_block: {
+        competitors: clampInt(env.AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_COMPETITORS, 10, 1, 40),
+        dupes: clampInt(env.AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_DUPES, 8, 1, 40),
+        related_products: clampInt(env.AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_RELATED_PRODUCTS, 10, 1, 40),
+      },
     },
   };
 }

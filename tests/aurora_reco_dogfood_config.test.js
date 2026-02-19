@@ -12,6 +12,10 @@ describe('aurora reco dogfood config', () => {
       dupes: 80,
       related_products: 80,
     });
+    expect(cfg.prelabel.enabled).toBe(false);
+    expect(cfg.prelabel.max_candidates_per_block.competitors).toBe(10);
+    expect(cfg.prelabel.max_candidates_per_block.dupes).toBe(8);
+    expect(cfg.prelabel.max_candidates_per_block.related_products).toBe(10);
   });
 
   test('dogfood env enables exploration/interleave and enlarged pools', () => {
@@ -30,6 +34,13 @@ describe('aurora reco dogfood config', () => {
       AURORA_BFF_RECO_INTERLEAVE_RANKER_A: 'ranker_a',
       AURORA_BFF_RECO_INTERLEAVE_RANKER_B: 'ranker_b',
       AURORA_BFF_RECO_ASYNC_POLL_TTL_MS: '30000',
+      AURORA_BFF_RECO_PRELABEL_ENABLED: 'true',
+      AURORA_BFF_RECO_PRELABEL_CACHE_TTL_MS: '7200000',
+      AURORA_BFF_RECO_PRELABEL_TIMEOUT_MS: '4200',
+      AURORA_BFF_RECO_PRELABEL_MAX_ANCHORS_PER_REQUEST: '2',
+      AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_COMPETITORS: '14',
+      AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_DUPES: '11',
+      AURORA_BFF_RECO_PRELABEL_MAX_CANDIDATES_PER_BLOCK_RELATED_PRODUCTS: '16',
     });
     expect(cfg.dogfood_mode).toBe(true);
     expect(cfg.exploration.enabled).toBe(true);
@@ -42,6 +53,15 @@ describe('aurora reco dogfood config', () => {
     expect(cfg.ui.allow_block_internal_rerank_on_async).toBe(true);
     expect(cfg.ui.lock_top_n_on_first_paint).toBe(4);
     expect(cfg.async.poll_ttl_ms).toBe(30000);
+    expect(cfg.prelabel.enabled).toBe(true);
+    expect(cfg.prelabel.ttl_ms).toBe(7200000);
+    expect(cfg.prelabel.timeout_ms).toBe(4200);
+    expect(cfg.prelabel.max_anchors_per_request).toBe(2);
+    expect(cfg.prelabel.max_candidates_per_block).toEqual({
+      competitors: 14,
+      dupes: 11,
+      related_products: 16,
+    });
     expect(cfg.retrieval.pool_size).toEqual({
       competitors: 900,
       dupes: 420,
