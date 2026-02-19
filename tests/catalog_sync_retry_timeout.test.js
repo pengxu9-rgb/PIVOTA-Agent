@@ -16,6 +16,10 @@ describe('creator catalog auto-sync retry on long timeout', () => {
         process.env.CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
       CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS:
         process.env.CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+      CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS:
+        process.env.CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
+      CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS:
+        process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
       CREATOR_CATALOG_SYNC_ADMIN_KEY: process.env.CREATOR_CATALOG_SYNC_ADMIN_KEY,
       PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
@@ -28,6 +32,8 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     process.env.CREATOR_CATALOG_AUTO_SYNC_RETRIES = '1';
     process.env.CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS = '1';
     process.env.CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS = '600';
+    process.env.CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS = '1800';
+    process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS = '300000';
     process.env.CREATOR_CATALOG_SYNC_ADMIN_KEY = 'admin_sync_key';
     process.env.PIVOTA_API_BASE = 'https://example-pivota.test';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
@@ -53,6 +59,8 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     restore('CREATOR_CATALOG_AUTO_SYNC_RETRIES');
     restore('CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS');
     restore('CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS');
+    restore('CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS');
+    restore('CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS');
     restore('CREATOR_CATALOG_SYNC_ADMIN_KEY');
     restore('PIVOTA_API_BASE');
     restore('AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED');
@@ -75,10 +83,17 @@ describe('creator catalog auto-sync retry on long timeout', () => {
         headers: { 'X-ADMIN-KEY': 'admin_sync_key' },
       }),
     );
+    expect(axiosPost.mock.calls[1][2]).toEqual(
+      expect.objectContaining({
+        timeout: 240000,
+        headers: { 'X-ADMIN-KEY': 'admin_sync_key' },
+      }),
+    );
     expect(app._debug.catalogSyncState.per_merchant.merch_timeout_case).toEqual(
       expect.objectContaining({
         ok: true,
         attempts: 2,
+        timeout_streak: 0,
       }),
     );
   });
@@ -111,6 +126,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
         ok: false,
         skipped: true,
         status: 502,
+        invalid_merchant: true,
       }),
     );
     expect(app._debug.catalogSyncState.per_merchant.merch_good).toEqual(
@@ -119,5 +135,7 @@ describe('creator catalog auto-sync retry on long timeout', () => {
         attempts: 1,
       }),
     );
+    expect(app._debug.catalogSyncState.target_suppressed_count).toBe(1);
+    expect(app._debug.catalogSyncState.target_eligible_count).toBe(1);
   });
 });

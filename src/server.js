@@ -185,6 +185,16 @@ const CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS = parsePositiveIn
   6 * 60 * 60,
   { min: 60, max: 7 * 24 * 60 * 60 },
 );
+const CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS = parsePositiveInt(
+  process.env.CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
+  24 * 60 * 60,
+  { min: 5 * 60, max: 30 * 24 * 60 * 60 },
+);
+const CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS = parsePositiveInt(
+  process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
+  Math.max(240000, CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS * 4),
+  { min: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS, max: 20 * 60 * 1000 },
+);
 
 function getCreatorCatalogAutoSyncIntervalConfig() {
   const maxIntervalMinutes = Math.max(
@@ -1740,7 +1750,10 @@ const catalogSyncState = {
   per_merchant: {},
   target_source: null,
   target_count: 0,
+  target_eligible_count: 0,
+  target_suppressed_count: 0,
   target_sample: [],
+  target_suppressed_sample: [],
 };
 
 function isCatalogSyncRetryableError(err) {
@@ -1795,13 +1808,96 @@ function isCatalogSyncNonRetryableError(err) {
   return false;
 }
 
+function isCatalogSyncInvalidMerchantError(err) {
+  const status = Number(err?.response?.status || 0);
+  if (status === 400 || status === 401 || status === 403 || status === 404) return true;
+
+  const detailStatus = Number(
+    err?.response?.data?.status ||
+      err?.response?.data?.error?.status ||
+      err?.response?.data?.detail?.status ||
+      0,
+  );
+  if (detailStatus === 400 || detailStatus === 401 || detailStatus === 403 || detailStatus === 404) {
+    return true;
+  }
+
+  const message = String(
+    err?.response?.data?.detail?.message ||
+      err?.response?.data?.detail ||
+      err?.response?.data?.error?.message ||
+      err?.message ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (!message) return false;
+  if (message.includes('shopify api error: 404')) return true;
+  if (message.includes('\"errors\":\"not found\"')) return true;
+  if (message.includes("errors':'not found")) return true;
+  if (message.includes('shopify') && message.includes('not found')) return true;
+  if (message.includes('invalid api key')) return true;
+  if (message.includes('access denied')) return true;
+  if (message.includes('unauthorized')) return true;
+  if (message.includes('forbidden')) return true;
+  return false;
+}
+
+function isCatalogSyncTimeoutError(err) {
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (
+    code === 'ECONNABORTED' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNRESET' ||
+    code === 'EAI_AGAIN'
+  ) {
+    return true;
+  }
+  const message = String(err?.message || '').trim().toLowerCase();
+  return message.includes('timeout') || message.includes('timed out');
+}
+
+function getCatalogSyncAttemptTimeoutMs({ merchantState, attempt }) {
+  const timeoutStreak = Math.max(0, Number(merchantState?.timeout_streak || 0));
+  const attemptIndex = Math.max(0, Number(attempt || 1) - 1);
+  const growth = Math.min(timeoutStreak + attemptIndex, 3);
+  const multiplier = Math.pow(2, growth);
+  const baseTimeoutMs = Number(CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS || 0);
+  const maxTimeoutMs = Number(CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS || baseTimeoutMs);
+  return Math.max(
+    baseTimeoutMs,
+    Math.min(maxTimeoutMs, Math.floor(baseTimeoutMs * multiplier)),
+  );
+}
+
+function getCatalogSyncSuppressionStatus(merchantId, nowMs = Date.now()) {
+  const state = catalogSyncState.per_merchant[merchantId];
+  const blockedUntilMs = Number(state?.blocked_until_ms || 0);
+  if (!blockedUntilMs || blockedUntilMs <= nowMs) {
+    return {
+      suppressed: false,
+      reason: null,
+      blocked_until: null,
+      invalid_merchant: false,
+    };
+  }
+  return {
+    suppressed: true,
+    reason: state?.invalid_merchant ? 'invalid_merchant_cooldown' : 'non_retryable_cooldown',
+    blocked_until: state?.blocked_until || new Date(blockedUntilMs).toISOString(),
+    invalid_merchant: state?.invalid_merchant === true,
+  };
+}
+
 function summarizeCatalogSyncMerchantState() {
   const rows = Object.entries(catalogSyncState.per_merchant || {}).map(([merchantId, state]) => ({
     merchant_id: merchantId,
     ok: state?.ok === true,
     skipped: state?.skipped === true,
+    invalid_merchant: state?.invalid_merchant === true,
     status: Number.isFinite(Number(state?.status)) ? Number(state.status) : null,
     attempts: Number.isFinite(Number(state?.attempts)) ? Number(state.attempts) : null,
+    timeout_streak: Number.isFinite(Number(state?.timeout_streak)) ? Number(state.timeout_streak) : 0,
     last_run_at: state?.last_run_at || null,
     blocked_until: state?.blocked_until || null,
     error: state?.error ? String(state.error) : null,
@@ -1826,14 +1922,51 @@ async function runCreatorCatalogAutoSync() {
   }
 
   const merchantTarget = await resolveCatalogSyncMerchantIds();
-  const merchantIds = merchantTarget.merchantIds;
+  const resolvedMerchantIds = merchantTarget.merchantIds;
+  const nowMs = Date.now();
+  const merchantIds = [];
+  const suppressedMerchants = [];
+  for (const merchantId of resolvedMerchantIds) {
+    const suppression = getCatalogSyncSuppressionStatus(merchantId, nowMs);
+    if (!suppression.suppressed) {
+      merchantIds.push(merchantId);
+      continue;
+    }
+    const existingState = catalogSyncState.per_merchant[merchantId];
+    catalogSyncState.per_merchant[merchantId] = {
+      ...(existingState && typeof existingState === 'object' ? existingState : {}),
+      ok: false,
+      skipped: true,
+      last_run_at: new Date().toISOString(),
+      status: Number.isFinite(Number(existingState?.status)) ? Number(existingState.status) : null,
+      attempts: 0,
+      duration_ms: 0,
+      invalid_merchant: existingState?.invalid_merchant === true,
+      error:
+        existingState?.error ||
+        'Skipped due to temporary cooldown after non-retryable sync error',
+      blocked_until_ms: Number(existingState?.blocked_until_ms || 0) || null,
+      blocked_until: suppression.blocked_until,
+    };
+    suppressedMerchants.push({
+      merchant_id: merchantId,
+      reason: suppression.reason,
+      blocked_until: suppression.blocked_until,
+      invalid_merchant: suppression.invalid_merchant,
+    });
+  }
   catalogSyncState.target_source = merchantTarget.source || null;
-  catalogSyncState.target_count = merchantIds.length;
-  catalogSyncState.target_sample = merchantIds.slice(0, 20);
+  catalogSyncState.target_count = resolvedMerchantIds.length;
+  catalogSyncState.target_eligible_count = merchantIds.length;
+  catalogSyncState.target_suppressed_count = suppressedMerchants.length;
+  catalogSyncState.target_sample = resolvedMerchantIds.slice(0, 20);
+  catalogSyncState.target_suppressed_sample = suppressedMerchants.slice(0, 20);
   if (!merchantIds.length) {
     logger.warn(
       {
         target_source: merchantTarget.source || null,
+        target_count: resolvedMerchantIds.length,
+        suppressed_count: suppressedMerchants.length,
       },
       'CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no sync target merchants were resolved',
     );
@@ -1851,35 +1984,7 @@ async function runCreatorCatalogAutoSync() {
   catalogSyncState.last_error = null;
 
   for (const merchantId of merchantIds) {
-    const nowMs = Date.now();
     const existingState = catalogSyncState.per_merchant[merchantId];
-    const blockedUntilMs = Number(existingState?.blocked_until_ms || 0);
-    if (blockedUntilMs > nowMs) {
-      catalogSyncState.per_merchant[merchantId] = {
-        ...(existingState && typeof existingState === 'object' ? existingState : {}),
-        ok: false,
-        skipped: true,
-        last_run_at: new Date().toISOString(),
-        status: Number.isFinite(Number(existingState?.status)) ? Number(existingState.status) : null,
-        attempts: 0,
-        duration_ms: 0,
-        error:
-          existingState?.error ||
-          'Skipped due to temporary cooldown after non-retryable sync error',
-        blocked_until_ms: blockedUntilMs,
-        blocked_until:
-          existingState?.blocked_until || new Date(blockedUntilMs).toISOString(),
-      };
-      logger.info(
-        {
-          merchantId,
-          blocked_until: new Date(blockedUntilMs).toISOString(),
-        },
-        'Creator catalog auto sync skipped due to non-retryable cooldown',
-      );
-      continue;
-    }
-
     const url = `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
       merchantId,
     )}?limit=${encodeURIComponent(String(limit))}&ttl_seconds=${encodeURIComponent(String(ttlSeconds))}`;
@@ -1887,11 +1992,16 @@ async function runCreatorCatalogAutoSync() {
     let attempt = 0;
     let res = null;
     let err = null;
+    let timeoutUsedMs = CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS;
     for (attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      timeoutUsedMs = getCatalogSyncAttemptTimeoutMs({
+        merchantState: existingState,
+        attempt,
+      });
       try {
         res = await axios.post(url, null, {
           headers: { 'X-ADMIN-KEY': adminKey },
-          timeout: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+          timeout: timeoutUsedMs,
         });
         err = null;
         break;
@@ -1910,7 +2020,7 @@ async function runCreatorCatalogAutoSync() {
               attempt,
               max_attempts: maxAttempts,
               retry_in_ms: delayMs,
-              timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+              timeout_ms: timeoutUsedMs,
               status: attemptErr?.response?.status || null,
               code: attemptErr?.code || null,
               non_retryable: nonRetryable,
@@ -1934,6 +2044,9 @@ async function runCreatorCatalogAutoSync() {
         duration_ms: Math.max(0, Date.now() - startedAtMs),
         summary: res.data && res.data.summary ? res.data.summary : res.data,
         status: Number.isFinite(Number(res.status)) ? Number(res.status) : 200,
+        timeout_ms: timeoutUsedMs,
+        timeout_streak: 0,
+        invalid_merchant: false,
         error: null,
         blocked_until_ms: null,
         blocked_until: null,
@@ -1946,7 +2059,7 @@ async function runCreatorCatalogAutoSync() {
           ttl_seconds: ttlSeconds,
           attempts: attempt,
           duration_ms: Math.max(0, Date.now() - startedAtMs),
-          timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+          timeout_ms: timeoutUsedMs,
         },
         'Creator catalog auto sync succeeded',
       );
@@ -1958,8 +2071,16 @@ async function runCreatorCatalogAutoSync() {
         (data && typeof data.detail === 'string' ? data.detail : null) ||
         err.message;
       const nonRetryable = isCatalogSyncNonRetryableError(err);
+      const invalidMerchant = isCatalogSyncInvalidMerchantError(err);
+      const timeoutError = isCatalogSyncTimeoutError(err);
+      const previousTimeoutStreak = Math.max(0, Number(existingState?.timeout_streak || 0));
+      const timeoutStreak = timeoutError ? Math.min(previousTimeoutStreak + 1, 10) : 0;
       const blockedUntilMs = nonRetryable
-        ? Date.now() + CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS * 1000
+        ? Date.now() +
+          (invalidMerchant
+            ? CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS
+            : CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS) *
+            1000
         : null;
       catalogSyncState.per_merchant[merchantId] = {
         ok: false,
@@ -1968,6 +2089,9 @@ async function runCreatorCatalogAutoSync() {
         attempts: attempt,
         duration_ms: Math.max(0, Date.now() - startedAtMs),
         status: status || null,
+        timeout_ms: timeoutUsedMs,
+        timeout_streak: timeoutStreak,
+        invalid_merchant: invalidMerchant,
         error: message,
         blocked_until_ms: blockedUntilMs,
         blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
@@ -1979,9 +2103,11 @@ async function runCreatorCatalogAutoSync() {
           status,
           message,
           attempts: attempt,
-          timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+          timeout_ms: timeoutUsedMs,
           max_attempts: maxAttempts,
+          timeout_streak: timeoutStreak,
           non_retryable: nonRetryable,
+          invalid_merchant: invalidMerchant,
           blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
         },
         'Creator catalog auto sync failed',
@@ -6270,12 +6396,17 @@ const healthRouteHandler = (req, res) => {
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
       request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+      request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
       retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
       retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
       non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+      invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
       target_source: catalogSyncState.target_source,
       target_count: catalogSyncState.target_count,
+      target_eligible_count: catalogSyncState.target_eligible_count,
+      target_suppressed_count: catalogSyncState.target_suppressed_count,
       target_sample: catalogSyncState.target_sample,
+      target_suppressed_sample: catalogSyncState.target_suppressed_sample,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
@@ -8533,12 +8664,17 @@ app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {
       interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
       cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
       request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+      request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
       retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
       retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
       non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+      invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
       target_source: catalogSyncState.target_source,
       target_count: catalogSyncState.target_count,
+      target_eligible_count: catalogSyncState.target_eligible_count,
+      target_suppressed_count: catalogSyncState.target_suppressed_count,
       target_sample: catalogSyncState.target_sample,
+      target_suppressed_sample: catalogSyncState.target_suppressed_sample,
       last_run_at: catalogSyncState.last_run_at,
       last_success_at: catalogSyncState.last_success_at,
       last_error: catalogSyncState.last_error,
@@ -8774,12 +8910,17 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         interval_minutes_max: getCreatorCatalogAutoSyncIntervalConfig().maxIntervalMinutes,
         cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
         request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+        request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
         retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
         retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
         non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+        invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
         target_source: catalogSyncState.target_source,
         target_count: catalogSyncState.target_count,
+        target_eligible_count: catalogSyncState.target_eligible_count,
+        target_suppressed_count: catalogSyncState.target_suppressed_count,
         target_sample: catalogSyncState.target_sample,
+        target_suppressed_sample: catalogSyncState.target_suppressed_sample,
         last_run_at: catalogSyncState.last_run_at,
         last_success_at: catalogSyncState.last_success_at,
         last_error: catalogSyncState.last_error,
