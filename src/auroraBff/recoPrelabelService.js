@@ -334,6 +334,8 @@ async function generatePrelabelsForAnchor({
       const systemPrompt = buildPrelabelSystemPrompt();
       const userPrompt = buildPrelabelUserPrompt(sanitizedInput);
       let result = null;
+      let primaryText = '';
+      let repairText = '';
       try {
         result = await callGeminiPrelabel({
           systemPrompt,
@@ -342,23 +344,25 @@ async function generatePrelabelsForAnchor({
           model: output.model_name,
           logger,
         });
+        primaryText = String(result?.text || '');
         if (Number.isFinite(Number(result?.latency_ms))) output.gemini_latency_ms.push(Number(result.latency_ms));
       } catch (err) {
         output.errors.push(`gemini_call_failed:${normalizeText(err?.code || err?.message || 'unknown', 120)}`);
       }
 
-      let normalized = validateAndNormalizePrelabelOutput(result?.text || '');
+      let normalized = validateAndNormalizePrelabelOutput(primaryText);
       if (!normalized.ok) {
         try {
           const repair = await callGeminiPrelabel({
             systemPrompt,
-            userPrompt: buildRepairPrompt(result?.text || ''),
+            userPrompt: buildRepairPrompt(primaryText),
             timeoutMs: gemini_timeout_ms,
             model: output.model_name,
             logger,
           });
+          repairText = String(repair?.text || '');
           if (Number.isFinite(Number(repair?.latency_ms))) output.gemini_latency_ms.push(Number(repair.latency_ms));
-          normalized = validateAndNormalizePrelabelOutput(repair?.text || '');
+          normalized = validateAndNormalizePrelabelOutput(repairText);
           if (!normalized.ok) {
             normalized = {
               ok: true,
@@ -377,6 +381,19 @@ async function generatePrelabelsForAnchor({
 
       const suggestionValue = normalized.value || fallbackInvalidJson(['invalid_json']);
       const flags = uniqStrings([...(suggestionValue.flags || []), ...initialFlags], 16);
+      if (flags.some((x) => x === 'invalid_json')) {
+        logger?.warn?.(
+          {
+            block,
+            anchor_product_id: output.anchor_product_id,
+            candidate_product_id: candidateProductId,
+            input_hash: inputHash,
+            primary_excerpt: normalizeText(primaryText, 280),
+            repair_excerpt: normalizeText(repairText, 280),
+          },
+          'aurora bff: prelabel invalid_json fallback applied',
+        );
+      }
       const saved = await upsertSuggestion({
         anchor_product_id: output.anchor_product_id,
         block,

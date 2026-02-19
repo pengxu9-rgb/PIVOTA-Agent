@@ -14,6 +14,8 @@ function buildPrelabelSystemPrompt() {
     'If wrong_block is selected, set wrong_block_target to competitors|dupes|related_products.',
     'If label is relevant or not_relevant, wrong_block_target must be null.',
     'rationale_user_visible must be one sentence and only cite provided evidence.',
+    'Return one flat JSON object with exactly these keys:',
+    '{"suggested_label":"...","wrong_block_target":null,"confidence":0.00,"rationale_user_visible":"...","flags":[]}',
   ].join('\n');
 }
 
@@ -33,7 +35,17 @@ function buildPrelabelUserPrompt(input = {}) {
       'If uncertain, choose not_relevant or wrong_block and lower confidence.',
       'When key evidence is missing, include flags describing missing checks.',
       'Return JSON object only.',
+      'Do not wrap in markdown fences.',
+      'Do not return nested wrappers like {\"result\":{...}}.',
+      'Use numeric confidence, not string.',
     ],
+    output_json_example: {
+      suggested_label: 'not_relevant',
+      wrong_block_target: null,
+      confidence: 0.24,
+      rationale_user_visible: 'Category and use-case evidence are insufficient, so this candidate needs manual review.',
+      flags: ['needs_category_check'],
+    },
     input,
   };
   return JSON.stringify(payload, null, 2);

@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { parseJsonOnlyObject, extractJsonObject } = require('./jsonExtract');
+const { parseJsonOnlyObject, extractJsonObject, extractJsonObjectByKeys } = require('./jsonExtract');
 
 const LabelEnum = z.enum(['relevant', 'not_relevant', 'wrong_block']);
 const BlockEnum = z.enum(['competitors', 'dupes', 'related_products']);
@@ -63,16 +63,52 @@ function normalizeCandidateLabel(raw) {
   };
 }
 
+function sanitizeJsonLikeText(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return '';
+
+  // Remove fenced wrappers while preserving body.
+  text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+  // Normalize smart quotes often produced by copied markdown content.
+  text = text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+  // Tolerate trailing commas from non-strict emitters.
+  text = text.replace(/,\s*([}\]])/g, '$1');
+  return text.trim();
+}
+
+function findCandidateDeep(root, depth = 0, seen = new Set()) {
+  if (!root || typeof root !== 'object' || depth > 4 || seen.has(root)) return null;
+  seen.add(root);
+
+  const direct = normalizeCandidateLabel(root);
+  if (direct) return direct;
+
+  const values = Array.isArray(root) ? root : Object.values(root);
+  for (const value of values) {
+    if (!value || typeof value !== 'object') continue;
+    const next = findCandidateDeep(value, depth + 1, seen);
+    if (next) return next;
+  }
+  return null;
+}
+
 function coerceInputObject(raw) {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
   const text = String(raw || '').trim();
   if (!text) return null;
-  return parseJsonOnlyObject(text) || extractJsonObject(text);
+  const cleaned = sanitizeJsonLikeText(text);
+  const requiredKeys = ['suggested_label', 'wrong_block_target', 'confidence', 'rationale_user_visible', 'flags'];
+  return (
+    parseJsonOnlyObject(cleaned) ||
+    extractJsonObjectByKeys(cleaned, requiredKeys) ||
+    extractJsonObject(cleaned) ||
+    null
+  );
 }
 
 function validateAndNormalizePrelabelOutput(raw) {
   const inputObj = coerceInputObject(raw);
-  const normalized = normalizeCandidateLabel(inputObj);
+  const normalized = normalizeCandidateLabel(inputObj) || findCandidateDeep(inputObj);
   if (!normalized) {
     return {
       ok: false,

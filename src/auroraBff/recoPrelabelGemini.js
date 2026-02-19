@@ -31,16 +31,50 @@ function withTimeout(promise, timeoutMs) {
   });
 }
 
-function extractTextFromGeminiResponse(resp) {
-  const parts = Array.isArray(resp?.candidates?.[0]?.content?.parts)
-    ? resp.candidates[0].content.parts
-    : [];
-  const text = parts
-    .map((p) => String(p?.text || '').trim())
-    .filter(Boolean)
-    .join('\n')
-    .trim();
-  return text;
+function stringifyObject(value) {
+  if (!value || typeof value !== 'object') return '';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '';
+  }
+}
+
+async function maybeCallTextFn(target) {
+  if (!target || typeof target.text !== 'function') return '';
+  try {
+    const out = await target.text();
+    return String(out || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+async function extractTextFromGeminiResponse(resp) {
+  if (!resp) return '';
+
+  // SDK variants can return parsed JSON directly.
+  const parsedDirect = stringifyObject(resp?.parsed || resp?.response?.parsed);
+  if (parsedDirect) return parsedDirect;
+
+  // Most stable path across SDK versions.
+  const textFromFn = await maybeCallTextFn(resp);
+  if (textFromFn) return textFromFn;
+  const textFromRespFn = await maybeCallTextFn(resp?.response);
+  if (textFromRespFn) return textFromRespFn;
+
+  if (typeof resp.text === 'string' && resp.text.trim()) return resp.text.trim();
+  if (typeof resp?.response?.text === 'string' && resp.response.text.trim()) return resp.response.text.trim();
+
+  const candidates = Array.isArray(resp?.candidates) ? resp.candidates : [];
+  const textParts = [];
+  for (const candidate of candidates) {
+    const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+    for (const part of parts) {
+      if (part && typeof part.text === 'string' && part.text.trim()) textParts.push(part.text.trim());
+    }
+  }
+  return textParts.join('\n').trim();
 }
 
 function sleep(ms) {
@@ -154,7 +188,7 @@ async function callGeminiPrelabel({
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
         const resp = await withTimeout(ai.models.generateContent(request), timeoutMs);
-        const text = extractTextFromGeminiResponse(resp);
+        const text = await extractTextFromGeminiResponse(resp);
         return {
           ok: true,
           text,
