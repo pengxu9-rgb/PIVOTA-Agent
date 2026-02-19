@@ -246,6 +246,33 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(JSON.stringify(summary).toLowerCase()).not.toMatch(/mention_count|@noise|完美平替/);
   });
 
+  test('URL realtime helper extracts price from JSON-LD product offer', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const html = `
+      <html>
+        <head>
+          <script type="application/ld+json">
+            {"@context":"http://schema.org","@type":"Product","name":"Test Serum","offers":{"@type":"Offer","price":"35.30","priceCurrency":"EUR"}}
+          </script>
+        </head>
+      </html>
+    `;
+    const out = __internal.extractProductPriceFromHtml(html);
+    expect(out).toBeTruthy();
+    expect(out.amount).toBe(35.3);
+    expect(out.currency).toBe('EUR');
+    expect(out.unknown).toBe(false);
+  });
+
+  test('normalizePriceObject supports parsed upstream price shapes', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const fromUsd = __internal.normalizePriceObject({ usd: 29.9, unknown: false });
+    expect(fromUsd).toEqual({ amount: 29.9, currency: 'USD', unknown: false });
+
+    const fromAmount = __internal.normalizePriceObject({ amount: '42.50', currency: 'usd' });
+    expect(fromAmount).toEqual({ amount: 42.5, currency: 'USD', unknown: false });
+  });
+
   test('reco guardrail sanitizes polluted competitors and writes low-confidence provenance', () => {
     process.env.AURORA_BFF_RECO_GUARD_ENABLED = 'true';
     process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED = 'true';
@@ -766,6 +793,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
            <script type="application/ld+json">
              {"aggregateRating":{"ratingValue":"4.4","reviewCount":"518"}}
            </script>
+           <script type="application/ld+json">
+             {"@context":"http://schema.org","@type":"Product","name":"Multi-Peptide + Copper Peptides 1%","offers":{"@type":"Offer","price":"35.30","priceCurrency":"EUR"}}
+           </script>
          </body></html>`,
         { 'Content-Type': 'text/html' },
       );
@@ -810,6 +840,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
     expect(Array.isArray(card.payload.evidence?.social_signals?.typical_positive)).toBe(true);
     expect(card.payload.evidence.social_signals.typical_positive.length).toBeGreaterThan(0);
+    expect(card.payload.assessment.anchor_product.price).toEqual(
+      expect.objectContaining({ amount: 35.3, currency: 'EUR', unknown: false }),
+    );
     expect(Array.isArray(card.payload.competitors?.candidates)).toBe(true);
     const competitorNames = (card.payload.competitors.candidates || []).map((x) => String(x?.name || '').toLowerCase());
     const onPageCount = (card.payload.competitors.candidates || []).filter(

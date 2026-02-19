@@ -2483,6 +2483,146 @@ function extractPageTitleFromHtml(html) {
   return stripHtmlToText(m[1]);
 }
 
+function normalizeCurrencyCode(value, fallback = '') {
+  const token = String(value || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
+  if (token.length === 3) return token;
+  const fb = String(fallback || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
+  return fb.length === 3 ? fb : '';
+}
+
+function toPositiveNumberOrNull(value) {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Number(n.toFixed(2));
+}
+
+function normalizePriceObject(rawPrice, { fallbackCurrency = 'USD' } = {}) {
+  if (rawPrice == null) return null;
+  if (typeof rawPrice === 'number' || typeof rawPrice === 'string') {
+    const amount = toPositiveNumberOrNull(rawPrice);
+    if (amount == null) return null;
+    return { amount, currency: normalizeCurrencyCode(fallbackCurrency, 'USD'), unknown: false };
+  }
+  if (typeof rawPrice !== 'object' || Array.isArray(rawPrice)) return null;
+
+  if (rawPrice.unknown === true) return null;
+
+  const directAmount = toPositiveNumberOrNull(
+    rawPrice.amount ??
+      rawPrice.value ??
+      rawPrice.price ??
+      rawPrice.min ??
+      rawPrice.min_price ??
+      rawPrice.minPrice,
+  );
+  if (directAmount != null) {
+    const directCurrency = normalizeCurrencyCode(
+      rawPrice.currency ??
+        rawPrice.currency_code ??
+        rawPrice.currencyCode ??
+        rawPrice.priceCurrency,
+      fallbackCurrency,
+    );
+    return { amount: directAmount, currency: directCurrency || 'USD', unknown: false };
+  }
+
+  const usd = toPositiveNumberOrNull(rawPrice.usd);
+  if (usd != null) return { amount: usd, currency: 'USD', unknown: false };
+  const cny = toPositiveNumberOrNull(rawPrice.cny);
+  if (cny != null) return { amount: cny, currency: 'CNY', unknown: false };
+  return null;
+}
+
+function extractProductPriceFromHtml(html) {
+  const text = String(html || '');
+  if (!text) return null;
+
+  const metaCurrencyMatch = text.match(
+    /<meta[^>]+(?:property|name)=["'](?:product:price:currency|og:price:currency)["'][^>]+content=["']([^"']{2,12})["']/i,
+  );
+  const metaCurrency = normalizeCurrencyCode(metaCurrencyMatch?.[1] || '', '');
+
+  const scriptRe = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  while ((m = scriptRe.exec(text))) {
+    const raw = decodeHtmlEntitiesBasic(String(m[1] || '')).trim();
+    if (!raw) continue;
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const stack = Array.isArray(parsed) ? [...parsed] : [parsed];
+    while (stack.length) {
+      const node = stack.shift();
+      if (!node || typeof node !== 'object') continue;
+      if (Array.isArray(node)) {
+        stack.push(...node);
+        continue;
+      }
+
+      const currency = normalizeCurrencyCode(
+        node.priceCurrency ?? node.price_currency ?? node.currency ?? node.currencyCode,
+        metaCurrency,
+      );
+      const offerAmount =
+        toPositiveNumberOrNull(node.price) ??
+        toPositiveNumberOrNull(node.lowPrice) ??
+        toPositiveNumberOrNull(node.highPrice);
+      if (offerAmount != null) {
+        return {
+          amount: offerAmount,
+          currency: currency || 'USD',
+          unknown: false,
+          source: 'json_ld_offer',
+        };
+      }
+
+      const offers = node.offers ?? node.offer ?? node.aggregateOffer ?? node.aggregate_offer;
+      if (offers) {
+        if (Array.isArray(offers)) stack.push(...offers);
+        else stack.push(offers);
+      }
+      if (node['@graph']) {
+        if (Array.isArray(node['@graph'])) stack.push(...node['@graph']);
+        else stack.push(node['@graph']);
+      }
+      const nested = node.mainEntity ?? node.main_entity ?? node.itemOffered;
+      if (nested) stack.push(nested);
+    }
+  }
+
+  const metaAmountMatch = text.match(
+    /<meta[^>]+(?:property|name)=["'](?:product:price:amount|og:price:amount|twitter:data1|price)["'][^>]+content=["']([^"']{1,32})["']/i,
+  );
+  const metaAmount = toPositiveNumberOrNull(metaAmountMatch?.[1]);
+  if (metaAmount != null) {
+    return {
+      amount: metaAmount,
+      currency: metaCurrency || 'USD',
+      unknown: false,
+      source: 'meta_price',
+    };
+  }
+
+  const inlineCurrency = normalizeCurrencyCode(
+    text.match(/"priceCurrency"\s*:\s*"([A-Za-z]{3})"/i)?.[1] || '',
+    metaCurrency,
+  );
+  const inlineAmount = toPositiveNumberOrNull(text.match(/"price"\s*:\s*"?([0-9]+(?:\.[0-9]{1,2})?)"?/i)?.[1]);
+  if (inlineAmount != null) {
+    return {
+      amount: inlineAmount,
+      currency: inlineCurrency || 'USD',
+      unknown: false,
+      source: 'inline_price',
+    };
+  }
+  return null;
+}
+
 function slugToCandidateProductName(raw) {
   const text = String(raw || '')
     .replace(/\.[a-z0-9]{2,8}$/i, '')
@@ -5435,6 +5575,7 @@ async function buildProductAnalysisFromUrlIngredients({
 
   const hostName = String(parsedUrl.hostname || '').replace(/^www\./i, '');
   const pageTitle = extractPageTitleFromHtml(html);
+  const extractedPrice = extractProductPriceFromHtml(html);
   const reasons = uniqCaseInsensitiveStrings(
     [
       isCn
@@ -5473,12 +5614,20 @@ async function buildProductAnalysisFromUrlIngredients({
     joinBrandAndName(anchorBrand, anchorName),
     anchorName,
   );
+  const parsedPrice = normalizePriceObject(
+    parsedProductObj?.price ??
+      parsedProductObj?.price_amount ??
+      parsedProductObj?.priceAmount ??
+      parsedProductObj?.offer_price,
+  );
+  const anchorPrice = parsedPrice || normalizePriceObject(extractedPrice);
   const anchorProduct = {
     ...(parsedProductObj?.product_id ? { product_id: String(parsedProductObj.product_id).trim() } : {}),
     ...(parsedProductObj?.sku_id ? { sku_id: String(parsedProductObj.sku_id).trim() } : {}),
     ...(anchorBrand ? { brand: anchorBrand } : {}),
     ...(anchorName ? { name: anchorName } : {}),
     ...(anchorDisplayName ? { display_name: anchorDisplayName } : {}),
+    ...(anchorPrice ? { price: anchorPrice } : {}),
     url: parsedUrl.toString(),
   };
 
@@ -5666,6 +5815,11 @@ async function buildProductAnalysisFromUrlIngredients({
           isCn
             ? `证据来源：${hostName || 'product page'} 官方产品页成分表抓取。`
             : `Evidence source: ingredient list parsed from ${hostName || 'product page'}.`,
+          anchorPrice
+            ? isCn
+              ? `页面价格信号：${anchorPrice.currency || 'USD'} ${anchorPrice.amount}（用于同类对比）`
+              : `Price signal from page: ${anchorPrice.currency || 'USD'} ${anchorPrice.amount} (used for comparable matching).`
+            : '',
           ...socialSignals.notes,
           competitorOut?.queries?.length
             ? isCn
@@ -21422,6 +21576,8 @@ const __internal = {
   buildProductCatalogQueryCandidates,
   mapCatalogProductToAnchorProduct,
   resolveCatalogProductForProductInput,
+  extractProductPriceFromHtml,
+  normalizePriceObject,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
