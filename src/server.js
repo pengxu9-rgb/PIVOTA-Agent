@@ -2463,6 +2463,20 @@ const LOOKUP_EQUIVALENCE_FAMILIES = [
   ['sk ii', 'skii', '神仙水'],
 ];
 
+function isKnownLookupAliasQuery(queryText) {
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return false;
+  for (const family of LOOKUP_EQUIVALENCE_FAMILIES) {
+    const normalizedFamilyTerms = family
+      .map((term) => normalizeSearchTextForMatch(term))
+      .filter(Boolean);
+    if (normalizedFamilyTerms.some((term) => term && normalizedQuery.includes(term))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function expandLookupAnchorTokens(queryText, anchorTokens) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const normalizedAnchors = Array.isArray(anchorTokens)
@@ -3201,6 +3215,7 @@ function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
 
 function shouldSkipSecondaryFallbackAfterResolverMiss(result, queryText = '') {
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
+  if (isKnownLookupAliasQuery(queryText)) return false;
   if (isStrongResolverFirstQuery(queryText)) return false;
   return shouldReducePrimaryTimeoutAfterResolverMiss(result);
 }
@@ -3242,6 +3257,7 @@ function isUuidLikeSearchQuery(value) {
 function isStrongResolverFirstQuery(queryText) {
   const raw = String(queryText || '').trim();
   if (!raw) return false;
+  if (isKnownLookupAliasQuery(raw)) return true;
   if (isUuidLikeSearchQuery(raw)) return true;
   if (!resolveStableAliasByQuery) return false;
 
