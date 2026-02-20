@@ -26,6 +26,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS;
     delete process.env.AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE;
     delete process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
@@ -225,6 +228,91 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const primaryState = sourceHealth.find((item) => item.base_url === 'http://catalog-primary.test');
     expect(primaryState).toBeTruthy();
     expect(primaryState.deprioritized).toBe(true);
+  });
+
+  test('catalog search falls back from beauty route path to generic path on same source', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS = '/agent/v1/beauty/products/search,/agent/v1/products/search';
+    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
+
+    nock('http://catalog-primary.test')
+      .persist()
+      .get('/agent/v1/beauty/products/search')
+      .query(true)
+      .reply(404, { error: 'not_found' });
+
+    nock('http://catalog-primary.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_generic_1',
+            brand: 'Alt Brand',
+            name: 'Alt Serum Generic',
+            display_name: 'Alt Brand Alt Serum Generic',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const logger = { warn: jest.fn(), info: jest.fn() };
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      logger,
+      timeoutMs: 1200,
+    });
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('comp_generic_1');
+    expect(out.source_base_url).toBe('http://catalog-primary.test');
+    expect(out.source_endpoint).toBe('http://catalog-primary.test/agent/v1/products/search');
+    expect(Array.isArray(out.attempted_endpoints)).toBe(true);
+    expect(out.attempted_endpoints).toEqual([
+      'http://catalog-primary.test/agent/v1/beauty/products/search',
+      'http://catalog-primary.test/agent/v1/products/search',
+    ]);
+    expect(out.source_failover).toBe(false);
+  });
+
+  test('catalog search defaults to generic route first when beauty-first flag is disabled', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS = '/agent/v1/beauty/products/search,/agent/v1/products/search';
+    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'false';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
+
+    nock('http://catalog-primary.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_generic_first_1',
+            brand: 'Alt Brand',
+            name: 'Alt Serum Generic First',
+            display_name: 'Alt Brand Alt Serum Generic First',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const logger = { warn: jest.fn(), info: jest.fn() };
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      logger,
+      timeoutMs: 1200,
+    });
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('comp_generic_first_1');
+    expect(out.source_endpoint).toBe('http://catalog-primary.test/agent/v1/products/search');
+    expect(Array.isArray(out.attempted_endpoints)).toBe(true);
+    expect(out.attempted_endpoints[0]).toBe('http://catalog-primary.test/agent/v1/products/search');
   });
 
   test('catalog product mapping produces parse/analyze-compatible anchor payload', () => {
@@ -1188,7 +1276,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.missing_info_internal).toBeUndefined();
 
     await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThanOrEqual(1);
     const lastWrite = upsertProductIntelKbEntry.mock.calls[upsertProductIntelKbEntry.mock.calls.length - 1][0];
     expect(lastWrite).toEqual(
       expect.objectContaining({
@@ -1608,12 +1696,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload?.confidence_by_block?.competitors?.level).toBe('low');
   });
 
-  test('/v1/product/analyze async competitor enrich uses reco dag source when catalog recall fails', async () => {
+  test('/v1/product/analyze async competitor enrich does not inject aurora alternatives into competitors', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
-    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
 
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
     const getProductIntelKbEntry = jest.fn().mockResolvedValue(null);
@@ -1644,29 +1731,6 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query(true)
       .reply(503, { error: 'temporary unavailable' });
 
-    nock('http://aurora.test')
-      .persist()
-      .post('/api/chat')
-      .reply(200, {
-        structured: {
-          alternatives: [
-            {
-              product: {
-                product_id: 'alt_async_1',
-                sku_id: 'alt_async_1',
-                brand: 'Brand Alternative',
-                name: 'Brand Alternative Copper Peptide Serum',
-              },
-              similarity_score: 0.84,
-              reasons: ['Cross-brand peptide alternative'],
-              tradeoffs: { price_delta_usd: 3 },
-              evidence: { kb_citations: ['kb:alt_async_1'] },
-              missing_info: [],
-            },
-          ],
-        },
-      });
-
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/product/analyze')
@@ -1692,11 +1756,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
     const competitors = Array.isArray(lastWrite.analysis?.competitors?.candidates) ? lastWrite.analysis.competitors.candidates : [];
     const related = Array.isArray(lastWrite.analysis?.related_products?.candidates) ? lastWrite.analysis.related_products.candidates : [];
-    expect(competitors.length).toBeGreaterThan(0);
+    expect(competitors.length).toBe(0);
+    expect(
+      competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'aurora_alternatives'),
+    ).toBe(false);
     expect(
       competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
     ).toBe(false);
-    expect(related.length).toBeGreaterThanOrEqual(0);
+    expect(related.length).toBeGreaterThanOrEqual(1);
   });
 
   test('/v1/product/analyze filters nav links and routes on-page related products away from competitors', async () => {

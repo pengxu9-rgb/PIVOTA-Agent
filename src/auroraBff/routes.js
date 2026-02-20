@@ -6321,8 +6321,6 @@ function stripCompetitorMissingTokens(items) {
     if (token === 'alternatives_limited') continue;
     if (token === 'competitor_candidates_filtered_noise') continue;
     if (token === 'competitor_sync_enrich_used') continue;
-    if (token === 'competitor_sync_aurora_fallback_used') continue;
-    if (token === 'competitor_async_aurora_fallback_used') continue;
     if (/^competitor_recall_/i.test(token)) continue;
     out.push(token);
   }
@@ -6349,122 +6347,6 @@ function shouldServeProductIntelKbPayload(payload) {
     return shouldRepairCompetitorCoverage(p, { preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT });
   }
   return true;
-}
-
-function mapAlternativesToCompetitorCandidates(alternatives, { lang = 'EN', maxCandidates = 6 } = {}) {
-  const isCn = String(lang || '').toUpperCase() === 'CN';
-  const seen = new Set();
-  const out = [];
-  const list = Array.isArray(alternatives) ? alternatives : [];
-  for (const item of list) {
-    const alt = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
-    const product = alt && alt.product && typeof alt.product === 'object' && !Array.isArray(alt.product) ? alt.product : null;
-    if (!product) continue;
-
-    const name = pickFirstTrimmed(product.display_name, product.name);
-    if (!name) continue;
-    const productId = pickFirstTrimmed(product.product_id, product.sku_id, product.id);
-    const key = `${String(productId || '').toLowerCase()}::${name.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const rawSimilarity = Number(alt.similarity);
-    const similarityScore = Number.isFinite(rawSimilarity)
-      ? Number(Math.max(0.2, Math.min(0.95, rawSimilarity > 1 ? rawSimilarity / 100 : rawSimilarity)).toFixed(3))
-      : null;
-
-    const reasons = uniqCaseInsensitiveStrings(Array.isArray(alt.reasons) ? alt.reasons : [], 3);
-    const tradeoffs = uniqCaseInsensitiveStrings(Array.isArray(alt.tradeoffs) ? alt.tradeoffs : [], 2);
-    const kind = String(alt.kind || '').trim().toLowerCase();
-    const category = pickFirstTrimmed(product.category, product.product_type, product.productType);
-    const price = extractCatalogCandidatePrice(product);
-    const kindLine =
-      kind === 'dupe'
-        ? isCn
-          ? 'LLM 候选：高相似平替'
-          : 'LLM candidate: high-similarity dupe'
-        : kind === 'premium'
-          ? isCn
-            ? 'LLM 候选：偏高阶替代'
-            : 'LLM candidate: premium alternative'
-          : isCn
-            ? 'LLM 候选：相近替代'
-            : 'LLM candidate: similar alternative';
-
-    const whyCandidate = uniqCaseInsensitiveStrings([kindLine, ...reasons], 4);
-    const compareHighlights = uniqCaseInsensitiveStrings(tradeoffs, 2);
-
-    out.push({
-      ...(productId ? { product_id: productId } : {}),
-      ...(pickFirstTrimmed(product.sku_id) ? { sku_id: pickFirstTrimmed(product.sku_id) } : {}),
-      ...(pickFirstTrimmed(product.brand, product.brand_name) ? { brand: pickFirstTrimmed(product.brand, product.brand_name) } : {}),
-      name,
-      ...(pickFirstTrimmed(product.display_name) ? { display_name: pickFirstTrimmed(product.display_name) } : {}),
-      ...(category ? { category } : {}),
-      ...(price ? { price } : {}),
-      source: { type: 'aurora_alternatives' },
-      source_type: 'aurora_alternatives',
-      ...(similarityScore != null ? { similarity_score: similarityScore } : {}),
-      why_candidate: whyCandidate,
-      ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
-    });
-    if (out.length >= Math.max(1, Math.min(10, Number(maxCandidates) || 6))) break;
-  }
-  return out;
-}
-
-async function buildAuroraFallbackCompetitorCandidates({
-  productUrl,
-  anchorProduct = null,
-  profileSummary = null,
-  lang = 'EN',
-  maxCandidates = 6,
-  logger,
-} = {}) {
-  const anchorObj = anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct) ? anchorProduct : null;
-  const productInput = buildProductInputText(anchorObj, productUrl) || String(productUrl || '').trim();
-  if (!productInput) return { candidates: [], reason: 'fallback_input_missing', source: 'aurora_alternatives' };
-
-  const anchorId = pickFirstTrimmed(anchorObj?.product_id, anchorObj?.sku_id);
-  const fallbackCtx = {
-    lang: String(lang || '').toUpperCase() === 'CN' ? 'CN' : 'EN',
-    trigger_source: 'product_intel_competitor_async_backfill',
-    state: 'idle',
-  };
-  const out = await fetchRecoAlternativesForProduct({
-    ctx: fallbackCtx,
-    profileSummary,
-    recentLogs: [],
-    productInput,
-    productObj: anchorObj,
-    anchorId,
-    maxTotal: Math.max(2, Math.min(6, Number(maxCandidates) || 6)),
-    debug: false,
-    logger,
-  });
-  if (!out || !out.ok) {
-    return {
-      candidates: [],
-      reason: 'aurora_alternatives_failed',
-      source: 'aurora_alternatives',
-    };
-  }
-
-  const mappedAlternatives = Array.isArray(out.alternatives) ? out.alternatives : [];
-  const candidates = mapAlternativesToCompetitorCandidates(mappedAlternatives, { lang: fallbackCtx.lang, maxCandidates });
-  if (!candidates.length) {
-    return {
-      candidates: [],
-      reason: 'aurora_alternatives_empty',
-      source: 'aurora_alternatives',
-    };
-  }
-  return {
-    candidates,
-    reason: null,
-    source: 'aurora_alternatives',
-    queries: [productInput.slice(0, 160)],
-  };
 }
 
 function scheduleProductIntelCompetitorEnrichBackfill({
