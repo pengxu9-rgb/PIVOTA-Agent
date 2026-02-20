@@ -240,6 +240,7 @@ const ProductAnalyzeRequestSchema = z
     product: z.record(z.string(), z.any()).optional(),
     url: z.string().url().optional(),
     name: z.string().min(1).optional(),
+    force_refresh: z.boolean().optional(),
   })
   .strict();
 
