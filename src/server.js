@@ -7705,6 +7705,20 @@ async function proxyAgentSearchToBackend(req, res) {
 }
 
 app.get('/agent/v1/products/search', proxyAgentSearchToBackend);
+app.get('/agent/v1/beauty/products/search', (req, res) => {
+  const mergedQuery =
+    req.query && typeof req.query === 'object' && !Array.isArray(req.query)
+      ? { ...req.query }
+      : {};
+  if (!String(firstQueryParamValue(mergedQuery.source) || '').trim()) {
+    mergedQuery.source = 'aurora-bff';
+  }
+  if (!String(firstQueryParamValue(mergedQuery.catalog_surface) || '').trim()) {
+    mergedQuery.catalog_surface = 'beauty';
+  }
+  const queryString = buildQueryString(mergedQuery);
+  return res.redirect(307, `/agent/v1/products/search${queryString}`);
+});
 
 // ---------------- Product grounding resolver (Aurora recos → PDP-openable product_ref) ----------------
 
@@ -12260,7 +12274,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
-            effectiveProducts.length === 0
+            effectiveProducts.length === 0 &&
+            !isLookupQuery
           ) {
             const strictEmptyBase = {
               status: 'success',
