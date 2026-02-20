@@ -12008,15 +12008,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       // Shopping Agent query search (no explicit merchant scope): prefer cache-first
       // lexical recall so we avoid upstream timeout cascades for common brand queries.
       const cacheQueryText = String(rawUserQuery || queryText || '').trim();
+      const cacheSearchQueryText = String(
+        findProductsExpansionMeta?.expanded_query || cacheQueryText,
+      ).trim();
       const isCrossMerchantQuerySearch =
-        !isCreatorUi && cacheQueryText.length > 0 && !hasMerchantScope;
+        !isCreatorUi && cacheSearchQueryText.length > 0 && !hasMerchantScope;
       if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
         try {
           const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
           const fromCache = await withStageBudget(
-            searchCrossMerchantFromCache(cacheQueryText, page, limit, {
+            searchCrossMerchantFromCache(cacheSearchQueryText, page, limit, {
               inStockOnly,
             }),
             FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
@@ -12082,7 +12085,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 try {
                   const supplement = await fetchExternalSeedSupplementFromBackend({
                     queryParams: {
-                      query: cacheQueryText,
+                      query: cacheSearchQueryText,
                       ...(search.category ? { category: search.category } : {}),
                       ...(search.price_min != null || search.min_price != null
                         ? { min_price: search.price_min ?? search.min_price }
@@ -12156,6 +12159,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             attempted: true,
             mode: 'search',
             query: cacheQueryText,
+            cache_query: cacheSearchQueryText,
             upstream_query: queryText,
             latency_ms: Math.max(0, Date.now() - cacheStageStartedAt),
             page,
@@ -12459,6 +12463,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             attempted: true,
             mode: 'search',
             query: cacheQueryText,
+            cache_query: cacheSearchQueryText,
             upstream_query: queryText,
             page: search.page || 1,
             limit: search.limit || search.page_size || 20,
