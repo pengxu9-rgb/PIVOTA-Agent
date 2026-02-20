@@ -14897,6 +14897,20 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   const bestInput = inputText || anchor;
   if (!bestInput) return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
 
+  const profileObj = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
+    ? profileSummary
+    : {};
+  const profileSkinType = pickFirstTrimmed(profileObj.skinType, profileObj.skin_type, profileObj.skin_type_text, 'Not sure');
+  const profileSensitivity = pickFirstTrimmed(profileObj.sensitivity, profileObj.sensitivity_level, 'Medium');
+  const profileBarrier = pickFirstTrimmed(profileObj.barrierStatus, profileObj.barrier_status, 'Stable');
+  const profileGoals = Array.isArray(profileObj.goals)
+    ? profileObj.goals.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3)
+    : [];
+  if (!profileGoals.length) profileGoals.push('Hydration');
+  const profileSnapshotLine =
+    `Profile snapshot (already available, do not re-ask): skinType=${profileSkinType}; ` +
+    `sensitivity=${profileSensitivity}; barrierStatus=${profileBarrier}; goals=${profileGoals.join(', ')}`;
+
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
     recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
@@ -14908,6 +14922,11 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
 
   const query =
     `${prefix}` +
+    `${profileSnapshotLine}\n` +
+    `Execution constraints:\n` +
+    `- Do NOT ask clarifying questions.\n` +
+    `- If some fields are missing, continue with general-audience assumptions and mark missing_info.\n` +
+    `- Return alternatives based on available evidence instead of blocking on additional intake.\n` +
     `Task: Deep-scan this product and return alternatives (dupe/similar/premium) tailored to this user if possible.\n` +
     `Return ONLY a JSON object with keys: alternatives (array).\n` +
     `Each alternative item should include: product (object), similarity_score (0..1 or 0..100), tradeoffs (object), reasons (string[] max 2), evidence (object), missing_info (string[]).\n` +
@@ -14922,6 +14941,19 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
       query,
       timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
       ...(anchor ? { anchor_product_id: anchor } : {}),
+      resume_context: {
+        enabled: true,
+        template_version: 'v2',
+        flow_id: 'alternatives',
+        include_history: false,
+        resume_user_text: `Find dupe/similar/premium alternatives for ${bestInput}`,
+        known_profile_fields: {
+          skinType: profileSkinType,
+          sensitivity: profileSensitivity,
+          barrierStatus: profileBarrier,
+          goals: profileGoals,
+        },
+      },
     });
   } catch (err) {
     logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: alternatives upstream failed');
