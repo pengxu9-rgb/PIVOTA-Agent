@@ -30,6 +30,7 @@ const DEFAULT_TIMEOUTS_MS = {
   dupe_pipeline: 350,
   on_page_related: 220,
 };
+const RECO_BLOCKED_COMPETITOR_SOURCE_TYPES = new Set(['on_page_related', 'aurora_alternatives']);
 const SOURCE_TIMEOUT_GRACE_MS = {
   // Catalog ANN often needs extra time after upstream search returns to normalize and route candidates.
   catalog_ann: 220,
@@ -240,6 +241,12 @@ function extractSourceType(candidate) {
   return String(row?.source?.type || row.source_type || row.sourceType || '')
     .trim()
     .toLowerCase();
+}
+
+function isBlockedCompetitorSourceType(sourceType) {
+  const token = String(sourceType || '').trim().toLowerCase();
+  if (!token) return false;
+  return RECO_BLOCKED_COMPETITOR_SOURCE_TYPES.has(token);
 }
 
 function addFallbackToken(fallbacks, token) {
@@ -706,9 +713,11 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
   });
 
   let routed = routeCandidates(buildAnchorForRouter(anchor), rerankedCandidates, routerCtx);
-  let compPool = Array.isArray(routed?.comp_pool) ? [...routed.comp_pool] : [];
+  let compPool = (Array.isArray(routed?.comp_pool) ? [...routed.comp_pool] : [])
+    .filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
   let relPool = Array.isArray(routed?.rel_pool) ? [...routed.rel_pool] : [];
-  let dupePool = Array.isArray(routed?.dupe_pool) ? [...routed.dupe_pool] : [];
+  let dupePool = (Array.isArray(routed?.dupe_pool) ? [...routed.dupe_pool] : [])
+    .filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
 
   const needCompetitorFallback = !compPool.length || diagnostics.blocks.catalog_ann.timeout || diagnostics.blocks.kb_backfill.timeout;
   if (needCompetitorFallback) {
@@ -734,9 +743,11 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
           },
         );
         routed = routeCandidates(buildAnchorForRouter(anchor), merged, routerCtx);
-        compPool = Array.isArray(routed?.comp_pool) ? [...routed.comp_pool] : [];
+        compPool = (Array.isArray(routed?.comp_pool) ? [...routed.comp_pool] : [])
+          .filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
         relPool = Array.isArray(routed?.rel_pool) ? [...routed.rel_pool] : [];
-        dupePool = Array.isArray(routed?.dupe_pool) ? [...routed.dupe_pool] : [];
+        dupePool = (Array.isArray(routed?.dupe_pool) ? [...routed.dupe_pool] : [])
+          .filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
       }
     }
     if (!compPool.length || diagnostics.blocks.catalog_ann.timeout) {
@@ -764,9 +775,11 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
           },
         );
         routed = routeCandidates(buildAnchorForRouter(anchor), merged, routerCtx);
-        compPool = Array.isArray(routed?.comp_pool) ? [...routed.comp_pool] : [];
+        compPool = (Array.isArray(routed?.comp_pool) ? [...routed.comp_pool] : [])
+          .filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
         relPool = Array.isArray(routed?.rel_pool) ? [...routed.rel_pool] : [];
-        dupePool = Array.isArray(routed?.dupe_pool) ? [...routed.dupe_pool] : [];
+        dupePool = (Array.isArray(routed?.dupe_pool) ? [...routed.dupe_pool] : [])
+          .filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
       }
     }
   }
@@ -801,13 +814,16 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
       const dupeRouted = routeCandidates(buildAnchorForRouter(anchor), kbDupes, routerCtx);
       const nextDupes = Array.isArray(dupeRouted?.dupe_pool) ? dupeRouted.dupe_pool : [];
       if (nextDupes.length) {
-        dupePool = dedupeCandidates(nextDupes, poolSize.dupes);
+        dupePool = dedupeCandidates(
+          nextDupes.filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row))),
+          poolSize.dupes,
+        );
       }
     }
   }
 
-  compPool = compPool.filter((row) => extractSourceType(row) !== 'on_page_related');
-  dupePool = dupePool.filter((row) => extractSourceType(row) !== 'on_page_related');
+  compPool = compPool.filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
+  dupePool = dupePool.filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
   compPool = dedupeCandidates(compPool, poolSize.competitors);
   relPool = dedupeCandidates(relPool, poolSize.related_products);
   dupePool = dedupeCandidates(dupePool, poolSize.dupes);
@@ -895,8 +911,8 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     };
   }
 
-  rowsByBlock.competitors = rowsByBlock.competitors.filter((row) => extractSourceType(row) !== 'on_page_related');
-  rowsByBlock.dupes = rowsByBlock.dupes.filter((row) => extractSourceType(row) !== 'on_page_related');
+  rowsByBlock.competitors = rowsByBlock.competitors.filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
+  rowsByBlock.dupes = rowsByBlock.dupes.filter((row) => !isBlockedCompetitorSourceType(extractSourceType(row)));
 
   const blocksWithInternal = {
     competitors: { candidates: dedupeCandidates(rowsByBlock.competitors, finalCapByBlock.competitors) },

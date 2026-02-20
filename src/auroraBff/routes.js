@@ -4962,6 +4962,7 @@ function sanitizeCompetitorCandidates(candidates, max = 10) {
 }
 
 const RECO_PRICE_BANDS = new Set(['budget', 'mid', 'premium', 'luxury', 'unknown']);
+const RECO_COMPETITOR_BLOCKED_SOURCE_TYPES = new Set(['on_page_related', 'aurora_alternatives']);
 
 function normalizeRecoSourceObject(raw) {
   if (isPlainObject(raw)) {
@@ -4976,6 +4977,23 @@ function normalizeRecoSourceObject(raw) {
   }
   if (typeof raw === 'string' && raw.trim()) return { type: raw.trim() };
   return { type: 'unknown' };
+}
+
+function getRecoCandidateSourceTypeToken(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  return String((row.source && row.source.type) || row.source_type || row.sourceType || '')
+    .trim()
+    .toLowerCase();
+}
+
+function isBlockedCompetitorSourceType(sourceType) {
+  const token = String(sourceType || '').trim().toLowerCase();
+  if (!token) return false;
+  return RECO_COMPETITOR_BLOCKED_SOURCE_TYPES.has(token);
+}
+
+function filterBlockedCompetitorSourceCandidates(rows) {
+  return (Array.isArray(rows) ? rows : []).filter((row) => !isBlockedCompetitorSourceType(getRecoCandidateSourceTypeToken(row)));
 }
 
 function normalizeRecoEvidenceRefs(raw) {
@@ -5198,10 +5216,7 @@ function getRecoGuardCandidateBrandId(candidate) {
 }
 
 function getRecoGuardCandidateSourceType(candidate) {
-  const row = isPlainObject(candidate) ? candidate : {};
-  return String((row.source && row.source.type) || row.source_type || row.sourceType || '')
-    .trim()
-    .toLowerCase();
+  return getRecoCandidateSourceTypeToken(candidate);
 }
 
 function getRecoGuardTopFeatureKeys(block) {
@@ -5369,7 +5384,8 @@ function applyRecoGuardrailToProductAnalysisPayload(
       Boolean(candidateBrandId) &&
       anchorBrandId === candidateBrandId;
     const onPageBlocked = sourceType === 'on_page_related';
-    if (!sameBrandBlocked && !onPageBlocked) {
+    const legacySourceBlocked = sourceType === 'aurora_alternatives';
+    if (!sameBrandBlocked && !onPageBlocked && !legacySourceBlocked) {
       filteredCandidates.push(candidate);
       continue;
     }
@@ -5383,6 +5399,13 @@ function applyRecoGuardrailToProductAnalysisPayload(
     if (onPageBlocked) {
       violations.push({
         violation_type: 'on_page_source',
+        source_type: sourceType || 'unknown',
+        candidate_brand_id: candidateBrandId || '',
+      });
+    }
+    if (legacySourceBlocked) {
+      violations.push({
+        violation_type: 'legacy_alternatives_source',
         source_type: sourceType || 'unknown',
         candidate_brand_id: candidateBrandId || '',
       });
@@ -5498,6 +5521,7 @@ function applyRecoGuardrailToProductAnalysisPayload(
         ...((Array.isArray(prevCompetitorConfidence.reasons) ? prevCompetitorConfidence.reasons : [])),
         ...(violationTypes.includes('same_brand') ? ['guardrail_same_brand_filtered'] : []),
         ...(violationTypes.includes('on_page_source') ? ['guardrail_on_page_filtered'] : []),
+        ...(violationTypes.includes('legacy_alternatives_source') ? ['guardrail_legacy_alternatives_source_filtered'] : []),
         ...(circuitOpen ? ['guardrail_circuit_open'] : []),
       ],
       8,
@@ -5662,9 +5686,9 @@ function routeCompetitorCandidatePools({
   );
   return {
     routed,
-    compPool: sanitizeCompetitorCandidates(routed?.comp_pool, maxCandidates),
+    compPool: filterBlockedCompetitorSourceCandidates(sanitizeCompetitorCandidates(routed?.comp_pool, maxCandidates)),
     relPool: sanitizeCompetitorCandidates(routed?.rel_pool, maxCandidates),
-    dupePool: sanitizeCompetitorCandidates(routed?.dupe_pool, maxCandidates),
+    dupePool: filterBlockedCompetitorSourceCandidates(sanitizeCompetitorCandidates(routed?.dupe_pool, maxCandidates)),
   };
 }
 
@@ -6282,7 +6306,8 @@ function hasLowCoverageCompetitorToken(payload) {
     return token === 'competitors_low_coverage'
       || token === 'alternatives_limited'
       || token === 'competitors_missing'
-      || token === 'alternatives_unavailable';
+      || token === 'alternatives_unavailable'
+      || token === 'competitor_sync_aurora_fallback_used';
   });
 }
 
@@ -6321,6 +6346,7 @@ function stripCompetitorMissingTokens(items) {
     if (token === 'alternatives_limited') continue;
     if (token === 'competitor_candidates_filtered_noise') continue;
     if (token === 'competitor_sync_enrich_used') continue;
+    if (token === 'competitor_sync_aurora_fallback_used') continue;
     if (/^competitor_recall_/i.test(token)) continue;
     out.push(token);
   }
@@ -6341,6 +6367,7 @@ function shouldServeProductIntelKbPayload(payload) {
     return token === 'competitors_missing'
       || token === 'competitors.competitors.candidates'
       || token === 'alternatives_unavailable'
+      || token === 'competitor_sync_aurora_fallback_used'
       || token.startsWith('competitor_recall_');
   });
   if (competitorMissing && !hasCompetitors) {
