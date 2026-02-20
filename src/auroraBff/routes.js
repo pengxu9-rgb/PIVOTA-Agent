@@ -3414,6 +3414,49 @@ function extractPageTitleFromHtml(html) {
   return stripHtmlToText(m[1]);
 }
 
+const CONCENTRATION_PERCENT_RE = /\b(\d{1,2}(?:\.\d{1,2})?)\s*%/gi;
+const CONCENTRATION_CONTEXT_RE = /\b(acid|retinol|retinal|retinoid|niacinamide|vitamin\s*c|ascorb|peptide|copper|zinc|benzoyl|salicylic|glycolic|lactic|mandelic|serum|solution)\b/i;
+
+function extractConcentrationSignalsFromText(rawText, max = 4) {
+  const text = stripHtmlToText(rawText);
+  if (!text) return [];
+  const out = [];
+  const seen = new Set();
+  let m;
+  CONCENTRATION_PERCENT_RE.lastIndex = 0;
+  while ((m = CONCENTRATION_PERCENT_RE.exec(text))) {
+    const valueToken = `${String(m[1] || '').trim()}%`;
+    if (!valueToken || seen.has(valueToken.toLowerCase())) continue;
+    const start = Math.max(0, m.index - 42);
+    const end = Math.min(text.length, m.index + String(m[0] || '').length + 42);
+    const windowText = text.slice(start, end);
+    if (!CONCENTRATION_CONTEXT_RE.test(windowText)) continue;
+    seen.add(valueToken.toLowerCase());
+    out.push(valueToken);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function extractConcentrationSignals({
+  pageTitle = '',
+  anchorName = '',
+  anchorDisplayName = '',
+  keyIngredients = [],
+} = {}) {
+  return uniqCaseInsensitiveStrings(
+    [
+      ...extractConcentrationSignalsFromText(pageTitle, 2),
+      ...extractConcentrationSignalsFromText(anchorName, 2),
+      ...extractConcentrationSignalsFromText(anchorDisplayName, 2),
+      ...((Array.isArray(keyIngredients) ? keyIngredients : []).flatMap((item) =>
+        extractConcentrationSignalsFromText(String(item || ''), 1)
+      )),
+    ],
+    6,
+  );
+}
+
 function normalizeCurrencyCode(value, fallback = '') {
   const token = String(value || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
   if (token.length === 3) return token;
@@ -6949,6 +6992,28 @@ async function buildProductAnalysisFromUrlIngredients({
   const hostName = String(parsedUrl.hostname || '').replace(/^www\./i, '');
   const pageTitle = extractPageTitleFromHtml(html);
   const extractedPrice = extractProductPriceFromHtml(html);
+
+  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const anchorBrand = pickFirstTrimmed(
+    parsedProductObj?.brand,
+    pageTitle.includes('|') ? pageTitle.split('|').slice(-1)[0] : '',
+  );
+  const anchorName = pickFirstTrimmed(
+    parsedProductObj?.name,
+    pageTitle.includes('|') ? pageTitle.split('|')[0] : pageTitle,
+    parsedProductObj?.display_name,
+  );
+  const anchorDisplayName = pickFirstTrimmed(
+    parsedProductObj?.display_name,
+    joinBrandAndName(anchorBrand, anchorName),
+    anchorName,
+  );
+  const concentrationSignals = extractConcentrationSignals({
+    pageTitle,
+    anchorName,
+    anchorDisplayName,
+    keyIngredients,
+  });
   const reasons = uniqCaseInsensitiveStrings(
     [
       isCn
@@ -6965,27 +7030,15 @@ async function buildProductAnalysisFromUrlIngredients({
           ? `页面舆情信号偏正向：${socialSignals.typical_positive.slice(0, 2).join('、')}。`
           : `On-page sentiment leans positive: ${socialSignals.typical_positive.slice(0, 2).join(', ')}.`
         : '',
-      isCn
-        ? '边界说明：成分浓度与批次差异不可见，建议先做局部测试并从低频开始。'
-        : 'Boundary: concentration and batch variance are unknown; patch test first and start at low frequency.',
+      concentrationSignals.length
+        ? isCn
+          ? `页面已识别浓度信号：${concentrationSignals.slice(0, 2).join('、')}（仅作参考）。`
+          : `Detected concentration signal on page: ${concentrationSignals.slice(0, 2).join(', ')} (reference only).`
+        : isCn
+          ? '边界说明：成分浓度与批次差异不可见，建议先做局部测试并从低频开始。'
+          : 'Boundary: concentration and batch variance are unknown; patch test first and start at low frequency.',
     ],
     5,
-  );
-
-  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
-  const anchorBrand = pickFirstTrimmed(
-    parsedProductObj?.brand,
-    pageTitle.includes('|') ? pageTitle.split('|').slice(-1)[0] : '',
-  );
-  const anchorName = pickFirstTrimmed(
-    parsedProductObj?.name,
-    pageTitle.includes('|') ? pageTitle.split('|')[0] : pageTitle,
-    parsedProductObj?.display_name,
-  );
-  const anchorDisplayName = pickFirstTrimmed(
-    parsedProductObj?.display_name,
-    joinBrandAndName(anchorBrand, anchorName),
-    anchorName,
   );
   const parsedPrice = normalizePriceObject(
     parsedProductObj?.price ??
@@ -7154,7 +7207,8 @@ async function buildProductAnalysisFromUrlIngredients({
     ).toFixed(3),
   );
 
-  const evidenceMissingInfo = ['concentration_unknown'];
+  const evidenceMissingInfo = [];
+  if (!concentrationSignals.length) evidenceMissingInfo.push('concentration_unknown');
   if (!anchorPrice) evidenceMissingInfo.push('price_unknown');
   if (socialMissing) evidenceMissingInfo.push('social_signals_missing');
   if (competitorMissing) evidenceMissingInfo.push('competitors_missing');

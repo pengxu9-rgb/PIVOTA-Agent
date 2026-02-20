@@ -124,12 +124,57 @@ function isInternalProductAnalysisGapCode(code) {
   return false;
 }
 
+function deriveProfilePrompt(rawCodes) {
+  const tokens = uniqueStrings(asStringArray(rawCodes)).map((code) => String(code || '').trim().toLowerCase());
+  if (!tokens.length) return null;
+
+  const missingFields = new Set();
+  let needed = false;
+
+  for (const token of tokens) {
+    const mapped = mapProductAnalysisGapCode(token);
+    if (mapped === 'profile_not_provided' || token === 'profile_not_provided') needed = true;
+    if (/skin_fit\.profile\.skintype|profile\.skintype|profile_skin_type_missing/.test(token)) {
+      needed = true;
+      missingFields.add('skinType');
+    }
+    if (/skin_fit\.profile\.sensitivity|profile\.sensitivity|profile_sensitivity_missing/.test(token)) {
+      needed = true;
+      missingFields.add('sensitivity');
+    }
+    if (/skin_fit\.profile\.barrierstatus|profile\.barrierstatus|profile_barrier_status_missing/.test(token)) {
+      needed = true;
+      missingFields.add('barrierStatus');
+    }
+    if (/skin_fit\.profile\.goals|profile\.goals|profile_goals_missing/.test(token)) {
+      needed = true;
+      missingFields.add('goals');
+    }
+  }
+
+  if (!needed) return null;
+  if (!missingFields.size) {
+    missingFields.add('skinType');
+    missingFields.add('sensitivity');
+    missingFields.add('barrierStatus');
+  }
+
+  return {
+    needed: true,
+    missing_fields: Array.from(missingFields),
+    cta_action: 'open_profile',
+    cta_target: 'profile_sheet',
+  };
+}
+
 function splitProductAnalysisGaps(rawCodes) {
   const internalDebugCodes = uniqueStrings(asStringArray(rawCodes));
+  const profilePrompt = deriveProfilePrompt(internalDebugCodes);
   const userFacingGaps = [];
   for (const raw of internalDebugCodes) {
     const mapped = mapProductAnalysisGapCode(raw);
     if (!mapped) continue;
+    if (mapped === 'profile_not_provided') continue;
     if (isInternalProductAnalysisGapCode(mapped)) continue;
     userFacingGaps.push(mapped);
   }
@@ -139,6 +184,7 @@ function splitProductAnalysisGaps(rawCodes) {
     user_facing_gaps: userFacing,
     internal_debug_codes: internalDebugCodes,
     missing_info_internal: internalDebugCodes,
+    profile_prompt: profilePrompt,
   };
 }
 
@@ -158,6 +204,7 @@ function applyProductAnalysisGapContract(payload) {
     user_facing_gaps: gaps.user_facing_gaps,
     internal_debug_codes: gaps.internal_debug_codes,
     missing_info_internal: gaps.missing_info_internal,
+    ...(gaps.profile_prompt ? { profile_prompt: gaps.profile_prompt } : {}),
   };
 }
 
@@ -288,6 +335,7 @@ function normalizeProductAnalysis(raw) {
         user_facing_gaps: gaps.user_facing_gaps,
         internal_debug_codes: gaps.internal_debug_codes,
         missing_info_internal: gaps.missing_info_internal,
+        ...(gaps.profile_prompt ? { profile_prompt: gaps.profile_prompt } : {}),
       },
       field_missing: [{ field: 'assessment', reason: 'upstream_missing_or_unstructured' }, ...evOut.field_missing],
     };
@@ -364,6 +412,7 @@ function normalizeProductAnalysis(raw) {
       user_facing_gaps: gaps.user_facing_gaps,
       internal_debug_codes: gaps.internal_debug_codes,
       missing_info_internal: gaps.missing_info_internal,
+      ...(gaps.profile_prompt ? { profile_prompt: gaps.profile_prompt } : {}),
       ...(competitorCandidates.length ? { competitors: { candidates: competitorCandidates } } : {}),
       ...(relatedCandidates.length ? { related_products: { candidates: relatedCandidates } } : {}),
       ...(dupeCandidates.length ? { dupes: { candidates: dupeCandidates } } : {}),
@@ -1629,6 +1678,7 @@ function attachProductIntelContract(payload, { lang = 'EN', profileSummary = nul
     user_facing_gaps: gaps.user_facing_gaps,
     internal_debug_codes: gaps.internal_debug_codes,
     missing_info_internal: gaps.missing_info_internal,
+    ...(gaps.profile_prompt ? { profile_prompt: gaps.profile_prompt } : {}),
   };
 }
 
