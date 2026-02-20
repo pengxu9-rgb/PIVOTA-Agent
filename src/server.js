@@ -694,6 +694,7 @@ function setProxySearchResolverCacheEntry(cacheKey, value, ttlMs = PROXY_SEARCH_
 const PRODUCT_DETAIL_CACHE_ENABLED =
   process.env.PRODUCT_DETAIL_CACHE_ENABLED !== 'false';
 const PRODUCT_DETAIL_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
+const PRODUCT_DETAIL_INFLIGHT = new Map(); // cacheKey -> Promise<product|null>
 const PRODUCT_DETAIL_CACHE_METRICS = {
   hits: 0,
   misses: 0,
@@ -956,6 +957,37 @@ function trimOldestInflightEntries(map, maxEntries) {
   }
 }
 
+function parseNullableProductPrice(value) {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function normalizeProductDetailPrice(product) {
+  if (!product || typeof product !== 'object') return product;
+  const normalized = { ...product };
+
+  let resolvedPrice = parseNullableProductPrice(normalized.price);
+  if (resolvedPrice === null && Array.isArray(normalized.variants)) {
+    for (const variant of normalized.variants) {
+      if (!variant || typeof variant !== 'object') continue;
+      const candidate =
+        parseNullableProductPrice(variant.price) ??
+        parseNullableProductPrice(variant.price_amount) ??
+        parseNullableProductPrice(variant.amount) ??
+        parseNullableProductPrice(variant.value);
+      if (candidate !== null) {
+        resolvedPrice = candidate;
+        break;
+      }
+    }
+  }
+
+  normalized.price = resolvedPrice;
+  return normalized;
+}
+
 async function fetchProductDetailFromProductsCache(args) {
   if (!process.env.DATABASE_URL) return null;
   const merchantId = String(args?.merchantId || '').trim();
@@ -1031,8 +1063,9 @@ async function fetchProductDetailFromProductsCache(args) {
       merchant_id: merchantId,
       product_id: String(productData.product_id || productData.id || productId).trim() || productId,
     };
+    const withPrice = normalizeProductDetailPrice(normalized);
     return {
-      product: normalized,
+      product: withPrice,
       cached_at: row?.cached_at || null,
       stale_fallback_used: staleFallbackUsed,
       stale_max_age_hours: staleFallbackUsed ? staleMaxAgeHours : null,
@@ -1066,60 +1099,110 @@ async function fetchProductDetailForOffers(args) {
         ? cachedValue.product || cachedValue?.data?.product
         : null;
     if (cachedProduct && typeof cachedProduct === 'object') {
-      return {
+      return normalizeProductDetailPrice({
         ...cachedProduct,
         merchant_id: merchantId,
         product_id:
           String(cachedProduct.product_id || cachedProduct.id || productId).trim() ||
           productId,
-      };
+      });
     }
   }
 
-  if (process.env.DATABASE_URL) {
-    const fromDb = await fetchProductDetailFromProductsCache({ merchantId, productId });
-    if (fromDb?.product) {
+  const inflight = PRODUCT_DETAIL_INFLIGHT.get(cacheKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const loadPromise = (async () => {
+    if (process.env.DATABASE_URL) {
+      const fromDb = await fetchProductDetailFromProductsCache({
+        merchantId,
+        productId,
+        includeExpired: false,
+      });
+      if (fromDb?.product) {
+        const normalizedDb = normalizeProductDetailPrice(fromDb.product);
+        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+          setProductDetailCache(cacheKey, {
+            status: 'success',
+            success: true,
+            product: normalizedDb,
+            metadata: {
+              query_source: 'products_cache',
+              cached_at: fromDb.cached_at || null,
+            },
+          });
+        }
+        return normalizedDb;
+      }
+    }
+
+    let upstreamProduct = null;
+    try {
+      upstreamProduct = await fetchLegacyProductDetailFromUpstream({
+        merchantId,
+        productId,
+        checkoutToken,
+      });
+    } catch {
+      upstreamProduct = null;
+    }
+
+    if (upstreamProduct && typeof upstreamProduct === 'object') {
+      const normalizedUpstream = normalizeProductDetailPrice({
+        ...upstreamProduct,
+        merchant_id: merchantId,
+        product_id:
+          String(upstreamProduct.product_id || upstreamProduct.id || productId).trim() ||
+          productId,
+      });
+
       if (PRODUCT_DETAIL_CACHE_ENABLED) {
         setProductDetailCache(cacheKey, {
           status: 'success',
           success: true,
-          product: fromDb.product,
-          metadata: {
-            query_source: 'products_cache',
-            cached_at: fromDb.cached_at || null,
-          },
+          product: normalizedUpstream,
+          metadata: { query_source: 'upstream' },
         });
       }
-      return fromDb.product;
+      return normalizedUpstream;
     }
+
+    if (process.env.DATABASE_URL && PRODUCT_DETAIL_STALE_LOOKUP_ENABLED) {
+      const staleFromDb = await fetchProductDetailFromProductsCache({
+        merchantId,
+        productId,
+        includeExpired: true,
+        staleMaxAgeHours: PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
+      });
+      if (staleFromDb?.product) {
+        const normalizedStale = normalizeProductDetailPrice(staleFromDb.product);
+        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+          setProductDetailCache(cacheKey, {
+            status: 'success',
+            success: true,
+            product: normalizedStale,
+            metadata: {
+              query_source: 'products_cache_stale',
+              cached_at: staleFromDb.cached_at || null,
+              stale_max_age_hours: PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
+            },
+          });
+        }
+        return normalizedStale;
+      }
+    }
+
+    return null;
+  })();
+
+  PRODUCT_DETAIL_INFLIGHT.set(cacheKey, loadPromise);
+  try {
+    return await loadPromise;
+  } finally {
+    PRODUCT_DETAIL_INFLIGHT.delete(cacheKey);
   }
-
-  const upstreamProduct = await fetchLegacyProductDetailFromUpstream({
-    merchantId,
-    productId,
-    checkoutToken,
-  }).catch(() => null);
-
-  if (!upstreamProduct || typeof upstreamProduct !== 'object') return null;
-
-  const normalized = {
-    ...upstreamProduct,
-    merchant_id: merchantId,
-    product_id:
-      String(upstreamProduct.product_id || upstreamProduct.id || productId).trim() ||
-      productId,
-  };
-
-  if (PRODUCT_DETAIL_CACHE_ENABLED) {
-    setProductDetailCache(cacheKey, {
-      status: 'success',
-      success: true,
-      product: normalized,
-      metadata: { query_source: 'upstream' },
-    });
-  }
-
-  return normalized;
 }
 
 async function resolveProductGroupCached(args) {
@@ -2322,7 +2405,12 @@ function isCreatorUiSource(source) {
 }
 
 function isCatalogGuardSource(source) {
-  return isShoppingSource(source) || normalizeAgentSource(source) === 'creator-agent';
+  const normalized = normalizeAgentSource(source);
+  return (
+    isShoppingSource(source) ||
+    normalized === 'creator-agent' ||
+    normalized === 'creator-agent-ui'
+  );
 }
 
 function isResolverFirstCatalogSource(source) {
@@ -10046,9 +10134,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		        productId = String(canonicalProductRef.product_id || '').trim();
 		      }
 
-		      // Fast-fail for merchant-scoped PDP requests where the entry product doesn't exist.
-		      // This avoids spending time resolving product groups/offers only to return 404.
-		      let precheckedMerchantProduct = null;
+	      // Fast-fail for merchant-scoped PDP requests where the entry product doesn't exist.
+	      // We keep this as a soft precheck: do not fail the whole PDP when upstream jitters.
+	      let precheckedMerchantProduct = null;
+	      let precheckEntryProductMissing = false;
 	      const shouldPrecheckMerchantScoped =
 	        Boolean(requestedMerchantId) &&
 	        Boolean(productId) &&
@@ -10061,11 +10150,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 		          productId,
 		          checkoutToken,
 		        });
-		        if (!precheckedMerchantProduct) {
-		          return res.status(404).json({
-		            error: 'PRODUCT_NOT_FOUND',
-		            message: 'Product not found',
-		          });
+	        precheckEntryProductMissing = !precheckedMerchantProduct;
+	        if (precheckEntryProductMissing) {
+	          logger.info(
+	            {
+	              requested_merchant_id: requestedMerchantId,
+	              product_id: productId,
+	              has_product_group_hint: hasExplicitProductGroup || Boolean(offerProductGroupId),
+	            },
+	            'get_pdp_v2 entry precheck miss; continuing with canonical/group resolution',
+	          );
 	        }
 	      }
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
@@ -10255,6 +10349,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             canonical_product_ref: canonicalProductRef,
             entry_product_ref: entryProductRef,
             pdp_payload: canonicalPayload,
+            ...(precheckEntryProductMissing ? { entry_precheck_missing: true } : {}),
           },
         },
       ];
@@ -11171,6 +11266,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
   try {
     let creatorCacheRouteDebug = null;
     let crossMerchantCacheRouteDebug = null;
+    let crossMerchantCacheProtectedResponse = null;
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
     let productDetailMerchantId = null;
@@ -11444,8 +11540,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
           const lookupAnchorTokens = extractSearchAnchorTokens(cacheQueryText);
           const isLookupQuery = isLookupStyleSearchQuery(cacheQueryText, lookupAnchorTokens);
-          const cacheHit = internalProducts.length > 0;
-          let supplementedProducts = internalProducts;
+          const normalizedLookupQuery = normalizeSearchTextForMatch(cacheQueryText);
+          const lookupQueryTokens = Array.from(
+            new Set(tokenizeSearchTextForMatch(normalizedLookupQuery)),
+          );
+          const lookupRelevantInternalProducts = isLookupQuery
+            ? internalProducts.filter((product) =>
+                isSupplementCandidateRelevant(product, cacheQueryText, {
+                  normalizedQuery: normalizedLookupQuery,
+                  anchorTokens: lookupAnchorTokens,
+                  queryTokens: lookupQueryTokens,
+                }),
+              )
+            : internalProducts;
+          const internalProductsForRecall =
+            isLookupQuery && lookupRelevantInternalProducts.length > 0
+              ? lookupRelevantInternalProducts
+              : internalProducts;
+          const cacheHit = internalProductsForRecall.length > 0;
+          let supplementedProducts = internalProductsForRecall;
           let supplementMeta = {
             attempted: false,
             applied: false,
@@ -11453,14 +11566,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             reason: 'not_needed',
           };
           if (
-            isShoppingSource(source) &&
+            isCatalogGuardSource(source) &&
             Number(page) === 1 &&
-            internalProducts.length < Number(limit || 0)
+            internalProductsForRecall.length < Number(limit || 0)
           ) {
-            const neededCount = Math.max(0, Number(limit || 0) - internalProducts.length);
+            const neededCount = Math.max(0, Number(limit || 0) - internalProductsForRecall.length);
             if (neededCount > 0) {
+              const allowLookupExternalOnlySupplement =
+                isLookupQuery &&
+                internalProductsForRecall.length === 0 &&
+                isKnownLookupAliasQuery(cacheQueryText);
               const shouldSkipSupplementForLookupNoInternal =
-                isLookupQuery && internalProducts.length === 0;
+                isLookupQuery &&
+                internalProductsForRecall.length === 0 &&
+                !allowLookupExternalOnlySupplement;
               if (shouldSkipSupplementForLookupNoInternal) {
                 supplementMeta = {
                   attempted: false,
@@ -11492,7 +11611,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     neededCount,
                   });
                   const seen = new Set(
-                    internalProducts
+                    internalProductsForRecall
                       .map((product) => buildSearchProductKey(product))
                       .filter(Boolean),
                   );
@@ -11500,13 +11619,22 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   const toAppend = [];
                   for (const product of supplementCandidates) {
                     if (!isExternalSeedProduct(product)) continue;
+                    if (
+                      !isSupplementCandidateRelevant(product, cacheQueryText, {
+                        normalizedQuery: normalizedLookupQuery,
+                        anchorTokens: lookupAnchorTokens,
+                        queryTokens: lookupQueryTokens,
+                      })
+                    ) {
+                      continue;
+                    }
                     const key = buildSearchProductKey(product);
                     if (!key || seen.has(key)) continue;
                     seen.add(key);
                     toAppend.push(product);
                     if (toAppend.length >= neededCount) break;
                   }
-                  supplementedProducts = internalProducts.concat(toAppend);
+                  supplementedProducts = internalProductsForRecall.concat(toAppend);
                   supplementMeta = {
                     ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
                     attempted: true,
@@ -11549,6 +11677,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             cache_hit: effectiveCacheHit,
             products_count: effectiveProducts.length,
             internal_products_count: internalProducts.length,
+            internal_products_relevant_count: internalProductsForRecall.length,
             external_products_count: externalCount,
             cache_relevant: cacheRelevant,
             total: Number(fromCache.total || 0),
@@ -11575,7 +11704,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 internal_count: effectiveProducts.length - externalCount,
                 external_seed_count: externalCount,
                 stale_cache_used: false,
-                strategy_applied: isShoppingSource(source) ? 'supplement_internal_first' : 'cache_only',
+                strategy_applied: isCatalogGuardSource(source)
+                  ? 'supplement_internal_first'
+                  : 'cache_only',
               },
               ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
               ...(ROUTE_DEBUG_ENABLED
@@ -11588,18 +11719,33 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             },
           };
 
-          const withPolicy = effectiveIntent
-            ? applyFindProductsMultiPolicy({
-                response: upstreamData,
-                intent: effectiveIntent,
-                requestPayload: effectivePayload,
-                metadata,
-                rawUserQuery,
-              })
-            : upstreamData;
+          const shouldSkipLookupPolicyForCacheHit =
+            isLookupQuery &&
+            String(upstreamData?.metadata?.query_source || '').startsWith(
+              'cache_cross_merchant_search',
+            );
+          const withPolicy =
+            effectiveIntent && !shouldSkipLookupPolicyForCacheHit
+              ? applyFindProductsMultiPolicy({
+                  response: upstreamData,
+                  intent: effectiveIntent,
+                  requestPayload: effectivePayload,
+                  metadata,
+                  rawUserQuery,
+                })
+              : upstreamData;
+          const withPolicyProducts = Array.isArray(withPolicy?.products)
+            ? withPolicy.products
+            : [];
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          if (internalProductsForRecall.length > 0 && cacheRelevant) {
+            crossMerchantCacheProtectedResponse =
+              withPolicyProducts.length > 0
+                ? enriched
+                : applyDealsToResponse(upstreamData, promotions, now, creatorId);
+          }
           if (effectiveCacheHit) {
             return res.json(enriched);
           }
@@ -12586,6 +12732,32 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         }
         if (!response) {
+          if (
+            operation === 'find_products_multi' &&
+            crossMerchantCacheProtectedResponse &&
+            Array.isArray(crossMerchantCacheProtectedResponse.products) &&
+            crossMerchantCacheProtectedResponse.products.length > 0
+          ) {
+            response = {
+              status: 200,
+              data: withProxySearchFallbackMetadata(
+                normalizeAgentProductsListResponse(crossMerchantCacheProtectedResponse, {
+                  limit: queryParams?.limit,
+                  offset: queryParams?.offset,
+                }),
+                {
+                  applied: false,
+                  reason: 'primary_exception_cache_guard',
+                  route: 'invoke_exception_cache_guard',
+                  upstream_status: upstreamStatus,
+                  upstream_error_code: upstreamCode || err?.code || null,
+                  upstream_error_message: upstreamMessage || err?.message || null,
+                },
+              ),
+            };
+          }
+        }
+        if (!response) {
           logger.warn(
             {
               operation,
@@ -12919,9 +13091,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const isResolverLookupSource =
         querySource === 'agent_products_resolver_ref_fallback' ||
         querySource === 'agent_products_resolver_fallback';
+      const isCacheLookupSource =
+        querySource === 'cache_cross_merchant_search' ||
+        querySource === 'cache_cross_merchant_search_supplemented';
+      const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
       const skipPolicyForLookupSoftFallback =
         (querySource === 'agent_products_error_fallback' && isLookupPolicyQuery) ||
-        (isResolverLookupSource && isLookupPolicyQuery);
+        (isResolverLookupSource && isLookupPolicyQuery) ||
+        (isCacheLookupSource && isLookupPolicyQuery) ||
+        (querySource === 'agent_products_search' && isAliasLookupQuery);
 
       maybePolicy = skipPolicyForLookupSoftFallback
         ? upstreamData

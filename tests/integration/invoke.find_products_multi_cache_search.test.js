@@ -478,6 +478,159 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(guardedSearch.isDone()).toBe(true);
   });
 
+  test('injects creator-agent-ui catalog guard params on upstream query', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const guardedSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === 'ipsa toner' &&
+          String(q.allow_external_seed) === 'true' &&
+          String(q.allow_stale_cache) === 'false' &&
+          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa toner',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'creator_agent_ui',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(guardedSearch.isDone()).toBe(true);
+  });
+
+  test('lookup cache hit bypasses intent policy filtering to preserve matched products', async () => {
+    const applyPolicyMock = jest.fn().mockImplementation(({ response }) => ({
+      ...(response || {}),
+      products: [],
+      total: 0,
+      metadata: {
+        ...((response && response.metadata) || {}),
+        policy_forced_empty: true,
+      },
+    }));
+
+    jest.doMock('../../src/findProductsMulti/policy', () => ({
+      buildFindProductsMultiContext: jest.fn().mockImplementation(({ payload }) => ({
+        intent: {
+          language: 'zh',
+          primary_domain: 'other',
+          target_object: { type: 'unknown', age_group: 'unknown', notes: '' },
+          category: { required: [], optional: [] },
+          scenario: { name: 'general', signals: [] },
+          hard_constraints: {
+            temperature_c: { min: null, max: null },
+            must_include_keywords: [],
+            must_exclude_domains: [],
+            must_exclude_keywords: [],
+            in_stock_only: null,
+            price: { currency: null, min: null, max: null },
+          },
+          soft_preferences: { style: [], colors: [], brands: [], materials: [] },
+          confidence: { overall: 0.4, domain: 0.4, target_object: 0.4, category: 0.4, notes: '' },
+          ambiguity: { needs_clarification: true, missing_slots: [], clarifying_questions: [] },
+          history_usage: { used: false, reason: 'test', ignored_queries: [] },
+        },
+        adjustedPayload: payload,
+        rawUserQuery: payload?.search?.query || '',
+      })),
+      applyFindProductsMultiPolicy: applyPolicyMock,
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 2 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_ipsa_1',
+                  product_id: 'prod_ipsa_1',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Time Reset Aqua',
+                  description: 'Hydrating toner',
+                  status: 'published',
+                  inventory_quantity: 8,
+                  price: 39,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa的产品有吗？',
+            page: 1,
+            limit: 1,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(String(resp.body.products[0].title || '').toLowerCase()).toContain('ipsa');
+    expect(applyPolicyMock).toHaveBeenCalledTimes(0);
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('supplements first-page cache hits with external seed candidates', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -625,7 +778,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(false);
   });
 
-  test('skips external-only supplement for lookup query when internal cache is empty', async () => {
+  test('filters external-only supplement for lookup query when internal cache is empty', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -703,6 +856,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       (resp.body.products || []).some((p) => String(p.merchant_id || '') === 'external_seed'),
     ).toBe(false);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(externalSupplement.isDone()).toBe(false);
+    expect(externalSupplement.isDone()).toBe(true);
   });
 });
