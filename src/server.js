@@ -12274,9 +12274,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
-            effectiveProducts.length === 0 &&
+            !effectiveCacheHit &&
             !isLookupQuery
           ) {
+            const cacheStrictReason =
+              effectiveProducts.length > 0
+                ? 'cache_irrelevant_strict_empty'
+                : 'cache_miss_strict_empty';
             const strictEmptyBase = {
               status: 'success',
               success: true,
@@ -12299,7 +12303,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 },
                 proxy_search_fallback: {
                   applied: false,
-                  reason: 'cache_miss_strict_empty',
+                  reason: cacheStrictReason,
                 },
                 ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
                 ...(ROUTE_DEBUG_ENABLED
@@ -12331,7 +12335,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
                 fallbackTriggered: false,
-                fallbackReason: 'cache_miss_strict_empty',
+                fallbackReason: cacheStrictReason,
               }),
               search_trace: buildSearchTrace({
                 traceId: gatewayRequestId,
@@ -12360,7 +12364,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 finalDecision: 'strict_empty',
               }),
               strict_empty: true,
-              strict_empty_reason: 'cache_miss_strict_empty',
+              strict_empty_reason: cacheStrictReason,
             });
             return res.json(strictEmptyDiagnosed);
           }
