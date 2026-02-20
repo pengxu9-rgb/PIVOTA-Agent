@@ -11005,6 +11005,20 @@ function coerceBoolean(value) {
   return s === 'true' || s === '1' || s === 'yes' || s === 'y' || s === 'on';
 }
 
+function normalizeChatLlmProvider(value) {
+  if (typeof value !== 'string') return null;
+  const provider = value.trim().toLowerCase();
+  if (provider === 'gemini' || provider === 'openai') return provider;
+  return null;
+}
+
+function normalizeChatLlmModel(value) {
+  if (typeof value !== 'string') return null;
+  const model = value.trim();
+  if (!model) return null;
+  return model.slice(0, 120);
+}
+
 function classifyStorageError(err) {
   const code = err && err.code ? String(err.code) : null;
   const sqlState = code && /^[0-9A-Z]{5}$/.test(code) ? code : null;
@@ -21941,6 +21955,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
       const debugUpstream = debugFromHeader ?? debugFromBody;
+      const llmProvider =
+        normalizeChatLlmProvider(parsed.data.llm_provider) ||
+        normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'));
+      const llmModel =
+        normalizeChatLlmModel(parsed.data.llm_model) ||
+        normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
       const anchorProductId =
         typeof parsed.data.anchor_product_id === 'string' && parsed.data.anchor_product_id.trim()
           ? parsed.data.anchor_product_id.trim()
@@ -23244,6 +23264,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           timeoutMs: 12000,
           debug: debugUpstream,
           allow_recommendations: allowRecoCards,
+          ...(llmProvider ? { llm_provider: llmProvider } : {}),
+          ...(llmModel ? { llm_model: llmModel } : {}),
           ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
           ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
           ...(upstreamMessages && upstreamMessages.length ? { messages: upstreamMessages } : {}),
