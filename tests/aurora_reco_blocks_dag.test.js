@@ -215,6 +215,7 @@ describe('aurora reco blocks dag', () => {
               makeCandidate({ product_id: 'cross_brand_ok', brand_id: 'other_1', source: { type: 'catalog_search' } }),
               makeCandidate({ product_id: 'same_brand_bad', brand_id: 'anchor_brand', source: { type: 'catalog_search' } }),
               makeCandidate({ product_id: 'on_page_bad', brand_id: 'other_2', source: { type: 'on_page_related' } }),
+              makeCandidate({ product_id: 'legacy_alt_bad', brand_id: 'other_3', source: { type: 'aurora_alternatives' } }),
             ],
           }),
           ingredient_index: async () => ({ candidates: [] }),
@@ -230,6 +231,7 @@ describe('aurora reco blocks dag', () => {
     const competitors = Array.isArray(out?.competitors?.candidates) ? out.competitors.candidates : [];
     expect(competitors.some((x) => String(x?.brand_id || '').toLowerCase() === 'anchor_brand')).toBe(false);
     expect(competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related')).toBe(false);
+    expect(competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'aurora_alternatives')).toBe(false);
     expect(out?.diagnostics?.interleave_enabled).toBe(true);
     expect(out?.diagnostics?.exploration_enabled).toBe(true);
     expect(out?.provenance_patch?.dogfood_mode).toBe(true);
