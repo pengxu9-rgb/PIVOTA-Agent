@@ -513,14 +513,17 @@ function buildProfileFitReasons(profileSummary, evidence, { lang = 'EN' } = {}) 
     if (goals.includes('brightening')) priorityTargets.push('keep brightening/pigment goals on track');
   }
 
+  // Keep profile summary as the first CN line for stable, user-facing ordering.
+  if (tags.length) {
+    out.push(cn ? `你的情况：${truncateText(tags.join(' / '), 80)}。` : `Your profile: ${truncateText(tags.join(' / '), 120)}.`);
+  }
+
   if (priorityTargets.length) {
     out.push(
       cn
-        ? `匹配目标：${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('；'), 120)}。`
+        ? `匹配点：${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('；'), 120)}。`
         : `Profile priorities: ${truncateText(uniqueStrings(priorityTargets).slice(0, 3).join('; '), 180)}.`,
     );
-  } else if (tags.length) {
-    out.push(cn ? `你的情况：${truncateText(tags.join(' / '), 80)}。` : `Your profile: ${truncateText(tags.join(' / '), 120)}.`);
   }
 
   if (cn) {
