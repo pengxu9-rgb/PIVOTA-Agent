@@ -1128,6 +1128,83 @@ test('Query resolve upstream_timeout uses deterministic local resolver fallback 
   );
 });
 
+test('Query resolve no_candidates with opaque UUID ids uses deterministic local resolver fallback in strict internal mode', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let queryResolveCalls = 0;
+      let localResolverCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          queryResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: false,
+              reason: 'no_candidates',
+              reason_code: 'no_candidates',
+              product_ref: null,
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      let internal = null;
+      try {
+        const { __internal } = loadRoutesFresh();
+        internal = __internal;
+        __internal.__setResolveProductRefForTest(async () => {
+          localResolverCalls += 1;
+          return {
+            resolved: true,
+            reason: 'stable_alias_match',
+            reason_code: 'stable_alias_match',
+            product_ref: {
+              product_id: 'prod_local_uuid_no_candidates',
+              merchant_id: 'mid_local_uuid_no_candidates',
+            },
+            candidates: [{ title: "Paula's Choice 2% BHA Liquid" }],
+          };
+        });
+
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract(
+          {
+            sku: {
+              brand: "Paula's Choice",
+              display_name: "Paula's Choice 2% BHA Liquid",
+              product_id: '6cc87c1c-cf3c-4c0f-a3f4-ef28fc3f47e7',
+              sku_id: '6cc87c1c-cf3c-4c0f-a3f4-ef28fc3f47e7',
+            },
+          },
+          { logger: null, allowLocalInvokeFallback: false },
+        );
+
+        assert.equal(queryResolveCalls, 1);
+        assert.equal(localResolverCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'resolve');
+        assert.equal(enriched?.pdp_open?.path, 'resolve');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_local_uuid_no_candidates');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_local_uuid_no_candidates');
+      } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Availability resolve: primary timeout falls back to local products.resolve', async () => {
   await withEnv(
     {

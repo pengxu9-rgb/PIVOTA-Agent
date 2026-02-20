@@ -14000,10 +14000,21 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       'aurora bff: reco pdp local products.resolve fallback unresolved',
     );
   }
+  const stableIdCandidates = [stableProductId, stableSkuId]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const hasOnlyOpaqueStableIdsWithoutMerchant =
+    !rawMerchantId &&
+    stableIdCandidates.length > 0 &&
+    stableIdCandidates.every((value) => isUuidLikeString(value));
   const shouldAttemptDeterministicLocalResolver =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
     typeof resolveProductRefDirectImpl === 'function' &&
-    (reasonCode === 'upstream_timeout' || reasonCode === 'db_error');
+    (
+      reasonCode === 'upstream_timeout' ||
+      reasonCode === 'db_error' ||
+      (reasonCode === 'no_candidates' && hasOnlyOpaqueStableIdsWithoutMerchant)
+    );
   if (shouldAttemptDeterministicLocalResolver) {
     recordRecoPdpInternalRetryAttempt(1);
     const localResolved = await resolveRecoPdpByLocalResolver({
