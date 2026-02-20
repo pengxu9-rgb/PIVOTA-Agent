@@ -13534,6 +13534,42 @@ async function resolveRecoPdpByLocalResolver({
   };
 }
 
+async function resolveRecoPdpByCatalogSearch({
+  queryText,
+  logger,
+  timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
+} = {}) {
+  const q = String(queryText || '').trim();
+  if (!q) return { ok: false, reasonCode: 'no_candidates' };
+
+  const searchOut = await searchPivotaBackendProducts({
+    query: q,
+    limit: 4,
+    logger,
+    timeoutMs,
+    searchAllMerchants: true,
+  });
+
+  const products = Array.isArray(searchOut?.products) ? searchOut.products : [];
+  for (const product of products) {
+    if (!product || typeof product !== 'object' || Array.isArray(product)) continue;
+    const { subjectProductGroupId, directProductRef } = extractRecoPdpDirectKeys(product, product);
+    if (subjectProductGroupId || directProductRef) {
+      return {
+        ok: true,
+        canonicalProductGroupId: subjectProductGroupId || null,
+        canonicalProductRef: directProductRef || null,
+        reasonCode: null,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    reasonCode: normalizeResolveReasonCode(searchOut?.reason || '', 'no_candidates'),
+  };
+}
+
 function buildExternalGoogleSearchUrl(query) {
   const q = String(query || '').trim();
   if (!q) return 'https://www.google.com/';
@@ -14047,6 +14083,47 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       localResolved.reasonCode !== 'db_error'
     ) {
       reasonCode = localResolved.reasonCode;
+    }
+  }
+  const shouldAttemptCatalogSearchFallback =
+    RECO_PDP_STRICT_INTERNAL_FIRST &&
+    reasonCode === 'no_candidates' &&
+    hasOnlyOpaqueStableIdsWithoutMerchant;
+  if (shouldAttemptCatalogSearchFallback) {
+    const catalogResolved = await resolveRecoPdpByCatalogSearch({
+      queryText,
+      logger,
+      timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_PDP_RESOLVE_TIMEOUT_MS),
+    });
+    if (catalogResolved.ok && catalogResolved.canonicalProductGroupId) {
+      return withRecoPdpMetadata(base, {
+        path: 'group',
+        subject: {
+          type: 'product_group',
+          id: catalogResolved.canonicalProductGroupId,
+          product_group_id: catalogResolved.canonicalProductGroupId,
+        },
+        canonicalProductRef: catalogResolved.canonicalProductRef || null,
+        resolveAttempted: true,
+        resolvedViaQuery: queryText,
+        timeToPdpMs: elapsedMs(),
+        stableResolveRequestIds,
+        stableResolveLocalFallbackAttempted,
+      });
+    }
+    if (catalogResolved.ok && catalogResolved.canonicalProductRef) {
+      return withRecoPdpMetadata(base, {
+        path: 'ref',
+        canonicalProductRef: catalogResolved.canonicalProductRef,
+        resolveAttempted: true,
+        resolvedViaQuery: queryText,
+        timeToPdpMs: elapsedMs(),
+        stableResolveRequestIds,
+        stableResolveLocalFallbackAttempted,
+      });
+    }
+    if (catalogResolved.reasonCode && catalogResolved.reasonCode !== 'no_candidates') {
+      reasonCode = catalogResolved.reasonCode;
     }
   }
   if (resolveError) {

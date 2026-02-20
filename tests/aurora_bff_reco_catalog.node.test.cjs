@@ -1205,6 +1205,104 @@ test('Query resolve no_candidates with opaque UUID ids uses deterministic local 
   );
 });
 
+test('Opaque UUID no_candidates falls back to catalog search in strict internal mode', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      const originalGet = axios.get;
+      let queryResolveCalls = 0;
+      let localResolverCalls = 0;
+      let catalogSearchCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          queryResolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: false,
+              reason: 'no_candidates',
+              reason_code: 'no_candidates',
+              product_ref: null,
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
+          catalogSearchCalls += 1;
+          return {
+            status: 200,
+            data: {
+              products: [
+                {
+                  product_id: 'prod_from_catalog_search',
+                  merchant_id: 'mid_from_catalog_search',
+                  brand: "Paula's Choice",
+                  name: '2% BHA Liquid',
+                  display_name: "Paula's Choice 2% BHA Liquid",
+                },
+              ],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${target}`);
+      };
+
+      let internal = null;
+      try {
+        const { __internal } = loadRoutesFresh();
+        internal = __internal;
+        __internal.__setResolveProductRefForTest(async () => {
+          localResolverCalls += 1;
+          return {
+            resolved: false,
+            reason: 'no_candidates',
+            reason_code: 'no_candidates',
+            product_ref: null,
+          };
+        });
+
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract(
+          {
+            sku: {
+              brand: "Paula's Choice",
+              display_name: "Paula's Choice 2% BHA Liquid",
+              product_id: '6cc87c1c-cf3c-4c0f-a3f4-ef28fc3f47e7',
+              sku_id: '6cc87c1c-cf3c-4c0f-a3f4-ef28fc3f47e7',
+            },
+          },
+          { logger: null, allowLocalInvokeFallback: false },
+        );
+
+        assert.equal(queryResolveCalls, 1);
+        assert.equal(localResolverCalls, 1);
+        assert.equal(catalogSearchCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(enriched?.pdp_open?.path, 'ref');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_from_catalog_search');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_from_catalog_search');
+      } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
+        axios.post = originalPost;
+        axios.get = originalGet;
+      }
+    },
+  );
+});
+
 test('Availability resolve: primary timeout falls back to local products.resolve', async () => {
   await withEnv(
     {
