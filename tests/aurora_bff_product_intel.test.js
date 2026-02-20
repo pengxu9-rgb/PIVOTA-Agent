@@ -325,6 +325,25 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.unknown).toBe(false);
   });
 
+  test('URL realtime helper extracts price from on-page structured text when JSON-LD is missing', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const html = `
+      <html>
+        <head><title>Test Serum</title></head>
+        <body>
+          <div class="price">USD 29.90</div>
+          <span>Buy now</span>
+        </body>
+      </html>
+    `;
+    const out = __internal.extractProductPriceFromHtml(html);
+    expect(out).toBeTruthy();
+    expect(out.amount).toBe(29.9);
+    expect(out.currency).toBe('USD');
+    expect(out.source).toBe('on_page_structured_text');
+    expect(out.unknown).toBe(false);
+  });
+
   test('normalizePriceObject supports parsed upstream price shapes', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const fromUsd = __internal.normalizePriceObject({ usd: 29.9, unknown: false });
@@ -332,6 +351,34 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     const fromAmount = __internal.normalizePriceObject({ amount: '42.50', currency: 'usd' });
     expect(fromAmount).toEqual({ amount: 42.5, currency: 'USD', unknown: false });
+
+    const fromText = __internal.normalizePriceObject('EUR 35,30');
+    expect(fromText).toEqual({ amount: 35.3, currency: 'EUR', unknown: false });
+  });
+
+  test('applyProductAnalysisGapContract strips internal codes and keeps user-facing missing_info only', () => {
+    const { applyProductAnalysisGapContract } = require('../src/auroraBff/normalize');
+    const out = applyProductAnalysisGapContract({
+      missing_info: [
+        'reco_dag_timeout_catalog_ann',
+        'url_realtime_product_intel_used',
+        'upstream_analysis_missing',
+        'price_unknown',
+        'skin_fit.profile.skinType',
+      ],
+      internal_debug_codes: ['router.same_brand_competitor', 'internal_debug_only'],
+    });
+    expect(Array.isArray(out.missing_info)).toBe(true);
+    expect(out.missing_info).toEqual(
+      expect.arrayContaining(['analysis_in_progress', 'price_temporarily_unavailable', 'profile_not_provided']),
+    );
+    expect(out.missing_info).not.toEqual(
+      expect.arrayContaining([
+        'reco_dag_timeout_catalog_ann',
+        'url_realtime_product_intel_used',
+        'router.same_brand_competitor',
+      ]),
+    );
   });
 
   test('attachPrelabelSuggestionsToPayload injects sanitized llm_suggestion by block + candidate id', () => {
@@ -1396,6 +1443,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     ).toBe(true);
     expect(Array.isArray(card.payload?.provenance?.timed_out_blocks)).toBe(true);
     expect(card.payload.provenance.timed_out_blocks).toContain('catalog_ann');
+    expect(Array.isArray(card.payload?.missing_info)).toBe(true);
+    const internalMissing = card.payload.missing_info.filter((token) =>
+      /^(reco_dag_|url_|upstream_|internal_|router\.|skin_fit\.profile\.)/i.test(String(token || '')),
+    );
+    expect(internalMissing).toEqual([]);
   });
 
   test('/v1/product/analyze allows empty competitors and lowers confidence when all competitor recall fails', async () => {

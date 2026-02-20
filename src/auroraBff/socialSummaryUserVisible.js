@@ -232,10 +232,31 @@ function buildSocialSummaryUserVisible(socialRaw, { lang = 'EN' } = {}) {
   const themes = inferThemes(keywords, lang);
   const sentimentHint = buildSentimentHint(raw, lang);
   const volumeBucket = buildVolumeBucket(raw, channels.length);
+  const locale = String(lang || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
 
-  if (isLowSignal({ channels, keywords, volumeBucket, sentimentHint })) return undefined;
+  if (isLowSignal({ channels, keywords, volumeBucket, sentimentHint })) {
+    if (!channels.length) return undefined;
+    return {
+      themes: [],
+      sentiment_hint:
+        locale === 'CN'
+          ? '跨平台讨论较少，当前结论更多基于成分与功效证据。'
+          : 'Cross-platform discussion is limited; current guidance relies more on ingredient/function evidence.',
+      volume_bucket: volumeBucket === 'unknown' ? 'low' : volumeBucket,
+    };
+  }
 
-  if (!themes.length && keywords.length < 2) return undefined;
+  if (!themes.length && keywords.length < 2) {
+    if (!channels.length) return undefined;
+    return {
+      themes: [],
+      sentiment_hint:
+        locale === 'CN'
+          ? '跨平台讨论较少，暂未形成稳定主题。'
+          : 'Cross-platform discussion is limited and no stable themes were detected yet.',
+      volume_bucket: volumeBucket === 'unknown' ? 'low' : volumeBucket,
+    };
+  }
 
   const out = {
     themes: themes.slice(0, 3),

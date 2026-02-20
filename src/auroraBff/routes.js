@@ -2490,8 +2490,36 @@ function normalizeCurrencyCode(value, fallback = '') {
   return fb.length === 3 ? fb : '';
 }
 
+function inferCurrencyFromPriceText(value, fallback = '') {
+  const text = String(value || '').trim();
+  if (!text) return normalizeCurrencyCode(fallback, '');
+  if (/[$]|usd|us\$/i.test(text)) return 'USD';
+  if (/[€]|eur/i.test(text)) return 'EUR';
+  if (/[£]|gbp/i.test(text)) return 'GBP';
+  if (/[¥]|cny|rmb/i.test(text)) return 'CNY';
+  if (/jpy|円/i.test(text)) return 'JPY';
+  return normalizeCurrencyCode(fallback, '');
+}
+
 function toPositiveNumberOrNull(value) {
   if (value == null) return null;
+  if (typeof value === 'string') {
+    const text = String(value).trim();
+    if (!text) return null;
+    const compact = text.replace(/\s+/g, '');
+    const direct = Number(compact.replace(/,/g, ''));
+    if (Number.isFinite(direct) && direct > 0) return Number(direct.toFixed(2));
+    const numeric = compact.replace(/[^0-9.,-]/g, '');
+    if (!numeric) return null;
+    let normalized = numeric;
+    const commaCount = (numeric.match(/,/g) || []).length;
+    const dotCount = (numeric.match(/\./g) || []).length;
+    if (commaCount && !dotCount) normalized = numeric.replace(',', '.');
+    normalized = normalized.replace(/,(?=\d{3}\b)/g, '');
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return Number(parsed.toFixed(2));
+  }
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
   return Number(n.toFixed(2));
@@ -2502,34 +2530,51 @@ function normalizePriceObject(rawPrice, { fallbackCurrency = 'USD' } = {}) {
   if (typeof rawPrice === 'number' || typeof rawPrice === 'string') {
     const amount = toPositiveNumberOrNull(rawPrice);
     if (amount == null) return null;
-    return { amount, currency: normalizeCurrencyCode(fallbackCurrency, 'USD'), unknown: false };
+    const inferredCurrency = inferCurrencyFromPriceText(rawPrice, fallbackCurrency);
+    return { amount, currency: inferredCurrency || normalizeCurrencyCode(fallbackCurrency, 'USD') || 'USD', unknown: false };
   }
   if (typeof rawPrice !== 'object' || Array.isArray(rawPrice)) return null;
 
   if (rawPrice.unknown === true) return null;
 
+  const nestedPrice = rawPrice.price && typeof rawPrice.price === 'object' && !Array.isArray(rawPrice.price)
+    ? rawPrice.price
+    : null;
+
   const directAmount = toPositiveNumberOrNull(
     rawPrice.amount ??
+      rawPrice.price_amount ??
+      rawPrice.priceAmount ??
       rawPrice.value ??
+      rawPrice.price_value ??
+      rawPrice.priceValue ??
       rawPrice.price ??
+      nestedPrice?.amount ??
+      nestedPrice?.value ??
+      nestedPrice?.price ??
       rawPrice.min ??
       rawPrice.min_price ??
-      rawPrice.minPrice,
+      rawPrice.minPrice ??
+      rawPrice.offer_price ??
+      rawPrice.offerPrice,
   );
   if (directAmount != null) {
     const directCurrency = normalizeCurrencyCode(
       rawPrice.currency ??
         rawPrice.currency_code ??
         rawPrice.currencyCode ??
-        rawPrice.priceCurrency,
+        rawPrice.priceCurrency ??
+        nestedPrice?.currency ??
+        nestedPrice?.currencyCode ??
+        nestedPrice?.priceCurrency,
       fallbackCurrency,
     );
     return { amount: directAmount, currency: directCurrency || 'USD', unknown: false };
   }
 
-  const usd = toPositiveNumberOrNull(rawPrice.usd);
+  const usd = toPositiveNumberOrNull(rawPrice.usd ?? rawPrice.price_usd ?? rawPrice.priceUsd);
   if (usd != null) return { amount: usd, currency: 'USD', unknown: false };
-  const cny = toPositiveNumberOrNull(rawPrice.cny);
+  const cny = toPositiveNumberOrNull(rawPrice.cny ?? rawPrice.price_cny ?? rawPrice.priceCny);
   if (cny != null) return { amount: cny, currency: 'CNY', unknown: false };
   return null;
 }
@@ -2619,6 +2664,38 @@ function extractProductPriceFromHtml(html) {
       unknown: false,
       source: 'inline_price',
     };
+  }
+
+  const plainText = stripHtmlToText(text).replace(/\s+/g, ' ').trim();
+  if (plainText) {
+    const prefixed = /(?:\b(USD|EUR|GBP|CNY|JPY)\b|([$€£¥]))\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/gi;
+    let mPrefixed;
+    while ((mPrefixed = prefixed.exec(plainText))) {
+      const rawCurrency = mPrefixed[1] || mPrefixed[2] || '';
+      const amount = toPositiveNumberOrNull(mPrefixed[3]);
+      if (amount == null) continue;
+      const currency = inferCurrencyFromPriceText(rawCurrency, metaCurrency || 'USD');
+      return {
+        amount,
+        currency: currency || 'USD',
+        unknown: false,
+        source: 'on_page_structured_text',
+      };
+    }
+
+    const suffixed = /([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*(USD|EUR|GBP|CNY|JPY)\b/gi;
+    let mSuffixed;
+    while ((mSuffixed = suffixed.exec(plainText))) {
+      const amount = toPositiveNumberOrNull(mSuffixed[1]);
+      if (amount == null) continue;
+      const currency = inferCurrencyFromPriceText(mSuffixed[2], metaCurrency || 'USD');
+      return {
+        amount,
+        currency: currency || 'USD',
+        unknown: false,
+        source: 'on_page_structured_text',
+      };
+    }
   }
   return null;
 }
@@ -5739,9 +5816,30 @@ async function buildProductAnalysisFromUrlIngredients({
     parsedProductObj?.price ??
       parsedProductObj?.price_amount ??
       parsedProductObj?.priceAmount ??
-      parsedProductObj?.offer_price,
+      parsedProductObj?.offer_price ??
+      parsedProductObj?.price_usd ??
+      parsedProductObj?.priceUsd ??
+      parsedProductObj?.price_cny ??
+      parsedProductObj?.priceCny,
   );
-  const anchorPrice = parsedPrice || normalizePriceObject(extractedPrice);
+  const anchorPrice = (() => {
+    const nowIso = new Date().toISOString();
+    if (parsedPrice) {
+      return {
+        ...parsedPrice,
+        source: 'parsed_anchor_price',
+        captured_at: nowIso,
+      };
+    }
+    const extractedNormalized = normalizePriceObject(extractedPrice);
+    if (!extractedNormalized) return null;
+    const sourceToken = pickFirstTrimmed(extractedPrice?.source, 'page_price_signal');
+    return {
+      ...extractedNormalized,
+      ...(sourceToken ? { source: sourceToken } : {}),
+      captured_at: nowIso,
+    };
+  })();
   const anchorProduct = {
     ...(parsedProductObj?.product_id ? { product_id: String(parsedProductObj.product_id).trim() } : {}),
     ...(parsedProductObj?.sku_id ? { sku_id: String(parsedProductObj.sku_id).trim() } : {}),
@@ -5882,6 +5980,7 @@ async function buildProductAnalysisFromUrlIngredients({
   );
 
   const evidenceMissingInfo = ['concentration_unknown'];
+  if (!anchorPrice) evidenceMissingInfo.push('price_unknown');
   if (socialMissing) evidenceMissingInfo.push('social_signals_missing');
   if (competitorMissing) evidenceMissingInfo.push('competitors_missing');
   if (!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT) {
@@ -5981,6 +6080,7 @@ async function buildProductAnalysisFromUrlIngredients({
         'upstream_analysis_missing',
         'url_ingredient_analysis_used',
         'url_realtime_product_intel_used',
+        ...(!anchorPrice ? ['price_unknown'] : []),
         ...(socialMissing ? ['social_signals_missing'] : []),
         ...(competitorMissing ? ['competitors_missing'] : []),
         ...(!competitorMissing && competitorCandidates.length < PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT ? ['competitors_low_coverage'] : []),
@@ -13955,17 +14055,19 @@ function attachPrelabelSuggestionsToPayload(payload, suggestions = []) {
 
 function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   const p = isPlainObject(payload) ? { ...payload } : {};
-  delete p.missing_info_internal;
-  delete p.internal_debug_codes;
-  delete p.llm_raw_response;
-  delete p.suggestion_debug;
-  delete p.input_hash;
-  delete p.candidate_tracking;
-  delete p.candidate_tracking_internal;
-  delete p.internal_attribution;
-  delete p.tracking;
+  const contracted = applyProductAnalysisGapContract(p);
+  const nextPayload = isPlainObject(contracted) ? { ...contracted } : p;
+  delete nextPayload.missing_info_internal;
+  delete nextPayload.internal_debug_codes;
+  delete nextPayload.llm_raw_response;
+  delete nextPayload.suggestion_debug;
+  delete nextPayload.input_hash;
+  delete nextPayload.candidate_tracking;
+  delete nextPayload.candidate_tracking_internal;
+  delete nextPayload.internal_attribution;
+  delete nextPayload.tracking;
   for (const block of ['competitors', 'dupes', 'related_products']) {
-    const blockObj = isPlainObject(p?.[block]) ? { ...p[block] } : null;
+    const blockObj = isPlainObject(nextPayload?.[block]) ? { ...nextPayload[block] } : null;
     if (!blockObj) continue;
     const rows = Array.isArray(blockObj.candidates) ? blockObj.candidates : [];
     blockObj.candidates = rows.map((row) => {
@@ -13978,9 +14080,9 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
       delete item.suggestion_debug;
       return item;
     });
-    p[block] = blockObj;
+    nextPayload[block] = blockObj;
   }
-  return p;
+  return nextPayload;
 }
 
 function buildPrelabelKbKey(anchorProductId, lang = 'EN') {

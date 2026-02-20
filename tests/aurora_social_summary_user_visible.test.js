@@ -49,13 +49,17 @@ describe('socialSummaryUserVisible', () => {
     expect(summary).toBeUndefined();
   });
 
-  test('returns undefined for low-signal single-channel input', () => {
+  test('returns limited-discussion hint for low-signal single-channel input', () => {
     const summary = buildSocialSummaryUserVisible({
       channels: ['reddit'],
       co_mention_strength: 0.12,
       topic_keywords: ['ok'],
     }, { lang: 'CN' });
-    expect(summary).toBeUndefined();
+    expect(summary).toBeTruthy();
+    expect(summary.volume_bucket).toBe('low');
+    expect(typeof summary.sentiment_hint).toBe('string');
+    expect(summary.themes).toEqual([]);
+    expect(summary.top_keywords).toBeUndefined();
   });
 
   test('never outputs internal counts or user identifiers', () => {

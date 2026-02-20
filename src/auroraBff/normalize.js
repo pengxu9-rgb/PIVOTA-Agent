@@ -34,25 +34,44 @@ function asNumberOrNull(value) {
 
 const PRODUCT_ANALYSIS_GAP_MAP = {
   'concentration_unknown': 'ingredient_concentration_unknown',
+  'ingredient_concentration_unknown': 'ingredient_concentration_unknown',
   'social_signals_missing': 'social_data_limited',
+  'social_data_limited': 'social_data_limited',
   'competitors_missing': 'alternatives_unavailable',
   'competitors.candidates': 'alternatives_unavailable',
   'competitors.competitors.candidates': 'alternatives_unavailable',
+  'alternatives_unavailable': 'alternatives_unavailable',
   'competitors_low_coverage': 'alternatives_limited',
+  'alternatives_limited': 'alternatives_limited',
   'catalog_product_missing': 'product_not_resolved',
   'upstream_deep_scan_skipped_anchor_missing': 'product_not_resolved',
+  'product_not_resolved': 'product_not_resolved',
   'evidence_missing': 'evidence_limited',
+  'evidence_limited': 'evidence_limited',
   'analysis_missing': 'analysis_limited',
   'upstream_missing_or_unstructured': 'analysis_limited',
   'upstream_missing_or_empty': 'analysis_limited',
-  'skin_fit.profile.skintype': 'profile_skin_type_missing',
-  'skin_fit.profile.sensitivity': 'profile_sensitivity_missing',
-  'skin_fit.profile.barrierstatus': 'profile_barrier_status_missing',
-  'skin_fit.profile.goals': 'profile_goals_missing',
-  'profile.skintype': 'profile_skin_type_missing',
-  'profile.sensitivity': 'profile_sensitivity_missing',
-  'profile.barrierstatus': 'profile_barrier_status_missing',
-  'profile.goals': 'profile_goals_missing',
+  'analysis_limited': 'analysis_limited',
+  'upstream_analysis_missing': 'analysis_in_progress',
+  'analysis_in_progress': 'analysis_in_progress',
+  'price_unknown': 'price_temporarily_unavailable',
+  'price_missing': 'price_temporarily_unavailable',
+  'anchor_price_unknown': 'price_temporarily_unavailable',
+  'anchor_price_missing': 'price_temporarily_unavailable',
+  'price_temporarily_unavailable': 'price_temporarily_unavailable',
+  'skin_fit.profile.skintype': 'profile_not_provided',
+  'skin_fit.profile.sensitivity': 'profile_not_provided',
+  'skin_fit.profile.barrierstatus': 'profile_not_provided',
+  'skin_fit.profile.goals': 'profile_not_provided',
+  'profile.skintype': 'profile_not_provided',
+  'profile.sensitivity': 'profile_not_provided',
+  'profile.barrierstatus': 'profile_not_provided',
+  'profile.goals': 'profile_not_provided',
+  'profile_skin_type_missing': 'profile_not_provided',
+  'profile_sensitivity_missing': 'profile_not_provided',
+  'profile_barrier_status_missing': 'profile_not_provided',
+  'profile_goals_missing': 'profile_not_provided',
+  'profile_not_provided': 'profile_not_provided',
 };
 
 const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
@@ -77,6 +96,11 @@ const PRODUCT_ANALYSIS_INTERNAL_GAP_PREFIXES = [
   'skin_fit.',
   'social_signals.',
   'competitors.',
+  'router.',
+  'reco_dag_',
+  'url_',
+  'upstream_',
+  'internal_',
   'reco_guardrail_',
 ];
 
@@ -84,7 +108,9 @@ function mapProductAnalysisGapCode(code) {
   const raw = String(code || '').trim();
   if (!raw) return '';
   const lower = raw.toLowerCase();
-  return PRODUCT_ANALYSIS_GAP_MAP[lower] || raw;
+  if (PRODUCT_ANALYSIS_GAP_MAP[lower]) return PRODUCT_ANALYSIS_GAP_MAP[lower];
+  if (/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(lower)) return lower;
+  return '';
 }
 
 function isInternalProductAnalysisGapCode(code) {

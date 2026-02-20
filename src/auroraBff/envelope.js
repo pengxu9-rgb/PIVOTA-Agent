@@ -7,6 +7,7 @@ const {
   recordAntiTemplateViolation,
   recordActionableReply,
 } = require('./visionMetrics');
+const { applyProductAnalysisGapContract } = require('./normalize');
 
 const UI_STATES = new Set([
   'IDLE_CHAT',
@@ -147,7 +148,8 @@ function recommendationHasPurchasePath(item) {
 
 function sanitizeProductAnalysisPayloadForPublic(payload) {
   const p = isPlainObject(payload) ? payload : {};
-  const next = { ...p };
+  const contracted = applyProductAnalysisGapContract(p);
+  const next = isPlainObject(contracted) ? { ...contracted } : { ...p };
   delete next.missing_info_internal;
   delete next.internal_debug_codes;
   delete next.llm_raw_response;
