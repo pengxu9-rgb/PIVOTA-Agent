@@ -2147,7 +2147,13 @@ function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
   return genericOnly.length > brandCompact.length + 2;
 }
 
-async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = null, logger } = {}) {
+async function resolveAvailabilityProductByQuery({
+  query,
+  lang = 'en',
+  hints = null,
+  logger,
+  timeoutMs = CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+} = {}) {
   const q = String(query || '').trim();
   if (!q) return { ok: false, reason: 'query_missing', product: null, resolve_reason_code: 'no_candidates', latency_ms: 0 };
   if (!PIVOTA_BACKEND_BASE_URL) {
@@ -2155,13 +2161,20 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
   }
 
   const startedAt = Date.now();
+  const resolveTimeoutMs = Math.max(
+    250,
+    Math.min(
+      CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+      Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+    ),
+  );
   const url = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/resolve`;
   const payload = {
     query: q,
     lang: String(lang || 'en').toLowerCase() === 'cn' ? 'zh' : 'en',
     options: {
       search_all_merchants: true,
-      timeout_ms: CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+      timeout_ms: resolveTimeoutMs,
       upstream_retries: 0,
       stable_alias_short_circuit: true,
       allow_stable_alias_for_uuid: true,
@@ -2205,7 +2218,7 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
   try {
     resp = await axios.post(url, payload, {
       headers: buildPivotaBackendAgentHeaders(),
-      timeout: CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+      timeout: resolveTimeoutMs,
       validateStatus: () => true,
     });
   } catch (e) {
@@ -2249,7 +2262,7 @@ async function resolveAvailabilityProductByQuery({ query, lang = 'en', hints = n
     try {
       localResp = await axios.post(localResolveUrl, payload, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS,
+        timeout: Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, resolveTimeoutMs)),
         validateStatus: () => true,
       });
     } catch (e) {
@@ -3628,6 +3641,8 @@ async function buildRealtimeCompetitorCandidates({
   anchorProduct = null,
   profileSummary = null,
   lang = 'EN',
+  mode = 'main_path',
+  deadlineMs = 0,
   timeoutMs = PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS,
   maxQueries = PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES,
   maxCandidates = PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
@@ -3637,6 +3652,28 @@ async function buildRealtimeCompetitorCandidates({
   if (!PIVOTA_BACKEND_BASE_URL) {
     return { candidates: [], queries: [], reason: 'pivota_backend_not_configured' };
   }
+  const startedAt = Date.now();
+  const effectiveTimeoutMs = Math.max(
+    260,
+    Math.min(5000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS),
+  );
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
+  const softDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + effectiveTimeoutMs;
+  const normalizedMode = String(mode || '').trim().toLowerCase();
+  const runMode =
+    normalizedMode === 'sync_repair' || normalizedMode === 'async_backfill'
+      ? normalizedMode
+      : 'main_path';
+  const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
+  const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
+  const reserveAfterSearchMs = runMode === 'async_backfill' ? 140 : 220;
+  const effectiveSearchTimeoutMs = Math.max(
+    260,
+    Math.min(
+      effectiveTimeoutMs,
+      Math.max(260, effectiveTimeoutMs - reserveAfterSearchMs),
+    ),
+  );
 
   const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
   const anchorObj = anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct) ? anchorProduct : parsedProductObj;
@@ -3650,13 +3687,15 @@ async function buildRealtimeCompetitorCandidates({
     inputUrl: productUrl,
     parsedProduct: parsedProductObj,
   });
+  const categoryToken = inferProductCategoryToken(`${anchorText} ${baseInput}`);
+  const categoryOnlyQuery = normalizeProductCatalogQuery(categoryToken);
   const ingredientQuery = normalizeProductCatalogQuery(
-    `${keyIngredients.slice(0, 2).join(' ')} ${inferProductCategoryToken(`${anchorText} ${baseInput}`)}`,
+    `${keyIngredients.slice(0, 2).join(' ')} ${categoryToken}`,
   );
 
   const queries = [];
   const seenQuery = new Set();
-  for (const raw of [...fromCatalogQueries, ingredientQuery]) {
+  for (const raw of [...fromCatalogQueries, ingredientQuery, categoryOnlyQuery]) {
     const q = normalizeProductCatalogQuery(raw);
     if (!q) continue;
     if (/^https?:\/\//i.test(q)) continue;
@@ -3670,11 +3709,30 @@ async function buildRealtimeCompetitorCandidates({
 
   const searchResults = await Promise.all(
     queries.map(async (queryText) => {
+      const remainingMs = getRemainingMs();
+      if (remainingMs < 260) {
+        return {
+          query: queryText,
+          searched: {
+            ok: false,
+            products: [],
+            reason: 'budget_exhausted',
+            latency_ms: 0,
+          },
+        };
+      }
+      const perQueryTimeoutMs = Math.max(
+        250,
+        Math.min(
+          effectiveSearchTimeoutMs,
+          Math.max(250, remainingMs - 80),
+        ),
+      );
       const searched = await searchPivotaBackendProducts({
         query: queryText,
         limit: 6,
         logger,
-        timeoutMs,
+        timeoutMs: perQueryTimeoutMs,
       });
       return { query: queryText, searched };
     }),
@@ -3684,7 +3742,6 @@ async function buildRealtimeCompetitorCandidates({
   const ingredientTokens = tokenizeProductTextForSimilarity(keyIngredients.slice(0, 6).join(' | '));
   const anchorIngredientTokens = ingredientTokens;
   const profileSkinTags = buildProfileSkinTags(profileSummary);
-  const categoryToken = inferProductCategoryToken(`${baseInput} ${queries.join(' ')}`);
   const totalQueriesForRecall = Math.max(1, queries.length);
 
   const recallHitCountByProduct = new Map();
@@ -3848,13 +3905,35 @@ async function buildRealtimeCompetitorCandidates({
 
   let finalCandidates = candidates.slice(0, maxCandidates);
   if (finalCandidates.length) return { candidates: finalCandidates, queries, reason: null };
+  const allSearchTransientFailure =
+    searchResults.length > 0 &&
+    searchResults.every((row) => {
+      const searched = row && typeof row === 'object' ? row.searched : null;
+      const reason = String(searched?.reason || '').trim().toLowerCase();
+      return !searched?.ok && transientReasons.has(reason);
+    });
+  if (runMode === 'main_path' && allSearchTransientFailure) {
+    return { candidates: [], queries, reason: 'catalog_search_transient_failed' };
+  }
+  if (getRemainingMs() < 420) {
+    return { candidates: [], queries, reason: 'catalog_search_budget_exhausted' };
+  }
 
-  const resolveResults = await Promise.all(
-    queries.map(async (queryText) => {
-      const resolved = await resolveAvailabilityProductByQuery({ query: queryText, lang, logger });
-      return { query: queryText, resolved };
-    }),
-  );
+  const resolveResults = [];
+  for (const queryText of queries) {
+    const remainingMs = getRemainingMs();
+    if (remainingMs < 320) break;
+    // Keep resolve fallback bounded so source can return within DAG budget.
+    const resolveTimeoutMs = Math.max(260, Math.min(remainingMs - 80, CATALOG_AVAIL_RESOLVE_TIMEOUT_MS));
+    // eslint-disable-next-line no-await-in-loop
+    const resolved = await resolveAvailabilityProductByQuery({
+      query: queryText,
+      lang,
+      logger,
+      timeoutMs: resolveTimeoutMs,
+    });
+    resolveResults.push({ query: queryText, resolved });
+  }
   for (const row of resolveResults) {
     const normalized = normalizeRecoCatalogProduct(row?.resolved?.product);
     if (!normalized) continue;
@@ -5227,19 +5306,29 @@ async function runRecoBlocksForUrl({
   }));
 
   const sourceFns = {
-    catalog_ann: async ({ timeout_ms: timeoutMs }) =>
-      buildRealtimeCompetitorCandidates({
+    catalog_ann: async ({ timeout_ms: timeoutMs, deadline_ms: deadlineMs }) => {
+      const modeToken = String(mode || '').trim().toLowerCase();
+      const queryLimit =
+        modeToken === 'async_backfill'
+          ? PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_QUERIES
+          : modeToken === 'sync_repair'
+            ? PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES
+            : PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES;
+      return buildRealtimeCompetitorCandidates({
         productUrl: urlText,
         parsedProduct: anchorObj,
         keyIngredients: Array.isArray(keyIngredients) ? keyIngredients : [],
         anchorProduct: anchorObj,
         profileSummary,
         lang,
+        mode: modeToken || 'main_path',
+        deadlineMs,
         timeoutMs: Math.max(120, Number(timeoutMs) || PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS),
-        maxQueries: PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES,
+        maxQueries: queryLimit,
         maxCandidates,
         logger,
-      }),
+      });
+    },
     ingredient_index: async () => ({
       candidates: [],
       meta: {

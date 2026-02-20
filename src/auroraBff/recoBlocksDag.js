@@ -611,6 +611,16 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     dupe_pipeline: 'dupe_pipeline',
     on_page_related: 'on_page_related',
   };
+  const catalogTimeoutForStageA =
+    mode === 'main_path' && totalBudgetMs >= 900
+      ? Math.max(
+        260,
+        Math.min(
+          timeouts.catalog_ann,
+          Math.max(260, totalBudgetMs - Math.max(200, timeouts.on_page_related) - 80),
+        ),
+      )
+      : timeouts.catalog_ann;
 
   const stageA = await Promise.all([
     executeSource({
@@ -618,7 +628,7 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
       sourceFn: sources.catalog_ann,
       anchor,
       ctx,
-      timeoutMs: timeouts.catalog_ann,
+      timeoutMs: catalogTimeoutForStageA,
       budgetMs: totalBudgetMs,
       deadlineMs,
       defaultSourceType: defaultSourceTypeBySource.catalog_ann,

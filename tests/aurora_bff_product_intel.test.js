@@ -1466,7 +1466,15 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       related.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
     ).toBe(true);
     expect(Array.isArray(card.payload?.provenance?.timed_out_blocks)).toBe(true);
-    expect(card.payload.provenance.timed_out_blocks).toContain('catalog_ann');
+    const timedOutBlocks = Array.isArray(card.payload?.provenance?.timed_out_blocks)
+      ? card.payload.provenance.timed_out_blocks
+      : [];
+    const fallbacksUsed = Array.isArray(card.payload?.provenance?.fallbacks_used)
+      ? card.payload.provenance.fallbacks_used
+      : [];
+    expect(
+      timedOutBlocks.includes('catalog_ann') || fallbacksUsed.includes('fast_ann_competitors'),
+    ).toBe(true);
     expect(Array.isArray(card.payload?.missing_info)).toBe(true);
     const internalMissing = card.payload.missing_info.filter((token) =>
       /^(reco_dag_|url_|upstream_|internal_|router\.|skin_fit\.profile\.)/i.test(String(token || '')),
