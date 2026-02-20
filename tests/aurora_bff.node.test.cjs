@@ -198,10 +198,20 @@ test('isSpecificAvailabilityQuery: brand-only availability question is not treat
   try {
     const intentCn = { brand_name: '薇诺娜', matched_alias: '薇诺娜', brand_id: 'brand_winona' };
     const intentEn = { brand_name: 'Winona', matched_alias: 'winona', brand_id: 'brand_winona' };
+    const genericIntent = {
+      brand_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      matched_alias: '',
+      brand_id: 'brand_generic',
+    };
 
     assert.equal(__internal.isSpecificAvailabilityQuery('有没有薇诺娜的产品', intentCn), false);
     assert.equal(__internal.isSpecificAvailabilityQuery('Winona products in stock?', intentEn), false);
     assert.equal(__internal.isSpecificAvailabilityQuery('Winona Soothing Repair Serum 有货吗', intentEn), true);
+    assert.equal(
+      __internal.isSpecificAvailabilityQuery('Do you have The Ordinary Niacinamide 10% + Zinc 1%?', genericIntent),
+      true,
+    );
+    assert.equal(__internal.isSpecificAvailabilityQuery('Do you have products?', { brand_id: 'brand_generic' }), false);
   } finally {
     delete require.cache[moduleId];
   }

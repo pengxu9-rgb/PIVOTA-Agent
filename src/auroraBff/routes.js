@@ -1882,11 +1882,14 @@ async function searchPivotaBackendProducts({
   };
   const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
   const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
-  const shouldAttemptLocalSearchFallback =
+  const localSearchFallbackConfigured =
     RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
     localBaseUrl &&
     localBaseUrl !== primaryBaseUrl;
+  const shouldAttemptLocalSearchFallback =
+    localSearchFallbackConfigured &&
+    RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT;
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
   });
