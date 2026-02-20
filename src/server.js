@@ -12257,6 +12257,98 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             });
             return res.json(diagnosed);
           }
+          if (
+            isCatalogGuardSource(source) &&
+            cacheQueryText.length > 0 &&
+            effectiveProducts.length === 0
+          ) {
+            const strictEmptyBase = {
+              status: 'success',
+              success: true,
+              products: [],
+              total: 0,
+              page: fromCache.page,
+              page_size: 0,
+              reply: null,
+              metadata: {
+                query_source: 'cache_cross_merchant_search',
+                fetched_at: new Date().toISOString(),
+                merchants_searched: merchantsReturned.length,
+                source_breakdown: {
+                  internal_count: 0,
+                  external_seed_count: 0,
+                  stale_cache_used: false,
+                  strategy_applied: isCatalogGuardSource(source)
+                    ? 'supplement_internal_first'
+                    : 'cache_only',
+                },
+                proxy_search_fallback: {
+                  applied: false,
+                  reason: 'cache_miss_strict_empty',
+                },
+                ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
+                ...(ROUTE_DEBUG_ENABLED
+                  ? {
+                      route_debug: {
+                        cross_merchant_cache: crossMerchantCacheRouteDebug,
+                      },
+                    }
+                  : {}),
+              },
+            };
+            const strictEmptyWithPolicy = effectiveIntent
+              ? applyFindProductsMultiPolicy({
+                  response: strictEmptyBase,
+                  intent: effectiveIntent,
+                  requestPayload: effectivePayload,
+                  metadata,
+                  rawUserQuery: cacheQueryText,
+                })
+              : strictEmptyBase;
+            const strictEmptyEnriched = applyDealsToResponse(
+              strictEmptyWithPolicy,
+              promotions,
+              now,
+              creatorId,
+            );
+            const strictEmptyDiagnosed = withSearchDiagnostics(strictEmptyEnriched, {
+              route_health: buildSearchRouteHealth({
+                primaryPathUsed: 'cache_stage',
+                primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+                fallbackTriggered: false,
+                fallbackReason: 'cache_miss_strict_empty',
+              }),
+              search_trace: buildSearchTrace({
+                traceId: gatewayRequestId,
+                rawQuery: cacheQueryText,
+                expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
+                expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                intent: effectiveIntent,
+                cacheStage: {
+                  hit: false,
+                  candidate_count: Number(effectiveProducts.length || 0),
+                  relevant_count: Number(internalProductsForRecall.length || 0),
+                  retrieval_sources: fromCache.retrieval_sources || [],
+                },
+                upstreamStage: {
+                  called: false,
+                  timeout: false,
+                  status: null,
+                  latency_ms: 0,
+                },
+                resolverStage: {
+                  called: false,
+                  hit: false,
+                  miss: false,
+                  latency_ms: null,
+                },
+                finalDecision: 'strict_empty',
+              }),
+              strict_empty: true,
+              strict_empty_reason: 'cache_miss_strict_empty',
+            });
+            return res.json(strictEmptyDiagnosed);
+          }
           logger.info(
             { source, page, limit, inStockOnly, query: cacheQueryText },
             'Cross-merchant cache search returned empty; falling back to upstream',
