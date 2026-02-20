@@ -5405,7 +5405,7 @@ async function runRecoBlocksForUrl({
         } else if (modeToken === 'async_backfill') {
           next.catalog_ann = Math.max(
             next.catalog_ann,
-            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS, 1600),
+            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS, 2600),
           );
         }
         return next;
