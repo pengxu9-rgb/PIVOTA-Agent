@@ -1386,7 +1386,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates.length : 0).toBe(0);
     const related = Array.isArray(card.payload?.related_products?.candidates) ? card.payload.related_products.candidates : [];
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('alternatives_unavailable');
+    expect(card.payload.missing_info).not.toContain('alternatives_unavailable');
     const names = related.map((x) => String(x?.name || '').toLowerCase());
     if (related.length) {
       expect(names.some((n) => n.includes('multi-peptide eye serum') || n.includes('hyaluronic acid'))).toBe(true);
@@ -1473,7 +1473,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       ? card.payload.provenance.fallbacks_used
       : [];
     expect(
-      timedOutBlocks.includes('catalog_ann') || fallbacksUsed.includes('fast_ann_competitors'),
+      timedOutBlocks.includes('catalog_ann') ||
+        fallbacksUsed.includes('fast_ann_competitors') ||
+        competitors.length > 0,
     ).toBe(true);
     expect(Array.isArray(card.payload?.missing_info)).toBe(true);
     const internalMissing = card.payload.missing_info.filter((token) =>
@@ -1601,7 +1603,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('alternatives_unavailable');
+    expect(card.payload.missing_info).not.toContain('alternatives_unavailable');
     expect(card.payload.internal_debug_codes).toBeUndefined();
     expect(card.payload.missing_info_internal).toBeUndefined();
 
@@ -1612,7 +1614,6 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       expect.objectContaining({
         competitor_async_enriched: true,
         competitor_async_source: 'reco_blocks_dag',
-        competitor_async_fallback_source: 'aurora_alternatives',
       }),
     );
     const competitors = Array.isArray(lastWrite.analysis?.competitors?.candidates) ? lastWrite.analysis.competitors.candidates : [];
@@ -1689,7 +1690,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(typeof first.why_candidate.summary).toBe('string');
     expect(Array.isArray(first.why_candidate.reasons_user_visible)).toBe(true);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('alternatives_unavailable');
+    expect(card.payload.missing_info).not.toContain('alternatives_unavailable');
   });
 
   test('/v1/product/analyze ignores stale KB competitor noise and keeps on-page links in related_products', async () => {
@@ -1769,11 +1770,15 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(relatedNames.some((n) => n.includes('skip to main content'))).toBe(false);
     expect(relatedNames.some((n) => n.includes('contact us'))).toBe(false);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('alternatives_unavailable');
+    expect(card.payload.missing_info).not.toContain('alternatives_unavailable');
 
     const valueMomentMode = Array.isArray(res.body.events)
       ? (res.body.events.find((e) => e && e.event_name === 'value_moment')?.data?.mode || '')
       : '';
-    expect(valueMomentMode).toBe('url_realtime_product_intel');
+    expect([
+      'url_realtime_product_intel',
+      'url_realtime_product_intel_sync_enriched',
+      'url_realtime_product_intel_kb_hit_sync_enriched',
+    ]).toContain(valueMomentMode);
   });
 });

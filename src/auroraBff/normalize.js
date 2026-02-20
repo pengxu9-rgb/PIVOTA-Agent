@@ -75,6 +75,7 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
 };
 
 const PRODUCT_ANALYSIS_INTERNAL_GAP_EXACT = new Set([
+  'alternatives_unavailable',
   'upstream_analysis_missing',
   'url_ingredient_analysis_used',
   'url_realtime_product_intel_used',

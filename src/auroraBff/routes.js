@@ -16412,12 +16412,39 @@ function mountAuroraBffRoutes(app, { logger }) {
             assessment && typeof assessment.anchor_product === 'object' && !Array.isArray(assessment.anchor_product)
               ? assessment.anchor_product
               : parsedProduct;
+          let realtimeSyncRepairApplied = false;
+          if (
+            shouldRepairCompetitorCoverage(realtimePayload, {
+              preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
+            })
+          ) {
+            const syncRepair = await maybeSyncRepairLowCoverageCompetitors({
+              productUrl: realtimeUrlInput,
+              payload: realtimePayload,
+              parsedProduct: kbBackfillAnchor,
+              profileSummary,
+              lang: ctx.lang,
+              logger,
+            });
+            if (syncRepair && syncRepair.enhanced && syncRepair.payload) {
+              realtimePayload = enrichProductAnalysisPayload(syncRepair.payload, { lang: ctx.lang, profileSummary });
+              realtimeSyncRepairApplied = true;
+              realtimeUrlNormMeta = {
+                ...(realtimeUrlNormMeta && typeof realtimeUrlNormMeta === 'object' && !Array.isArray(realtimeUrlNormMeta)
+                  ? realtimeUrlNormMeta
+                  : {}),
+                competitor_sync_enriched: true,
+                competitor_sync_timeout_ms: PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS,
+                competitor_sync_max_queries: PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES,
+              };
+            }
+          }
           scheduleProductIntelKbBackfill({
             productUrl: realtimeUrlInput,
             parsedProduct: kbBackfillAnchor,
             payload: realtimePayload,
             lang: ctx.lang,
-            source: 'url_realtime_product_intel',
+            source: realtimeSyncRepairApplied ? 'url_realtime_product_intel_sync_enrich' : 'url_realtime_product_intel',
             sourceMeta: realtimeUrlNormMeta,
             logger,
           });
@@ -16437,7 +16464,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           realtimePayload = finalizeProductAnalysisRecoContract(realtimePayload, {
             logger,
             requestId: ctx.request_id,
-            mode: 'main_path',
+            mode: realtimeSyncRepairApplied ? 'sync_repair' : 'main_path',
           });
           realtimePayload = applyProductAnalysisSocialProvenance(realtimePayload, {
             social_fetch_mode: 'async_refresh',
@@ -16455,11 +16482,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             ],
             session_patch: {},
-            events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze', mode: 'url_realtime_product_intel' })],
+            events: [
+              makeEvent(ctx, 'value_moment', {
+                kind: 'product_analyze',
+                mode: realtimeSyncRepairApplied
+                  ? 'url_realtime_product_intel_sync_enriched'
+                  : 'url_realtime_product_intel',
+              }),
+            ],
           });
           social_enrich_async({
             logger,
-            mode: 'main_path',
+            mode: realtimeSyncRepairApplied ? 'sync_repair' : 'main_path',
             product_url: realtimeUrlInput,
             payload: realtimePayload,
             lang: ctx.lang,
@@ -16475,10 +16509,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
           skin_fit_heavy_async({
             logger,
-            mode: 'main_path',
+            mode: realtimeSyncRepairApplied ? 'sync_repair' : 'main_path',
             product_url: realtimeUrlInput,
           });
-          return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
+          return sendProductAnalyzeEnvelope(
+            envelope,
+            200,
+            realtimeSyncRepairApplied ? 'sync_repair' : 'main_path',
+          );
         }
       }
 
