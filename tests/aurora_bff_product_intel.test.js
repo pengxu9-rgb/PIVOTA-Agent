@@ -556,7 +556,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     });
     expect(Array.isArray(out.missing_info)).toBe(true);
     expect(out.missing_info).toEqual(
-      expect.arrayContaining(['analysis_in_progress', 'price_temporarily_unavailable', 'profile_not_provided']),
+      expect.arrayContaining(['analysis_in_progress', 'price_temporarily_unavailable']),
+    );
+    expect(out.missing_info).not.toContain('profile_not_provided');
+    expect(out.profile_prompt).toEqual(
+      expect.objectContaining({
+        needed: true,
+        cta_action: 'open_profile',
+      }),
     );
     expect(out.missing_info).not.toEqual(
       expect.arrayContaining([
@@ -1188,7 +1195,18 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(competitorNames.some((n) => n.includes('the ordinary'))).toBe(false);
     expect(auroraCalls).toBe(0);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('ingredient_concentration_unknown');
+    expect(card.payload.missing_info).not.toContain('ingredient_concentration_unknown');
+    expect(card.payload.missing_info).not.toContain('profile_not_provided');
+    expect(card.payload.profile_prompt).toEqual(
+      expect.objectContaining({
+        needed: true,
+        cta_action: 'open_profile',
+      }),
+    );
+    expect(Array.isArray(card.payload.profile_prompt.missing_fields)).toBe(true);
+    expect(card.payload.profile_prompt.missing_fields).toEqual(
+      expect.arrayContaining(['skinType', 'sensitivity', 'barrierStatus']),
+    );
     expect(card.payload.missing_info).not.toEqual(
       expect.arrayContaining(['upstream_analysis_missing', 'url_ingredient_analysis_used', 'url_realtime_product_intel_used']),
     );
