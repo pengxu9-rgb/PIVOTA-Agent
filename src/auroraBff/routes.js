@@ -3691,7 +3691,9 @@ async function buildRealtimeCompetitorCandidates({
     normalizedMode === 'sync_repair' || normalizedMode === 'async_backfill'
       ? normalizedMode
       : 'main_path';
-  const searchAllMerchants = runMode === 'async_backfill';
+  // Sync repair should also search across merchants; this improves cross-brand recovery
+  // when the anchor query is sparse or merchant-local index is incomplete.
+  const searchAllMerchants = runMode !== 'main_path';
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
   const reserveAfterSearchMs = runMode === 'async_backfill' ? 140 : 220;
@@ -5429,7 +5431,10 @@ async function runRecoBlocksForUrl({
         if (modeToken === 'sync_repair') {
           next.catalog_ann = Math.max(
             next.catalog_ann,
-            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS, 1600),
+            Math.max(
+              1200,
+              Math.min(PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS, 2000),
+            ),
           );
         } else if (modeToken === 'async_backfill') {
           next.catalog_ann = Math.max(
