@@ -821,6 +821,37 @@ const RECO_TEST_SEED_MIN_TOTAL = (() => {
   return Math.max(1, Math.min(8, v));
 })();
 
+const RECO_DIVERSITY_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_DIVERSITY_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(0, Math.min(4, v));
+})();
+
+const RECO_DIVERSITY_MIN_TOTAL = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_DIVERSITY_MIN_TOTAL || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(8, v));
+})();
+
+const RECO_DIVERSITY_HISTORY_MAX_ITEMS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_DIVERSITY_HISTORY_MAX_ITEMS || 24);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 24;
+  return Math.max(4, Math.min(64, v));
+})();
+
+const RECO_DIVERSITY_HISTORY_TTL_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_DIVERSITY_HISTORY_TTL_MS || 45 * 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 45 * 60 * 1000;
+  return Math.max(60 * 1000, Math.min(24 * 60 * 60 * 1000, v));
+})();
+
 const AURORA_BFF_PDP_CORE_PREFETCH_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_PDP_CORE_PREFETCH_ENABLED || 'false')
     .trim()
@@ -979,6 +1010,7 @@ const DUPE_DEEPSCAN_CACHE_TTL_MS = (() => {
 const dupeDeepscanCache = new Map();
 const photoBytesCache = new Map();
 const pdpPrefetchRecentMap = new Map();
+const recoRecentExposureState = new Map();
 let pdpHotsetPrewarmStarted = false;
 let pdpHotsetPrewarmInFlight = false;
 const pdpPrefetchStats = {
@@ -2028,6 +2060,27 @@ function buildLooseAsciiAliasRegex(alias) {
   return new RegExp(`(?<![a-z0-9])${body}(?![a-z0-9])`, 'iu');
 }
 
+function messageHasAvailabilityHint(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  return (
+    /(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|能买|购买|下单|链接|渠道|旗舰|自营|店|请问|\?)/.test(raw) ||
+    /\b(in stock|available|availability|where (can i|to) buy|do you have|have any|buy|purchase|link)\b/i.test(raw) ||
+    /^有[^\n]{1,80}(产品|单品|品牌|[a-z0-9%+\-/]{2,})[^\n]{0,12}(吗|么|嗎|？|\?)$/iu.test(raw)
+  );
+}
+
+function stripGenericAvailabilityTokens(value) {
+  return String(value || '')
+    .replace(
+      /(有没有|有无|有吗|有没|有木有|请问|产品|商品|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方|旗舰|自营|店|给我看下|查一下)/gi,
+      ' ',
+    )
+    .replace(/\b(do you have|have any|where can i buy|where to buy|in stock|available|availability|buy|purchase|link|products?|items?|catalog|store|shop)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function detectBrandAvailabilityIntent(message, lang) {
   const raw = String(message || '').trim();
   if (!raw) return null;
@@ -2043,9 +2096,7 @@ function detectBrandAvailabilityIntent(message, lang) {
   const text = raw.normalize('NFKC');
   const lowered = text.toLowerCase();
 
-  const availabilityHint =
-    /(有没有|有无|有吗|有没|有木有|有货|现货|库存|哪里买|怎么买|能买|购买|下单|链接|渠道|旗舰|自营|店|请问|\?)/.test(text) ||
-    /\b(in stock|available|availability|where (can i|to) buy|do you have|have any|buy|purchase|link)\b/i.test(lowered);
+  const availabilityHint = messageHasAvailabilityHint(text);
 
   for (const brand of Object.values(CATALOG_BRANDS)) {
     const aliases = Array.isArray(brand.aliases) ? brand.aliases : [];
@@ -2094,6 +2145,39 @@ function detectBrandAvailabilityIntent(message, lang) {
   }
 
   return null;
+}
+
+function detectCatalogAvailabilityIntent(message, lang) {
+  const knownBrandIntent = detectBrandAvailabilityIntent(message, lang);
+  if (knownBrandIntent) return knownBrandIntent;
+
+  const raw = String(message || '').trim();
+  if (!raw) return null;
+
+  if (looksLikeDiagnosisStart(raw)) return null;
+  if (looksLikeSuitabilityRequest(raw)) return null;
+  if (looksLikeRecommendationRequest(raw)) return null;
+  if (looksLikeRoutineRequest(raw, null)) return null;
+  if (looksLikeCompatibilityOrConflictQuestion(raw)) return null;
+  if (looksLikeWeatherOrEnvironmentQuestion(raw)) return null;
+
+  if (!messageHasAvailabilityHint(raw)) return null;
+
+  const availabilityQuery = buildAvailabilityCatalogQuery(raw, null);
+  const genericTarget = stripGenericAvailabilityTokens(availabilityQuery);
+  const compactTarget = genericTarget.toLowerCase().replace(/[\s\p{P}_-]+/gu, '');
+  if (!compactTarget || compactTarget.length < 3) return null;
+
+  const isLangCn = String(lang || '').toUpperCase() === 'CN';
+  const displayName = genericTarget || availabilityQuery || (isLangCn ? '目标商品' : 'Target product');
+  return {
+    intent: 'availability',
+    brand_id: 'brand_generic',
+    brand_name: displayName.slice(0, 120),
+    matched_alias: '',
+    reason: 'availability_hint_generic',
+    query_hint: availabilityQuery || displayName,
+  };
 }
 
 function buildAvailabilityCatalogQuery(message, availabilityIntent) {
@@ -11056,6 +11140,130 @@ function extractProductInputFromFitCheckText(message) {
   return t;
 }
 
+function looksLikeProductEvaluationIntentV2(message, actionId) {
+  const raw = String(message || '').trim();
+  const lower = raw.toLowerCase();
+  const action = String(actionId || '').trim().toLowerCase();
+
+  if (
+    action === 'chip.action.analyze_product' ||
+    action === 'chip_action_analyze_product' ||
+    action.includes('evaluate') ||
+    action.includes('fit_check') ||
+    action.includes('fit-check') ||
+    action.includes('product_analysis')
+  ) {
+    return true;
+  }
+
+  if (looksLikeSuitabilityRequest(raw)) return true;
+
+  const recommendationOnlySignal =
+    (/\b(recommend|suggest|recommendation)\b/.test(lower) || /(推荐|求推荐|给我.*产品)/.test(raw)) &&
+    !/\b(evaluate|evaluation|assess|assessment|analy[sz]e|check|review)\b/.test(lower) &&
+    !/(评估|测评|评价|分析|适合吗|能用吗|可以用吗)/.test(raw);
+  if (recommendationOnlySignal) return false;
+
+  const enEvaluate =
+    /\b(evaluate|evaluation|assess|assessment|analy[sz]e)\b.{0,32}\b(product|this|it)\b/.test(lower) ||
+    /\b(check|review)\b.{0,24}\b(this|the)\b.{0,16}\bproduct\b/.test(lower);
+  const cnEvaluate =
+    /(评估|测评|评价|分析|看看|判断).{0,20}(这款|这个|该|单品|产品)/.test(raw) ||
+    /(这款|这个|该产品).{0,20}(适合吗|能用吗|可以用吗)/.test(raw);
+  return enEvaluate || cnEvaluate;
+}
+
+const FIT_CHECK_ANCHOR_STOPWORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'this',
+  'that',
+  'it',
+  'product',
+  'specific',
+  'for',
+  'me',
+  'evaluate',
+  'evaluation',
+  'assess',
+  'assessment',
+  'analyze',
+  'analyse',
+  'check',
+  'review',
+  'send',
+  'link',
+  'url',
+  'name',
+  'please',
+  'do',
+  'you',
+  'have',
+]);
+
+function isMeaningfulFitCheckProductInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  if (/^https?:\/\//i.test(raw)) return true;
+
+  const lower = raw.toLowerCase();
+  if (
+    /^(this|that|it|product|the product|a product|specific product|evaluate (?:a )?specific product(?: for me)?|evaluate (?:a )?product(?: for me)?|check (?:a )?product|analy[sz]e (?:a )?product|send (?:a )?(?:link|url|product name)|link|url|product name|name)$/i
+      .test(lower) ||
+    /^(这款|这个|该产品|这个产品|产品|单品|评估这款|评估产品|发链接|链接|产品名|商品名)$/.test(raw)
+  ) {
+    return false;
+  }
+
+  const normalized = lower
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return false;
+
+  const hasCjk = /[\u4e00-\u9fff]/.test(normalized);
+  if (hasCjk && normalized.length >= 2) return true;
+
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (!tokens.length) return false;
+  const informativeTokens = tokens.filter((token) => !FIT_CHECK_ANCHOR_STOPWORDS.has(token));
+  if (informativeTokens.length >= 2) return true;
+  if (informativeTokens.length >= 1 && /[0-9]/.test(informativeTokens[0])) return true;
+  if (tokens.some((token) => /[0-9]/.test(token)) && informativeTokens.length >= 1) return true;
+  return false;
+}
+
+function hasMeaningfulFitCheckAnchor({ message, anchorProductId, anchorProductUrl } = {}) {
+  if (String(anchorProductId || '').trim()) return true;
+  if (String(anchorProductUrl || '').trim()) return true;
+  const parsed = extractProductInputFromFitCheckText(message);
+  return isMeaningfulFitCheckProductInput(parsed);
+}
+
+function buildFitCheckAnchorPrompt(language) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  return {
+    prompt: isCn
+      ? '我可以马上评估，但先给我一个产品锚点：请直接发“产品名”或“购买链接”。'
+      : 'I can evaluate it right away, but I need one anchor first: send the product name or a product link.',
+    chips: [
+      {
+        chip_id: 'chip.fitcheck.send_product_name',
+        label: isCn ? '发送产品名' : 'Send product name',
+        kind: 'quick_reply',
+        data: { reply_text: isCn ? '发送产品名' : 'Send product name' },
+      },
+      {
+        chip_id: 'chip.fitcheck.send_link',
+        label: isCn ? '发送链接' : 'Send a link',
+        kind: 'quick_reply',
+        data: { reply_text: isCn ? '发送链接' : 'Send a link' },
+      },
+    ],
+  };
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -11982,6 +12190,164 @@ function normalizeRecoSeedToken(value) {
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function buildRecoDiversityHistoryKey(ctx) {
+  const uid = pickFirstTrimmed(ctx?.aurora_uid, ctx?.brief_id);
+  if (uid) return `uid:${uid.toLowerCase()}`;
+  return '';
+}
+
+function buildRecoDiversityToken(item) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+  const sku =
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+      ? base.sku
+      : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+        ? base.product
+        : {};
+  const productId = pickFirstTrimmed(sku.product_id, sku.productId, base.product_id, base.productId, sku.sku_id, sku.skuId);
+  if (productId) return `id:${String(productId).trim().toLowerCase()}`;
+
+  const brand = pickFirstTrimmed(sku.brand, base.brand);
+  const name = pickFirstTrimmed(
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    base.display_name,
+    base.displayName,
+    base.title,
+  );
+  const joined = joinBrandAndName(brand, name);
+  const token = normalizeRecoSeedToken(joined || name);
+  return token ? `name:${token}` : '';
+}
+
+function getRecoRecentExposureTokens(historyKey, nowMs = Date.now()) {
+  const key = String(historyKey || '').trim();
+  if (!key) return [];
+  const entry = recoRecentExposureState.get(key);
+  if (!entry || typeof entry !== 'object') return [];
+
+  const expiresAt = Number(entry.expiresAt || 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= nowMs) {
+    recoRecentExposureState.delete(key);
+    return [];
+  }
+
+  const tokens = Array.isArray(entry.tokens) ? entry.tokens : [];
+  return tokens
+    .map((token) => String(token || '').trim())
+    .filter(Boolean)
+    .slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS);
+}
+
+function updateRecoRecentExposureTokens(historyKey, nextTokens, nowMs = Date.now()) {
+  const key = String(historyKey || '').trim();
+  if (!key) return;
+  const current = getRecoRecentExposureTokens(key, nowMs);
+  const incoming = (Array.isArray(nextTokens) ? nextTokens : [])
+    .map((token) => String(token || '').trim())
+    .filter(Boolean);
+  if (!incoming.length && !current.length) return;
+
+  const merged = [...current, ...incoming].slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS);
+  recoRecentExposureState.delete(key);
+  recoRecentExposureState.set(key, {
+    tokens: merged,
+    expiresAt: nowMs + RECO_DIVERSITY_HISTORY_TTL_MS,
+  });
+
+  while (recoRecentExposureState.size > 800) {
+    const oldestKey = recoRecentExposureState.keys().next().value;
+    if (!oldestKey) break;
+    recoRecentExposureState.delete(oldestKey);
+  }
+}
+
+function applyRecoRecentDiversityGuard(recommendations, {
+  historyTokens = [],
+  maxRepeatPerResponse = RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
+  minTotal = RECO_DIVERSITY_MIN_TOTAL,
+} = {}) {
+  const list = Array.isArray(recommendations) ? recommendations : [];
+  if (!list.length) {
+    return {
+      recommendations: list,
+      repeated_before: 0,
+      repeated_after: 0,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const historySet = new Set(
+    (Array.isArray(historyTokens) ? historyTokens : [])
+      .map((token) => String(token || '').trim())
+      .filter(Boolean),
+  );
+  if (!historySet.size) {
+    return {
+      recommendations: list,
+      repeated_before: 0,
+      repeated_after: 0,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const annotated = list.map((item, idx) => {
+    const token = buildRecoDiversityToken(item);
+    const repeated = Boolean(token && historySet.has(token));
+    return { idx, item, token, repeated };
+  });
+  const repeatedBefore = annotated.filter((row) => row.repeated).length;
+  if (!repeatedBefore) {
+    return {
+      recommendations: list,
+      repeated_before: 0,
+      repeated_after: 0,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const freshCount = annotated.filter((row) => !row.repeated).length;
+  const maxRepeat = Math.max(0, Math.min(4, Number.isFinite(Number(maxRepeatPerResponse)) ? Math.trunc(Number(maxRepeatPerResponse)) : RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE));
+  const minKeepTotal = Math.max(1, Math.min(8, Number.isFinite(Number(minTotal)) ? Math.trunc(Number(minTotal)) : RECO_DIVERSITY_MIN_TOTAL));
+  const repeatKeepFloor = Math.max(0, minKeepTotal - freshCount);
+  const allowedRepeats = Math.min(repeatedBefore, Math.max(maxRepeat, repeatKeepFloor));
+
+  if (allowedRepeats >= repeatedBefore) {
+    return {
+      recommendations: list,
+      repeated_before: repeatedBefore,
+      repeated_after: repeatedBefore,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const keep = [];
+  let repeatKept = 0;
+  for (const row of annotated) {
+    if (!row.repeated) {
+      keep.push(row.item);
+      continue;
+    }
+    if (repeatKept < allowedRepeats) {
+      keep.push(row.item);
+      repeatKept += 1;
+    }
+  }
+
+  return {
+    recommendations: keep,
+    repeated_before: repeatedBefore,
+    repeated_after: repeatKept,
+    filtered_count: repeatedBefore - repeatKept,
+    applied: repeatedBefore > repeatKept,
+  };
 }
 
 function buildRecoSeedCandidateTokens(item) {
@@ -14927,6 +15293,15 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     seed_count_after: 0,
     filtered_count: 0,
   };
+  let recoDiversityInfo = {
+    enabled: RECO_DIVERSITY_ENABLED,
+    applied: false,
+    repeated_before: 0,
+    repeated_after: 0,
+    filtered_count: 0,
+    history_size_before: 0,
+    history_size_after: 0,
+  };
   if (Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length) {
     const deduped = [];
     const seen = new Set();
@@ -14955,7 +15330,35 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       seed_count_after: Number(limited.seed_count_after || 0),
       filtered_count: Number(limited.filtered_count || 0),
     };
-    norm.payload = { ...norm.payload, recommendations: limited.recommendations };
+    let nextRecommendations = limited.recommendations;
+    if (RECO_DIVERSITY_ENABLED && Array.isArray(nextRecommendations) && nextRecommendations.length) {
+      const diversityHistoryKey = buildRecoDiversityHistoryKey(ctx);
+      const historyTokens = getRecoRecentExposureTokens(diversityHistoryKey);
+      const diversityLimited = applyRecoRecentDiversityGuard(nextRecommendations, {
+        historyTokens,
+        maxRepeatPerResponse: RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
+        minTotal: RECO_DIVERSITY_MIN_TOTAL,
+      });
+      nextRecommendations = diversityLimited.recommendations;
+      recoDiversityInfo = {
+        enabled: true,
+        applied: Boolean(diversityLimited.applied),
+        repeated_before: Number(diversityLimited.repeated_before || 0),
+        repeated_after: Number(diversityLimited.repeated_after || 0),
+        filtered_count: Number(diversityLimited.filtered_count || 0),
+        history_size_before: historyTokens.length,
+        history_size_after: historyTokens.length,
+      };
+
+      const exposureTokens = (Array.isArray(nextRecommendations) ? nextRecommendations : [])
+        .map((item) => buildRecoDiversityToken(item))
+        .filter(Boolean)
+        .slice(0, 8);
+      updateRecoRecentExposureTokens(diversityHistoryKey, exposureTokens);
+      const historyAfter = getRecoRecentExposureTokens(diversityHistoryKey);
+      recoDiversityInfo.history_size_after = historyAfter.length;
+    }
+    norm.payload = { ...norm.payload, recommendations: nextRecommendations };
   }
   let alternativesDebug = null;
   if (upstreamDebug) {
@@ -14965,6 +15368,13 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     upstreamDebug.reco_seed_count_before = recoSeedFilterInfo.seed_count_before;
     upstreamDebug.reco_seed_count_after = recoSeedFilterInfo.seed_count_after;
     upstreamDebug.reco_seed_filtered_count = recoSeedFilterInfo.filtered_count;
+    upstreamDebug.reco_diversity_enabled = recoDiversityInfo.enabled;
+    upstreamDebug.reco_diversity_applied = recoDiversityInfo.applied;
+    upstreamDebug.reco_diversity_repeated_before = recoDiversityInfo.repeated_before;
+    upstreamDebug.reco_diversity_repeated_after = recoDiversityInfo.repeated_after;
+    upstreamDebug.reco_diversity_filtered_count = recoDiversityInfo.filtered_count;
+    upstreamDebug.reco_diversity_history_size_before = recoDiversityInfo.history_size_before;
+    upstreamDebug.reco_diversity_history_size_after = recoDiversityInfo.history_size_after;
   }
 
   if (includeAlternatives) {
@@ -21047,17 +21457,28 @@ function mountAuroraBffRoutes(app, { logger }) {
         message &&
         (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
       ) {
-        const availabilityIntent = detectBrandAvailabilityIntent(message, ctx.lang);
+        const availabilityIntent = detectCatalogAvailabilityIntent(message, ctx.lang);
         if (availabilityIntent) {
           recordCatalogAvailabilityShortCircuit({ brandId: availabilityIntent.brand_id, reason: availabilityIntent.reason });
 
+          const availabilityQuery =
+            String(availabilityIntent.query_hint || '').trim() ||
+            buildAvailabilityCatalogQuery(message, availabilityIntent);
+          const availabilityLabel = String(
+            availabilityIntent.brand_name ||
+              availabilityIntent.matched_alias ||
+              availabilityQuery ||
+              (ctx.lang === 'CN' ? '目标商品' : 'target product'),
+          )
+            .trim()
+            .slice(0, 120);
+
           const brandProduct = buildBrandPlaceholderProduct({
             brandId: availabilityIntent.brand_id,
-            brandName: availabilityIntent.brand_name,
+            brandName: availabilityLabel,
             lang: ctx.lang,
           });
 
-          const availabilityQuery = buildAvailabilityCatalogQuery(message, availabilityIntent);
           const specificAvailabilityQuery = isSpecificAvailabilityQuery(availabilityQuery, availabilityIntent);
           const resolveAliasCandidates = [
             availabilityIntent.brand_name,
@@ -21077,7 +21498,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           let availabilityResolveAttempted = false;
           if (PIVOTA_BACKEND_BASE_URL) {
             catalogResult = await searchPivotaBackendProducts({
-              query: availabilityQuery || availabilityIntent.brand_name || availabilityIntent.matched_alias || availabilityIntent.brand_id,
+              query: availabilityQuery || availabilityLabel || availabilityIntent.brand_id,
               limit: 8,
               logger,
               timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
@@ -21119,11 +21540,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           const assistantRaw =
             ctx.lang === 'CN'
               ? hasResults
-                ? `我在商品库里找到了「${availabilityIntent.brand_name || '该品牌'}」的相关商品（见下方卡片）。你想查官方旗舰/自营，还是某个具体单品名？`
-                : `我可以帮你查商品库，但当前没能拉到「${availabilityIntent.brand_name || '该品牌'}」的商品列表。你想查的是官方旗舰/自营，还是某个具体单品名？`
+                ? `我在商品库里找到了「${availabilityLabel || '该商品'}」的相关商品（见下方卡片）。你想查官方旗舰/自营，还是某个具体单品名？`
+                : `我可以帮你查商品库，但当前没能拉到「${availabilityLabel || '该商品'}」的商品列表。你想查的是官方旗舰/自营，还是某个具体单品名？`
               : hasResults
-                ? `I found ${products.length} items for "${availabilityIntent.brand_name || 'this brand'}" (see the cards below). Are you looking for an official store, major retailers, or a specific product name?`
-                : `I can help check our catalog, but I couldn't fetch items for "${availabilityIntent.brand_name || 'this brand'}" right now. Are you looking for an official store, major retailers, or a specific product name?`;
+                ? `I found ${products.length} items for "${availabilityLabel || 'this product'}" (see the cards below). Are you looking for an official store, major retailers, or a specific product name?`
+                : `I can help check our catalog, but I couldn't fetch items for "${availabilityLabel || 'this product'}" right now. Are you looking for an official store, major retailers, or a specific product name?`;
 
           const assistantText = applyCommerceMedicalClaimGuard(assistantRaw, ctx.lang);
 
@@ -21160,7 +21581,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   missing_info: [],
                   intent: 'availability',
                   brand_id: availabilityIntent.brand_id,
-                  brand_name: availabilityIntent.brand_name,
+                  brand_name: availabilityLabel,
                 },
               },
               {
@@ -21430,6 +21851,28 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch:
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_science_clarify' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      const evaluateIntent =
+        looksLikeProductEvaluationIntentV2(message, actionId) &&
+        !looksLikeRoutineRequest(message, parsed.data.action) &&
+        !looksLikeIngredientScienceIntent(message, parsed.data.action);
+      const hasFitCheckAnchor = hasMeaningfulFitCheckAnchor({
+        message,
+        anchorProductId,
+        anchorProductUrl,
+      });
+      if (evaluateIntent && !hasFitCheckAnchor) {
+        const prompt = buildFitCheckAnchorPrompt(ctx.lang);
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(prompt.prompt),
+          suggested_chips: prompt.chips,
+          cards: [],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'fit_check_anchor_required' })],
         });
         return sendChatEnvelope(envelope);
       }
@@ -22985,6 +23428,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 const __internal = {
   normalizeClarificationField,
   detectBrandAvailabilityIntent,
+  detectCatalogAvailabilityIntent,
   buildAvailabilityCatalogQuery,
   isSpecificAvailabilityQuery,
   resolveAvailabilityProductByQuery,
@@ -23040,8 +23484,16 @@ const __internal = {
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,
   looksLikeGreetingAlready,
+  looksLikeProductEvaluationIntentV2,
+  isMeaningfulFitCheckProductInput,
+  hasMeaningfulFitCheckAnchor,
+  buildFitCheckAnchorPrompt,
   isRecoKnownTestSeedItem,
   limitRecoKnownTestSeedRecommendations,
+  buildRecoDiversityToken,
+  applyRecoRecentDiversityGuard,
+  getRecoRecentExposureTokens,
+  updateRecoRecentExposureTokens,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
   getPdpPrefetchStateSnapshot,

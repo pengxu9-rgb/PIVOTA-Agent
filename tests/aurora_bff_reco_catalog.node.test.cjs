@@ -1328,6 +1328,97 @@ test('/v1/chat availability: specific query uses catalog hit directly without re
   );
 });
 
+test('/v1/chat availability: generic non-whitelist product query short-circuits to catalog search', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+
+      axios.get = async (url) => {
+        if (!String(url).includes('/agent/v1/products/search')) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        searchCalls += 1;
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'prod_to_niacinamide',
+                merchant_id: 'mid_to',
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+                display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              },
+            ],
+          },
+        };
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          resolveCalls += 1;
+          throw new Error(`Unexpected resolve fallback for generic availability path: ${url}`);
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_generic_non_whitelist',
+            'X-Trace-ID': 'test_trace_availability_generic_non_whitelist',
+            'X-Brief-ID': 'test_brief_availability_generic_non_whitelist',
+            'X-Lang': 'EN',
+          },
+          body: {
+            message: 'Do you have The Ordinary Niacinamide 10% + Zinc 1%?',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'oily',
+                sensitivity: 'low',
+                barrierStatus: 'healthy',
+                goals: ['acne'],
+              },
+            },
+            language: 'EN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.equal(searchCalls, 1);
+        assert.equal(resolveCalls, 0);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('/v1/chat availability: generic brand query skips resolve fallback on transient search failure by default', async () => {
   await withEnv(
     {
@@ -1596,6 +1687,40 @@ test('Reco seed limiter caps known seed products and keeps non-seed diversity', 
       assert.ok(out.recommendations.some((item) => String(item?.sku?.display_name || '').includes('Cicaplast')));
     },
   );
+});
+
+test('Reco diversity guard suppresses repeated recent exposures while keeping minimum list size', async () => {
+  await withEnv({}, async () => {
+    const { __internal } = loadRoutesFresh();
+    const input = [
+      { sku: { brand: 'Winona', display_name: 'Winona Soothing Repair Serum', product_id: 'a39dd7a3-5d80-4cb3-82e1-3bf2707f65fc' } },
+      { sku: { brand: 'IPSA', display_name: 'IPSA Time Reset Aqua', product_id: 'e7c90e06-8673-4c97-835d-074a26ab2162' } },
+      { sku: { brand: 'CeraVe', display_name: 'CeraVe Hydrating Cleanser', product_id: 'pid_cerave_cleanser' } },
+      { sku: { brand: 'La Roche-Posay', display_name: 'Cicaplast Baume B5', product_id: 'pid_cicaplast' } },
+    ];
+    const historyTokens = [
+      __internal.buildRecoDiversityToken(input[0]),
+      __internal.buildRecoDiversityToken(input[1]),
+    ].filter(Boolean);
+
+    const out = __internal.applyRecoRecentDiversityGuard(input, {
+      historyTokens,
+      maxRepeatPerResponse: 1,
+      minTotal: 3,
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.repeated_before, 2);
+    assert.equal(out.repeated_after, 1);
+    assert.equal(out.filtered_count, 1);
+    assert.equal(Array.isArray(out.recommendations), true);
+    assert.equal(out.recommendations.length, 3);
+
+    const repeatedAfter = out.recommendations
+      .map((item) => __internal.buildRecoDiversityToken(item))
+      .filter((token) => historyTokens.includes(token)).length;
+    assert.equal(repeatedAfter, 1);
+  });
 });
 
 test('Offers resolve db_error: canonical ref still keeps internal PDP open contract', async () => {
