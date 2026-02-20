@@ -669,7 +669,7 @@ test('/v1/chat reco PDP: local double-hop fallback disabled by default', async (
         assert.ok(recos.length > 0);
         assert.ok(primaryStableCalls > 0);
         assert.equal(localStableCalls, 0);
-        assert.equal(queryResolveCalls, 0);
+        assert.ok(queryResolveCalls > 0);
 
         const withStableReqId = recos.find(
           (item) => item && item.metadata && item.metadata.stable_resolve_request_ids,
@@ -852,6 +852,7 @@ test('Stable-id upstream timeout skips query products.resolve when configured', 
     {
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE: 'true',
+      AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
@@ -1181,6 +1182,7 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
     async () => {
@@ -1908,6 +1910,7 @@ test('/v1/chat reco fail-fast open: skips PDP resolve calls via fast external fa
       AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS: '90000',
       AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS: '30000',
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_FAST_EXTERNAL_FALLBACK: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
