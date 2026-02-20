@@ -12271,6 +12271,88 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             });
             return res.json(diagnosed);
           }
+          if (isLookupQuery && cacheQueryText.length > 0) {
+            try {
+              const resolverFallback = await queryResolveSearchFallback({
+                queryParams: {
+                  query: cacheQueryText,
+                  ...(search.category ? { category: search.category } : {}),
+                  ...(search.price_min != null || search.min_price != null
+                    ? { min_price: search.price_min ?? search.min_price }
+                    : {}),
+                  ...(search.price_max != null || search.max_price != null
+                    ? { max_price: search.price_max ?? search.max_price }
+                    : {}),
+                  in_stock_only: inStockOnly,
+                  limit,
+                  offset: 0,
+                  search_all_merchants: true,
+                  allow_external_seed: true,
+                  allow_stale_cache: false,
+                  external_seed_strategy: 'supplement_internal_first',
+                  fast_mode: true,
+                },
+                checkoutToken,
+                reason: 'resolver_after_cache_miss',
+              });
+              if (
+                resolverFallback &&
+                resolverFallback.status >= 200 &&
+                resolverFallback.status < 300 &&
+                resolverFallback.usableCount > 0
+              ) {
+                const resolverEnriched = applyDealsToResponse(
+                  resolverFallback.data,
+                  promotions,
+                  now,
+                  creatorId,
+                );
+                const resolverDiagnosed = withSearchDiagnostics(resolverEnriched, {
+                  route_health: buildSearchRouteHealth({
+                    primaryPathUsed: 'resolver_stage',
+                    primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+                    fallbackTriggered: true,
+                    fallbackReason: 'resolver_after_cache_miss',
+                  }),
+                  search_trace: buildSearchTrace({
+                    traceId: gatewayRequestId,
+                    rawQuery: cacheQueryText,
+                    expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
+                    expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                    intent: effectiveIntent,
+                    cacheStage: {
+                      hit: false,
+                      candidate_count: Number(effectiveProducts.length || 0),
+                      relevant_count: Number(internalProductsForRecall.length || 0),
+                      retrieval_sources: fromCache.retrieval_sources || [],
+                    },
+                    upstreamStage: {
+                      called: false,
+                      timeout: false,
+                      status: null,
+                      latency_ms: 0,
+                    },
+                    resolverStage: {
+                      called: true,
+                      hit: true,
+                      miss: false,
+                      latency_ms: null,
+                    },
+                    finalDecision: 'resolver_returned',
+                  }),
+                });
+                return res.json(resolverDiagnosed);
+              }
+            } catch (resolverFallbackErr) {
+              logger.warn(
+                {
+                  err: resolverFallbackErr?.message || String(resolverFallbackErr),
+                  query: cacheQueryText,
+                },
+                'Cross-merchant cache search resolver fallback failed after cache miss',
+              );
+            }
+          }
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
