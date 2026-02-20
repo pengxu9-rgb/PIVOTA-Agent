@@ -6079,6 +6079,55 @@ async function maybeSyncRepairLowCoverageCompetitors({
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   );
   let syncAuroraFallbackUsed = false;
+  let syncDirectRecallUsed = false;
+  if (!mergedCandidates.length) {
+    try {
+      const directRecallTimeoutMs = Math.max(2200, PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS + 900);
+      const directRecall = await buildRealtimeCompetitorCandidates({
+        productUrl: urlText,
+        parsedProduct: anchorForRecall,
+        keyIngredients: Array.isArray(keyIngredients) ? keyIngredients : [],
+        anchorProduct: anchorForRecall,
+        profileSummary,
+        lang,
+        mode: 'sync_repair',
+        deadlineMs: Date.now() + directRecallTimeoutMs + 600,
+        timeoutMs: directRecallTimeoutMs,
+        maxQueries: Math.max(1, Math.min(4, PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES + 1)),
+        maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+        logger,
+      });
+      const directCandidates = sanitizeCompetitorCandidates(
+        directRecall?.candidates,
+        PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      );
+      if (directCandidates.length) {
+        const rerouted = routeCompetitorCandidatePools({
+          anchorProduct: anchorForRecall,
+          candidates: directCandidates,
+          maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+        });
+        mergedCandidates = sanitizeCompetitorCandidates(
+          rerouted.compPool,
+          PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+        );
+        mergedRelatedCandidates = sanitizeCompetitorCandidates(
+          [...mergedRelatedCandidates, ...(Array.isArray(rerouted.relPool) ? rerouted.relPool : [])],
+          PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+        );
+        mergedDupeCandidates = sanitizeCompetitorCandidates(
+          [...mergedDupeCandidates, ...(Array.isArray(rerouted.dupePool) ? rerouted.dupePool : [])],
+          PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+        );
+        syncDirectRecallUsed = mergedCandidates.length > 0;
+      }
+    } catch (err) {
+      logger?.warn?.(
+        { err: err?.message || String(err), url: urlText },
+        'aurora bff: sync repair direct recall failed',
+      );
+    }
+  }
   if (!mergedCandidates.length) {
     const auroraFallback = await buildAuroraFallbackCompetitorCandidates({
       productUrl: urlText,
@@ -6173,6 +6222,7 @@ async function maybeSyncRepairLowCoverageCompetitors({
   const dagFallbacksUsed = uniqCaseInsensitiveStrings(
     [
       ...(Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : []),
+      ...(syncDirectRecallUsed ? ['sync_direct_catalog_recall'] : []),
       ...(syncAuroraFallbackUsed ? ['aurora_alternatives_competitors'] : []),
     ],
     12,
@@ -6189,6 +6239,7 @@ async function maybeSyncRepairLowCoverageCompetitors({
       ...routeReasonCodes,
       ...dagFallbacksUsed.map((item) => `reco_dag_fallback_${String(item || '').trim().toLowerCase()}`),
       ...dagTimedOutBlocks.map((item) => `reco_dag_timeout_${String(item || '').trim().toLowerCase()}`),
+      ...(syncDirectRecallUsed ? ['competitor_sync_direct_recall_used'] : []),
       ...(syncAuroraFallbackUsed ? ['competitor_sync_aurora_fallback_used'] : []),
       'competitor_sync_enrich_used',
     ],
