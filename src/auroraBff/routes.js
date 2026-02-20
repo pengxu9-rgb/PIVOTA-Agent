@@ -17630,6 +17630,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       let catalogFallback = null;
       let realtimeUrlNormMeta = null;
       const realtimeUrlInput = String(parsed.data.url || '').trim();
+      const forceRefresh = parsed.data.force_refresh === true;
       const shouldRunRealtimeUrlFirst = PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && /^https?:\/\//i.test(realtimeUrlInput);
 
       if (shouldRunRealtimeUrlFirst) {
@@ -17651,6 +17652,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           kbKeys.push(kbKey);
         }
         for (const kbKey of kbKeys) {
+          if (forceRefresh) break;
           // eslint-disable-next-line no-await-in-loop
           const kbEntry = await getProductIntelKbEntry(kbKey);
           const kbAnalysis =
