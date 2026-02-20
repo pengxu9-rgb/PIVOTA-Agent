@@ -1095,4 +1095,55 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       }),
     );
   });
+
+  test('emits route_health and search_trace diagnostics on strict empty', async () => {
+    const queryText = '今晚约会妆推荐';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes('约会妆'))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        strict_empty: true,
+        route_health: expect.objectContaining({
+          primary_path_used: expect.any(String),
+          fallback_triggered: expect.any(Boolean),
+        }),
+        search_trace: expect.objectContaining({
+          trace_id: expect.any(String),
+          raw_query: expect.any(String),
+          final_decision: 'strict_empty',
+        }),
+      }),
+    );
+  });
 });

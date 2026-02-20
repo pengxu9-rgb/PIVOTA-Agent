@@ -411,6 +411,40 @@ const PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES = Math.max(
   100,
   Number(process.env.PROXY_SEARCH_RESOLVER_CACHE_MAX_ENTRIES || 2000) || 2000,
 );
+const FIND_PRODUCTS_MULTI_EXPANSION_MODE = (() => {
+  const raw = String(process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE || 'conservative')
+    .trim()
+    .toLowerCase();
+  if (raw === 'off' || raw === 'none' || raw === 'disabled') return 'off';
+  if (raw === 'aggressive') return 'aggressive';
+  return 'conservative';
+})();
+const FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = (() => {
+  const raw = String(process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE || 'aggressive')
+    .trim()
+    .toLowerCase();
+  if (raw === 'off' || raw === 'none' || raw === 'disabled') return 'off';
+  if (raw === 'conservative') return 'conservative';
+  return 'aggressive';
+})();
+const SEARCH_STRICT_EMPTY_ENABLED =
+  String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
+const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
+  100,
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 250),
+);
+const FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS = Math.max(
+  300,
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS, 1200),
+);
+const FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = Math.max(
+  1500,
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS, 3500),
+);
+const FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = Math.max(
+  1800,
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS, 4500),
+);
 
 const OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = parseTimeoutMs(
   process.env.OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
@@ -2311,6 +2345,89 @@ function withProxySearchFallbackMetadata(body, patch) {
   return { ...body, metadata };
 }
 
+function buildSearchRouteHealth({
+  primaryPathUsed,
+  primaryLatencyMs,
+  fallbackTriggered,
+  fallbackReason,
+}) {
+  return {
+    primary_path_used: String(primaryPathUsed || 'unknown'),
+    primary_latency_ms: Math.max(0, Number(primaryLatencyMs || 0) || 0),
+    fallback_triggered: Boolean(fallbackTriggered),
+    fallback_reason: fallbackReason ? String(fallbackReason) : null,
+  };
+}
+
+function buildSearchTrace({
+  traceId,
+  rawQuery,
+  expandedQuery,
+  expansionMode,
+  intent,
+  cacheStage,
+  upstreamStage,
+  resolverStage,
+  finalDecision,
+}) {
+  return {
+    trace_id: String(traceId || ''),
+    raw_query: String(rawQuery || ''),
+    expanded_query: String(expandedQuery || rawQuery || ''),
+    expansion_mode: String(expansionMode || 'conservative'),
+    intent_domain: intent?.primary_domain || null,
+    intent_target: intent?.target_object?.type || null,
+    scenario: intent?.scenario?.name || null,
+    cache_stage: cacheStage || null,
+    upstream_stage: upstreamStage || null,
+    resolver_stage: resolverStage || null,
+    final_decision: String(finalDecision || 'unknown'),
+  };
+}
+
+function withSearchDiagnostics(body, diagnostics = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : {};
+
+  if (diagnostics.route_health) metadata.route_health = diagnostics.route_health;
+  if (diagnostics.search_trace) metadata.search_trace = diagnostics.search_trace;
+  if (diagnostics.strict_empty != null) metadata.strict_empty = Boolean(diagnostics.strict_empty);
+  if (diagnostics.strict_empty_reason) {
+    metadata.strict_empty_reason = String(diagnostics.strict_empty_reason);
+  }
+
+  return {
+    ...body,
+    metadata,
+  };
+}
+
+function withStrictEmptyFallback({
+  body,
+  queryParams,
+  reason,
+  upstreamStatus = null,
+  upstreamCode = null,
+  upstreamMessage = null,
+  route = null,
+}) {
+  const emptyBody = buildProxySearchSoftFallbackResponse({
+    queryParams,
+    reason,
+    upstreamStatus,
+    upstreamCode,
+    upstreamMessage,
+    route,
+  });
+  return withSearchDiagnostics(emptyBody, {
+    strict_empty: true,
+    strict_empty_reason: reason || 'strict_empty',
+  });
+}
+
 function buildProxySearchSoftFallbackResponse({
   queryParams,
   reason,
@@ -2433,6 +2550,7 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
     allow_external_seed: true,
     allow_stale_cache: false,
     external_seed_strategy: 'supplement_internal_first',
+    fast_mode: true,
   };
 }
 
@@ -2471,6 +2589,27 @@ function normalizeSearchQueryParams(rawQuery) {
     queryParams.query = queryText;
   }
   return { queryText, queryParams };
+}
+
+async function withStageBudget(promise, timeoutMs, timeoutLabel) {
+  const budgetMs = Math.max(1, Number(timeoutMs || 0) || 0);
+  if (!budgetMs) return promise;
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const err = new Error(`Stage budget exceeded (${timeoutLabel || 'stage'}): ${budgetMs}ms`);
+          err.code = 'STAGE_TIMEOUT';
+          err.stage = timeoutLabel || 'stage';
+          reject(err);
+        }, budgetMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function extractSearchProductId(product) {
@@ -7087,6 +7226,79 @@ async function proxyAgentSearchToBackend(req, res) {
   const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
   const guardedQueryParams = applyShoppingCatalogQueryGuards(queryParams, source);
   const resolverFirstMetadata = source ? { source } : null;
+  const traceId = randomUUID();
+  const startedAtMs = Date.now();
+  const normalizedQuery = String(queryText || '').trim();
+  const resolverStage = {
+    called: false,
+    hit: false,
+    miss: false,
+    latency_ms: null,
+  };
+  const cacheStage = {
+    hit: false,
+    candidate_count: 0,
+    relevant_count: 0,
+    retrieval_sources: [],
+  };
+
+  const respondSearch = (
+    status,
+    body,
+    {
+      finalDecision = 'upstream_returned',
+      primaryPathUsed = 'proxy_search_primary',
+      fallbackTriggered = false,
+      fallbackReason = null,
+      upstreamStage = null,
+      strictEmptyReason = null,
+      expansionMode = 'off',
+      expandedQuery = normalizedQuery,
+      intent = null,
+    } = {},
+  ) => {
+    const latencyMs = Math.max(0, Date.now() - startedAtMs);
+    let out = withSearchDiagnostics(body, {
+      route_health: buildSearchRouteHealth({
+        primaryPathUsed,
+        primaryLatencyMs: latencyMs,
+        fallbackTriggered,
+        fallbackReason,
+      }),
+      search_trace: buildSearchTrace({
+        traceId,
+        rawQuery: normalizedQuery,
+        expandedQuery,
+        expansionMode,
+        intent,
+        cacheStage,
+        upstreamStage,
+        resolverStage,
+        finalDecision,
+      }),
+      ...(strictEmptyReason
+        ? {
+            strict_empty: true,
+            strict_empty_reason: strictEmptyReason,
+          }
+        : {}),
+    });
+
+    if (
+      SEARCH_STRICT_EMPTY_ENABLED &&
+      normalizedQuery &&
+      Array.isArray(out?.products) &&
+      out.products.length === 0 &&
+      !out?.metadata?.strict_empty
+    ) {
+      out = withSearchDiagnostics(out, {
+        strict_empty: true,
+        strict_empty_reason: strictEmptyReason || 'no_candidates',
+      });
+    }
+    return res.status(status).json(out);
+  };
+
   let resolverFirstResult = null;
   const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation: 'find_products_multi',
@@ -7095,21 +7307,43 @@ async function proxyAgentSearchToBackend(req, res) {
   }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
 
   if (shouldAttemptResolverFirst) {
+    resolverStage.called = true;
+    const resolverStartedAtMs = Date.now();
     try {
-        resolverFirstResult = await queryResolveSearchFallback({
+      resolverFirstResult = await withStageBudget(
+        queryResolveSearchFallback({
         queryParams: guardedQueryParams,
         checkoutToken,
         reason: 'resolver_first',
-      });
+        }),
+        FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS,
+        'resolver_stage',
+      );
+      resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
       if (
         resolverFirstResult &&
         resolverFirstResult.status >= 200 &&
         resolverFirstResult.status < 300 &&
         resolverFirstResult.usableCount > 0
       ) {
-        return res.status(resolverFirstResult.status).json(resolverFirstResult.data);
+        resolverStage.hit = true;
+        return respondSearch(resolverFirstResult.status, resolverFirstResult.data, {
+          finalDecision: 'resolver_returned',
+          primaryPathUsed: 'resolver_first',
+          fallbackTriggered: true,
+          fallbackReason: 'resolver_first',
+          upstreamStage: {
+            called: false,
+            timeout: false,
+            status: null,
+            latency_ms: 0,
+          },
+        });
       }
+      resolverStage.miss = true;
     } catch (resolverErr) {
+      resolverStage.miss = true;
+      resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
       logger.warn(
         { err: resolverErr?.message || String(resolverErr) },
         'proxy agent search resolver-first failed; falling back to upstream',
@@ -7133,6 +7367,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi');
     const allowResolverFallback = shouldAllowResolverFallback('find_products_multi');
 
+    const upstreamStartedAtMs = Date.now();
     const resp = await axios({
       method: 'GET',
       url,
@@ -7148,6 +7383,12 @@ async function proxyAgentSearchToBackend(req, res) {
       timeout: primaryTimeoutMs,
       validateStatus: () => true,
     });
+    const upstreamStage = {
+      called: true,
+      timeout: false,
+      status: Number(resp?.status || 0) || 0,
+      latency_ms: Math.max(0, Date.now() - upstreamStartedAtMs),
+    };
 
     const normalized = normalizeAgentProductsListResponse(resp.data, {
       limit: parseQueryNumber(guardedQueryParams?.limit ?? guardedQueryParams?.page_size),
@@ -7173,7 +7414,14 @@ async function proxyAgentSearchToBackend(req, res) {
             resolverFallback.status < 300 &&
             resolverFallback.usableCount > 0
           ) {
-            return res.status(resolverFallback.status).json(resolverFallback.data);
+            resolverStage.hit = true;
+            return respondSearch(resolverFallback.status, resolverFallback.data, {
+              finalDecision: 'resolver_returned',
+              primaryPathUsed: 'proxy_search_primary',
+              fallbackTriggered: true,
+              fallbackReason: 'resolver_after_primary',
+              upstreamStage,
+            });
           }
         } catch (resolverErr) {
           logger.warn(
@@ -7201,7 +7449,13 @@ async function proxyAgentSearchToBackend(req, res) {
             fallback.usableCount >= Math.max(1, primaryUsableCount) &&
             isProxySearchFallbackRelevant(fallback.data, queryText)
           ) {
-            return res.status(fallback.status).json(fallback.data);
+            return respondSearch(fallback.status, fallback.data, {
+              finalDecision: 'upstream_returned',
+              primaryPathUsed: 'proxy_search_primary',
+              fallbackTriggered: true,
+              fallbackReason: primaryUnusable ? 'secondary_after_primary_unusable' : 'secondary_after_primary_irrelevant',
+              upstreamStage,
+            });
           }
         } catch (fallbackErr) {
           logger.warn(
@@ -7213,28 +7467,51 @@ async function proxyAgentSearchToBackend(req, res) {
     }
 
     if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
-      return res.status(200).json(
-        buildProxySearchSoftFallbackResponse({
+      const reason = skipSecondaryFallback ? 'primary_irrelevant_skip_secondary' : 'primary_irrelevant_no_fallback';
+      return respondSearch(
+        200,
+        withStrictEmptyFallback({
+          body: normalized,
           queryParams: guardedQueryParams,
-          reason: skipSecondaryFallback ? 'primary_irrelevant_skip_secondary' : 'primary_irrelevant_no_fallback',
+          reason,
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_irrelevant',
         }),
+        {
+          finalDecision: 'strict_empty',
+          primaryPathUsed: 'proxy_search_primary',
+          fallbackTriggered: true,
+          fallbackReason: reason,
+          upstreamStage,
+          strictEmptyReason: reason,
+        },
       );
     }
 
     if (Number(resp.status) >= 500) {
-      return res.status(200).json(
-        buildProxySearchSoftFallbackResponse({
+      const reason = 'primary_status_5xx';
+      return respondSearch(
+        200,
+        withStrictEmptyFallback({
+          body: normalized,
           queryParams: guardedQueryParams,
-          reason: 'primary_status_5xx',
+          reason,
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_status',
         }),
+        {
+          finalDecision: 'strict_empty',
+          primaryPathUsed: 'proxy_search_primary',
+          fallbackTriggered: true,
+          fallbackReason: reason,
+          upstreamStage,
+          strictEmptyReason: reason,
+        },
       );
     }
 
-    return res.status(resp.status).json(
+    return respondSearch(
+      resp.status,
       withProxySearchFallbackMetadata(normalized, {
         applied: false,
         reason:
@@ -7248,6 +7525,31 @@ async function proxyAgentSearchToBackend(req, res) {
               ? 'fallback_not_better'
               : 'not_needed',
       }),
+      {
+        finalDecision:
+          Array.isArray(normalized?.products) && normalized.products.length > 0
+            ? 'upstream_returned'
+            : 'strict_empty',
+        primaryPathUsed: 'proxy_search_primary',
+        fallbackTriggered: Boolean(shouldFallback),
+        fallbackReason:
+          primaryIrrelevant
+            ? skipSecondaryFallback
+              ? 'primary_irrelevant_skip_secondary'
+              : 'primary_irrelevant_no_fallback'
+            : shouldFallback && skipSecondaryFallback
+            ? 'resolver_miss_skip_secondary'
+            : shouldFallback
+              ? 'fallback_not_better'
+              : null,
+        upstreamStage,
+        strictEmptyReason:
+          Array.isArray(normalized?.products) && normalized.products.length > 0
+            ? null
+            : shouldFallback && skipSecondaryFallback
+            ? 'resolver_miss_skip_secondary'
+            : 'no_candidates',
+      },
     );
   } catch (err) {
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
@@ -7264,20 +7566,37 @@ async function proxyAgentSearchToBackend(req, res) {
     if (queryText) {
       if (allowResolverFallbackOnException) {
         try {
+          const resolverStartedAtMs = Date.now();
+          resolverStage.called = true;
           const resolverFallback = await queryResolveSearchFallback({
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_exception',
           });
+          resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
           if (
             resolverFallback &&
             resolverFallback.status >= 200 &&
             resolverFallback.status < 300 &&
             resolverFallback.usableCount > 0
           ) {
-            return res.status(resolverFallback.status).json(resolverFallback.data);
+            resolverStage.hit = true;
+            return respondSearch(resolverFallback.status, resolverFallback.data, {
+              finalDecision: 'resolver_returned',
+              primaryPathUsed: 'proxy_search_primary',
+              fallbackTriggered: true,
+              fallbackReason: 'resolver_after_exception',
+              upstreamStage: {
+                called: true,
+                timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
+                status: Number(err?.response?.status || err?.status || 0) || 0,
+                latency_ms: Math.max(0, Date.now() - startedAtMs),
+              },
+            });
           }
+          resolverStage.miss = true;
         } catch (resolverErr) {
+          resolverStage.miss = true;
           logger.warn(
             { err: resolverErr?.message || String(resolverErr) },
             'proxy agent search resolver fallback failed after primary exception',
@@ -7299,7 +7618,18 @@ async function proxyAgentSearchToBackend(req, res) {
             fallback.usableCount > 0 &&
             isProxySearchFallbackRelevant(fallback.data, queryText)
           ) {
-            return res.status(fallback.status).json(fallback.data);
+            return respondSearch(fallback.status, fallback.data, {
+              finalDecision: 'upstream_returned',
+              primaryPathUsed: 'proxy_search_primary',
+              fallbackTriggered: true,
+              fallbackReason: 'secondary_after_exception',
+              upstreamStage: {
+                called: true,
+                timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
+                status: Number(err?.response?.status || err?.status || 0) || 0,
+                latency_ms: Math.max(0, Date.now() - startedAtMs),
+              },
+            });
           }
         } catch (fallbackErr) {
           logger.warn(
@@ -7313,15 +7643,31 @@ async function proxyAgentSearchToBackend(req, res) {
     const { code, message, data } = extractUpstreamErrorCode(err);
     const statusCode = err?.response?.status || err?.status || (err?.code === 'ECONNABORTED' ? 504 : 500);
     if (queryText) {
-      return res.status(200).json(
-        buildProxySearchSoftFallbackResponse({
+      const reason = err?.code === 'ECONNABORTED' ? 'primary_timeout' : 'primary_exception';
+      return respondSearch(
+        200,
+        withStrictEmptyFallback({
+          body: null,
           queryParams: guardedQueryParams,
-          reason: err?.code === 'ECONNABORTED' ? 'primary_timeout' : 'primary_exception',
+          reason,
           upstreamStatus: statusCode,
           upstreamCode: code || err?.code || null,
           upstreamMessage: message || err?.message || null,
           route: 'proxy_search_exception',
         }),
+        {
+          finalDecision: 'strict_empty',
+          primaryPathUsed: 'proxy_search_primary',
+          fallbackTriggered: true,
+          fallbackReason: reason,
+          upstreamStage: {
+            called: true,
+            timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
+            status: Number(statusCode || 0) || 0,
+            latency_ms: Math.max(0, Date.now() - startedAtMs),
+          },
+          strictEmptyReason: reason,
+        },
       );
     }
     return res.status(statusCode).json({
@@ -9176,12 +9522,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const metadata = normalizeMetadata(req.body.metadata, payload);
     const creatorId = extractCreatorId({ ...payload, metadata });
     const now = new Date();
+    const invokeStartedAtMs = Date.now();
     const findProductsMultiCtx =
       operation === 'find_products_multi'
-        ? await buildFindProductsMultiContext({ payload, metadata })
+        ? await buildFindProductsMultiContext({
+            payload,
+            metadata: {
+              ...(metadata || {}),
+              expansion_mode: FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+            },
+          })
         : null;
     const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
     const effectiveIntent = findProductsMultiCtx?.intent || null;
+    const findProductsExpansionMeta = findProductsMultiCtx?.expansion_meta || null;
     const rawUserQuery =
       findProductsMultiCtx?.rawUserQuery ||
       effectivePayload?.search?.query ||
@@ -11618,11 +11972,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         !isCreatorUi && cacheQueryText.length > 0 && !hasMerchantScope;
       if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
         try {
+          const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
-          const fromCache = await searchCrossMerchantFromCache(cacheQueryText, page, limit, {
-            inStockOnly,
-          });
+          const fromCache = await withStageBudget(
+            searchCrossMerchantFromCache(cacheQueryText, page, limit, {
+              inStockOnly,
+            }),
+            FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+            'cache_stage',
+          );
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
           const lookupAnchorTokens = extractSearchAnchorTokens(cacheQueryText);
           const isLookupQuery = isLookupStyleSearchQuery(cacheQueryText, lookupAnchorTokens);
@@ -11758,6 +12117,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             mode: 'search',
             query: cacheQueryText,
             upstream_query: queryText,
+            latency_ms: Math.max(0, Date.now() - cacheStageStartedAt),
             page,
             limit,
             in_stock_only: inStockOnly,
@@ -11835,7 +12195,41 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 : applyDealsToResponse(upstreamData, promotions, now, creatorId);
           }
           if (effectiveCacheHit) {
-            return res.json(enriched);
+            const diagnosed = withSearchDiagnostics(enriched, {
+              route_health: buildSearchRouteHealth({
+                primaryPathUsed: 'cache_stage',
+                primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+                fallbackTriggered: false,
+                fallbackReason: null,
+              }),
+              search_trace: buildSearchTrace({
+                traceId: gatewayRequestId,
+                rawQuery: cacheQueryText,
+                expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
+                expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                intent: effectiveIntent,
+                cacheStage: {
+                  hit: true,
+                  candidate_count: Number(effectiveProducts.length || 0),
+                  relevant_count: Number(internalProductsForRecall.length || 0),
+                  retrieval_sources: fromCache.retrieval_sources || [],
+                },
+                upstreamStage: {
+                  called: false,
+                  timeout: false,
+                  status: null,
+                  latency_ms: 0,
+                },
+                resolverStage: {
+                  called: false,
+                  hit: false,
+                  miss: false,
+                  latency_ms: null,
+                },
+                finalDecision: 'cache_returned',
+              }),
+            });
+            return res.json(diagnosed);
           }
           logger.info(
             { source, page, limit, inStockOnly, query: cacheQueryText },
@@ -11851,6 +12245,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             limit: search.limit || search.page_size || 20,
             in_stock_only: inStockOnly,
             cache_hit: false,
+            timeout_budget_ms: FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+            stage_timeout: String(err?.code || '').toUpperCase() === 'STAGE_TIMEOUT',
             error: String(err && err.message ? err.message : err),
           };
           logger.warn(
@@ -12512,6 +12908,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     // Make the upstream request
     const queryString = buildQueryString(queryParams);
+    const primarySearchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+    const primarySearchAnchorTokens = extractSearchAnchorTokens(primarySearchQueryText);
+    const isLookupPolicyQuery = isLookupStyleSearchQuery(primarySearchQueryText, primarySearchAnchorTokens);
+    const upstreamBudgetMsForSearch = isLookupPolicyQuery
+      ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
+      : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
+
     const axiosConfig = {
       method: route.method,
       url: `${url}${queryString}`,
@@ -12527,7 +12930,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             }),
       },
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
-      timeout: getUpstreamTimeoutMs(operation),
+      timeout:
+        operation === 'find_products_multi'
+          ? Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
+          : getUpstreamTimeoutMs(operation),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
 
@@ -12905,12 +13311,122 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
       const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
       const shouldFallback = primaryUnusable || primaryIrrelevant;
+      const requestedLimit = Math.min(
+        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+        100,
+      );
       const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
         resolverFirstResult,
         queryText,
       );
       const allowResolverFallback = shouldAllowResolverFallback(operation);
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation);
+      let secondarySupplementMeta = null;
+
+      if (
+        operation === 'find_products_multi' &&
+        queryText &&
+        response.status >= 200 &&
+        response.status < 300 &&
+        !shouldFallback &&
+        primaryUsableCount < requestedLimit &&
+        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
+      ) {
+        try {
+          const secondStageCtx = await buildFindProductsMultiContext({
+            payload,
+            metadata: {
+              ...(metadata || {}),
+              expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+            },
+          });
+          const expandedSecondaryQuery = String(
+            secondStageCtx?.adjustedPayload?.search?.query || queryText,
+          ).trim();
+          if (expandedSecondaryQuery && expandedSecondaryQuery !== queryText) {
+            const secondaryQueryParams = {
+              ...queryParams,
+              query: expandedSecondaryQuery,
+              offset: 0,
+              limit: Math.min(Math.max(requestedLimit * 2, 20), 80),
+            };
+            const secondaryResp = await axios({
+              method: 'GET',
+              url: `${url}${buildQueryString(secondaryQueryParams)}`,
+              headers: axiosConfig.headers,
+              timeout: Math.min(2400, Number(axiosConfig.timeout || 2400)),
+              validateStatus: () => true,
+            });
+            const secondaryNormalized = normalizeAgentProductsListResponse(secondaryResp.data, {
+              limit: secondaryQueryParams.limit,
+              offset: 0,
+            });
+            const secondaryProducts = Array.isArray(secondaryNormalized?.products)
+              ? secondaryNormalized.products
+              : [];
+            if (secondaryResp.status >= 200 && secondaryResp.status < 300 && secondaryProducts.length > 0) {
+              const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+              const seen = new Set(primaryProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
+              const toAppend = [];
+              for (const product of secondaryProducts) {
+                if (!isSupplementCandidateRelevant(product, queryText)) continue;
+                const key = buildSearchProductKey(product);
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                toAppend.push(product);
+                if (primaryProducts.length + toAppend.length >= requestedLimit) break;
+              }
+              if (toAppend.length > 0) {
+                const mergedProducts = primaryProducts.concat(toAppend);
+                upstreamData = normalizeAgentProductsListResponse(
+                  {
+                    ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData) ? upstreamData : {}),
+                    products: mergedProducts,
+                    total: Math.max(
+                      Number(upstreamData?.total || 0) || 0,
+                      mergedProducts.length,
+                    ),
+                  },
+                  {
+                    limit: queryParams?.limit,
+                    offset: queryParams?.offset,
+                  },
+                );
+              }
+              secondarySupplementMeta = {
+                attempted: true,
+                applied: toAppend.length > 0,
+                added_count: toAppend.length,
+                expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+                expanded_query: expandedSecondaryQuery,
+                reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
+              };
+            } else {
+              secondarySupplementMeta = {
+                attempted: true,
+                applied: false,
+                added_count: 0,
+                expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+                expanded_query: expandedSecondaryQuery,
+                reason: 'second_stage_unavailable',
+              };
+            }
+          }
+        } catch (secondaryErr) {
+          secondarySupplementMeta = {
+            attempted: true,
+            applied: false,
+            added_count: 0,
+            expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+            reason: 'second_stage_error',
+            error: String(secondaryErr?.message || secondaryErr),
+          };
+          logger.warn(
+            { err: secondaryErr?.message || String(secondaryErr), query: queryText },
+            `${operation} second-stage conservative->aggressive supplement failed`,
+          );
+        }
+      }
 
       if (shouldFallback) {
         let replacedByFallback = false;
@@ -12983,6 +13499,22 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             });
           }
         }
+      }
+
+      if (
+        operation === 'find_products_multi' &&
+        secondarySupplementMeta &&
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        !Array.isArray(upstreamData)
+      ) {
+        upstreamData = {
+          ...upstreamData,
+          metadata: {
+            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
+            search_stage_b: secondarySupplementMeta,
+          },
+        };
       }
     }
 
@@ -13299,7 +13831,113 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       }
     }
 
-    const enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
+    let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
+
+    if (operation === 'find_products' || operation === 'find_products_multi') {
+      const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const existingMeta =
+        enriched && typeof enriched === 'object' && !Array.isArray(enriched) && enriched.metadata
+          ? enriched.metadata
+          : {};
+      const fallbackMeta =
+        existingMeta &&
+        typeof existingMeta === 'object' &&
+        !Array.isArray(existingMeta) &&
+        existingMeta.proxy_search_fallback &&
+        typeof existingMeta.proxy_search_fallback === 'object' &&
+        !Array.isArray(existingMeta.proxy_search_fallback)
+          ? existingMeta.proxy_search_fallback
+          : null;
+      const products = Array.isArray(enriched?.products) ? enriched.products : [];
+      const isStrictEmpty = SEARCH_STRICT_EMPTY_ENABLED && queryText.length > 0 && products.length === 0;
+      const querySource = String(existingMeta?.query_source || '').trim() || 'agent_products_search';
+      const primaryPathUsed =
+        querySource.startsWith('cache_')
+          ? 'cache_stage'
+          : querySource.includes('resolver')
+          ? 'resolver_stage'
+          : 'upstream_stage';
+      const fallbackTriggered =
+        Boolean(fallbackMeta?.applied) ||
+        querySource === 'agent_products_error_fallback' ||
+        (isStrictEmpty && Boolean(fallbackMeta?.reason));
+      const fallbackReason =
+        (fallbackMeta && typeof fallbackMeta.reason === 'string' && fallbackMeta.reason.trim()) ||
+        (querySource === 'agent_products_error_fallback' ? 'error_soft_fallback' : null);
+      const cacheStage = crossMerchantCacheRouteDebug
+        ? {
+            hit: Boolean(crossMerchantCacheRouteDebug.cache_hit),
+            candidate_count: Number(crossMerchantCacheRouteDebug.products_count || 0),
+            relevant_count: Number(
+              crossMerchantCacheRouteDebug.internal_products_relevant_count ??
+                crossMerchantCacheRouteDebug.products_count ??
+                0,
+            ),
+            retrieval_sources: crossMerchantCacheRouteDebug.retrieval_sources || [],
+          }
+        : {
+            hit: false,
+            candidate_count: 0,
+            relevant_count: 0,
+            retrieval_sources: [],
+          };
+      const resolverStage = {
+        called: Boolean(shouldAttemptResolverFirst),
+        hit: Boolean(resolverFirstResult && Number(resolverFirstResult.usableCount || 0) > 0),
+        miss: Boolean(shouldAttemptResolverFirst && (!resolverFirstResult || Number(resolverFirstResult.usableCount || 0) <= 0)),
+        latency_ms: Number(resolverFirstResult?.resolve_latency_ms || resolverFirstResult?.data?.metadata?.resolve_latency_ms || 0) || null,
+      };
+      const upstreamStage = {
+        called: !(querySource.startsWith('cache_') && products.length > 0),
+        timeout:
+          String(existingMeta?.upstream_error_code || '').toUpperCase() === 'ECONNABORTED' ||
+          String(existingMeta?.proxy_search_fallback?.upstream_error_code || '').toUpperCase() === 'ECONNABORTED',
+        status: Number(existingMeta?.upstream_status || response?.status || 0) || Number(response?.status || 0) || null,
+        latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
+      };
+      const finalDecision = isStrictEmpty
+        ? 'strict_empty'
+        : querySource.startsWith('cache_')
+        ? 'cache_returned'
+        : querySource.includes('resolver')
+        ? 'resolver_returned'
+        : 'upstream_returned';
+      const expansionMode =
+        operation === 'find_products_multi'
+          ? findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE
+          : 'off';
+      const expandedQuery =
+        operation === 'find_products_multi'
+          ? findProductsExpansionMeta?.expanded_query || queryText
+          : queryText;
+
+      enriched = withSearchDiagnostics(enriched, {
+        route_health: buildSearchRouteHealth({
+          primaryPathUsed,
+          primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+          fallbackTriggered,
+          fallbackReason,
+        }),
+        search_trace: buildSearchTrace({
+          traceId: gatewayRequestId,
+          rawQuery: queryText,
+          expandedQuery,
+          expansionMode,
+          intent: effectiveIntent,
+          cacheStage,
+          upstreamStage,
+          resolverStage,
+          finalDecision,
+        }),
+        ...(isStrictEmpty
+          ? {
+              strict_empty: true,
+              strict_empty_reason: fallbackReason || 'no_candidates',
+            }
+          : {}),
+      });
+    }
+
     return res.status(response.status).json(enriched);
 
 	  } catch (err) {
@@ -13317,16 +13955,55 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        },
 	        'search operation failed in invoke outer catch; returning soft fallback',
 	      );
-	      return res.status(200).json(
-	        buildProxySearchSoftFallbackResponse({
-	          queryParams,
-	          reason: err?.code === 'ECONNABORTED' ? 'invoke_outer_timeout' : 'invoke_outer_exception',
-	          upstreamStatus,
-	          upstreamCode: code || err?.code || null,
-	          upstreamMessage: message || err?.message || null,
-	          route: 'invoke_outer_catch',
+	      const reason = err?.code === 'ECONNABORTED' ? 'invoke_outer_timeout' : 'invoke_outer_exception';
+	      const strictEmpty = withStrictEmptyFallback({
+	        body: null,
+	        queryParams,
+	        reason,
+	        upstreamStatus,
+	        upstreamCode: code || err?.code || null,
+	        upstreamMessage: message || err?.message || null,
+	        route: 'invoke_outer_catch',
+	      });
+	      const diagnosed = withSearchDiagnostics(strictEmpty, {
+	        route_health: buildSearchRouteHealth({
+	          primaryPathUsed: 'invoke_outer_catch',
+	          primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+	          fallbackTriggered: true,
+	          fallbackReason: reason,
 	        }),
-	      );
+	        search_trace: buildSearchTrace({
+	          traceId: gatewayRequestId,
+	          rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+	          expandedQuery:
+	            findProductsExpansionMeta?.expanded_query ||
+	            String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+	          expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+	          intent: effectiveIntent,
+	          cacheStage: {
+	            hit: false,
+	            candidate_count: 0,
+	            relevant_count: 0,
+	            retrieval_sources: [],
+	          },
+	          upstreamStage: {
+	            called: true,
+	            timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
+	            status: Number(upstreamStatus || 0) || null,
+	            latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
+	          },
+	          resolverStage: {
+	            called: false,
+	            hit: false,
+	            miss: false,
+	            latency_ms: null,
+	          },
+	          finalDecision: 'strict_empty',
+	        }),
+	        strict_empty: true,
+	        strict_empty_reason: reason,
+	      });
+	      return res.status(200).json(diagnosed);
 	    }
 	    if (err.response) {
 	      const upstreamStatus = err.response.status || 502;

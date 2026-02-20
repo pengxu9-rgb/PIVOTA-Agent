@@ -1504,9 +1504,24 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const intent = await extractIntent(latestUserQuery, recentQueries, recentMessages);
   const pruned = pruneRecentQueries(latestUserQuery, recentQueries, intent);
 
+  const normalizeExpansionMode = (value) => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'off' || raw === 'none' || raw === 'disabled') return 'off';
+    if (raw === 'aggressive') return 'aggressive';
+    return 'conservative';
+  };
+  const expansionMode = normalizeExpansionMode(
+    metadata?.expansion_mode ||
+      payload?.search?.expansion_mode ||
+      payload?.search?.expansionMode ||
+      payload?.expansion_mode ||
+      payload?.expansionMode,
+  );
+
   const expandedQuery = (() => {
     const q = latestUserQuery;
     if (!q) return q;
+    if (expansionMode === 'off') return q;
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
     const scenario = intent?.scenario?.name || 'general';
@@ -1518,19 +1533,31 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       if (wantsHarness) {
         extra.push('dog harness', 'pet harness', 'dog leash', 'pet leash', 'dog collar');
       }
-      if (!wantsHarness || wantsApparel) {
+      if (expansionMode === 'aggressive' && (!wantsHarness || wantsApparel)) {
         extra.push('dog jacket', 'pet apparel');
       }
       if (scenario.includes('hiking')) extra.push('hiking', 'cold weather');
       // Also expand for Chinese queries against English-heavy catalogs.
       if (lang === 'zh') {
         extra.push('dog', 'pet');
-        if (wantsHarness) extra.push('leash', 'harness', 'collar');
-        else extra.push('coat');
+        if (wantsHarness) {
+          extra.push('leash', 'harness', 'collar');
+        } else if (expansionMode === 'aggressive') {
+          extra.push('coat');
+        }
       }
-      if (lang === 'es') extra.push('perro', 'ropa');
-      if (lang === 'fr') extra.push('chien', 'vêtement');
-      if (lang === 'ja') extra.push('犬', '犬服');
+      if (lang === 'es') {
+        extra.push('perro');
+        if (expansionMode === 'aggressive' && !wantsHarness) extra.push('ropa');
+      }
+      if (lang === 'fr') {
+        extra.push('chien');
+        if (expansionMode === 'aggressive' && !wantsHarness) extra.push('vêtement');
+      }
+      if (lang === 'ja') {
+        extra.push('犬');
+        if (expansionMode === 'aggressive' && !wantsHarness) extra.push('犬服');
+      }
 	    } else if (target === 'human' && intent?.primary_domain === 'human_apparel') {
       const requiredCats = Array.isArray(intent?.category?.required) ? intent.category.required : [];
       const isLingerie = requiredCats.includes('lingerie') || requiredCats.includes('underwear') || scenario === 'lingerie';
@@ -1585,7 +1612,8 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         if (lang === 'zh') extra.push('women', 'dress');
       } else {
         // Generic human apparel: keep expansions lightweight and avoid category over-commit.
-        extra.push('outfit', 'dress');
+        extra.push('outfit');
+        if (expansionMode === 'aggressive') extra.push('dress');
         if (lang === 'es') extra.push('ropa', 'vestido');
         if (lang === 'fr') extra.push('tenue', 'robe');
         if (lang === 'ja') extra.push('服', 'コーデ');
@@ -1626,7 +1654,8 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	    }
 
     if (!extra.length) return q;
-    const combined = `${q} ${extra.join(' ')}`.trim();
+    const dedupedExtra = Array.from(new Set(extra.map((item) => String(item || '').trim()).filter(Boolean)));
+    const combined = `${q} ${dedupedExtra.join(' ')}`.trim();
     return combined.length > 240 ? combined.slice(0, 240) : combined;
   })();
 
@@ -1643,7 +1672,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     },
   };
 
-  return { intent, adjustedPayload, rawUserQuery: latestUserQuery };
+  const expansionMeta = {
+    mode: expansionMode,
+    raw_query: latestUserQuery,
+    expanded_query: expandedQuery,
+    applied: Boolean(expandedQuery && String(expandedQuery) !== String(latestUserQuery)),
+  };
+
+  return { intent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
 }
 
 function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata, rawUserQuery }) {

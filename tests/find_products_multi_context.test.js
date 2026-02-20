@@ -109,6 +109,27 @@ describe('find_products_multi context building', () => {
     const q = String(adjustedPayload?.search?.query || '').toLowerCase();
     expect(q).toContain('dog leash');
     expect(q).toContain('harness');
+    expect(q).not.toContain('dog jacket');
+  });
+
+  test('pet apparel query uses aggressive expansion mode when explicitly requested', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: '给我推荐狗狗外套' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: '给我推荐狗狗外套' }],
+      },
+      metadata: { expansion_mode: 'aggressive' },
+    });
+
+    const q = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(q).toContain('dog jacket');
+    expect(expansion_meta).toEqual(
+      expect.objectContaining({
+        mode: 'aggressive',
+        applied: true,
+      }),
+    );
   });
 
   test('eye shadow brush query routes to dedicated scenario (no full-face kit)', async () => {
