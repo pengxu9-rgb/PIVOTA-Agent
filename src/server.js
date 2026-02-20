@@ -431,7 +431,7 @@ const SEARCH_STRICT_EMPTY_ENABLED =
   String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
 const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
   100,
-  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 900),
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 2200),
 );
 const FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS = Math.max(
   300,
