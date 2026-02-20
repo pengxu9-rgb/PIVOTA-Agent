@@ -346,6 +346,33 @@ const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
   return Math.max(300, Math.min(6000, v));
 })();
+const RECO_CATALOG_SEARCH_BASE_URLS = String(
+  process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS ||
+  process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS ||
+  '',
+).trim();
+const RECO_CATALOG_MULTI_SOURCE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const RECO_CATALOG_MULTI_SOURCE_ON_EMPTY = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(20, v));
+})();
+const RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS || 5 * 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5 * 60 * 1000;
+  return Math.max(1000, Math.min(60 * 60 * 1000, v));
+})();
 const CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK || 'true')
     .trim()
@@ -1579,6 +1606,129 @@ function normalizeRecoCatalogProduct(raw) {
   return out.product_id ? out : null;
 }
 
+const recoCatalogSearchSourceState = new Map();
+
+function normalizeBaseUrlForRecoCatalogSearch(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
+}
+
+function buildRecoCatalogSearchBaseUrlCandidates({ includeLocalFallback = false } = {}) {
+  const out = [];
+  const seen = new Set();
+  const add = (value) => {
+    const normalized = normalizeBaseUrlForRecoCatalogSearch(value);
+    if (!normalized) return;
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  };
+  add(PIVOTA_BACKEND_BASE_URL);
+  if (RECO_CATALOG_SEARCH_BASE_URLS) {
+    const tokens = RECO_CATALOG_SEARCH_BASE_URLS
+      .split(/[\s,;|]+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    for (const token of tokens) add(token);
+  }
+  if (includeLocalFallback) add(RECO_PDP_LOCAL_INVOKE_BASE_URL);
+  return out;
+}
+
+function getRecoCatalogSearchSourceState(baseUrl) {
+  const key = normalizeBaseUrlForRecoCatalogSearch(baseUrl);
+  if (!key) return null;
+  let state = recoCatalogSearchSourceState.get(key);
+  if (!state) {
+    state = {
+      base_url: key,
+      consecutive_empty: 0,
+      consecutive_failures: 0,
+      deprioritized_until_ms: 0,
+      last_reason: null,
+      last_success_at: 0,
+      last_updated_at: 0,
+    };
+    recoCatalogSearchSourceState.set(key, state);
+  }
+  return state;
+}
+
+function markRecoCatalogSearchSourceSuccess(baseUrl, nowMs = Date.now()) {
+  const state = getRecoCatalogSearchSourceState(baseUrl);
+  if (!state) return;
+  state.consecutive_empty = 0;
+  state.consecutive_failures = 0;
+  state.deprioritized_until_ms = 0;
+  state.last_reason = null;
+  state.last_success_at = nowMs;
+  state.last_updated_at = nowMs;
+}
+
+function markRecoCatalogSearchSourceFailure(baseUrl, reason, nowMs = Date.now()) {
+  const state = getRecoCatalogSearchSourceState(baseUrl);
+  if (!state) return;
+  const normalizedReason = String(reason || '').trim() || 'unknown';
+  const isEmpty = normalizedReason === 'empty' || normalizedReason === 'not_found';
+  if (isEmpty) {
+    state.consecutive_empty = Number(state.consecutive_empty || 0) + 1;
+    state.consecutive_failures = 0;
+    if (state.consecutive_empty >= RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD) {
+      state.deprioritized_until_ms = nowMs + RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS;
+    }
+  } else {
+    state.consecutive_failures = Number(state.consecutive_failures || 0) + 1;
+    state.consecutive_empty = 0;
+  }
+  state.last_reason = normalizedReason;
+  state.last_updated_at = nowMs;
+}
+
+function getRecoCatalogSearchSourceHealthSnapshot(nowMs = Date.now()) {
+  const out = [];
+  for (const [baseUrl, raw] of recoCatalogSearchSourceState.entries()) {
+    const state = raw && typeof raw === 'object' ? raw : {};
+    const deprioritizedUntilMs = Number(state.deprioritized_until_ms || 0);
+    out.push({
+      base_url: baseUrl,
+      consecutive_empty: Number(state.consecutive_empty || 0),
+      consecutive_failures: Number(state.consecutive_failures || 0),
+      deprioritized: deprioritizedUntilMs > nowMs,
+      deprioritized_until_ms: deprioritizedUntilMs,
+      last_reason: state.last_reason || null,
+      last_success_at: Number(state.last_success_at || 0),
+      last_updated_at: Number(state.last_updated_at || 0),
+    });
+  }
+  out.sort((a, b) => String(a.base_url || '').localeCompare(String(b.base_url || '')));
+  return out;
+}
+
+function rankRecoCatalogSearchBaseUrls(baseUrls, nowMs = Date.now()) {
+  const normalized = Array.isArray(baseUrls) ? baseUrls.map((item) => normalizeBaseUrlForRecoCatalogSearch(item)).filter(Boolean) : [];
+  if (!normalized.length) return [];
+  return normalized
+    .map((baseUrl, idx) => {
+      const state = getRecoCatalogSearchSourceState(baseUrl) || {};
+      const deprioritizedUntilMs = Number(state.deprioritized_until_ms || 0);
+      const deprioritized = deprioritizedUntilMs > nowMs;
+      const lastSuccessAt = Number(state.last_success_at || 0);
+      return {
+        base_url: baseUrl,
+        idx,
+        deprioritized,
+        last_success_at: lastSuccessAt,
+      };
+    })
+    .sort((a, b) => {
+      if (a.deprioritized !== b.deprioritized) return a.deprioritized ? 1 : -1;
+      if (a.last_success_at !== b.last_success_at) return b.last_success_at - a.last_success_at;
+      return a.idx - b.idx;
+    })
+    .map((item) => item.base_url);
+}
+
 const recoCatalogFailFastState = {
   consecutive_failures: 0,
   open_until_ms: 0,
@@ -1720,7 +1870,6 @@ async function searchPivotaBackendProducts({
   const startedAt = Date.now();
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
-  if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const normalizedTimeout = Math.max(300, Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS));
   const useAllMerchants = searchAllMerchants === true;
@@ -1731,13 +1880,19 @@ async function searchPivotaBackendProducts({
     limit: normalizedLimit,
     offset: 0,
   };
-  const primaryUrl = `${PIVOTA_BACKEND_BASE_URL}/agent/v1/products/search`;
-  const localSearchUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/search`;
+  const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
+  const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   const shouldAttemptLocalSearchFallback =
     RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
     RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
-    localSearchUrl &&
-    localSearchUrl !== primaryUrl;
+    localBaseUrl &&
+    localBaseUrl !== primaryBaseUrl;
+  const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
+    includeLocalFallback: shouldAttemptLocalSearchFallback,
+  });
+  if (!baseUrlCandidates.length) {
+    return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
+  }
   const mapSearchFailureReason = ({ statusCode, errCode, errMessage } = {}) => {
     const code = typeof errCode === 'string' ? errCode.trim().toUpperCase() : '';
     const msg = typeof errMessage === 'string' ? errMessage : '';
@@ -1850,134 +2005,199 @@ async function searchPivotaBackendProducts({
     const rawList = extractAgentProductsFromSearchResponse(data);
     return rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
   };
+  const normalizeAttemptTimeout = (index) => {
+    if (index <= 0) return normalizedTimeout;
+    if (!RECO_CATALOG_MULTI_SOURCE_ENABLED) return normalizedTimeout;
+    const scaled = Math.trunc(normalizedTimeout * 0.66);
+    return Math.max(260, Math.min(normalizedTimeout, scaled));
+  };
+  const shouldTrySecondaryReason = (reason) => {
+    const token = String(reason || '').trim().toLowerCase();
+    if (!token) return false;
+    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') {
+      return RECO_CATALOG_MULTI_SOURCE_ENABLED && (
+        !shouldAttemptLocalSearchFallback ||
+        RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT ||
+        baseUrlCandidates.length > 1
+      );
+    }
+    if (token === 'empty' || token === 'not_found') {
+      return RECO_CATALOG_MULTI_SOURCE_ENABLED && RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
+    }
+    return false;
+  };
+  const runSearchAttemptByBase = async (baseUrl, timeoutForAttemptMs) => {
+    const normalizedBase = normalizeBaseUrlForRecoCatalogSearch(baseUrl);
+    const endpoint = `${normalizedBase}/agent/v1/products/search`;
+    const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
+    try {
+      const resp = await axios.get(endpoint, {
+        params,
+        headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
+        timeout: isLocalInvokeBase
+          ? Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, timeoutForAttemptMs))
+          : timeoutForAttemptMs,
+        validateStatus: () => true,
+      });
+      const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
+      if (!statusCode || statusCode < 200 || statusCode >= 300) {
+        const reason = mapSearchFailureReason({ statusCode, errCode: null, errMessage: null });
+        return {
+          ok: false,
+          products: [],
+          reason,
+          status_code: statusCode,
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          latency_ms: Date.now() - startedAt,
+        };
+      }
 
-  try {
-    const resp = await axios.get(primaryUrl, {
-      params,
-      headers: buildPivotaBackendAgentHeaders(),
-      timeout: normalizedTimeout,
-    });
-
-    const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
-    const body = resp && resp.data ? resp.data : null;
-    const products = normalizeProductsFromSearchData(body);
-    const bodyReason = products.length
-      ? null
-      : inferSearchFailureReasonFromBody({ data: body, statusCode });
-    if (bodyReason && bodyReason !== 'not_found') {
+      const body = resp && resp.data ? resp.data : null;
+      const products = normalizeProductsFromSearchData(body);
+      const bodyReason = products.length
+        ? null
+        : inferSearchFailureReasonFromBody({ data: body, statusCode });
+      if (bodyReason && bodyReason !== 'not_found') {
+        return {
+          ok: false,
+          products: [],
+          reason: bodyReason,
+          status_code: statusCode,
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          latency_ms: Date.now() - startedAt,
+        };
+      }
+      return {
+        ok: true,
+        products,
+        reason: products.length ? null : bodyReason || 'empty',
+        status_code: statusCode,
+        source_base_url: normalizedBase,
+        source_endpoint: endpoint,
+        latency_ms: Date.now() - startedAt,
+      };
+    } catch (err) {
+      const statusCode = Number.isFinite(Number(err?.response?.status)) ? Math.trunc(Number(err.response.status)) : null;
+      const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
+      const errMessage = err && err.message ? err.message : String(err);
+      const reason = mapSearchFailureReason({ statusCode, errCode, errMessage });
       return {
         ok: false,
         products: [],
-        reason: bodyReason,
+        reason,
         status_code: statusCode,
+        error_code: errCode || null,
+        source_base_url: normalizedBase,
+        source_endpoint: endpoint,
         latency_ms: Date.now() - startedAt,
+        err: errMessage,
+      };
+    }
+  };
+
+  const nowMs = Date.now();
+  const orderedBaseUrls = RECO_CATALOG_MULTI_SOURCE_ENABLED
+    ? rankRecoCatalogSearchBaseUrls(baseUrlCandidates, nowMs)
+    : baseUrlCandidates.slice(0, 1);
+  const attempts = [];
+  let finalFailure = null;
+  let finalEmpty = null;
+
+  for (let idx = 0; idx < orderedBaseUrls.length; idx += 1) {
+    const baseUrl = orderedBaseUrls[idx];
+    const timeoutForAttemptMs = normalizeAttemptTimeout(idx);
+    const attempt = await runSearchAttemptByBase(baseUrl, timeoutForAttemptMs);
+    attempts.push({
+      base_url: baseUrl,
+      reason: attempt.reason || null,
+      ok: Boolean(attempt.ok),
+      products: Array.isArray(attempt.products) ? attempt.products.length : 0,
+      status_code: Number.isFinite(Number(attempt.status_code)) ? Math.trunc(Number(attempt.status_code)) : null,
+    });
+
+    if (attempt.ok && Array.isArray(attempt.products) && attempt.products.length > 0) {
+      markRecoCatalogSearchSourceSuccess(baseUrl, Date.now());
+      if (idx > 0) {
+        logger?.warn(
+          {
+            query: q.slice(0, 120),
+            source_base_url: baseUrl,
+            attempted_sources: attempts.map((item) => item.base_url),
+            source_failover: true,
+          },
+          'aurora bff: reco catalog search source failover hit',
+        );
+      }
+      return {
+        ...attempt,
+        attempted_sources: attempts.map((item) => item.base_url),
+        source_failover: idx > 0,
       };
     }
 
+    const failureReason = String(attempt.reason || '').trim().toLowerCase() || 'unknown';
+    markRecoCatalogSearchSourceFailure(baseUrl, failureReason, Date.now());
+
+    if (attempt.ok) {
+      finalEmpty = attempt;
+    } else {
+      finalFailure = attempt;
+      logger?.warn(
+        {
+          query: q.slice(0, 120),
+          source_base_url: baseUrl,
+          reason: failureReason,
+          status_code: attempt.status_code || null,
+          code: attempt.error_code || null,
+          err: attempt.err || null,
+        },
+        'aurora bff: reco catalog source search failed',
+      );
+    }
+
+    const shouldTryNext = idx < orderedBaseUrls.length - 1 && shouldTrySecondaryReason(failureReason);
+    if (!shouldTryNext) break;
+  }
+
+  if (finalEmpty) {
     return {
       ok: true,
-      products,
-      reason: products.length ? null : bodyReason || 'empty',
-      status_code: statusCode,
-      latency_ms: Date.now() - startedAt,
-    };
-  } catch (err) {
-    const statusCode = Number.isFinite(Number(err?.response?.status)) ? Math.trunc(Number(err.response.status)) : null;
-    const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
-    const errMessage = err && err.message ? err.message : String(err);
-    let reason = mapSearchFailureReason({ statusCode, errCode, errMessage });
-    const transientFailure = reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-    if (transientFailure && shouldAttemptLocalSearchFallback && RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT) {
-      try {
-        const localResp = await axios.get(localSearchUrl, {
-          params,
-          headers: { 'Content-Type': 'application/json' },
-          timeout: RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS,
-          validateStatus: () => true,
-        });
-        const localStatusCode = Number.isFinite(Number(localResp?.status)) ? Math.trunc(Number(localResp.status)) : 0;
-        if (localStatusCode >= 200 && localStatusCode < 300) {
-          const localBody = localResp?.data || null;
-          const products = normalizeProductsFromSearchData(localBody);
-          const localBodyReason = products.length
-            ? null
-            : inferSearchFailureReasonFromBody({ data: localBody, statusCode: localStatusCode });
-          if (localBodyReason && localBodyReason !== 'not_found') {
-            return {
-              ok: false,
-              products: [],
-              reason: localBodyReason,
-              status_code: localStatusCode,
-              latency_ms: Date.now() - startedAt,
-            };
-          }
-          return {
-            ok: true,
-            products,
-            reason: products.length ? null : localBodyReason || 'empty',
-            status_code: localStatusCode,
-            latency_ms: Date.now() - startedAt,
-          };
-        }
-        const localReason = mapSearchFailureReason({
-          statusCode: localStatusCode,
-          errCode: null,
-          errMessage: null,
-        });
-        if (reason === 'upstream_timeout' && localReason && localReason !== 'not_found') {
-          reason = localReason;
-        }
-        logger?.warn(
-          {
-            query: q.slice(0, 120),
-            primary_status_code: statusCode,
-            primary_reason: reason,
-            local_status_code: localStatusCode,
-            local_reason: localReason,
-          },
-          'aurora bff: reco catalog local search fallback unresolved',
-        );
-      } catch (localErr) {
-        const localStatusCode = Number.isFinite(Number(localErr?.response?.status))
-          ? Math.trunc(Number(localErr.response.status))
-          : null;
-        const localErrCode = typeof localErr?.code === 'string' ? localErr.code.trim().toUpperCase() : '';
-        const localErrMessage = localErr && localErr.message ? localErr.message : String(localErr);
-        const localReason = mapSearchFailureReason({
-          statusCode: localStatusCode,
-          errCode: localErrCode,
-          errMessage: localErrMessage,
-        });
-        if (reason === 'upstream_timeout' && localReason && localReason !== 'not_found') {
-          reason = localReason;
-        }
-        logger?.warn(
-          {
-            query: q.slice(0, 120),
-            primary_status_code: statusCode,
-            primary_reason: reason,
-            local_status_code: localStatusCode,
-            local_reason: localReason,
-            local_code: localErrCode || null,
-            local_err: localErrMessage,
-          },
-          'aurora bff: reco catalog local search fallback failed',
-        );
-      }
-    }
-    logger?.warn(
-      { reason, status_code: statusCode, code: errCode || null, err: errMessage },
-      'aurora bff: reco catalog search failed',
-    );
-    return {
-      ok: false,
       products: [],
-      reason,
-      status_code: statusCode,
-      error_code: errCode || null,
+      reason: String(finalEmpty.reason || 'empty'),
+      status_code: finalEmpty.status_code || null,
+      source_base_url: finalEmpty.source_base_url || null,
+      source_endpoint: finalEmpty.source_endpoint || null,
+      attempted_sources: attempts.map((item) => item.base_url),
+      source_failover: attempts.length > 1,
       latency_ms: Date.now() - startedAt,
     };
   }
+
+  if (finalFailure) {
+    return {
+      ok: false,
+      products: [],
+      reason: String(finalFailure.reason || 'upstream_error'),
+      status_code: finalFailure.status_code || null,
+      error_code: finalFailure.error_code || null,
+      source_base_url: finalFailure.source_base_url || null,
+      source_endpoint: finalFailure.source_endpoint || null,
+      attempted_sources: attempts.map((item) => item.base_url),
+      source_failover: attempts.length > 1,
+      latency_ms: Date.now() - startedAt,
+    };
+  }
+
+  return {
+    ok: false,
+    products: [],
+    reason: 'upstream_error',
+    attempted_sources: attempts.map((item) => item.base_url),
+    source_failover: attempts.length > 1,
+    latency_ms: Date.now() - startedAt,
+  };
 }
 
 const CATALOG_BRANDS = {
@@ -2230,6 +2450,7 @@ function buildAvailabilityCatalogQuery(message, availabilityIntent) {
 function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
   const q = String(queryText || '').trim().toLowerCase();
   if (!q) return false;
+  const brandId = String(availabilityIntent?.brand_id || '').trim().toLowerCase();
   const brand = String(
     availabilityIntent?.brand_name || availabilityIntent?.matched_alias || availabilityIntent?.brand_id || '',
   )
@@ -2239,6 +2460,26 @@ function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
     String(value || '')
       .toLowerCase()
       .replace(/[\s\p{P}_-]+/gu, '');
+
+  if (brandId === 'brand_generic') {
+    const genericOnly = compact(
+      q
+        .replace(
+          /(有没有|有无|有吗|有没|有木有|请问|产品|商品|有货|现货|库存|哪里买|怎么买|购买|下单|链接|渠道|官方|旗舰|自营|店|products?|items?|catalog|store|shop|buy|available|availability|in\s*stock)/gi,
+          ' ',
+        )
+        .replace(/\b(do you have|have any|where can i buy|where to buy)\b/gi, ' '),
+    );
+    if (!genericOnly) return false;
+    const tokenCount = String(q)
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter(Boolean).length;
+    // For generic-intent routing, keep multi-token/product-pattern queries on the specific path.
+    if (/[0-9%+]/.test(q) && genericOnly.length >= 5) return true;
+    if (tokenCount >= 3 && genericOnly.length >= 8) return true;
+    return genericOnly.length >= 12;
+  }
 
   if (!brand) return compact(q).length >= 8;
   const qCompact = compact(q);
@@ -3879,7 +4120,12 @@ async function buildRealtimeCompetitorCandidates({
   logger,
 } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
-  if (!PIVOTA_BACKEND_BASE_URL) {
+  const catalogSearchBaseUrls = buildRecoCatalogSearchBaseUrlCandidates({
+    includeLocalFallback:
+      RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
+      RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED,
+  });
+  if (!catalogSearchBaseUrls.length) {
     return { candidates: [], queries: [], reason: 'pivota_backend_not_configured' };
   }
   const startedAt = Date.now();
@@ -7200,7 +7446,14 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger
   if (!RECO_CATALOG_GROUNDED_ENABLED) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'disabled', total_ms: Date.now() - startedAt } };
   }
-  if (!PIVOTA_BACKEND_BASE_URL) {
+  const catalogSearchBaseUrls = buildRecoCatalogSearchBaseUrlCandidates({
+    includeLocalFallback:
+      RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
+      RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED,
+  });
+  debugInfo.catalog_search_sources = catalogSearchBaseUrls.slice(0, 6);
+  debugInfo.catalog_search_source_health = getRecoCatalogSearchSourceHealthSnapshot(Date.now());
+  if (!catalogSearchBaseUrls.length) {
     return {
       structured: null,
       debug: { ...debugInfo, skipped_reason: 'pivota_backend_not_configured', total_ms: Date.now() - startedAt },
@@ -23892,6 +24145,7 @@ const __internal = {
   resolveAvailabilityProductByQuery,
   resolveAvailabilityProductByLocalResolver,
   searchPivotaBackendProducts,
+  getRecoCatalogSearchSourceHealthSnapshot,
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
   routeCandidates,

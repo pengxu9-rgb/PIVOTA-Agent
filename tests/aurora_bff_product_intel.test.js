@@ -25,6 +25,12 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD;
     delete process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_COOLDOWN_MS;
     delete process.env.AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS;
+    delete process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED;
+    delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.AURORA_DECISION_BASE_URL;
     nock.cleanAll();
@@ -151,6 +157,74 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.some((q) => /theordinary|ordinary/i.test(String(q || '')))).toBe(true);
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
+  });
+
+  test('catalog search fails over to secondary source on repeated primary empty results', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-secondary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD = '1';
+    process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS = '600000';
+
+    nock('http://catalog-primary.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [],
+      });
+
+    nock('http://catalog-secondary.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_secondary_1',
+            brand: 'Alt Brand',
+            name: 'Alt Serum',
+            display_name: 'Alt Brand Alt Serum',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const logger = { warn: jest.fn(), info: jest.fn() };
+
+    const first = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      logger,
+      timeoutMs: 1200,
+    });
+    expect(first.ok).toBe(true);
+    expect(Array.isArray(first.products)).toBe(true);
+    expect(first.products[0].product_id).toBe('comp_secondary_1');
+    expect(first.source_base_url).toBe('http://catalog-secondary.test');
+    expect(first.attempted_sources).toEqual(
+      expect.arrayContaining(['http://catalog-primary.test', 'http://catalog-secondary.test']),
+    );
+
+    const second = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      logger,
+      timeoutMs: 1200,
+    });
+    expect(second.ok).toBe(true);
+    expect(second.products[0].product_id).toBe('comp_secondary_1');
+    expect(second.source_base_url).toBe('http://catalog-secondary.test');
+    expect(second.attempted_sources[0]).toBe('http://catalog-secondary.test');
+    expect(second.attempted_sources).not.toContain('http://catalog-primary.test');
+
+    const sourceHealth = __internal.getRecoCatalogSearchSourceHealthSnapshot();
+    const primaryState = sourceHealth.find((item) => item.base_url === 'http://catalog-primary.test');
+    expect(primaryState).toBeTruthy();
+    expect(primaryState.deprioritized).toBe(true);
   });
 
   test('catalog product mapping produces parse/analyze-compatible anchor payload', () => {
