@@ -1038,8 +1038,8 @@ test('Query resolve no_candidates uses local products.resolve fallback', async (
         const { __internal } = loadRoutesFresh();
         const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
           sku: {
-            brand: 'Winona',
-            display_name: 'Winona Soothing Repair Serum',
+            brand: 'BrandX',
+            display_name: 'BrandX Repair Serum',
           },
         }, { logger: null });
 
@@ -1529,6 +1529,71 @@ test('Internal canonical product ref rewrites sku identifiers for PDP compatibil
       assert.equal(enriched?.sku?.product_id, '9886499864904');
       assert.equal(enriched?.sku?.sku_id, '9886499864904');
       assert.equal(enriched?.sku?.merchant_id, 'merch_efbc46b4619cfbdf');
+    },
+  );
+});
+
+test('Stable alias fallback keeps internal PDP ref when resolve is disabled', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      PIVOTA_BACKEND_BASE_URL: '',
+    },
+    async () => {
+      const { __internal } = loadRoutesFresh();
+      const enriched = await __internal.enrichRecoItemWithPdpOpenContract(
+        {
+          sku: {
+            brand: 'IPSA',
+            display_name: 'IPSA Time Reset Aqua',
+            product_id: 'e7c90e06-8673-4c97-835d-074a26ab2162',
+            sku_id: 'e7c90e06-8673-4c97-835d-074a26ab2162',
+          },
+        },
+        { logger: null },
+      );
+
+      assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+      assert.equal(enriched?.metadata?.pdp_open_mode, 'ref');
+      assert.equal(enriched?.pdp_open?.path, 'ref');
+      assert.equal(enriched?.pdp_open?.product_ref?.product_id, '9886500127048');
+      assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'merch_efbc46b4619cfbdf');
+      assert.equal(enriched?.sku?.product_id, '9886500127048');
+      assert.equal(enriched?.sku?.sku_id, '9886500127048');
+      assert.equal(enriched?.sku?.merchant_id, 'merch_efbc46b4619cfbdf');
+      assert.notEqual(enriched?.metadata?.pdp_open_resolve_attempted, true);
+    },
+  );
+});
+
+test('Reco seed limiter caps known seed products and keeps non-seed diversity', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_TEST_SEED_MAX_PER_RESPONSE: '1',
+      AURORA_BFF_RECO_TEST_SEED_MIN_TOTAL: '3',
+    },
+    async () => {
+      const { __internal } = loadRoutesFresh();
+      const input = [
+        { sku: { brand: 'Winona', display_name: 'Winona Soothing Repair Serum', product_id: 'a39dd7a3-5d80-4cb3-82e1-3bf2707f65fc' } },
+        { sku: { brand: 'IPSA', display_name: 'IPSA Time Reset Aqua', product_id: 'e7c90e06-8673-4c97-835d-074a26ab2162' } },
+        { sku: { brand: 'CeraVe', display_name: 'CeraVe Hydrating Cleanser', product_id: 'pid_cerave_cleanser' } },
+        { sku: { brand: 'The Ordinary', display_name: 'The Ordinary Buffet + Copper Peptides 1%', product_id: 'to_copper_peptides' } },
+        { sku: { brand: 'La Roche-Posay', display_name: 'Cicaplast Baume B5', product_id: 'pid_cicaplast' } },
+      ];
+
+      const out = __internal.limitRecoKnownTestSeedRecommendations(input);
+      assert.equal(out.applied, true);
+      assert.equal(out.seed_count_before, 3);
+      assert.equal(out.seed_count_after, 1);
+      assert.equal(out.filtered_count, 2);
+      assert.equal(out.recommendations.length, 3);
+
+      const keptSeedCount = out.recommendations.filter((item) => __internal.isRecoKnownTestSeedItem(item)).length;
+      assert.equal(keptSeedCount, 1);
+      assert.ok(out.recommendations.some((item) => String(item?.sku?.display_name || '').includes('CeraVe')));
+      assert.ok(out.recommendations.some((item) => String(item?.sku?.display_name || '').includes('Cicaplast')));
     },
   );
 });

@@ -215,6 +215,7 @@ const {
 } = require('./productIntelKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
+  resolveProductRef: resolveProductRefDirect = null,
   _internals: productGroundingResolverInternals = {},
 } = require('../services/productGroundingResolver');
 const {
@@ -799,6 +800,25 @@ const RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED = (() => {
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_PDP_STRICT_INTERNAL_FIRST = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+
+const RECO_TEST_SEED_MAX_PER_RESPONSE = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_TEST_SEED_MAX_PER_RESPONSE || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(0, Math.min(4, v));
+})();
+
+const RECO_TEST_SEED_MIN_TOTAL = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_TEST_SEED_MIN_TOTAL || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(8, v));
 })();
 
 const AURORA_BFF_PDP_CORE_PREFETCH_ENABLED = (() => {
@@ -5514,7 +5534,10 @@ function hasLowCoverageCompetitorToken(payload) {
   const missingInfo = getProductAnalysisInternalMissingCodes(p);
   return missingInfo.some((raw) => {
     const token = String(raw || '').trim().toLowerCase();
-    return token === 'competitors_low_coverage' || token === 'alternatives_limited';
+    return token === 'competitors_low_coverage'
+      || token === 'alternatives_limited'
+      || token === 'competitors_missing'
+      || token === 'alternatives_unavailable';
   });
 }
 
@@ -11839,6 +11862,161 @@ function normalizeCanonicalProductRef(input, { requireMerchant = true, allowOpaq
   };
 }
 
+const RECO_TEST_SEED_ID_SET = new Set([
+  'a39dd7a3-5d80-4cb3-82e1-3bf2707f65fc',
+  'a39dd7a35d804cb382e13bf2707f65fc',
+  'e7c90e06-8673-4c97-835d-074a26ab2162',
+  'e7c90e0686734c97835d074a26ab2162',
+  'c231aaaa-8b00-4145-a704-684931049303',
+  'c231aaaa8b004145a704684931049303',
+  'to_copper_peptides',
+]);
+
+const RECO_TEST_SEED_NAME_SET = new Set([
+  'winona soothing repair serum',
+  'ipsa time reset aqua',
+  'the ordinary buffet plus copper peptides 1 percent',
+  'the ordinary niacinamide 10 percent plus zinc 1 percent',
+]);
+
+function normalizeRecoSeedToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/\+/g, ' plus ')
+    .replace(/%/g, ' percent ')
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildRecoSeedCandidateTokens(item) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+  const sku =
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+      ? base.sku
+      : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+        ? base.product
+        : {};
+  const brand = pickFirstTrimmed(sku.brand, base.brand);
+  const name = pickFirstTrimmed(sku.name, base.name);
+  const displayName = pickFirstTrimmed(sku.display_name, sku.displayName, base.display_name, base.displayName, name);
+  const joined = joinBrandAndName(brand, displayName || name);
+  return uniqCaseInsensitiveStrings(
+    [
+      displayName,
+      joined,
+      pickFirstTrimmed(base.title, base.product_name, base.productTitle),
+      name,
+      brand,
+    ].map((x) => normalizeRecoSeedToken(x)),
+    10,
+  );
+}
+
+function isRecoKnownTestSeedItem(item) {
+  const base = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+  const sku =
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku)
+      ? base.sku
+      : base.product && typeof base.product === 'object' && !Array.isArray(base.product)
+        ? base.product
+        : {};
+
+  const ids = uniqCaseInsensitiveStrings(
+    [
+      pickFirstTrimmed(sku.product_id, sku.productId),
+      pickFirstTrimmed(sku.sku_id, sku.skuId),
+      pickFirstTrimmed(base.product_id, base.productId),
+      pickFirstTrimmed(base.sku_id, base.skuId),
+    ].map((x) => String(x || '').trim().toLowerCase()),
+    10,
+  );
+  if (ids.some((id) => RECO_TEST_SEED_ID_SET.has(id))) return true;
+
+  const tokens = buildRecoSeedCandidateTokens(base);
+  if (tokens.some((token) => RECO_TEST_SEED_NAME_SET.has(token))) return true;
+  return false;
+}
+
+function limitRecoKnownTestSeedRecommendations(recommendations, {
+  maxSeedItems = RECO_TEST_SEED_MAX_PER_RESPONSE,
+  minTotal = RECO_TEST_SEED_MIN_TOTAL,
+} = {}) {
+  const list = Array.isArray(recommendations) ? recommendations : [];
+  if (!list.length) {
+    return {
+      recommendations: list,
+      seed_count_before: 0,
+      seed_count_after: 0,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const maxSeed = Math.max(0, Math.min(4, Number.isFinite(Number(maxSeedItems)) ? Math.trunc(Number(maxSeedItems)) : RECO_TEST_SEED_MAX_PER_RESPONSE));
+  const minKeepTotal = Math.max(1, Math.min(8, Number.isFinite(Number(minTotal)) ? Math.trunc(Number(minTotal)) : RECO_TEST_SEED_MIN_TOTAL));
+  if (maxSeed >= list.length) {
+    return {
+      recommendations: list,
+      seed_count_before: 0,
+      seed_count_after: 0,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const seedIndexes = [];
+  const nonSeedIndexes = [];
+  for (let i = 0; i < list.length; i += 1) {
+    if (isRecoKnownTestSeedItem(list[i])) seedIndexes.push(i);
+    else nonSeedIndexes.push(i);
+  }
+
+  if (!seedIndexes.length || seedIndexes.length <= maxSeed || !nonSeedIndexes.length) {
+    return {
+      recommendations: list,
+      seed_count_before: seedIndexes.length,
+      seed_count_after: seedIndexes.length,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const nonSeedCount = nonSeedIndexes.length;
+  const seedKeepFloor = Math.max(0, minKeepTotal - nonSeedCount);
+  const allowedSeedCount = Math.min(seedIndexes.length, Math.max(maxSeed, seedKeepFloor));
+  if (allowedSeedCount >= seedIndexes.length) {
+    return {
+      recommendations: list,
+      seed_count_before: seedIndexes.length,
+      seed_count_after: seedIndexes.length,
+      filtered_count: 0,
+      applied: false,
+    };
+  }
+
+  const seedIndexSet = new Set(seedIndexes);
+  const allowedSeedIndexSet = new Set(seedIndexes.slice(0, allowedSeedCount));
+  const filtered = [];
+  for (let i = 0; i < list.length; i += 1) {
+    if (!seedIndexSet.has(i)) {
+      filtered.push(list[i]);
+      continue;
+    }
+    if (allowedSeedIndexSet.has(i)) filtered.push(list[i]);
+  }
+
+  return {
+    recommendations: filtered,
+    seed_count_before: seedIndexes.length,
+    seed_count_after: allowedSeedCount,
+    filtered_count: seedIndexes.length - allowedSeedCount,
+    applied: seedIndexes.length > allowedSeedCount,
+  };
+}
+
 function extractRecoPdpDirectKeys(base, skuCandidate) {
   const candidates = [base, skuCandidate].filter((v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v));
   const subjectCandidates = [];
@@ -11986,17 +12164,27 @@ function mapResolveFailureCode({ resolveBody, statusCode, error } = {}) {
     resolveBody?.reason_code || resolveBody?.reasonCode || resolveBody?.metadata?.resolve_reason_code,
     '',
   );
-  if (explicit) return explicit;
 
   const reason = String(resolveBody?.reason || '').trim().toLowerCase();
-  if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return 'no_candidates';
-  if (reason.startsWith('db_') || reason === 'products_cache_missing') return 'db_error';
-  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
-
   const sources = Array.isArray(resolveBody?.metadata?.sources) ? resolveBody.metadata.sources : [];
   const sourceReasons = sources
     .map((item) => String(item && item.reason ? item.reason : '').trim().toLowerCase())
     .filter(Boolean);
+  const sourceDerivedReason =
+    sourceReasons.some((r) => r.startsWith('db_') || r === 'products_cache_missing')
+      ? 'db_error'
+      : sourceReasons.some((r) => r.includes('timeout') || r.startsWith('upstream_'))
+        ? 'upstream_timeout'
+        : null;
+
+  if (explicit === 'db_error' || explicit === 'upstream_timeout') return explicit;
+  if (sourceDerivedReason) return sourceDerivedReason;
+  if (explicit === 'no_candidates') return explicit;
+
+  if (reason === 'no_candidates' || reason === 'low_confidence' || reason === 'empty_query') return 'no_candidates';
+  if (reason.startsWith('db_') || reason === 'products_cache_missing') return 'db_error';
+  if (reason.includes('timeout') || reason.startsWith('upstream_') || reason === 'upstream_error') return 'upstream_timeout';
+
   if (sourceReasons.some((r) => r.startsWith('db_') || r === 'products_cache_missing')) return 'db_error';
   if (sourceReasons.some((r) => r.includes('timeout') || r.startsWith('upstream_'))) return 'upstream_timeout';
 
@@ -12430,6 +12618,69 @@ async function resolveRecoPdpByStableIds({
   };
 }
 
+async function resolveRecoPdpByLocalResolver({
+  queryText,
+  hints = null,
+  logger,
+} = {}) {
+  const q = String(queryText || '').trim();
+  if (!q || typeof resolveProductRefDirect !== 'function') {
+    return { ok: false, reasonCode: 'db_error' };
+  }
+
+  let responseBody = null;
+  let responseError = null;
+  try {
+    responseBody = await resolveProductRefDirect({
+      query: q,
+      lang: 'en',
+      ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+      options: {
+        search_all_merchants: true,
+        timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+        upstream_retries: 0,
+        stable_alias_short_circuit: true,
+        allow_stable_alias_for_uuid: true,
+      },
+      caller: 'aurora_chatbox',
+    });
+  } catch (err) {
+    responseError = err;
+  }
+
+  const resolvedProductRef = normalizeCanonicalProductRef(responseBody?.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (responseBody?.resolved === true && resolvedProductRef) {
+    return {
+      ok: true,
+      canonicalProductRef: resolvedProductRef,
+      reasonCode: null,
+    };
+  }
+
+  const reasonCode = mapResolveFailureCode({
+    resolveBody: responseBody,
+    statusCode: null,
+    error: responseError,
+  });
+  if (responseError || reasonCode !== 'no_candidates') {
+    logger?.warn(
+      {
+        query: q.slice(0, 120),
+        reason_code: reasonCode,
+        err: responseError ? responseError.message || String(responseError) : null,
+      },
+      'aurora bff: reco pdp local resolver fallback unresolved',
+    );
+  }
+  return {
+    ok: false,
+    reasonCode,
+  };
+}
+
 function buildExternalGoogleSearchUrl(query) {
   const q = String(query || '').trim();
   if (!q) return 'https://www.google.com/';
@@ -12605,6 +12856,23 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     base?.skuId,
     stableProductId,
   );
+  const stableQueryText = pickFirstTrimmed(
+    brand && displayName ? joinBrandAndName(brand, displayName) : '',
+    brand && name ? joinBrandAndName(brand, name) : '',
+    displayName,
+    name,
+    stableSkuId,
+    stableProductId,
+  );
+  const stableAliasMatch = resolveRecoStableAliasRefByQuery(stableQueryText);
+  if (stableAliasMatch?.canonicalProductRef) {
+    return withRecoPdpMetadata(base, {
+      path: 'ref',
+      canonicalProductRef: stableAliasMatch.canonicalProductRef,
+      resolveAttempted: false,
+      timeToPdpMs: elapsedMs(),
+    });
+  }
   let stableResolveReasonCode = null;
   let stableResolveRequestIds = null;
   let stableResolveLocalFallbackAttempted = false;
@@ -12654,7 +12922,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
 
   const queryText =
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
-    pickFirstTrimmed(displayName, name, brand);
+    stableQueryText;
   const stableResolveFailureCode = normalizeResolveReasonCode(stableResolveReasonCode || '', null);
   const shouldSkipQueryResolveForStableFailure =
     RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE &&
@@ -12689,12 +12957,51 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     displayName,
   });
 
-  if (!RECO_PDP_RESOLVE_ENABLED || !PIVOTA_BACKEND_BASE_URL || !queryText) {
+  if (!queryText) {
     recordRecoPdpExternalFallback(stableResolveReasonCode || 'no_candidates');
     return withRecoPdpMetadata(base, {
       path: 'external',
       queryText,
       resolveReasonCode: stableResolveReasonCode || 'no_candidates',
+      resolveAttempted: false,
+      timeToPdpMs: elapsedMs(),
+      stableResolveRequestIds,
+      stableResolveLocalFallbackAttempted,
+    });
+  }
+
+  if (!PIVOTA_BACKEND_BASE_URL && RECO_PDP_STRICT_INTERNAL_FIRST) {
+    const localResolved = await resolveRecoPdpByLocalResolver({
+      queryText,
+      hints,
+      logger,
+    });
+    if (localResolved.ok && localResolved.canonicalProductRef) {
+      return withRecoPdpMetadata(base, {
+        path: 'resolve',
+        canonicalProductRef: localResolved.canonicalProductRef,
+        resolveAttempted: true,
+        resolvedViaQuery: queryText,
+        timeToPdpMs: elapsedMs(),
+        stableResolveRequestIds,
+        stableResolveLocalFallbackAttempted,
+      });
+    }
+    if (!stableResolveReasonCode && localResolved.reasonCode) {
+      stableResolveReasonCode = localResolved.reasonCode;
+    }
+  }
+
+  const shouldAttemptQueryResolve =
+    Boolean(PIVOTA_BACKEND_BASE_URL) &&
+    (RECO_PDP_RESOLVE_ENABLED || RECO_PDP_STRICT_INTERNAL_FIRST);
+  if (!shouldAttemptQueryResolve) {
+    const skipReasonCode = stableResolveReasonCode || 'db_error';
+    recordRecoPdpExternalFallback(skipReasonCode);
+    return withRecoPdpMetadata(base, {
+      path: 'external',
+      queryText,
+      resolveReasonCode: skipReasonCode,
       resolveAttempted: false,
       timeToPdpMs: elapsedMs(),
       stableResolveRequestIds,
@@ -14501,6 +14808,9 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_upstream_timeout_hard_cap_ms: RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
       reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
+      reco_pdp_resolve_enabled: RECO_PDP_RESOLVE_ENABLED,
+      reco_pdp_strict_internal_first: RECO_PDP_STRICT_INTERNAL_FIRST,
+      pivota_backend_base_configured: Boolean(PIVOTA_BACKEND_BASE_URL),
       reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
       reco_local_fallback_chat_enabled: RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
       reco_local_search_fallback_on_transient: RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
@@ -14518,6 +14828,12 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
 
   const norm = normalizeRecoGenerate(mapped);
   norm.payload = { ...norm.payload, intent: 'reco_products', profile: profileSummary || null };
+  let recoSeedFilterInfo = {
+    applied: false,
+    seed_count_before: 0,
+    seed_count_after: 0,
+    filtered_count: 0,
+  };
   if (Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length) {
     const deduped = [];
     const seen = new Set();
@@ -14539,9 +14855,24 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       deduped.push({ ...base, slot: 'other' });
       if (deduped.length >= 8) break;
     }
-    norm.payload = { ...norm.payload, recommendations: deduped };
+    const limited = limitRecoKnownTestSeedRecommendations(deduped);
+    recoSeedFilterInfo = {
+      applied: Boolean(limited.applied),
+      seed_count_before: Number(limited.seed_count_before || 0),
+      seed_count_after: Number(limited.seed_count_after || 0),
+      filtered_count: Number(limited.filtered_count || 0),
+    };
+    norm.payload = { ...norm.payload, recommendations: limited.recommendations };
   }
   let alternativesDebug = null;
+  if (upstreamDebug) {
+    upstreamDebug.reco_test_seed_max_per_response = RECO_TEST_SEED_MAX_PER_RESPONSE;
+    upstreamDebug.reco_test_seed_min_total = RECO_TEST_SEED_MIN_TOTAL;
+    upstreamDebug.reco_seed_filter_applied = recoSeedFilterInfo.applied;
+    upstreamDebug.reco_seed_count_before = recoSeedFilterInfo.seed_count_before;
+    upstreamDebug.reco_seed_count_after = recoSeedFilterInfo.seed_count_after;
+    upstreamDebug.reco_seed_filtered_count = recoSeedFilterInfo.filtered_count;
+  }
 
   if (includeAlternatives) {
     const alt = await enrichRecommendationsWithAlternatives({
@@ -22578,6 +22909,8 @@ const __internal = {
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,
   looksLikeGreetingAlready,
+  isRecoKnownTestSeedItem,
+  limitRecoKnownTestSeedRecommendations,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
   getPdpPrefetchStateSnapshot,
