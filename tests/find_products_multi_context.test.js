@@ -94,6 +94,23 @@ describe('find_products_multi context building', () => {
     expect(intent.scenario.name).toContain('pet');
   });
 
+  test('dog leash query expands to harness/leash keywords (not jacket-only)', async () => {
+    const { intent, adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: '有没有狗链推荐？' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: '有没有狗链推荐？' }],
+      },
+      metadata: {},
+    });
+
+    expect(intent.target_object.type).toBe('pet');
+    expect(intent.category.required).toEqual(expect.arrayContaining(['pet_harness']));
+    const q = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(q).toContain('dog leash');
+    expect(q).toContain('harness');
+  });
+
   test('eye shadow brush query routes to dedicated scenario (no full-face kit)', async () => {
     const intent = extractIntentRuleBased('帮我挑一个画眼影的刷子', [], []);
     expect(intent.primary_domain).toBe('beauty');

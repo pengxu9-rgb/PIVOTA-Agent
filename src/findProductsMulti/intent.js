@@ -212,6 +212,10 @@ const PET_SIGNALS_ZH = [
   '背带',
   '胸背',
   '牵引',
+  '牵引绳',
+  '遛狗绳',
+  '狗链',
+  '项圈',
   '狗背带',
   '宠物背带',
 ];
@@ -970,20 +974,27 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     primary_domain = 'sports_outdoor';
     targetType = 'pet';
     const wantsHarness =
-      /背带|胸背|牵引|胸背带/.test(latest) ||
-      /\b(harness|dog\s+harness|pet\s+harness|no-?pull)\b/i.test(latest) ||
+      /背带|胸背|牵引|牵引绳|遛狗绳|狗链|项圈|胸背带/.test(latest) ||
+      /\b(harness|dog\s+harness|pet\s+harness|no-?pull|leash|dog\s+leash|pet\s+leash|collar|lead)\b/i.test(latest) ||
       /\b(harnais)\b/i.test(latest) ||
       /\b(arn[eé]s)\b/i.test(latest) ||
       /ハーネス|胴輪/.test(latest);
-    categoryRequired = [
-      ...(wantsHarness ? ['pet_harness'] : []),
-      'pet_apparel',
-      'dog_jacket',
-      'dog_sweater',
-    ].slice(0, 4);
-    scenarioName = includesAny(latest, ['hiking', 'trail', 'camping', '徒步', '登山', '爬山'])
-      ? 'pet_hiking'
-      : 'pet_apparel_general';
+    const wantsLeashGear =
+      /牵引绳|遛狗绳|狗链|项圈/.test(latest) ||
+      /\b(leash|dog\s+leash|pet\s+leash|collar|lead)\b/i.test(latest);
+    categoryRequired = wantsLeashGear
+      ? ['pet_harness', 'pet_leash', 'pet_apparel']
+      : [
+          ...(wantsHarness ? ['pet_harness'] : []),
+          'pet_apparel',
+          'dog_jacket',
+          'dog_sweater',
+        ].slice(0, 4);
+    scenarioName = wantsLeashGear
+      ? 'pet_walk_gear'
+      : includesAny(latest, ['hiking', 'trail', 'camping', '徒步', '登山', '爬山'])
+        ? 'pet_hiking'
+        : 'pet_apparel_general';
     scenarioSignals = [];
   } else if (hasOuterwearSignal || hasColdScenario) {
     primary_domain = 'human_apparel';

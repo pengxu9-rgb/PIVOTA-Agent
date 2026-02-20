@@ -3418,8 +3418,9 @@ function isResolverMiss(result) {
   return Number(result.usableCount || 0) <= 0;
 }
 
-function shouldReducePrimaryTimeoutAfterResolverMiss(result) {
+function shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText = '') {
   if (!isResolverMiss(result)) return false;
+  if (hasPetSearchSignal(queryText)) return false;
   const reasonCode = normalizeOffersResolveReasonCode(
     result?.resolve_reason_code || result?.resolve_reason || '',
     '',
@@ -3431,7 +3432,8 @@ function shouldSkipSecondaryFallbackAfterResolverMiss(result, queryText = '') {
   if (!PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS) return false;
   if (isKnownLookupAliasQuery(queryText)) return false;
   if (isStrongResolverFirstQuery(queryText)) return false;
-  return shouldReducePrimaryTimeoutAfterResolverMiss(result);
+  if (hasPetSearchSignal(queryText)) return false;
+  return shouldReducePrimaryTimeoutAfterResolverMiss(result, queryText);
 }
 
 function shouldAllowSecondaryFallback(operation) {
@@ -4954,6 +4956,12 @@ function tokenizeQueryForCache(q) {
     ),
   );
   const raw = [...latinTokens, ...resolverTokens, ...cjkTokens];
+  if (hasPetSearchSignal(rawInput)) {
+    raw.push('dog', 'pet');
+    if (hasPetHarnessSearchSignal(rawInput)) {
+      raw.push('harness', 'leash', 'collar');
+    }
+  }
   const stop = new Set([
     'a',
     'an',
@@ -5318,6 +5326,40 @@ function buildPetSignalSql(startIndex) {
     "coalesce(product_data->>'product_type','')",
   ];
 
+  const idx = startIndex;
+  const ors = fields.map((f) => `${f} ~* $${idx}`).join(' OR ');
+  return { sql: `(${ors})`, params: [re], nextIndex: idx + 1 };
+}
+
+function hasPetSearchSignal(queryText) {
+  const q = String(queryText || '');
+  if (!q) return false;
+  return (
+    /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|perro|perros|mascota|mascotas|gato|gatos|chien|chiens|chat|chats)\b/i.test(
+      q,
+    ) ||
+    /狗狗|狗|猫猫|猫|宠物|犬|犬服|猫服|ペット|わんちゃん/.test(q)
+  );
+}
+
+function hasPetHarnessSearchSignal(queryText) {
+  const q = String(queryText || '');
+  if (!q) return false;
+  return (
+    /\b(harness|leash|dog\s+leash|pet\s+leash|collar|lead|no-?pull)\b/i.test(q) ||
+    /背带|胸背|牵引|牵引绳|遛狗绳|狗链|项圈|胸背带|胴輪|ハーネス/.test(q)
+  );
+}
+
+function buildPetHarnessSignalSql(startIndex) {
+  const latin = '(harness|leash|collar|lead|no-?pull|dog\\s+harness|dog\\s+leash|pet\\s+harness|pet\\s+leash)';
+  const cjk = '(背带|胸背|牵引|牵引绳|遛狗绳|狗链|项圈|胸背带|胴輪|ハーネス)';
+  const re = `(\\m${latin}\\M|${cjk})`;
+  const fields = [
+    "coalesce(product_data->>'title','')",
+    "coalesce(product_data->>'description','')",
+    "coalesce(product_data->>'product_type','')",
+  ];
   const idx = startIndex;
   const ors = fields.map((f) => `${f} ~* $${idx}`).join(' OR ');
   return { sql: `(${ors})`, params: [re], nextIndex: idx + 1 };
@@ -5977,6 +6019,48 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       total: relaxedTotal,
     });
 
+    if (relaxedRanked.products.length === 0 && hasPetSearchSignal(q)) {
+      const preferHarnessResults = hasPetHarnessSearchSignal(q);
+      const petSignalFilter = preferHarnessResults
+        ? buildPetHarnessSignalSql(1)
+        : buildPetSignalSql(1);
+      const petRowsSql = `
+        SELECT pc.merchant_id,
+               mo.business_name AS merchant_name,
+               pc.product_data
+        FROM products_cache pc
+        JOIN merchant_onboarding mo
+          ON mo.merchant_id = pc.merchant_id
+        WHERE ${baseWhere}
+          AND ${petSignalFilter.sql}
+        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+        OFFSET $${petSignalFilter.nextIndex}
+        LIMIT $${petSignalFilter.nextIndex + 1}
+      `;
+      const petRowsRes = await query(
+        petRowsSql,
+        [...petSignalFilter.params, pageOffset, pageFetch],
+      );
+      const petRanked = toRankedUniqueProducts(petRowsRes.rows || []);
+      retrievalSources.push({
+        source: preferHarnessResults ? 'pet_harness_browse_fallback' : 'pet_browse_fallback',
+        used: true,
+        count: petRanked.products.length,
+        candidate_count: petRanked.candidateCount,
+      });
+
+      if (petRanked.products.length > 0) {
+        await applyShopifyCurrencyOverride(petRanked.products);
+        return {
+          products: petRanked.products,
+          total: Math.max(strictTotal, relaxedTotal, petRanked.products.length),
+          page: safePage,
+          page_size: petRanked.products.length,
+          retrieval_sources: retrievalSources,
+        };
+      }
+    }
+
     await applyShopifyCurrencyOverride(relaxedRanked.products);
     return {
       products: relaxedRanked.products,
@@ -6140,17 +6224,19 @@ async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, opt
 
 function buildPetFallbackQuery(intent, rawUserQuery) {
   const lang = intent?.language || 'en';
+  const queryText = String(rawUserQuery || '');
+  const wantsHarness = hasPetHarnessSearchSignal(queryText);
   switch (lang) {
     case 'zh':
-      return '狗 狗狗 宠物 外套 衣服';
+      return wantsHarness ? '狗 狗狗 宠物 背带 牵引绳 狗链' : '狗 狗狗 宠物 外套 衣服';
     case 'es':
-      return 'perro ropa abrigo chaqueta';
+      return wantsHarness ? 'perro arnes correa collar' : 'perro ropa abrigo chaqueta';
     case 'fr':
-      return 'chien vêtement manteau veste';
+      return wantsHarness ? 'chien harnais laisse collier' : 'chien vêtement manteau veste';
     case 'ja':
-      return '犬 犬服 服';
+      return wantsHarness ? '犬 ハーネス リード 首輪' : '犬 犬服 服';
     default:
-      return 'dog jacket dog clothes';
+      return wantsHarness ? 'dog harness dog leash dog collar' : 'dog jacket dog clothes';
   }
 }
 
@@ -7037,7 +7123,7 @@ async function proxyAgentSearchToBackend(req, res) {
       PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
     );
     const primaryTimeoutMs =
-      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult)
+      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, queryText)
         ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
         : basePrimaryTimeoutMs;
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
@@ -12478,7 +12564,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     if (
       !response &&
       operation === 'find_products_multi' &&
-      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult)
+      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, resolverQueryText)
     ) {
       axiosConfig.timeout = Math.min(
         Number(axiosConfig.timeout || getUpstreamTimeoutMs(operation)),

@@ -215,8 +215,8 @@ function detectHarnessSignal(rawQuery) {
   const q = String(rawQuery || '');
   if (!q) return false;
   return (
-    /背带|胸背|牵引|胸背带|宠物背带|狗背带/.test(q) ||
-    /\b(harness|dog\s+harness|pet\s+harness|no-?pull)\b/i.test(q) ||
+    /背带|胸背|牵引|牵引绳|遛狗绳|狗链|项圈|胸背带|宠物背带|狗背带/.test(q) ||
+    /\b(harness|dog\s+harness|pet\s+harness|no-?pull|leash|dog\s+leash|pet\s+leash|collar|lead)\b/i.test(q) ||
     /\b(harnais)\b/i.test(q) ||
     /\b(arn[eé]s)\b/i.test(q) ||
     /ハーネス|胴輪/.test(q)
@@ -261,8 +261,8 @@ function hasDogMeasurementsInQuery(rawQuery) {
 function isPetHarnessProduct(product) {
   const text = buildProductText(product);
   return (
-    /\b(harness|no-?pull)\b/i.test(text) ||
-    /背带|胸背|牵引|胸背带|胴輪|ハーネス/.test(text) ||
+    /\b(harness|no-?pull|leash|collar|lead)\b/i.test(text) ||
+    /背带|胸背|牵引|牵引绳|狗链|项圈|胸背带|胴輪|ハーネス/.test(text) ||
     /\b(harnais)\b/i.test(text) ||
     /\b(arn[eé]s)\b/i.test(text)
   );
@@ -1513,10 +1513,21 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 
     const extra = [];
     if (target === 'pet') {
-      extra.push('dog jacket', 'pet apparel');
+      const wantsHarness = detectHarnessSignal(q);
+      const wantsApparel = detectPetApparelSignal(q);
+      if (wantsHarness) {
+        extra.push('dog harness', 'pet harness', 'dog leash', 'pet leash', 'dog collar');
+      }
+      if (!wantsHarness || wantsApparel) {
+        extra.push('dog jacket', 'pet apparel');
+      }
       if (scenario.includes('hiking')) extra.push('hiking', 'cold weather');
       // Also expand for Chinese queries against English-heavy catalogs.
-      if (lang === 'zh') extra.push('dog', 'pet', 'coat');
+      if (lang === 'zh') {
+        extra.push('dog', 'pet');
+        if (wantsHarness) extra.push('leash', 'harness', 'collar');
+        else extra.push('coat');
+      }
       if (lang === 'es') extra.push('perro', 'ropa');
       if (lang === 'fr') extra.push('chien', 'vêtement');
       if (lang === 'ja') extra.push('犬', '犬服');
