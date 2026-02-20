@@ -218,6 +218,7 @@ const {
   resolveProductRef: resolveProductRefDirect = null,
   _internals: productGroundingResolverInternals = {},
 } = require('../services/productGroundingResolver');
+let resolveProductRefDirectImpl = resolveProductRefDirect;
 const {
   normalizeBudgetHint,
   mapConcerns,
@@ -2258,6 +2259,57 @@ function isSpecificAvailabilityQuery(queryText, availabilityIntent) {
   return genericOnly.length > brandCompact.length + 2;
 }
 
+function buildAvailabilityResolvedProduct({
+  resolvedRef,
+  resolveBody,
+  fallbackQuery = '',
+  fallbackBrand = '',
+} = {}) {
+  const normalizedRef = normalizeCanonicalProductRef(resolvedRef, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (!normalizedRef) return null;
+
+  const firstCandidate =
+    Array.isArray(resolveBody?.candidates) &&
+    resolveBody.candidates.length &&
+    resolveBody.candidates[0] &&
+    typeof resolveBody.candidates[0] === 'object'
+      ? resolveBody.candidates[0]
+      : null;
+  const normalizedCandidate = normalizeRecoCatalogProduct(firstCandidate);
+  const displayName = pickFirstTrimmed(
+    normalizedCandidate?.display_name,
+    normalizedCandidate?.name,
+    firstCandidate?.title,
+    firstCandidate?.name,
+    fallbackQuery,
+  );
+  const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, displayName);
+  const brand = pickFirstTrimmed(
+    normalizedCandidate?.brand,
+    firstCandidate?.vendor,
+    firstCandidate?.brand,
+    fallbackBrand,
+  );
+  const imageUrl = pickFirstTrimmed(
+    normalizedCandidate?.image_url,
+    firstCandidate?.image_url,
+    firstCandidate?.thumbnail_url,
+  );
+  return {
+    ...(normalizedCandidate && typeof normalizedCandidate === 'object' ? normalizedCandidate : {}),
+    product_id: normalizedRef.product_id,
+    merchant_id: normalizedRef.merchant_id,
+    canonical_product_ref: normalizedRef,
+    ...(brand ? { brand } : {}),
+    ...(name ? { name } : {}),
+    ...(displayName ? { display_name: displayName } : {}),
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+  };
+}
+
 async function resolveAvailabilityProductByQuery({
   query,
   lang = 'en',
@@ -2293,36 +2345,6 @@ async function resolveAvailabilityProductByQuery({
     ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
     caller: 'aurora_chatbox',
   };
-  const buildResolvedProduct = (resolvedRef, resolveBody) => {
-    const firstCandidate =
-      Array.isArray(resolveBody?.candidates) &&
-      resolveBody.candidates.length &&
-      resolveBody.candidates[0] &&
-      typeof resolveBody.candidates[0] === 'object'
-        ? resolveBody.candidates[0]
-        : null;
-    const normalizedCandidate = normalizeRecoCatalogProduct(firstCandidate);
-    const displayName = pickFirstTrimmed(
-      normalizedCandidate?.display_name,
-      normalizedCandidate?.name,
-      firstCandidate?.title,
-      firstCandidate?.name,
-      q,
-    );
-    const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, displayName);
-    const brand = pickFirstTrimmed(normalizedCandidate?.brand, firstCandidate?.vendor, firstCandidate?.brand);
-    const imageUrl = pickFirstTrimmed(normalizedCandidate?.image_url, firstCandidate?.image_url, firstCandidate?.thumbnail_url);
-    return {
-      ...(normalizedCandidate && typeof normalizedCandidate === 'object' ? normalizedCandidate : {}),
-      product_id: resolvedRef.product_id,
-      merchant_id: resolvedRef.merchant_id,
-      canonical_product_ref: resolvedRef,
-      ...(brand ? { brand } : {}),
-      ...(name ? { name } : {}),
-      ...(displayName ? { display_name: displayName } : {}),
-      ...(imageUrl ? { image_url: imageUrl } : {}),
-    };
-  };
 
   let resp = null;
   let err = null;
@@ -2343,7 +2365,12 @@ async function resolveAvailabilityProductByQuery({
     allowOpaqueProductId: false,
   });
   if (statusCode === 200 && body?.resolved === true && resolvedRef) {
-    const product = buildResolvedProduct(resolvedRef, body);
+    const product = buildAvailabilityResolvedProduct({
+      resolvedRef,
+      resolveBody: body,
+      fallbackQuery: q,
+      fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
+    });
     return {
       ok: true,
       reason: null,
@@ -2390,7 +2417,12 @@ async function resolveAvailabilityProductByQuery({
       return {
         ok: true,
         reason: null,
-        product: buildResolvedProduct(localResolvedRef, localBody),
+        product: buildAvailabilityResolvedProduct({
+          resolvedRef: localResolvedRef,
+          resolveBody: localBody,
+          fallbackQuery: q,
+          fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
+        }),
         resolve_reason_code: null,
         status_code: localStatusCode,
         latency_ms: Date.now() - startedAt,
@@ -2439,6 +2471,93 @@ async function resolveAvailabilityProductByQuery({
     product: null,
     resolve_reason_code: finalReasonCode,
     status_code: statusCode || null,
+    latency_ms: Date.now() - startedAt,
+  };
+}
+
+async function resolveAvailabilityProductByLocalResolver({
+  query,
+  lang = 'en',
+  hints = null,
+  logger,
+  timeoutMs = CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+} = {}) {
+  const q = String(query || '').trim();
+  if (!q) return { ok: false, reason: 'query_missing', product: null, resolve_reason_code: 'no_candidates', latency_ms: 0 };
+  if (typeof resolveProductRefDirectImpl !== 'function') {
+    return { ok: false, reason: 'local_resolver_unavailable', product: null, resolve_reason_code: 'db_error', latency_ms: 0 };
+  }
+
+  const startedAt = Date.now();
+  const resolveTimeoutMs = Math.max(
+    250,
+    Math.min(
+      CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+      Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : CATALOG_AVAIL_RESOLVE_TIMEOUT_MS,
+    ),
+  );
+
+  let responseBody = null;
+  let responseError = null;
+  try {
+    responseBody = await resolveProductRefDirectImpl({
+      query: q,
+      lang: String(lang || 'en').toLowerCase() === 'cn' ? 'cn' : 'en',
+      ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+      options: {
+        search_all_merchants: true,
+        timeout_ms: resolveTimeoutMs,
+        upstream_retries: 0,
+        stable_alias_short_circuit: true,
+        allow_stable_alias_for_uuid: true,
+      },
+      caller: 'aurora_chatbox',
+    });
+  } catch (err) {
+    responseError = err;
+  }
+
+  const resolvedRef = normalizeCanonicalProductRef(responseBody?.product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (responseBody?.resolved === true && resolvedRef) {
+    return {
+      ok: true,
+      reason: null,
+      product: buildAvailabilityResolvedProduct({
+        resolvedRef,
+        resolveBody: responseBody,
+        fallbackQuery: q,
+        fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
+      }),
+      resolve_reason_code: null,
+      status_code: null,
+      latency_ms: Date.now() - startedAt,
+    };
+  }
+
+  const reasonCode = mapResolveFailureCode({
+    resolveBody: responseBody,
+    statusCode: null,
+    error: responseError,
+  });
+  if (responseError || reasonCode !== 'no_candidates') {
+    logger?.warn(
+      {
+        query: q.slice(0, 120),
+        resolve_reason_code: reasonCode,
+        err: responseError ? responseError.message || String(responseError) : null,
+      },
+      'aurora bff: availability local resolver failed',
+    );
+  }
+  return {
+    ok: false,
+    reason: 'unresolved',
+    product: null,
+    resolve_reason_code: reasonCode,
+    status_code: null,
     latency_ms: Date.now() - startedAt,
   };
 }
@@ -13102,14 +13221,14 @@ async function resolveRecoPdpByLocalResolver({
   logger,
 } = {}) {
   const q = String(queryText || '').trim();
-  if (!q || typeof resolveProductRefDirect !== 'function') {
+  if (!q || typeof resolveProductRefDirectImpl !== 'function') {
     return { ok: false, reasonCode: 'db_error' };
   }
 
   let responseBody = null;
   let responseError = null;
   try {
-    responseBody = await resolveProductRefDirect({
+    responseBody = await resolveProductRefDirectImpl({
       query: q,
       lang: 'en',
       ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
@@ -13624,6 +13743,44 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       },
       'aurora bff: reco pdp local products.resolve fallback unresolved',
     );
+  }
+  const shouldAttemptDeterministicLocalResolver =
+    RECO_PDP_STRICT_INTERNAL_FIRST &&
+    typeof resolveProductRefDirectImpl === 'function' &&
+    (reasonCode === 'upstream_timeout' || reasonCode === 'db_error');
+  if (shouldAttemptDeterministicLocalResolver) {
+    recordRecoPdpInternalRetryAttempt(1);
+    const localResolved = await resolveRecoPdpByLocalResolver({
+      queryText,
+      hints,
+      logger,
+    });
+    if (localResolved.ok && localResolved.canonicalProductRef) {
+      logger?.info(
+        {
+          query: queryText.slice(0, 120),
+          primary_reason_code: reasonCode,
+          fallback: 'local_resolver',
+        },
+        'aurora bff: reco pdp resolved via deterministic local resolver',
+      );
+      return withRecoPdpMetadata(base, {
+        path: 'resolve',
+        canonicalProductRef: localResolved.canonicalProductRef,
+        resolveAttempted: true,
+        resolvedViaQuery: queryText,
+        timeToPdpMs: elapsedMs(),
+        stableResolveRequestIds,
+        stableResolveLocalFallbackAttempted,
+      });
+    }
+    if (
+      localResolved.reasonCode &&
+      localResolved.reasonCode !== 'upstream_timeout' &&
+      localResolved.reasonCode !== 'db_error'
+    ) {
+      reasonCode = localResolved.reasonCode;
+    }
   }
   if (resolveError) {
     logger?.warn(
@@ -21728,10 +21885,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           const availabilityQuery =
             String(availabilityIntent.query_hint || '').trim() ||
             buildAvailabilityCatalogQuery(message, availabilityIntent);
+          const specificAvailabilityQuery = isSpecificAvailabilityQuery(availabilityQuery, availabilityIntent);
           const availabilityLabel = String(
-            availabilityIntent.brand_name ||
-              availabilityIntent.matched_alias ||
-              availabilityQuery ||
+            (specificAvailabilityQuery
+              ? availabilityQuery
+              : availabilityIntent.brand_name ||
+                availabilityIntent.matched_alias ||
+                availabilityQuery) ||
               (ctx.lang === 'CN' ? '目标商品' : 'target product'),
           )
             .trim()
@@ -21743,10 +21903,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             lang: ctx.lang,
           });
 
-          const specificAvailabilityQuery = isSpecificAvailabilityQuery(availabilityQuery, availabilityIntent);
           const resolveAliasCandidates = [
             availabilityIntent.brand_name,
             availabilityIntent.matched_alias,
+            availabilityQuery,
           ]
             .map((value) => String(value || '').trim())
             .filter(Boolean);
@@ -21759,7 +21919,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           let catalogResult = { ok: false, products: [], reason: 'unknown' };
           let products = [];
           let availabilityResolveFallback = null;
+          let availabilityLocalResolveFallback = null;
           let availabilityResolveAttempted = false;
+          let availabilityLocalResolveAttempted = false;
           if (PIVOTA_BACKEND_BASE_URL) {
             catalogResult = await searchPivotaBackendProducts({
               query: availabilityQuery || availabilityLabel || availabilityIntent.brand_id,
@@ -21776,7 +21938,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             const reason = String(catalogResult.reason || '').trim().toLowerCase();
             const neutralCatalogMiss =
               !reason || reason === 'empty' || reason === 'no_candidates' || reason === 'not_found';
-            const shouldRunResolveFallback = specificAvailabilityQuery && neutralCatalogMiss;
+            const transientCatalogMiss =
+              reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
+            const shouldRunResolveFallback =
+              specificAvailabilityQuery &&
+              (neutralCatalogMiss || (transientCatalogMiss && CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT));
             if (shouldRunResolveFallback) {
               availabilityResolveAttempted = true;
               availabilityResolveFallback = await resolveAvailabilityProductByQuery({
@@ -21790,6 +21956,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               }
             }
           }
+          if (!products.length && specificAvailabilityQuery && RECO_PDP_STRICT_INTERNAL_FIRST) {
+            availabilityLocalResolveAttempted = true;
+            availabilityLocalResolveFallback = await resolveAvailabilityProductByLocalResolver({
+              query: availabilityQuery || availabilityIntent.brand_name,
+              lang: ctx.lang,
+              hints: Object.keys(resolveHints).length ? resolveHints : null,
+              logger,
+            });
+            if (availabilityLocalResolveFallback?.ok && availabilityLocalResolveFallback?.product) {
+              products = [availabilityLocalResolveFallback.product];
+            }
+          }
 
           const offersItems = (products.length ? products : [brandProduct])
             .slice(0, 8)
@@ -21800,7 +21978,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           const market = marketRaw ? marketRaw.slice(0, 8).toUpperCase() : 'US';
 
           const hasResults = products.length > 0;
-          const resolvedVia = availabilityResolveFallback?.ok ? 'products_resolve' : hasResults ? 'products_search' : 'none';
+          const resolvedVia =
+            availabilityResolveFallback?.ok
+              ? 'products_resolve'
+              : availabilityLocalResolveFallback?.ok
+                ? 'local_resolver'
+                : hasResults
+                  ? 'products_search'
+                  : 'none';
           const assistantRaw =
             ctx.lang === 'CN'
               ? hasResults
@@ -21828,6 +22013,12 @@ function mountAuroraBffRoutes(app, { logger }) {
               fieldMissing.push({
                 field: 'catalog.resolve',
                 reason: String(availabilityResolveFallback.resolve_reason_code).slice(0, 60),
+              });
+            }
+            if (availabilityLocalResolveFallback?.resolve_reason_code) {
+              fieldMissing.push({
+                field: 'catalog.local_resolver',
+                reason: String(availabilityLocalResolveFallback.resolve_reason_code).slice(0, 60),
               });
             }
           }
@@ -21872,8 +22063,11 @@ function mountAuroraBffRoutes(app, { logger }) {
                 count: products.length,
                 query: String(availabilityQuery || '').slice(0, 120),
                 resolved_via: resolvedVia,
+                specific_query: specificAvailabilityQuery,
                 catalog_reason: catalogResult.reason || null,
                 resolve_reason_code: availabilityResolveFallback?.resolve_reason_code || null,
+                local_resolve_attempted: availabilityLocalResolveAttempted,
+                local_resolve_reason_code: availabilityLocalResolveFallback?.resolve_reason_code || null,
               }),
             ],
           });
@@ -23696,6 +23890,7 @@ const __internal = {
   buildAvailabilityCatalogQuery,
   isSpecificAvailabilityQuery,
   resolveAvailabilityProductByQuery,
+  resolveAvailabilityProductByLocalResolver,
   searchPivotaBackendProducts,
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
@@ -23764,6 +23959,12 @@ const __internal = {
   runPdpHotsetPrewarmBatch,
   resolveRecoPdpByStableIds,
   maybeInferSkinMaskForPhotoModules,
+  __setResolveProductRefForTest(fn) {
+    resolveProductRefDirectImpl = typeof fn === 'function' ? fn : null;
+  },
+  __resetResolveProductRefForTest() {
+    resolveProductRefDirectImpl = resolveProductRefDirect;
+  },
   __setInferSkinMaskOnFaceCropForTest(fn) {
     inferSkinMaskOnFaceCropImpl = typeof fn === 'function' ? fn : inferSkinMaskOnFaceCrop;
   },

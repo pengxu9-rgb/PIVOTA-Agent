@@ -1057,6 +1057,75 @@ test('Query resolve no_candidates uses local products.resolve fallback', async (
   );
 });
 
+test('Query resolve upstream_timeout uses deterministic local resolver fallback in strict internal mode', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let queryResolveCalls = 0;
+      let localResolverCalls = 0;
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          queryResolveCalls += 1;
+          const timeoutErr = new Error('resolve timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      let internal = null;
+      try {
+        const { __internal } = loadRoutesFresh();
+        internal = __internal;
+        __internal.__setResolveProductRefForTest(async () => {
+          localResolverCalls += 1;
+          return {
+            resolved: true,
+            reason: 'stable_alias_match',
+            reason_code: 'stable_alias_match',
+            product_ref: {
+              product_id: 'prod_local_resolve',
+              merchant_id: 'mid_local_resolve',
+            },
+            candidates: [{ title: 'FallbackBrand Repair Essence' }],
+          };
+        });
+
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract(
+          {
+            sku: {
+              brand: 'FallbackBrand',
+              display_name: 'FallbackBrand Repair Essence',
+            },
+          },
+          { logger: null, allowLocalInvokeFallback: false },
+        );
+
+        assert.equal(queryResolveCalls, 1);
+        assert.equal(localResolverCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'resolve');
+        assert.equal(enriched?.pdp_open?.path, 'resolve');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_local_resolve');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_local_resolve');
+      } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Availability resolve: primary timeout falls back to local products.resolve', async () => {
   await withEnv(
     {
@@ -1509,7 +1578,7 @@ test('/v1/chat availability: generic brand query skips resolve fallback on trans
   );
 });
 
-test('/v1/chat availability: specific query also skips resolve fallback on transient search timeout', async () => {
+test('/v1/chat availability: specific query runs resolve fallback on transient search timeout when enabled', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -1583,7 +1652,15 @@ test('/v1/chat availability: specific query also skips resolve fallback on trans
 
         assert.equal(resp.status, 200);
         assert.equal(searchCalls, 1);
-        assert.equal(resolveCalls, 0);
+        assert.equal(resolveCalls, 1);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_should_not_be_used');
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -1813,7 +1890,7 @@ test('Offers resolve db_error: canonical ref still keeps internal PDP open contr
   );
 });
 
-test('/v1/chat availability: specific query skips resolve fallback on transient search timeout', async () => {
+test('/v1/chat availability: specific query falls back to local resolver when remote resolve fails transiently', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -1840,7 +1917,12 @@ test('/v1/chat availability: specific query skips resolve fallback on transient 
       };
 
       axios.post = async (url) => {
-        if (String(url).includes('/agent/v1/products/resolve')) resolveCalls += 1;
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          resolveCalls += 1;
+          const timeoutErr = new Error('resolve timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
         throw new Error(`Unexpected axios.post: ${url}`);
       };
 
@@ -1875,7 +1957,16 @@ test('/v1/chat availability: specific query skips resolve fallback on transient 
 
         assert.equal(resp.status, 200);
         assert.equal(searchCalls, 1);
-        assert.equal(resolveCalls, 0);
+        assert.equal(resolveCalls, 1);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(first?.pdp_open?.product_ref?.product_id, '9886500749640');
+        assert.equal(first?.pdp_open?.product_ref?.merchant_id, 'merch_efbc46b4619cfbdf');
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -1884,7 +1975,7 @@ test('/v1/chat availability: specific query skips resolve fallback on transient 
   );
 });
 
-test('/v1/chat availability: 200 soft-fallback timeout response skips resolve fallback', async () => {
+test('/v1/chat availability: 200 soft-timeout search still resolves via local resolver (no remote resolve)', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -1964,8 +2055,12 @@ test('/v1/chat availability: 200 soft-fallback timeout response skips resolve fa
 
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
         const offersCard = cards.find((c) => c && c.type === 'offers_resolved');
-        const fieldMissing = Array.isArray(offersCard?.field_missing) ? offersCard.field_missing : [];
-        assert.ok(fieldMissing.some((f) => String(f?.reason || '') === 'upstream_timeout'));
+        const items = Array.isArray(offersCard?.payload?.items) ? offersCard.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(first?.pdp_open?.product_ref?.product_id, '9886500749640');
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
