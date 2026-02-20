@@ -2878,6 +2878,22 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return true;
 
+  const hasPetHarnessSignal = hasPetHarnessSearchSignal(queryText);
+  const hasHarnessProductSignal = (candidateText) =>
+    /\b(harness|leash|collar|lead|no-?pull)\b/i.test(candidateText) ||
+    /(背带|背帶|牵引|牽引|狗链|狗鏈|项圈|項圈|遛狗|ハーネス|リード|首輪|arn[eé]s|correa|collier)/i.test(
+      candidateText,
+    );
+  if (hasPetHarnessSignal) {
+    for (const product of products.slice(0, 8)) {
+      if (!hasUsableSearchProduct(product)) continue;
+      const candidateText = buildFallbackCandidateText(product);
+      if (!candidateText) continue;
+      if (hasHarnessProductSignal(candidateText)) return true;
+    }
+    return false;
+  }
+
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const lookupTokens = expandLookupAnchorTokens(queryText, anchorTokens);
   if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
@@ -2910,6 +2926,15 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
+
+  if (hasPetHarnessSearchSignal(queryText)) {
+    const hasHarnessProductSignal =
+      /\b(harness|leash|collar|lead|no-?pull)\b/i.test(candidateText) ||
+      /(背带|背帶|牵引|牽引|狗链|狗鏈|项圈|項圈|遛狗|ハーネス|リード|首輪|arn[eé]s|correa|collier)/i.test(
+        candidateText,
+      );
+    if (!hasHarnessProductSignal) return false;
+  }
 
   const normalizedQuery =
     typeof options.normalizedQuery === 'string'

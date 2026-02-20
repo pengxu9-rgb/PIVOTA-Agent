@@ -311,6 +311,58 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
+  test('pet harness query rejects dog-apparel-only matches as strict empty', async () => {
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        total: 1,
+        products: [
+          {
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            product_id: 'DOG_JACKET_001',
+            title: 'Cute Winter Dog Jacket',
+            product_type: 'Pet Apparel',
+            status: 'active',
+          },
+        ],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '有没有狗链推荐？',
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'zh-CN' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        strict_empty: true,
+      }),
+    );
+  });
+
   test('does not run resolver-first for broad recommendation queries when strong-only is enabled', async () => {
     const queryText = 'best toner for very dry sensitive skin under $30';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
