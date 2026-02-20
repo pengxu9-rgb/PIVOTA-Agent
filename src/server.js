@@ -11748,9 +11748,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
             : true;
+          const relaxCacheRelevanceGate = hasPetSearchSignal(cacheQueryText);
           const effectiveCacheHit =
             effectiveProducts.length > 0 &&
-            (!isShoppingSource(source) || cacheRelevant);
+            (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
           const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
           crossMerchantCacheRouteDebug = {
             attempted: true,
@@ -11766,6 +11767,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             internal_products_relevant_count: internalProductsForRecall.length,
             external_products_count: externalCount,
             cache_relevant: cacheRelevant,
+            cache_relevance_gate_relaxed: relaxCacheRelevanceGate,
             total: Number(fromCache.total || 0),
             retrieval_sources: fromCache.retrieval_sources || null,
             supplement: supplementMeta,
@@ -11826,7 +11828,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          if (internalProductsForRecall.length > 0 && cacheRelevant) {
+          if (internalProductsForRecall.length > 0 && (cacheRelevant || relaxCacheRelevanceGate)) {
             crossMerchantCacheProtectedResponse =
               withPolicyProducts.length > 0
                 ? enriched
