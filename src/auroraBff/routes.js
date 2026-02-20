@@ -1677,6 +1677,8 @@ function normalizeRecoCatalogSearchPath(value) {
 function buildRecoCatalogSearchPathCandidates() {
   const out = [];
   const seen = new Set();
+  const genericPath = '/agent/v1/products/search';
+  const beautyPath = '/agent/v1/beauty/products/search';
   const add = (value) => {
     const normalized = normalizeRecoCatalogSearchPath(value);
     if (!normalized) return;
@@ -1691,10 +1693,20 @@ function buildRecoCatalogSearchPathCandidates() {
       .filter(Boolean);
     for (const token of tokens) add(token);
   } else if (RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED) {
-    add('/agent/v1/beauty/products/search');
+    add(beautyPath);
   }
-  add('/agent/v1/products/search');
-  return out;
+  add(genericPath);
+
+  if (RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED) {
+    return [
+      ...(out.includes(beautyPath) ? [beautyPath] : []),
+      ...out.filter((item) => item !== beautyPath),
+    ];
+  }
+  return [
+    ...(out.includes(genericPath) ? [genericPath] : []),
+    ...out.filter((item) => item !== genericPath),
+  ];
 }
 
 function getRecoCatalogSearchSourceState(baseUrl) {
@@ -4353,6 +4365,13 @@ async function buildRealtimeCompetitorCandidates({
     normalizedMode === 'sync_repair' || normalizedMode === 'async_backfill'
       ? normalizedMode
       : 'main_path';
+  const syncResolveFallbackEnabled = (() => {
+    const raw = String(process.env.AURORA_BFF_RECO_COMPETITOR_SYNC_RESOLVE_FALLBACK || 'false')
+      .trim()
+      .toLowerCase();
+    return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+  })();
+  const allowResolveFallback = runMode === 'async_backfill' || (runMode === 'sync_repair' && syncResolveFallbackEnabled);
   // Sync repair should also search across merchants; this improves cross-brand recovery
   // when the anchor query is sparse or merchant-local index is incomplete.
   const searchAllMerchants = runMode !== 'main_path';
@@ -4362,8 +4381,8 @@ async function buildRealtimeCompetitorCandidates({
     runMode === 'async_backfill'
       ? 180
       : runMode === 'sync_repair'
-        ? 520
-        : 220;
+        ? 280
+        : 120;
   const effectiveSearchTimeoutMs = Math.max(
     260,
     Math.min(
@@ -4610,6 +4629,13 @@ async function buildRealtimeCompetitorCandidates({
       const reason = String(searched?.reason || '').trim().toLowerCase();
       return !searched?.ok && transientReasons.has(reason);
     });
+  if (!allowResolveFallback) {
+    return {
+      candidates: [],
+      queries,
+      reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
+    };
+  }
   if (runMode === 'main_path' && getRemainingMs() < 420) {
     return {
       candidates: [],
@@ -6522,43 +6548,6 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         dagOut?.dupes?.candidates,
         PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
       );
-      let asyncAuroraFallbackUsed = false;
-      let asyncAuroraFallbackReason = null;
-      if (!asyncCandidates.length) {
-        const auroraFallback = await buildAuroraFallbackCompetitorCandidates({
-          productUrl: urlText,
-          anchorProduct: anchorForReco,
-          profileSummary,
-          lang,
-          maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
-          logger,
-        });
-        asyncAuroraFallbackReason = pickFirstTrimmed(auroraFallback?.reason);
-        const fallbackCandidates = sanitizeCompetitorCandidates(
-          auroraFallback?.candidates,
-          PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
-        );
-        if (fallbackCandidates.length) {
-          const rerouted = routeCompetitorCandidatePools({
-            anchorProduct: anchorForReco,
-            candidates: fallbackCandidates,
-            maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
-          });
-          asyncCandidates = sanitizeCompetitorCandidates(
-            rerouted.compPool,
-            PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
-          );
-          asyncRelated = sanitizeCompetitorCandidates(
-            [...asyncRelated, ...(Array.isArray(rerouted.relPool) ? rerouted.relPool : [])],
-            PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
-          );
-          asyncDupes = sanitizeCompetitorCandidates(
-            [...asyncDupes, ...(Array.isArray(rerouted.dupePool) ? rerouted.dupePool : [])],
-            PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
-          );
-          asyncAuroraFallbackUsed = asyncCandidates.length > 0;
-        }
-      }
       if (!asyncCandidates.length && !asyncRelated.length && !asyncDupes.length) return;
       const routeReasonCodes = summarizeRouterReasonCodes({
         internal_reason_codes: Array.isArray(dagOut.internal_reason_codes) ? dagOut.internal_reason_codes : [],
@@ -6567,7 +6556,6 @@ function scheduleProductIntelCompetitorEnrichBackfill({
       const dagFallbacksUsed = uniqCaseInsensitiveStrings(
         [
           ...(Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : []),
-          ...(asyncAuroraFallbackUsed ? ['aurora_alternatives_competitors'] : []),
         ],
         12,
       );
@@ -6621,7 +6609,6 @@ function scheduleProductIntelCompetitorEnrichBackfill({
             ...routeReasonCodes,
             ...dagFallbacksUsed.map((item) => `reco_dag_fallback_${String(item || '').trim().toLowerCase()}`),
             ...dagTimedOutBlocks.map((item) => `reco_dag_timeout_${String(item || '').trim().toLowerCase()}`),
-            ...(asyncAuroraFallbackUsed ? ['competitor_async_aurora_fallback_used'] : []),
             'competitor_async_backfill_used',
           ],
           32,
@@ -6642,8 +6629,6 @@ function scheduleProductIntelCompetitorEnrichBackfill({
           ...(sourceMeta && typeof sourceMeta === 'object' && !Array.isArray(sourceMeta) ? sourceMeta : {}),
           competitor_async_enriched: true,
           competitor_async_source: 'reco_blocks_dag',
-          ...(asyncAuroraFallbackUsed ? { competitor_async_fallback_source: 'aurora_alternatives' } : {}),
-          ...(asyncAuroraFallbackReason ? { competitor_async_fallback_reason: asyncAuroraFallbackReason } : {}),
           competitor_queries: Array.isArray(dagOut.catalog_queries) ? dagOut.catalog_queries : [],
           competitor_router_reason_codes: routeReasonCodes,
           reco_blocks_dag: dagDiagnostics
@@ -6759,7 +6744,6 @@ async function maybeSyncRepairLowCoverageCompetitors({
     dagOut?.dupes?.candidates,
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   );
-  let syncAuroraFallbackUsed = false;
   let syncDirectRecallUsed = false;
   if (!mergedCandidates.length) {
     try {
@@ -6807,40 +6791,6 @@ async function maybeSyncRepairLowCoverageCompetitors({
         { err: err?.message || String(err), url: urlText },
         'aurora bff: sync repair direct recall failed',
       );
-    }
-  }
-  if (!mergedCandidates.length) {
-    const auroraFallback = await buildAuroraFallbackCompetitorCandidates({
-      productUrl: urlText,
-      anchorProduct: anchorForRecall,
-      profileSummary,
-      lang,
-      maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
-      logger,
-    });
-    const fallbackCandidates = sanitizeCompetitorCandidates(
-      auroraFallback?.candidates,
-      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
-    );
-    if (fallbackCandidates.length) {
-      const rerouted = routeCompetitorCandidatePools({
-        anchorProduct: anchorForRecall,
-        candidates: fallbackCandidates,
-        maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
-      });
-      mergedCandidates = sanitizeCompetitorCandidates(
-        rerouted.compPool,
-        PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
-      );
-      mergedRelatedCandidates = sanitizeCompetitorCandidates(
-        [...mergedRelatedCandidates, ...(Array.isArray(rerouted.relPool) ? rerouted.relPool : [])],
-        PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
-      );
-      mergedDupeCandidates = sanitizeCompetitorCandidates(
-        [...mergedDupeCandidates, ...(Array.isArray(rerouted.dupePool) ? rerouted.dupePool : [])],
-        PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
-      );
-      syncAuroraFallbackUsed = mergedCandidates.length > 0;
     }
   }
   if (!mergedCandidates.length && !mergedRelatedCandidates.length && !mergedDupeCandidates.length) {
@@ -6904,7 +6854,6 @@ async function maybeSyncRepairLowCoverageCompetitors({
     [
       ...(Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : []),
       ...(syncDirectRecallUsed ? ['sync_direct_catalog_recall'] : []),
-      ...(syncAuroraFallbackUsed ? ['aurora_alternatives_competitors'] : []),
     ],
     12,
   );
@@ -6921,7 +6870,6 @@ async function maybeSyncRepairLowCoverageCompetitors({
       ...dagFallbacksUsed.map((item) => `reco_dag_fallback_${String(item || '').trim().toLowerCase()}`),
       ...dagTimedOutBlocks.map((item) => `reco_dag_timeout_${String(item || '').trim().toLowerCase()}`),
       ...(syncDirectRecallUsed ? ['competitor_sync_direct_recall_used'] : []),
-      ...(syncAuroraFallbackUsed ? ['competitor_sync_aurora_fallback_used'] : []),
       'competitor_sync_enrich_used',
     ],
     32,
@@ -22063,9 +22011,43 @@ function mountAuroraBffRoutes(app, { logger }) {
       accept_language: String(req.get('Accept-Language') || req.get('accept-language') || '').trim(),
     };
     let chatSessionId = getRecoDogfoodSessionId(req, ctx, '');
+    let llmRouteMetaForResponse = null;
+    const hasAnyLlmRouteMeta = (meta) =>
+      Boolean(
+        meta &&
+          typeof meta === 'object' &&
+          (
+            meta.llm_provider_requested ||
+            meta.llm_model_requested ||
+            meta.llm_provider_effective ||
+            meta.llm_model_effective
+          ),
+      );
+    const applyLlmMetaToEnvelope = (envelope) => {
+      if (!hasAnyLlmRouteMeta(llmRouteMetaForResponse)) return envelope;
+      if (!envelope || typeof envelope !== 'object') return envelope;
+
+      const out = { ...envelope };
+      const baseSessionPatch = out.session_patch && typeof out.session_patch === 'object' && !Array.isArray(out.session_patch)
+        ? { ...out.session_patch }
+        : {};
+      if (!baseSessionPatch.llm || typeof baseSessionPatch.llm !== 'object' || Array.isArray(baseSessionPatch.llm)) {
+        baseSessionPatch.llm = llmRouteMetaForResponse;
+      }
+      out.session_patch = baseSessionPatch;
+
+      const events = Array.isArray(out.events) ? out.events.slice() : [];
+      const hasRouteEvent = events.some((evt) => evt && typeof evt === 'object' && evt.event_name === 'llm_route');
+      if (!hasRouteEvent) {
+        events.push(makeEvent(ctx, 'llm_route', llmRouteMetaForResponse));
+      }
+      out.events = events;
+      return out;
+    };
     const sendChatEnvelope = (envelope, statusCode = 200) => {
+      const withLlmMeta = applyLlmMetaToEnvelope(envelope);
       const dogfoodAugmented = augmentEnvelopeProductAnalysisCardsForDogfood({
-        envelope,
+        envelope: withLlmMeta,
         req,
         ctx,
         mode: 'main_path',
@@ -22171,6 +22153,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const llmModel =
         normalizeChatLlmModel(parsed.data.llm_model) ||
         normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
+      llmRouteMetaForResponse =
+        llmProvider || llmModel
+          ? {
+            llm_provider_requested: llmProvider || null,
+            llm_model_requested: llmModel || null,
+            llm_provider_effective: null,
+            llm_model_effective: null,
+          }
+          : null;
       const anchorProductId =
         typeof parsed.data.anchor_product_id === 'string' && parsed.data.anchor_product_id.trim()
           ? parsed.data.anchor_product_id.trim()
@@ -23510,6 +23501,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmRouteMeta.llm_provider_effective ||
           llmRouteMeta.llm_model_effective,
       );
+      if (hasAnyLlmRouteMeta(llmRouteMeta)) {
+        llmRouteMetaForResponse = llmRouteMeta;
+      }
 
       if (isResumeUpstreamCall && AURORA_CHAT_RESUME_PROBE_METRICS_ENABLED) {
         const resumeMode = classifyResumeResponseMode(answer);

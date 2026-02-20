@@ -242,3 +242,64 @@ test('/v1/chat exposes llm routing metadata in session patch and events', async 
     },
   );
 });
+
+test('/v1/chat keeps requested llm metadata on profile-gate early return (no upstream call)', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+    },
+    async () => {
+      const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[clientModuleId];
+      const clientMod = require(clientModuleId);
+      const originalAuroraChat = clientMod.auroraChat;
+      let upstreamCalls = 0;
+      clientMod.auroraChat = async () => {
+        upstreamCalls += 1;
+        return { answer: 'ok', intent: 'chat', cards: [] };
+      };
+
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+
+      try {
+        const { mountAuroraBffRoutes } = require(routesModuleId);
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set('X-Aurora-UID', 'uid_chat_llm_gate_meta')
+          .set('X-Trace-ID', 'trace_chat_llm_gate_meta')
+          .set('X-Brief-ID', 'brief_chat_llm_gate_meta')
+          .set('X-Lang', 'EN')
+          .send({
+            message: 'Recommend a brightening serum under $30.',
+            llm_provider: 'gemini',
+            llm_model: 'gemini-2.5-flash',
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(upstreamCalls, 0);
+        assert.equal(resp.body?.session_patch?.llm?.llm_provider_requested, 'gemini');
+        assert.equal(resp.body?.session_patch?.llm?.llm_model_requested, 'gemini-2.5-flash');
+        assert.equal(resp.body?.session_patch?.llm?.llm_provider_effective, null);
+        assert.equal(resp.body?.session_patch?.llm?.llm_model_effective, null);
+
+        const llmRouteEvent = Array.isArray(resp.body?.events)
+          ? resp.body.events.find((evt) => evt && evt.event_name === 'llm_route')
+          : null;
+        assert.ok(llmRouteEvent);
+        assert.equal(llmRouteEvent.data?.llm_provider_requested, 'gemini');
+        assert.equal(llmRouteEvent.data?.llm_model_requested, 'gemini-2.5-flash');
+        assert.equal(llmRouteEvent.data?.llm_provider_effective, null);
+        assert.equal(llmRouteEvent.data?.llm_model_effective, null);
+      } finally {
+        clientMod.auroraChat = originalAuroraChat;
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
