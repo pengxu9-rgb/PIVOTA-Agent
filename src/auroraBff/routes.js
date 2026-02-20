@@ -3912,15 +3912,22 @@ async function buildRealtimeCompetitorCandidates({
       const reason = String(searched?.reason || '').trim().toLowerCase();
       return !searched?.ok && transientReasons.has(reason);
     });
-  if (runMode === 'main_path' && allSearchTransientFailure) {
-    return { candidates: [], queries, reason: 'catalog_search_transient_failed' };
-  }
   if (getRemainingMs() < 420) {
-    return { candidates: [], queries, reason: 'catalog_search_budget_exhausted' };
+    return {
+      candidates: [],
+      queries,
+      reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
+    };
   }
 
+  const resolveQueryList = [...queries].sort((a, b) => {
+    const lenA = String(a || '').trim().length || 999;
+    const lenB = String(b || '').trim().length || 999;
+    if (lenA !== lenB) return lenA - lenB;
+    return String(a || '').localeCompare(String(b || ''));
+  });
   const resolveResults = [];
-  for (const queryText of queries) {
+  for (const queryText of resolveQueryList) {
     const remainingMs = getRemainingMs();
     if (remainingMs < 320) break;
     // Keep resolve fallback bounded so source can return within DAG budget.
