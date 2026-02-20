@@ -28,12 +28,14 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS;
     delete process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST;
+    delete process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE;
     delete process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.AURORA_DECISION_BASE_URL;
     nock.cleanAll();
@@ -169,6 +171,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY = 'true';
     process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD = '1';
     process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS = '600000';
+    process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK = 'false';
 
     nock('http://catalog-primary.test')
       .persist()
@@ -313,6 +316,75 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.source_endpoint).toBe('http://catalog-primary.test/agent/v1/products/search');
     expect(Array.isArray(out.attempted_endpoints)).toBe(true);
     expect(out.attempted_endpoints[0]).toBe('http://catalog-primary.test/agent/v1/products/search');
+  });
+
+  test('catalog search auto-falls back to beauty path when generic route is empty', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
+    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'false';
+    process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK = 'true';
+    delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS;
+
+    nock('http://catalog-primary.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [],
+      });
+
+    nock('http://catalog-primary.test')
+      .persist()
+      .get('/agent/v1/beauty/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_beauty_1',
+            brand: 'Beauty Alt',
+            name: 'Beauty Recovery Serum',
+            display_name: 'Beauty Alt Beauty Recovery Serum',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'peptide repair serum',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('comp_beauty_1');
+    expect(Array.isArray(out.attempted_endpoints)).toBe(true);
+    expect(out.attempted_endpoints).toEqual([
+      'http://catalog-primary.test/agent/v1/products/search',
+      'http://catalog-primary.test/agent/v1/beauty/products/search',
+    ]);
+    expect(out.source_endpoint).toBe('http://catalog-primary.test/agent/v1/beauty/products/search');
+  });
+
+  test('catalog search respects tight deadline and exits with budget_exhausted instead of timing out', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const startedAt = Date.now();
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'peptide repair serum',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+      deadlineMs: Date.now() + 60,
+    });
+
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBe('budget_exhausted');
+    expect(Date.now() - startedAt).toBeLessThan(250);
   });
 
   test('catalog product mapping produces parse/analyze-compatible anchor payload', () => {
