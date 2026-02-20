@@ -5295,6 +5295,7 @@ async function runRecoBlocksForUrl({
   const payloadObj = existingPayload && typeof existingPayload === 'object' && !Array.isArray(existingPayload)
     ? existingPayload
     : null;
+  const modeToken = String(mode || '').trim().toLowerCase() || 'main_path';
 
   const kbCompetitors = sanitizeCompetitorCandidates(payloadObj?.competitors?.candidates, maxCandidates).map((row) => ({
     ...row,
@@ -5314,7 +5315,6 @@ async function runRecoBlocksForUrl({
 
   const sourceFns = {
     catalog_ann: async ({ timeout_ms: timeoutMs, deadline_ms: deadlineMs }) => {
-      const modeToken = String(mode || '').trim().toLowerCase();
       const queryLimit =
         modeToken === 'async_backfill'
           ? PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_QUERIES
@@ -5328,7 +5328,7 @@ async function runRecoBlocksForUrl({
         anchorProduct: anchorObj,
         profileSummary,
         lang,
-        mode: modeToken || 'main_path',
+        mode: modeToken,
         deadlineMs,
         timeoutMs: Math.max(120, Number(timeoutMs) || PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS),
         maxQueries: queryLimit,
@@ -5395,7 +5395,21 @@ async function runRecoBlocksForUrl({
       on_page_mode: AURORA_BFF_RECO_BLOCKS_ON_PAGE_MODE,
       logger,
       max_candidates: maxCandidates,
-      timeouts_ms: buildRecoBlocksTimeouts(),
+      timeouts_ms: (() => {
+        const next = buildRecoBlocksTimeouts();
+        if (modeToken === 'sync_repair') {
+          next.catalog_ann = Math.max(
+            next.catalog_ann,
+            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS, 900),
+          );
+        } else if (modeToken === 'async_backfill') {
+          next.catalog_ann = Math.max(
+            next.catalog_ann,
+            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS, 1600),
+          );
+        }
+        return next;
+      })(),
       router_ctx: buildRecoBlocksRouterCtx(),
       dogfood_config: RECO_DOGFOOD_CONFIG,
       pool_size: RECO_DOGFOOD_CONFIG.retrieval.pool_size,
@@ -5523,8 +5537,12 @@ function stripCompetitorMissingTokens(items) {
     if (token === 'competitors_missing') continue;
     if (token === 'competitors.competitors.candidates') continue;
     if (token === 'competitors_low_coverage') continue;
+    if (token === 'alternatives_unavailable') continue;
+    if (token === 'alternatives_limited') continue;
     if (token === 'competitor_candidates_filtered_noise') continue;
     if (token === 'competitor_sync_enrich_used') continue;
+    if (token === 'competitor_sync_aurora_fallback_used') continue;
+    if (token === 'competitor_async_aurora_fallback_used') continue;
     if (/^competitor_recall_/i.test(token)) continue;
     out.push(token);
   }
@@ -5741,24 +5759,67 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
       });
       if (!dagOut || typeof dagOut !== 'object') return;
-      const asyncCandidates = sanitizeCompetitorCandidates(
+      let asyncCandidates = sanitizeCompetitorCandidates(
         dagOut?.competitors?.candidates,
         PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
       );
-      const asyncRelated = sanitizeCompetitorCandidates(
+      let asyncRelated = sanitizeCompetitorCandidates(
         dagOut?.related_products?.candidates,
         PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
       );
-      const asyncDupes = sanitizeCompetitorCandidates(
+      let asyncDupes = sanitizeCompetitorCandidates(
         dagOut?.dupes?.candidates,
         PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
       );
+      let asyncAuroraFallbackUsed = false;
+      let asyncAuroraFallbackReason = null;
+      if (!asyncCandidates.length) {
+        const auroraFallback = await buildAuroraFallbackCompetitorCandidates({
+          productUrl: urlText,
+          anchorProduct: anchorForReco,
+          profileSummary,
+          lang,
+          maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+          logger,
+        });
+        asyncAuroraFallbackReason = pickFirstTrimmed(auroraFallback?.reason);
+        const fallbackCandidates = sanitizeCompetitorCandidates(
+          auroraFallback?.candidates,
+          PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+        );
+        if (fallbackCandidates.length) {
+          const rerouted = routeCompetitorCandidatePools({
+            anchorProduct: anchorForReco,
+            candidates: fallbackCandidates,
+            maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+          });
+          asyncCandidates = sanitizeCompetitorCandidates(
+            rerouted.compPool,
+            PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+          );
+          asyncRelated = sanitizeCompetitorCandidates(
+            [...asyncRelated, ...(Array.isArray(rerouted.relPool) ? rerouted.relPool : [])],
+            PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+          );
+          asyncDupes = sanitizeCompetitorCandidates(
+            [...asyncDupes, ...(Array.isArray(rerouted.dupePool) ? rerouted.dupePool : [])],
+            PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_CANDIDATES,
+          );
+          asyncAuroraFallbackUsed = asyncCandidates.length > 0;
+        }
+      }
       if (!asyncCandidates.length && !asyncRelated.length && !asyncDupes.length) return;
       const routeReasonCodes = summarizeRouterReasonCodes({
         internal_reason_codes: Array.isArray(dagOut.internal_reason_codes) ? dagOut.internal_reason_codes : [],
       });
       const dagDiagnostics = dagOut.diagnostics && typeof dagOut.diagnostics === 'object' ? dagOut.diagnostics : null;
-      const dagFallbacksUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
+      const dagFallbacksUsed = uniqCaseInsensitiveStrings(
+        [
+          ...(Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : []),
+          ...(asyncAuroraFallbackUsed ? ['aurora_alternatives_competitors'] : []),
+        ],
+        12,
+      );
       const dagTimedOutBlocks = Array.isArray(dagDiagnostics?.timed_out_blocks) ? dagDiagnostics.timed_out_blocks : [];
 
       const existingEvidence =
@@ -5809,6 +5870,7 @@ function scheduleProductIntelCompetitorEnrichBackfill({
             ...routeReasonCodes,
             ...dagFallbacksUsed.map((item) => `reco_dag_fallback_${String(item || '').trim().toLowerCase()}`),
             ...dagTimedOutBlocks.map((item) => `reco_dag_timeout_${String(item || '').trim().toLowerCase()}`),
+            ...(asyncAuroraFallbackUsed ? ['competitor_async_aurora_fallback_used'] : []),
             'competitor_async_backfill_used',
           ],
           32,
@@ -5829,6 +5891,8 @@ function scheduleProductIntelCompetitorEnrichBackfill({
           ...(sourceMeta && typeof sourceMeta === 'object' && !Array.isArray(sourceMeta) ? sourceMeta : {}),
           competitor_async_enriched: true,
           competitor_async_source: 'reco_blocks_dag',
+          ...(asyncAuroraFallbackUsed ? { competitor_async_fallback_source: 'aurora_alternatives' } : {}),
+          ...(asyncAuroraFallbackReason ? { competitor_async_fallback_reason: asyncAuroraFallbackReason } : {}),
           competitor_queries: Array.isArray(dagOut.catalog_queries) ? dagOut.catalog_queries : [],
           competitor_router_reason_codes: routeReasonCodes,
           reco_blocks_dag: dagDiagnostics
@@ -5928,18 +5992,53 @@ async function maybeSyncRepairLowCoverageCompetitors({
     return { payload: payloadObj, enhanced: false, reason: 'dag_disabled' };
   }
 
-  const mergedCandidates = sanitizeCompetitorCandidates(
+  let mergedCandidates = sanitizeCompetitorCandidates(
     dagOut?.competitors?.candidates,
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   );
-  const mergedRelatedCandidates = sanitizeCompetitorCandidates(
+  let mergedRelatedCandidates = sanitizeCompetitorCandidates(
     dagOut?.related_products?.candidates,
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   );
-  const mergedDupeCandidates = sanitizeCompetitorCandidates(
+  let mergedDupeCandidates = sanitizeCompetitorCandidates(
     dagOut?.dupes?.candidates,
     PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   );
+  let syncAuroraFallbackUsed = false;
+  if (!mergedCandidates.length) {
+    const auroraFallback = await buildAuroraFallbackCompetitorCandidates({
+      productUrl: urlText,
+      anchorProduct: anchorForRecall,
+      profileSummary,
+      lang,
+      maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      logger,
+    });
+    const fallbackCandidates = sanitizeCompetitorCandidates(
+      auroraFallback?.candidates,
+      PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+    );
+    if (fallbackCandidates.length) {
+      const rerouted = routeCompetitorCandidatePools({
+        anchorProduct: anchorForRecall,
+        candidates: fallbackCandidates,
+        maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      });
+      mergedCandidates = sanitizeCompetitorCandidates(
+        rerouted.compPool,
+        PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      );
+      mergedRelatedCandidates = sanitizeCompetitorCandidates(
+        [...mergedRelatedCandidates, ...(Array.isArray(rerouted.relPool) ? rerouted.relPool : [])],
+        PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      );
+      mergedDupeCandidates = sanitizeCompetitorCandidates(
+        [...mergedDupeCandidates, ...(Array.isArray(rerouted.dupePool) ? rerouted.dupePool : [])],
+        PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+      );
+      syncAuroraFallbackUsed = mergedCandidates.length > 0;
+    }
+  }
   if (!mergedCandidates.length && !mergedRelatedCandidates.length && !mergedDupeCandidates.length) {
     return { payload: payloadObj, enhanced: false, reason: 'reco_dag_empty' };
   }
@@ -5997,7 +6096,13 @@ async function maybeSyncRepairLowCoverageCompetitors({
   }
 
   const dagDiagnostics = dagOut.diagnostics && typeof dagOut.diagnostics === 'object' ? dagOut.diagnostics : null;
-  const dagFallbacksUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
+  const dagFallbacksUsed = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : []),
+      ...(syncAuroraFallbackUsed ? ['aurora_alternatives_competitors'] : []),
+    ],
+    12,
+  );
   const dagTimedOutBlocks = Array.isArray(dagDiagnostics?.timed_out_blocks) ? dagDiagnostics.timed_out_blocks : [];
   const routeReasonCodes = summarizeRouterReasonCodes({
     internal_reason_codes: Array.isArray(dagOut.internal_reason_codes) ? dagOut.internal_reason_codes : [],
@@ -6010,6 +6115,7 @@ async function maybeSyncRepairLowCoverageCompetitors({
       ...routeReasonCodes,
       ...dagFallbacksUsed.map((item) => `reco_dag_fallback_${String(item || '').trim().toLowerCase()}`),
       ...dagTimedOutBlocks.map((item) => `reco_dag_timeout_${String(item || '').trim().toLowerCase()}`),
+      ...(syncAuroraFallbackUsed ? ['competitor_sync_aurora_fallback_used'] : []),
       'competitor_sync_enrich_used',
     ],
     32,

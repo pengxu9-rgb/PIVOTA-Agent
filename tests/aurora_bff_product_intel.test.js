@@ -1537,6 +1537,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
     process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
 
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
     const getProductIntelKbEntry = jest.fn().mockResolvedValue(null);
@@ -1567,6 +1568,29 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query(true)
       .reply(503, { error: 'temporary unavailable' });
 
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/chat')
+      .reply(200, {
+        structured: {
+          alternatives: [
+            {
+              product: {
+                product_id: 'alt_async_1',
+                sku_id: 'alt_async_1',
+                brand: 'Brand Alternative',
+                name: 'Brand Alternative Copper Peptide Serum',
+              },
+              similarity_score: 0.84,
+              reasons: ['Cross-brand peptide alternative'],
+              tradeoffs: { price_delta_usd: 3 },
+              evidence: { kb_citations: ['kb:alt_async_1'] },
+              missing_info: [],
+            },
+          ],
+        },
+      });
+
     const app = require('../src/server');
     const res = await request(app)
       .post('/v1/product/analyze')
@@ -1588,11 +1612,16 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       expect.objectContaining({
         competitor_async_enriched: true,
         competitor_async_source: 'reco_blocks_dag',
+        competitor_async_fallback_source: 'aurora_alternatives',
       }),
     );
     const competitors = Array.isArray(lastWrite.analysis?.competitors?.candidates) ? lastWrite.analysis.competitors.candidates : [];
     const related = Array.isArray(lastWrite.analysis?.related_products?.candidates) ? lastWrite.analysis.related_products.candidates : [];
-    expect(competitors.length + related.length).toBeGreaterThan(0);
+    expect(competitors.length).toBeGreaterThan(0);
+    expect(
+      competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
+    ).toBe(false);
+    expect(related.length).toBeGreaterThanOrEqual(0);
   });
 
   test('/v1/product/analyze filters nav links and routes on-page related products away from competitors', async () => {
