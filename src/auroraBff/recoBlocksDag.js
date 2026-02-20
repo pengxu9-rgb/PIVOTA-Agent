@@ -30,6 +30,10 @@ const DEFAULT_TIMEOUTS_MS = {
   dupe_pipeline: 350,
   on_page_related: 220,
 };
+const SOURCE_TIMEOUT_GRACE_MS = {
+  // Catalog ANN often needs extra time after upstream search returns to normalize and route candidates.
+  catalog_ann: 220,
+};
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -465,7 +469,11 @@ async function executeSource({
     return normalizeSourceResult({}, sourceName, defaultSourceType);
   }
 
-  const boundedTimeout = Math.max(30, Math.min(timeoutMs, timeLeft));
+  const sourceTimeoutMs = Math.max(30, Math.min(timeoutMs, timeLeft));
+  const timeoutGraceMs = sourceTimeoutMs >= 180
+    ? toSafeInt(SOURCE_TIMEOUT_GRACE_MS[sourceName], 0, 0, 2000)
+    : 0;
+  const wrapperTimeoutMs = Math.max(30, Math.min(timeLeft, sourceTimeoutMs + timeoutGraceMs));
   const startedAt = Date.now();
   stat.attempts += 1;
   try {
@@ -474,13 +482,13 @@ async function executeSource({
         sourceFn({
           anchor,
           ctx,
-          timeout_ms: boundedTimeout,
+          timeout_ms: sourceTimeoutMs,
           deadline_ms: deadlineMs,
           budget_ms: budgetMs,
           source_name: sourceName,
         }),
       ),
-      boundedTimeout,
+      wrapperTimeoutMs,
       sourceName,
     );
     const out = normalizeSourceResult(raw, sourceName, defaultSourceType);
@@ -723,12 +731,15 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     }
     if (!compPool.length || diagnostics.blocks.catalog_ann.timeout) {
       addFallbackToken(diagnostics.fallbacks_used, 'fast_ann_competitors');
+      const annRetryTimeoutMs = diagnostics.blocks.catalog_ann.timeout && timeouts.catalog_ann >= 180
+        ? Math.max(220, timeouts.catalog_ann + 220)
+        : Math.max(140, timeouts.catalog_ann);
       const annRetry = await executeSource({
         sourceName: 'catalog_ann',
         sourceFn: sources.catalog_ann,
         anchor,
         ctx,
-        timeoutMs: Math.max(140, timeouts.catalog_ann),
+        timeoutMs: annRetryTimeoutMs,
         budgetMs: totalBudgetMs,
         deadlineMs,
         defaultSourceType: defaultSourceTypeBySource.catalog_ann,
