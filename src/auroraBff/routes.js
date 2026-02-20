@@ -5527,14 +5527,39 @@ function getCompetitorCandidatesFromPayload(payload, { max = 10 } = {}) {
   return sanitizeCompetitorCandidates(competitors?.candidates, max);
 }
 
+function getEffectiveCompetitorCoverageFromPayload(payload, { max = 10 } = {}) {
+  const candidates = getCompetitorCandidatesFromPayload(payload, { max });
+  if (!candidates.length) return 0;
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!p) return candidates.length;
+  const assessment =
+    p.assessment && typeof p.assessment === 'object' && !Array.isArray(p.assessment)
+      ? p.assessment
+      : null;
+  const anchorProduct =
+    assessment &&
+    assessment.anchor_product &&
+    typeof assessment.anchor_product === 'object' &&
+    !Array.isArray(assessment.anchor_product)
+      ? assessment.anchor_product
+      : null;
+  if (!anchorProduct) return candidates.length;
+  const routedPools = routeCompetitorCandidatePools({
+    anchorProduct,
+    candidates,
+    maxCandidates: Math.max(1, Math.min(12, Number(max) || 10)),
+  });
+  return Array.isArray(routedPools?.compPool) ? routedPools.compPool.length : 0;
+}
+
 function hasCompetitorCandidatesInPayload(payload, { minCount = 1 } = {}) {
   const threshold = Math.max(1, Math.min(10, Number(minCount) || 1));
-  return getCompetitorCandidatesFromPayload(payload, { max: 10 }).length >= threshold;
+  return getEffectiveCompetitorCoverageFromPayload(payload, { max: 10 }) >= threshold;
 }
 
 function hasLowCoverageCompetitorsInPayload(payload, { preferredCount = 2 } = {}) {
   const target = Math.max(1, Math.min(10, Number(preferredCount) || 2));
-  const count = getCompetitorCandidatesFromPayload(payload, { max: 10 }).length;
+  const count = getEffectiveCompetitorCoverageFromPayload(payload, { max: 10 });
   return count > 0 && count < target;
 }
 
@@ -5553,7 +5578,7 @@ function hasLowCoverageCompetitorToken(payload) {
 
 function shouldRepairCompetitorCoverage(payload, { preferredCount = 2 } = {}) {
   const target = Math.max(1, Math.min(10, Number(preferredCount) || 2));
-  const count = getCompetitorCandidatesFromPayload(payload, { max: 10 }).length;
+  const count = getEffectiveCompetitorCoverageFromPayload(payload, { max: 10 });
   // Empty competitors should always try a bounded repair pass, even when old KB
   // snapshots no longer carry explicit low-coverage tokens.
   if (count === 0) return true;
