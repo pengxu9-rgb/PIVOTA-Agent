@@ -351,6 +351,19 @@ const RECO_CATALOG_SEARCH_BASE_URLS = String(
   process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS ||
   '',
 ).trim();
+const RECO_CATALOG_SEARCH_PATHS = String(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS || '').trim();
+const RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const RECO_CATALOG_SEARCH_SOURCE = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE || 'aurora-bff')
+    .trim()
+    .toLowerCase();
+  return raw || 'aurora-bff';
+})();
 const RECO_CATALOG_MULTI_SOURCE_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED || 'true')
     .trim()
@@ -394,6 +407,11 @@ const CATALOG_AVAIL_SEARCH_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_CHAT_CATALOG_AVAIL_SEARCH_TIMEOUT_MS || 1200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
   return Math.max(300, Math.min(6000, v));
+})();
+const AURORA_CHAT_UPSTREAM_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_CHAT_UPSTREAM_TIMEOUT_MS || 22000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 22000;
+  return Math.max(6000, Math.min(60000, v));
 })();
 const PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK || 'false')
@@ -1636,6 +1654,49 @@ function buildRecoCatalogSearchBaseUrlCandidates({ includeLocalFallback = false 
   return out;
 }
 
+function normalizeRecoCatalogSearchPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  let path = raw;
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const parsed = new URL(path);
+      path = parsed.pathname || '';
+    } catch (_) {
+      return '';
+    }
+  }
+  if (!path) return '';
+  path = path.startsWith('/') ? path : `/${path}`;
+  path = path.replace(/\/{2,}/g, '/');
+  path = path.split('?')[0].split('#')[0];
+  if (!path || path === '/') return '';
+  return path.replace(/\/+$/, '') || '';
+}
+
+function buildRecoCatalogSearchPathCandidates() {
+  const out = [];
+  const seen = new Set();
+  const add = (value) => {
+    const normalized = normalizeRecoCatalogSearchPath(value);
+    if (!normalized) return;
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  };
+  if (RECO_CATALOG_SEARCH_PATHS) {
+    const tokens = RECO_CATALOG_SEARCH_PATHS
+      .split(/[\s,;|]+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    for (const token of tokens) add(token);
+  } else if (RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED) {
+    add('/agent/v1/beauty/products/search');
+  }
+  add('/agent/v1/products/search');
+  return out;
+}
+
 function getRecoCatalogSearchSourceState(baseUrl) {
   const key = normalizeBaseUrlForRecoCatalogSearch(baseUrl);
   if (!key) return null;
@@ -1879,6 +1940,7 @@ async function searchPivotaBackendProducts({
     in_stock_only: false,
     limit: normalizedLimit,
     offset: 0,
+    source: RECO_CATALOG_SEARCH_SOURCE,
   };
   const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
   const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
@@ -1893,6 +1955,7 @@ async function searchPivotaBackendProducts({
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
   });
+  const pathCandidates = buildRecoCatalogSearchPathCandidates();
   if (!baseUrlCandidates.length) {
     return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
   }
@@ -2029,75 +2092,203 @@ async function searchPivotaBackendProducts({
     }
     return false;
   };
+  const shouldTrySecondaryPathReason = (reason) => {
+    const token = String(reason || '').trim().toLowerCase();
+    if (!token) return false;
+    if (token === 'not_found') return true;
+    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return true;
+    if (token === 'empty') return RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
+    return false;
+  };
   const runSearchAttemptByBase = async (baseUrl, timeoutForAttemptMs) => {
     const normalizedBase = normalizeBaseUrlForRecoCatalogSearch(baseUrl);
-    const endpoint = `${normalizedBase}/agent/v1/products/search`;
-    const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
-    try {
-      const resp = await axios.get(endpoint, {
-        params,
-        headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
-        timeout: isLocalInvokeBase
-          ? Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, timeoutForAttemptMs))
-          : timeoutForAttemptMs,
-        validateStatus: () => true,
-      });
-      const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
-      if (!statusCode || statusCode < 200 || statusCode >= 300) {
-        const reason = mapSearchFailureReason({ statusCode, errCode: null, errMessage: null });
+    const normalizedPaths = Array.isArray(pathCandidates) && pathCandidates.length
+      ? pathCandidates
+      : ['/agent/v1/products/search'];
+    const pathAttempts = [];
+    let lastFailure = null;
+    let lastEmpty = null;
+    const perBaseStartedAt = Date.now();
+    for (let pathIdx = 0; pathIdx < normalizedPaths.length; pathIdx += 1) {
+      const pathToken = normalizeRecoCatalogSearchPath(normalizedPaths[pathIdx]) || '/agent/v1/products/search';
+      const endpoint = `${normalizedBase}${pathToken}`;
+      const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
+      const elapsedMs = Date.now() - perBaseStartedAt;
+      const remainingBudgetMs = Math.max(200, timeoutForAttemptMs - elapsedMs);
+      try {
+        const resp = await axios.get(endpoint, {
+          params,
+          headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
+          timeout: isLocalInvokeBase
+            ? Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, remainingBudgetMs))
+            : remainingBudgetMs,
+          validateStatus: () => true,
+        });
+        const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
+        if (!statusCode || statusCode < 200 || statusCode >= 300) {
+          const reason = mapSearchFailureReason({ statusCode, errCode: null, errMessage: null });
+          const failed = {
+            ok: false,
+            products: [],
+            reason,
+            status_code: statusCode,
+            source_base_url: normalizedBase,
+            source_endpoint: endpoint,
+            source_path: pathToken,
+            latency_ms: Date.now() - startedAt,
+          };
+          pathAttempts.push({
+            endpoint,
+            path: pathToken,
+            ok: false,
+            reason,
+            status_code: statusCode,
+            products: 0,
+          });
+          lastFailure = failed;
+          const shouldTryNextPath =
+            pathIdx < normalizedPaths.length - 1 &&
+            shouldTrySecondaryPathReason(reason);
+          if (shouldTryNextPath) continue;
+          return {
+            ...failed,
+            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            source_path_failover: pathAttempts.length > 1,
+          };
+        }
+
+        const body = resp && resp.data ? resp.data : null;
+        const products = normalizeProductsFromSearchData(body);
+        const bodyReason = products.length
+          ? null
+          : inferSearchFailureReasonFromBody({ data: body, statusCode });
+        if (bodyReason && bodyReason !== 'not_found') {
+          const failed = {
+            ok: false,
+            products: [],
+            reason: bodyReason,
+            status_code: statusCode,
+            source_base_url: normalizedBase,
+            source_endpoint: endpoint,
+            source_path: pathToken,
+            latency_ms: Date.now() - startedAt,
+          };
+          pathAttempts.push({
+            endpoint,
+            path: pathToken,
+            ok: false,
+            reason: bodyReason,
+            status_code: statusCode,
+            products: 0,
+          });
+          lastFailure = failed;
+          const shouldTryNextPath =
+            pathIdx < normalizedPaths.length - 1 &&
+            shouldTrySecondaryPathReason(bodyReason);
+          if (shouldTryNextPath) continue;
+          return {
+            ...failed,
+            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            source_path_failover: pathAttempts.length > 1,
+          };
+        }
+        const result = {
+          ok: true,
+          products,
+          reason: products.length ? null : bodyReason || 'empty',
+          status_code: statusCode,
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        pathAttempts.push({
+          endpoint,
+          path: pathToken,
+          ok: true,
+          reason: result.reason || null,
+          status_code: statusCode,
+          products: products.length,
+        });
+        if (products.length > 0) {
+          return {
+            ...result,
+            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            source_path_failover: pathAttempts.length > 1,
+          };
+        }
+        lastEmpty = result;
+        const shouldTryNextPath =
+          pathIdx < normalizedPaths.length - 1 &&
+          shouldTrySecondaryPathReason(result.reason || 'empty');
+        if (shouldTryNextPath) continue;
         return {
+          ...result,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
+        };
+      } catch (err) {
+        const statusCode = Number.isFinite(Number(err?.response?.status)) ? Math.trunc(Number(err.response.status)) : null;
+        const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
+        const errMessage = err && err.message ? err.message : String(err);
+        const reason = mapSearchFailureReason({ statusCode, errCode, errMessage });
+        const failed = {
           ok: false,
           products: [],
           reason,
           status_code: statusCode,
+          error_code: errCode || null,
           source_base_url: normalizedBase,
           source_endpoint: endpoint,
+          source_path: pathToken,
           latency_ms: Date.now() - startedAt,
+          err: errMessage,
         };
-      }
-
-      const body = resp && resp.data ? resp.data : null;
-      const products = normalizeProductsFromSearchData(body);
-      const bodyReason = products.length
-        ? null
-        : inferSearchFailureReasonFromBody({ data: body, statusCode });
-      if (bodyReason && bodyReason !== 'not_found') {
-        return {
+        pathAttempts.push({
+          endpoint,
+          path: pathToken,
           ok: false,
-          products: [],
-          reason: bodyReason,
+          reason,
           status_code: statusCode,
-          source_base_url: normalizedBase,
-          source_endpoint: endpoint,
-          latency_ms: Date.now() - startedAt,
+          products: 0,
+        });
+        lastFailure = failed;
+        const shouldTryNextPath =
+          pathIdx < normalizedPaths.length - 1 &&
+          shouldTrySecondaryPathReason(reason);
+        if (shouldTryNextPath) continue;
+        return {
+          ...failed,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
         };
       }
+    }
+    if (lastEmpty) {
       return {
-        ok: true,
-        products,
-        reason: products.length ? null : bodyReason || 'empty',
-        status_code: statusCode,
-        source_base_url: normalizedBase,
-        source_endpoint: endpoint,
-        latency_ms: Date.now() - startedAt,
-      };
-    } catch (err) {
-      const statusCode = Number.isFinite(Number(err?.response?.status)) ? Math.trunc(Number(err.response.status)) : null;
-      const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
-      const errMessage = err && err.message ? err.message : String(err);
-      const reason = mapSearchFailureReason({ statusCode, errCode, errMessage });
-      return {
-        ok: false,
-        products: [],
-        reason,
-        status_code: statusCode,
-        error_code: errCode || null,
-        source_base_url: normalizedBase,
-        source_endpoint: endpoint,
-        latency_ms: Date.now() - startedAt,
-        err: errMessage,
+        ...lastEmpty,
+        attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+        source_path_failover: pathAttempts.length > 1,
       };
     }
+    if (lastFailure) {
+      return {
+        ...lastFailure,
+        attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+        source_path_failover: pathAttempts.length > 1,
+      };
+    }
+    return {
+      ok: false,
+      products: [],
+      reason: 'upstream_error',
+      source_base_url: normalizedBase,
+      source_endpoint: `${normalizedBase}${normalizedPaths[0] || '/agent/v1/products/search'}`,
+      source_path: normalizedPaths[0] || '/agent/v1/products/search',
+      attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+      source_path_failover: pathAttempts.length > 1,
+      latency_ms: Date.now() - startedAt,
+    };
   };
 
   const nowMs = Date.now();
@@ -2107,6 +2298,13 @@ async function searchPivotaBackendProducts({
   const attempts = [];
   let finalFailure = null;
   let finalEmpty = null;
+  const collectAttemptedEndpoints = () =>
+    attempts.flatMap((item) => {
+      if (Array.isArray(item.attempted_endpoints) && item.attempted_endpoints.length) {
+        return item.attempted_endpoints;
+      }
+      return item.endpoint ? [item.endpoint] : [];
+    });
 
   for (let idx = 0; idx < orderedBaseUrls.length; idx += 1) {
     const baseUrl = orderedBaseUrls[idx];
@@ -2114,6 +2312,11 @@ async function searchPivotaBackendProducts({
     const attempt = await runSearchAttemptByBase(baseUrl, timeoutForAttemptMs);
     attempts.push({
       base_url: baseUrl,
+      endpoint: attempt.source_endpoint || null,
+      path: attempt.source_path || null,
+      attempted_endpoints: Array.isArray(attempt.attempted_endpoints)
+        ? attempt.attempted_endpoints.slice()
+        : [],
       reason: attempt.reason || null,
       ok: Boolean(attempt.ok),
       products: Array.isArray(attempt.products) ? attempt.products.length : 0,
@@ -2124,18 +2327,20 @@ async function searchPivotaBackendProducts({
       markRecoCatalogSearchSourceSuccess(baseUrl, Date.now());
       if (idx > 0) {
         logger?.warn(
-          {
-            query: q.slice(0, 120),
-            source_base_url: baseUrl,
-            attempted_sources: attempts.map((item) => item.base_url),
-            source_failover: true,
-          },
-          'aurora bff: reco catalog search source failover hit',
-        );
+              {
+                query: q.slice(0, 120),
+                source_base_url: baseUrl,
+                attempted_sources: attempts.map((item) => item.base_url),
+                attempted_endpoints: collectAttemptedEndpoints(),
+                source_failover: true,
+              },
+              'aurora bff: reco catalog search source failover hit',
+            );
       }
       return {
         ...attempt,
         attempted_sources: attempts.map((item) => item.base_url),
+        attempted_endpoints: collectAttemptedEndpoints(),
         source_failover: idx > 0,
       };
     }
@@ -2151,6 +2356,8 @@ async function searchPivotaBackendProducts({
         {
           query: q.slice(0, 120),
           source_base_url: baseUrl,
+          source_endpoint: attempt.source_endpoint || null,
+          source_path: attempt.source_path || null,
           reason: failureReason,
           status_code: attempt.status_code || null,
           code: attempt.error_code || null,
@@ -2173,6 +2380,7 @@ async function searchPivotaBackendProducts({
       source_base_url: finalEmpty.source_base_url || null,
       source_endpoint: finalEmpty.source_endpoint || null,
       attempted_sources: attempts.map((item) => item.base_url),
+      attempted_endpoints: collectAttemptedEndpoints(),
       source_failover: attempts.length > 1,
       latency_ms: Date.now() - startedAt,
     };
@@ -2188,6 +2396,7 @@ async function searchPivotaBackendProducts({
       source_base_url: finalFailure.source_base_url || null,
       source_endpoint: finalFailure.source_endpoint || null,
       attempted_sources: attempts.map((item) => item.base_url),
+      attempted_endpoints: collectAttemptedEndpoints(),
       source_failover: attempts.length > 1,
       latency_ms: Date.now() - startedAt,
     };
@@ -2198,6 +2407,7 @@ async function searchPivotaBackendProducts({
     products: [],
     reason: 'upstream_error',
     attempted_sources: attempts.map((item) => item.base_url),
+    attempted_endpoints: collectAttemptedEndpoints(),
     source_failover: attempts.length > 1,
     latency_ms: Date.now() - startedAt,
   };
@@ -23261,7 +23471,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         upstream = await auroraChat({
           baseUrl: AURORA_DECISION_BASE_URL,
           query,
-          timeoutMs: 12000,
+          timeoutMs: AURORA_CHAT_UPSTREAM_TIMEOUT_MS,
           debug: debugUpstream,
           allow_recommendations: allowRecoCards,
           ...(llmProvider ? { llm_provider: llmProvider } : {}),
@@ -23286,6 +23496,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         : ctx.lang === 'CN'
           ? '（我已收到。Aurora 上游暂不可用或未配置，当前仅能提供门控与记忆能力。）'
           : '(Received. Aurora upstream is unavailable or not configured; returning a gated/memory-aware fallback response.)';
+      const llmRouteMeta = {
+        llm_provider_requested: llmProvider || null,
+        llm_model_requested: llmModel || null,
+        llm_provider_effective:
+          upstream && typeof upstream.llm_provider === 'string' ? String(upstream.llm_provider || '').trim() || null : null,
+        llm_model_effective:
+          upstream && typeof upstream.llm_model === 'string' ? String(upstream.llm_model || '').trim() || null : null,
+      };
+      const hasLlmRouteMeta = Boolean(
+        llmRouteMeta.llm_provider_requested ||
+          llmRouteMeta.llm_model_requested ||
+          llmRouteMeta.llm_provider_effective ||
+          llmRouteMeta.llm_model_effective,
+      );
 
       if (isResumeUpstreamCall && AURORA_CHAT_RESUME_PROBE_METRICS_ENABLED) {
         const resumeMode = classifyResumeResponseMode(answer);
@@ -24140,6 +24364,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       } else if (pendingClarificationFromUpstream) {
         emitPendingClarificationPatch(sessionPatch, pendingClarificationFromUpstream);
       }
+      if (hasLlmRouteMeta) {
+        sessionPatch.llm = llmRouteMeta;
+      }
 
       const assembledCards = [
         ...(structuredForEnvelope && !structuredBlocked
@@ -24229,6 +24456,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: sessionPatch,
         events: [
           makeEvent(ctx, 'value_moment', { kind: 'chat_reply' }),
+          ...(hasLlmRouteMeta ? [makeEvent(ctx, 'llm_route', llmRouteMeta)] : []),
           ...(allowRecs ? [makeEvent(ctx, 'recos_requested', { explicit: true })] : []),
           ...(heatmapImpressionEvent ? [heatmapImpressionEvent] : []),
         ],
