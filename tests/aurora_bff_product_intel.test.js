@@ -1556,6 +1556,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
     ).toBe(false);
     expect(card.payload.missing_info).not.toContain('alternatives_limited');
+    expect(card.payload.missing_info).not.toContain('competitor_sync_aurora_fallback_used');
+    expect(card.payload.missing_info).toContain('analysis_in_progress');
     await new Promise((resolve) => setImmediate(resolve));
     expect(upsertProductIntelKbEntry).toHaveBeenCalled();
   });

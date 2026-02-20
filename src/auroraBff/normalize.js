@@ -43,6 +43,7 @@ const PRODUCT_ANALYSIS_GAP_MAP = {
   'alternatives_unavailable': 'alternatives_unavailable',
   'competitors_low_coverage': 'analysis_in_progress',
   'alternatives_limited': 'analysis_in_progress',
+  'competitor_sync_aurora_fallback_used': 'analysis_in_progress',
   'catalog_product_missing': 'product_not_resolved',
   'upstream_deep_scan_skipped_anchor_missing': 'product_not_resolved',
   'product_not_resolved': 'product_not_resolved',
