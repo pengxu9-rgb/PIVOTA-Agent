@@ -132,6 +132,24 @@ describe('find_products_multi context building', () => {
     );
   });
 
+  test('beauty tools conservative expansion stays compact and tool-scoped', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: '推荐化妆刷' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: '推荐化妆刷' }],
+      },
+      metadata: {},
+    });
+
+    const q = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(q).toContain('makeup brush');
+    expect(q).not.toContain('cosmetic tools');
+    expect(q).not.toContain('makeup sponge');
+    expect(String(expansion_meta?.mode || '')).toBe('conservative');
+    expect(q.length).toBeLessThanOrEqual(160);
+  });
+
   test('eye shadow brush query routes to dedicated scenario (no full-face kit)', async () => {
     const intent = extractIntentRuleBased('帮我挑一个画眼影的刷子', [], []);
     expect(intent.primary_domain).toBe('beauty');

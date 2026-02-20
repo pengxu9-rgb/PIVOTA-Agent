@@ -269,6 +269,48 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
+  test('keeps deterministic strict-empty reply when primary search errors', async () => {
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(504, {
+        error: 'UPSTREAM_TIMEOUT',
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '推荐化妆刷',
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'zh-CN' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.reply).toBe('Search is temporarily unavailable. Please retry shortly.');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        strict_empty: true,
+      }),
+    );
+  });
+
   test('does not run resolver-first for broad recommendation queries when strong-only is enabled', async () => {
     const queryText = 'best toner for very dry sensitive skin under $30';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';

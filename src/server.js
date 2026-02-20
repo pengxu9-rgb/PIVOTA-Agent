@@ -431,7 +431,7 @@ const SEARCH_STRICT_EMPTY_ENABLED =
   String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
 const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
   100,
-  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 250),
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 900),
 );
 const FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS = Math.max(
   300,
@@ -3022,6 +3022,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     allow_external_seed: true,
     allow_stale_cache: false,
     external_seed_strategy: 'supplement_internal_first',
+    fast_mode: true,
   };
 
   const url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
@@ -13714,9 +13715,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const isCacheLookupSource =
         querySource === 'cache_cross_merchant_search' ||
         querySource === 'cache_cross_merchant_search_supplemented';
+      const isErrorSoftFallbackSource = querySource === 'agent_products_error_fallback';
       const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
       const skipPolicyForLookupSoftFallback =
-        (querySource === 'agent_products_error_fallback' && isLookupPolicyQuery) ||
+        isErrorSoftFallbackSource ||
         (isResolverLookupSource && isLookupPolicyQuery) ||
         (isCacheLookupSource && isLookupPolicyQuery) ||
         (querySource === 'agent_products_search' && isAliasLookupQuery);

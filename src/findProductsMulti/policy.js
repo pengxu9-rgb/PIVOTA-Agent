@@ -1531,17 +1531,32 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       const wantsHarness = detectHarnessSignal(q);
       const wantsApparel = detectPetApparelSignal(q);
       if (wantsHarness) {
-        extra.push('dog harness', 'pet harness', 'dog leash', 'pet leash', 'dog collar');
+        extra.push('dog harness', 'dog leash', 'dog collar');
+        if (expansionMode === 'aggressive') {
+          extra.push('pet harness', 'pet leash');
+        }
       }
-      if (expansionMode === 'aggressive' && (!wantsHarness || wantsApparel)) {
+      if (wantsApparel && expansionMode === 'aggressive') {
+        extra.push('dog jacket', 'pet apparel');
+      } else if (wantsApparel) {
+        extra.push('dog apparel');
+      } else if (expansionMode === 'aggressive' && !wantsHarness) {
         extra.push('dog jacket', 'pet apparel');
       }
-      if (scenario.includes('hiking')) extra.push('hiking', 'cold weather');
+      if (scenario.includes('hiking') && expansionMode === 'aggressive') {
+        extra.push('hiking', 'cold weather');
+      }
       // Also expand for Chinese queries against English-heavy catalogs.
       if (lang === 'zh') {
-        extra.push('dog', 'pet');
+        extra.push('dog');
+        if (expansionMode === 'aggressive') {
+          extra.push('pet');
+        }
         if (wantsHarness) {
-          extra.push('leash', 'harness', 'collar');
+          extra.push('leash');
+          if (expansionMode === 'aggressive') {
+            extra.push('harness', 'collar');
+          }
         } else if (expansionMode === 'aggressive') {
           extra.push('coat');
         }
@@ -1637,26 +1652,35 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	      if (lang === 'fr') extra.push('pinceau fard à paupières', 'pinceau estompeur', 'pinceau eye-liner');
 	      if (lang === 'ja') extra.push('アイシャドウブラシ', 'ブレンディングブラシ', 'アイライナーブラシ', '下まぶた');
 	    } else if (intent?.primary_domain === 'beauty' && scenario === 'beauty_tools') {
-	      extra.push(
-	        'makeup tools',
-	        'cosmetic tools',
-	        'makeup brush',
-	        'brush set',
-	        'foundation brush',
-	        'powder brush',
-	        'makeup sponge',
-	        'powder puff',
-	      );
-	      if (lang === 'zh') extra.push('化妆刷', '粉底刷', '散粉刷', '美妆蛋', '粉扑', '刷具套装');
-	      if (lang === 'es') extra.push('brochas', 'esponja de maquillaje', 'borla');
-	      if (lang === 'fr') extra.push('pinceaux', 'éponge maquillage', 'houppette');
-	      if (lang === 'ja') extra.push('メイクブラシ', 'ブラシセット', 'メイクスポンジ', 'パフ');
+	      if (expansionMode === 'aggressive') {
+	        extra.push(
+	          'makeup tools',
+	          'cosmetic tools',
+	          'makeup brush',
+	          'brush set',
+	          'foundation brush',
+	          'powder brush',
+	          'makeup sponge',
+	          'powder puff',
+	        );
+	        if (lang === 'zh') extra.push('化妆刷', '粉底刷', '散粉刷', '美妆蛋', '粉扑', '刷具套装');
+	        if (lang === 'es') extra.push('brochas', 'esponja de maquillaje', 'borla');
+	        if (lang === 'fr') extra.push('pinceaux', 'éponge maquillage', 'houppette');
+	        if (lang === 'ja') extra.push('メイクブラシ', 'ブラシセット', 'メイクスポンジ', 'パフ');
+	      } else {
+	        extra.push('makeup brush', 'foundation brush', 'powder brush');
+	        if (lang === 'zh') extra.push('化妆刷', '粉底刷');
+	        if (lang === 'es') extra.push('brochas');
+	        if (lang === 'fr') extra.push('pinceaux');
+	        if (lang === 'ja') extra.push('メイクブラシ');
+	      }
 	    }
 
     if (!extra.length) return q;
     const dedupedExtra = Array.from(new Set(extra.map((item) => String(item || '').trim()).filter(Boolean)));
     const combined = `${q} ${dedupedExtra.join(' ')}`.trim();
-    return combined.length > 240 ? combined.slice(0, 240) : combined;
+    const maxCombinedLength = expansionMode === 'aggressive' ? 240 : 160;
+    return combined.length > maxCombinedLength ? combined.slice(0, maxCombinedLength).trim() : combined;
   })();
 
   const adjustedPayload = {
