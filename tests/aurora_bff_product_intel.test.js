@@ -525,7 +525,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
   });
 
-  test('reco guardrail circuit open degrades subsequent competitors to empty', () => {
+  test('reco guardrail circuit can recover when a clean competitor payload arrives', () => {
     process.env.AURORA_BFF_RECO_GUARD_ENABLED = 'true';
     process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED = 'true';
     process.env.AURORA_BFF_RECO_GUARD_CIRCUIT_THRESHOLD = '1';
@@ -601,13 +601,13 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       requestId: 'req_guard_circuit_2',
       mode: 'main_path',
     });
-    expect(Array.isArray(second?.competitors?.candidates) ? second.competitors.candidates.length : 0).toBe(0);
-    expect(second?.provenance?.guardrail_circuit_open).toBe(true);
-    expect(second?.provenance?.auto_rollback_flag).toBe(true);
-    expect(second?.confidence_by_block?.competitors?.level).toBe('low');
+    expect(Array.isArray(second?.competitors?.candidates) ? second.competitors.candidates.length : 0).toBe(1);
+    expect(second?.provenance?.guardrail_circuit_open).toBe(false);
+    expect(second?.provenance?.auto_rollback_flag).toBe(false);
+    expect(Array.isArray(second?.provenance?.guardrail_violations) ? second.provenance.guardrail_violations : []).not.toContain('circuit_open');
 
     const snap = __internal.getRecoGuardrailCircuitSnapshot('main_path');
-    expect(snap.open).toBe(true);
+    expect(snap.open).toBe(false);
   });
 
   test('/v1/product/analyze sanitizes polluted competitors from KB via runtime guardrail', async () => {

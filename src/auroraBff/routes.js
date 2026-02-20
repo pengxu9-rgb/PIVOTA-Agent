@@ -4752,40 +4752,61 @@ function applyRecoGuardrailToProductAnalysisPayload(
   let circuitOpen = Boolean(circuitBefore.open);
   let circuitUntilMs = Number(circuitBefore.open_until_ms || 0);
   let autoRollbackFlag = false;
+  let circuitRecovered = false;
   const violations = [];
   let filteredCandidates = [];
 
+  for (const candidate of rawCandidates) {
+    const sourceType = getRecoGuardCandidateSourceType(candidate);
+    const candidateBrandId = normalizeRecoGuardBrandId(getRecoGuardCandidateBrandId(candidate));
+    const sameBrandBlocked =
+      AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE &&
+      Boolean(anchorBrandId) &&
+      Boolean(candidateBrandId) &&
+      anchorBrandId === candidateBrandId;
+    const onPageBlocked = sourceType === 'on_page_related';
+    if (!sameBrandBlocked && !onPageBlocked) {
+      filteredCandidates.push(candidate);
+      continue;
+    }
+    if (sameBrandBlocked) {
+      violations.push({
+        violation_type: 'same_brand',
+        source_type: sourceType || 'unknown',
+        candidate_brand_id: candidateBrandId || '',
+      });
+    }
+    if (onPageBlocked) {
+      violations.push({
+        violation_type: 'on_page_source',
+        source_type: sourceType || 'unknown',
+        candidate_brand_id: candidateBrandId || '',
+      });
+    }
+  }
+
   if (circuitOpen && AURORA_BFF_RECO_GUARD_CIRCUIT_ENABLED) {
-    autoRollbackFlag = true;
-    filteredCandidates = [];
-  } else {
-    for (const candidate of rawCandidates) {
-      const sourceType = getRecoGuardCandidateSourceType(candidate);
-      const candidateBrandId = normalizeRecoGuardBrandId(getRecoGuardCandidateBrandId(candidate));
-      const sameBrandBlocked =
-        AURORA_BFF_RECO_GUARD_STRICT_DEFAULT_MODE &&
-        Boolean(anchorBrandId) &&
-        Boolean(candidateBrandId) &&
-        anchorBrandId === candidateBrandId;
-      const onPageBlocked = sourceType === 'on_page_related';
-      if (!sameBrandBlocked && !onPageBlocked) {
-        filteredCandidates.push(candidate);
-        continue;
-      }
-      if (sameBrandBlocked) {
-        violations.push({
-          violation_type: 'same_brand',
-          source_type: sourceType || 'unknown',
-          candidate_brand_id: candidateBrandId || '',
-        });
-      }
-      if (onPageBlocked) {
-        violations.push({
-          violation_type: 'on_page_source',
-          source_type: sourceType || 'unknown',
-          candidate_brand_id: candidateBrandId || '',
-        });
-      }
+    if (!violations.length && filteredCandidates.length) {
+      const state = getRecoGuardrailCircuitState(modeToken);
+      state.open_until_ms = 0;
+      state.consecutive_violations = 0;
+      state.last_violations = [];
+      circuitOpen = false;
+      circuitUntilMs = 0;
+      circuitRecovered = true;
+      logger?.info?.(
+        {
+          event_name: 'reco_guardrail_circuit_recovered',
+          request_id: requestId,
+          mode: modeToken,
+          block: 'competitors',
+          candidates_after: filteredCandidates.length,
+        },
+        'aurora bff: reco guardrail circuit recovered',
+      );
+    } else {
+      autoRollbackFlag = true;
+      filteredCandidates = [];
     }
   }
 
@@ -4857,6 +4878,7 @@ function applyRecoGuardrailToProductAnalysisPayload(
   if (violationTypes.includes('same_brand')) guardCodes.push('reco_guardrail_same_brand_filtered');
   if (violationTypes.includes('on_page_source')) guardCodes.push('reco_guardrail_on_page_filtered');
   if (circuitOpen) guardCodes.push('reco_guardrail_circuit_open');
+  if (circuitRecovered) guardCodes.push('reco_guardrail_circuit_recovered');
   const nextInternalCodes = uniqCaseInsensitiveStrings(
     [...existingCodes, ...guardCodes],
     32,
@@ -5824,10 +5846,7 @@ async function buildAuroraFallbackCompetitorCandidates({
     };
   }
 
-  const mappedAlternatives = mapAuroraAlternativesToRecoAlternatives(out.alternatives, {
-    lang: fallbackCtx.lang,
-    maxTotal: Math.max(2, Math.min(6, Number(maxCandidates) || 6)),
-  });
+  const mappedAlternatives = Array.isArray(out.alternatives) ? out.alternatives : [];
   const candidates = mapAlternativesToCompetitorCandidates(mappedAlternatives, { lang: fallbackCtx.lang, maxCandidates });
   if (!candidates.length) {
     return {
@@ -14897,19 +14916,155 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
   const bestInput = inputText || anchor;
   if (!bestInput) return { ok: false, alternatives: [], field_missing: [{ field: 'alternatives', reason: 'product_identity_missing' }] };
 
+  const normalizeAlternativesSkinType = (raw) => {
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) return '';
+    if (token.includes('oily')) return 'Oily';
+    if (token.includes('dry')) return 'Dry';
+    if (token.includes('combo') || token.includes('mix')) return 'Combo/Mixed';
+    return '';
+  };
+  const normalizeAlternativesSensitivity = (raw) => {
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) return '';
+    if (token.includes('high') || token.includes('sensitive') || token.includes('reactive')) return 'High';
+    if (token.includes('low')) return 'Low';
+    if (token.includes('medium') || token.includes('mid')) return 'Medium';
+    return '';
+  };
+  const normalizeAlternativesBarrier = (raw) => {
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) return '';
+    if (
+      token.includes('impaired') ||
+      token.includes('stinging') ||
+      token.includes('red') ||
+      token.includes('damaged') ||
+      token.includes('reactive')
+    ) {
+      return 'Impaired';
+    }
+    if (token.includes('stable') || token.includes('normal') || token.includes('healthy')) return 'Stable';
+    return '';
+  };
+  const normalizeAlternativesGoal = (raw) => {
+    const token = String(raw || '').trim();
+    if (!token) return '';
+    const lower = token.toLowerCase();
+    if (lower.includes('acne') || lower.includes('texture') || lower.includes('pore')) return 'Acne/Texture';
+    if (lower.includes('bright') || lower.includes('dark spot') || lower.includes('tone')) return 'Dark spots/Brightening';
+    if (lower.includes('aging') || lower.includes('firm') || lower.includes('wrinkle')) return 'Aging';
+    if (lower.includes('red') || lower.includes('barrier') || lower.includes('repair') || lower.includes('soothing')) {
+      return 'Redness/Barrier repair';
+    }
+    if (lower.includes('hydrat') || lower.includes('moist')) return 'Hydration';
+    return token.slice(0, 40);
+  };
+  const buildProfileSnapshot = (profileObjRaw, { forceConservative = false } = {}) => {
+    const profileObjSafe =
+      profileObjRaw && typeof profileObjRaw === 'object' && !Array.isArray(profileObjRaw)
+        ? profileObjRaw
+        : {};
+    const skinTypeKnown = normalizeAlternativesSkinType(
+      pickFirstTrimmed(profileObjSafe.skinType, profileObjSafe.skin_type, profileObjSafe.skin_type_text),
+    );
+    const sensitivityKnown = normalizeAlternativesSensitivity(
+      pickFirstTrimmed(profileObjSafe.sensitivity, profileObjSafe.sensitivity_level),
+    );
+    const barrierKnown = normalizeAlternativesBarrier(
+      pickFirstTrimmed(profileObjSafe.barrierStatus, profileObjSafe.barrier_status),
+    );
+    const goalsKnown = uniqCaseInsensitiveStrings(
+      Array.isArray(profileObjSafe.goals)
+        ? profileObjSafe.goals.map((item) => normalizeAlternativesGoal(item)).filter(Boolean)
+        : [],
+      3,
+    );
+    if (forceConservative) {
+      return {
+        skinType: skinTypeKnown || 'Oily',
+        sensitivity: sensitivityKnown || 'Medium',
+        barrierStatus: 'Impaired',
+        goals: goalsKnown.length ? goalsKnown : ['Hydration'],
+        assumptions_applied: true,
+      };
+    }
+    return {
+      skinType: skinTypeKnown || 'Combo/Mixed',
+      sensitivity: sensitivityKnown || 'Medium',
+      barrierStatus: barrierKnown || 'Impaired',
+      goals: goalsKnown.length ? goalsKnown : ['Hydration'],
+      assumptions_applied: !skinTypeKnown || !sensitivityKnown || !barrierKnown || !goalsKnown.length,
+    };
+  };
+  const extractAlternativesRawFromUpstream = ({ upstream, structured, answerJson }) => {
+    const structuredObj = structured && typeof structured === 'object' && !Array.isArray(structured) ? structured : null;
+    const answerObj = answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? answerJson : null;
+    if (Array.isArray(structuredObj?.alternatives)) return structuredObj.alternatives;
+    if (Array.isArray(answerObj?.alternatives)) return answerObj.alternatives;
+
+    const fromCards = [];
+    const cards = Array.isArray(upstream?.cards) ? upstream.cards : [];
+    for (const card of cards) {
+      if (!card || typeof card !== 'object') continue;
+      const type = String(card.type || '').trim().toLowerCase();
+      const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : null;
+      if (!payload) continue;
+      const candidateToAlt = (row, kind) => {
+        const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
+        if (!candidate) return null;
+        const productName = pickFirstTrimmed(candidate.display_name, candidate.name);
+        if (!productName) return null;
+        const product = {
+          ...(pickFirstTrimmed(candidate.product_id, candidate.sku_id) ? { product_id: pickFirstTrimmed(candidate.product_id, candidate.sku_id) } : {}),
+          ...(pickFirstTrimmed(candidate.sku_id) ? { sku_id: pickFirstTrimmed(candidate.sku_id) } : {}),
+          ...(pickFirstTrimmed(candidate.brand) ? { brand: pickFirstTrimmed(candidate.brand) } : {}),
+          name: productName,
+          ...(pickFirstTrimmed(candidate.category) ? { category: pickFirstTrimmed(candidate.category) } : {}),
+          ...(candidate.price && typeof candidate.price === 'object' ? { price: candidate.price } : {}),
+        };
+        const why = candidate.why_candidate;
+        const reasons = Array.isArray(why)
+          ? why
+          : why && typeof why === 'object' && !Array.isArray(why) && Array.isArray(why.reasons_user_visible)
+            ? why.reasons_user_visible
+            : [];
+        return {
+          kind,
+          product,
+          ...(candidate.similarity_score != null ? { similarity_score: candidate.similarity_score } : {}),
+          ...(reasons.length ? { reasons } : {}),
+          tradeoffs: Array.isArray(candidate.compare_highlights) ? candidate.compare_highlights : [],
+          evidence: {},
+          missing_info: [],
+        };
+      };
+      if (type === 'dupe_suggest') {
+        for (const row of Array.isArray(payload.dupes) ? payload.dupes : []) {
+          const alt = candidateToAlt(row, 'dupe');
+          if (alt) fromCards.push(alt);
+        }
+        for (const row of Array.isArray(payload.comparables) ? payload.comparables : []) {
+          const alt = candidateToAlt(row, 'similar');
+          if (alt) fromCards.push(alt);
+        }
+      } else if (type === 'product_analysis') {
+        for (const row of Array.isArray(payload?.dupes?.candidates) ? payload.dupes.candidates : []) {
+          const alt = candidateToAlt(row, 'dupe');
+          if (alt) fromCards.push(alt);
+        }
+        for (const row of Array.isArray(payload?.competitors?.candidates) ? payload.competitors.candidates : []) {
+          const alt = candidateToAlt(row, 'similar');
+          if (alt) fromCards.push(alt);
+        }
+      }
+    }
+    return fromCards;
+  };
+
   const profileObj = profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
     ? profileSummary
     : {};
-  const profileSkinType = pickFirstTrimmed(profileObj.skinType, profileObj.skin_type, profileObj.skin_type_text, 'Not sure');
-  const profileSensitivity = pickFirstTrimmed(profileObj.sensitivity, profileObj.sensitivity_level, 'Medium');
-  const profileBarrier = pickFirstTrimmed(profileObj.barrierStatus, profileObj.barrier_status, 'Stable');
-  const profileGoals = Array.isArray(profileObj.goals)
-    ? profileObj.goals.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3)
-    : [];
-  if (!profileGoals.length) profileGoals.push('Hydration');
-  const profileSnapshotLine =
-    `Profile snapshot (already available, do not re-ask): skinType=${profileSkinType}; ` +
-    `sensitivity=${profileSensitivity}; barrierStatus=${profileBarrier}; goals=${profileGoals.join(', ')}`;
 
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
@@ -14920,43 +15075,126 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
     action_id: 'chip.action.dupe_compare',
   });
 
-  const query =
-    `${prefix}` +
-    `${profileSnapshotLine}\n` +
-    `Execution constraints:\n` +
-    `- Do NOT ask clarifying questions.\n` +
-    `- If some fields are missing, continue with general-audience assumptions and mark missing_info.\n` +
-    `- Return alternatives based on available evidence instead of blocking on additional intake.\n` +
-    `Task: Deep-scan this product and return alternatives (dupe/similar/premium) tailored to this user if possible.\n` +
-    `Return ONLY a JSON object with keys: alternatives (array).\n` +
-    `Each alternative item should include: product (object), similarity_score (0..1 or 0..100), tradeoffs (object), reasons (string[] max 2), evidence (object), missing_info (string[]).\n` +
-    `Reasons must be end-user readable and explain why this alternative is useful for THIS user's profile/logs/budget (do NOT guess missing info; use missing_info).\n` +
-    `Product: ${bestInput}\n` +
-    (productJson ? `Product JSON: ${productJson}\n` : '');
-
-  let upstream = null;
-  try {
-    upstream = await auroraChat({
-      baseUrl: AURORA_DECISION_BASE_URL,
-      query,
-      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
-      ...(anchor ? { anchor_product_id: anchor } : {}),
-      resume_context: {
-        enabled: true,
-        template_version: 'v2',
-        flow_id: 'alternatives',
-        include_history: false,
-        resume_user_text: `Find dupe/similar/premium alternatives for ${bestInput}`,
-        known_profile_fields: {
-          skinType: profileSkinType,
-          sensitivity: profileSensitivity,
-          barrierStatus: profileBarrier,
-          goals: profileGoals,
-        },
-      },
+  const attempts = [{ id: 'primary', forceConservative: false }, { id: 'conservative_retry', forceConservative: true }];
+  const attemptDebug = [];
+  let mapped = [];
+  let lastStructured = null;
+  let lastAnswerJson = null;
+  let lastAlternativesRaw = [];
+  let lastIntent = null;
+  let lastError = null;
+  for (const attempt of attempts) {
+    const profileSnapshot = buildProfileSnapshot(profileObj, {
+      forceConservative: attempt.forceConservative,
     });
-  } catch (err) {
-    logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: alternatives upstream failed');
+    const profileSnapshotLine =
+      `Profile snapshot (already available, do not re-ask): skinType=${profileSnapshot.skinType}; ` +
+      `sensitivity=${profileSnapshot.sensitivity}; barrierStatus=${profileSnapshot.barrierStatus}; goals=${profileSnapshot.goals.join(', ')}`;
+    const fallbackAssumptionLine = profileSnapshot.assumptions_applied
+      ? 'Fallback assumption mode: profile may be incomplete; proceed now with conservative defaults and return best-effort alternatives.'
+      : '';
+    const query =
+      `${prefix}` +
+      `${profileSnapshotLine}\n` +
+      (fallbackAssumptionLine ? `${fallbackAssumptionLine}\n` : '') +
+      `Execution constraints:\n` +
+      `- Do NOT ask clarifying questions.\n` +
+      `- If some fields are missing, continue with general-audience assumptions and mark missing_info.\n` +
+      `- Return alternatives based on available evidence instead of blocking on additional intake.\n` +
+      `Task: Deep-scan this product and return alternatives (dupe/similar/premium) tailored to this user if possible.\n` +
+      `Return ONLY a JSON object with keys: alternatives (array).\n` +
+      `Each alternative item should include: product (object), similarity_score (0..1 or 0..100), tradeoffs (object), reasons (string[] max 2), evidence (object), missing_info (string[]).\n` +
+      `Reasons must be end-user readable and explain why this alternative is useful for THIS user's profile/logs/budget (do NOT guess missing info; use missing_info).\n` +
+      `Product: ${bestInput}\n` +
+      (productJson ? `Product JSON: ${productJson}\n` : '');
+    let upstream = null;
+    try {
+      upstream = await auroraChat({
+        baseUrl: AURORA_DECISION_BASE_URL,
+        query,
+        timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+        ...(anchor ? { anchor_product_id: anchor } : {}),
+        allow_recommendations: true,
+        resume_context: {
+          enabled: true,
+          template_version: 'v2',
+          flow_id: 'alternatives',
+          include_history: true,
+          clarification_history: [
+            { question_id: 'skin_type', option: profileSnapshot.skinType },
+            { question_id: 'sensitivity', option: profileSnapshot.sensitivity },
+            { question_id: 'barrier_status', option: profileSnapshot.barrierStatus },
+            { question_id: 'goals', option: profileSnapshot.goals[0] || 'Hydration' },
+          ],
+          resume_user_text: `Find dupe/similar/premium alternatives for ${bestInput}`,
+          known_profile_fields: {
+            skinType: profileSnapshot.skinType,
+            sensitivity: profileSnapshot.sensitivity,
+            barrierStatus: profileSnapshot.barrierStatus,
+            goals: profileSnapshot.goals,
+          },
+        },
+      });
+    } catch (err) {
+      lastError = err;
+      logger?.warn(
+        {
+          err: err && err.message ? err.message : String(err),
+          attempt: attempt.id,
+        },
+        'aurora bff: alternatives upstream failed',
+      );
+      attemptDebug.push({
+        attempt: attempt.id,
+        assumptions_applied: profileSnapshot.assumptions_applied,
+        upstream_intent: null,
+        error: err && err.message ? err.message : String(err),
+        alternatives_raw_count: 0,
+        alternatives_mapped_count: 0,
+      });
+      continue;
+    }
+    lastError = null;
+    lastIntent = upstream && typeof upstream.intent === 'string' ? upstream.intent : null;
+    const answerJson =
+      upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['alternatives']) : null;
+    const structuredFallback = getUpstreamStructuredOrJson(upstream);
+    const structured =
+      answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) && Array.isArray(answerJson.alternatives)
+        ? answerJson
+        : structuredFallback || answerJson;
+    const alternativesRaw = extractAlternativesRawFromUpstream({
+      upstream,
+      structured,
+      answerJson,
+    });
+    const attemptMapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, {
+      lang: ctx.lang,
+      maxTotal: maxTotal ?? 3,
+    });
+    attemptDebug.push({
+      attempt: attempt.id,
+      assumptions_applied: profileSnapshot.assumptions_applied,
+      upstream_intent: lastIntent,
+      has_structured: Boolean(upstream && upstream.structured),
+      structured_keys:
+        upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
+          ? Object.keys(upstream.structured).slice(0, 24)
+          : [],
+      alternatives_raw_count: Array.isArray(alternativesRaw) ? alternativesRaw.length : 0,
+      alternatives_mapped_count: Array.isArray(attemptMapped) ? attemptMapped.length : 0,
+    });
+    lastStructured = structured;
+    lastAnswerJson = answerJson;
+    lastAlternativesRaw = Array.isArray(alternativesRaw) ? alternativesRaw : [];
+    if (attemptMapped.length) {
+      mapped = attemptMapped;
+      break;
+    }
+    if (lastIntent !== 'clarify') break;
+  }
+
+  if (lastError && !mapped.length) {
     return {
       ok: false,
       alternatives: [],
@@ -14967,44 +15205,38 @@ async function fetchRecoAlternativesForProduct({ ctx, profileSummary, recentLogs
             input: bestInput.slice(0, 200),
             anchor_id: anchor || null,
             product_json_preview: productJson ? productJson.slice(0, 300) : null,
-            error: err && err.message ? err.message : String(err),
+            error: lastError && lastError.message ? lastError.message : String(lastError),
+            attempts: attemptDebug,
           },
         }
         : {}),
     };
   }
 
-  const answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['alternatives']) : null;
-  const structuredFallback = getUpstreamStructuredOrJson(upstream);
-  const structured =
-    answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) && Array.isArray(answerJson.alternatives)
-      ? answerJson
-      : structuredFallback || answerJson;
-  const alternativesRaw = structured && Array.isArray(structured.alternatives) ? structured.alternatives : [];
-  const mapped = mapAuroraAlternativesToRecoAlternatives(alternativesRaw, { lang: ctx.lang, maxTotal: maxTotal ?? 3 });
-
   return {
     ok: true,
     alternatives: mapped,
-    field_missing: mapped.length ? [] : [{ field: 'alternatives', reason: structured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured' }],
+    field_missing: mapped.length
+      ? []
+      : [{ field: 'alternatives', reason: lastStructured ? 'upstream_missing_or_empty' : 'upstream_missing_or_unstructured' }],
     ...(debug
       ? {
         debug: {
           input: bestInput.slice(0, 200),
           anchor_id: anchor || null,
           product_json_preview: productJson ? productJson.slice(0, 300) : null,
-          upstream_intent: upstream && typeof upstream.intent === 'string' ? upstream.intent : null,
-          has_structured: Boolean(upstream && upstream.structured),
-          structured_keys:
-            upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
-              ? Object.keys(upstream.structured).slice(0, 24)
-              : [],
+          upstream_intent: lastIntent,
           extracted_answer_json_keys:
-            answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? Object.keys(answerJson).slice(0, 24) : [],
+            lastAnswerJson && typeof lastAnswerJson === 'object' && !Array.isArray(lastAnswerJson)
+              ? Object.keys(lastAnswerJson).slice(0, 24)
+              : [],
           extracted_structured_keys:
-            structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
-          alternatives_raw_count: alternativesRaw.length,
+            lastStructured && typeof lastStructured === 'object' && !Array.isArray(lastStructured)
+              ? Object.keys(lastStructured).slice(0, 24)
+              : [],
+          alternatives_raw_count: Array.isArray(lastAlternativesRaw) ? lastAlternativesRaw.length : 0,
           alternatives_mapped_count: mapped.length,
+          attempts: attemptDebug,
         },
       }
       : {}),
