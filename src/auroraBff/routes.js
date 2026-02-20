@@ -358,6 +358,12 @@ const RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const RECO_CATALOG_BEAUTY_PATH_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_SEARCH_SOURCE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE || 'aurora-bff')
     .trim()
@@ -491,6 +497,12 @@ const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_MAX_QUERIES || 2);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED || 'true')
@@ -1696,6 +1708,7 @@ function buildRecoCatalogSearchPathCandidates() {
     add(beautyPath);
   }
   add(genericPath);
+  if (RECO_CATALOG_BEAUTY_PATH_FALLBACK_ENABLED) add(beautyPath);
 
   if (RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED) {
     return [
@@ -1939,12 +1952,18 @@ async function searchPivotaBackendProducts({
   logger,
   timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
   searchAllMerchants = true,
+  deadlineMs = 0,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const normalizedTimeout = Math.max(300, Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS));
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
+  const deadlineReserveMs = normalizedDeadlineMs > 0 ? 20 : 0;
+  const effectiveDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + normalizedTimeout;
+  const getRemainingOverallMs = () => Math.max(0, effectiveDeadlineMs - Date.now());
+  const hasOverallBudget = (minMs = 220) => getRemainingOverallMs() >= Math.max(40, Number(minMs) || 220);
   const useAllMerchants = searchAllMerchants === true;
   const params = {
     query: q,
@@ -2084,10 +2103,12 @@ async function searchPivotaBackendProducts({
     return rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
   };
   const normalizeAttemptTimeout = (index) => {
-    if (index <= 0) return normalizedTimeout;
-    if (!RECO_CATALOG_MULTI_SOURCE_ENABLED) return normalizedTimeout;
-    const scaled = Math.trunc(normalizedTimeout * 0.66);
-    return Math.max(260, Math.min(normalizedTimeout, scaled));
+    const baseTimeout = index <= 0 || !RECO_CATALOG_MULTI_SOURCE_ENABLED
+      ? normalizedTimeout
+      : Math.max(260, Math.min(normalizedTimeout, Math.trunc(normalizedTimeout * 0.66)));
+    const remaining = getRemainingOverallMs();
+    const capped = Math.min(baseTimeout, Math.max(0, remaining - deadlineReserveMs));
+    return Math.max(0, capped);
   };
   const shouldTrySecondaryReason = (reason) => {
     const token = String(reason || '').trim().toLowerCase();
@@ -2108,7 +2129,7 @@ async function searchPivotaBackendProducts({
     const token = String(reason || '').trim().toLowerCase();
     if (!token) return false;
     if (token === 'not_found') return true;
-    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return true;
+    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return false;
     if (token === 'empty') return RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     return false;
   };
@@ -2120,20 +2141,73 @@ async function searchPivotaBackendProducts({
     const pathAttempts = [];
     let lastFailure = null;
     let lastEmpty = null;
+    if (!hasOverallBudget(180) || timeoutForAttemptMs < 180) {
+      return {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        source_base_url: normalizedBase,
+        source_endpoint: `${normalizedBase}${normalizedPaths[0] || '/agent/v1/products/search'}`,
+        source_path: normalizedPaths[0] || '/agent/v1/products/search',
+        attempted_endpoints: [],
+        source_path_failover: false,
+        latency_ms: Date.now() - startedAt,
+      };
+    }
     const perBaseStartedAt = Date.now();
     for (let pathIdx = 0; pathIdx < normalizedPaths.length; pathIdx += 1) {
       const pathToken = normalizeRecoCatalogSearchPath(normalizedPaths[pathIdx]) || '/agent/v1/products/search';
       const endpoint = `${normalizedBase}${pathToken}`;
       const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
+      if (!hasOverallBudget(150)) {
+        const exhausted = {
+          ok: false,
+          products: [],
+          reason: 'budget_exhausted',
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        return {
+          ...exhausted,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
+        };
+      }
       const elapsedMs = Date.now() - perBaseStartedAt;
-      const remainingBudgetMs = Math.max(200, timeoutForAttemptMs - elapsedMs);
+      const remainingBudgetMs = Math.max(0, timeoutForAttemptMs - elapsedMs);
+      const remainingOverallMs = getRemainingOverallMs();
+      const requestBudgetMs = Math.max(
+        0,
+        Math.min(
+          remainingBudgetMs,
+          Math.max(0, remainingOverallMs - deadlineReserveMs),
+        ),
+      );
+      if (requestBudgetMs < 120) {
+        const exhausted = {
+          ok: false,
+          products: [],
+          reason: 'budget_exhausted',
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        return {
+          ...exhausted,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
+        };
+      }
       try {
         const resp = await axios.get(endpoint, {
           params,
           headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
           timeout: isLocalInvokeBase
-            ? Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, remainingBudgetMs))
-            : remainingBudgetMs,
+            ? Math.max(120, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, requestBudgetMs))
+            : Math.max(120, requestBudgetMs),
           validateStatus: () => true,
         });
         const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
@@ -2160,7 +2234,8 @@ async function searchPivotaBackendProducts({
           lastFailure = failed;
           const shouldTryNextPath =
             pathIdx < normalizedPaths.length - 1 &&
-            shouldTrySecondaryPathReason(reason);
+            shouldTrySecondaryPathReason(reason) &&
+            hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
@@ -2196,7 +2271,8 @@ async function searchPivotaBackendProducts({
           lastFailure = failed;
           const shouldTryNextPath =
             pathIdx < normalizedPaths.length - 1 &&
-            shouldTrySecondaryPathReason(bodyReason);
+            shouldTrySecondaryPathReason(bodyReason) &&
+            hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
@@ -2232,7 +2308,8 @@ async function searchPivotaBackendProducts({
         lastEmpty = result;
         const shouldTryNextPath =
           pathIdx < normalizedPaths.length - 1 &&
-          shouldTrySecondaryPathReason(result.reason || 'empty');
+          shouldTrySecondaryPathReason(result.reason || 'empty') &&
+          hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...result,
@@ -2267,7 +2344,8 @@ async function searchPivotaBackendProducts({
         lastFailure = failed;
         const shouldTryNextPath =
           pathIdx < normalizedPaths.length - 1 &&
-          shouldTrySecondaryPathReason(reason);
+          shouldTrySecondaryPathReason(reason) &&
+          hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...failed,
@@ -2319,8 +2397,27 @@ async function searchPivotaBackendProducts({
     });
 
   for (let idx = 0; idx < orderedBaseUrls.length; idx += 1) {
+    if (!hasOverallBudget(180)) {
+      finalFailure = {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        latency_ms: Date.now() - startedAt,
+      };
+      break;
+    }
     const baseUrl = orderedBaseUrls[idx];
     const timeoutForAttemptMs = normalizeAttemptTimeout(idx);
+    if (timeoutForAttemptMs < 120) {
+      finalFailure = {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        source_base_url: baseUrl,
+        latency_ms: Date.now() - startedAt,
+      };
+      break;
+    }
     const attempt = await runSearchAttemptByBase(baseUrl, timeoutForAttemptMs);
     attempts.push({
       base_url: baseUrl,
@@ -2379,7 +2476,10 @@ async function searchPivotaBackendProducts({
       );
     }
 
-    const shouldTryNext = idx < orderedBaseUrls.length - 1 && shouldTrySecondaryReason(failureReason);
+    const shouldTryNext =
+      idx < orderedBaseUrls.length - 1 &&
+      shouldTrySecondaryReason(failureReason) &&
+      hasOverallBudget(150);
     if (!shouldTryNext) break;
   }
 
@@ -4415,9 +4515,10 @@ async function buildRealtimeCompetitorCandidates({
     return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   })();
   const allowResolveFallback = runMode === 'async_backfill' || (runMode === 'sync_repair' && syncResolveFallbackEnabled);
-  // Sync repair should also search across merchants; this improves cross-brand recovery
-  // when the anchor query is sparse or merchant-local index is incomplete.
-  const searchAllMerchants = runMode !== 'main_path';
+  const searchAllMerchants =
+    runMode !== 'main_path'
+      ? true
+      : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
   const reserveAfterSearchMs =
@@ -4493,6 +4594,7 @@ async function buildRealtimeCompetitorCandidates({
         logger,
         timeoutMs: perQueryTimeoutMs,
         searchAllMerchants,
+        deadlineMs: softDeadlineMs,
       });
       return { query: queryText, searched };
     }),
@@ -7306,7 +7408,6 @@ async function buildProductAnalysisFromUrlIngredients({
     },
     missing_info: uniqCaseInsensitiveStrings(
       [
-        'upstream_analysis_missing',
         'url_ingredient_analysis_used',
         'url_realtime_product_intel_used',
         ...(!anchorPrice ? ['price_unknown'] : []),
