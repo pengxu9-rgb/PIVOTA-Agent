@@ -1657,16 +1657,23 @@ function beginRecoCatalogFailFastProbe(nowMs = Date.now()) {
   return true;
 }
 
-async function searchPivotaBackendProducts({ query, limit = 6, logger, timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS } = {}) {
+async function searchPivotaBackendProducts({
+  query,
+  limit = 6,
+  logger,
+  timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
+  searchAllMerchants = true,
+} = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
   if (!PIVOTA_BACKEND_BASE_URL) return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const normalizedTimeout = Math.max(300, Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS));
+  const useAllMerchants = searchAllMerchants === true;
   const params = {
     query: q,
-    search_all_merchants: true,
+    search_all_merchants: useAllMerchants,
     in_stock_only: false,
     limit: normalizedLimit,
     offset: 0,
@@ -3664,6 +3671,7 @@ async function buildRealtimeCompetitorCandidates({
     normalizedMode === 'sync_repair' || normalizedMode === 'async_backfill'
       ? normalizedMode
       : 'main_path';
+  const searchAllMerchants = runMode === 'async_backfill';
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
   const reserveAfterSearchMs = runMode === 'async_backfill' ? 140 : 220;
@@ -3733,6 +3741,7 @@ async function buildRealtimeCompetitorCandidates({
         limit: 6,
         logger,
         timeoutMs: perQueryTimeoutMs,
+        searchAllMerchants,
       });
       return { query: queryText, searched };
     }),
