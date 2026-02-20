@@ -201,6 +201,30 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(normalized.social_raw.channels).toEqual(expect.arrayContaining(['reddit', 'tiktok']));
   });
 
+  test('catalog normalization extracts candidate price for dupe/price-distance gates', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const normalized = __internal.normalizeRecoCatalogProduct({
+      product_id: 'comp_price_1',
+      brand: 'Brand Price',
+      name: 'Barrier Serum',
+      category: 'serum',
+      offers: {
+        price: '29.50',
+        priceCurrency: 'USD',
+      },
+    });
+
+    expect(normalized).toBeTruthy();
+    expect(normalized.price).toBeTruthy();
+    expect(normalized.price).toEqual(
+      expect.objectContaining({
+        amount: 29.5,
+        currency: 'USD',
+        unknown: false,
+      }),
+    );
+  });
+
   test('attachExplanations emits user-visible social summary only for whitelisted channels', () => {
     const { attachExplanations } = require('../src/auroraBff/recoScoreExplain');
     const out = attachExplanations(

@@ -1449,6 +1449,7 @@ function normalizeRecoCatalogProduct(raw) {
   const ingredientTokens = collectCandidateIngredientTokens(base);
   const skinTypeTags = collectCandidateSkinTypeTags(base);
   const socialRef = extractCandidateSocialReference(base);
+  const price = extractCatalogCandidatePrice(base);
 
   const out = {
     product_id: String(productId || '').trim(),
@@ -1460,6 +1461,7 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(displayName || '').trim() ? { display_name: String(displayName).trim() } : {}),
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
     ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
+    ...(price ? { price } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
     ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
     ...(socialRef.score != null ? { social_ref_score: Number(socialRef.score.toFixed(3)) } : {}),
@@ -2579,6 +2581,59 @@ function normalizePriceObject(rawPrice, { fallbackCurrency = 'USD' } = {}) {
   return null;
 }
 
+function extractCatalogCandidatePrice(rawProduct) {
+  const base = rawProduct && typeof rawProduct === 'object' && !Array.isArray(rawProduct) ? rawProduct : null;
+  if (!base) return null;
+
+  const seeds = [
+    base.price,
+    base.price_amount,
+    base.priceAmount,
+    base.price_value,
+    base.priceValue,
+    base.offer_price,
+    base.offerPrice,
+    base.sale_price,
+    base.salePrice,
+    base.list_price,
+    base.listPrice,
+    base.min_price,
+    base.minPrice,
+    base.max_price,
+    base.maxPrice,
+    base.pricing,
+    base.price_info,
+    base.priceInfo,
+    base.offer,
+    base.offers,
+    base.subject && typeof base.subject === 'object' && !Array.isArray(base.subject) ? base.subject.price : null,
+    base.subject && typeof base.subject === 'object' && !Array.isArray(base.subject) ? base.subject.offers : null,
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku.price : null,
+    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku.offers : null,
+    base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product.price : null,
+    base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product.offers : null,
+  ];
+
+  for (const seed of seeds) {
+    if (seed == null) continue;
+    if (Array.isArray(seed)) {
+      for (const item of seed) {
+        const parsed = normalizePriceObject(item, { fallbackCurrency: 'USD' });
+        if (parsed) return parsed;
+      }
+      continue;
+    }
+    const parsed = normalizePriceObject(seed, { fallbackCurrency: 'USD' });
+    if (parsed) return parsed;
+  }
+
+  const usd = toPositiveNumberOrNull(base.price_usd ?? base.priceUsd ?? base.usd);
+  if (usd != null) return { amount: usd, currency: 'USD', unknown: false };
+  const cny = toPositiveNumberOrNull(base.price_cny ?? base.priceCny ?? base.cny);
+  if (cny != null) return { amount: cny, currency: 'CNY', unknown: false };
+  return null;
+}
+
 function extractProductPriceFromHtml(html) {
   const text = String(html || '');
   if (!text) return null;
@@ -3215,6 +3270,21 @@ function inferProductCategoryToken(raw) {
   return categories.find((token) => new RegExp(`\\b${token}\\b`, 'i').test(text)) || '';
 }
 
+function scoreCategoryUseCaseMatch({
+  anchorCategoryToken = '',
+  candidateNameText = '',
+  candidateCategoryText = '',
+} = {}) {
+  const anchorToken = String(anchorCategoryToken || '').trim().toLowerCase();
+  if (!anchorToken) return 0.7;
+
+  const candidateToken = inferProductCategoryToken(`${candidateNameText || ''} ${candidateCategoryText || ''}`);
+  if (candidateToken && candidateToken === anchorToken) return 1;
+  if (candidateToken && candidateToken !== anchorToken) return 0.32;
+  if (String(candidateCategoryText || '').trim()) return 0.48;
+  return 0.58;
+}
+
 function computeTokenJaccardScore(a, b) {
   const left = Array.from(new Set(Array.isArray(a) ? a.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : []));
   const right = Array.from(new Set(Array.isArray(b) ? b.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : []));
@@ -3428,11 +3498,16 @@ async function buildRealtimeCompetitorCandidates({
       const name = pickFirstTrimmed(normalized.display_name, normalized.name);
       const candidateText = `${brand} ${name}`.trim().toLowerCase();
       const nameTokens = tokenizeProductTextForSimilarity(candidateText);
+      const categoryUseCaseMatch = scoreCategoryUseCaseMatch({
+        anchorCategoryToken: categoryToken,
+        candidateNameText: candidateText,
+        candidateCategoryText: normalized.category || '',
+      });
 
       const queryOverlap = queryTokens.filter((token) => nameTokens.includes(token)).length;
       const ingredientOverlap = ingredientTokens.filter((token) => nameTokens.includes(token)).length;
       const sameBrand = anchorBrand && brand && anchorBrand.toLowerCase() === brand.toLowerCase();
-      const sameCategory = categoryToken ? new RegExp(`\\b${categoryToken}\\b`, 'i').test(candidateText) : false;
+      const sameCategory = categoryUseCaseMatch >= 0.78;
       const scored = scoreRealtimeCompetitorCandidate({
         queryOverlap,
         ingredientNameOverlap: ingredientOverlap,
@@ -3530,8 +3605,11 @@ async function buildRealtimeCompetitorCandidates({
         product_id: productId,
         name: name || (isCn ? '未知产品' : 'Unknown product'),
         ...(brand ? { brand } : {}),
+        ...(normalized.category ? { category: normalized.category } : {}),
+        ...(normalized.price ? { price: normalized.price } : {}),
         source: { type: 'catalog_search' },
         source_type: 'catalog_search',
+        category_use_case_match: Number(categoryUseCaseMatch.toFixed(3)),
         ...(normalized.social_raw ? { social_raw: normalized.social_raw } : {}),
         why_candidate: whyCandidate,
         similarity_score: similarityScore,
@@ -3571,12 +3649,17 @@ async function buildRealtimeCompetitorCandidates({
     const name = pickFirstTrimmed(normalized.display_name, normalized.name);
     const candidateText = `${brand} ${name}`.trim().toLowerCase();
     const nameTokens = tokenizeProductTextForSimilarity(candidateText);
+    const categoryUseCaseMatch = scoreCategoryUseCaseMatch({
+      anchorCategoryToken: categoryToken,
+      candidateNameText: candidateText,
+      candidateCategoryText: normalized.category || '',
+    });
 
     const queryTokensForRow = tokenizeProductTextForSimilarity(String(row.query || ''));
     const queryOverlap = queryTokensForRow.filter((token) => nameTokens.includes(token)).length;
     const ingredientOverlap = ingredientTokens.filter((token) => nameTokens.includes(token)).length;
     const sameBrand = anchorBrand && brand && anchorBrand.toLowerCase() === brand.toLowerCase();
-    const sameCategory = categoryToken ? new RegExp(`\\b${categoryToken}\\b`, 'i').test(candidateText) : false;
+    const sameCategory = categoryUseCaseMatch >= 0.78;
     const scored = scoreRealtimeCompetitorCandidate({
       queryOverlap,
       ingredientNameOverlap: ingredientOverlap,
@@ -3597,8 +3680,11 @@ async function buildRealtimeCompetitorCandidates({
       product_id: productId,
       name: name || (isCn ? '未知产品' : 'Unknown product'),
       ...(brand ? { brand } : {}),
+      ...(normalized.category ? { category: normalized.category } : {}),
+      ...(normalized.price ? { price: normalized.price } : {}),
       source: { type: 'catalog_resolve_fallback' },
       source_type: 'catalog_resolve_fallback',
+      category_use_case_match: Number(categoryUseCaseMatch.toFixed(3)),
       ...(normalized.social_raw ? { social_raw: normalized.social_raw } : {}),
       why_candidate: uniqCaseInsensitiveStrings(
         [
@@ -5176,6 +5262,8 @@ function mapAlternativesToCompetitorCandidates(alternatives, { lang = 'EN', maxC
     const reasons = uniqCaseInsensitiveStrings(Array.isArray(alt.reasons) ? alt.reasons : [], 3);
     const tradeoffs = uniqCaseInsensitiveStrings(Array.isArray(alt.tradeoffs) ? alt.tradeoffs : [], 2);
     const kind = String(alt.kind || '').trim().toLowerCase();
+    const category = pickFirstTrimmed(product.category, product.product_type, product.productType);
+    const price = extractCatalogCandidatePrice(product);
     const kindLine =
       kind === 'dupe'
         ? isCn
@@ -5198,6 +5286,8 @@ function mapAlternativesToCompetitorCandidates(alternatives, { lang = 'EN', maxC
       ...(pickFirstTrimmed(product.brand, product.brand_name) ? { brand: pickFirstTrimmed(product.brand, product.brand_name) } : {}),
       name,
       ...(pickFirstTrimmed(product.display_name) ? { display_name: pickFirstTrimmed(product.display_name) } : {}),
+      ...(category ? { category } : {}),
+      ...(price ? { price } : {}),
       source: { type: 'aurora_alternatives' },
       source_type: 'aurora_alternatives',
       ...(similarityScore != null ? { similarity_score: similarityScore } : {}),
