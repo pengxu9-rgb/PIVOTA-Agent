@@ -5429,7 +5429,7 @@ async function runRecoBlocksForUrl({
         if (modeToken === 'sync_repair') {
           next.catalog_ann = Math.max(
             next.catalog_ann,
-            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS, 900),
+            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS, 1600),
           );
         } else if (modeToken === 'async_backfill') {
           next.catalog_ann = Math.max(
@@ -5544,6 +5544,9 @@ function hasLowCoverageCompetitorToken(payload) {
 function shouldRepairCompetitorCoverage(payload, { preferredCount = 2 } = {}) {
   const target = Math.max(1, Math.min(10, Number(preferredCount) || 2));
   const count = getCompetitorCandidatesFromPayload(payload, { max: 10 }).length;
+  // Empty competitors should always try a bounded repair pass, even when old KB
+  // snapshots no longer carry explicit low-coverage tokens.
+  if (count === 0) return true;
   if (count >= target) return false;
   return hasLowCoverageCompetitorToken(payload);
 }
@@ -6010,7 +6013,10 @@ async function maybeSyncRepairLowCoverageCompetitors({
       mode: 'sync_repair',
       logger,
       existingPayload: payloadObj,
-      budgetMs: Math.max(AURORA_BFF_RECO_BLOCKS_BUDGET_MS, PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS),
+      budgetMs: Math.max(
+        AURORA_BFF_RECO_BLOCKS_BUDGET_MS,
+        PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS + 300,
+      ),
       maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
     });
   } catch (err) {
