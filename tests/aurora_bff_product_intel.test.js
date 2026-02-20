@@ -1271,7 +1271,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
-    expect(card.payload.missing_info).toContain('alternatives_limited');
+    expect(card.payload.missing_info).not.toContain('alternatives_limited');
+    expect(card.payload.missing_info).toContain('analysis_in_progress');
     expect(card.payload.internal_debug_codes).toBeUndefined();
     expect(card.payload.missing_info_internal).toBeUndefined();
 
@@ -1456,6 +1457,107 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(upsertProductIntelKbEntry).toHaveBeenCalled();
     expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  test('/v1/product/analyze drops legacy aurora_alternatives KB competitors and rebuilds from catalog recall', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    const getProductIntelKbEntry = jest.fn().mockResolvedValue({
+      kb_key: 'url:https://brand.example/product-legacy.html|lang:EN',
+      analysis: {
+        assessment: {
+          verdict: 'Likely Suitable',
+          reasons: ['legacy kb competitor source present'],
+          anchor_product: {
+            brand: 'The Ordinary',
+            name: 'Multi-Peptide + Copper Peptides 1% Serum',
+            category: 'serum',
+            url: 'https://brand.example/product-legacy.html',
+          },
+        },
+        evidence: {
+          science: { key_ingredients: ['Copper Tripeptide-1'], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: ['hydration'], typical_negative: [], risk_for_groups: [] },
+          expert_notes: ['legacy kb snapshot'],
+          confidence: 0.62,
+          missing_info: [],
+        },
+        confidence: 0.62,
+        missing_info: ['url_realtime_product_intel_used', 'competitor_sync_aurora_fallback_used'],
+        competitors: {
+          candidates: [
+            {
+              product_id: 'legacy_alt_1',
+              brand: 'The Ordinary',
+              name: 'Legacy Alternative Candidate',
+              similarity_score: 0.78,
+              source: { type: 'aurora_alternatives' },
+              why_candidate: ['legacy fallback'],
+            },
+          ],
+        },
+      },
+      source: 'url_realtime_product_intel',
+      source_meta: { competitor_async_enriched: true },
+    });
+    const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      normalizeKey: (key) => key,
+      getProductIntelKbEntry,
+      upsertProductIntelKbEntry,
+    }));
+
+    nock('https://brand.example')
+      .persist()
+      .get('/product-legacy.html')
+      .reply(
+        200,
+        `<!doctype html><html><head><title>Peptide Serum | Brand</title></head>
+         <body>
+           <p class="ingredients-flyout-content" data-original-ingredients="Aqua, Glycerin, Copper Tripeptide-1, Sodium Hyaluronate"></p>
+         </body></html>`,
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          {
+            product_id: 'fresh_comp_1',
+            sku_id: 'fresh_comp_1',
+            brand: 'Brand Fresh',
+            name: 'Copper Peptide Repair Serum',
+            category: 'serum',
+            key_ingredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate'],
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_url_intel_kb_legacy_source_1')
+      .send({ url: 'https://brand.example/product-legacy.html' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    const competitors = Array.isArray(card.payload?.competitors?.candidates) ? card.payload.competitors.candidates : [];
+    expect(
+      competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'aurora_alternatives'),
+    ).toBe(false);
+    expect(
+      competitors.some((x) => String(x?.source?.type || '').toLowerCase() === 'on_page_related'),
+    ).toBe(false);
+    expect(card.payload.missing_info).not.toContain('alternatives_limited');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(upsertProductIntelKbEntry).toHaveBeenCalled();
   });
 
   test('/v1/product/analyze routes on-page fallback into related_products when catalog recall is unavailable', async () => {

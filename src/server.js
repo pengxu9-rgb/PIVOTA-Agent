@@ -2894,6 +2894,16 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
     return false;
   }
 
+  if (hasBeautyMakeupSearchSignal(queryText)) {
+    for (const product of products.slice(0, 8)) {
+      if (!hasUsableSearchProduct(product)) continue;
+      const candidateText = buildFallbackCandidateText(product);
+      if (!candidateText) continue;
+      if (hasBeautyCatalogProductSignal(candidateText)) return true;
+    }
+    return false;
+  }
+
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const lookupTokens = expandLookupAnchorTokens(queryText, anchorTokens);
   if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
@@ -2934,6 +2944,10 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
         candidateText,
       );
     if (!hasHarnessProductSignal) return false;
+  }
+
+  if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
+    return false;
   }
 
   const normalizedQuery =
@@ -5127,6 +5141,23 @@ function tokenizeQueryForCache(q) {
       raw.push('harness', 'leash', 'collar');
     }
   }
+  if (hasBeautyMakeupSearchSignal(rawInput)) {
+    raw.push(
+      'makeup',
+      'cosmetic',
+      'beauty',
+      'foundation',
+      'concealer',
+      'lipstick',
+      'blush',
+      'mascara',
+      'eyeshadow',
+      'brush',
+      'palette',
+      'fenty',
+      'tom ford',
+    );
+  }
   const stop = new Set([
     'a',
     'an',
@@ -5516,6 +5547,32 @@ function hasPetHarnessSearchSignal(queryText) {
   );
 }
 
+function hasBeautyMakeupSearchSignal(queryText) {
+  const q = String(queryText || '');
+  if (!q) return false;
+  return (
+    /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow)\b/i.test(
+      q,
+    ) ||
+    /化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|约会妆|約會妝/.test(
+      q,
+    )
+  );
+}
+
+function hasBeautyCatalogProductSignal(candidateText) {
+  const text = String(candidateText || '');
+  if (!text) return false;
+  return (
+    /\b(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|fenty|tom ford|winona|ipsa)\b/i.test(
+      text,
+    ) ||
+    /(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水)/.test(
+      text,
+    )
+  );
+}
+
 function buildPetHarnessSignalSql(startIndex) {
   const latin = '(harness|leash|collar|lead|no-?pull|dog\\s+harness|dog\\s+leash|pet\\s+harness|pet\\s+leash)';
   const cjk = '(背带|胸背|牵引|牵引绳|遛狗绳|狗链|项圈|胸背带|胴輪|ハーネス)';
@@ -5524,6 +5581,23 @@ function buildPetHarnessSignalSql(startIndex) {
     "coalesce(product_data->>'title','')",
     "coalesce(product_data->>'description','')",
     "coalesce(product_data->>'product_type','')",
+  ];
+  const idx = startIndex;
+  const ors = fields.map((f) => `${f} ~* $${idx}`).join(' OR ');
+  return { sql: `(${ors})`, params: [re], nextIndex: idx + 1 };
+}
+
+function buildBeautySignalSql(startIndex) {
+  const latin =
+    '(makeup|cosmetic|cosmetics|beauty|foundation|concealer|lipstick|blush|mascara|eyeshadow|brush|palette|toner|serum|skincare|fenty|tom\\s*ford|winona|ipsa)';
+  const cjk =
+    '(化妆|化妝|美妆|美妝|彩妆|彩妝|底妆|底妝|粉底|遮瑕|口红|口紅|唇膏|腮红|眼影|睫毛膏|化妆刷|化妝刷|刷具|粉扑|美妆蛋|妆前|妝前|定妆|定妝|薇诺娜|薇諾娜|茵芙莎|流金水)';
+  const re = `(\\m${latin}\\M|${cjk})`;
+  const fields = [
+    "coalesce(product_data->>'title','')",
+    "coalesce(product_data->>'description','')",
+    "coalesce(product_data->>'product_type','')",
+    "coalesce(product_data->>'vendor','')",
   ];
   const idx = startIndex;
   const ors = fields.map((f) => `${f} ~* $${idx}`).join(' OR ');
@@ -5855,6 +5929,70 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     } catch (err) {
       retrievalSources.push({
         source: 'pet_browse_fallback',
+        used: false,
+        error: String(err && err.message ? err.message : err),
+      });
+    }
+  }
+
+  if (lexicalProducts.length === 0 && hasBeautyMakeupSearchSignal(q)) {
+    try {
+      let underwearClause2 = null;
+      let underwearParams2 = [];
+      let idx2 = 2;
+      const shouldExcludeUnderwear2 =
+        !lingerie_intent &&
+        ((toy_intent || outfit_intent) || intentTarget === 'pet' || intentTarget === 'human');
+      if (shouldExcludeUnderwear2) {
+        const built = buildUnderwearExclusionSql(idx2);
+        underwearClause2 = built.sql;
+        underwearParams2 = built.params;
+        idx2 = built.nextIndex;
+      }
+      const builtBeauty = buildBeautySignalSql(idx2);
+      const beautyClause2 = builtBeauty.sql;
+      const beautyParams2 = builtBeauty.params;
+      idx2 = builtBeauty.nextIndex;
+
+      const browseWhere = [baseWhere, ...(underwearClause2 ? [underwearClause2] : []), beautyClause2].join(' AND ');
+      const pageFetch2 = Math.min(Math.max(safeLimit * 4, 80), 300);
+      const browseRes = await query(
+        `
+          SELECT product_data
+          FROM products_cache
+          WHERE ${browseWhere}
+          ORDER BY cached_at DESC
+          LIMIT $${idx2}
+        `,
+        [config.merchantIds, ...underwearParams2, ...beautyParams2, pageFetch2],
+      );
+
+      const browseProducts = (browseRes.rows || [])
+        .map((r) => r.product_data)
+        .filter(Boolean)
+        .filter((p) => isProductSellable(p, { inStockOnly }))
+        .slice(0, safeLimit);
+
+      retrievalSources.push({
+        source: 'beauty_browse_fallback',
+        used: true,
+        count: browseProducts.length,
+      });
+
+      if (browseProducts.length > 0) {
+        await applyShopifyCurrencyOverride(browseProducts);
+        return {
+          products: browseProducts,
+          total: Math.max(total, browseProducts.length),
+          page: safePage,
+          page_size: safeLimit,
+          merchantIds: config.merchantIds,
+          retrieval_sources: retrievalSources,
+        };
+      }
+    } catch (err) {
+      retrievalSources.push({
+        source: 'beauty_browse_fallback',
         used: false,
         error: String(err && err.message ? err.message : err),
       });
@@ -6221,6 +6359,45 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
           total: Math.max(strictTotal, relaxedTotal, petRanked.products.length),
           page: safePage,
           page_size: petRanked.products.length,
+          retrieval_sources: retrievalSources,
+        };
+      }
+    }
+
+    if (relaxedRanked.products.length === 0 && hasBeautyMakeupSearchSignal(q)) {
+      const beautySignalFilter = buildBeautySignalSql(1);
+      const beautyRowsSql = `
+        SELECT pc.merchant_id,
+               mo.business_name AS merchant_name,
+               pc.product_data
+        FROM products_cache pc
+        JOIN merchant_onboarding mo
+          ON mo.merchant_id = pc.merchant_id
+        WHERE ${baseWhere}
+          AND ${beautySignalFilter.sql}
+        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+        OFFSET $${beautySignalFilter.nextIndex}
+        LIMIT $${beautySignalFilter.nextIndex + 1}
+      `;
+      const beautyRowsRes = await query(
+        beautyRowsSql,
+        [...beautySignalFilter.params, pageOffset, pageFetch],
+      );
+      const beautyRanked = toRankedUniqueProducts(beautyRowsRes.rows || []);
+      retrievalSources.push({
+        source: 'beauty_browse_fallback',
+        used: true,
+        count: beautyRanked.products.length,
+        candidate_count: beautyRanked.candidateCount,
+      });
+
+      if (beautyRanked.products.length > 0) {
+        await applyShopifyCurrencyOverride(beautyRanked.products);
+        return {
+          products: beautyRanked.products,
+          total: Math.max(strictTotal, relaxedTotal, beautyRanked.products.length),
+          page: safePage,
+          page_size: beautyRanked.products.length,
           retrieval_sources: retrievalSources,
         };
       }
@@ -12150,7 +12327,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
             : true;
-          const relaxCacheRelevanceGate = hasPetSearchSignal(cacheQueryText);
+          const relaxCacheRelevanceGate =
+            hasPetSearchSignal(cacheQueryText) ||
+            (hasBeautyMakeupSearchSignal(cacheQueryText) &&
+              effectiveProducts.some((product) =>
+                hasBeautyCatalogProductSignal(buildFallbackCandidateText(product)),
+              ));
           const effectiveCacheHit =
             effectiveProducts.length > 0 &&
             (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
