@@ -3696,7 +3696,12 @@ async function buildRealtimeCompetitorCandidates({
   const searchAllMerchants = runMode !== 'main_path';
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
-  const reserveAfterSearchMs = runMode === 'async_backfill' ? 140 : 220;
+  const reserveAfterSearchMs =
+    runMode === 'async_backfill'
+      ? 180
+      : runMode === 'sync_repair'
+        ? 520
+        : 220;
   const effectiveSearchTimeoutMs = Math.max(
     260,
     Math.min(
@@ -3943,7 +3948,7 @@ async function buildRealtimeCompetitorCandidates({
       const reason = String(searched?.reason || '').trim().toLowerCase();
       return !searched?.ok && transientReasons.has(reason);
     });
-  if (getRemainingMs() < 420) {
+  if (runMode === 'main_path' && getRemainingMs() < 420) {
     return {
       candidates: [],
       queries,
@@ -5432,8 +5437,8 @@ async function runRecoBlocksForUrl({
           next.catalog_ann = Math.max(
             next.catalog_ann,
             Math.max(
-              1200,
-              Math.min(PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS, 2000),
+              1800,
+              Math.min(PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS, 2600),
             ),
           );
         } else if (modeToken === 'async_backfill') {
@@ -6020,7 +6025,8 @@ async function maybeSyncRepairLowCoverageCompetitors({
       existingPayload: payloadObj,
       budgetMs: Math.max(
         AURORA_BFF_RECO_BLOCKS_BUDGET_MS,
-        PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS + 300,
+        PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_TIMEOUT_MS + 900,
+        2500,
       ),
       maxCandidates: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
     });
