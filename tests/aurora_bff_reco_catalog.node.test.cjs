@@ -2467,6 +2467,50 @@ test('Reco diversity guard suppresses repeated recent exposures while keeping mi
   });
 });
 
+test('Reco diversity guard rotates fully repeated sets across rounds', async () => {
+  await withEnv({}, async () => {
+    const { __internal } = loadRoutesFresh();
+    const input = [
+      { sku: { brand: 'BrandA', display_name: 'Product A', product_id: 'pid_a' } },
+      { sku: { brand: 'BrandB', display_name: 'Product B', product_id: 'pid_b' } },
+      { sku: { brand: 'BrandC', display_name: 'Product C', product_id: 'pid_c' } },
+    ];
+    const historyTokens = input
+      .map((item) => __internal.buildRecoDiversityToken(item))
+      .filter(Boolean);
+
+    const outRound1 = __internal.applyRecoRecentDiversityGuard(input, {
+      historyTokens,
+      maxRepeatPerResponse: 1,
+      minTotal: 3,
+      rotationRound: 1,
+    });
+    const outRound2 = __internal.applyRecoRecentDiversityGuard(input, {
+      historyTokens,
+      maxRepeatPerResponse: 1,
+      minTotal: 3,
+      rotationRound: 2,
+    });
+
+    assert.equal(outRound1.applied, true);
+    assert.equal(outRound1.filtered_count, 0);
+    assert.equal(outRound1.repeated_before, 3);
+    assert.equal(outRound1.repeated_after, 3);
+    assert.equal(outRound1.recommendations.length, 3);
+
+    const idsRound1 = outRound1.recommendations
+      .map((item) => String(item?.sku?.product_id || '').trim())
+      .filter(Boolean);
+    const idsRound2 = outRound2.recommendations
+      .map((item) => String(item?.sku?.product_id || '').trim())
+      .filter(Boolean);
+    assert.equal(idsRound1.length, 3);
+    assert.equal(idsRound2.length, 3);
+    assert.notDeepEqual(idsRound1, idsRound2);
+    assert.deepEqual([...idsRound1].sort(), [...idsRound2].sort());
+  });
+});
+
 test('Offers resolve db_error: canonical ref still keeps internal PDP open contract', async () => {
   await withEnv(
     {

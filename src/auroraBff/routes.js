@@ -13391,38 +13391,49 @@ function buildRecoDiversityToken(item) {
   return token ? `name:${token}` : '';
 }
 
-function getRecoRecentExposureTokens(historyKey, nowMs = Date.now()) {
+function getRecoRecentExposureState(historyKey, nowMs = Date.now()) {
   const key = String(historyKey || '').trim();
-  if (!key) return [];
+  if (!key) return { tokens: [], round: 0 };
   const entry = recoRecentExposureState.get(key);
-  if (!entry || typeof entry !== 'object') return [];
+  if (!entry || typeof entry !== 'object') return { tokens: [], round: 0 };
 
   const expiresAt = Number(entry.expiresAt || 0);
   if (!Number.isFinite(expiresAt) || expiresAt <= nowMs) {
     recoRecentExposureState.delete(key);
-    return [];
+    return { tokens: [], round: 0 };
   }
 
   const tokens = Array.isArray(entry.tokens) ? entry.tokens : [];
-  return tokens
+  const round = Number.isFinite(Number(entry.round)) ? Math.max(0, Math.trunc(Number(entry.round))) : 0;
+  return {
+    round,
+    tokens: tokens
     .map((token) => String(token || '').trim())
     .filter(Boolean)
-    .slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS);
+    .slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS),
+  };
+}
+
+function getRecoRecentExposureTokens(historyKey, nowMs = Date.now()) {
+  return getRecoRecentExposureState(historyKey, nowMs).tokens;
 }
 
 function updateRecoRecentExposureTokens(historyKey, nextTokens, nowMs = Date.now()) {
   const key = String(historyKey || '').trim();
   if (!key) return;
-  const current = getRecoRecentExposureTokens(key, nowMs);
+  const currentState = getRecoRecentExposureState(key, nowMs);
+  const current = currentState.tokens;
   const incoming = (Array.isArray(nextTokens) ? nextTokens : [])
     .map((token) => String(token || '').trim())
     .filter(Boolean);
   if (!incoming.length && !current.length) return;
 
   const merged = [...current, ...incoming].slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS);
+  const roundIncrement = incoming.length > 0 ? 1 : 0;
   recoRecentExposureState.delete(key);
   recoRecentExposureState.set(key, {
     tokens: merged,
+    round: Math.max(0, Math.trunc(Number(currentState.round || 0))) + roundIncrement,
     expiresAt: nowMs + RECO_DIVERSITY_HISTORY_TTL_MS,
   });
 
@@ -13437,6 +13448,7 @@ function applyRecoRecentDiversityGuard(recommendations, {
   historyTokens = [],
   maxRepeatPerResponse = RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
   minTotal = RECO_DIVERSITY_MIN_TOTAL,
+  rotationRound = 0,
 } = {}) {
   const list = Array.isArray(recommendations) ? recommendations : [];
   if (!list.length) {
@@ -13469,6 +13481,29 @@ function applyRecoRecentDiversityGuard(recommendations, {
     const repeated = Boolean(token && historySet.has(token));
     return { idx, item, token, repeated };
   });
+  const lastSeenPosByToken = new Map();
+  const historyOrdered = (Array.isArray(historyTokens) ? historyTokens : [])
+    .map((token) => String(token || '').trim())
+    .filter(Boolean);
+  for (let idx = 0; idx < historyOrdered.length; idx += 1) {
+    const token = historyOrdered[idx];
+    lastSeenPosByToken.set(token, idx);
+  }
+  const rankForNovelty = (rows) =>
+    rows
+      .slice()
+      .sort((a, b) => {
+        if (a.repeated !== b.repeated) return a.repeated ? 1 : -1;
+        if (!a.repeated && !b.repeated) return a.idx - b.idx;
+        const aPos = Number.isFinite(Number(lastSeenPosByToken.get(a.token)))
+          ? Number(lastSeenPosByToken.get(a.token))
+          : -1;
+        const bPos = Number.isFinite(Number(lastSeenPosByToken.get(b.token)))
+          ? Number(lastSeenPosByToken.get(b.token))
+          : -1;
+        if (aPos !== bPos) return aPos - bPos;
+        return a.idx - b.idx;
+      });
   const repeatedBefore = annotated.filter((row) => row.repeated).length;
   if (!repeatedBefore) {
     return {
@@ -13487,12 +13522,22 @@ function applyRecoRecentDiversityGuard(recommendations, {
   const allowedRepeats = Math.min(repeatedBefore, Math.max(maxRepeat, repeatKeepFloor));
 
   if (allowedRepeats >= repeatedBefore) {
+    const noveltyRanked = rankForNovelty(annotated).map((row) => row.item);
+    let rotated = noveltyRanked.slice();
+    if (repeatedBefore === annotated.length && rotated.length > 1) {
+      const normalizedRound = Number.isFinite(Number(rotationRound)) ? Math.max(0, Math.trunc(Number(rotationRound))) : 0;
+      const offset = normalizedRound % rotated.length;
+      if (offset > 0) {
+        rotated = [...rotated.slice(offset), ...rotated.slice(0, offset)];
+      }
+    }
+    const reRanked = rotated.some((item, idx) => item !== list[idx]);
     return {
-      recommendations: list,
+      recommendations: rotated,
       repeated_before: repeatedBefore,
       repeated_after: repeatedBefore,
       filtered_count: 0,
-      applied: false,
+      applied: reRanked,
     };
   }
 
@@ -17023,11 +17068,13 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     let nextRecommendations = limited.recommendations;
     if (RECO_DIVERSITY_ENABLED && Array.isArray(nextRecommendations) && nextRecommendations.length) {
       const diversityHistoryKey = buildRecoDiversityHistoryKey(ctx);
-      const historyTokens = getRecoRecentExposureTokens(diversityHistoryKey);
+      const historyState = getRecoRecentExposureState(diversityHistoryKey);
+      const historyTokens = historyState.tokens;
       const diversityLimited = applyRecoRecentDiversityGuard(nextRecommendations, {
         historyTokens,
         maxRepeatPerResponse: RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
         minTotal: RECO_DIVERSITY_MIN_TOTAL,
+        rotationRound: historyState.round + 1,
       });
       nextRecommendations = diversityLimited.recommendations;
       recoDiversityInfo = {
@@ -17045,8 +17092,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         .filter(Boolean)
         .slice(0, 8);
       updateRecoRecentExposureTokens(diversityHistoryKey, exposureTokens);
-      const historyAfter = getRecoRecentExposureTokens(diversityHistoryKey);
-      recoDiversityInfo.history_size_after = historyAfter.length;
+      const historyAfter = getRecoRecentExposureState(diversityHistoryKey);
+      recoDiversityInfo.history_size_after = historyAfter.tokens.length;
     }
     norm.payload = { ...norm.payload, recommendations: nextRecommendations };
   }
