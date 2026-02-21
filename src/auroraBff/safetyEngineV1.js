@@ -76,11 +76,64 @@ function normalizeProfile(profile) {
   };
 }
 
+function inferPregnancyStatusFromMessage(message) {
+  const raw = normalizeText(message);
+  const lower = raw.toLowerCase();
+  if (!raw) return 'unknown';
+  if (/\b(i('| a)?m|i am|currently)\s+(not\s+pregnant)\b/i.test(raw) || /我(现在)?(没有|未)怀孕/.test(raw)) {
+    return 'not_pregnant';
+  }
+  if (/\b(i('| a)?m|i am|currently)\s+(trying(\s+to\s+conceive)?|ttc)\b/i.test(raw) || /我(现在)?(在)?备孕/.test(raw)) {
+    return 'trying';
+  }
+  if (/\b(i('| a)?m|i am|currently)\s+pregnan/i.test(raw) || /我(现在)?(在)?怀孕|我孕期/.test(raw)) {
+    return 'pregnant';
+  }
+  if (
+    /\b(while|during)\s+pregnan/i.test(raw) ||
+    /\bpregnan(t|cy)\b/i.test(raw) ||
+    /(孕期|怀孕期间|孕妇)/.test(raw)
+  ) {
+    return 'pregnant';
+  }
+  if (/(pregnan|怀孕|备孕)/i.test(lower)) return 'unknown';
+  return 'unknown';
+}
+
+function inferLactationStatusFromMessage(message) {
+  const raw = normalizeText(message);
+  const lower = raw.toLowerCase();
+  if (!raw) return 'unknown';
+  if (/\b(i('| a)?m|i am|currently)\s+(not\s+lactating|not\s+breastfeeding)\b/i.test(raw) || /我(现在)?不(在)?哺乳/.test(raw)) {
+    return 'not_lactating';
+  }
+  if (/\b(i('| a)?m|i am|currently)\s+(lactating|breastfeeding)\b/i.test(raw) || /我(现在)?(在)?哺乳|我(现在)?母乳/.test(raw)) {
+    return 'lactating';
+  }
+  if (
+    /\b(while|during)\s+(lactating|breastfeeding|lactation)\b/i.test(raw) ||
+    /\b(lactat|breastfeed)\b/i.test(raw) ||
+    /(哺乳期|母乳期)/.test(raw)
+  ) {
+    return 'lactating';
+  }
+  if (/(lactat|breastfeed|哺乳|母乳)/i.test(lower)) return 'unknown';
+  return 'unknown';
+}
+
 function buildCtx({ intent, message, profile, language }) {
   const text = normalizeText(message);
   const lower = lowerText(text);
   const lang = normalizeLanguage(language);
   const p = normalizeProfile(profile);
+  if (p.pregnancy_status === 'unknown') {
+    const inferredPregnancy = inferPregnancyStatusFromMessage(text);
+    if (inferredPregnancy !== 'unknown') p.pregnancy_status = inferredPregnancy;
+  }
+  if (p.lactation_status === 'unknown') {
+    const inferredLactation = inferLactationStatusFromMessage(text);
+    if (inferredLactation !== 'unknown') p.lactation_status = inferredLactation;
+  }
   const medsLower = p.high_risk_medications.map((m) => m.toLowerCase());
 
   const mentions = {
