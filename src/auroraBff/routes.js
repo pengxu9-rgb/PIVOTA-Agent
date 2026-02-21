@@ -388,6 +388,12 @@ const RECO_CATALOG_SEARCH_SOURCE = (() => {
     .toLowerCase();
   return raw || 'aurora-bff';
 })();
+const RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_MULTI_SOURCE_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED || 'true')
     .trim()
@@ -1684,7 +1690,10 @@ function normalizeBaseUrlForRecoCatalogSearch(value) {
   return raw.replace(/\/+$/, '');
 }
 
-function buildRecoCatalogSearchBaseUrlCandidates({ includeLocalFallback = false } = {}) {
+function buildRecoCatalogSearchBaseUrlCandidates({
+  includeLocalFallback = false,
+  preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
+} = {}) {
   const out = [];
   const seen = new Set();
   const add = (value) => {
@@ -1694,13 +1703,20 @@ function buildRecoCatalogSearchBaseUrlCandidates({ includeLocalFallback = false 
     seen.add(normalized);
     out.push(normalized);
   };
-  add(PIVOTA_BACKEND_BASE_URL);
-  if (RECO_CATALOG_SEARCH_BASE_URLS) {
+  const addConfigured = () => {
+    if (!RECO_CATALOG_SEARCH_BASE_URLS) return;
     const tokens = RECO_CATALOG_SEARCH_BASE_URLS
       .split(/[\s,;|]+/)
       .map((token) => token.trim())
       .filter(Boolean);
     for (const token of tokens) add(token);
+  };
+  if (preferConfigured) {
+    addConfigured();
+    add(PIVOTA_BACKEND_BASE_URL);
+  } else {
+    add(PIVOTA_BACKEND_BASE_URL);
+    addConfigured();
   }
   if (includeLocalFallback) add(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   return out;
@@ -25811,6 +25827,7 @@ const __internal = {
   applyProductAnalysisSocialProvenance,
   applyRecoGuardrailToProductAnalysisPayload,
   getRecoGuardrailCircuitSnapshot,
+  buildRecoCatalogSearchBaseUrlCandidates,
   buildProductCatalogQueryCandidates,
   buildRealtimeCompetitorQueryPlan,
   mapCatalogProductToAnchorProduct,
