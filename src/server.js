@@ -2815,6 +2815,39 @@ function collapseNearDuplicateSearchProducts(products, options = {}) {
   return out;
 }
 
+function resolveSearchDedupePerTitleLimit({ queryText, intent, queryClass }) {
+  const normalizedClass = String(queryClass || intent?.query_class || '').trim().toLowerCase();
+  const primaryDomain = String(intent?.primary_domain || '').trim().toLowerCase();
+  const scenarioName = String(intent?.scenario?.name || '').trim().toLowerCase();
+  const raw = String(queryText || '').trim();
+
+  if (normalizedClass === 'lookup') {
+    return 1;
+  }
+
+  if (primaryDomain === 'beauty') {
+    const beautyGeneralScenario = scenarioName === 'general';
+    const beautySceneSignal =
+      /约会妆|约会|出差妆|旅行妆|date makeup|date look|night out makeup|wedding makeup|interview makeup/i.test(
+        raw,
+      );
+    if (
+      normalizedClass === 'scenario' ||
+      normalizedClass === 'mission' ||
+      (beautyGeneralScenario && beautySceneSignal)
+    ) {
+      return 3;
+    }
+    return 2;
+  }
+
+  if (normalizedClass === 'scenario' || normalizedClass === 'mission' || normalizedClass === 'gift') {
+    return 2;
+  }
+
+  return 1;
+}
+
 function extractSearchQueryText(rawQuery) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const raw =
@@ -13280,8 +13313,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               }
             }
           }
+          const dedupePerTitleLimit = resolveSearchDedupePerTitleLimit({
+            queryText: cacheQueryText,
+            intent: effectiveIntent,
+            queryClass: findProductsExpansionMeta?.query_class || effectiveIntent?.query_class || null,
+          });
           const effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
-            perTitleLimit: 1,
+            perTitleLimit: dedupePerTitleLimit,
           });
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
@@ -15923,6 +15961,7 @@ module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
+  resolveSearchDedupePerTitleLimit,
   resolveCatalogSyncMerchantIds,
   runCreatorCatalogAutoSync,
   isCatalogSyncRetryableError,

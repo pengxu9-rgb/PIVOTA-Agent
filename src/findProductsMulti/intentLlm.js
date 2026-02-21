@@ -154,7 +154,7 @@ function hasBeautyBrandOrProductSignal(text) {
   const availabilityCue =
     /有货|库存|有没有|能买吗|哪里买|available|availability|in stock|where to buy/.test(lower);
 
-  return brandOrProductCue || availabilityCue;
+  return brandOrProductCue || (availabilityCue && hasBeautyGeneralSignal(t));
 }
 
 function detectLanguageHeuristic(text) {
@@ -183,6 +183,7 @@ function applyHardOverrides(latestQuery, intent) {
       : hasHikingSignal(q)
       ? 'pet_hiking'
       : 'pet_apparel_general';
+    const queryClass = 'category';
     const requiredCategories = hasHarnessIntent
       ? ['pet_accessory', 'pet_harness', 'pet_leash']
       : ['pet_apparel', 'dog_jacket', 'dog_sweater'].slice(0, 3);
@@ -226,6 +227,7 @@ function applyHardOverrides(latestQuery, intent) {
           ? 'Pet harness/leash intent detected from latest query; history not allowed to override target_object.'
           : 'Pet apparel intent detected from latest query; history not allowed to override target_object.',
       },
+      query_class: queryClass,
     };
     return PivotaIntentV1Zod.parse(patched);
   }
@@ -467,4 +469,8 @@ module.exports = {
   extractIntentWithOpenAI,
   extractIntentWithGemini,
   extractIntent,
+  _debug: {
+    applyHardOverrides,
+    hasBeautyBrandOrProductSignal,
+  },
 };
