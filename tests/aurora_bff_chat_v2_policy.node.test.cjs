@@ -31,6 +31,14 @@ test('intent canonical maps "Send a link" to evaluate intent (anchor collect)', 
   assert.equal(out.source, 'known_option_text');
 });
 
+test('intent canonical maps fit-check phrasing to evaluate intent', () => {
+  const out = inferCanonicalIntent({
+    message: 'Is this toner good for me?',
+  });
+  assert.equal(out.intent, INTENT_ENUM.EVALUATE_PRODUCT);
+  assert.equal(out.source, 'heuristic_regex');
+});
+
 test('intent canonical prefers travel_planning when travel cue and weather words coexist', () => {
   const out = inferCanonicalIntent({
     message: 'Travel next week skincare: weather and UV advice please',

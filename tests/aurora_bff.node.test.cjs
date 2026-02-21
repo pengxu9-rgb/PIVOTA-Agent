@@ -569,6 +569,53 @@ test('/v1/chat: text-only "Send a link" enters anchor collection prompt (no cata
   );
 });
 
+test('/v1/chat: fit-check phrasing routes to anchor collection (no diagnosis gate)', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED: 'true',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_fitcheck_phrase_anchor_collect',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        })
+        .send({
+          message: 'Is this toner good for me?',
+          session: { state: 'idle', profile: { skinType: 'oily' } },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+      const chips = Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [];
+      const chipIds = chips.map((c) => String(c?.chip_id || '')).filter(Boolean);
+
+      assert.match(assistant, /need one anchor first|send the product name or a product link|paste the product link|type the full product name|产品链接|产品全名|粘贴.*链接/i);
+      assert.equal(types.includes('diagnosis_gate'), false);
+      assert.equal(types.includes('offers_resolved'), false);
+      assert.ok(chipIds.includes('chip.fitcheck.send_product_name'));
+      assert.ok(chipIds.includes('chip.fitcheck.send_link'));
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('Emotional preamble: strips mismatched CN greeting when language is EN', async () => {
   const moduleId = require.resolve('../src/auroraBff/routes');
   delete require.cache[moduleId];
