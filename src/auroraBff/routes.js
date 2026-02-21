@@ -205,6 +205,11 @@ const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = requir
 const { extractWhitelistedSocialChannels } = require('./socialSummaryUserVisible');
 const { simulateConflicts } = require('./routineRules');
 const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
+const { INTENT_ENUM, inferCanonicalIntent } = require('./intentCanonical');
+const { resolveQaPlan } = require('./qaPlanner');
+const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
+const { getTravelWeather } = require('./weatherAdapter');
+const { buildEpiPayload } = require('./epiCalculator');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
 const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
@@ -296,6 +301,43 @@ const AURORA_CHAT_RESUME_PROBE_METRICS_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_PROFILE_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_PROFILE_V2_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_QA_PLANNER_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_QA_PLANNER_V1_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_SAFETY_ENGINE_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_SAFETY_ENGINE_V1_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_TRAVEL_WEATHER_LIVE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_TRAVEL_WEATHER_LIVE_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_LOOP_BREAKER_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_LOOP_BREAKER_V2_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_RESPONSE_META_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_RESPONSE_META_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_CHAT_POLICY_VERSION = String(process.env.AURORA_CHAT_POLICY_VERSION || 'aurora_chat_v2_p0').trim();
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
@@ -11054,6 +11096,9 @@ function extractProfilePatchFromSession(session) {
   copyString('barrierStatus', 'barrierStatus', 'barrier_status');
   copyString('region', 'region');
   copyString('budgetTier', 'budgetTier', 'budget_tier');
+  copyString('age_band', 'age_band', 'ageBand');
+  copyString('pregnancy_status', 'pregnancy_status', 'pregnancyStatus');
+  copyString('lactation_status', 'lactation_status', 'lactationStatus');
 
   // Arrays
   if (Array.isArray(rawProfile.goals)) {
@@ -11070,11 +11115,24 @@ function extractProfilePatchFromSession(session) {
       .slice(0, 24);
     if (contraindications.length) patch.contraindications = contraindications;
   }
+  if (Array.isArray(rawProfile.high_risk_medications)) {
+    const medications = rawProfile.high_risk_medications
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 30);
+    if (medications.length) patch.high_risk_medications = medications;
+  }
 
   // Mixed types
   if (rawProfile.currentRoutine != null) patch.currentRoutine = rawProfile.currentRoutine;
   if (rawProfile.current_routine != null) patch.currentRoutine = rawProfile.current_routine;
   if (rawProfile.itinerary != null) patch.itinerary = rawProfile.itinerary;
+  if (rawProfile.travel_plan && typeof rawProfile.travel_plan === 'object' && !Array.isArray(rawProfile.travel_plan)) {
+    patch.travel_plan = rawProfile.travel_plan;
+  }
+  if (rawProfile.travelPlan && typeof rawProfile.travelPlan === 'object' && !Array.isArray(rawProfile.travelPlan)) {
+    patch.travel_plan = rawProfile.travelPlan;
+  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -11198,6 +11256,29 @@ function summarizeProfileForContext(profile) {
   const contraindications = Array.isArray(profile.contraindications)
     ? profile.contraindications.filter((v) => typeof v === 'string' && v.trim()).slice(0, 12)
     : [];
+  const highRiskMedications = Array.isArray(profile.high_risk_medications)
+    ? profile.high_risk_medications.filter((v) => typeof v === 'string' && v.trim()).slice(0, 16)
+    : [];
+
+  const travelPlanRaw = profile.travel_plan && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+    ? profile.travel_plan
+    : null;
+  const travelPlan = travelPlanRaw
+    ? {
+      ...(typeof travelPlanRaw.destination === 'string' && travelPlanRaw.destination.trim()
+        ? { destination: travelPlanRaw.destination.trim().slice(0, 100) }
+        : {}),
+      ...(typeof travelPlanRaw.start_date === 'string' && travelPlanRaw.start_date.trim()
+        ? { start_date: travelPlanRaw.start_date.trim().slice(0, 20) }
+        : {}),
+      ...(typeof travelPlanRaw.end_date === 'string' && travelPlanRaw.end_date.trim()
+        ? { end_date: travelPlanRaw.end_date.trim().slice(0, 20) }
+        : {}),
+      ...(Number.isFinite(Number(travelPlanRaw.indoor_outdoor_ratio))
+        ? { indoor_outdoor_ratio: Math.max(0, Math.min(1, Number(travelPlanRaw.indoor_outdoor_ratio))) }
+        : {}),
+    }
+    : null;
 
   return {
     skinType: profile.skinType || null,
@@ -11209,6 +11290,15 @@ function summarizeProfileForContext(profile) {
     currentRoutine,
     itinerary,
     contraindications,
+    ...(AURORA_PROFILE_V2_ENABLED
+      ? {
+        age_band: profile.age_band || 'unknown',
+        pregnancy_status: profile.pregnancy_status || 'unknown',
+        lactation_status: profile.lactation_status || 'unknown',
+        high_risk_medications: highRiskMedications,
+        travel_plan: travelPlan,
+      }
+      : {}),
   };
 }
 
@@ -22004,6 +22094,24 @@ function mountAuroraBffRoutes(app, { logger }) {
     };
     let chatSessionId = getRecoDogfoodSessionId(req, ctx, '');
     let llmRouteMetaForResponse = null;
+    const shouldAttachPolicyMeta =
+      AURORA_CHAT_RESPONSE_META_ENABLED ||
+      AURORA_QA_PLANNER_V1_ENABLED ||
+      AURORA_SAFETY_ENGINE_V1_ENABLED ||
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED ||
+      AURORA_LOOP_BREAKER_V2_ENABLED;
+    const policyMeta = {
+      intent_canonical: INTENT_ENUM.UNKNOWN,
+      intent_source: 'none',
+      gate_type: 'none',
+      loop_count: 0,
+      break_applied: 'none',
+      env_source: null,
+      policy_version: AURORA_CHAT_POLICY_VERSION,
+      degraded: false,
+    };
+    let plannerSessionStatePatch = null;
+    let latestClarificationId = null;
     const hasAnyLlmRouteMeta = (meta) =>
       Boolean(
         meta &&
@@ -22038,8 +22146,50 @@ function mountAuroraBffRoutes(app, { logger }) {
     };
     const sendChatEnvelope = (envelope, statusCode = 200) => {
       const withLlmMeta = applyLlmMetaToEnvelope(envelope);
+      const withPolicyMeta = (() => {
+        if (!shouldAttachPolicyMeta) return withLlmMeta;
+        if (!withLlmMeta || typeof withLlmMeta !== 'object') return withLlmMeta;
+        const out = { ...withLlmMeta };
+        const baseSessionPatch =
+          out.session_patch && typeof out.session_patch === 'object' && !Array.isArray(out.session_patch)
+            ? { ...out.session_patch }
+            : {};
+        const baseMeta = baseSessionPatch.meta && typeof baseSessionPatch.meta === 'object' && !Array.isArray(baseSessionPatch.meta)
+          ? { ...baseSessionPatch.meta }
+          : {};
+        baseSessionPatch.meta = { ...baseMeta, ...policyMeta };
+        if (plannerSessionStatePatch && typeof plannerSessionStatePatch === 'object' && !Array.isArray(plannerSessionStatePatch)) {
+          const baseState = baseSessionPatch.state && typeof baseSessionPatch.state === 'object' && !Array.isArray(baseSessionPatch.state)
+            ? { ...baseSessionPatch.state }
+            : {};
+          baseSessionPatch.state = { ...baseState, ...plannerSessionStatePatch };
+        }
+        out.session_patch = baseSessionPatch;
+
+        const topMeta = out.meta && typeof out.meta === 'object' && !Array.isArray(out.meta) ? { ...out.meta } : {};
+        out.meta = { ...topMeta, ...policyMeta };
+
+        const events = Array.isArray(out.events) ? out.events.slice() : [];
+        const hasPolicyEvent = events.some((evt) => evt && typeof evt === 'object' && evt.event_name === 'aurora_policy_meta');
+        if (!hasPolicyEvent) {
+          events.push(
+            makeEvent(ctx, 'aurora_policy_meta', {
+              intent_source: policyMeta.intent_source,
+              intent_resolved: policyMeta.intent_canonical,
+              loop_breaker_triggered:
+                policyMeta.break_applied === 'chips_single_question' ||
+                policyMeta.break_applied === 'conservative_defaults' ||
+                policyMeta.break_applied === 'stop_asking',
+              gate_applied: policyMeta.gate_type,
+              clarification_id: latestClarificationId || null,
+            }),
+          );
+        }
+        out.events = events;
+        return out;
+      })();
       const dogfoodAugmented = augmentEnvelopeProductAnalysisCardsForDogfood({
-        envelope: withLlmMeta,
+        envelope: withPolicyMeta,
         req,
         ctx,
         mode: 'main_path',
@@ -22102,8 +22252,25 @@ function mountAuroraBffRoutes(app, { logger }) {
         profile = { ...(profile || {}), ...profilePatchFromSession };
       }
 
+      const normalizedActionPayload = (() => {
+        if (parsed.data.action) return parsed.data.action;
+        if (typeof parsed.data.action_id === 'string' && parsed.data.action_id.trim()) {
+          return {
+            action_id: parsed.data.action_id.trim(),
+            kind: 'action',
+            ...(parsed.data.action_data && typeof parsed.data.action_data === 'object' && !Array.isArray(parsed.data.action_data)
+              ? { data: parsed.data.action_data }
+              : {}),
+          };
+        }
+        if (typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()) {
+          return parsed.data.action_label.trim();
+        }
+        return null;
+      })();
+
       // Allow chips/actions to patch profile inline (so chat can progress without an extra API call).
-      const profilePatchFromAction = parseProfilePatchFromAction(parsed.data.action);
+      const profilePatchFromAction = parseProfilePatchFromAction(normalizedActionPayload);
       let appliedProfilePatch = null;
       if (profilePatchFromAction) {
         const patchParsed = UserProfilePatchSchema.safeParse(profilePatchFromAction);
@@ -22119,22 +22286,36 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      const actionReplyText = extractReplyTextFromAction(parsed.data.action);
-      const message = String(parsed.data.message || '').trim() || actionReplyText || '';
-      const actionId =
-        parsed.data.action && typeof parsed.data.action === 'object'
-          ? parsed.data.action.action_id
-          : typeof parsed.data.action === 'string'
-            ? parsed.data.action
+      const actionReplyText = extractReplyTextFromAction(normalizedActionPayload);
+      const actionLabelFromPayload =
+        typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()
+          ? parsed.data.action_label.trim()
+          : normalizedActionPayload && typeof normalizedActionPayload === 'string' && normalizedActionPayload.trim()
+            ? normalizedActionPayload.trim()
             : null;
+      const message =
+        String(parsed.data.message || parsed.data.query || '').trim() ||
+        actionReplyText ||
+        actionLabelFromPayload ||
+        '';
+      const actionId =
+        (normalizedActionPayload && typeof normalizedActionPayload === 'object'
+          ? normalizedActionPayload.action_id
+          : typeof normalizedActionPayload === 'string'
+            ? normalizedActionPayload
+            : null) ||
+        parsed.data.action_id ||
+        null;
+      const actionLabel = actionLabelFromPayload;
       const clarificationId =
-        parsed.data.action &&
-        typeof parsed.data.action === 'object' &&
-        parsed.data.action.data &&
-        typeof parsed.data.action.data === 'object'
-          ? parsed.data.action.data.clarification_id || parsed.data.action.data.clarificationId || null
-          : null;
-      const includeAlternatives = extractIncludeAlternativesFromAction(parsed.data.action);
+        normalizedActionPayload &&
+        typeof normalizedActionPayload === 'object' &&
+        normalizedActionPayload.data &&
+        typeof normalizedActionPayload.data === 'object'
+          ? normalizedActionPayload.data.clarification_id || normalizedActionPayload.data.clarificationId || null
+          : parsed.data.clarification_id || null;
+      latestClarificationId = clarificationId || null;
+      const includeAlternatives = extractIncludeAlternativesFromAction(normalizedActionPayload);
       const debugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
@@ -22164,10 +22345,133 @@ function mountAuroraBffRoutes(app, { logger }) {
           : '';
       const upstreamMessages = Array.isArray(parsed.data.messages) ? parsed.data.messages : null;
 
+      const canonicalIntent = inferCanonicalIntent({
+        message,
+        actionId,
+        actionLabel,
+      });
+      policyMeta.intent_canonical = canonicalIntent.intent || INTENT_ENUM.UNKNOWN;
+      policyMeta.intent_source = canonicalIntent.source || 'none';
+
+      if (
+        AURORA_PROFILE_V2_ENABLED &&
+        canonicalIntent &&
+        canonicalIntent.entities &&
+        typeof canonicalIntent.entities === 'object' &&
+        (
+          canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+          canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
+        )
+      ) {
+        const baseTravel =
+          profile && profile.travel_plan && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+            ? profile.travel_plan
+            : {};
+        const nextTravel = {
+          ...baseTravel,
+          ...(canonicalIntent.entities.destination ? { destination: String(canonicalIntent.entities.destination).trim().slice(0, 100) } : {}),
+          ...(canonicalIntent.entities.date_range && typeof canonicalIntent.entities.date_range === 'object'
+            ? {
+              ...(canonicalIntent.entities.date_range.start
+                ? { start_date: String(canonicalIntent.entities.date_range.start).trim().slice(0, 20) }
+                : {}),
+              ...(canonicalIntent.entities.date_range.end
+                ? { end_date: String(canonicalIntent.entities.date_range.end).trim().slice(0, 20) }
+                : {}),
+            }
+            : {}),
+        };
+        if (Object.keys(nextTravel).length) {
+          profile = { ...(profile || {}), travel_plan: nextTravel };
+        }
+      }
+
+      const hasPlannerAnchor = hasMeaningfulFitCheckAnchor({
+        message,
+        anchorProductId,
+        anchorProductUrl,
+      });
+      const plannerDecision =
+        AURORA_QA_PLANNER_V1_ENABLED || AURORA_LOOP_BREAKER_V2_ENABLED
+          ? resolveQaPlan({
+            intent: canonicalIntent.intent,
+            profile,
+            message,
+            language: ctx.lang,
+            hasAnchor: hasPlannerAnchor,
+            session: parsed.data.session,
+            profileDelta: Boolean(appliedProfilePatch && Object.keys(appliedProfilePatch).length),
+            anchorDelta: Boolean(anchorProductId || anchorProductUrl),
+          })
+          : null;
+      if (plannerDecision) {
+        policyMeta.gate_type = plannerDecision.gate_type || 'none';
+        policyMeta.loop_count = Number(plannerDecision.loop_count) || 0;
+        policyMeta.break_applied = plannerDecision.break_applied || 'none';
+        plannerSessionStatePatch = plannerDecision.session_state_patch || null;
+      }
+
       const makeChatAssistantMessage = (content, format = 'text') => {
         const preambleSeed = `${ctx.request_id || ''}|${ctx.trace_id || ''}|${String(content || '').slice(0, 96)}`;
         const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
         return makeAssistantMessage(text, format);
+      };
+      const safetyDecision =
+        AURORA_SAFETY_ENGINE_V1_ENABLED
+          ? evaluateSafety({
+            intent: canonicalIntent.intent,
+            message,
+            profile,
+            language: ctx.lang,
+          })
+          : null;
+      const buildSafetyNoticeText = (safety) => {
+        const s = safety && typeof safety === 'object' ? safety : null;
+        if (!s) return '';
+        const reasons = Array.isArray(s.reasons) ? s.reasons.slice(0, 3) : [];
+        const alternatives = Array.isArray(s.safe_alternatives) ? s.safe_alternatives.slice(0, 3) : [];
+        const requiredQuestions = Array.isArray(s.required_questions) ? s.required_questions.slice(0, 1) : [];
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        if (s.block_level === BLOCK_LEVEL.BLOCK) {
+          return lang === 'CN'
+            ? [
+              '基于你当前情况，我不能给出激进活性方案。',
+              ...(reasons.length ? reasons.map((line) => `- ${line}`) : []),
+              ...(alternatives.length ? ['更安全替代：', ...alternatives.map((line) => `- ${line}`)] : []),
+            ].join('\n')
+            : [
+              'Given your current context, I cannot provide an aggressive-active recommendation.',
+              ...(reasons.length ? reasons.map((line) => `- ${line}`) : []),
+              ...(alternatives.length ? ['Safer alternatives:', ...alternatives.map((line) => `- ${line}`)] : []),
+            ].join('\n');
+        }
+        if (s.block_level === BLOCK_LEVEL.REQUIRE_INFO) {
+          return lang === 'CN'
+            ? [
+              '继续前我需要一个关键安全信息：',
+              ...(requiredQuestions.length ? requiredQuestions.map((line) => `- ${line}`) : []),
+              ...(alternatives.length ? ['在确认前先按保守替代执行：', ...alternatives.map((line) => `- ${line}`)] : []),
+            ].join('\n')
+            : [
+              'Before continuing, I need one key safety detail:',
+              ...(requiredQuestions.length ? requiredQuestions.map((line) => `- ${line}`) : []),
+              ...(alternatives.length ? ['Conservative options before confirmation:', ...alternatives.map((line) => `- ${line}`)] : []),
+            ].join('\n');
+        }
+        if (s.block_level === BLOCK_LEVEL.WARN) {
+          return lang === 'CN'
+            ? [
+              '风险提示：',
+              ...(reasons.length ? reasons.map((line) => `- ${line}`) : []),
+              ...(alternatives.length ? ['可执行替代：', ...alternatives.map((line) => `- ${line}`)] : []),
+            ].join('\n')
+            : [
+              'Risk note:',
+              ...(reasons.length ? reasons.map((line) => `- ${line}`) : []),
+              ...(alternatives.length ? ['Practical alternatives:', ...alternatives.map((line) => `- ${line}`)] : []),
+            ].join('\n');
+        }
+        return '';
       };
 
       const clientAgentState = normalizeAgentState(parsed.data.client_state);
@@ -22287,7 +22591,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       let resumeContextForUpstream = null;
       let pendingClarificationPatchOverride = undefined;
       let forceUpstreamAfterPendingAbandon = false;
-      const clarifyChipAction = isClarifyChipAction(parsed.data.action, { actionId, clarificationId });
+      const clarifyChipAction = isClarifyChipAction(normalizedActionPayload, { actionId, clarificationId });
       const sessionStateRaw =
         parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
           ? parsed.data.session.state
@@ -22337,7 +22641,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED &&
         !pendingClarification &&
         clarifyChipAction &&
-        hasPendingClarificationStateHint(parsed.data.action)
+        hasPendingClarificationStateHint(normalizedActionPayload)
       ) {
         recordPendingClarificationAbandoned({ reason: 'missing_state' });
       }
@@ -22350,7 +22654,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       ) {
         const selectedOption = actionReplyText || parseClarificationReplyFromActionId(actionId);
         const selectedQuestionId =
-          extractClarificationQuestionIdFromAction(parsed.data.action) ||
+          extractClarificationQuestionIdFromAction(normalizedActionPayload) ||
           (pendingClarification.current && pendingClarification.current.id) ||
           (typeof clarificationId === 'string' ? clarificationId.trim() : '') ||
           parseClarificationIdFromActionId(actionId);
@@ -22414,10 +22718,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (ctx.state === 'S6_BUDGET') {
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
-        const wantsScience = looksLikeIngredientScienceIntent(message, parsed.data.action);
+        const wantsScience = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
         const wantsRecoNoRoutine =
           looksLikeRecommendationRequest(message) &&
-          !looksLikeRoutineRequest(message, parsed.data.action);
+          !looksLikeRoutineRequest(message, normalizedActionPayload);
         const wantsEnvStress =
           looksLikeWeatherOrEnvironmentQuestion(message) &&
           (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
@@ -22427,6 +22731,66 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           ctx.state = nextStateOverride || 'idle';
         }
+      }
+
+      if (
+        AURORA_LOOP_BREAKER_V2_ENABLED &&
+        plannerDecision &&
+        plannerDecision.next_step === 'ask' &&
+        Array.isArray(plannerDecision.required_fields) &&
+        plannerDecision.required_fields.length > 0 &&
+        (
+          plannerDecision.break_applied === 'conservative_defaults' ||
+          plannerDecision.break_applied === 'stop_asking'
+        )
+      ) {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const requiredSummary = plannerDecision.required_fields.slice(0, 3).join(', ');
+        const assistantText =
+          lang === 'CN'
+            ? `我先按保守默认值继续，不再重复追问（缺失字段：${requiredSummary || 'unknown'}）。你可以稍后在 Profile 里补充，以获得更精准建议。`
+            : `I’ll proceed with conservative defaults and stop repeating the same clarifications (missing: ${requiredSummary || 'unknown'}). You can update Profile later for more precise output.`;
+        const suggestedChips = [
+          {
+            chip_id: 'chip.action.analyze_product',
+            label: lang === 'CN' ? '评估单品' : 'Evaluate one product',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '评估这款产品是否适合我' : 'Evaluate a specific product for me' },
+          },
+          {
+            chip_id: 'chip.start.ingredients',
+            label: lang === 'CN' ? '成分科学' : 'Ingredient science',
+            kind: 'quick_reply',
+            data: {
+              reply_text:
+                lang === 'CN'
+                  ? '我想聊成分科学（证据/机制），先不做产品推荐。'
+                  : 'I want ingredient science (evidence/mechanism), not product recommendations yet.',
+            },
+          },
+          {
+            chip_id: 'chip.start.reco_products',
+            label: lang === 'CN' ? '推荐产品' : 'Recommend products',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '给我一些产品推荐' : 'Get product recommendations' },
+          },
+        ];
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(assistantText),
+          suggested_chips: suggestedChips,
+          cards: [],
+          session_patch: {},
+          events: [
+            makeEvent(ctx, 'loop_breaker_triggered', {
+              loop_count: plannerDecision.loop_count,
+              break_applied: plannerDecision.break_applied,
+              required_fields: plannerDecision.required_fields.slice(0, 6),
+              intent: canonicalIntent.intent || INTENT_ENUM.UNKNOWN,
+            }),
+          ],
+        });
+        return sendChatEnvelope(envelope);
       }
 
       // Brand availability short-circuit: route "有没有某品牌的产品/有货吗/哪里买" to catalog lookup (no diagnosis intake).
@@ -22635,12 +22999,168 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Local env-stress short-circuit: answer weather/environment questions without upstream.
       // Only for user-typed text (including text_explicit). Chips/actions should keep their intended routing.
       if (
-        looksLikeWeatherOrEnvironmentQuestion(message) &&
-        (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
+        AURORA_TRAVEL_WEATHER_LIVE_ENABLED &&
+        plannerDecision &&
+        (
+          canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+          canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
+        ) &&
+        plannerDecision.next_step === 'ask' &&
+        Array.isArray(plannerDecision.required_fields) &&
+        plannerDecision.required_fields.length > 0
+      ) {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const fields = plannerDecision.required_fields;
+        const asksDestination = fields.includes('travel_plan.destination');
+        const asksDates = fields.includes('travel_plan.start_date') || fields.includes('travel_plan.end_date');
+        const askText = (() => {
+          if (lang === 'CN') {
+            if (asksDestination && asksDates) return '为了给你做旅行护肤方案，我先要两个信息：目的地 + 出行日期。';
+            if (asksDestination) return '为了给你做旅行护肤方案，请先告诉我目的地。';
+            if (asksDates) return '为了给你做旅行护肤方案，请先告诉我出行日期（开始-结束）。';
+            return '我先补一个旅行信息，再给你更精准方案。';
+          }
+          if (asksDestination && asksDates) return 'For a travel skincare plan, I need two quick details first: destination and travel dates.';
+          if (asksDestination) return 'For a travel skincare plan, please share your destination first.';
+          if (asksDates) return 'For a travel skincare plan, please share your travel dates (start-end).';
+          return 'I need one quick travel detail before I continue.';
+        })();
+        const chips = [
+          {
+            chip_id: 'chip.travel.destination',
+            label: lang === 'CN' ? '目的地：东京' : 'Destination: Tokyo',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '目的地东京' : 'Destination Tokyo' },
+          },
+          {
+            chip_id: 'chip.travel.dates',
+            label: lang === 'CN' ? '日期：2026-03-01 到 2026-03-05' : 'Dates: 2026-03-01 to 2026-03-05',
+            kind: 'quick_reply',
+            data: { reply_text: '2026-03-01 to 2026-03-05' },
+          },
+          {
+            chip_id: 'chip.travel.climate_mode',
+            label: lang === 'CN' ? '无法查天气，按气候模式' : 'No weather, use climate mode',
+            kind: 'quick_reply',
+            data: { reply_text: lang === 'CN' ? '按炎热潮湿气候给我方案' : 'Plan for hot and humid climate mode' },
+          },
+        ];
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(askText),
+          suggested_chips: chips,
+          cards: [],
+          session_patch: {},
+          events: [makeEvent(ctx, 'travel_planning_gate', { missing_fields: fields.slice(0, 4) })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      if (
+        (
+          looksLikeWeatherOrEnvironmentQuestion(message) ||
+          canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+          canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
+        ) &&
+        (
+          ctx.trigger_source === 'text' ||
+          ctx.trigger_source === 'text_explicit' ||
+          ctx.trigger_source === 'chip' ||
+          ctx.trigger_source === 'action'
+        )
       ) {
         const scenario = extractWeatherScenario(message);
-        const envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
-        const advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
+        let envStressUi = buildEnvStressUiModelFromLocal({ profile, recentLogs, message, language: ctx.lang });
+        let advice = buildWeatherAdviceMessage({ language: ctx.lang, scenario, profile });
+        policyMeta.env_source = 'local_template';
+        policyMeta.degraded = true;
+
+        if (AURORA_TRAVEL_WEATHER_LIVE_ENABLED) {
+          const travelPlan =
+            profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+              ? profile.travel_plan
+              : null;
+          const destination =
+            (travelPlan && typeof travelPlan.destination === 'string' && travelPlan.destination.trim()) ||
+            (canonicalIntent.entities && canonicalIntent.entities.destination) ||
+            '';
+          const startDate =
+            (travelPlan && typeof travelPlan.start_date === 'string' && travelPlan.start_date.trim()) ||
+            (canonicalIntent.entities &&
+            canonicalIntent.entities.date_range &&
+            typeof canonicalIntent.entities.date_range.start === 'string'
+              ? canonicalIntent.entities.date_range.start
+              : '');
+          const endDate =
+            (travelPlan && typeof travelPlan.end_date === 'string' && travelPlan.end_date.trim()) ||
+            (canonicalIntent.entities &&
+            canonicalIntent.entities.date_range &&
+            typeof canonicalIntent.entities.date_range.end === 'string'
+              ? canonicalIntent.entities.date_range.end
+              : '');
+
+          if (destination) {
+            const weather = await getTravelWeather({
+              destination,
+              startDate,
+              endDate,
+            });
+            const epiPayload = buildEpiPayload({
+              weather,
+              profile,
+              language: ctx.lang,
+              userReportedConditions: { condition: message },
+            });
+            policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
+            policyMeta.degraded = policyMeta.env_source !== 'weather_api';
+
+            const localEss = Number(envStressUi && envStressUi.ess);
+            envStressUi = {
+              ...(envStressUi || {}),
+              ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
+              epi: epiPayload.epi,
+              components: epiPayload.components,
+              reco_weights: epiPayload.reco_weights,
+              env_source: epiPayload.env_source,
+              travel_context: weather.date_range || null,
+            };
+
+            const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+            const destinationText =
+              weather && weather.location && weather.location.name
+                ? String(weather.location.name)
+                : String(destination);
+            const dateHint =
+              weather && weather.date_range && weather.date_range.start
+                ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
+                : '';
+            const epiLinesCn = [
+              `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
+              destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
+              '建议（AM）：',
+              ...epiPayload.strategy.am.map((line) => `- ${line}`),
+              '建议（PM）：',
+              ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+              ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+            ].filter(Boolean);
+            const epiLinesEn = [
+              `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
+              destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
+              'AM strategy:',
+              ...epiPayload.strategy.am.map((line) => `- ${line}`),
+              'PM strategy:',
+              ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+              ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+            ].filter(Boolean);
+            advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+          } else {
+            policyMeta.env_source = 'user_reported_conditions';
+            policyMeta.degraded = true;
+          }
+        }
+        if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
+          const safetyText = buildSafetyNoticeText(safetyDecision);
+          if (safetyText) advice = `${safetyText}\n\n${advice}`;
+        }
 
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
         const scenarioHint =
@@ -22848,10 +23368,100 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, parsed.data.action);
+      const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+      if (ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            buildSafetyNoticeText(safetyDecision) ||
+              (ctx.lang === 'CN'
+                ? '这个方向当前存在安全风险，我先给你更安全替代。'
+                : 'There is a safety risk for this path, so I’ll switch to safer alternatives first.'),
+          ),
+          suggested_chips: [
+            {
+              chip_id: 'chip.start.ingredients.safe_alternatives',
+              label: ctx.lang === 'CN' ? '看更安全替代' : 'Show safer alternatives',
+              kind: 'quick_reply',
+              data: {
+                reply_text:
+                  ctx.lang === 'CN'
+                    ? '请给我更安全替代成分（机制+注意事项）'
+                    : 'Show safer alternative ingredients (mechanism + watchouts)',
+              },
+            },
+          ],
+          cards: [
+            {
+              card_id: `safety_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: {
+                severity: 'block',
+                message:
+                  ctx.lang === 'CN'
+                    ? '该方向存在安全风险，已切换到更保守建议。'
+                    : 'This path carries safety risk; switched to conservative guidance.',
+                details: [...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []), ...(Array.isArray(safetyDecision.safe_alternatives) ? safetyDecision.safe_alternatives.slice(0, 3) : [])],
+                actions: ['safe_alternatives'],
+              },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'safety_gate_block', { intent: 'ingredient_science', block_level: safetyDecision.block_level })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+      if (ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO) {
+        const safetyQuestions = Array.isArray(safetyDecision.required_questions) ? safetyDecision.required_questions : [];
+        const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个关键安全信息。' : 'Please provide one key safety detail first.');
+        const asksPregnancy = /pregnan|怀孕|备孕/i.test(firstQuestion);
+        const chips = asksPregnancy
+          ? [
+            {
+              chip_id: 'chip.profile.pregnancy.not_pregnant',
+              label: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant',
+              kind: 'quick_reply',
+              data: { profile_patch: { pregnancy_status: 'not_pregnant' }, reply_text: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant' },
+            },
+            {
+              chip_id: 'chip.profile.pregnancy.pregnant',
+              label: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant',
+              kind: 'quick_reply',
+              data: { profile_patch: { pregnancy_status: 'pregnant' }, reply_text: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant' },
+            },
+            {
+              chip_id: 'chip.profile.pregnancy.trying',
+              label: ctx.lang === 'CN' ? '备孕中' : 'Trying',
+              kind: 'quick_reply',
+              data: { profile_patch: { pregnancy_status: 'trying' }, reply_text: ctx.lang === 'CN' ? '备孕中' : 'Trying to conceive' },
+            },
+          ]
+          : [];
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage([buildSafetyNoticeText(safetyDecision), firstQuestion].filter(Boolean).join('\n\n')),
+          suggested_chips: chips,
+          cards: [
+            {
+              card_id: `safety_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: {
+                severity: 'warn',
+                message:
+                  ctx.lang === 'CN'
+                    ? '继续前需要一个关键安全信息。'
+                    : 'One key safety detail is required before continuing.',
+                details: Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 4) : [],
+                actions: ['answer_safety_question'],
+              },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'safety_gate_require_info', { intent: 'ingredient_science', question: firstQuestion })],
+        });
+        return sendChatEnvelope(envelope);
+      }
       const shouldKickoffIngredientScience =
         ingredientScienceIntent &&
-        !looksLikeRoutineRequest(message, parsed.data.action) &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
         !looksLikeWeatherOrEnvironmentQuestion(message) &&
@@ -22859,8 +23469,14 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (shouldKickoffIngredientScience) {
         const kickoff = buildIngredientScienceKickoff({ language: ctx.lang });
+        const safetyPrefix =
+          ingredientScienceIntent &&
+          safetyDecision &&
+          safetyDecision.block_level === BLOCK_LEVEL.WARN
+            ? buildSafetyNoticeText(safetyDecision)
+            : '';
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(kickoff.prompt),
+          assistant_message: makeChatAssistantMessage([safetyPrefix, kickoff.prompt].filter(Boolean).join('\n\n')),
           suggested_chips: kickoff.chips,
           cards: [],
           session_patch:
@@ -22871,14 +23487,38 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const evaluateIntent =
-        looksLikeProductEvaluationIntentV2(message, actionId) &&
-        !looksLikeRoutineRequest(message, parsed.data.action) &&
-        !looksLikeIngredientScienceIntent(message, parsed.data.action);
+        (canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT || looksLikeProductEvaluationIntentV2(message, actionId)) &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+        !looksLikeIngredientScienceIntent(message, normalizedActionPayload);
       const hasFitCheckAnchor = hasMeaningfulFitCheckAnchor({
         message,
         anchorProductId,
         anchorProductUrl,
       });
+      const anchorCollectionSignal = (() => {
+        const text = String(message || '').trim().toLowerCase();
+        const aid = String(actionId || '').trim().toLowerCase();
+        if (aid === 'chip.fitcheck.send_link' || aid === 'chip.fitcheck.send_product_name') return true;
+        return (
+          /^(send (a )?(link|url|product name)|link|url|product name|发送(链接|产品名)|产品名|链接)$/i.test(text) ||
+          /(请粘贴|paste).{0,10}(link|url|链接)/i.test(text)
+        );
+      })();
+      if (evaluateIntent && !hasFitCheckAnchor && anchorCollectionSignal) {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            lang === 'CN'
+              ? '好的，请直接粘贴“产品链接”或输入“完整产品名（品牌+品名）”，我会立即继续评估。'
+              : 'Great. Please paste the product link or type the full product name (brand + name), and I’ll continue immediately.',
+          ),
+          suggested_chips: [],
+          cards: [],
+          session_patch: {},
+          events: [makeEvent(ctx, 'anchor_collection_waiting_input', { intent: canonicalIntent.intent })],
+        });
+        return sendChatEnvelope(envelope);
+      }
       if (evaluateIntent && !hasFitCheckAnchor) {
         const prompt = buildFitCheckAnchorPrompt(ctx.lang);
         const envelope = buildEnvelope(ctx, {
@@ -22924,10 +23564,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         // Example: "Is this product suitable for me?" should go to fit-check/product analysis (budget is irrelevant).
         const wantsFitCheck = looksLikeSuitabilityRequest(message);
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
-        const wantsScience = looksLikeIngredientScienceIntent(message, parsed.data.action);
+        const wantsScience = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
         const wantsRecoNoRoutine =
           looksLikeRecommendationRequest(message) &&
-          !looksLikeRoutineRequest(message, parsed.data.action);
+          !looksLikeRoutineRequest(message, normalizedActionPayload);
         const wantsEnvStress =
           looksLikeWeatherOrEnvironmentQuestion(message) &&
           (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit');
@@ -23039,7 +23679,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Budget refinement is optional and can be done after showing a usable plan.
       if (
         allowRecoCards &&
-        looksLikeRoutineRequest(message, parsed.data.action) &&
+        looksLikeRoutineRequest(message, normalizedActionPayload) &&
         recoInteractionAllowed
       ) {
         const budget = normalizeBudgetHint(profile && profile.budgetTier);
@@ -23103,7 +23743,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         isBareBudgetSelectionMessage(message) &&
         !looksLikeRecommendationRequest(message) &&
         !looksLikeSuitabilityRequest(message) &&
-        !looksLikeRoutineRequest(message, parsed.data.action) &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeCompatibilityOrConflictQuestion(message) &&
         !looksLikeWeatherOrEnvironmentQuestion(message);
 
@@ -23159,8 +23799,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const wantsProductRecommendations =
         !forceUpstreamAfterPendingAbandon &&
         allowRecoCards &&
-        !looksLikeIngredientScienceIntent(message, parsed.data.action) &&
-        !looksLikeRoutineRequest(message, parsed.data.action) &&
+        !looksLikeIngredientScienceIntent(message, normalizedActionPayload) &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
         recoInteractionAllowed &&
         (
@@ -23172,6 +23812,127 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
 
       if (wantsProductRecommendations) {
+        if (safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
+          const safetyText = buildSafetyNoticeText(safetyDecision);
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(safetyText || (ctx.lang === 'CN' ? '当前存在安全风险，先不输出激进推荐。' : 'Current safety risk detected, so I will not output aggressive recommendations.')),
+            suggested_chips: [
+              {
+                chip_id: 'chip.start.ingredients',
+                label: ctx.lang === 'CN' ? '成分科学（更安全替代）' : 'Ingredient science (safe alternatives)',
+                kind: 'quick_reply',
+                data: {
+                  reply_text:
+                    ctx.lang === 'CN'
+                      ? '我想看更安全替代方案（成分机制）'
+                      : 'Show me safer alternatives with ingredient mechanism',
+                },
+              },
+              {
+                chip_id: 'chip.start.routine',
+                label: ctx.lang === 'CN' ? '先做温和routine' : 'Build gentle routine first',
+                kind: 'quick_reply',
+                data: { reply_text: ctx.lang === 'CN' ? '先给我一套温和修护routine' : 'Build a gentle barrier-first routine for me' },
+              },
+            ],
+            cards: [
+              {
+                card_id: `safety_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: {
+                  severity: 'block',
+                  message:
+                    ctx.lang === 'CN'
+                      ? '检测到安全风险，已切换保守路径。'
+                      : 'Safety risk detected; switched to conservative path.',
+                  details: [...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []), ...(Array.isArray(safetyDecision.safe_alternatives) ? safetyDecision.safe_alternatives.slice(0, 3) : [])],
+                  actions: ['safe_alternatives', 'profile_update'],
+                },
+              },
+            ],
+            session_patch: {},
+            events: [makeEvent(ctx, 'safety_gate_block', { intent: canonicalIntent.intent, block_level: safetyDecision.block_level })],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        if (
+          safetyDecision &&
+          safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO &&
+          (!plannerDecision || Number(plannerDecision.question_budget) > 0)
+        ) {
+          const safetyText = buildSafetyNoticeText(safetyDecision);
+          const safetyQuestions = Array.isArray(safetyDecision.required_questions) ? safetyDecision.required_questions : [];
+          const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个关键安全信息。' : 'Please provide one key safety detail first.');
+          const asksPregnancy = /pregnan|怀孕|备孕/i.test(firstQuestion);
+          const asksAge = /age|年龄/i.test(firstQuestion);
+          const chips = asksPregnancy
+            ? [
+              {
+                chip_id: 'chip.profile.pregnancy.not_pregnant',
+                label: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant',
+                kind: 'quick_reply',
+                data: { profile_patch: { pregnancy_status: 'not_pregnant' }, reply_text: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant' },
+              },
+              {
+                chip_id: 'chip.profile.pregnancy.pregnant',
+                label: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant',
+                kind: 'quick_reply',
+                data: { profile_patch: { pregnancy_status: 'pregnant' }, reply_text: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant' },
+              },
+              {
+                chip_id: 'chip.profile.pregnancy.trying',
+                label: ctx.lang === 'CN' ? '备孕中' : 'Trying',
+                kind: 'quick_reply',
+                data: { profile_patch: { pregnancy_status: 'trying' }, reply_text: ctx.lang === 'CN' ? '备孕中' : 'Trying to conceive' },
+              },
+            ]
+            : asksAge
+              ? [
+                {
+                  chip_id: 'chip.profile.age.18_24',
+                  label: '18-24',
+                  kind: 'quick_reply',
+                  data: { profile_patch: { age_band: '18_24' }, reply_text: '18-24' },
+                },
+                {
+                  chip_id: 'chip.profile.age.25_34',
+                  label: '25-34',
+                  kind: 'quick_reply',
+                  data: { profile_patch: { age_band: '25_34' }, reply_text: '25-34' },
+                },
+                {
+                  chip_id: 'chip.profile.age.35_44',
+                  label: '35-44',
+                  kind: 'quick_reply',
+                  data: { profile_patch: { age_band: '35_44' }, reply_text: '35-44' },
+                },
+              ]
+              : [];
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage([safetyText, firstQuestion].filter(Boolean).join('\n\n')),
+            suggested_chips: chips,
+            cards: [
+              {
+                card_id: `safety_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: {
+                  severity: 'warn',
+                  message:
+                    ctx.lang === 'CN'
+                      ? '继续前需要一个关键安全信息。'
+                      : 'One key safety detail is required before continuing.',
+                  details: Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 4) : [],
+                  actions: ['answer_safety_question'],
+                },
+              },
+            ],
+            session_patch: {},
+            events: [makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent, question: firstQuestion })],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
         const hardRequiredFields = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
         const hardRequiredMissing = hardRequiredFields.filter((field) =>
@@ -23261,14 +24022,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             : (ctx.lang === 'CN'
               ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
               : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
+        const safetyWarnText =
+          safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.WARN ? buildSafetyNoticeText(safetyDecision) : '';
         const assistantText = addEmotionalPreambleToAssistantText(assistantTextRaw, {
           language: ctx.lang,
           profile,
           seed: ctx.request_id,
         });
+        const finalAssistantText = [safetyWarnText, assistantText].filter(Boolean).join('\n\n');
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
+          assistant_message: makeChatAssistantMessage(finalAssistantText),
           suggested_chips: refinementChips,
           cards: [
             {
@@ -23416,7 +24180,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         state: ctx.state,
         agent_state: agentState,
         trigger_source: ctx.trigger_source,
-        action_id: parsed.data.action && typeof parsed.data.action === 'object' ? parsed.data.action.action_id : null,
+        action_id: normalizedActionPayload && typeof normalizedActionPayload === 'object' ? normalizedActionPayload.action_id : null,
         clarification_id: clarificationId,
         ...(historyForPrefix.length ? { clarification_history: historyForPrefix } : {}),
       });
