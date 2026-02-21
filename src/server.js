@@ -426,6 +426,27 @@ const PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = Math.max(
     UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
   ),
 );
+const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
+  300,
+  Math.min(
+    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS, 900),
+    PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
+  ),
+);
+const PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = Math.max(
+  300,
+  Math.min(
+    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS, 450),
+    PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+  ),
+);
+const PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS = Math.max(
+  200,
+  Math.min(
+    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS, 450),
+    3000,
+  ),
+);
 const PROXY_SEARCH_RESOLVER_CACHE_TTL_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PROXY_SEARCH_RESOLVER_CACHE_TTL_MS, 5 * 60 * 1000),
@@ -717,7 +738,11 @@ function buildProxySearchResolverCacheKey({
   preferMerchants,
   searchAllMerchants,
   fetchDetail,
+  resolverTimeoutMs,
 }) {
+  const timeoutBucket = Number.isFinite(Number(resolverTimeoutMs))
+    ? Math.max(100, Math.round(Number(resolverTimeoutMs) / 50) * 50)
+    : null;
   return JSON.stringify({
     q: String(queryText || '').trim().toLowerCase(),
     lang: String(lang || '').trim().toLowerCase() || 'en',
@@ -726,6 +751,7 @@ function buildProxySearchResolverCacheKey({
       : [],
     search_all_merchants: searchAllMerchants === true ? true : false,
     fetch_detail: fetchDetail === true,
+    resolver_timeout_ms_bucket: timeoutBucket,
   });
 }
 
@@ -2728,6 +2754,24 @@ function getAuroraFallbackOverrides(source, operation) {
   };
 }
 
+function getProxySearchPrimaryTimeoutMs(source, baseTimeoutMs) {
+  const fallbackBase = Math.min(getUpstreamTimeoutMs('find_products_multi'), PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS);
+  const requested = Number(baseTimeoutMs);
+  const safeBase = Number.isFinite(requested) ? Math.max(300, requested) : fallbackBase;
+  if (!isAuroraSource(source)) return safeBase;
+  return Math.max(300, Math.min(safeBase, PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS));
+}
+
+function getProxySearchFallbackTimeoutMs(source) {
+  if (!isAuroraSource(source)) return PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
+  return Math.max(300, Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS));
+}
+
+function getProxySearchResolverTimeoutMs(source) {
+  if (!isAuroraSource(source)) return PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
+  return Math.max(200, PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS);
+}
+
 function getFallbackAdoptUsableThreshold({ source, primaryUsableCount, primaryIrrelevant }) {
   const baseThreshold = Math.max(1, Number.isFinite(Number(primaryUsableCount)) ? Number(primaryUsableCount) : 0);
   if (!primaryIrrelevant) return baseThreshold;
@@ -3308,7 +3352,13 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   };
 }
 
-async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason, requestSource }) {
+async function queryFindProductsMultiFallback({
+  queryParams,
+  checkoutToken,
+  reason,
+  requestSource,
+  timeoutMs,
+}) {
   const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
   if (!payload) return null;
 
@@ -3326,6 +3376,11 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
     },
   };
 
+  const effectiveFallbackTimeoutMs = Math.max(
+    300,
+    Number(timeoutMs || PROXY_SEARCH_FALLBACK_TIMEOUT_MS) || PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+  );
+
   const resp = await axios({
     method: 'POST',
     url,
@@ -3339,7 +3394,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
             ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
           }),
     },
-    timeout: PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+    timeout: effectiveFallbackTimeoutMs,
     validateStatus: () => true,
   });
 
@@ -3434,7 +3489,13 @@ function buildResolverReferenceOnlyResult({
   };
 }
 
-async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, fetchDetail = true }) {
+async function queryResolveSearchFallback({
+  queryParams,
+  checkoutToken,
+  reason,
+  fetchDetail = true,
+  timeoutMs,
+}) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
   if (!queryText) return null;
@@ -3447,10 +3508,14 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     ...merchantIds,
   ]);
   const searchAllMerchants = parseQueryBoolean(query.search_all_merchants || query.searchAllMerchants);
+  const effectiveResolverTimeoutMs = Math.max(
+    200,
+    Number(timeoutMs || PROXY_SEARCH_RESOLVER_TIMEOUT_MS) || PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
+  );
   const resolveOptions = {
     ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
     ...(searchAllMerchants !== undefined ? { search_all_merchants: searchAllMerchants } : {}),
-    timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
+    timeout_ms: effectiveResolverTimeoutMs,
     upstream_retries: 0,
     stable_alias_short_circuit: true,
   };
@@ -3460,6 +3525,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     preferMerchants,
     searchAllMerchants,
     fetchDetail,
+    resolverTimeoutMs: effectiveResolverTimeoutMs,
   });
   const cached = getProxySearchResolverCacheEntry(resolverCacheKey);
   if (cached) return cached;
@@ -7763,6 +7829,8 @@ async function proxyAgentSearchToBackend(req, res) {
   const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
   const auroraFallbackOverrides = getAuroraFallbackOverrides(source, 'find_products_multi');
   const guardedQueryParams = applyShoppingCatalogQueryGuards(queryParams, source);
+  const resolverTimeoutMs = getProxySearchResolverTimeoutMs(source);
+  const secondaryFallbackTimeoutMs = getProxySearchFallbackTimeoutMs(source);
   const resolverFirstMetadata = source ? { source } : null;
   const traceId = randomUUID();
   const startedAtMs = Date.now();
@@ -7857,6 +7925,7 @@ async function proxyAgentSearchToBackend(req, res) {
         queryParams: guardedQueryParams,
         checkoutToken,
         reason: 'resolver_first',
+        timeoutMs: resolverTimeoutMs,
         }),
         FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS,
         'resolver_stage',
@@ -7894,10 +7963,10 @@ async function proxyAgentSearchToBackend(req, res) {
   }
 
   try {
-    const basePrimaryTimeoutMs = Math.min(
+    const basePrimaryTimeoutMs = getProxySearchPrimaryTimeoutMs(source, Math.min(
       getUpstreamTimeoutMs('find_products_multi'),
       PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
-    );
+    ));
     const primaryTimeoutMs =
       shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, queryText)
         ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
@@ -7980,6 +8049,7 @@ async function proxyAgentSearchToBackend(req, res) {
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_primary',
+            timeoutMs: resolverTimeoutMs,
           });
           if (
             resolverFallback &&
@@ -8017,6 +8087,7 @@ async function proxyAgentSearchToBackend(req, res) {
                 : 'empty_or_unusable_primary'
               : 'primary_irrelevant',
             requestSource: source,
+            timeoutMs: secondaryFallbackTimeoutMs,
           });
           if (
             fallback &&
@@ -8185,6 +8256,7 @@ async function proxyAgentSearchToBackend(req, res) {
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_exception',
+            timeoutMs: resolverTimeoutMs,
           });
           resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
           if (
@@ -8226,6 +8298,7 @@ async function proxyAgentSearchToBackend(req, res) {
             checkoutToken,
             reason: 'primary_request_failed',
             requestSource: source,
+            timeoutMs: secondaryFallbackTimeoutMs,
           });
           if (
             fallback &&
@@ -13160,6 +13233,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 },
                 checkoutToken,
                 reason: 'resolver_after_cache_miss',
+                timeoutMs: getProxySearchResolverTimeoutMs(source),
               });
               if (
                 resolverFallback &&
@@ -14055,7 +14129,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
       timeout:
         operation === 'find_products_multi'
-          ? Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
+          ? getProxySearchPrimaryTimeoutMs(
+              metadata?.source,
+              Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch),
+            )
           : getUpstreamTimeoutMs(operation),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
@@ -14065,6 +14142,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
     const resolverQueryParams = resolverQueryText ? { ...queryParams, query: resolverQueryText } : queryParams;
     const auroraFallbackOverrides = getAuroraFallbackOverrides(metadata?.source, operation);
+    const resolverTimeoutMs = getProxySearchResolverTimeoutMs(metadata?.source);
+    const secondaryFallbackTimeoutMs = getProxySearchFallbackTimeoutMs(metadata?.source);
     const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation,
       metadata,
@@ -14077,6 +14156,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           queryParams: resolverQueryParams,
           checkoutToken,
           reason: 'resolver_first',
+          timeoutMs: resolverTimeoutMs,
         });
         if (
           resolverFirstResult &&
@@ -14298,6 +14378,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryParams: resolverQueryParams,
                 checkoutToken,
                 reason: 'resolver_after_exception',
+                timeoutMs: resolverTimeoutMs,
               });
               if (
                 resolverFallback &&
@@ -14332,6 +14413,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 checkoutToken,
                 reason: fallbackReason,
                 requestSource: metadata?.source,
+                timeoutMs: secondaryFallbackTimeoutMs,
               });
               if (
                 fallback &&
@@ -14585,6 +14667,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               checkoutToken,
               reason: 'resolver_after_primary',
+              timeoutMs: resolverTimeoutMs,
             });
             if (
               resolverFallback &&
@@ -14614,6 +14697,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   : 'empty_or_unusable_primary'
                 : 'primary_irrelevant',
               requestSource: metadata?.source,
+              timeoutMs: secondaryFallbackTimeoutMs,
             });
             if (
               fallback &&

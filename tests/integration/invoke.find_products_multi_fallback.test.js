@@ -46,6 +46,12 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
       PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS:
         process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS,
+      PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -143,6 +149,24 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
         prevEnv.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
     }
   });
 
