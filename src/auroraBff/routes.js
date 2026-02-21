@@ -210,6 +210,7 @@ const { resolveQaPlan } = require('./qaPlanner');
 const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
 const { getTravelWeather } = require('./weatherAdapter');
 const { buildEpiPayload } = require('./epiCalculator');
+const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
 const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
@@ -338,6 +339,14 @@ const AURORA_CHAT_RESPONSE_META_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_CHAT_POLICY_VERSION = String(process.env.AURORA_CHAT_POLICY_VERSION || 'aurora_chat_v2_p0').trim();
+const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
+  profile_v2: AURORA_PROFILE_V2_ENABLED,
+  qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
+  safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
+  travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
+  loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
+  chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
+});
 const PENDING_CLARIFICATION_TTL_MS = 10 * 60 * 1000;
 const RECO_CATALOG_GROUNDED_ENABLED = String(process.env.AURORA_BFF_RECO_CATALOG_GROUNDED || '').toLowerCase() === 'true';
 const RECO_CATALOG_GROUNDED_QUERIES = String(process.env.AURORA_BFF_RECO_CATALOG_QUERIES || '').trim();
@@ -11282,8 +11291,12 @@ function extractIncludeAlternativesFromAction(action) {
   return coerceBoolean(data.include_alternatives ?? data.includeAlternatives);
 }
 
-function summarizeProfileForContext(profile) {
+function summarizeProfileForContext(profile, options = {}) {
   if (!profile) return null;
+  const includeProfileV2 =
+    Object.prototype.hasOwnProperty.call(options, 'profileV2Enabled')
+      ? Boolean(options.profileV2Enabled)
+      : AURORA_PROFILE_V2_ENABLED;
   const currentRoutineRaw = profile.currentRoutine;
   let currentRoutine = null;
   if (typeof currentRoutineRaw === 'string') {
@@ -11349,7 +11362,7 @@ function summarizeProfileForContext(profile) {
     currentRoutine,
     itinerary,
     contraindications,
-    ...(AURORA_PROFILE_V2_ENABLED
+    ...(includeProfileV2
       ? {
         age_band: profile.age_band || 'unknown',
         pregnancy_status: profile.pregnancy_status || 'unknown',
@@ -22168,12 +22181,16 @@ function mountAuroraBffRoutes(app, { logger }) {
     };
     let chatSessionId = getRecoDogfoodSessionId(req, ctx, '');
     let llmRouteMetaForResponse = null;
-    const shouldAttachPolicyMeta =
-      AURORA_CHAT_RESPONSE_META_ENABLED ||
-      AURORA_QA_PLANNER_V1_ENABLED ||
-      AURORA_SAFETY_ENGINE_V1_ENABLED ||
-      AURORA_TRAVEL_WEATHER_LIVE_ENABLED ||
-      AURORA_LOOP_BREAKER_V2_ENABLED;
+    let rolloutContext = computeAuroraChatRolloutContext({
+      req,
+      ctx,
+      body: parsed.success ? parsed.data : req.body || {},
+      identity: null,
+      globalFlags: AURORA_CHAT_GLOBAL_FLAGS,
+      policyVersion: AURORA_CHAT_POLICY_VERSION,
+    });
+    let effectiveChatFlags = rolloutContext.effective_flags || { ...AURORA_CHAT_GLOBAL_FLAGS };
+    let shouldAttachPolicyMeta = Boolean(effectiveChatFlags.chat_response_meta);
     const policyMeta = {
       intent_canonical: INTENT_ENUM.UNKNOWN,
       intent_source: 'none',
@@ -22181,11 +22198,49 @@ function mountAuroraBffRoutes(app, { logger }) {
       loop_count: 0,
       break_applied: 'none',
       env_source: null,
-      policy_version: AURORA_CHAT_POLICY_VERSION,
+      policy_version: rolloutContext.policy_version || AURORA_CHAT_POLICY_VERSION,
+      rollout_variant: rolloutContext.variant || 'legacy',
+      rollout_bucket: Number.isFinite(Number(rolloutContext.bucket)) ? Number(rolloutContext.bucket) : null,
+      rollout_bucket_key_source: rolloutContext.bucket_key_source || null,
+      rollout_forced_variant: rolloutContext.forced_variant || null,
+      rollout_applied: Boolean(rolloutContext.applied),
+      build_sha: rolloutContext.build_sha || null,
+      flags_effective: {
+        profile_v2: Boolean(effectiveChatFlags.profile_v2),
+        qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
+        safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
+        travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
+        loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
+        chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
+      },
       degraded: false,
     };
     let plannerSessionStatePatch = null;
     let latestClarificationId = null;
+    const refreshPolicyMetaRollout = () => {
+      effectiveChatFlags = rolloutContext.effective_flags || effectiveChatFlags;
+      shouldAttachPolicyMeta = Boolean(effectiveChatFlags.chat_response_meta);
+      policyMeta.policy_version = rolloutContext.policy_version || policyMeta.policy_version;
+      policyMeta.rollout_variant = rolloutContext.variant || policyMeta.rollout_variant || 'legacy';
+      policyMeta.rollout_bucket = Number.isFinite(Number(rolloutContext.bucket))
+        ? Number(rolloutContext.bucket)
+        : policyMeta.rollout_bucket;
+      policyMeta.rollout_bucket_key_source = rolloutContext.bucket_key_source || policyMeta.rollout_bucket_key_source || null;
+      policyMeta.rollout_forced_variant = rolloutContext.forced_variant || null;
+      policyMeta.rollout_applied = Boolean(rolloutContext.applied);
+      policyMeta.build_sha = rolloutContext.build_sha || policyMeta.build_sha || null;
+      policyMeta.flags_effective = {
+        profile_v2: Boolean(effectiveChatFlags.profile_v2),
+        qa_planner_v1: Boolean(effectiveChatFlags.qa_planner_v1),
+        safety_engine_v1: Boolean(effectiveChatFlags.safety_engine_v1),
+        travel_weather_live_v1: Boolean(effectiveChatFlags.travel_weather_live_v1),
+        loop_breaker_v2: Boolean(effectiveChatFlags.loop_breaker_v2),
+        chat_response_meta: Boolean(effectiveChatFlags.chat_response_meta),
+      };
+    };
+    refreshPolicyMetaRollout();
+    const summarizeChatProfileForContext = (profileValue) =>
+      summarizeProfileForContext(profileValue, { profileV2Enabled: Boolean(effectiveChatFlags.profile_v2) });
     const hasAnyLlmRouteMeta = (meta) =>
       Boolean(
         meta &&
@@ -22271,6 +22326,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         logger,
       });
       const normalized = applyReplyTemplates({ envelope: dogfoodAugmented, ctx: templateCtx });
+      const setResponseHeader = (name, value) => {
+        if (typeof res.set === 'function') {
+          res.set(name, value);
+          return;
+        }
+        if (typeof res.setHeader === 'function') {
+          res.setHeader(name, value);
+        }
+      };
+      if (rolloutContext && typeof rolloutContext === 'object') {
+        setResponseHeader('x-aurora-bucket', String(Number.isFinite(Number(rolloutContext.bucket)) ? Number(rolloutContext.bucket) : 0));
+        setResponseHeader('x-aurora-variant', String(rolloutContext.variant || 'legacy'));
+        setResponseHeader('x-aurora-policy-version', String(rolloutContext.policy_version || policyMeta.policy_version || 'legacy'));
+      }
       emitAudit(normalized, templateCtx, { logger });
       if (statusCode >= 400) return res.status(statusCode).json(normalized);
       return res.json(normalized);
@@ -22300,6 +22369,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       );
 
       const identity = await resolveIdentity(req, ctx);
+      rolloutContext = computeAuroraChatRolloutContext({
+        req,
+        ctx,
+        body: parsed.data,
+        identity,
+        globalFlags: AURORA_CHAT_GLOBAL_FLAGS,
+        policyVersion: AURORA_CHAT_POLICY_VERSION,
+      });
+      refreshPolicyMetaRollout();
 
       // Best-effort context injection.
       let profile = null;
@@ -22428,7 +22506,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       policyMeta.intent_source = canonicalIntent.source || 'none';
 
       if (
-        AURORA_PROFILE_V2_ENABLED &&
+        effectiveChatFlags.profile_v2 &&
         canonicalIntent &&
         canonicalIntent.entities &&
         typeof canonicalIntent.entities === 'object' &&
@@ -22471,7 +22549,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return makeAssistantMessage(text, format);
       };
       const safetyDecision =
-        AURORA_SAFETY_ENGINE_V1_ENABLED
+        effectiveChatFlags.safety_engine_v1
           ? evaluateSafety({
             intent: canonicalIntent.intent,
             message,
@@ -22480,7 +22558,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           })
           : null;
       const plannerDecision =
-        AURORA_QA_PLANNER_V1_ENABLED || AURORA_LOOP_BREAKER_V2_ENABLED
+        effectiveChatFlags.qa_planner_v1 || effectiveChatFlags.loop_breaker_v2
           ? resolveQaPlan({
             intent: canonicalIntent.intent,
             profile,
@@ -22739,7 +22817,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
 
         if (nextPending && nextQuestion) {
-          const profileSummaryForPatch = summarizeProfileForContext(profile);
+          const profileSummaryForPatch = summarizeChatProfileForContext(profile);
           const sessionPatch = {};
           emitPendingClarificationPatch(sessionPatch, nextPending);
           if (profileSummaryForPatch) {
@@ -22769,7 +22847,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (AURORA_CHAT_CLARIFICATION_HISTORY_CONTEXT_ENABLED) {
           clarificationHistoryForUpstream = compactHistory;
         }
-        const profileSummaryForResume = summarizeProfileForContext(profile);
+        const profileSummaryForResume = summarizeChatProfileForContext(profile);
         const knownProfileFieldsForResume = buildResumeKnownProfileFields(profileSummaryForResume);
         resumeContextForUpstream = {
           flow_id:
@@ -22969,7 +23047,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       if (
-        AURORA_LOOP_BREAKER_V2_ENABLED &&
+        effectiveChatFlags.loop_breaker_v2 &&
         plannerDecision &&
         plannerDecision.next_step === 'ask' &&
         Array.isArray(plannerDecision.required_fields) &&
@@ -23153,7 +23231,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
           const assistantText = applyCommerceMedicalClaimGuard(assistantRaw, ctx.lang);
 
-          const profileSummary = summarizeProfileForContext(profile);
+          const profileSummary = summarizeChatProfileForContext(profile);
           const sessionPatch = {
             ...(nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {}),
             ...(profileSummary ? { profile: profileSummary } : {}),
@@ -23308,7 +23386,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         policyMeta.env_source = 'local_template';
         policyMeta.degraded = true;
 
-        if (AURORA_TRAVEL_WEATHER_LIVE_ENABLED) {
+        if (effectiveChatFlags.travel_weather_live_v1) {
           const travelPlan =
             profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
               ? profile.travel_plan
@@ -23555,7 +23633,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reason: 'diagnosis_start',
                   missing_fields: missingCore,
                   wants: 'diagnosis',
-                  profile: summarizeProfileForContext(profile),
+                  profile: summarizeChatProfileForContext(profile),
                   recent_logs: recentLogs,
                 },
               },
@@ -23596,7 +23674,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           ],
           cards: [],
-          session_patch: nextState ? { next_state: nextState, profile: summarizeProfileForContext(profile) } : { profile: summarizeProfileForContext(profile) },
+          session_patch: nextState ? { next_state: nextState, profile: summarizeChatProfileForContext(profile) } : { profile: summarizeChatProfileForContext(profile) },
           events: [makeEvent(ctx, 'state_entered', { next_state: nextState || null, reason: 'diagnosis_profile_complete' })],
         });
         return sendChatEnvelope(envelope);
@@ -23727,7 +23805,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `budget_${ctx.request_id}`,
               type: 'budget_gate',
-              payload: { reason: 'budget_optimization_optional', profile: summarizeProfileForContext(profile) },
+              payload: { reason: 'budget_optimization_optional', profile: summarizeChatProfileForContext(profile) },
             },
           ],
           session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
@@ -23805,7 +23883,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 {
                   card_id: `budget_${ctx.request_id}`,
                   type: 'budget_gate',
-                  payload: { reason: 'budget_optimization_optional', profile: summarizeProfileForContext(profile) },
+                  payload: { reason: 'budget_optimization_optional', profile: summarizeChatProfileForContext(profile) },
                 },
               ],
               session_patch: stateChangeAllowed(ctx.trigger_source) ? { next_state: 'S6_BUDGET' } : {},
@@ -23972,7 +24050,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `profile_${ctx.request_id}`,
               type: 'profile',
-              payload: { profile: summarizeProfileForContext(profile) },
+              payload: { profile: summarizeChatProfileForContext(profile) },
             },
           ],
           session_patch: {},
@@ -24155,7 +24233,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reason: 'diagnosis_first',
                   missing_fields: required,
                   wants: 'recommendation',
-                  profile: summarizeProfileForContext(profile),
+                  profile: summarizeChatProfileForContext(profile),
                   recent_logs: recentLogs,
                 },
               },
@@ -24275,7 +24353,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
 	        const requiredCore = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
 	        const missingCore = requiredCore.filter((k) => (Array.isArray(missing) ? missing.includes(k) : false));
-	        const profileSummaryForPatch = summarizeProfileForContext(profile);
+	        const profileSummaryForPatch = summarizeChatProfileForContext(profile);
 	        if (profileSummaryForPatch) {
 	          recordSessionPatchProfileEmitted({ changed: true });
 	        }
@@ -24296,7 +24374,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reason: 'diagnosis_progress',
                   missing_fields: missingCore,
                   wants: 'diagnosis',
-                  profile: summarizeProfileForContext(profile),
+                  profile: summarizeChatProfileForContext(profile),
                   recent_logs: recentLogs,
                 },
               },
@@ -24345,7 +24423,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `profile_${ctx.request_id}`,
               type: 'profile',
-              payload: { profile: summarizeProfileForContext(profile) },
+              payload: { profile: summarizeChatProfileForContext(profile) },
             },
           ],
           session_patch: { profile: profileSummaryForPatch },
@@ -24355,7 +24433,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       let upstream = null;
-      const profileSummary = summarizeProfileForContext(profile);
+      const profileSummary = summarizeChatProfileForContext(profile);
       const historyForPrefix = Array.isArray(clarificationHistoryForUpstream) ? clarificationHistoryForUpstream : [];
       if (historyForPrefix.length) {
         recordClarificationHistorySent({ count: historyForPrefix.length });
