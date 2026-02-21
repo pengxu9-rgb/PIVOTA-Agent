@@ -408,6 +408,16 @@ const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
 const PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT =
   String(process.env.PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT || 'true').toLowerCase() !==
   'false';
+const PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED =
+  String(process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED || 'true').toLowerCase() !==
+  'false';
+const PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES = Math.max(
+  0,
+  Math.min(
+    3,
+    Number(process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES || 1) || 1,
+  ),
+);
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
@@ -3014,6 +3024,98 @@ const LOOKUP_EQUIVALENCE_FAMILIES = [
   ['sk ii', 'skii', '神仙水'],
 ];
 
+const BEAUTY_FORM_FACTOR_TOKENS = new Set([
+  'serum',
+  'essence',
+  'ampoule',
+  'lotion',
+  'cream',
+  'moisturizer',
+  'moisturiser',
+  'cleanser',
+  'toner',
+  'mask',
+  'spf',
+  'sunscreen',
+]);
+
+function hasBeautyIngredientIntentSignal(queryText) {
+  const q = normalizeSearchTextForMatch(queryText);
+  if (!q) return false;
+  return (
+    /\b(copper|peptide|retinol|retinal|niacinamide|ceramide|hyaluronic|ascorbic|vitamin c|salicylic|glycolic|lactic|mandelic|azelaic|tranexamic|benzoyl)\b/i.test(
+      q,
+    ) ||
+    /(铜肽|胜肽|视黄醇|烟酰胺|神经酰胺|玻尿酸|水杨酸|果酸|壬二酸)/.test(q)
+  );
+}
+
+function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
+  const normalized = normalizeSearchTextForMatch(queryText);
+  const out = new Set();
+  const pushToken = (token) => {
+    const value = normalizeSearchTextForMatch(token);
+    if (!value || BEAUTY_FORM_FACTOR_TOKENS.has(value) || value.length < 3) return;
+    out.add(value);
+  };
+
+  for (const token of Array.isArray(queryTokens) ? queryTokens : []) {
+    pushToken(token);
+  }
+
+  if (!normalized) return Array.from(out);
+  if (/\bcopper\b/.test(normalized) && /\bpeptide/.test(normalized)) {
+    pushToken('copper');
+    pushToken('peptide');
+    pushToken('multi peptide');
+    pushToken('copper tripeptide');
+    pushToken('tripeptide');
+  }
+  if (/\bpeptide/.test(normalized)) {
+    pushToken('peptide');
+    pushToken('multi peptide');
+  }
+  if (/\bretinol|retinal|retinoid/.test(normalized)) pushToken('retinol');
+  if (/\bniacinamide/.test(normalized)) pushToken('niacinamide');
+  if (/\bceramide/.test(normalized)) pushToken('ceramide');
+  if (/\bhyaluronic/.test(normalized)) pushToken('hyaluronic');
+  if (/\bascorbic|vitamin c/.test(normalized)) pushToken('vitamin c');
+  if (/\bsalicylic/.test(normalized)) pushToken('salicylic');
+  if (/\bglycolic/.test(normalized)) pushToken('glycolic');
+  if (/\blactic/.test(normalized)) pushToken('lactic');
+  if (/\bazelaic/.test(normalized)) pushToken('azelaic');
+  if (/\btranexamic/.test(normalized)) pushToken('tranexamic');
+
+  return Array.from(out);
+}
+
+function buildFallbackOverlapPreview(products, queryText, maxItems = 3) {
+  const rows = [];
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const baseTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
+  const meaningfulTokens = ingredientIntent
+    ? baseTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
+    : baseTokens;
+  const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens])).slice(0, 12);
+
+  for (const product of Array.isArray(products) ? products : []) {
+    if (rows.length >= maxItems) break;
+    if (!hasUsableSearchProduct(product)) continue;
+    const candidateText = buildFallbackCandidateText(product);
+    if (!candidateText) continue;
+    const matched = effectiveTokens.filter((token) => candidateText.includes(token)).slice(0, 4);
+    rows.push({
+      product_id: String(product?.product_id || product?.id || ''),
+      title: String(product?.title || product?.name || ''),
+      overlap_count: matched.length,
+      matched_tokens: matched,
+    });
+  }
+  return rows;
+}
+
 function isKnownLookupAliasQuery(queryText) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return false;
@@ -3110,16 +3212,25 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
   }
 
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
-  const longQuery = queryTokens.length >= 2;
+  const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
+  const meaningfulTokens = ingredientIntent
+    ? queryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
+    : queryTokens;
+  const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
+  const longQuery = effectiveTokens.length >= 2;
+  const requiredOverlap = ingredientIntent ? 1 : 2;
 
   for (const product of products.slice(0, 8)) {
     if (!hasUsableSearchProduct(product)) continue;
     const candidateText = buildFallbackCandidateText(product);
     if (!candidateText) continue;
     if (candidateText.includes(normalizedQuery)) return true;
+    if (!effectiveTokens.length) return true;
+    if (effectiveTokens.length === 1) return candidateText.includes(effectiveTokens[0]);
     if (!longQuery) return true;
-    const overlapCount = queryTokens.filter((token) => candidateText.includes(token)).length;
-    if (overlapCount >= 2) return true;
+    const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
+    if (overlapCount >= requiredOverlap) return true;
   }
 
   return false;
@@ -3154,15 +3265,21 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
 
   if (candidateText.includes(normalizedQuery)) return true;
 
-  const queryTokens = Array.isArray(options.queryTokens)
+  const rawQueryTokens = Array.isArray(options.queryTokens)
     ? options.queryTokens
     : Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
-  if (!queryTokens.length) return true;
-  if (queryTokens.length === 1) {
-    return candidateText.includes(queryTokens[0]);
+  const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
+  const meaningfulTokens = ingredientIntent
+    ? rawQueryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
+    : rawQueryTokens;
+  const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
+  if (!effectiveTokens.length) return true;
+  if (effectiveTokens.length === 1) {
+    return candidateText.includes(effectiveTokens[0]);
   }
-  const overlapCount = queryTokens.filter((token) => candidateText.includes(token)).length;
-  return overlapCount >= 2;
+  const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
+  return overlapCount >= (ingredientIntent ? 1 : 2);
 }
 
 function shouldFallbackProxySearch(normalized, statusCode) {
@@ -3344,15 +3461,46 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   };
 }
 
-async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason, requestSource }) {
-  const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
-  if (!payload) return null;
-  const fallbackSource = String(payload?.metadata?.source || '').trim();
+function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
+  const base = String(baseQueryText || '').trim();
+  if (!base) return [];
+  const normalized = normalizeSearchTextForMatch(base);
+  const candidates = [];
+  const seen = new Set([normalizeSearchTextForMatch(base)]);
+  const push = (queryValue) => {
+    const value = String(queryValue || '').trim();
+    const key = normalizeSearchTextForMatch(value);
+    if (!value || !key || seen.has(key)) return;
+    seen.add(key);
+    candidates.push(value);
+  };
 
-  const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  if (/\bcopper\b/.test(normalized) && /\bpeptide/.test(normalized)) {
+    push(`${base} multi peptide`);
+    push(`${base} copper tripeptide`);
+  }
+  if (/\bpeptide/.test(normalized) && /\bserum|essence/.test(normalized)) {
+    push(`${base} multi-peptide collection`);
+  }
+  if (/\bniacinamide\b/.test(normalized) && /\bserum|essence/.test(normalized)) {
+    push(`${base} vitamin b3`);
+  }
+
+  return candidates.slice(0, PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES);
+}
+
+async function invokeFindProductsMultiFallbackOnce({
+  url,
+  payload,
+  checkoutToken,
+  requestSource,
+  triggerReason,
+  preserveAuroraSource,
+  fallbackSource,
+  relevanceQuery,
+  attemptNo,
+}) {
   const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
-  const preserveAuroraSource =
-    PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
   const requestBody = {
     operation: 'find_products_multi',
     payload,
@@ -3361,8 +3509,9 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
         ? normalizedRequestSource
         : fallbackSource || 'agent_search_proxy_fallback',
       ...(normalizedRequestSource ? { request_source: normalizedRequestSource } : {}),
-      trigger_reason: reason || 'unknown',
+      trigger_reason: triggerReason || 'unknown',
       proxy_fallback_source: 'agent_search_proxy_fallback',
+      proxy_fallback_attempt: Number(attemptNo || 1),
     },
   };
 
@@ -3384,17 +3533,111 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   });
 
   const normalized = normalizeAgentProductsListResponse(resp.data, {
-    limit: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size),
-    offset: parseQueryNumber(queryParams?.offset),
+    limit: parseQueryNumber(payload?.search?.limit ?? payload?.search?.page_size),
+    offset: parseQueryNumber(payload?.search?.offset),
   });
+  const usableCount = countUsableSearchProducts(normalized?.products);
+  const relevanceMatched = relevanceQuery
+    ? isProxySearchFallbackRelevant(normalized, relevanceQuery)
+    : usableCount > 0;
 
   return {
-    status: resp.status,
-    usableCount: countUsableSearchProducts(normalized?.products),
+    status: Number(resp.status || 0) || 0,
+    usableCount,
+    relevanceMatched,
+    queryUsed: String(payload?.search?.query || ''),
+    productsPreview: buildFallbackOverlapPreview(normalized?.products, relevanceQuery, 3),
     data: withProxySearchFallbackMetadata(normalized, {
       applied: true,
-      reason: reason || 'unknown',
+      reason: triggerReason || 'unknown',
+      query_variant:
+        normalizeSearchTextForMatch(String(payload?.search?.query || '')) ===
+        normalizeSearchTextForMatch(String(relevanceQuery || ''))
+          ? 'primary'
+          : 'semantic_retry',
     }),
+  };
+}
+
+async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason, requestSource }) {
+  const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
+  if (!payload) return null;
+  const fallbackSource = String(payload?.metadata?.source || '').trim();
+
+  const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
+  const preserveAuroraSource =
+    PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
+  const baseQueryText = String(payload?.search?.query || '').trim();
+  const isAuroraSemanticRetry =
+    PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED &&
+    isAuroraSource(normalizedRequestSource) &&
+    String(reason || '').trim() === 'primary_irrelevant';
+  const semanticRetryQueries = isAuroraSemanticRetry
+    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
+    : [];
+  const candidateQueries = [baseQueryText, ...semanticRetryQueries].filter(Boolean);
+
+  let selectedAttempt = null;
+  const attempts = [];
+  for (let i = 0; i < candidateQueries.length; i += 1) {
+    const queryText = candidateQueries[i];
+    const attemptPayload =
+      i === 0
+        ? payload
+        : {
+            ...payload,
+            search: {
+              ...(payload?.search && typeof payload.search === 'object' ? payload.search : {}),
+              query: queryText,
+            },
+          };
+    const attempt = await invokeFindProductsMultiFallbackOnce({
+      url,
+      payload: attemptPayload,
+      checkoutToken,
+      requestSource: normalizedRequestSource,
+      triggerReason: reason,
+      preserveAuroraSource,
+      fallbackSource,
+      relevanceQuery: baseQueryText,
+      attemptNo: i + 1,
+    });
+
+    attempts.push({
+      attempt: i + 1,
+      query: attempt.queryUsed,
+      status: attempt.status,
+      usable_count: attempt.usableCount,
+      relevance_matched: attempt.relevanceMatched,
+      products_preview: attempt.productsPreview,
+    });
+
+    if (!selectedAttempt) {
+      selectedAttempt = attempt;
+    } else {
+      const selectedScore =
+        (selectedAttempt.status >= 200 && selectedAttempt.status < 300 ? 100 : 0) +
+        (selectedAttempt.relevanceMatched ? 50 : 0) +
+        Math.min(20, selectedAttempt.usableCount);
+      const candidateScore =
+        (attempt.status >= 200 && attempt.status < 300 ? 100 : 0) +
+        (attempt.relevanceMatched ? 50 : 0) +
+        Math.min(20, attempt.usableCount);
+      if (candidateScore > selectedScore) selectedAttempt = attempt;
+    }
+
+    if (attempt.relevanceMatched && attempt.usableCount > 0) break;
+  }
+
+  if (!selectedAttempt) return null;
+  return {
+    status: selectedAttempt.status,
+    usableCount: selectedAttempt.usableCount,
+    relevanceMatched: selectedAttempt.relevanceMatched,
+    selectedQuery: selectedAttempt.queryUsed,
+    attempts,
+    data: selectedAttempt.data,
   };
 }
 
@@ -8059,13 +8302,30 @@ async function proxyAgentSearchToBackend(req, res) {
               : 'primary_irrelevant',
             requestSource: source,
           });
+          const fallbackRelevant = Boolean(
+            fallback &&
+              (fallback.relevanceMatched === true ||
+                (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
+          );
+          fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
+          fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
+          fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
+          fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
+            ? fallback.attempts.length
+            : fallback
+            ? 1
+            : 0;
+          if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
+            fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
+          }
           if (
             fallback &&
             fallback.status >= 200 &&
             fallback.status < 300 &&
             fallback.usableCount >= fallbackAdoptUsableThreshold &&
-            isProxySearchFallbackRelevant(fallback.data, queryText)
+            fallbackRelevant
           ) {
+            fallbackStrategy.secondary_rejected_reason = null;
             return respondSearch(fallback.status, fallback.data, {
               finalDecision: 'upstream_returned',
               primaryPathUsed: 'proxy_search_primary',
@@ -8075,7 +8335,17 @@ async function proxyAgentSearchToBackend(req, res) {
               fallbackStrategy,
             });
           }
+          fallbackStrategy.secondary_rejected_reason = !fallback
+            ? 'secondary_unavailable'
+            : fallback.status < 200 || fallback.status >= 300
+            ? 'secondary_status_non_2xx'
+            : fallback.usableCount < fallbackAdoptUsableThreshold
+            ? 'secondary_below_usable_threshold'
+            : !fallbackRelevant
+            ? 'secondary_irrelevant'
+            : 'secondary_not_adopted';
         } catch (fallbackErr) {
+          fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
           logger.warn(
             { err: fallbackErr?.message || String(fallbackErr) },
             'proxy agent search fallback invoke failed; keeping primary response',
@@ -8270,13 +8540,30 @@ async function proxyAgentSearchToBackend(req, res) {
             reason: 'primary_request_failed',
             requestSource: source,
           });
+          const fallbackRelevant = Boolean(
+            fallback &&
+              (fallback.relevanceMatched === true ||
+                (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
+          );
+          fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
+          fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
+          fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
+          fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
+            ? fallback.attempts.length
+            : fallback
+            ? 1
+            : 0;
+          if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
+            fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
+          }
           if (
             fallback &&
             fallback.status >= 200 &&
             fallback.status < 300 &&
             fallback.usableCount > 0 &&
-            isProxySearchFallbackRelevant(fallback.data, queryText)
+            fallbackRelevant
           ) {
+            fallbackStrategy.secondary_rejected_reason = null;
             return respondSearch(fallback.status, fallback.data, {
               finalDecision: 'upstream_returned',
               primaryPathUsed: 'proxy_search_primary',
@@ -8291,7 +8578,17 @@ async function proxyAgentSearchToBackend(req, res) {
               fallbackStrategy,
             });
           }
+          fallbackStrategy.secondary_rejected_reason = !fallback
+            ? 'secondary_unavailable'
+            : fallback.status < 200 || fallback.status >= 300
+            ? 'secondary_status_non_2xx'
+            : fallback.usableCount <= 0
+            ? 'secondary_no_usable_products'
+            : !fallbackRelevant
+            ? 'secondary_irrelevant'
+            : 'secondary_not_adopted';
         } catch (fallbackErr) {
+          fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
           logger.warn(
             { err: fallbackErr?.message || String(fallbackErr) },
             'proxy agent search fallback invoke failed after primary exception',
