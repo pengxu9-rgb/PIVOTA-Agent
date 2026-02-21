@@ -1292,7 +1292,6 @@ test('Query resolve upstream_timeout retries local HTTP resolver after direct lo
     },
   );
 });
-
 test('Query resolve upstream_timeout uses catalog search fallback in strict internal mode for named products', async () => {
   await withEnv(
     {
