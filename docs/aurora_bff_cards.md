@@ -104,7 +104,7 @@ Returned by `POST /v1/chat` (reco-gate paths) and `POST /v1/analysis/skin` (degr
 - `severity`: `"warn" | "block"`
 - `confidence`: `{ score, level, rationale[] }`
 - `message` (string)
-- `actions` (string[]) - recovery actions are required for non-block reasons.
+- `actions` (string[]) - required for every `confidence_notice` reason, including `safety_block`.
 - `details` (string[])
 
 Contract rules:

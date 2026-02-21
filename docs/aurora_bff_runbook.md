@@ -228,6 +228,83 @@ All requests should include at least:
 - `X-Aurora-UID: <uuid>`
 - (optional) `X-Brief-ID`, `X-Trace-ID`, `X-Lang`
 
+## Chaos soak (pre-prod reliability gate)
+
+### Scripts
+
+- `scripts/smoke_chaos_soak_aurora_skin.sh`
+- `tools/validate_envelope.js`
+- `scripts/toxiproxy_setup.sh`
+- `scripts/toxiproxy_chaos_on.sh`
+- `scripts/toxiproxy_chaos_off.sh`
+
+### Hard invariants (auto-stop)
+
+- No empty cards without notice (`cards=[]` + no `confidence_notice` is forbidden)
+- Envelope schema must always pass (`tests/contracts/aurora_chat_envelope.schema.json`)
+- `confidence_notice` must include recoverable `actions`
+- `safety_block` must not emit `recommendations`
+- low/medium confidence context must not leak treatment/high-irritation recommendations
+
+### 2h mini chaos soak (before major changes)
+
+```bash
+BASE='https://<preprod-bff>' \
+DURATION_HOURS=2 \
+BASE_RPS=1 \
+CHAOS_RPS=3 \
+SPIKE_RPS=20 \
+TOXIPROXY_ENABLED=true \
+TOXIPROXY_UPSTREAM='<upstream-host:port>' \
+scripts/smoke_chaos_soak_aurora_skin.sh
+```
+
+Quick local dry-run (5 minutes):
+
+```bash
+BASE='https://<preprod-bff>' \
+DURATION_SECONDS=300 \
+BASE_RPS=1 \
+CHAOS_RPS=2 \
+SPIKE_RPS=5 \
+TOXIPROXY_ENABLED=false \
+scripts/smoke_chaos_soak_aurora_skin.sh
+```
+
+Default profile:
+- hourly 10m chaos window + hourly 30s spike
+- CN/EN 50/50
+- scenario mix: `use_photo=false+routine` 40%, `photo usable` 30%, `photo forced fail` 20%, `safety red-flag` 10%
+
+### 24h full soak (weekly)
+
+```bash
+BASE='https://<preprod-bff>' \
+DURATION_HOURS=24 \
+BASE_RPS=1 \
+CHAOS_RPS=3 \
+SPIKE_RPS=20 \
+TOXIPROXY_ENABLED=true \
+TOXIPROXY_UPSTREAM='<upstream-host:port>' \
+scripts/smoke_chaos_soak_aurora_skin.sh
+```
+
+### Output & machine-readable summary
+
+Each run writes to:
+- `tmp/chaos_soak_run_YYYYMMDD_HHMMSS/summary.json`
+- `tmp/chaos_soak_run_YYYYMMDD_HHMMSS/summary.csv`
+- `tmp/chaos_soak_run_YYYYMMDD_HHMMSS/events.ndjson`
+- `tmp/chaos_soak_run_YYYYMMDD_HHMMSS/failures/` (last 50 failing samples on auto-stop)
+
+### Suggested pre-prod gate thresholds
+
+- `schema_violation_rate == 0`
+- `empty_cards == 0`
+- `notice_without_actions == 0`
+- rolling `5xx_rate (5m) <= 0.5%`
+- rolling `reco_output_guard_fallback_rate (10m) <= 0.5%`
+
 Quick check:
 
 ```bash

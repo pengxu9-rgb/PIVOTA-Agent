@@ -80,6 +80,24 @@ Contract definition:
 - Trigger: `aurora_skin_reco_output_guard_fallback_rate > 0.001` with `aurora:skin_reco_request_rate:15m > 0.02` for 10m
 - Severity: `warning`
 - Meaning: upstream reco payload quality drift (empty/unrenderable cards) is rising and guard fallback is being consumed too often.
+
+## Post-merge first-day watchlist
+
+Track these four metrics first:
+
+1. `aurora_skin_reco_timeout_degraded_rate`
+2. `aurora_skin_analysis_timeout_degraded_rate`
+3. `aurora_skin_reco_output_guard_fallback_rate`
+4. HTTP `5xx` rate
+
+Suggested action thresholds:
+
+- `timeout_degraded_rate > 1%` sustained for 10m:
+  - inspect upstream p95/p99 latency and network reset spikes.
+- `reco_output_guard_fallback_rate > 0.1%` sustained for 10m:
+  - inspect upstream recommendation card schema/serialization drift.
+- Any non-zero schema violations from soak/contract validation:
+  - treat as P0 and stop rollout.
 ## First Response Procedure
 
 1. Confirm blast radius in dashboard.

@@ -24833,6 +24833,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reason: 'safety_block',
                   confidence: { score: 0, level: 'low', rationale: ['medical_boundary'] },
                   severity: 'block',
+                  actions: ['seek_medical_care', 'pause_strong_actives', 'return_after_stabilization'],
                   details: safety.notice_bullets,
                 }),
               },
