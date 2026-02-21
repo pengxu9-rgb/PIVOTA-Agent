@@ -1128,6 +1128,86 @@ test('Query resolve upstream_timeout uses deterministic local resolver fallback 
   );
 });
 
+test('Query resolve upstream_timeout uses local HTTP resolver fallback when direct resolver is unavailable', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+      AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS: '900',
+      AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS: '2200',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let primaryResolveCalls = 0;
+      let localHttpResolveCalls = 0;
+
+      axios.post = async (url, body, config) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          primaryResolveCalls += 1;
+          assert.equal(body?.options?.timeout_ms, 2200);
+          assert.equal(Number(config?.timeout || 0), 2200);
+          const timeoutErr = new Error('resolve timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/resolve') {
+          localHttpResolveCalls += 1;
+          assert.equal(body?.options?.timeout_ms, 2200);
+          assert.equal(Number(config?.timeout || 0), 2200);
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              reason: 'stable_alias_match',
+              reason_code: 'stable_alias_match',
+              product_ref: {
+                product_id: 'prod_local_http_fallback',
+                merchant_id: 'mid_local_http_fallback',
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      let internal = null;
+      try {
+        const { __internal } = loadRoutesFresh();
+        internal = __internal;
+        __internal.__setResolveProductRefForTest(null);
+
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract(
+          {
+            sku: {
+              brand: 'FallbackBrand',
+              display_name: 'FallbackBrand Repair Essence',
+            },
+          },
+          { logger: null, allowLocalInvokeFallback: false },
+        );
+
+        assert.equal(primaryResolveCalls, 1);
+        assert.equal(localHttpResolveCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'resolve');
+        assert.equal(enriched?.pdp_open?.path, 'resolve');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_local_http_fallback');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_local_http_fallback');
+      } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Query resolve upstream_timeout uses catalog search fallback in strict internal mode for named products', async () => {
   await withEnv(
     {

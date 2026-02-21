@@ -757,6 +757,12 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
   return Math.max(300, Math.min(6000, v));
 })();
 
+const RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  return Math.max(600, Math.min(12000, v));
+})();
+
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS || 2200);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
@@ -13307,6 +13313,13 @@ function shouldAttemptLocalRecoFallback(reasonCode, error) {
   return false;
 }
 
+function getRecoPdpResolveTimeoutMs({ strictInternal = false, requestedTimeoutMs = null } = {}) {
+  const requested = Number.isFinite(Number(requestedTimeoutMs)) ? Math.trunc(Number(requestedTimeoutMs)) : RECO_PDP_RESOLVE_TIMEOUT_MS;
+  const baseline = Math.max(300, Math.min(12000, requested));
+  if (!strictInternal) return baseline;
+  return Math.max(baseline, RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS);
+}
+
 function extractCanonicalFromOffersResolveBody(body) {
   const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : null;
   const mapping = payload && payload.mapping && typeof payload.mapping === 'object' && !Array.isArray(payload.mapping)
@@ -13718,30 +13731,67 @@ async function resolveRecoPdpByLocalResolver({
   queryText,
   hints = null,
   logger,
+  timeoutMs = null,
 } = {}) {
   const q = String(queryText || '').trim();
-  if (!q || typeof resolveProductRefDirectImpl !== 'function') {
-    return { ok: false, reasonCode: 'db_error' };
-  }
+  if (!q) return { ok: false, reasonCode: 'no_candidates' };
+
+  const resolveTimeoutMs = getRecoPdpResolveTimeoutMs({
+    strictInternal: true,
+    requestedTimeoutMs: timeoutMs,
+  });
 
   let responseBody = null;
+  let responseStatusCode = null;
   let responseError = null;
-  try {
-    responseBody = await resolveProductRefDirectImpl({
-      query: q,
-      lang: 'en',
-      ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
-      options: {
-        search_all_merchants: true,
-        timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
-        upstream_retries: 0,
-        stable_alias_short_circuit: true,
-        allow_stable_alias_for_uuid: true,
-      },
-      caller: 'aurora_chatbox',
-    });
-  } catch (err) {
-    responseError = err;
+  if (typeof resolveProductRefDirectImpl === 'function') {
+    try {
+      responseBody = await resolveProductRefDirectImpl({
+        query: q,
+        lang: 'en',
+        ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+        options: {
+          search_all_merchants: true,
+          timeout_ms: resolveTimeoutMs,
+          upstream_retries: 0,
+          stable_alias_short_circuit: true,
+          allow_stable_alias_for_uuid: true,
+        },
+        caller: 'aurora_chatbox',
+      });
+    } catch (err) {
+      responseError = err;
+    }
+  } else {
+    const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
+    try {
+      const resp = await axios.post(
+        localResolveUrl,
+        {
+          query: q,
+          lang: 'en',
+          ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+          options: {
+            search_all_merchants: true,
+            timeout_ms: resolveTimeoutMs,
+            upstream_retries: 0,
+            stable_alias_short_circuit: true,
+            allow_stable_alias_for_uuid: true,
+            allow_external_seed: false,
+          },
+          caller: 'aurora_chatbox',
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: Math.max(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, resolveTimeoutMs),
+          validateStatus: () => true,
+        },
+      );
+      responseBody = resp && typeof resp.data === 'object' ? resp.data : null;
+      responseStatusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
+    } catch (err) {
+      responseError = err;
+    }
   }
 
   const resolvedProductRef = normalizeCanonicalProductRef(responseBody?.product_ref, {
@@ -13758,7 +13808,7 @@ async function resolveRecoPdpByLocalResolver({
 
   const reasonCode = mapResolveFailureCode({
     resolveBody: responseBody,
-    statusCode: null,
+    statusCode: responseStatusCode,
     error: responseError,
   });
   if (responseError || reasonCode !== 'no_candidates') {
@@ -13766,6 +13816,8 @@ async function resolveRecoPdpByLocalResolver({
       {
         query: q.slice(0, 120),
         reason_code: reasonCode,
+        status_code: responseStatusCode,
+        fallback_mode: typeof resolveProductRefDirectImpl === 'function' ? 'direct' : 'local_http',
         err: responseError ? responseError.message || String(responseError) : null,
       },
       'aurora bff: reco pdp local resolver fallback unresolved',
@@ -14090,6 +14142,9 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     name,
     displayName,
   });
+  const queryResolveTimeoutMs = getRecoPdpResolveTimeoutMs({
+    strictInternal: RECO_PDP_STRICT_INTERNAL_FIRST,
+  });
 
   if (!queryText) {
     recordRecoPdpExternalFallback(stableResolveReasonCode || 'no_candidates');
@@ -14109,6 +14164,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryText,
       hints,
       logger,
+      timeoutMs: queryResolveTimeoutMs,
     });
     if (localResolved.ok && localResolved.canonicalProductRef) {
       return withRecoPdpMetadata(base, {
@@ -14168,7 +14224,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     hints,
     options: {
       search_all_merchants: true,
-      timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      timeout_ms: queryResolveTimeoutMs,
       upstream_retries: 0,
       ...(rawMerchantId ? { prefer_merchants: [rawMerchantId] } : {}),
     },
@@ -14180,7 +14236,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryResolvePayload,
       {
         headers: buildPivotaBackendAgentHeaders(),
-        timeout: RECO_PDP_RESOLVE_TIMEOUT_MS,
+        timeout: queryResolveTimeoutMs,
         validateStatus: () => true,
       },
     );
@@ -14295,7 +14351,6 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   );
   const shouldAttemptDeterministicLocalResolver =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
-    typeof resolveProductRefDirectImpl === 'function' &&
     (
       reasonCode === 'upstream_timeout' ||
       reasonCode === 'db_error' ||
@@ -14307,6 +14362,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryText,
       hints,
       logger,
+      timeoutMs: queryResolveTimeoutMs,
     });
     if (localResolved.ok && localResolved.canonicalProductRef) {
       logger?.info(
@@ -14349,7 +14405,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     const catalogResolved = await resolveRecoPdpByCatalogSearch({
       queryText,
       logger,
-      timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_PDP_RESOLVE_TIMEOUT_MS),
+      timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, queryResolveTimeoutMs),
       forceLocalSearchFallback: transientReasonForCatalog,
     });
     if (catalogResolved.ok && catalogResolved.canonicalProductGroupId) {
@@ -16296,6 +16352,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
       reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
       reco_pdp_resolve_enabled: RECO_PDP_RESOLVE_ENABLED,
+      reco_pdp_resolve_timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      reco_pdp_resolve_timeout_strict_min_ms: RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS,
       reco_pdp_strict_internal_first: RECO_PDP_STRICT_INTERNAL_FIRST,
       pivota_backend_base_configured: Boolean(PIVOTA_BACKEND_BASE_URL),
       reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
