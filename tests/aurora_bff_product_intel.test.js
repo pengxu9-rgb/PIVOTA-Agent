@@ -30,6 +30,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST;
     delete process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
@@ -187,9 +188,21 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(plan.some((q) => /^https?:\/\//i.test(String(q || '')))).toBe(false);
   });
 
+  test('catalog search base urls prefer configured list before pivota backend for aurora reco path', () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'https://web-production-fedb.up.railway.app';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'https://pivota-agent-production.up.railway.app';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const urls = __internal.buildRecoCatalogSearchBaseUrlCandidates();
+    expect(urls[0]).toBe('https://pivota-agent-production.up.railway.app');
+    expect(urls).toContain('https://web-production-fedb.up.railway.app');
+  });
+
   test('catalog search fails over to secondary source on repeated primary empty results', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-secondary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'false';
     process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
     process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY = 'true';
     process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD = '1';
