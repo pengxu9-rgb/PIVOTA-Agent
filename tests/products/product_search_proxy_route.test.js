@@ -50,6 +50,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS: process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
       PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS: process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
       PROXY_SEARCH_FALLBACK_TIMEOUT_MS: process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
         process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
     };
@@ -76,6 +80,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
     delete process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
     delete process.env.DATABASE_URL;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
@@ -206,6 +212,18 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
     }
     if (prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED === undefined) {
       delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
@@ -722,6 +740,97 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         }),
       }),
     );
+  });
+
+  test('aurora source applies low-latency primary/fallback timeouts to avoid long upstream waits', async () => {
+    const queryText = 'niacinamide serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = '4200';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = '450';
+    process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = '450';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 5, sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .delay(900)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'slow_primary_hit', merchant_id: 'merch_slow', title: 'Slow Primary' }],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return (
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText &&
+          parsed.metadata &&
+          String(parsed.metadata.source || '') === 'aurora-bff'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'fast_fallback_hit', merchant_id: 'merch_fast', title: 'Niacinamide Hydrating Serum' }],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'fast_fallback_hit',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        fallback_strategy: expect.objectContaining({
+          secondary_attempted: true,
+          secondary_rejected_reason: null,
+        }),
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_request_failed',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: true,
+          primary_latency_ms: expect.any(Number),
+        }),
+      }),
+    );
+    expect(resp.body.metadata.route_health.primary_latency_ms).toBeLessThan(900);
   });
 
   test('aurora source detects same-brand external monoculture and forces semantic retry fallback', async () => {
