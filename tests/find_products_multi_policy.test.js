@@ -1,5 +1,5 @@
 const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
-const { applyFindProductsMultiPolicy } = require('../src/findProductsMulti/policy');
+const { applyFindProductsMultiPolicy, buildFindProductsMultiContext } = require('../src/findProductsMulti/policy');
 
 function makeRawProduct(overrides) {
   return {
@@ -115,6 +115,24 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.primary_domain).toBe('beauty');
     expect(intent.target_object.type).toBe('human');
     expect(intent.scenario.name).toBe('general');
+  });
+
+  test('dog leash query expansion stays leash-focused', async () => {
+    const { intent, adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: '有没有狗链推荐？',
+        },
+      },
+      metadata: {
+        expansion_mode: 'aggressive',
+      },
+    });
+
+    const expanded = String(adjustedPayload?.search?.query || '');
+    expect(intent.target_object.type).toBe('pet');
+    expect(expanded).toMatch(/dog leash|pet leash|lead|dog collar/i);
+    expect(expanded).not.toMatch(/dog jacket|pet apparel/i);
   });
 
   test('pet min budget is prioritized in results ordering (>= $30 first)', () => {

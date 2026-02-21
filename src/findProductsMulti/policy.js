@@ -241,6 +241,18 @@ function detectHarnessSignal(rawQuery) {
   );
 }
 
+function detectLeashSignal(rawQuery) {
+  const q = String(rawQuery || '');
+  if (!q) return false;
+  return (
+    /牵引绳|牽引繩|遛狗绳|狗链|狗鏈|狗链子|狗鏈子|狗绳|狗繩|项圈|項圈/.test(q) ||
+    /\b(leash|dog\s+leash|pet\s+leash|lead|collar|training\s+leash)\b/i.test(q) ||
+    /\b(laisse|collier)\b/i.test(q) ||
+    /\b(correa|collar)\b/i.test(q) ||
+    /リード|首輪/.test(q)
+  );
+}
+
 function detectPetApparelSignal(rawQuery) {
   const q = String(rawQuery || '');
   if (!q) return false;
@@ -1755,8 +1767,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     const extra = [];
     if (target === 'pet') {
       const wantsHarness = detectHarnessSignal(q);
+      const wantsLeash = detectLeashSignal(q);
       const wantsApparel = detectPetApparelSignal(q);
-      if (wantsHarness) {
+      if (wantsLeash) {
+        extra.push('dog leash', 'pet leash', 'lead', 'dog collar');
+        if (expansionMode === 'aggressive') {
+          extra.push('training leash', 'hands free leash', 'reflective leash');
+        }
+      } else if (wantsHarness) {
         extra.push('dog harness', 'dog leash', 'dog collar');
         if (expansionMode === 'aggressive') {
           extra.push('pet harness', 'pet leash');
@@ -1766,7 +1784,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         extra.push('dog jacket', 'pet apparel');
       } else if (wantsApparel) {
         extra.push('dog apparel');
-      } else if (expansionMode === 'aggressive' && !wantsHarness) {
+      } else if (expansionMode === 'aggressive' && !wantsHarness && !wantsLeash) {
         extra.push('dog jacket', 'pet apparel');
       }
       if (scenario.includes('hiking') && expansionMode === 'aggressive') {
@@ -1778,7 +1796,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         if (expansionMode === 'aggressive') {
           extra.push('pet');
         }
-        if (wantsHarness) {
+        if (wantsLeash) {
+          extra.push('leash', 'collar');
+        } else if (wantsHarness) {
           extra.push('leash');
           if (expansionMode === 'aggressive') {
             extra.push('harness', 'collar');
@@ -1789,15 +1809,18 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       }
       if (lang === 'es') {
         extra.push('perro');
-        if (expansionMode === 'aggressive' && !wantsHarness) extra.push('ropa');
+        if (wantsLeash) extra.push('correa');
+        if (expansionMode === 'aggressive' && !wantsHarness && !wantsLeash) extra.push('ropa');
       }
       if (lang === 'fr') {
         extra.push('chien');
-        if (expansionMode === 'aggressive' && !wantsHarness) extra.push('vêtement');
+        if (wantsLeash) extra.push('laisse');
+        if (expansionMode === 'aggressive' && !wantsHarness && !wantsLeash) extra.push('vêtement');
       }
       if (lang === 'ja') {
         extra.push('犬');
-        if (expansionMode === 'aggressive' && !wantsHarness) extra.push('犬服');
+        if (wantsLeash) extra.push('リード');
+        if (expansionMode === 'aggressive' && !wantsHarness && !wantsLeash) extra.push('犬服');
       }
 	    } else if (target === 'human' && intent?.primary_domain === 'human_apparel') {
       const requiredCats = Array.isArray(intent?.category?.required) ? intent.category.required : [];

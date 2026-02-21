@@ -5726,6 +5726,113 @@ function hasBeautyCatalogProductSignal(candidateText) {
   );
 }
 
+function classifyBeautyBucketFromProduct(product) {
+  const text = buildFallbackCandidateText(product);
+  if (!text) return 'other';
+
+  if (
+    /\b(brush|brushes|blender|sponge|puff|applicator|tool|tools|brush\s*set)\b/i.test(text) ||
+    /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|工具|刷子|パフ|ブラシ/.test(text)
+  ) {
+    return 'tools';
+  }
+  if (
+    /\b(foundation|concealer|primer|powder|cushion|bb\s*cream|cc\s*cream|setting\s*powder)\b/i.test(text) ||
+    /粉底|遮瑕|妆前|妝前|散粉|蜜粉|气垫|氣墊/.test(text)
+  ) {
+    return 'base_makeup';
+  }
+  if (
+    /\b(eyeshadow|eye\s*shadow|mascara|eyeliner|brow|eyebrow)\b/i.test(text) ||
+    /眼影|睫毛膏|眼线|眼線|眉笔|眉筆|眉粉/.test(text)
+  ) {
+    return 'eye_makeup';
+  }
+  if (
+    /\b(lipstick|lip\s*tint|lip\s*gloss|lip\s*balm|lip\s*liner|lip)\b/i.test(text) ||
+    /口红|口紅|唇膏|唇彩|唇釉|润唇|潤唇/.test(text)
+  ) {
+    return 'lip_makeup';
+  }
+  if (
+    /\b(skincare|serum|toner|essence|moisturizer|cream|cleanser|sunscreen)\b/i.test(text) ||
+    /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬/.test(text)
+  ) {
+    return 'skincare';
+  }
+  return 'other';
+}
+
+function computeBeautyBucketMix(products, topN = 10) {
+  const buckets = {
+    base_makeup: 0,
+    eye_makeup: 0,
+    lip_makeup: 0,
+    skincare: 0,
+    tools: 0,
+    other: 0,
+  };
+  const top = Array.isArray(products) ? products.slice(0, Math.max(1, Number(topN || 10))) : [];
+  for (const product of top) {
+    const bucket = classifyBeautyBucketFromProduct(product);
+    buckets[bucket] = Number(buckets[bucket] || 0) + 1;
+  }
+  return buckets;
+}
+
+function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit) {
+  if (!intent || intent.primary_domain !== 'beauty') return false;
+  const scenario = String(intent?.scenario?.name || '');
+  if (scenario === 'beauty_tools' || scenario === 'eye_shadow_brush') return false;
+  const topN = Math.max(1, Number(limit || 10));
+  const mix = computeBeautyBucketMix(products, topN);
+  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare'];
+  const distinctCore = coreBuckets.filter((bucket) => Number(mix[bucket] || 0) > 0).length;
+  const toolsCount = Number(mix.tools || 0);
+  return distinctCore < 2 && toolsCount >= Math.ceil(topN * 0.6);
+}
+
+function blendBeautyDiversitySupplement(internalProducts, supplementProducts, limit) {
+  const targetLimit = Math.max(1, Number(limit || 10));
+  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'tools', 'other'];
+  const seen = new Set();
+  const merged = [];
+  const internal = Array.isArray(internalProducts) ? internalProducts : [];
+  const supplement = Array.isArray(supplementProducts) ? supplementProducts : [];
+
+  const addUnique = (product) => {
+    const key = buildSearchProductKey(product) || JSON.stringify(product || {}).slice(0, 96);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(product);
+  };
+
+  for (const product of internal) addUnique(product);
+  for (const product of supplement) addUnique(product);
+
+  const queues = new Map(priorityBuckets.map((bucket) => [bucket, []]));
+  for (const product of merged) {
+    const bucket = classifyBeautyBucketFromProduct(product);
+    if (!queues.has(bucket)) queues.set(bucket, []);
+    queues.get(bucket).push(product);
+  }
+
+  const output = [];
+  while (output.length < targetLimit) {
+    let progressed = false;
+    for (const bucket of priorityBuckets) {
+      const queue = queues.get(bucket);
+      if (!queue || queue.length === 0) continue;
+      output.push(queue.shift());
+      progressed = true;
+      if (output.length >= targetLimit) break;
+    }
+    if (!progressed) break;
+  }
+
+  return output;
+}
+
 function buildPetHarnessSignalSql(startIndex) {
   const latin = '(harness|leash|collar|lead|no-?pull|dog\\s+harness|dog\\s+leash|pet\\s+harness|pet\\s+leash)';
   const cjk = '(背带|胸背|牵引|牵引绳|遛狗绳|狗链|项圈|胸背带|胴輪|ハーネス)';
@@ -12459,6 +12566,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             isLookupQuery && lookupRelevantInternalProducts.length > 0
               ? lookupRelevantInternalProducts
               : internalProducts;
+          const safeResultLimit = Math.max(1, Number(limit || 20));
+          const needsPrimaryFillSupplement = internalProductsForRecall.length < safeResultLimit;
+          const needsBeautyDiversitySupplement =
+            isCatalogGuardSource(source) &&
+            Number(page) === 1 &&
+            isBeautyGeneralDiversitySupplementCandidate(
+              effectiveIntent,
+              internalProductsForRecall,
+              safeResultLimit,
+            );
           const cacheHit = internalProductsForRecall.length > 0;
           let supplementedProducts = internalProductsForRecall;
           let supplementMeta = {
@@ -12470,9 +12587,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
-            internalProductsForRecall.length < Number(limit || 0)
+            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement)
           ) {
-            const neededCount = Math.max(0, Number(limit || 0) - internalProductsForRecall.length);
+            const neededCount = needsPrimaryFillSupplement
+              ? Math.max(0, safeResultLimit - internalProductsForRecall.length)
+              : Math.max(1, Math.ceil(safeResultLimit / 2));
             if (neededCount > 0) {
               const allowLookupExternalOnlySupplement =
                 isLookupQuery &&
@@ -12495,6 +12614,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   applied: false,
                   added_count: 0,
                   reason: 'supplement_pending',
+                  diversity_targeted: needsBeautyDiversitySupplement,
                 };
                 try {
                   const supplement = await fetchExternalSeedSupplementFromBackend({
@@ -12536,13 +12656,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     toAppend.push(product);
                     if (toAppend.length >= neededCount) break;
                   }
-                  supplementedProducts = internalProductsForRecall.concat(toAppend);
+                  supplementedProducts =
+                    needsBeautyDiversitySupplement && internalProductsForRecall.length >= safeResultLimit
+                      ? blendBeautyDiversitySupplement(
+                          internalProductsForRecall,
+                          toAppend,
+                          safeResultLimit,
+                        )
+                      : internalProductsForRecall.concat(toAppend);
                   supplementMeta = {
                     ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
                     attempted: true,
                     applied: toAppend.length > 0,
                     added_count: toAppend.length,
-                    reason: toAppend.length > 0 ? 'supplemented_external_seed' : 'no_external_candidates',
+                    reason: toAppend.length > 0
+                      ? needsBeautyDiversitySupplement
+                        ? 'supplemented_external_seed_diversity'
+                        : 'supplemented_external_seed'
+                      : needsBeautyDiversitySupplement
+                        ? 'no_external_candidates_for_diversity'
+                        : 'no_external_candidates',
+                    diversity_targeted: needsBeautyDiversitySupplement,
                   };
                 } catch (supplementErr) {
                   supplementMeta = {
@@ -12551,6 +12685,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     added_count: 0,
                     reason: 'supplement_error',
                     error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
+                    diversity_targeted: needsBeautyDiversitySupplement,
                   };
                   logger.warn(
                     { err: supplementErr?.message || String(supplementErr), query: cacheQueryText },
