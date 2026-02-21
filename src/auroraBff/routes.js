@@ -534,6 +534,22 @@ const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_RESOLVE_FALLBACK || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_MAX_QUERIES = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_RESOLVE_MAX_QUERIES || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(1, Math.min(3, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_RETURN_SLACK_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS || 220);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 220;
+  return Math.max(60, Math.min(1000, v));
+})();
 const AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED || 'true')
     .trim()
@@ -2175,14 +2191,37 @@ async function searchPivotaBackendProducts({
       const endpoint = `${normalizedBase}${pathToken}`;
       const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
       const elapsedMs = Date.now() - perBaseStartedAt;
-      const remainingBudgetMs = Math.max(200, timeoutForAttemptMs - elapsedMs);
+      const remainingBudgetMs = timeoutForAttemptMs - elapsedMs;
+      if (!Number.isFinite(remainingBudgetMs) || remainingBudgetMs <= 40) {
+        const failed = {
+          ok: false,
+          products: [],
+          reason: 'upstream_timeout',
+          status_code: 504,
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        pathAttempts.push({
+          endpoint,
+          path: pathToken,
+          ok: false,
+          reason: 'upstream_timeout',
+          status_code: 504,
+          products: 0,
+        });
+        lastFailure = failed;
+        break;
+      }
+      const requestTimeoutMs = Math.max(50, Math.trunc(remainingBudgetMs));
       try {
         const resp = await axios.get(endpoint, {
           params,
           headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
           timeout: isLocalInvokeBase
-            ? Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, remainingBudgetMs))
-            : remainingBudgetMs,
+            ? Math.max(50, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, requestTimeoutMs))
+            : requestTimeoutMs,
           validateStatus: () => true,
         });
         const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
@@ -4451,7 +4490,14 @@ async function buildRealtimeCompetitorCandidates({
     Math.min(5000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS),
   );
   const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
-  const softDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + effectiveTimeoutMs;
+  const absoluteDeadlineMs = normalizedDeadlineMs > 0
+    ? Math.min(normalizedDeadlineMs, startedAt + effectiveTimeoutMs)
+    : startedAt + effectiveTimeoutMs;
+  // Return before outer DAG source timeout to avoid dropping the whole block on wrapper timeout.
+  const softDeadlineMs = Math.max(
+    startedAt + 120,
+    absoluteDeadlineMs - PRODUCT_URL_REALTIME_COMPETITOR_RETURN_SLACK_MS,
+  );
   const normalizedMode = String(mode || '').trim().toLowerCase();
   const runMode =
     normalizedMode === 'sync_repair' || normalizedMode === 'async_backfill'
@@ -4463,7 +4509,10 @@ async function buildRealtimeCompetitorCandidates({
       .toLowerCase();
     return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   })();
-  const allowResolveFallback = runMode === 'async_backfill' || (runMode === 'sync_repair' && syncResolveFallbackEnabled);
+  const allowResolveFallback =
+    runMode === 'async_backfill' ||
+    (runMode === 'sync_repair' && syncResolveFallbackEnabled) ||
+    (runMode === 'main_path' && PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_FALLBACK_ENABLED);
   // Sync repair should also search across merchants; this improves cross-brand recovery
   // when the anchor query is sparse or merchant-local index is incomplete.
   const searchAllMerchants = runMode !== 'main_path';
@@ -4728,6 +4777,13 @@ async function buildRealtimeCompetitorCandidates({
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
     };
   }
+  if (runMode === 'main_path' && !allSearchTransientFailure) {
+    return {
+      candidates: [],
+      queries,
+      reason: 'catalog_search_no_candidates',
+    };
+  }
   if (runMode === 'main_path' && getRemainingMs() < 420) {
     return {
       candidates: [],
@@ -4736,12 +4792,15 @@ async function buildRealtimeCompetitorCandidates({
     };
   }
 
+  const resolveLimit = runMode === 'main_path'
+    ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_MAX_QUERIES
+    : Math.max(1, Math.min(6, queries.length));
   const resolveQueryList = [...queries].sort((a, b) => {
     const lenA = String(a || '').trim().length || 999;
     const lenB = String(b || '').trim().length || 999;
     if (lenA !== lenB) return lenA - lenB;
     return String(a || '').localeCompare(String(b || ''));
-  });
+  }).slice(0, resolveLimit);
   const resolveResults = [];
   for (const queryText of resolveQueryList) {
     const remainingMs = getRemainingMs();

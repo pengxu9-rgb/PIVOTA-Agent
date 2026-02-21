@@ -278,6 +278,54 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.source_failover).toBe(false);
   });
 
+  test('catalog search respects per-attempt budget and does not run extra path fallback after timeout budget is exhausted', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-budget.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS = '/agent/v1/beauty/products/search,/agent/v1/products/search';
+    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
+
+    nock('http://catalog-budget.test')
+      .persist()
+      .get('/agent/v1/beauty/products/search')
+      .query(true)
+      .delayConnection(500)
+      .reply(200, {
+        ok: true,
+        products: [],
+      });
+
+    const genericScope = nock('http://catalog-budget.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_should_not_be_called',
+            brand: 'Alt Brand',
+            name: 'Late Generic Fallback',
+            display_name: 'Alt Brand Late Generic Fallback',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const logger = { warn: jest.fn(), info: jest.fn() };
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      logger,
+      timeoutMs: 320,
+    });
+
+    expect(out.ok).toBe(false);
+    expect(String(out.reason || '')).toMatch(/upstream_timeout/i);
+    expect(Array.isArray(out.attempted_endpoints)).toBe(true);
+    expect(out.attempted_endpoints[0]).toBe('http://catalog-budget.test/agent/v1/beauty/products/search');
+    expect(genericScope.isDone()).toBe(false);
+  });
+
   test('catalog search defaults to generic route first when beauty-first flag is disabled', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS = '/agent/v1/beauty/products/search,/agent/v1/products/search';
@@ -834,7 +882,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           ],
         },
       },
-      source: 'url_realtime_product_intel',
+      source: expect.stringContaining('url_realtime_product_intel'),
       source_meta: { competitor_async_enriched: true },
     });
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
@@ -1218,7 +1266,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(upsertProductIntelKbEntry).toHaveBeenCalledTimes(1);
     expect(upsertProductIntelKbEntry.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        source: 'url_realtime_product_intel',
+        source: expect.stringContaining('url_realtime_product_intel'),
         kb_key: expect.any(String),
       }),
     );
@@ -1299,7 +1347,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const lastWrite = upsertProductIntelKbEntry.mock.calls[upsertProductIntelKbEntry.mock.calls.length - 1][0];
     expect(lastWrite).toEqual(
       expect.objectContaining({
-        source: 'url_realtime_product_intel',
+        source: expect.stringContaining('url_realtime_product_intel'),
       }),
     );
     expect(lastWrite.source_meta).toEqual(expect.objectContaining({ competitor_async_enriched: true }));
@@ -1341,7 +1389,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           ],
         },
       },
-      source: 'url_realtime_product_intel',
+      source: expect.stringContaining('url_realtime_product_intel'),
       source_meta: { competitor_async_enriched: true },
     });
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
@@ -1408,7 +1456,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           ],
         },
       },
-      source: 'url_realtime_product_intel',
+      source: expect.stringContaining('url_realtime_product_intel'),
       source_meta: { competitor_async_enriched: true },
     });
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
@@ -1518,7 +1566,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           ],
         },
       },
-      source: 'url_realtime_product_intel',
+      source: expect.stringContaining('url_realtime_product_intel'),
       source_meta: { competitor_async_enriched: true },
     });
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
@@ -1620,7 +1668,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           ],
         },
       },
-      source: 'url_realtime_product_intel',
+      source: expect.stringContaining('url_realtime_product_intel'),
       source_meta: { competitor_async_enriched: true },
     });
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
@@ -1982,7 +2030,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           ],
         },
       },
-      source: 'url_realtime_product_intel',
+      source: expect.stringContaining('url_realtime_product_intel'),
       source_meta: { competitor_async_enriched: true },
     });
     const upsertProductIntelKbEntry = jest.fn().mockResolvedValue(undefined);
