@@ -638,6 +638,212 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('aurora source treats 429 primary responses as fallback-eligible and adopts invoke fallback', async () => {
+    const queryText = 'the ordinary copper peptide serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 5, sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(429, {
+        status: 'error',
+        error: { code: 'RATE_LIMITED', message: 'Too many requests' },
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return (
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText &&
+          parsed.metadata &&
+          String(parsed.metadata.source || '') === 'aurora-bff'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'alt_429_1',
+            merchant_id: 'merch_sigma',
+            title: 'Copper Peptide Repair Serum',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'alt_429_1',
+        merchant_id: 'merch_sigma',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        fallback_strategy: expect.objectContaining({
+          secondary_attempted: true,
+          secondary_rejected_reason: null,
+        }),
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'empty_or_unusable_primary',
+        }),
+      }),
+    );
+  });
+
+  test('aurora source detects same-brand external monoculture and forces semantic retry fallback', async () => {
+    const queryText = 'the ordinary copper peptide serum';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED = 'true';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES = '1';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 8, sources: [{ source: 'agent_search_scoped', ok: false, reason: 'no_candidates' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          { product_id: 'ord_1', merchant_id: 'external_seed', source: 'external_seed', brand: 'The Ordinary', title: 'The Multi-Peptide Collection' },
+          { product_id: 'ord_2', merchant_id: 'external_seed', source: 'external_seed', brand: 'The Ordinary', title: 'Multi-Peptide + HA Serum' },
+          { product_id: 'ord_3', merchant_id: 'external_seed', source: 'external_seed', brand: 'The Ordinary', title: 'Multi-Peptide + Copper Peptides 1% Serum' },
+        ],
+        total: 3,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return (
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          { product_id: 'ord_fb_1', merchant_id: 'external_seed', source: 'external_seed', brand: 'The Ordinary', title: 'The Multi-Peptide Collection' },
+        ],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const queryValue = String(q?.query || '').toLowerCase();
+        return String(q?.source || '').toLowerCase() === 'aurora-bff' && queryValue.includes('multi peptide');
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'cp_retry_brand_mix_1',
+            merchant_id: 'merch_sigma',
+            brand: 'Sigma Beauty',
+            title: 'Copper Peptide Recovery Serum',
+          },
+          {
+            product_id: 'cp_retry_brand_mix_2',
+            merchant_id: 'merch_rare',
+            brand: 'Rare Beauty',
+            title: 'Firming Peptide Serum',
+          },
+          {
+            product_id: 'cp_retry_brand_mix_3',
+            merchant_id: 'merch_glow',
+            brand: 'Glow Recipe',
+            title: 'Hydrating Peptide Serum',
+          },
+        ],
+        total: 3,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'cp_retry_brand_mix_1',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_monoculture',
+        }),
+        fallback_strategy: expect.objectContaining({
+          primary_monoculture_detected: true,
+          secondary_attempted: true,
+          secondary_attempt_count: 2,
+          secondary_relevance_passed: true,
+          secondary_rejected_reason: null,
+        }),
+      }),
+    );
+    expect(String(resp.body?.metadata?.fallback_strategy?.secondary_selected_query || '').toLowerCase()).toContain(
+      'multi peptide',
+    );
+  });
+
   test('resolver-first retries sanitized candidate for noisy lookup query', async () => {
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';

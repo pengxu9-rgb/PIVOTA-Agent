@@ -2786,6 +2786,102 @@ function isExternalSeedProduct(product) {
   return merchantId === 'external_seed' || source === 'external_seed';
 }
 
+function normalizeSearchBrandToken(value) {
+  const normalized = normalizeSearchTextForMatch(String(value || '').trim());
+  if (!normalized) return '';
+  return normalized.replace(/\s+/g, ' ').trim();
+}
+
+function extractSearchProductBrandToken(product) {
+  if (!product || typeof product !== 'object') return '';
+  const brand = String(product.brand || product.brand_name || product.vendor || '').trim();
+  return normalizeSearchBrandToken(brand);
+}
+
+function detectAuroraExternalSeedMonoculture({ normalized, queryText, source }) {
+  if (!isAuroraSource(source)) {
+    return {
+      detected: false,
+      dominantBrand: null,
+      externalCount: 0,
+      totalCount: 0,
+      externalRatio: 0,
+    };
+  }
+  const products = Array.isArray(normalized?.products) ? normalized.products : [];
+  if (products.length < 3) {
+    return {
+      detected: false,
+      dominantBrand: null,
+      externalCount: 0,
+      totalCount: products.length,
+      externalRatio: 0,
+    };
+  }
+  const externalProducts = products.filter((product) => isExternalSeedProduct(product));
+  if (externalProducts.length < 3) {
+    return {
+      detected: false,
+      dominantBrand: null,
+      externalCount: externalProducts.length,
+      totalCount: products.length,
+      externalRatio: externalProducts.length / Math.max(1, products.length),
+    };
+  }
+  const externalRatio = externalProducts.length / Math.max(1, products.length);
+  if (externalRatio < 0.8) {
+    return {
+      detected: false,
+      dominantBrand: null,
+      externalCount: externalProducts.length,
+      totalCount: products.length,
+      externalRatio,
+    };
+  }
+  const brandCounts = new Map();
+  for (const product of externalProducts) {
+    const brandToken = extractSearchProductBrandToken(product);
+    if (!brandToken) continue;
+    brandCounts.set(brandToken, Number(brandCounts.get(brandToken) || 0) + 1);
+  }
+  if (brandCounts.size !== 1) {
+    return {
+      detected: false,
+      dominantBrand: null,
+      externalCount: externalProducts.length,
+      totalCount: products.length,
+      externalRatio,
+    };
+  }
+  const [[dominantBrand, dominantCount]] = Array.from(brandCounts.entries());
+  if (dominantCount < Math.max(3, Math.floor(externalProducts.length * 0.8))) {
+    return {
+      detected: false,
+      dominantBrand,
+      externalCount: externalProducts.length,
+      totalCount: products.length,
+      externalRatio,
+    };
+  }
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
+  if (!normalizedQuery || !normalizedQuery.includes(dominantBrand)) {
+    return {
+      detected: false,
+      dominantBrand,
+      externalCount: externalProducts.length,
+      totalCount: products.length,
+      externalRatio,
+    };
+  }
+  return {
+    detected: true,
+    dominantBrand,
+    externalCount: externalProducts.length,
+    totalCount: products.length,
+    externalRatio,
+  };
+}
+
 function buildSearchProductKey(product) {
   if (!product || typeof product !== 'object') return '';
   const merchantId = String(product.merchant_id || product.merchantId || '').trim();
@@ -3380,8 +3476,10 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
 }
 
 function shouldFallbackProxySearch(normalized, statusCode) {
-  if (Number(statusCode) >= 500) return true;
-  if (Number(statusCode) < 200 || Number(statusCode) >= 300) return false;
+  const status = Number(statusCode || 0);
+  if (status >= 500) return true;
+  if (status === 408 || status === 409 || status === 425 || status === 429) return true;
+  if (status < 200 || status >= 300) return false;
   const products = Array.isArray(normalized?.products) ? normalized.products : [];
   const usableCount = countUsableSearchProducts(products);
   const total = Number(normalized?.total);
@@ -3695,10 +3793,13 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   const preserveAuroraSource =
     PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
   const baseQueryText = String(payload?.search?.query || '').trim();
+  const isAuroraMonocultureRetry =
+    isAuroraSource(normalizedRequestSource) &&
+    String(reason || '').trim() === 'primary_monoculture';
   const isAuroraSemanticRetry =
     PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED &&
     isAuroraSource(normalizedRequestSource) &&
-    String(reason || '').trim() === 'primary_irrelevant';
+    (String(reason || '').trim() === 'primary_irrelevant' || isAuroraMonocultureRetry);
   const semanticRetryQueries = isAuroraSemanticRetry
     ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
     : [];
@@ -3756,7 +3857,11 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
       if (candidateScore > selectedScore) selectedAttempt = attempt;
     }
 
-    if (attempt.relevanceMatched && attempt.usableCount > 0) break;
+    if (attempt.relevanceMatched && attempt.usableCount > 0) {
+      const shouldForceNextSemanticAttempt =
+        isAuroraMonocultureRetry && i === 0 && candidateQueries.length > 1;
+      if (!shouldForceNextSemanticAttempt) break;
+    }
   }
 
   if (!selectedAttempt) return null;
@@ -8342,6 +8447,9 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_seed_strategy: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
         : null,
+      primary_monoculture_detected: false,
+      primary_monoculture_dominant_brand: null,
+      primary_monoculture_external_ratio: 0,
       fallback_adopt_usable_threshold: null,
     };
 
@@ -8375,8 +8483,20 @@ async function proxyAgentSearchToBackend(req, res) {
     const primaryUsableCount = countUsableSearchProducts(normalized?.products);
     const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
     const primaryRelevant = queryText ? isProxySearchFallbackRelevant(normalized, queryText) : true;
-    const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
+    const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
+      normalized,
+      queryText,
+      source,
+    });
+    const primaryMonoculture = Boolean(primaryMonocultureSignal.detected);
+    const primaryIrrelevant =
+      Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
     const shouldFallback = primaryUnusable || primaryIrrelevant;
+    fallbackStrategy.primary_monoculture_detected = primaryMonoculture;
+    fallbackStrategy.primary_monoculture_dominant_brand = primaryMonocultureSignal.dominantBrand || null;
+    fallbackStrategy.primary_monoculture_external_ratio = Number(
+      primaryMonocultureSignal.externalRatio || 0,
+    );
     const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
       operation: 'find_products_multi',
       source,
@@ -8418,17 +8538,21 @@ async function proxyAgentSearchToBackend(req, res) {
         }
       }
 
+      const secondaryFallbackReason = primaryUnusable
+        ? primaryUsableCount > 0
+          ? 'insufficient_primary'
+          : 'empty_or_unusable_primary'
+        : primaryMonoculture
+        ? 'primary_monoculture'
+        : 'primary_irrelevant';
+
       if (allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
         fallbackStrategy.secondary_attempted = true;
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams: guardedQueryParams,
             checkoutToken,
-            reason: primaryUnusable
-              ? primaryUsableCount > 0
-                ? 'insufficient_primary'
-                : 'empty_or_unusable_primary'
-              : 'primary_irrelevant',
+            reason: secondaryFallbackReason,
             requestSource: source,
           });
           const fallbackRelevant = Boolean(
@@ -8459,7 +8583,11 @@ async function proxyAgentSearchToBackend(req, res) {
               finalDecision: 'upstream_returned',
               primaryPathUsed: 'proxy_search_primary',
               fallbackTriggered: true,
-              fallbackReason: primaryUnusable ? 'secondary_after_primary_unusable' : 'secondary_after_primary_irrelevant',
+              fallbackReason: primaryUnusable
+                ? 'secondary_after_primary_unusable'
+                : primaryMonoculture
+                ? 'secondary_after_primary_monoculture'
+                : 'secondary_after_primary_irrelevant',
               upstreamStage,
               fallbackStrategy,
             });
@@ -8490,7 +8618,13 @@ async function proxyAgentSearchToBackend(req, res) {
     }
 
     if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
-      const reason = skipSecondaryFallback ? 'primary_irrelevant_skip_secondary' : 'primary_irrelevant_no_fallback';
+      const reason = skipSecondaryFallback
+        ? primaryMonoculture
+          ? 'primary_monoculture_skip_secondary'
+          : 'primary_irrelevant_skip_secondary'
+        : primaryMonoculture
+        ? 'primary_monoculture_no_fallback'
+        : 'primary_irrelevant_no_fallback';
       return respondSearch(
         200,
         withStrictEmptyFallback({
@@ -8544,7 +8678,11 @@ async function proxyAgentSearchToBackend(req, res) {
         reason:
           primaryIrrelevant
             ? skipSecondaryFallback
-              ? 'primary_irrelevant_skip_secondary'
+              ? primaryMonoculture
+                ? 'primary_monoculture_skip_secondary'
+                : 'primary_irrelevant_skip_secondary'
+              : primaryMonoculture
+              ? 'primary_monoculture_no_fallback'
               : 'primary_irrelevant_no_fallback'
             : shouldFallback && skipSecondaryFallback
             ? 'resolver_miss_skip_secondary'
@@ -8562,7 +8700,11 @@ async function proxyAgentSearchToBackend(req, res) {
         fallbackReason:
           primaryIrrelevant
             ? skipSecondaryFallback
-              ? 'primary_irrelevant_skip_secondary'
+              ? primaryMonoculture
+                ? 'primary_monoculture_skip_secondary'
+                : 'primary_irrelevant_skip_secondary'
+              : primaryMonoculture
+              ? 'primary_monoculture_no_fallback'
               : 'primary_irrelevant_no_fallback'
             : shouldFallback && skipSecondaryFallback
             ? 'resolver_miss_skip_secondary'
@@ -15020,7 +15162,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
-      const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
+      const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
+        normalized: upstreamData,
+        queryText,
+        source: metadata?.source,
+      });
+      const primaryMonoculture = Boolean(primaryMonocultureSignal.detected);
+      const primaryIrrelevant =
+        Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
       const shouldFallback = primaryUnusable || primaryIrrelevant;
       const requestedLimit = Math.min(
         Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
@@ -15183,6 +15332,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 ? primaryUsableCount > 0
                   ? 'insufficient_primary'
                   : 'empty_or_unusable_primary'
+                : primaryMonoculture
+                ? 'primary_monoculture'
                 : 'primary_irrelevant',
               requestSource: metadata?.source,
             });
@@ -15214,7 +15365,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (primaryIrrelevant) {
             upstreamData = buildProxySearchSoftFallbackResponse({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              reason: skipSecondaryFallback ? 'primary_irrelevant_skip_secondary' : 'primary_irrelevant_no_fallback',
+              reason: skipSecondaryFallback
+                ? primaryMonoculture
+                  ? 'primary_monoculture_skip_secondary'
+                  : 'primary_irrelevant_skip_secondary'
+                : primaryMonoculture
+                ? 'primary_monoculture_no_fallback'
+                : 'primary_irrelevant_no_fallback',
               upstreamStatus: response.status,
               route: 'invoke_primary_irrelevant',
             });
