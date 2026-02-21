@@ -458,6 +458,15 @@ function shouldApplyBeautyDiversity(intent, rawQuery) {
   return true;
 }
 
+function isBeautyToolAnchoredQuery(rawQuery) {
+  const q = String(rawQuery || '').trim();
+  if (!q) return false;
+  return (
+    /\b(brush|brushes|makeup\s*tools?|cosmetic\s*tools?|sponge|puff|applicator|tool\s*kit)\b/i.test(q) ||
+    /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|工具|刷子|メイクブラシ|ブラシ/.test(q)
+  );
+}
+
 function applyBeautyDiversityPolicy(products, options = {}) {
   const input = Array.isArray(products) ? products : [];
   if (input.length <= 1) {
@@ -2042,6 +2051,31 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     });
     filtered = Array.isArray(diversityResult.products) ? diversityResult.products : [];
     diversityDebug = diversityResult.debug || null;
+
+    const enforceNonToolMinimum =
+      intent?.primary_domain === 'beauty' &&
+      intent?.scenario?.name === 'general' &&
+      !isBeautyToolAnchoredQuery(rawQuery);
+    if (enforceNonToolMinimum && diversityDebug) {
+      const mix = diversityDebug.category_mix_topN && typeof diversityDebug.category_mix_topN === 'object'
+        ? diversityDebug.category_mix_topN
+        : {};
+      const nonToolDistinctBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare'].filter(
+        (bucket) => Number(mix[bucket] || 0) > 0,
+      ).length;
+      if (nonToolDistinctBuckets < 2) {
+        filtered = [];
+        diversityDebug = {
+          ...diversityDebug,
+          reason: 'beauty_non_tool_min_not_met',
+          strict_empty: true,
+          requirement_unmet: true,
+          preserve_primary_on_failure: false,
+          required_non_tool_buckets: 2,
+          non_tool_distinct_buckets: nonToolDistinctBuckets,
+        };
+      }
+    }
   }
   const after = filtered.length;
 
@@ -2074,6 +2108,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   }
   if (diversityDebug?.requirement_unmet) reasonCodes.add('BEAUTY_DIVERSITY_NOT_MET');
   if (diversityDebug?.penalty_applied) reasonCodes.add('BEAUTY_DIVERSITY_REORDERED');
+  if (diversityDebug?.reason === 'beauty_non_tool_min_not_met') {
+    reasonCodes.add('BEAUTY_NON_TOOL_MIN_NOT_MET');
+  }
 
   const augmented = setResponseProductList(response, key, filtered);
   const filtersApplied = buildFiltersApplied(intent);

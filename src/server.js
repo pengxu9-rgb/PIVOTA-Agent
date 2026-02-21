@@ -3018,17 +3018,12 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
   if (!normalizedQuery) return true;
 
   const hasPetHarnessSignal = hasPetHarnessSearchSignal(queryText);
-  const hasHarnessProductSignal = (candidateText) =>
-    /\b(harness|leash|collar|lead|no-?pull)\b/i.test(candidateText) ||
-    /(背带|背帶|牵引|牽引|狗链|狗鏈|项圈|項圈|遛狗|ハーネス|リード|首輪|arn[eé]s|correa|collier)/i.test(
-      candidateText,
-    );
   if (hasPetHarnessSignal) {
     for (const product of products.slice(0, 8)) {
       if (!hasUsableSearchProduct(product)) continue;
       const candidateText = buildFallbackCandidateText(product);
       if (!candidateText) continue;
-      if (hasHarnessProductSignal(candidateText)) return true;
+      if (hasStrictPetHarnessCatalogSignal(candidateText)) return true;
     }
     return false;
   }
@@ -3077,12 +3072,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!candidateText) return false;
 
   if (hasPetHarnessSearchSignal(queryText)) {
-    const hasHarnessProductSignal =
-      /\b(harness|leash|collar|lead|no-?pull)\b/i.test(candidateText) ||
-      /(背带|背帶|牵引|牽引|狗链|狗鏈|项圈|項圈|遛狗|ハーネス|リード|首輪|arn[eé]s|correa|collier)/i.test(
-        candidateText,
-      );
-    if (!hasHarnessProductSignal) return false;
+    if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
   }
 
   if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
@@ -5696,6 +5686,26 @@ function hasPetHarnessSearchSignal(queryText) {
     /\b(harness|leash|dog\s+leash|pet\s+leash|collar|lead|no-?pull)\b/i.test(q) ||
     /背带|背帶|胸背|牵引|牽引|牵引绳|牽引繩|遛狗绳|狗链|狗鏈|狗链子|狗鏈子|项圈|項圈|胸背带|胸背帶|狗绳|狗繩|胴輪|ハーネス|リード|首輪/.test(
       q,
+    )
+  );
+}
+
+function hasPetLeashSearchSignal(queryText) {
+  const q = String(queryText || '');
+  if (!q) return false;
+  return (
+    /\b(leash|dog\s+leash|pet\s+leash|lead|training\s+leash|collar)\b/i.test(q) ||
+    /牵引绳|牽引繩|遛狗绳|狗链|狗鏈|狗链子|狗鏈子|狗绳|狗繩|项圈|項圈|リード|首輪/.test(q)
+  );
+}
+
+function hasStrictPetHarnessCatalogSignal(candidateText) {
+  const text = String(candidateText || '');
+  if (!text) return false;
+  return (
+    /\b(harness|leash|dog\s+leash|pet\s+leash|collar|lead|no-?pull|training\s+leash)\b/i.test(text) ||
+    /(背带|背帶|胸背|牵引|牽引|牵引绳|牽引繩|遛狗绳|狗链|狗鏈|狗链子|狗鏈子|项圈|項圈|胴輪|ハーネス|リード|首輪|arn[eé]s|correa|collier)/i.test(
+      text,
     )
   );
 }
@@ -12566,18 +12576,25 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             isLookupQuery && lookupRelevantInternalProducts.length > 0
               ? lookupRelevantInternalProducts
               : internalProducts;
+          const leashAnchoredQuery = hasPetLeashSearchSignal(cacheQueryText);
+          const leashAnchoredInternalProducts = leashAnchoredQuery
+            ? internalProductsForRecall.filter((product) =>
+                hasStrictPetHarnessCatalogSignal(buildFallbackCandidateText(product)),
+              )
+            : internalProductsForRecall;
+          const internalProductsAfterAnchor = leashAnchoredInternalProducts;
           const safeResultLimit = Math.max(1, Number(limit || 20));
-          const needsPrimaryFillSupplement = internalProductsForRecall.length < safeResultLimit;
+          const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const needsBeautyDiversitySupplement =
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
             isBeautyGeneralDiversitySupplementCandidate(
               effectiveIntent,
-              internalProductsForRecall,
+              internalProductsAfterAnchor,
               safeResultLimit,
             );
-          const cacheHit = internalProductsForRecall.length > 0;
-          let supplementedProducts = internalProductsForRecall;
+          const cacheHit = internalProductsAfterAnchor.length > 0;
+          let supplementedProducts = internalProductsAfterAnchor;
           let supplementMeta = {
             attempted: false,
             applied: false,
@@ -12590,16 +12607,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             (needsPrimaryFillSupplement || needsBeautyDiversitySupplement)
           ) {
             const neededCount = needsPrimaryFillSupplement
-              ? Math.max(0, safeResultLimit - internalProductsForRecall.length)
+              ? Math.max(0, safeResultLimit - internalProductsAfterAnchor.length)
               : Math.max(1, Math.ceil(safeResultLimit / 2));
             if (neededCount > 0) {
               const allowLookupExternalOnlySupplement =
                 isLookupQuery &&
-                internalProductsForRecall.length === 0 &&
+                internalProductsAfterAnchor.length === 0 &&
                 isKnownLookupAliasQuery(cacheQueryText);
               const shouldSkipSupplementForLookupNoInternal =
                 isLookupQuery &&
-                internalProductsForRecall.length === 0 &&
+                internalProductsAfterAnchor.length === 0 &&
                 !allowLookupExternalOnlySupplement;
               if (shouldSkipSupplementForLookupNoInternal) {
                 supplementMeta = {
@@ -12633,7 +12650,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     neededCount,
                   });
                   const seen = new Set(
-                    internalProductsForRecall
+                    internalProductsAfterAnchor
                       .map((product) => buildSearchProductKey(product))
                       .filter(Boolean),
                   );
@@ -12657,13 +12674,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     if (toAppend.length >= neededCount) break;
                   }
                   supplementedProducts =
-                    needsBeautyDiversitySupplement && internalProductsForRecall.length >= safeResultLimit
+                    needsBeautyDiversitySupplement && internalProductsAfterAnchor.length >= safeResultLimit
                       ? blendBeautyDiversitySupplement(
-                          internalProductsForRecall,
+                          internalProductsAfterAnchor,
                           toAppend,
                           safeResultLimit,
                         )
-                      : internalProductsForRecall.concat(toAppend);
+                      : internalProductsAfterAnchor.concat(toAppend);
                   supplementMeta = {
                     ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
                     attempted: true,
@@ -12722,7 +12739,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             cache_hit: effectiveCacheHit,
             products_count: effectiveProducts.length,
             internal_products_count: internalProducts.length,
-            internal_products_relevant_count: internalProductsForRecall.length,
+            internal_products_relevant_count: internalProductsAfterAnchor.length,
+            leash_anchor_applied: leashAnchoredQuery,
             external_products_count: externalCount,
             cache_relevant: cacheRelevant,
             cache_relevance_gate_relaxed: relaxCacheRelevanceGate,
@@ -12786,7 +12804,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          if (internalProductsForRecall.length > 0 && (cacheRelevant || relaxCacheRelevanceGate)) {
+          if (internalProductsAfterAnchor.length > 0 && (cacheRelevant || relaxCacheRelevanceGate)) {
             crossMerchantCacheProtectedResponse =
               withPolicyProducts.length > 0
                 ? enriched
@@ -12809,7 +12827,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 cacheStage: {
                   hit: true,
                   candidate_count: Number(effectiveProducts.length || 0),
-                  relevant_count: Number(internalProductsForRecall.length || 0),
+                  relevant_count: Number(internalProductsAfterAnchor.length || 0),
                   retrieval_sources: fromCache.retrieval_sources || [],
                 },
                 upstreamStage: {
@@ -12881,7 +12899,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     cacheStage: {
                       hit: false,
                       candidate_count: Number(effectiveProducts.length || 0),
-                      relevant_count: Number(internalProductsForRecall.length || 0),
+                      relevant_count: Number(internalProductsAfterAnchor.length || 0),
                       retrieval_sources: fromCache.retrieval_sources || [],
                     },
                     upstreamStage: {
@@ -12986,7 +13004,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 cacheStage: {
                   hit: false,
                   candidate_count: Number(effectiveProducts.length || 0),
-                  relevant_count: Number(internalProductsForRecall.length || 0),
+                  relevant_count: Number(internalProductsAfterAnchor.length || 0),
                   retrieval_sources: fromCache.retrieval_sources || [],
                 },
                 upstreamStage: {

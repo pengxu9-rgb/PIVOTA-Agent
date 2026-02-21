@@ -724,7 +724,7 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
-  test('beauty diversity keeps primary results and marks unmet diversity requirement', () => {
+  test('beauty diversity enforces non-tool minimum for non-tool queries', () => {
     const intent = {
       language: 'en',
       primary_domain: 'beauty',
@@ -752,13 +752,16 @@ describe('find_products_multi intent + filtering', () => {
       rawUserQuery: 'date makeup kit recommendation',
     });
 
-    expect(resp.products.length).toBeGreaterThan(0);
-    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET']));
+    expect(resp.products.length).toBe(0);
+    expect(resp.reason_codes || []).toEqual(
+      expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET', 'BEAUTY_NON_TOOL_MIN_NOT_MET']),
+    );
     expect(resp.metadata?.route_debug?.policy?.diversity).toEqual(
       expect.objectContaining({
         requirement_unmet: true,
-        strict_empty: false,
-        preserve_primary_on_failure: true,
+        strict_empty: true,
+        preserve_primary_on_failure: false,
+        required_non_tool_buckets: 2,
       }),
     );
   });
