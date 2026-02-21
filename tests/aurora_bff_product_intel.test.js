@@ -164,6 +164,29 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(candidates.some((q) => /peptide|serum/i.test(String(q || '')))).toBe(true);
   });
 
+  test('realtime competitor query plan keeps diversified active-intent seed when max queries is low', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const plan = __internal.buildRealtimeCompetitorQueryPlan({
+      fromCatalogQueries: [
+        'The Ordinary Multi Peptide Copper Peptides 1 Serum',
+        'theordinary al multi peptide copper peptides 1 serum 100625',
+      ],
+      keyIngredients: ['Copper Tripeptide-1', 'Acetyl Hexapeptide-8', 'Sodium Hyaluronate'],
+      parsedProduct: {
+        brand: 'The Ordinary',
+        name: 'The Ordinary Multi Peptide Copper Peptides 1 Serum',
+      },
+      categoryToken: 'serum',
+      maxQueries: 2,
+    });
+
+    expect(Array.isArray(plan)).toBe(true);
+    expect(plan).toHaveLength(2);
+    expect(plan.some((q) => /the ordinary|ordinary/i.test(String(q || '')))).toBe(true);
+    expect(plan.some((q) => /copper peptide|peptide/i.test(String(q || '')))).toBe(true);
+    expect(plan.some((q) => /^https?:\/\//i.test(String(q || '')))).toBe(false);
+  });
+
   test('catalog search fails over to secondary source on repeated primary empty results', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-secondary.test';
