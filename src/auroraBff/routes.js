@@ -358,6 +358,12 @@ const RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const RECO_CATALOG_BEAUTY_PATH_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_SEARCH_SOURCE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE || 'aurora-bff')
     .trim()
@@ -491,6 +497,12 @@ const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_MAX_QUERIES || 2);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED || 'true')
@@ -743,6 +755,12 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 900);
   const v = Number.isFinite(n) ? Math.trunc(n) : 900;
   return Math.max(300, Math.min(6000, v));
+})();
+
+const RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  return Math.max(600, Math.min(12000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
@@ -1696,6 +1714,7 @@ function buildRecoCatalogSearchPathCandidates() {
     add(beautyPath);
   }
   add(genericPath);
+  if (RECO_CATALOG_BEAUTY_PATH_FALLBACK_ENABLED) add(beautyPath);
 
   if (RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED) {
     return [
@@ -1939,6 +1958,7 @@ async function searchPivotaBackendProducts({
   logger,
   timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
   searchAllMerchants = true,
+  deadlineMs = 0,
   forceLocalSearchFallback = false,
 } = {}) {
   const startedAt = Date.now();
@@ -1946,6 +1966,11 @@ async function searchPivotaBackendProducts({
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const normalizedTimeout = Math.max(300, Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS));
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
+  const deadlineReserveMs = normalizedDeadlineMs > 0 ? 20 : 0;
+  const effectiveDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + normalizedTimeout;
+  const getRemainingOverallMs = () => Math.max(0, effectiveDeadlineMs - Date.now());
+  const hasOverallBudget = (minMs = 220) => getRemainingOverallMs() >= Math.max(40, Number(minMs) || 220);
   const useAllMerchants = searchAllMerchants === true;
   const params = {
     query: q,
@@ -2091,10 +2116,12 @@ async function searchPivotaBackendProducts({
     return rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
   };
   const normalizeAttemptTimeout = (index) => {
-    if (index <= 0) return normalizedTimeout;
-    if (!RECO_CATALOG_MULTI_SOURCE_ENABLED) return normalizedTimeout;
-    const scaled = Math.trunc(normalizedTimeout * 0.66);
-    return Math.max(260, Math.min(normalizedTimeout, scaled));
+    const baseTimeout = index <= 0 || !RECO_CATALOG_MULTI_SOURCE_ENABLED
+      ? normalizedTimeout
+      : Math.max(260, Math.min(normalizedTimeout, Math.trunc(normalizedTimeout * 0.66)));
+    const remaining = getRemainingOverallMs();
+    const capped = Math.min(baseTimeout, Math.max(0, remaining - deadlineReserveMs));
+    return Math.max(0, capped);
   };
   const shouldTrySecondaryReason = (reason) => {
     const token = String(reason || '').trim().toLowerCase();
@@ -2115,7 +2142,7 @@ async function searchPivotaBackendProducts({
     const token = String(reason || '').trim().toLowerCase();
     if (!token) return false;
     if (token === 'not_found') return true;
-    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return true;
+    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return false;
     if (token === 'empty') return RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     return false;
   };
@@ -2127,20 +2154,73 @@ async function searchPivotaBackendProducts({
     const pathAttempts = [];
     let lastFailure = null;
     let lastEmpty = null;
+    if (!hasOverallBudget(180) || timeoutForAttemptMs < 180) {
+      return {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        source_base_url: normalizedBase,
+        source_endpoint: `${normalizedBase}${normalizedPaths[0] || '/agent/v1/products/search'}`,
+        source_path: normalizedPaths[0] || '/agent/v1/products/search',
+        attempted_endpoints: [],
+        source_path_failover: false,
+        latency_ms: Date.now() - startedAt,
+      };
+    }
     const perBaseStartedAt = Date.now();
     for (let pathIdx = 0; pathIdx < normalizedPaths.length; pathIdx += 1) {
       const pathToken = normalizeRecoCatalogSearchPath(normalizedPaths[pathIdx]) || '/agent/v1/products/search';
       const endpoint = `${normalizedBase}${pathToken}`;
       const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
+      if (!hasOverallBudget(150)) {
+        const exhausted = {
+          ok: false,
+          products: [],
+          reason: 'budget_exhausted',
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        return {
+          ...exhausted,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
+        };
+      }
       const elapsedMs = Date.now() - perBaseStartedAt;
-      const remainingBudgetMs = Math.max(200, timeoutForAttemptMs - elapsedMs);
+      const remainingBudgetMs = Math.max(0, timeoutForAttemptMs - elapsedMs);
+      const remainingOverallMs = getRemainingOverallMs();
+      const requestBudgetMs = Math.max(
+        0,
+        Math.min(
+          remainingBudgetMs,
+          Math.max(0, remainingOverallMs - deadlineReserveMs),
+        ),
+      );
+      if (requestBudgetMs < 120) {
+        const exhausted = {
+          ok: false,
+          products: [],
+          reason: 'budget_exhausted',
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        return {
+          ...exhausted,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
+        };
+      }
       try {
         const resp = await axios.get(endpoint, {
           params,
           headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
           timeout: isLocalInvokeBase
-            ? Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, remainingBudgetMs))
-            : remainingBudgetMs,
+            ? Math.max(120, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, requestBudgetMs))
+            : Math.max(120, requestBudgetMs),
           validateStatus: () => true,
         });
         const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
@@ -2167,7 +2247,8 @@ async function searchPivotaBackendProducts({
           lastFailure = failed;
           const shouldTryNextPath =
             pathIdx < normalizedPaths.length - 1 &&
-            shouldTrySecondaryPathReason(reason);
+            shouldTrySecondaryPathReason(reason) &&
+            hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
@@ -2203,7 +2284,8 @@ async function searchPivotaBackendProducts({
           lastFailure = failed;
           const shouldTryNextPath =
             pathIdx < normalizedPaths.length - 1 &&
-            shouldTrySecondaryPathReason(bodyReason);
+            shouldTrySecondaryPathReason(bodyReason) &&
+            hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
@@ -2239,7 +2321,8 @@ async function searchPivotaBackendProducts({
         lastEmpty = result;
         const shouldTryNextPath =
           pathIdx < normalizedPaths.length - 1 &&
-          shouldTrySecondaryPathReason(result.reason || 'empty');
+          shouldTrySecondaryPathReason(result.reason || 'empty') &&
+          hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...result,
@@ -2274,7 +2357,8 @@ async function searchPivotaBackendProducts({
         lastFailure = failed;
         const shouldTryNextPath =
           pathIdx < normalizedPaths.length - 1 &&
-          shouldTrySecondaryPathReason(reason);
+          shouldTrySecondaryPathReason(reason) &&
+          hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...failed,
@@ -2326,8 +2410,27 @@ async function searchPivotaBackendProducts({
     });
 
   for (let idx = 0; idx < orderedBaseUrls.length; idx += 1) {
+    if (!hasOverallBudget(180)) {
+      finalFailure = {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        latency_ms: Date.now() - startedAt,
+      };
+      break;
+    }
     const baseUrl = orderedBaseUrls[idx];
     const timeoutForAttemptMs = normalizeAttemptTimeout(idx);
+    if (timeoutForAttemptMs < 120) {
+      finalFailure = {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        source_base_url: baseUrl,
+        latency_ms: Date.now() - startedAt,
+      };
+      break;
+    }
     const attempt = await runSearchAttemptByBase(baseUrl, timeoutForAttemptMs);
     attempts.push({
       base_url: baseUrl,
@@ -2386,7 +2489,10 @@ async function searchPivotaBackendProducts({
       );
     }
 
-    const shouldTryNext = idx < orderedBaseUrls.length - 1 && shouldTrySecondaryReason(failureReason);
+    const shouldTryNext =
+      idx < orderedBaseUrls.length - 1 &&
+      shouldTrySecondaryReason(failureReason) &&
+      hasOverallBudget(150);
     if (!shouldTryNext) break;
   }
 
@@ -3015,7 +3121,7 @@ async function resolveAvailabilityProductByLocalResolver({
     statusCode: null,
     error: responseError,
   });
-  if (responseError || reasonCode !== 'no_candidates') {
+  if (responseError || finalReasonCode !== 'no_candidates') {
     logger?.warn(
       {
         query: q.slice(0, 120),
@@ -4422,9 +4528,10 @@ async function buildRealtimeCompetitorCandidates({
     return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   })();
   const allowResolveFallback = runMode === 'async_backfill' || (runMode === 'sync_repair' && syncResolveFallbackEnabled);
-  // Sync repair should also search across merchants; this improves cross-brand recovery
-  // when the anchor query is sparse or merchant-local index is incomplete.
-  const searchAllMerchants = runMode !== 'main_path';
+  const searchAllMerchants =
+    runMode !== 'main_path'
+      ? true
+      : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
   const reserveAfterSearchMs =
@@ -4500,6 +4607,7 @@ async function buildRealtimeCompetitorCandidates({
         logger,
         timeoutMs: perQueryTimeoutMs,
         searchAllMerchants,
+        deadlineMs: softDeadlineMs,
       });
       return { query: queryText, searched };
     }),
@@ -7313,7 +7421,6 @@ async function buildProductAnalysisFromUrlIngredients({
     },
     missing_info: uniqCaseInsensitiveStrings(
       [
-        'upstream_analysis_missing',
         'url_ingredient_analysis_used',
         'url_realtime_product_intel_used',
         ...(!anchorPrice ? ['price_unknown'] : []),
@@ -13206,6 +13313,13 @@ function shouldAttemptLocalRecoFallback(reasonCode, error) {
   return false;
 }
 
+function getRecoPdpResolveTimeoutMs({ strictInternal = false, requestedTimeoutMs = null } = {}) {
+  const requested = Number.isFinite(Number(requestedTimeoutMs)) ? Math.trunc(Number(requestedTimeoutMs)) : RECO_PDP_RESOLVE_TIMEOUT_MS;
+  const baseline = Math.max(300, Math.min(12000, requested));
+  if (!strictInternal) return baseline;
+  return Math.max(baseline, RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS);
+}
+
 function extractCanonicalFromOffersResolveBody(body) {
   const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : null;
   const mapping = payload && payload.mapping && typeof payload.mapping === 'object' && !Array.isArray(payload.mapping)
@@ -13617,30 +13731,84 @@ async function resolveRecoPdpByLocalResolver({
   queryText,
   hints = null,
   logger,
+  timeoutMs = null,
 } = {}) {
   const q = String(queryText || '').trim();
-  if (!q || typeof resolveProductRefDirectImpl !== 'function') {
-    return { ok: false, reasonCode: 'db_error' };
-  }
+  if (!q) return { ok: false, reasonCode: 'no_candidates' };
+
+  const resolveTimeoutMs = getRecoPdpResolveTimeoutMs({
+    strictInternal: true,
+    requestedTimeoutMs: timeoutMs,
+  });
+  const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
+  const localHttpTimeoutMs = Math.max(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, resolveTimeoutMs);
+  const canUseLocalHttpFallback = Boolean(localResolveUrl && /^https?:\/\//i.test(localResolveUrl));
+
+  const runLocalHttpResolveFallback = async () => {
+    if (!canUseLocalHttpFallback) {
+      return { responseBody: null, responseStatusCode: null, responseError: new Error('local_resolver_unavailable') };
+    }
+    try {
+      const resp = await axios.post(
+        localResolveUrl,
+        {
+          query: q,
+          lang: 'en',
+          ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+          options: {
+            search_all_merchants: true,
+            timeout_ms: resolveTimeoutMs,
+            upstream_retries: 0,
+            stable_alias_short_circuit: true,
+            allow_stable_alias_for_uuid: true,
+            allow_external_seed: false,
+          },
+          caller: 'aurora_chatbox',
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: localHttpTimeoutMs,
+          validateStatus: () => true,
+        },
+      );
+      return {
+        responseBody: resp && typeof resp.data === 'object' ? resp.data : null,
+        responseStatusCode: Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null,
+        responseError: null,
+      };
+    } catch (err) {
+      return { responseBody: null, responseStatusCode: null, responseError: err };
+    }
+  };
 
   let responseBody = null;
+  let responseStatusCode = null;
   let responseError = null;
-  try {
-    responseBody = await resolveProductRefDirectImpl({
-      query: q,
-      lang: 'en',
-      ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
-      options: {
-        search_all_merchants: true,
-        timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
-        upstream_retries: 0,
-        stable_alias_short_circuit: true,
-        allow_stable_alias_for_uuid: true,
-      },
-      caller: 'aurora_chatbox',
-    });
-  } catch (err) {
-    responseError = err;
+  let fallbackMode = 'direct';
+  if (typeof resolveProductRefDirectImpl === 'function') {
+    try {
+      responseBody = await resolveProductRefDirectImpl({
+        query: q,
+        lang: 'en',
+        ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+        options: {
+          search_all_merchants: true,
+          timeout_ms: resolveTimeoutMs,
+          upstream_retries: 0,
+          stable_alias_short_circuit: true,
+          allow_stable_alias_for_uuid: true,
+        },
+        caller: 'aurora_chatbox',
+      });
+    } catch (err) {
+      responseError = err;
+    }
+  } else {
+    const fallbackOut = await runLocalHttpResolveFallback();
+    responseBody = fallbackOut.responseBody;
+    responseStatusCode = fallbackOut.responseStatusCode;
+    responseError = fallbackOut.responseError;
+    fallbackMode = 'local_http';
   }
 
   const resolvedProductRef = normalizeCanonicalProductRef(responseBody?.product_ref, {
@@ -13657,14 +13825,59 @@ async function resolveRecoPdpByLocalResolver({
 
   const reasonCode = mapResolveFailureCode({
     resolveBody: responseBody,
-    statusCode: null,
+    statusCode: responseStatusCode,
     error: responseError,
   });
+  let finalReasonCode = reasonCode;
+
+  const shouldAttemptLocalHttpAfterDirect =
+    fallbackMode === 'direct' &&
+    canUseLocalHttpFallback &&
+    (
+      finalReasonCode === 'upstream_timeout' ||
+      finalReasonCode === 'db_error' ||
+      Boolean(responseError)
+    );
+  if (shouldAttemptLocalHttpAfterDirect) {
+    recordRecoPdpInternalRetryAttempt(1);
+    const fallbackOut = await runLocalHttpResolveFallback();
+    const fallbackResolvedProductRef = normalizeCanonicalProductRef(fallbackOut.responseBody?.product_ref, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (fallbackOut.responseBody?.resolved === true && fallbackResolvedProductRef) {
+      return {
+        ok: true,
+        canonicalProductRef: fallbackResolvedProductRef,
+        reasonCode: null,
+      };
+    }
+    const fallbackReasonCode = mapResolveFailureCode({
+      resolveBody: fallbackOut.responseBody,
+      statusCode: fallbackOut.responseStatusCode,
+      error: fallbackOut.responseError,
+    });
+    if (fallbackReasonCode && fallbackReasonCode !== 'upstream_timeout' && fallbackReasonCode !== 'db_error') {
+      finalReasonCode = fallbackReasonCode;
+    } else if (
+      (finalReasonCode === 'upstream_timeout' || finalReasonCode === 'db_error') &&
+      fallbackReasonCode === 'no_candidates'
+    ) {
+      finalReasonCode = 'no_candidates';
+    }
+    responseBody = fallbackOut.responseBody || responseBody;
+    responseStatusCode = fallbackOut.responseStatusCode || responseStatusCode;
+    responseError = fallbackOut.responseError || responseError;
+    fallbackMode = 'local_http_after_direct';
+  }
+
   if (responseError || reasonCode !== 'no_candidates') {
     logger?.warn(
       {
         query: q.slice(0, 120),
-        reason_code: reasonCode,
+        reason_code: finalReasonCode,
+        status_code: responseStatusCode,
+        fallback_mode: fallbackMode,
         err: responseError ? responseError.message || String(responseError) : null,
       },
       'aurora bff: reco pdp local resolver fallback unresolved',
@@ -13672,7 +13885,7 @@ async function resolveRecoPdpByLocalResolver({
   }
   return {
     ok: false,
-    reasonCode,
+    reasonCode: finalReasonCode,
   };
 }
 
@@ -13989,6 +14202,9 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     name,
     displayName,
   });
+  const queryResolveTimeoutMs = getRecoPdpResolveTimeoutMs({
+    strictInternal: RECO_PDP_STRICT_INTERNAL_FIRST,
+  });
 
   if (!queryText) {
     recordRecoPdpExternalFallback(stableResolveReasonCode || 'no_candidates');
@@ -14008,6 +14224,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryText,
       hints,
       logger,
+      timeoutMs: queryResolveTimeoutMs,
     });
     if (localResolved.ok && localResolved.canonicalProductRef) {
       return withRecoPdpMetadata(base, {
@@ -14067,7 +14284,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     hints,
     options: {
       search_all_merchants: true,
-      timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      timeout_ms: queryResolveTimeoutMs,
       upstream_retries: 0,
       ...(rawMerchantId ? { prefer_merchants: [rawMerchantId] } : {}),
     },
@@ -14079,7 +14296,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryResolvePayload,
       {
         headers: buildPivotaBackendAgentHeaders(),
-        timeout: RECO_PDP_RESOLVE_TIMEOUT_MS,
+        timeout: queryResolveTimeoutMs,
         validateStatus: () => true,
       },
     );
@@ -14194,7 +14411,6 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   );
   const shouldAttemptDeterministicLocalResolver =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
-    typeof resolveProductRefDirectImpl === 'function' &&
     (
       reasonCode === 'upstream_timeout' ||
       reasonCode === 'db_error' ||
@@ -14206,6 +14422,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryText,
       hints,
       logger,
+      timeoutMs: queryResolveTimeoutMs,
     });
     if (localResolved.ok && localResolved.canonicalProductRef) {
       logger?.info(
@@ -14248,7 +14465,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     const catalogResolved = await resolveRecoPdpByCatalogSearch({
       queryText,
       logger,
-      timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_PDP_RESOLVE_TIMEOUT_MS),
+      timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, queryResolveTimeoutMs),
       forceLocalSearchFallback: transientReasonForCatalog,
     });
     if (catalogResolved.ok && catalogResolved.canonicalProductGroupId) {
@@ -16195,6 +16412,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
       reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
       reco_pdp_resolve_enabled: RECO_PDP_RESOLVE_ENABLED,
+      reco_pdp_resolve_timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      reco_pdp_resolve_timeout_strict_min_ms: RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS,
       reco_pdp_strict_internal_first: RECO_PDP_STRICT_INTERNAL_FIRST,
       pivota_backend_base_configured: Boolean(PIVOTA_BACKEND_BASE_URL),
       reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
