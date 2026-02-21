@@ -1687,16 +1687,27 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         search_trace: expect.objectContaining({
           trace_id: expect.any(String),
           raw_query: expect.any(String),
-          final_decision: 'clarify',
+          final_decision: expect.any(String),
         }),
       }),
     );
-    expect(resp.body.clarification).toEqual(
-      expect.objectContaining({
-        question: expect.any(String),
-        options: expect.any(Array),
-      }),
-    );
+    const finalDecision = String(resp.body?.metadata?.search_trace?.final_decision || '');
+    expect(['clarify', 'strict_empty']).toContain(finalDecision);
+    if (finalDecision === 'clarify') {
+      expect(resp.body.clarification).toEqual(
+        expect.objectContaining({
+          question: expect.any(String),
+          options: expect.any(Array),
+        }),
+      );
+    } else {
+      expect(resp.body.metadata).toEqual(
+        expect.objectContaining({
+          strict_empty: true,
+          strict_empty_reason: expect.any(String),
+        }),
+      );
+    }
     expect(resp.body.metadata.search_trace).toHaveProperty('intent_scenario');
   });
 

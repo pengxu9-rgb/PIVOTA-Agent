@@ -1,6 +1,26 @@
 const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
 const { applyFindProductsMultiPolicy, buildFindProductsMultiContext } = require('../src/findProductsMulti/policy');
 
+function withPolicyEnv(envOverrides, fn) {
+  const keys = Object.keys(envOverrides || {});
+  const backup = {};
+  for (const key of keys) {
+    backup[key] = process.env[key];
+    process.env[key] = String(envOverrides[key]);
+  }
+  jest.resetModules();
+  const policy = require('../src/findProductsMulti/policy');
+  try {
+    return fn(policy);
+  } finally {
+    jest.resetModules();
+    for (const key of keys) {
+      if (backup[key] == null) delete process.env[key];
+      else process.env[key] = backup[key];
+    }
+  }
+}
+
 function makeRawProduct(overrides) {
   return {
     id: overrides?.id || 'p1',
@@ -63,6 +83,198 @@ describe('find_products_multi intent + filtering', () => {
     );
     expect(resp.metadata?.search_decision?.final_decision).toBe('clarify');
     expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+  });
+
+  test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
+    withPolicyEnv(
+      {
+        SEARCH_DOMAIN_HARD_FILTER_MODE: 'balanced',
+        SEARCH_DOMAIN_BEAUTY_FAIL_OPEN: 'false',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('hiking backpack recommendations', [], []);
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'h-1',
+                title: 'Alpine Pack 30L',
+                description: 'Lightweight pack with chest strap',
+                category: 'backpack',
+              }),
+            ],
+            reply: null,
+          },
+          intent,
+          requestPayload: { search: { query: 'hiking backpack recommendations' } },
+          metadata: { ambiguity_score_pre: 0.2 },
+          rawUserQuery: 'hiking backpack recommendations',
+        });
+
+        expect(resp.products).toHaveLength(1);
+        expect(resp.metadata?.search_decision?.post_quality?.candidates).toBe(1);
+      },
+    );
+  });
+
+  test('scenario query returns products when post-quality thresholds are met', () => {
+    withPolicyEnv(
+      {
+        SEARCH_CLARIFY_MIN_RECALL_CANDIDATES: '6',
+        SEARCH_CLARIFY_MIN_ANCHOR_RATIO: '0.12',
+        SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY: '0.5',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('约会妆推荐', [], []);
+        const products = [
+          makeRawProduct({
+            id: 'p1',
+            title: 'Date Makeup Foundation',
+            description: 'foundation base makeup',
+          }),
+          makeRawProduct({
+            id: 'p2',
+            title: 'Longwear Concealer',
+            description: 'concealer base coverage',
+          }),
+          makeRawProduct({
+            id: 'p3',
+            title: 'Volumizing Mascara',
+            description: 'eye makeup mascara',
+          }),
+          makeRawProduct({
+            id: 'p4',
+            title: 'Soft Brown Eyeliner',
+            description: 'eye makeup liner',
+          }),
+          makeRawProduct({
+            id: 'p5',
+            title: 'Hydrating Lipstick',
+            description: 'lip makeup lipstick',
+          }),
+          makeRawProduct({
+            id: 'p6',
+            title: 'Setting Spray',
+            description: 'makeup finish hold',
+          }),
+        ];
+        const resp = applyWithEnv({
+          response: { products, reply: null },
+          intent,
+          requestPayload: { search: { query: '约会妆推荐' } },
+          metadata: { ambiguity_score_pre: 0.4 },
+          rawUserQuery: '约会妆推荐',
+        });
+
+        expect(resp.products.length).toBeGreaterThan(0);
+        expect(resp.clarification).toBeUndefined();
+        expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+      },
+    );
+  });
+
+  test('scenario query clarifies when post-quality fails', () => {
+    withPolicyEnv(
+      {
+        SEARCH_CLARIFY_MIN_RECALL_CANDIDATES: '6',
+        SEARCH_CLARIFY_MIN_ANCHOR_RATIO: '0.2',
+        SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY: '0.45',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('出差买什么', [], []);
+        const products = Array.from({ length: 6 }).map((_, idx) =>
+          makeRawProduct({
+            id: `u${idx + 1}`,
+            title: `Generic Product ${idx + 1}`,
+            description: 'misc catalog item',
+          }),
+        );
+        const resp = applyWithEnv({
+          response: { products, reply: null },
+          intent,
+          requestPayload: { search: { query: '出差买什么' } },
+          metadata: { ambiguity_score_pre: 0.42 },
+          rawUserQuery: '出差买什么',
+        });
+
+        expect(resp.products).toHaveLength(0);
+        expect(resp.clarification).toEqual(
+          expect.objectContaining({
+            question: expect.any(String),
+          }),
+        );
+        expect(resp.metadata?.search_decision?.final_decision).toBe('clarify');
+      },
+    );
+  });
+
+  test('scenario query can pass post-quality with derived anchor basis', () => {
+    withPolicyEnv(
+      {
+        SEARCH_SCENARIO_ANCHOR_MODE: 'derived',
+        SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES: '4',
+        SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO: '0.1',
+        SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY: '0.6',
+        SEARCH_CLARIFY_MIN_RECALL_CANDIDATES: '6',
+        SEARCH_CLARIFY_MIN_ANCHOR_RATIO: '0.2',
+        SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY: '0.45',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('出差带什么', [], []);
+        const products = [
+          makeRawProduct({
+            id: 't1',
+            title: 'Business Travel Toiletry Kit',
+            description: 'travel toiletry organizer and bottles',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't2',
+            title: 'Packing Cubes Set',
+            description: 'lightweight luggage organizer for trip',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't3',
+            title: 'Carry-on Toiletry Bottles Set',
+            description: 'portable travel toiletry bottles',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't4',
+            title: 'Carry-on Compression Pouch',
+            description: 'portable travel storage bag',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't5',
+            title: 'Passport Wallet Organizer',
+            description: 'travel document organizer for business trips',
+            category: 'travel_accessories',
+          }),
+        ];
+        const resp = applyWithEnv({
+          response: { products, reply: null },
+          intent,
+          requestPayload: { search: { query: '出差带什么' } },
+          metadata: {
+            ambiguity_score_pre: 0.4,
+            association_plan: {
+              applied: true,
+              domain_key: 'travel',
+              scenario_key: 'business_trip',
+              category_keywords: ['travel toiletries', 'packing cubes', 'adapter'],
+            },
+          },
+          rawUserQuery: '出差带什么',
+        });
+
+        expect(resp.products.length).toBeGreaterThan(0);
+        expect(resp.clarification).toBeUndefined();
+        expect(resp.metadata?.search_decision?.post_quality?.anchor_mode).toBe('derived');
+        expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+      },
+    );
   });
 
   test('high ambiguity enforces strict empty', () => {

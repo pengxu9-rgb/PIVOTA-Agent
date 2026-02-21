@@ -83,6 +83,11 @@ describe('observability debug bundle', () => {
     expect(debugBundle.query).toBe('ipsa');
     expect(RESULT_TYPE_VALUES).toContain(debugBundle.result_type);
     expect(typeof debugBundle.latency_ms.total).toBe('number');
+    expect(debugBundle.flags_snapshot).toEqual(
+      expect.objectContaining({
+        search_domain_hard_filter_mode: expect.any(String),
+      }),
+    );
     expect(debugBundle.degrade).toEqual({
       nlu_degraded: false,
       vector_skipped: false,

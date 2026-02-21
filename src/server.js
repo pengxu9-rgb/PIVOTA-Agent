@@ -509,6 +509,27 @@ const SEARCH_STRICT_EMPTY_ENABLED =
   String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
 const SEARCH_EXTERNAL_FILL_GATED =
   String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
+const SEARCH_CACHE_VALIDATE =
+  String(process.env.SEARCH_CACHE_VALIDATE || 'false').toLowerCase() === 'true';
+const SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO =
+  String(process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO || 'false').toLowerCase() ===
+  'true';
+const SEARCH_CACHE_MIN_ANCHOR = Math.max(
+  0,
+  Math.min(1, Number(process.env.SEARCH_CACHE_MIN_ANCHOR || 0.15)),
+);
+const SEARCH_CACHE_MAX_DOMAIN_ENTROPY = Math.max(
+  0,
+  Math.min(1, Number(process.env.SEARCH_CACHE_MAX_DOMAIN_ENTROPY || 0.55)),
+);
+const SEARCH_CACHE_MIN_COUNT = Math.max(
+  1,
+  Number(process.env.SEARCH_CACHE_MIN_COUNT || 6) || 6,
+);
+const SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO = Math.max(
+  0,
+  Math.min(1, Number(process.env.SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO || 0.08)),
+);
 const PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED || 'false').toLowerCase() ===
   'true';
@@ -2524,6 +2545,7 @@ function buildSearchTrace({
   queryClass = null,
   rewriteGate = null,
   associationPlan = null,
+  flagsSnapshot = null,
 }) {
   return {
     trace_id: String(traceId || ''),
@@ -2538,6 +2560,10 @@ function buildSearchTrace({
     association_plan:
       associationPlan && typeof associationPlan === 'object' && !Array.isArray(associationPlan)
         ? associationPlan
+        : null,
+    flags_snapshot:
+      flagsSnapshot && typeof flagsSnapshot === 'object' && !Array.isArray(flagsSnapshot)
+        ? flagsSnapshot
         : null,
     intent_domain: intent?.primary_domain || null,
     intent_target: intent?.target_object?.type || null,
@@ -3517,6 +3543,143 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   }
   const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
   return overlapCount >= (ingredientIntent ? 1 : 2);
+}
+
+function inferCacheProductDomainKey(product) {
+  if (!product || typeof product !== 'object') return 'general';
+  const pivotaDomain = String(
+    product?.attributes?.pivota?.domain || product?.domain || product?.category_domain || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (pivotaDomain) {
+    if (pivotaDomain === 'beauty') return 'beauty';
+    if (pivotaDomain === 'pet' || pivotaDomain === 'pet_supplies') return 'pet';
+    if (pivotaDomain === 'travel') return 'travel';
+    if (pivotaDomain === 'hiking' || pivotaDomain === 'outdoor' || pivotaDomain === 'sports_outdoor') {
+      return 'hiking';
+    }
+  }
+  const text = buildFallbackCandidateText(product);
+  if (!text) return 'general';
+  if (/\b(dog|dogs|cat|cats|pet|harness|leash|collar|puppy|kitten)\b/i.test(text) || /宠物|狗|猫|牵引|狗链|背带|项圈/.test(text)) {
+    return 'pet';
+  }
+  if (
+    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
+    /化妆|美妆|护肤|精华|口红|粉底|防晒|唇膏|眼影/.test(text)
+  ) {
+    return 'beauty';
+  }
+  if (/\b(hiking|outdoor|camping|trekking|trail|parka|shell)\b/i.test(text) || /徒步|登山|露营|冲锋衣|户外/.test(text)) {
+    return 'hiking';
+  }
+  if (
+    /\b(luggage|packing|travel|toiletry|carry-on|adapter)\b/i.test(text) ||
+    /行李|收纳|旅行|出差|分装|登机/.test(text)
+  ) {
+    return 'travel';
+  }
+  return 'general';
+}
+
+function inferIntentDomainKeyForCacheValidation(intent, queryText) {
+  const target = String(intent?.target_object?.type || '').toLowerCase();
+  const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (target === 'pet' || hasPetSearchSignal(normalizedQuery)) return 'pet';
+  if (primaryDomain === 'beauty' || hasBeautyMakeupSearchSignal(normalizedQuery)) return 'beauty';
+  if (/travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(normalizedQuery)) {
+    return 'travel';
+  }
+  if (/hiking|trail|camping|outdoor|徒步|登山|露营|户外/.test(normalizedQuery)) {
+    return 'hiking';
+  }
+  if (primaryDomain === 'sports_outdoor') return 'hiking';
+  return null;
+}
+
+function computeDomainEntropyTopK(products, topK = 10) {
+  const list = Array.isArray(products) ? products.slice(0, topK) : [];
+  if (!list.length) return 1;
+  const counts = new Map();
+  for (const product of list) {
+    const key = inferCacheProductDomainKey(product);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const total = list.length;
+  if (!total || counts.size <= 1) return 0;
+  let entropy = 0;
+  for (const count of counts.values()) {
+    const p = count / total;
+    if (p > 0) entropy -= p * Math.log(p);
+  }
+  const maxEntropy = Math.log(counts.size);
+  if (!(maxEntropy > 0)) return 0;
+  return Math.max(0, Math.min(1, entropy / maxEntropy));
+}
+
+function computeAnchorRatioTopK(queryText, products, topK = 10) {
+  const anchors = extractSearchAnchorTokens(queryText);
+  if (!anchors.length) return 1;
+  const list = Array.isArray(products) ? products.slice(0, topK) : [];
+  if (!list.length) return 0;
+  let matched = 0;
+  for (const product of list) {
+    const text = buildFallbackCandidateText(product);
+    if (!text) continue;
+    if (anchors.some((token) => text.includes(token))) matched += 1;
+  }
+  return Math.max(0, Math.min(1, matched / list.length));
+}
+
+function resolveCacheValidationMinCount(queryClass) {
+  const qc = String(queryClass || '').toLowerCase();
+  if (qc === 'lookup') return 1;
+  if (qc === 'scenario' || qc === 'mission') return Math.max(1, Math.min(SEARCH_CACHE_MIN_COUNT, 4));
+  return SEARCH_CACHE_MIN_COUNT;
+}
+
+function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
+  const list = Array.isArray(products) ? products : [];
+  const minCount = resolveCacheValidationMinCount(queryClass);
+  const anchorRatio = computeAnchorRatioTopK(queryText, list, 10);
+  const domainEntropy = computeDomainEntropyTopK(list, 10);
+  const expectedDomain = inferIntentDomainKeyForCacheValidation(intent, queryText);
+  const topDomains = list.slice(0, 10).map((item) => inferCacheProductDomainKey(item));
+  const crossDomainRatio =
+    expectedDomain && topDomains.length > 0
+      ? topDomains.filter((domain) => domain && domain !== 'general' && domain !== expectedDomain).length /
+        topDomains.length
+      : null;
+  const countOk = list.length >= minCount;
+  const anchorOk = anchorRatio >= SEARCH_CACHE_MIN_ANCHOR;
+  const entropyOk = domainEntropy <= SEARCH_CACHE_MAX_DOMAIN_ENTROPY;
+  const crossDomainOk =
+    crossDomainRatio == null || crossDomainRatio <= SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO;
+  const accepted = countOk && anchorOk && entropyOk && crossDomainOk;
+  return {
+    enabled: SEARCH_CACHE_VALIDATE,
+    accepted,
+    min_count: minCount,
+    count: list.length,
+    anchor_ratio: anchorRatio,
+    min_anchor: SEARCH_CACHE_MIN_ANCHOR,
+    domain_entropy_topk: domainEntropy,
+    max_domain_entropy: SEARCH_CACHE_MAX_DOMAIN_ENTROPY,
+    expected_domain: expectedDomain,
+    cross_domain_ratio: crossDomainRatio,
+    max_cross_domain_ratio: SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO,
+    reason: accepted
+      ? 'ok'
+      : !countOk
+        ? 'count_below_threshold'
+        : !anchorOk
+          ? 'anchor_below_threshold'
+          : !entropyOk
+            ? 'domain_entropy_above_threshold'
+            : 'cross_domain_ratio_above_threshold',
+  };
 }
 
 function shouldFallbackProxySearch(normalized, statusCode) {
@@ -8385,9 +8548,10 @@ async function proxyAgentSearchToBackend(req, res) {
       expansionMode = 'off',
       expandedQuery = normalizedQuery,
       intent = null,
-      fallbackStrategy = null,
-    } = {},
-  ) => {
+	      fallbackStrategy = null,
+	      flagsSnapshot = null,
+	    } = {},
+	  ) => {
     const latencyMs = Math.max(0, Date.now() - startedAtMs);
     let out = withSearchDiagnostics(body, {
       route_health: buildSearchRouteHealth({
@@ -8404,9 +8568,10 @@ async function proxyAgentSearchToBackend(req, res) {
         intent,
         cacheStage,
         upstreamStage,
-        resolverStage,
-        finalDecision,
-      }),
+	        resolverStage,
+	        finalDecision,
+	        flagsSnapshot,
+	      }),
       ...(fallbackStrategy && typeof fallbackStrategy === 'object'
         ? { fallback_strategy: fallbackStrategy }
         : {}),
@@ -10993,6 +11158,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       typeof findProductsExpansionMeta.association_plan === 'object'
         ? findProductsExpansionMeta.association_plan
         : null;
+    const traceFlagsSnapshotBase =
+      findProductsExpansionMeta?.flags_snapshot &&
+      typeof findProductsExpansionMeta.flags_snapshot === 'object'
+        ? findProductsExpansionMeta.flags_snapshot
+        : {};
+    const traceFlagsSnapshot = {
+      ...traceFlagsSnapshotBase,
+      search_cache_validate: SEARCH_CACHE_VALIDATE,
+      search_force_controlled_recall_for_scenario: SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO,
+      search_cache_min_anchor: SEARCH_CACHE_MIN_ANCHOR,
+      search_cache_max_domain_entropy: SEARCH_CACHE_MAX_DOMAIN_ENTROPY,
+      search_cache_min_count: SEARCH_CACHE_MIN_COUNT,
+      search_cache_max_cross_domain_ratio: SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO,
+    };
     const traceAmbiguityScorePre = Number.isFinite(
       Number(findProductsExpansionMeta?.ambiguity_score_pre),
     )
@@ -13656,9 +13835,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               effectiveProducts.some((product) =>
                 hasBeautyCatalogProductSignal(buildFallbackCandidateText(product)),
               ));
-          const effectiveCacheHit =
+          const effectiveCacheHitBase =
             effectiveProducts.length > 0 &&
             (!isShoppingSource(source) || cacheRelevant || relaxCacheRelevanceGate);
+          let effectiveCacheHit = effectiveCacheHitBase;
           const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
           crossMerchantCacheRouteDebug = {
             attempted: true,
@@ -13671,6 +13851,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             limit,
             in_stock_only: inStockOnly,
             cache_hit: effectiveCacheHit,
+            cache_hit_base: effectiveCacheHitBase,
             products_count: effectiveProducts.length,
             internal_products_count: internalProducts.length,
             internal_products_relevant_count: internalProductsAfterAnchor.length,
@@ -13735,10 +13916,31 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const withPolicyProducts = Array.isArray(withPolicy?.products)
             ? withPolicy.products
             : [];
+          const cacheValidationQueryClass =
+            traceQueryClass || effectiveIntent?.query_class || (isLookupQuery ? 'lookup' : null);
+          const cacheValidation = evaluateCacheQualityGate({
+            products: withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts,
+            queryText: cacheQueryText,
+            intent: effectiveIntent,
+            queryClass: cacheValidationQueryClass,
+          });
+          const cacheRejectedLowQuality = Boolean(cacheValidation.enabled && !cacheValidation.accepted);
+          if (cacheRejectedLowQuality) {
+            effectiveCacheHit = false;
+          }
+          if (crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object') {
+            crossMerchantCacheRouteDebug.cache_hit = effectiveCacheHit;
+            crossMerchantCacheRouteDebug.cache_validation = cacheValidation;
+            crossMerchantCacheRouteDebug.cache_rejected_low_quality = cacheRejectedLowQuality;
+          }
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          if (internalProductsAfterAnchor.length > 0 && (cacheRelevant || relaxCacheRelevanceGate)) {
+          if (
+            effectiveCacheHit &&
+            internalProductsAfterAnchor.length > 0 &&
+            (cacheRelevant || relaxCacheRelevanceGate)
+          ) {
             crossMerchantCacheProtectedResponse =
               withPolicyProducts.length > 0
                 ? enriched
@@ -13771,6 +13973,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryClass: traceQueryClass,
                 rewriteGate: traceRewriteGate,
                 associationPlan: traceAssociationPlan,
+                flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
                 cacheStage: {
                   hit: true,
@@ -13798,6 +14001,12 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const queryClassForEarlyDecision = String(
             traceQueryClass || effectiveIntent?.query_class || '',
           ).toLowerCase();
+          const queryClassMissing = queryClassForEarlyDecision.length === 0;
+          const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
+          const forceControlledRecallForScenario =
+            SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
+            (['scenario', 'mission'].includes(queryClassForEarlyDecision) ||
+              (queryClassMissing && hasAmbiguitySignal));
           const isStrongLookupForEarlyDecision =
             queryClassForEarlyDecision === 'lookup' || isKnownLookupAliasQuery(cacheQueryText);
           const hasEarlyDecisionClass = [
@@ -13807,8 +14016,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             'exploratory',
             'non_shopping',
           ].includes(queryClassForEarlyDecision);
-          const queryClassMissing = queryClassForEarlyDecision.length === 0;
-          const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
           const earlyDecisionCause =
             internalProductsAfterAnchor.length === 0
               ? 'cache_miss_ambiguity_sensitive'
@@ -13816,7 +14023,19 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const canUseEarlyAmbiguityDecision =
             effectiveIntent &&
             !isStrongLookupForEarlyDecision &&
-            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal));
+            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
+            !forceControlledRecallForScenario;
+          if (
+            forceControlledRecallForScenario &&
+            crossMerchantCacheRouteDebug &&
+            typeof crossMerchantCacheRouteDebug === 'object'
+          ) {
+            crossMerchantCacheRouteDebug.early_decision = {
+              applied: false,
+              reason: 'force_controlled_recall_for_scenario',
+              query_class: queryClassForEarlyDecision,
+            };
+          }
           if (canUseEarlyAmbiguityDecision) {
             const earlyDecisionResponse = {
               products: [],
@@ -13908,6 +14127,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   queryClass: traceQueryClass,
                   rewriteGate: traceRewriteGate,
                   associationPlan: traceAssociationPlan,
+                  flagsSnapshot: traceFlagsSnapshot,
                   intent: effectiveIntent,
                   cacheStage: {
                     hit: false,
@@ -14003,6 +14223,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     queryClass: traceQueryClass,
                     rewriteGate: traceRewriteGate,
                     associationPlan: traceAssociationPlan,
+                    flagsSnapshot: traceFlagsSnapshot,
                     intent: effectiveIntent,
                     cacheStage: {
                       hit: false,
@@ -14044,7 +14265,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
             !isLookupQuery &&
-            !bypassCacheStrictEmpty
+            !bypassCacheStrictEmpty &&
+            !forceControlledRecallForScenario
           ) {
             const cacheStrictReason =
               effectiveProducts.length > 0
@@ -14126,6 +14348,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryClass: traceQueryClass,
                 rewriteGate: traceRewriteGate,
                 associationPlan: traceAssociationPlan,
+                flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
                 cacheStage: {
                   hit: false,
@@ -15973,6 +16196,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           queryClass: searchDecision?.query_class || traceQueryClass,
           rewriteGate: traceRewriteGate,
           associationPlan: traceAssociationPlan,
+          flagsSnapshot: traceFlagsSnapshot,
           intent: effectiveIntent,
           cacheStage,
           upstreamStage,
@@ -16028,6 +16252,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               queryClass: traceQueryClass,
               rewriteGate: traceRewriteGate,
               associationPlan: traceAssociationPlan,
+              flagsSnapshot: traceFlagsSnapshot,
               intent: effectiveIntent,
               cacheStage: {
                 hit: true,
@@ -16092,10 +16317,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            findProductsExpansionMeta?.expanded_query ||
 	            String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
 	          expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-	          queryClass: traceQueryClass,
-	          rewriteGate: traceRewriteGate,
-	          associationPlan: traceAssociationPlan,
-	          intent: effectiveIntent,
+		          queryClass: traceQueryClass,
+		          rewriteGate: traceRewriteGate,
+		          associationPlan: traceAssociationPlan,
+		          flagsSnapshot: traceFlagsSnapshot,
+		          intent: effectiveIntent,
 	          cacheStage: {
 	            hit: false,
 	            candidate_count: 0,
