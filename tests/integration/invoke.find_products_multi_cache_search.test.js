@@ -21,6 +21,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       FIND_PRODUCTS_MULTI_VECTOR_ENABLED: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED,
       FIND_PRODUCTS_MULTI_ROUTE_DEBUG: process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY:
+        process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY,
       CREATOR_CATALOG_CACHE_TTL_SECONDS: process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
       CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES: process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
@@ -33,6 +35,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
@@ -65,6 +68,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
+        prevEnv.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -428,6 +437,84 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(resp.status).toBe(200);
     expect(guardedSearch.isDone()).toBe(true);
+  });
+
+  test('aurora source bypasses cache strict-empty on miss and continues upstream search', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.merchant_id || '') === 'external_seed' &&
+          String(q.query || '') === 'copper peptides serum' &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === 'copper peptides serum' &&
+          String(q.search_all_merchants || '') === 'true' &&
+          String(q.fast_mode || '') === 'true' &&
+          String(q.allow_stale_cache || '') === 'false' &&
+          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'cp_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper Peptide Serum',
+            status: 'active',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'copper peptides serum',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.metadata?.strict_empty).not.toBe(true);
+    expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
+    expect(externalSupplement.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(true);
   });
 
   test('injects creator catalog guard params on upstream query', async () => {

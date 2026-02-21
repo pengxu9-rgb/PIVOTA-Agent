@@ -392,6 +392,8 @@ const PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK =
 const PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
   String(process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS || 'true').toLowerCase() !==
   'false';
+const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
+  String(process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
@@ -12943,11 +12945,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               );
             }
           }
+          const bypassCacheStrictEmpty =
+            isAuroraSource(source) && PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
-            !isLookupQuery
+            !isLookupQuery &&
+            !bypassCacheStrictEmpty
           ) {
             const cacheStrictReason =
               effectiveProducts.length > 0
@@ -13039,6 +13044,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               strict_empty_reason: cacheStrictReason,
             });
             return res.json(strictEmptyDiagnosed);
+          }
+          if (
+            isCatalogGuardSource(source) &&
+            cacheQueryText.length > 0 &&
+            !effectiveCacheHit &&
+            !isLookupQuery &&
+            bypassCacheStrictEmpty
+          ) {
+            logger.info(
+              { source, query: cacheQueryText },
+              'Catalog cache miss strict-empty bypassed for aurora source; continuing to upstream search',
+            );
           }
           logger.info(
             { source, page, limit, inStockOnly, query: cacheQueryText },
