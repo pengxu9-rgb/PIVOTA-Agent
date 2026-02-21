@@ -304,6 +304,100 @@ test('product matcher: filters avoid/risky products and returns explainable slot
   assert.equal(legacy.recommendations.length > 0, true);
 });
 
+test('product matcher: default seed catalog is disabled unless explicitly allowed', (t) => {
+  const prevAllowSeed = process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG;
+  const prevInternalMode = process.env.INTERNAL_TEST_MODE;
+  t.after(() => {
+    if (prevAllowSeed === undefined) delete process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG;
+    else process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG = prevAllowSeed;
+    if (prevInternalMode === undefined) delete process.env.INTERNAL_TEST_MODE;
+    else process.env.INTERNAL_TEST_MODE = prevInternalMode;
+  });
+
+  const ingredientPlan = {
+    plan_id: 'ip_seed_gate_test',
+    confidence: { score: 0.74 },
+    intensity: 'balanced',
+    targets: [{ ingredient_id: 'ceramide_np', priority: 92, role: 'hero' }],
+    avoid: [],
+  };
+  const profile = {
+    skinType: 'dry',
+    barrierStatus: 'compromised',
+    sensitivity: 'high',
+    budgetTier: 'mid',
+    region: 'US',
+  };
+  const artifact = makeArtifact({ score: 0.78, skinType: 'dry', barrierStatus: 'compromised', sensitivity: 'high' });
+  const countCandidates = (bundle) =>
+    Object.values(bundle && bundle.products_by_slot ? bundle.products_by_slot : {}).reduce(
+      (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
+      0,
+    );
+
+  process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG = 'false';
+  process.env.INTERNAL_TEST_MODE = 'false';
+  const blocked = buildProductRecommendationsBundle({
+    ingredientPlan,
+    artifact,
+    profile,
+    language: 'EN',
+  });
+  assert.equal(countCandidates(blocked), 0);
+
+  process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG = 'true';
+  const allowed = buildProductRecommendationsBundle({
+    ingredientPlan,
+    artifact,
+    profile,
+    language: 'EN',
+  });
+  assert.equal(countCandidates(allowed) > 0, true);
+});
+
+test('product matcher: legacy payload de-duplicates repeated product ids across AM/PM rows', () => {
+  const bundle = {
+    products_by_slot: {
+      cleanser: [],
+      moisturizer: [
+        {
+          product_id: 'prod_repeat_1',
+          routine_slot: 'moisturizer',
+          name: 'Repeat Moisturizer',
+          brand: 'Pivota Labs',
+          score: 89,
+          price_band: 'mid',
+          matched_ingredients: [{ ingredient_id: 'ceramide_np', contribution: 80 }],
+          fit_explanations: ['Good barrier fit'],
+        },
+        {
+          product_id: 'prod_repeat_2',
+          routine_slot: 'moisturizer',
+          name: 'Second Moisturizer',
+          brand: 'Pivota Labs',
+          score: 82,
+          price_band: 'mid',
+          matched_ingredients: [{ ingredient_id: 'panthenol', contribution: 75 }],
+          fit_explanations: ['Secondary barrier support'],
+        },
+      ],
+      sunscreen: [],
+      treatment: [],
+      toner: [],
+      optional: [],
+    },
+    confidence: { score: 0.71, level: 'medium', rationale: ['test_payload'] },
+    top_messages: [],
+  };
+
+  const legacy = toLegacyRecommendationsPayload(bundle, { language: 'EN' });
+  const ids = legacy.recommendations.map((row) => String(row && row.product_id ? row.product_id : '').trim()).filter(Boolean);
+
+  assert.deepEqual(ids, ['prod_repeat_1', 'prod_repeat_2']);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(legacy.recommendations.every((row) => row && (row.slot === 'am' || row.slot === 'pm')), true);
+});
+
 test('safety boundary: red-flag messages block recommendations', () => {
   const blocked = evaluateSafetyBoundary({
     message: 'I have severe pain, oozing pus and fever around my eye.',

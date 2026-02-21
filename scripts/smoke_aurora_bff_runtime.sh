@@ -168,14 +168,37 @@ printf "%s\n" "$reco_json" | jq_assert "chat reco returns recommendations or con
 
 if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >/dev/null; then
   printf "%s\n" "$reco_json" | jq_assert "recommendations length >= 1" '(.cards[]|select(.type=="recommendations")|.payload.recommendations|length) >= 1'
-  printf "%s\n" "$reco_json" | jq_assert "reco has explainability fields" '
-    (.cards[]|select(.type=="recommendations")|.payload.recommendations[0]) as $r |
-    (
-      (($r.reasons // []) | type=="array" and length >= 1) or
-      (($r.matched_ingredients // []) | type=="array" and length >= 1) or
-      (($r.fit_explanations // []) | type=="array" and length >= 1)
-    )
+  printf "%s\n" "$reco_json" | jq_assert "recommendations have no duplicate products" '
+    (.cards[]|select(.type=="recommendations")|.payload.recommendations) as $recs |
+    (($recs | map(
+      (
+        (.product_id // .sku.product_id // .sku.sku_id // "")
+        | tostring
+        | ascii_downcase
+      )
+    ) | map(select(length > 0))) ) as $ids |
+    (($ids | length) == ($ids | unique | length))
   '
+  reco_source="$(printf "%s\n" "$reco_json" | jq -r '([.cards[]|select(.type=="recommendations")|.payload.source][0] // "unknown")')"
+  printf "reco_source=%s\n" "$reco_source"
+  if [[ "$reco_source" == "artifact_matcher_v1" ]]; then
+    printf "%s\n" "$reco_json" | jq_assert "matcher reco has explainability fields" '
+      (.cards[]|select(.type=="recommendations")|.payload.recommendations[0]) as $r |
+      (
+        (($r.reasons // []) | type=="array" and length >= 1) or
+        (($r.matched_ingredients // []) | type=="array" and length >= 1) or
+        (($r.fit_explanations // []) | type=="array" and length >= 1)
+      )
+    '
+  else
+    printf "%s\n" "$reco_json" | jq_assert "reco reasons include user-context markers" '
+      (.cards[]|select(.type=="recommendations")|.payload.recommendations) as $recs |
+      (
+        ($recs | map((.reasons // []) | join(" ")) | join(" || "))
+        | test("last\\s*7d|check[- ]?in|upcoming\\s*plan|itinerary|barrier|tolerance|goal|sensitivity"; "i")
+      ) == true
+    '
+  fi
   printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source" '.events | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))'
 else
   printf "%s\n" "$reco_json" | jq_assert "confidence_notice card exists" '.cards | any(.type=="confidence_notice")'

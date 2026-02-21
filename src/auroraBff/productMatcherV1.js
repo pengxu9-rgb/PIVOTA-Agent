@@ -11,6 +11,7 @@ const DEFAULT_CATALOG_PATH = path.join(
   'products',
   'product_catalog_seed.json',
 );
+const DEFAULT_CATALOG_PATH_RESOLVED = path.resolve(DEFAULT_CATALOG_PATH);
 
 const ROUTINE_SLOTS = Object.freeze([
   'cleanser',
@@ -58,6 +59,15 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function parseBoolEnv(value, fallback = false) {
+  if (value == null) return fallback;
+  const token = String(value).trim().toLowerCase();
+  if (!token) return fallback;
+  if (token === 'true' || token === '1' || token === 'yes' || token === 'y' || token === 'on') return true;
+  if (token === 'false' || token === '0' || token === 'no' || token === 'n' || token === 'off') return false;
+  return fallback;
+}
+
 function normalizeObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
@@ -92,6 +102,13 @@ function parseCatalogProduct(raw) {
 
 function loadCatalog(catalogPath) {
   const resolved = path.resolve(catalogPath || process.env.AURORA_PRODUCT_REC_CATALOG_PATH || DEFAULT_CATALOG_PATH);
+  const usingDefaultSeedCatalog = resolved === DEFAULT_CATALOG_PATH_RESOLVED;
+  const allowSeedCatalog =
+    parseBoolEnv(process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG, false) ||
+    parseBoolEnv(process.env.INTERNAL_TEST_MODE, false);
+  if (usingDefaultSeedCatalog && !allowSeedCatalog) {
+    return [];
+  }
   if (!fs.existsSync(resolved)) return [];
   const stat = fs.statSync(resolved);
   if (
@@ -375,24 +392,39 @@ function buildProductsBySlot() {
 
 function toLegacyRecommendationsPayload(bundle, { language } = {}) {
   const bySlot = normalizeObject(bundle && bundle.products_by_slot) || buildProductsBySlot();
-  const pickTop = (slot) => {
+  const pickUnique = (slot, seenProductKeys) => {
     const list = asArray(bySlot[slot]);
-    return list[0] || null;
+    for (const candidateRaw of list) {
+      const candidate = normalizeObject(candidateRaw);
+      if (!candidate) continue;
+      const key = String(
+        candidate.product_id ||
+          `${String(candidate.brand || '').trim().toLowerCase()}::${String(candidate.name || '').trim().toLowerCase()}`,
+      )
+        .trim()
+        .toLowerCase();
+      if (!key) continue;
+      if (seenProductKeys.has(key)) continue;
+      seenProductKeys.add(key);
+      return candidate;
+    }
+    return null;
   };
-  const amCleanser = pickTop('cleanser');
-  const amMoisturizer = pickTop('moisturizer');
-  const amSunscreen = pickTop('sunscreen');
-  const pmCleanser = pickTop('cleanser');
-  const pmTreatment = pickTop('treatment');
-  const pmMoisturizer = pickTop('moisturizer');
+  const seenProductKeys = new Set();
   const mapped = [
-    amCleanser ? { slot: 'am', candidate: amCleanser } : null,
-    amMoisturizer ? { slot: 'am', candidate: amMoisturizer } : null,
-    amSunscreen ? { slot: 'am', candidate: amSunscreen } : null,
-    pmCleanser ? { slot: 'pm', candidate: pmCleanser } : null,
-    pmTreatment ? { slot: 'pm', candidate: pmTreatment } : null,
-    pmMoisturizer ? { slot: 'pm', candidate: pmMoisturizer } : null,
-  ].filter(Boolean);
+    { slot: 'am', source_slot: 'cleanser' },
+    { slot: 'am', source_slot: 'moisturizer' },
+    { slot: 'am', source_slot: 'sunscreen' },
+    { slot: 'pm', source_slot: 'cleanser' },
+    { slot: 'pm', source_slot: 'treatment' },
+    { slot: 'pm', source_slot: 'moisturizer' },
+  ]
+    .map((row) => {
+      const candidate = pickUnique(row.source_slot, seenProductKeys);
+      if (!candidate) return null;
+      return { slot: row.slot, candidate };
+    })
+    .filter(Boolean);
 
   const recommendations = mapped.map((row) => {
     const candidate = row.candidate;
