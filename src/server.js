@@ -2778,6 +2778,43 @@ function buildSearchProductKey(product) {
   return `${merchantId}::${productId}`;
 }
 
+function normalizeSearchProductTitleForDedupe(product) {
+  if (!product || typeof product !== 'object') return '';
+  const title = String(
+    product.title ||
+      product.name ||
+      product.display_name ||
+      product.product_name ||
+      '',
+  ).trim();
+  if (!title) return '';
+  return normalizeSearchTextForMatch(title);
+}
+
+function collapseNearDuplicateSearchProducts(products, options = {}) {
+  const list = Array.isArray(products) ? products : [];
+  if (!list.length) return [];
+  const perTitleLimitRaw = Number(options.perTitleLimit);
+  const perTitleLimit =
+    Number.isFinite(perTitleLimitRaw) && perTitleLimitRaw >= 1
+      ? Math.floor(perTitleLimitRaw)
+      : 1;
+  const counts = new Map();
+  const out = [];
+  for (const product of list) {
+    const titleKey = normalizeSearchProductTitleForDedupe(product);
+    if (!titleKey) {
+      out.push(product);
+      continue;
+    }
+    const count = Number(counts.get(titleKey) || 0);
+    if (count >= perTitleLimit) continue;
+    counts.set(titleKey, count + 1);
+    out.push(product);
+  }
+  return out;
+}
+
 function extractSearchQueryText(rawQuery) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const raw =
@@ -13072,6 +13109,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
           const safeResultLimit = Math.max(1, Number(limit || 20));
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
+          const shouldSkipExternalSupplementForPetHarness =
+            hasPetHarnessSearchSignal(cacheQueryText) &&
+            internalProductsAfterAnchor.length >= 3;
           const needsBeautyDiversitySupplement =
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
@@ -13105,7 +13145,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 (internalProductsAfterAnchor.length >= externalFillMinInternal &&
                   (confidenceOverall >= 0.7 || isLookupQuery) &&
                   ambiguityScorePre <= 0.45);
-              if (!canApplyExternalFillGate) {
+              if (shouldSkipExternalSupplementForPetHarness) {
+                supplementMeta = {
+                  attempted: false,
+                  applied: false,
+                  added_count: 0,
+                  reason: 'pet_harness_internal_sufficient',
+                  gate: {
+                    internal_count: internalProductsAfterAnchor.length,
+                    min_internal_required: 3,
+                  },
+                };
+              } else if (!canApplyExternalFillGate) {
                 supplementMeta = {
                   attempted: false,
                   applied: false,
@@ -13207,7 +13258,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               }
             }
           }
-          const effectiveProducts = supplementedProducts;
+          const effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
+            perTitleLimit: 1,
+          });
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
             : true;
