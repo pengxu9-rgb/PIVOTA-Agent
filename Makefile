@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check reco-guardrail-eval release-gate gate-debug runtime-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-round1-pack gold-label-import eval-gold eval-gold-round1 train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-celeba-parsing eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed preference-round1-pack preference-round1-real-pack
+.PHONY: bench stability test golden loadtest privacy-check reco-guardrail-eval release-gate gate-debug runtime-smoke skin-reco-gate-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-round1-pack gold-label-import eval-gold eval-gold-round1 train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-celeba-parsing eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed preference-round1-pack preference-round1-real-pack
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -172,6 +172,9 @@ gate-debug:
 
 runtime-smoke:
 	BASE=$(BASE) AURORA_LANG=$(AURORA_LANG) bash scripts/smoke_aurora_bff_runtime.sh
+
+skin-reco-gate-smoke:
+	BASE=$(BASE) AURORA_LANG=$(AURORA_LANG) bash scripts/smoke_aurora_skin_reco_gates.sh
 
 entry-smoke:
 	BASE=$(BASE) AURORA_LANG=$(AURORA_LANG) bash scripts/smoke_entry_routes.sh

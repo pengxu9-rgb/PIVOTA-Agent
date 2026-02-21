@@ -2,7 +2,7 @@
   "title": "Aurora Diagnosis Shadow Monitor",
   "uid": "aurora-diagnosis-shadow",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "refresh": "30s",
   "time": {
@@ -139,6 +139,58 @@
           "refId": "A",
           "expr": "increase(verify_budget_guard_total[15m])",
           "legendFormat": "guard hits"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Skin Reco Generated Rate (15m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "aurora:skin_reco_generated_rate:15m",
+          "legendFormat": "reco_generated_rate"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Skin Low Confidence Rate (15m)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "aurora:skin_low_confidence_rate:15m",
+          "legendFormat": "low_confidence_rate"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Skin Safety Block Rate (15m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "aurora:skin_safety_block_rate:15m",
+          "legendFormat": "safety_block_rate"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Chat Proxy Fallback Rate (5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "aurora:chat_proxy_fallback_rate:5m",
+          "legendFormat": "proxy_fallback_rate"
         }
       ]
     }

@@ -124,6 +124,7 @@ let modulesInteractionCount = 0;
 let actionClickCount = 0;
 let actionCopyCount = 0;
 let retakeAfterModulesCount = 0;
+const auroraSkinFlowCounter = new Map();
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -451,6 +452,28 @@ function normalizeRecoAsyncResult(result) {
   const token = cleanMetricToken(result, 'unknown');
   if (token === 'applied' || token === 'skipped' || token === 'noop' || token === 'error') return token;
   return 'unknown';
+}
+
+function normalizeAuroraSkinFlowStage(stage) {
+  const token = cleanMetricToken(stage, 'unknown');
+  if (
+    token === 'analysis_request' ||
+    token === 'artifact_created' ||
+    token === 'ingredient_plan' ||
+    token === 'reco_request' ||
+    token === 'reco_generated' ||
+    token === 'reco_low_confidence' ||
+    token === 'reco_safety_block'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraSkinFlowOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'hit');
+  if (token === 'hit' || token === 'miss') return token;
+  return 'hit';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -1387,6 +1410,23 @@ function observeSkinmaskInferLatency({ latencyMs } = {}) {
   }
 }
 
+function recordAuroraSkinFlowMetric({ stage, outcome, hit, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  const normalizedOutcome =
+    typeof outcome === 'string'
+      ? normalizeAuroraSkinFlowOutcome(outcome)
+      : normalizeAuroraSkinFlowOutcome(hit === false ? 'miss' : 'hit');
+  incCounter(
+    auroraSkinFlowCounter,
+    {
+      stage: normalizeAuroraSkinFlowStage(stage),
+      outcome: normalizedOutcome,
+    },
+    amount,
+  );
+}
+
 function escapePromValue(value) {
   return String(value == null ? '' : value)
     .replace(/\\/g, '\\\\')
@@ -1406,6 +1446,22 @@ function renderCounter(lines, metricName, counterMap) {
     const labels = parseLabelsKey(key);
     lines.push(`${metricName}${labelsToProm(labels)} ${value}`);
   }
+}
+
+function counterValueByLabels(counterMap, expectedLabels = {}) {
+  let total = 0;
+  for (const [key, value] of counterMap.entries()) {
+    const labels = parseLabelsKey(key);
+    let matched = true;
+    for (const [labelKey, labelValue] of Object.entries(expectedLabels)) {
+      if (String(labels[labelKey] || '') !== String(labelValue)) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) total += Number(value || 0);
+  }
+  return total;
 }
 
 function renderVisionMetricsPrometheus() {
@@ -1876,6 +1932,38 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE retake_rate_after_modules gauge');
   lines.push(`retake_rate_after_modules ${modulesInteractionCount > 0 ? retakeAfterModulesCount / modulesInteractionCount : 0}`);
 
+  lines.push('# HELP aurora_skin_flow_total Aurora skin diagnosis/reco flow counters by stage and outcome.');
+  lines.push('# TYPE aurora_skin_flow_total counter');
+  renderCounter(lines, 'aurora_skin_flow_total', auroraSkinFlowCounter);
+
+  const recoRequests = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_request', outcome: 'hit' });
+  const recoGenerated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_generated', outcome: 'hit' });
+  const recoLowConfidence = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_low_confidence', outcome: 'hit' });
+  const recoSafetyBlock = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_safety_block', outcome: 'hit' });
+  const analysisRequests = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_request', outcome: 'hit' });
+  const artifactCreated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'artifact_created', outcome: 'hit' });
+  const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
+
+  lines.push('# HELP aurora_skin_reco_generated_rate reco_generated / reco_request.');
+  lines.push('# TYPE aurora_skin_reco_generated_rate gauge');
+  lines.push(`aurora_skin_reco_generated_rate ${recoRequests > 0 ? recoGenerated / recoRequests : 0}`);
+
+  lines.push('# HELP aurora_skin_reco_low_confidence_rate reco_low_confidence / reco_request.');
+  lines.push('# TYPE aurora_skin_reco_low_confidence_rate gauge');
+  lines.push(`aurora_skin_reco_low_confidence_rate ${recoRequests > 0 ? recoLowConfidence / recoRequests : 0}`);
+
+  lines.push('# HELP aurora_skin_reco_safety_block_rate reco_safety_block / reco_request.');
+  lines.push('# TYPE aurora_skin_reco_safety_block_rate gauge');
+  lines.push(`aurora_skin_reco_safety_block_rate ${recoRequests > 0 ? recoSafetyBlock / recoRequests : 0}`);
+
+  lines.push('# HELP aurora_skin_artifact_created_rate artifact_created / analysis_request.');
+  lines.push('# TYPE aurora_skin_artifact_created_rate gauge');
+  lines.push(`aurora_skin_artifact_created_rate ${analysisRequests > 0 ? artifactCreated / analysisRequests : 0}`);
+
+  lines.push('# HELP aurora_skin_ingredient_plan_rate ingredient_plan / analysis_request.');
+  lines.push('# TYPE aurora_skin_ingredient_plan_rate gauge');
+  lines.push(`aurora_skin_ingredient_plan_rate ${analysisRequests > 0 ? ingredientPlans / analysisRequests : 0}`);
+
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
   const rateKeys = new Set([
@@ -1997,6 +2085,7 @@ function resetVisionMetrics() {
   actionClickCount = 0;
   actionCopyCount = 0;
   retakeAfterModulesCount = 0;
+  auroraSkinFlowCounter.clear();
 }
 
 function snapshotVisionMetrics() {
@@ -2105,6 +2194,7 @@ function snapshotVisionMetrics() {
     actionClickCount,
     actionCopyCount,
     retakeAfterModulesCount,
+    auroraSkinFlow: Array.from(auroraSkinFlowCounter.entries()),
   };
 }
 
@@ -2184,6 +2274,7 @@ module.exports = {
   recordProductRecSuppressed,
   recordClaimsTemplateFallback,
   recordClaimsViolation,
+  recordAuroraSkinFlowMetric,
   recordSkinmaskEnabled,
   recordSkinmaskFallback,
   observeSkinmaskInferLatency,

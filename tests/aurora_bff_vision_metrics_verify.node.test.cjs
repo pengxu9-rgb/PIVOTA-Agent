@@ -44,6 +44,7 @@ const {
   recordSocialKbBackfill,
   setSocialCacheHitRate,
   setSocialChannelsCoverage,
+  recordAuroraSkinFlowMetric,
 } = require('../src/auroraBff/visionMetrics');
 
 test('vision metrics: verify fail reasons are normalized and budget guard is counted', () => {
@@ -342,4 +343,26 @@ test('vision metrics: prelabel counters/gauges/histogram are exported', () => {
   assert.match(metrics, /prelabel_cache_hit_rate 0\.5\b/);
   assert.match(metrics, /llm_suggestion_overturned_rate 0\.25\b/);
   assert.match(metrics, /prelabel_gemini_latency_ms_count 2/);
+});
+
+test('vision metrics: aurora skin flow counters and rates are exported', () => {
+  resetVisionMetrics();
+  recordAuroraSkinFlowMetric({ stage: 'analysis_request', hit: true, delta: 2 });
+  recordAuroraSkinFlowMetric({ stage: 'artifact_created', hit: true, delta: 1 });
+  recordAuroraSkinFlowMetric({ stage: 'ingredient_plan', hit: true, delta: 1 });
+  recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true, delta: 4 });
+  recordAuroraSkinFlowMetric({ stage: 'reco_generated', hit: true, delta: 3 });
+  recordAuroraSkinFlowMetric({ stage: 'reco_low_confidence', hit: true, delta: 1 });
+  recordAuroraSkinFlowMetric({ stage: 'reco_safety_block', hit: true, delta: 1 });
+
+  const metrics = renderVisionMetricsPrometheus();
+  assert.match(metrics, /aurora_skin_flow_total\{stage="analysis_request",outcome="hit"\} 2/);
+  assert.match(metrics, /aurora_skin_flow_total\{stage="artifact_created",outcome="hit"\} 1/);
+  assert.match(metrics, /aurora_skin_flow_total\{stage="reco_request",outcome="hit"\} 4/);
+  assert.match(metrics, /aurora_skin_flow_total\{stage="reco_generated",outcome="hit"\} 3/);
+  assert.match(metrics, /aurora_skin_reco_generated_rate 0\.75\b/);
+  assert.match(metrics, /aurora_skin_reco_low_confidence_rate 0\.25\b/);
+  assert.match(metrics, /aurora_skin_reco_safety_block_rate 0\.25\b/);
+  assert.match(metrics, /aurora_skin_artifact_created_rate 0\.5\b/);
+  assert.match(metrics, /aurora_skin_ingredient_plan_rate 0\.5\b/);
 });

@@ -70,6 +70,7 @@ const {
   recordProductRecSuppressed,
   recordClaimsTemplateFallback,
   recordClaimsViolation,
+  recordAuroraSkinFlowMetric,
   recordSkinmaskEnabled,
   recordSkinmaskFallback,
   observeSkinmaskInferLatency,
@@ -21245,6 +21246,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
+      recordAuroraSkinFlowMetric({ stage: 'analysis_request', hit: true });
+
       const identity = await resolveIdentity(req, ctx);
       const runOnce = async ({ pipelineVersion, persistLastAnalysis, shadowRun } = {}) => {
         const profiler = createStageProfiler();
@@ -22014,6 +22017,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 }
               : artifactCandidate;
             logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_created_rate', value: diagnosisArtifact ? 1 : 0 }, 'metric');
+            recordAuroraSkinFlowMetric({ stage: 'artifact_created', hit: Boolean(diagnosisArtifact) });
             latestArtifactId = diagnosisArtifact && diagnosisArtifact.artifact_id
               ? String(diagnosisArtifact.artifact_id).trim()
               : null;
@@ -22037,6 +22041,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   }
                 : planBuilt;
               logger?.info({ kind: 'metric', name: 'aurora.skin.ingredient_plan_rate', value: ingredientPlan ? 1 : 0 }, 'metric');
+              recordAuroraSkinFlowMetric({ stage: 'ingredient_plan', hit: Boolean(ingredientPlan) });
             }
 
             const artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
@@ -24137,6 +24142,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
 
       if (wantsProductRecommendations) {
+        recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
         const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
         const hardRequiredFields = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
         const hardRequiredMissing = hardRequiredFields.filter((field) =>
@@ -24198,6 +24204,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         if (safety.block) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.safety_block_rate', value: 1 }, 'metric');
+          recordAuroraSkinFlowMetric({ stage: 'reco_safety_block', hit: true });
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(safety.assistant_message),
             suggested_chips: [],
@@ -24393,6 +24400,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
           ? norm.payload.recommendations.length > 0
           : false;
+        recordAuroraSkinFlowMetric({ stage: 'reco_generated', hit: Boolean(hasRecs) });
         if (hasRecs) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
         }
@@ -24444,6 +24452,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         if (latestArtifact && lowConfidenceArtifact) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
+          recordAuroraSkinFlowMetric({ stage: 'reco_low_confidence', hit: true });
           const confNode =
             latestArtifact.artifact_json &&
             latestArtifact.artifact_json.overall_confidence &&

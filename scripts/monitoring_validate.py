@@ -20,6 +20,10 @@ REQUIRED_ALERTS = (
     "AuroraVerifyBudgetGuardTriggered",
     "AuroraQualityFailRateSpike",
     "AuroraGeometryDropRateSpike",
+    "AuroraSkinRecoGeneratedRateLow",
+    "AuroraSkinLowConfidenceRateHigh",
+    "AuroraSkinSafetyBlockRateHigh",
+    "AuroraChatProxyFallbackRateHigh",
 )
 
 REQUIRED_RECORDING_RULES = (
@@ -27,6 +31,11 @@ REQUIRED_RECORDING_RULES = (
     "aurora:quality_degraded_rate:15m",
     "aurora:geometry_sanitizer_drop_rate:15m",
     "aurora:verify_budget_guard_count:15m",
+    "aurora:skin_reco_request_rate:15m",
+    "aurora:skin_reco_generated_rate:15m",
+    "aurora:skin_low_confidence_rate:15m",
+    "aurora:skin_safety_block_rate:15m",
+    "aurora:chat_proxy_fallback_rate:5m",
 )
 
 REQUIRED_METRICS = (
@@ -37,6 +46,10 @@ REQUIRED_METRICS = (
     "verify_calls_total",
     "verify_fail_total",
     "verify_budget_guard_total",
+    "aurora_skin_flow_total",
+    "aurora_skin_reco_generated_rate",
+    "aurora_skin_reco_low_confidence_rate",
+    "aurora_skin_reco_safety_block_rate",
 )
 
 REQUIRED_DASHBOARD_EXPR_TOKENS = (
@@ -47,6 +60,10 @@ REQUIRED_DASHBOARD_EXPR_TOKENS = (
     "verify_budget_guard_total",
     "analyze_requests_total",
     "geometry_sanitizer_drop_total",
+    "aurora:skin_reco_generated_rate:15m",
+    "aurora:skin_low_confidence_rate:15m",
+    "aurora:skin_safety_block_rate:15m",
+    "aurora:chat_proxy_fallback_rate:5m",
 )
 
 

@@ -30,6 +30,37 @@ groups:
       - record: aurora:verify_budget_guard_count:15m
         expr: increase(verify_budget_guard_total[15m])
 
+      - record: aurora:skin_reco_request_rate:15m
+        expr: |
+          sum(rate(aurora_skin_flow_total{stage="reco_request",outcome="hit"}[15m]))
+
+      - record: aurora:skin_reco_generated_rate:15m
+        expr: |
+          sum(rate(aurora_skin_flow_total{stage="reco_generated",outcome="hit"}[15m]))
+          /
+          clamp_min(aurora:skin_reco_request_rate:15m, 0.000001)
+
+      - record: aurora:skin_low_confidence_rate:15m
+        expr: |
+          sum(rate(aurora_skin_flow_total{stage="reco_low_confidence",outcome="hit"}[15m]))
+          /
+          clamp_min(aurora:skin_reco_request_rate:15m, 0.000001)
+
+      - record: aurora:skin_safety_block_rate:15m
+        expr: |
+          sum(rate(aurora_skin_flow_total{stage="reco_safety_block",outcome="hit"}[15m]))
+          /
+          clamp_min(aurora:skin_reco_request_rate:15m, 0.000001)
+
+      - record: aurora:chat_proxy_fallback_rate:5m
+        expr: |
+          (
+            sum(rate(aurora_chat_proxy_fallback_total[5m]))
+            /
+            clamp_min(sum(rate(aurora_chat_proxy_requests_total[5m])), 1)
+          )
+          or on() vector(0)
+
   - name: aurora-diagnosis-alerts
     interval: 1m
     rules:
@@ -113,4 +144,61 @@ groups:
         annotations:
           summary: "Geometry sanitizer drop-rate spike"
           description: "geometry_sanitizer_drop_rate crossed 20%. Validate sanitizer thresholds and upstream geometry quality."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraSkinRecoGeneratedRateLow
+        expr: |
+          aurora:skin_reco_request_rate:15m > 0.02
+          and
+          aurora:skin_reco_generated_rate:15m < 0.35
+        for: 20m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Skin reco generated rate dropped"
+          description: "reco_generated_rate stayed below 35% with meaningful reco volume. Check artifact/reco gates and matcher output."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraSkinLowConfidenceRateHigh
+        expr: |
+          aurora:skin_reco_request_rate:15m > 0.02
+          and
+          aurora:skin_low_confidence_rate:15m > 0.55
+        for: 30m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Skin low-confidence rate elevated"
+          description: "low_confidence_rate stayed above 55%. Check photo QC, gating, and analysis fallback distribution."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraSkinSafetyBlockRateHigh
+        expr: |
+          aurora:skin_reco_request_rate:15m > 0.02
+          and
+          aurora:skin_safety_block_rate:15m > 0.18
+        for: 15m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Skin safety-block rate elevated"
+          description: "safety_block_rate stayed above 18%. Verify red-flag parser drift and message normalization."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraChatProxyFallbackRateHigh
+        expr: aurora:chat_proxy_fallback_rate:5m > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: aurora-chat-proxy
+          team: aurora
+        annotations:
+          summary: "Chat proxy fallback rate elevated"
+          description: "proxy.fallback_rate stayed above 5%. Check client /api/chat proxy path and BFF availability."
           runbook: "docs/MONITORING_RUNBOOK.md"

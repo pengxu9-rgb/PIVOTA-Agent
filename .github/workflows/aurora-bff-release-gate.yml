@@ -12,6 +12,8 @@ on:
       - "package-lock.json"
   push:
     branches: ["main"]
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       base_url:
@@ -125,6 +127,12 @@ jobs:
         run: |
           set -euo pipefail
           BASE="$BASE_URL" bash scripts/smoke_aurora_bff_runtime.sh
+
+      - name: Skin reco gate smoke (artifact/safety branches)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$BASE_URL" bash scripts/smoke_aurora_skin_reco_gates.sh
 
       - name: Entry-route smoke (CN)
         shell: bash

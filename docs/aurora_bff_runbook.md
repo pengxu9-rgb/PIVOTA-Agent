@@ -264,3 +264,9 @@ Expected: `code=204`.
 ```bash
 BASE='https://pivota-agent-production.up.railway.app' make runtime-smoke
 ```
+
+- Reco gate smoke (artifact_missing / low_confidence / medium-high / safety_block):
+
+```bash
+BASE='https://pivota-agent-production.up.railway.app' bash scripts/smoke_aurora_skin_reco_gates.sh
+```

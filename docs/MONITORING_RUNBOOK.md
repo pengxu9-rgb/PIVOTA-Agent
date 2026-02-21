@@ -49,6 +49,23 @@ Contract definition:
 - Trigger: `max(geometry_sanitizer_drop_rate) > 0.20` for 30m
 - Severity: `warning`
 
+7. `AuroraSkinRecoGeneratedRateLow`
+- Trigger: `aurora:skin_reco_generated_rate:15m < 0.35` with `aurora:skin_reco_request_rate:15m > 0.02` for 20m
+- Severity: `warning`
+
+8. `AuroraSkinLowConfidenceRateHigh`
+- Trigger: `aurora:skin_low_confidence_rate:15m > 0.55` with `aurora:skin_reco_request_rate:15m > 0.02` for 30m
+- Severity: `warning`
+
+9. `AuroraSkinSafetyBlockRateHigh`
+- Trigger: `aurora:skin_safety_block_rate:15m > 0.18` with `aurora:skin_reco_request_rate:15m > 0.02` for 15m
+- Severity: `warning`
+
+10. `AuroraChatProxyFallbackRateHigh`
+- Trigger: `aurora:chat_proxy_fallback_rate:5m > 0.05` for 10m
+- Severity: `warning`
+- Note: this alert depends on proxy-side metrics (`aurora_chat_proxy_requests_total` / `aurora_chat_proxy_fallback_total`) being exported by the gateway runtime.
+
 ## First Response Procedure
 
 1. Confirm blast radius in dashboard.
@@ -86,6 +103,7 @@ The following scripts now enforce geometry sanity budgets:
 ```bash
 make monitoring-validate
 make release-gate
+BASE=https://pivota-agent-production.up.railway.app bash scripts/smoke_aurora_skin_reco_gates.sh
 ```
 
 ## Chat Follow-up Canary (post-env rollout)
