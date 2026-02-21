@@ -187,7 +187,7 @@ describe('aurora realtime competitor recall budget control', () => {
     expect(out.queries.length).toBe(1);
   });
 
-  test('async backfill allocates most budget to first query timeout', async () => {
+  test('async backfill prioritizes high-yield query and allocates most budget to first attempt', async () => {
     const { __internal } = require('../src/auroraBff/routes');
 
     const searchFn = jest.fn().mockResolvedValueOnce({
@@ -235,8 +235,64 @@ describe('aurora realtime competitor recall budget control', () => {
     expect(Array.isArray(out.candidates)).toBe(true);
     expect(out.candidates.length).toBeGreaterThan(0);
     const firstCall = searchFn.mock.calls[0][0] || {};
-    expect(firstCall.timeoutMs).toBeGreaterThanOrEqual(6000);
+    expect(String(firstCall.query || '').toLowerCase()).toContain('peptide');
+    expect(firstCall.timeoutMs).toBeGreaterThanOrEqual(5200);
     expect(firstCall.timeoutMs).toBeLessThanOrEqual(timeoutBudgetMs);
+  });
+
+  test('async backfill preserves follow-up query budget when first query returns empty', async () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const searchFn = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, products: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_async_followup_1',
+            sku_id: 'comp_async_followup_1',
+            brand: 'Brand Followup',
+            name: 'Followup Peptide Serum',
+            display_name: 'Followup Peptide Serum',
+            category: 'serum',
+            key_ingredients: ['Copper Tripeptide-1'],
+          },
+        ],
+      });
+
+    const timeoutBudgetMs = 8200;
+    const out = await __internal.buildRealtimeCompetitorCandidates({
+      productUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      parsedProduct: {
+        product_id: 'anchor_1',
+        sku_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      anchorProduct: {
+        product_id: 'anchor_1',
+        sku_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      keyIngredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate'],
+      mode: 'async_backfill',
+      maxQueries: 2,
+      maxCandidates: 1,
+      timeoutMs: timeoutBudgetMs,
+      deadlineMs: Date.now() + timeoutBudgetMs,
+      searchFn,
+    });
+
+    expect(searchFn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const firstCall = searchFn.mock.calls[0][0] || {};
+    const secondCall = searchFn.mock.calls[1][0] || {};
+    expect(firstCall.timeoutMs).toBeLessThan(timeoutBudgetMs);
+    expect(secondCall.timeoutMs).toBeGreaterThanOrEqual(1200);
+    expect(Array.isArray(out.candidates)).toBe(true);
+    expect(out.candidates.length).toBeGreaterThan(0);
   });
 
   test('runRecoBlocksForUrl async_backfill can return competitors after long catalog latency', async () => {
