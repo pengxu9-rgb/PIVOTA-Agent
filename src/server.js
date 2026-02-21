@@ -403,6 +403,9 @@ const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
 const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
   String(process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE || 'true').toLowerCase() !==
   'false';
+const PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT =
+  String(process.env.PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT || 'true').toLowerCase() !==
+  'false';
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
@@ -2723,6 +2726,13 @@ function getAuroraFallbackOverrides(source, operation) {
     forceSecondaryFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK,
     forceInvokeFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
   };
+}
+
+function getFallbackAdoptUsableThreshold({ source, primaryUsableCount, primaryIrrelevant }) {
+  const baseThreshold = Math.max(1, Number.isFinite(Number(primaryUsableCount)) ? Number(primaryUsableCount) : 0);
+  if (!primaryIrrelevant) return baseThreshold;
+  if (PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT && isAuroraSource(source)) return 1;
+  return baseThreshold;
 }
 
 function applyShoppingCatalogQueryGuards(queryParams, source) {
@@ -7920,6 +7930,7 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_seed_strategy: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
         : null,
+      fallback_adopt_usable_threshold: null,
     };
 
     const upstreamStartedAtMs = Date.now();
@@ -7954,6 +7965,12 @@ async function proxyAgentSearchToBackend(req, res) {
     const primaryRelevant = queryText ? isProxySearchFallbackRelevant(normalized, queryText) : true;
     const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
     const shouldFallback = primaryUnusable || primaryIrrelevant;
+    const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
+      source,
+      primaryUsableCount,
+      primaryIrrelevant,
+    });
+    fallbackStrategy.fallback_adopt_usable_threshold = fallbackAdoptUsableThreshold;
 
     if (shouldFallback) {
       if (allowResolverFallback && !skipSecondaryFallback) {
@@ -8005,7 +8022,7 @@ async function proxyAgentSearchToBackend(req, res) {
             fallback &&
             fallback.status >= 200 &&
             fallback.status < 300 &&
-            fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+            fallback.usableCount >= fallbackAdoptUsableThreshold &&
             isProxySearchFallbackRelevant(fallback.data, queryText)
           ) {
             return respondSearch(fallback.status, fallback.data, {
@@ -14447,6 +14464,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
         forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
       });
+      const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
+        source: metadata?.source,
+        primaryUsableCount,
+        primaryIrrelevant,
+      });
       let secondarySupplementMeta = null;
 
       if (
@@ -14597,7 +14619,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               fallback &&
               fallback.status >= 200 &&
               fallback.status < 300 &&
-              fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+              fallback.usableCount >= fallbackAdoptUsableThreshold &&
               isProxySearchFallbackRelevant(fallback.data, queryText)
             ) {
               upstreamData = fallback.data;
