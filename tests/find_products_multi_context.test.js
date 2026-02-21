@@ -112,7 +112,7 @@ describe('find_products_multi context building', () => {
     expect(q).not.toContain('dog jacket');
   });
 
-  test('pet apparel query uses aggressive expansion mode when explicitly requested', async () => {
+  test('pet apparel query blocks aggressive rewrite when query class is category', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
         search: { query: '给我推荐狗狗外套' },
@@ -123,11 +123,43 @@ describe('find_products_multi context building', () => {
     });
 
     const q = String(adjustedPayload?.search?.query || '').toLowerCase();
-    expect(q).toContain('dog jacket');
+    expect(q).toContain('dog apparel');
+    expect(q).not.toContain('dog jacket');
     expect(expansion_meta).toEqual(
       expect.objectContaining({
-        mode: 'aggressive',
+        mode: 'conservative',
         applied: true,
+        rewrite_gate: expect.objectContaining({
+          requested_mode: 'aggressive',
+          mode: 'conservative',
+        }),
+      }),
+    );
+    expect(['aggressive_flag_disabled', 'query_class_not_supported']).toContain(
+      String(expansion_meta?.rewrite_gate?.blocked_reason || ''),
+    );
+  });
+
+  test('adds query_class to intent output', () => {
+    const intent = extractIntentRuleBased('我今晚有个约会，要化妆，要推荐点商品吧？', [], []);
+    expect(intent.query_class).toBe('scenario');
+  });
+
+  test('scenario association plan is exposed in context metadata', async () => {
+    const { expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: '出差要带什么护肤品' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: '出差要带什么护肤品' }],
+      },
+      metadata: { expansion_mode: 'aggressive' },
+    });
+
+    expect(expansion_meta.query_class).toBe('mission');
+    expect(expansion_meta.association_plan).toEqual(
+      expect.objectContaining({
+        domain_key: expect.any(String),
+        scenario_key: expect.any(String),
       }),
     );
   });

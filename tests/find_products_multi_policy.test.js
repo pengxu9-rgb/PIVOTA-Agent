@@ -34,6 +34,57 @@ describe('find_products_multi intent + filtering', () => {
     expect(String(resp.reply)).toContain('Nina');
   });
 
+  test('medium ambiguity returns clarification payload instead of drifting products', () => {
+    const intent = extractIntentRuleBased('约会妆推荐', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'p1',
+            title: 'Date Makeup Foundation',
+            description: 'Longwear foundation and base makeup',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '约会妆推荐' } },
+      metadata: { ambiguity_score_pre: 0.45 },
+    });
+
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products).toHaveLength(0);
+    expect(resp.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
+        reason_code: expect.any(String),
+      }),
+    );
+    expect(resp.metadata?.search_decision?.final_decision).toBe('clarify');
+    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+  });
+
+  test('high ambiguity enforces strict empty', () => {
+    const intent = extractIntentRuleBased('你好', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({ id: 'p1', title: 'Random Product', description: 'Unrelated item' }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: '你好' } },
+      metadata: { ambiguity_score_pre: 0.8 },
+    });
+
+    expect(resp.products).toHaveLength(0);
+    expect(resp.metadata?.search_decision?.final_decision).toBe('strict_empty');
+    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_STRICT_EMPTY']));
+    expect(resp.clarification).toBeUndefined();
+  });
+
   test('discovery intent: English greeting routes to discovery', () => {
     const intent = extractIntentRuleBased('hi', [], []);
     expect(intent.scenario.name).toBe('discovery');

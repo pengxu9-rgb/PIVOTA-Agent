@@ -1319,7 +1319,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('emits route_health and search_trace diagnostics on strict empty', async () => {
+  test('emits route_health and search_trace diagnostics on clarify decision', async () => {
     const queryText = '今晚约会妆推荐';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
@@ -1356,7 +1356,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.body.products).toHaveLength(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        strict_empty: true,
         route_health: expect.objectContaining({
           primary_path_used: expect.any(String),
           fallback_triggered: expect.any(Boolean),
@@ -1364,8 +1363,14 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         search_trace: expect.objectContaining({
           trace_id: expect.any(String),
           raw_query: expect.any(String),
-          final_decision: 'strict_empty',
+          final_decision: 'clarify',
         }),
+      }),
+    );
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
       }),
     );
     expect(resp.body.metadata.search_trace).toHaveProperty('intent_scenario');

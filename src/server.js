@@ -442,6 +442,11 @@ const FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = (() => {
 })();
 const SEARCH_STRICT_EMPTY_ENABLED =
   String(process.env.SEARCH_STRICT_EMPTY_ENABLED || 'true').toLowerCase() !== 'false';
+const SEARCH_EXTERNAL_FILL_GATED =
+  String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
+const PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
+  String(process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED || 'false').toLowerCase() ===
+  'true';
 const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 2200),
@@ -2408,12 +2413,31 @@ function buildSearchRouteHealth({
   primaryLatencyMs,
   fallbackTriggered,
   fallbackReason,
+  ambiguityScorePre = null,
+  ambiguityScorePost = null,
+  clarifyTriggered = false,
+  degradeFlags = null,
 }) {
   return {
     primary_path_used: String(primaryPathUsed || 'unknown'),
     primary_latency_ms: Math.max(0, Number(primaryLatencyMs || 0) || 0),
     fallback_triggered: Boolean(fallbackTriggered),
     fallback_reason: fallbackReason ? String(fallbackReason) : null,
+    ambiguity_score_pre: Number.isFinite(Number(ambiguityScorePre))
+      ? Math.max(0, Math.min(1, Number(ambiguityScorePre)))
+      : null,
+    ambiguity_score_post: Number.isFinite(Number(ambiguityScorePost))
+      ? Math.max(0, Math.min(1, Number(ambiguityScorePost)))
+      : null,
+    clarify_triggered: Boolean(clarifyTriggered),
+    degrade_flags:
+      degradeFlags && typeof degradeFlags === 'object' && !Array.isArray(degradeFlags)
+        ? {
+            vector_skipped: Boolean(degradeFlags.vector_skipped),
+            behavior_skipped: Boolean(degradeFlags.behavior_skipped),
+            nlu_degraded: Boolean(degradeFlags.nlu_degraded),
+          }
+        : null,
   };
 }
 
@@ -2427,12 +2451,24 @@ function buildSearchTrace({
   upstreamStage,
   resolverStage,
   finalDecision,
+  queryClass = null,
+  rewriteGate = null,
+  associationPlan = null,
 }) {
   return {
     trace_id: String(traceId || ''),
     raw_query: String(rawQuery || ''),
     expanded_query: String(expandedQuery || rawQuery || ''),
     expansion_mode: String(expansionMode || 'conservative'),
+    query_class: queryClass ? String(queryClass) : null,
+    rewrite_gate:
+      rewriteGate && typeof rewriteGate === 'object' && !Array.isArray(rewriteGate)
+        ? rewriteGate
+        : null,
+    association_plan:
+      associationPlan && typeof associationPlan === 'object' && !Array.isArray(associationPlan)
+        ? associationPlan
+        : null,
     intent_domain: intent?.primary_domain || null,
     intent_target: intent?.target_object?.type || null,
     intent_scenario: intent?.scenario?.name || null,
@@ -10094,6 +10130,45 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       payload?.search?.query ||
       payload?.query ||
       '';
+    const policyMetadata =
+      operation === 'find_products_multi'
+        ? {
+            ...(metadata || {}),
+            ...(Number.isFinite(Number(findProductsExpansionMeta?.ambiguity_score_pre))
+              ? {
+                  ambiguity_score_pre: Number(findProductsExpansionMeta.ambiguity_score_pre),
+                }
+              : {}),
+            ...(findProductsExpansionMeta?.query_class
+              ? { query_class: String(findProductsExpansionMeta.query_class) }
+              : {}),
+            ...(findProductsExpansionMeta?.rewrite_gate &&
+            typeof findProductsExpansionMeta.rewrite_gate === 'object'
+              ? { rewrite_gate: findProductsExpansionMeta.rewrite_gate }
+              : {}),
+            ...(findProductsExpansionMeta?.association_plan &&
+            typeof findProductsExpansionMeta.association_plan === 'object'
+              ? { association_plan: findProductsExpansionMeta.association_plan }
+              : {}),
+          }
+        : metadata;
+    const traceQueryClass =
+      findProductsExpansionMeta?.query_class || effectiveIntent?.query_class || null;
+    const traceRewriteGate =
+      findProductsExpansionMeta?.rewrite_gate &&
+      typeof findProductsExpansionMeta.rewrite_gate === 'object'
+        ? findProductsExpansionMeta.rewrite_gate
+        : null;
+    const traceAssociationPlan =
+      findProductsExpansionMeta?.association_plan &&
+      typeof findProductsExpansionMeta.association_plan === 'object'
+        ? findProductsExpansionMeta.association_plan
+        : null;
+    const traceAmbiguityScorePre = Number.isFinite(
+      Number(findProductsExpansionMeta?.ambiguity_score_pre),
+    )
+      ? Number(findProductsExpansionMeta.ambiguity_score_pre)
+      : null;
 
   // Redundant allowlist check for semantics clarity.
   if (!OperationEnum.options.includes(operation)) {
@@ -10161,7 +10236,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       response: base,
       intent: effectiveIntent,
       requestPayload: effectivePayload,
-      metadata,
+      metadata: policyMetadata,
       rawUserQuery,
     });
 
@@ -10899,7 +10974,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           response: mockResponse,
           intent: effectiveIntent,
           requestPayload: effectivePayload,
-          metadata,
+          metadata: policyMetadata,
           rawUserQuery,
         });
       }
@@ -12423,7 +12498,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   response: upstreamData,
                   intent: effectiveIntent,
                   requestPayload: effectivePayload,
-                  metadata,
+                  metadata: policyMetadata,
                   rawUserQuery,
                 })
               : upstreamData;
@@ -12610,20 +12685,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               ? Math.max(0, safeResultLimit - internalProductsAfterAnchor.length)
               : Math.max(1, Math.ceil(safeResultLimit / 2));
             if (neededCount > 0) {
-              const allowLookupExternalOnlySupplement =
-                isLookupQuery &&
-                internalProductsAfterAnchor.length === 0 &&
-                isKnownLookupAliasQuery(cacheQueryText);
-              const shouldSkipSupplementForLookupNoInternal =
-                isLookupQuery &&
-                internalProductsAfterAnchor.length === 0 &&
-                !allowLookupExternalOnlySupplement;
-              if (shouldSkipSupplementForLookupNoInternal) {
+              const confidenceOverall = Number(effectiveIntent?.confidence?.overall || 0) || 0;
+              const ambiguityScorePre = Number(findProductsExpansionMeta?.ambiguity_score_pre || 0) || 0;
+              const externalFillMinInternal = Math.min(3, safeResultLimit);
+              const canApplyExternalFillGate =
+                !SEARCH_EXTERNAL_FILL_GATED ||
+                (internalProductsAfterAnchor.length >= externalFillMinInternal &&
+                  (confidenceOverall >= 0.7 || isLookupQuery) &&
+                  ambiguityScorePre <= 0.45);
+              if (!canApplyExternalFillGate) {
                 supplementMeta = {
                   attempted: false,
                   applied: false,
                   added_count: 0,
-                  reason: 'lookup_query_no_internal_skip_supplement',
+                  reason: 'external_fill_gate_blocked',
+                  gate: {
+                    enabled: SEARCH_EXTERNAL_FILL_GATED,
+                    min_internal_required: externalFillMinInternal,
+                    internal_count: internalProductsAfterAnchor.length,
+                    overall_confidence: confidenceOverall,
+                    ambiguity_score_pre: ambiguityScorePre,
+                    lookup_query_bypass: Boolean(isLookupQuery),
+                  },
                 };
               } else {
                 supplementMeta = {
@@ -12794,7 +12877,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   response: upstreamData,
                   intent: effectiveIntent,
                   requestPayload: effectivePayload,
-                  metadata,
+                  metadata: policyMetadata,
                   rawUserQuery,
                 })
               : upstreamData;
@@ -12811,18 +12894,32 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 : applyDealsToResponse(upstreamData, promotions, now, creatorId);
           }
           if (effectiveCacheHit) {
+            const cacheClarification =
+              enriched &&
+              typeof enriched === 'object' &&
+              !Array.isArray(enriched) &&
+              enriched.clarification &&
+              typeof enriched.clarification === 'object' &&
+              enriched.clarification.question
+                ? enriched.clarification
+                : null;
             const diagnosed = withSearchDiagnostics(enriched, {
               route_health: buildSearchRouteHealth({
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
                 fallbackTriggered: false,
                 fallbackReason: null,
+                ambiguityScorePre: traceAmbiguityScorePre,
+                clarifyTriggered: Boolean(cacheClarification),
               }),
               search_trace: buildSearchTrace({
                 traceId: gatewayRequestId,
                 rawQuery: cacheQueryText,
                 expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
                 expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                queryClass: traceQueryClass,
+                rewriteGate: traceRewriteGate,
+                associationPlan: traceAssociationPlan,
                 intent: effectiveIntent,
                 cacheStage: {
                   hit: true,
@@ -12842,12 +12939,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   miss: false,
                   latency_ms: null,
                 },
-                finalDecision: 'cache_returned',
+                finalDecision: cacheClarification ? 'clarify' : 'cache_returned',
               }),
             });
             return res.json(diagnosed);
           }
-          if (isLookupQuery && cacheQueryText.length > 0) {
+          if (
+            PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED &&
+            isLookupQuery &&
+            cacheQueryText.length > 0
+          ) {
             try {
               const resolverFallback = await queryResolveSearchFallback({
                 queryParams: {
@@ -12883,18 +12984,32 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   now,
                   creatorId,
                 );
+                const resolverClarification =
+                  resolverEnriched &&
+                  typeof resolverEnriched === 'object' &&
+                  !Array.isArray(resolverEnriched) &&
+                  resolverEnriched.clarification &&
+                  typeof resolverEnriched.clarification === 'object' &&
+                  resolverEnriched.clarification.question
+                    ? resolverEnriched.clarification
+                    : null;
                 const resolverDiagnosed = withSearchDiagnostics(resolverEnriched, {
                   route_health: buildSearchRouteHealth({
                     primaryPathUsed: 'resolver_stage',
                     primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
                     fallbackTriggered: true,
                     fallbackReason: 'resolver_after_cache_miss',
+                    ambiguityScorePre: traceAmbiguityScorePre,
+                    clarifyTriggered: Boolean(resolverClarification),
                   }),
                   search_trace: buildSearchTrace({
                     traceId: gatewayRequestId,
                     rawQuery: cacheQueryText,
                     expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
                     expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                    queryClass: traceQueryClass,
+                    rewriteGate: traceRewriteGate,
+                    associationPlan: traceAssociationPlan,
                     intent: effectiveIntent,
                     cacheStage: {
                       hit: false,
@@ -12914,7 +13029,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                       miss: false,
                       latency_ms: null,
                     },
-                    finalDecision: 'resolver_returned',
+                    finalDecision: resolverClarification ? 'clarify' : 'resolver_returned',
                   }),
                 });
                 return res.json(resolverDiagnosed);
@@ -12978,7 +13093,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   response: strictEmptyBase,
                   intent: effectiveIntent,
                   requestPayload: effectivePayload,
-                  metadata,
+                  metadata: policyMetadata,
                   rawUserQuery: cacheQueryText,
                 })
               : strictEmptyBase;
@@ -12988,18 +13103,33 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               now,
               creatorId,
             );
+            const strictEmptyClarification =
+              strictEmptyEnriched &&
+              typeof strictEmptyEnriched === 'object' &&
+              !Array.isArray(strictEmptyEnriched) &&
+              strictEmptyEnriched.clarification &&
+              typeof strictEmptyEnriched.clarification === 'object' &&
+              strictEmptyEnriched.clarification.question
+                ? strictEmptyEnriched.clarification
+                : null;
             const strictEmptyDiagnosed = withSearchDiagnostics(strictEmptyEnriched, {
               route_health: buildSearchRouteHealth({
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
                 fallbackTriggered: false,
                 fallbackReason: cacheStrictReason,
+                ambiguityScorePre: traceAmbiguityScorePre,
+                ambiguityScorePost: 1,
+                clarifyTriggered: Boolean(strictEmptyClarification),
               }),
               search_trace: buildSearchTrace({
                 traceId: gatewayRequestId,
                 rawQuery: cacheQueryText,
                 expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
                 expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                queryClass: traceQueryClass,
+                rewriteGate: traceRewriteGate,
+                associationPlan: traceAssociationPlan,
                 intent: effectiveIntent,
                 cacheStage: {
                   hit: false,
@@ -13019,10 +13149,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   miss: false,
                   latency_ms: null,
                 },
-                finalDecision: 'strict_empty',
+                finalDecision: strictEmptyClarification ? 'clarify' : 'strict_empty',
               }),
-              strict_empty: true,
-              strict_empty_reason: cacheStrictReason,
+              ...(strictEmptyClarification
+                ? {}
+                : {
+                    strict_empty: true,
+                    strict_empty_reason: cacheStrictReason,
+                  }),
             });
             return res.json(strictEmptyDiagnosed);
           }
@@ -13707,7 +13841,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const primarySearchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const primarySearchAnchorTokens = extractSearchAnchorTokens(primarySearchQueryText);
     const isLookupPolicyQuery = isLookupStyleSearchQuery(primarySearchQueryText, primarySearchAnchorTokens);
-    const upstreamBudgetMsForSearch = isLookupPolicyQuery
+    const queryClassForBudget = String(traceQueryClass || '').toLowerCase();
+    const shouldUseShortSearchBudget =
+      isLookupPolicyQuery ||
+      ['lookup', 'category', 'attribute'].includes(queryClassForBudget);
+    const upstreamBudgetMsForSearch = shouldUseShortSearchBudget
       ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
 
@@ -14543,7 +14681,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             response: upstreamData,
             intent: effectiveIntent,
             requestPayload: effectivePayload,
-            metadata,
+            metadata: policyMetadata,
             rawUserQuery,
           });
 
@@ -14600,7 +14738,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   query: fallbackQuery,
                 },
               },
-              metadata,
+              metadata: policyMetadata,
               rawUserQuery: fallbackQuery,
             });
           }
@@ -14665,7 +14803,28 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ? existingMeta.proxy_search_fallback
           : null;
       const products = Array.isArray(enriched?.products) ? enriched.products : [];
-      const isStrictEmpty = SEARCH_STRICT_EMPTY_ENABLED && queryText.length > 0 && products.length === 0;
+      const clarificationPayload =
+        enriched &&
+        typeof enriched === 'object' &&
+        !Array.isArray(enriched) &&
+        enriched.clarification &&
+        typeof enriched.clarification === 'object'
+          ? enriched.clarification
+          : null;
+      const hasClarification = Boolean(clarificationPayload?.question);
+      const searchDecision =
+        existingMeta &&
+        typeof existingMeta === 'object' &&
+        !Array.isArray(existingMeta) &&
+        existingMeta.search_decision &&
+        typeof existingMeta.search_decision === 'object'
+          ? existingMeta.search_decision
+          : null;
+      const isStrictEmpty =
+        SEARCH_STRICT_EMPTY_ENABLED &&
+        queryText.length > 0 &&
+        products.length === 0 &&
+        !hasClarification;
       const querySource = String(existingMeta?.query_source || '').trim() || 'agent_products_search';
       const primaryPathUsed =
         querySource.startsWith('cache_')
@@ -14713,11 +14872,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       };
       const finalDecision = isStrictEmpty
         ? 'strict_empty'
-        : querySource.startsWith('cache_')
-        ? 'cache_returned'
-        : querySource.includes('resolver')
-        ? 'resolver_returned'
-        : 'upstream_returned';
+        : hasClarification
+          ? 'clarify'
+          : searchDecision?.final_decision
+            ? String(searchDecision.final_decision)
+            : querySource.startsWith('cache_')
+              ? 'cache_returned'
+              : querySource.includes('resolver')
+                ? 'resolver_returned'
+                : 'upstream_returned';
       const expansionMode =
         operation === 'find_products_multi'
           ? findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE
@@ -14738,6 +14901,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               diversityPenaltyApplied: Boolean(policyRouteDebug?.diversity?.penalty_applied),
             })
           : null;
+      const routeDegradeFlags =
+        searchDecision?.degrade_flags && typeof searchDecision.degrade_flags === 'object'
+          ? searchDecision.degrade_flags
+          : { vector_skipped: false, behavior_skipped: false, nlu_degraded: false };
 
       enriched = withSearchDiagnostics(enriched, {
         route_health: buildSearchRouteHealth({
@@ -14745,12 +14912,22 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
           fallbackTriggered,
           fallbackReason,
+          ambiguityScorePre:
+            Number.isFinite(Number(searchDecision?.ambiguity_score_pre))
+              ? Number(searchDecision.ambiguity_score_pre)
+              : traceAmbiguityScorePre,
+          ambiguityScorePost: searchDecision?.ambiguity_score_post,
+          clarifyTriggered: hasClarification || Boolean(searchDecision?.clarify_triggered),
+          degradeFlags: routeDegradeFlags,
         }),
         search_trace: buildSearchTrace({
           traceId: gatewayRequestId,
           rawQuery: queryText,
           expandedQuery,
           expansionMode,
+          queryClass: searchDecision?.query_class || traceQueryClass,
+          rewriteGate: traceRewriteGate,
+          associationPlan: traceAssociationPlan,
           intent: effectiveIntent,
           cacheStage,
           upstreamStage,
@@ -14793,6 +14970,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
               fallbackTriggered: true,
               fallbackReason: 'invoke_outer_cache_guard',
+              ambiguityScorePre: traceAmbiguityScorePre,
+              clarifyTriggered: false,
             }),
             search_trace: buildSearchTrace({
               traceId: gatewayRequestId,
@@ -14801,6 +14980,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 findProductsExpansionMeta?.expanded_query ||
                 String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
               expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+              queryClass: traceQueryClass,
+              rewriteGate: traceRewriteGate,
+              associationPlan: traceAssociationPlan,
               intent: effectiveIntent,
               cacheStage: {
                 hit: true,
@@ -14855,6 +15037,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
 	          fallbackTriggered: true,
 	          fallbackReason: reason,
+	          ambiguityScorePre: traceAmbiguityScorePre,
+	          clarifyTriggered: false,
 	        }),
 	        search_trace: buildSearchTrace({
 	          traceId: gatewayRequestId,
@@ -14863,6 +15047,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            findProductsExpansionMeta?.expanded_query ||
 	            String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
 	          expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+	          queryClass: traceQueryClass,
+	          rewriteGate: traceRewriteGate,
+	          associationPlan: traceAssociationPlan,
 	          intent: effectiveIntent,
 	          cacheStage: {
 	            hit: false,

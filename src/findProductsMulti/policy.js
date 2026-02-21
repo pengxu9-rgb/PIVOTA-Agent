@@ -2,9 +2,32 @@ const { extractIntent } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
+const { buildClarification } = require('./clarification');
+const { buildScenarioAssociationPlan } = require('./scenarioAssociation');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v38';
+const POLICY_VERSION = 'find_products_multi_policy_v39';
+const STRATEGY_VERSION = 'ambiguity_gate_v1';
+const SEARCH_AMBIGUITY_GATE_ENABLED =
+  String(process.env.SEARCH_AMBIGUITY_GATE_ENABLED || 'true').toLowerCase() !== 'false';
+const SEARCH_CLARIFY_ON_MEDIUM_AMBIGUITY =
+  String(process.env.SEARCH_CLARIFY_ON_MEDIUM_AMBIGUITY || 'true').toLowerCase() !== 'false';
+const SEARCH_SCENARIO_ASSOCIATION_ENABLED =
+  String(process.env.SEARCH_SCENARIO_ASSOCIATION_ENABLED || 'true').toLowerCase() !== 'false';
+const SEARCH_AGGRESSIVE_REWRITE_ENABLED =
+  String(process.env.SEARCH_AGGRESSIVE_REWRITE_ENABLED || 'false').toLowerCase() === 'true';
+const SEARCH_DOMAIN_HARD_FILTER_ENABLED =
+  String(process.env.SEARCH_DOMAIN_HARD_FILTER_ENABLED || 'true').toLowerCase() !== 'false';
+const SEARCH_EXTERNAL_FILL_GATED =
+  String(process.env.SEARCH_EXTERNAL_FILL_GATED || 'true').toLowerCase() !== 'false';
+const AMBIGUITY_THRESHOLD_CLARIFY = Math.max(
+  0,
+  Math.min(1, Number(process.env.SEARCH_AMBIGUITY_THRESHOLD_CLARIFY || 0.35)),
+);
+const AMBIGUITY_THRESHOLD_STRICT_EMPTY = Math.max(
+  AMBIGUITY_THRESHOLD_CLARIFY,
+  Math.min(1, Number(process.env.SEARCH_AMBIGUITY_THRESHOLD_STRICT_EMPTY || 0.55)),
+);
 const BEAUTY_DIVERSITY_ENABLED =
   String(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_ENABLED || 'true').toLowerCase() !==
   'false';
@@ -581,6 +604,312 @@ function applyBeautyDiversityPolicy(products, options = {}) {
 function clamp01(n) {
   if (Number.isNaN(n) || n == null) return 0;
   return Math.max(0, Math.min(1, n));
+}
+
+function normalizeQueryClass(value, options = {}) {
+  const defaultValue = Object.prototype.hasOwnProperty.call(options, 'defaultValue')
+    ? options.defaultValue
+    : 'exploratory';
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    [
+      'lookup',
+      'category',
+      'attribute',
+      'mission',
+      'scenario',
+      'gift',
+      'exploratory',
+      'non_shopping',
+    ].includes(normalized)
+  ) {
+    return normalized;
+  }
+  if (defaultValue == null) return null;
+  const normalizedDefault = String(defaultValue || '').trim().toLowerCase();
+  if (
+    [
+      'lookup',
+      'category',
+      'attribute',
+      'mission',
+      'scenario',
+      'gift',
+      'exploratory',
+      'non_shopping',
+    ].includes(normalizedDefault)
+  ) {
+    return normalizedDefault;
+  }
+  return 'exploratory';
+}
+
+function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
+  const explicit = normalizeQueryClass(intent?.query_class, { defaultValue: null });
+  if (explicit) return explicit;
+
+  const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
+  const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
+  const targetType = String(intent?.target_object?.type || '').toLowerCase();
+  const categoryRequired = Array.isArray(intent?.category?.required) ? intent.category.required : [];
+  const query = String(rawQuery || '').toLowerCase();
+  const hasPriceConstraint =
+    intent?.hard_constraints?.price &&
+    (intent.hard_constraints.price.min != null || intent.hard_constraints.price.max != null);
+
+  if (
+    /how to|tutorial|guide|return policy|refund policy|after sales|怎么用|教程|退货|售后/.test(query)
+  ) {
+    return 'non_shopping';
+  }
+  if (/gift|present|送礼|礼物|生日/.test(query)) return 'gift';
+  if (
+    /要买|需要|清单|准备|带什么|买什么|need to buy|checklist|what to bring|starter kit/.test(
+      query,
+    )
+  ) {
+    return 'mission';
+  }
+  if (/约会|通勤|面试|露营|登山|徒步|出差|旅行|date|commute|interview|camping|hiking|travel/.test(query)) {
+    return 'scenario';
+  }
+  if (
+    /\bsku\b|\bmodel\b|型号|型號/.test(query) ||
+    /\b[a-z]{1,6}\d{2,}\b/i.test(query) ||
+    (/^(ipsa|茵芙莎|winona|薇诺娜|the ordinary|sk[\s-]?ii)$/i.test(String(rawQuery || '').trim()) &&
+      String(rawQuery || '').trim().length <= 24)
+  ) {
+    return 'lookup';
+  }
+  if (scenarioName === 'discovery' || scenarioName === 'browse') return 'exploratory';
+  if (hasPriceConstraint || /预算|預算|以内|以内|以上|不超过|under|above|at least|waterproof|windproof|fragrance/.test(query)) {
+    return 'attribute';
+  }
+  if (categoryRequired.length > 0) return 'category';
+  if (scenarioName && scenarioName !== 'general') return 'scenario';
+  if ((primaryDomain === 'other' && targetType === 'unknown') || !rawQuery) return 'exploratory';
+  return 'category';
+}
+
+function isAmbiguitySensitiveQueryClass(queryClass) {
+  return ['mission', 'scenario', 'gift', 'exploratory', 'non_shopping'].includes(
+    normalizeQueryClass(queryClass, { defaultValue: null }),
+  );
+}
+
+function normalizeWordTokens(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function inferSearchDomainKey(intent, rawQuery) {
+  const target = String(intent?.target_object?.type || '').toLowerCase();
+  const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
+  const query = String(rawQuery || '').toLowerCase();
+  if (target === 'pet') return 'pet';
+  if (primaryDomain === 'beauty') return 'beauty';
+  if (
+    /travel|trip|business trip|packing|luggage|toiletry|出差|旅行|旅游|差旅/.test(query)
+  ) {
+    return 'travel';
+  }
+  if (/hiking|trail|camping|outdoor|徒步|登山|露营|户外/.test(query)) {
+    return 'hiking';
+  }
+  if (primaryDomain === 'sports_outdoor') return 'hiking';
+  return 'general';
+}
+
+function inferProductDomainKey(product) {
+  const pivotaDomain = String(product?.attributes?.pivota?.domain || '').toLowerCase();
+  if (pivotaDomain) {
+    if (pivotaDomain === 'beauty') return 'beauty';
+    if (pivotaDomain === 'pet' || pivotaDomain === 'pet_supplies') return 'pet';
+    if (pivotaDomain === 'travel') return 'travel';
+    if (pivotaDomain === 'hiking' || pivotaDomain === 'outdoor') return 'hiking';
+    if (pivotaDomain === 'sports_outdoor') {
+      const target = String(product?.attributes?.pivota?.target_object || '').toLowerCase();
+      if (target === 'pet') return 'pet';
+      const text = buildProductText(product);
+      if (
+        /\b(dog|dogs|cat|cats|pet|harness|leash|collar|puppy|kitten)\b/i.test(text || '') ||
+        /宠物|狗|猫|牵引|狗链|背带|项圈/.test(text || '')
+      ) {
+        return 'pet';
+      }
+      return 'hiking';
+    }
+  }
+
+  const text = buildProductText(product);
+  if (!text) {
+    if (pivotaDomain === 'beauty') return 'beauty';
+    if (pivotaDomain === 'travel') return 'travel';
+    if (pivotaDomain === 'hiking' || pivotaDomain === 'outdoor') return 'hiking';
+    if (pivotaDomain === 'pet' || pivotaDomain === 'pet_supplies') return 'pet';
+    return 'general';
+  }
+  if (
+    /\b(dog|cat|pet|harness|leash|collar|puppy|kitten)\b/i.test(text) ||
+    /宠物|狗|猫|牵引|狗链|背带|项圈/.test(text)
+  ) {
+    return 'pet';
+  }
+  if (
+    /\b(foundation|concealer|mascara|lipstick|serum|toner|moisturizer|makeup|cosmetic)\b/i.test(text) ||
+    /化妆|美妆|护肤|精华|口红|粉底|防晒/.test(text)
+  ) {
+    return 'beauty';
+  }
+  if (
+    /\b(hiking|outdoor|camping|trekking|trail|parka|shell)\b/i.test(text) ||
+    /徒步|登山|露营|冲锋衣|户外/.test(text)
+  ) {
+    return 'hiking';
+  }
+  if (
+    /\b(luggage|packing|travel|toiletry|carry-on|adapter)\b/i.test(text) ||
+    /行李|收纳|旅行|出差|分装/.test(text)
+  ) {
+    return 'travel';
+  }
+  return 'general';
+}
+
+function computeDomainEntropy(products) {
+  const list = Array.isArray(products) ? products : [];
+  if (!list.length) return 1;
+  const counts = new Map();
+  for (const product of list.slice(0, 20)) {
+    const key = inferProductDomainKey(product);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+  if (total <= 0) return 1;
+  let entropy = 0;
+  for (const count of counts.values()) {
+    const p = count / total;
+    if (p > 0) entropy -= p * Math.log(p);
+  }
+  const maxEntropy = counts.size > 1 ? Math.log(counts.size) : 1;
+  return clamp01(maxEntropy > 0 ? entropy / maxEntropy : 0);
+}
+
+function computeAnchorRatio(rawQuery, products) {
+  const anchors = normalizeWordTokens(rawQuery)
+    .filter((token) => token.length >= 2)
+    .slice(0, 10);
+  if (!anchors.length) return 1;
+  const list = Array.isArray(products) ? products.slice(0, 10) : [];
+  if (!list.length) return 0;
+  let matchedCount = 0;
+  for (const product of list) {
+    const text = buildProductText(product);
+    if (!text) continue;
+    const overlap = anchors.filter((token) => text.includes(token)).length;
+    if (overlap > 0) matchedCount += 1;
+  }
+  return clamp01(matchedCount / list.length);
+}
+
+function computeAmbiguityScorePre(intent, queryClassInput = null) {
+  const queryClass = normalizeQueryClass(queryClassInput ?? intent?.query_class, {
+    defaultValue: null,
+  });
+  const overall = clamp01(intent?.confidence?.overall);
+  const domain = clamp01(intent?.confidence?.domain);
+  const category = clamp01(intent?.confidence?.category);
+  const confidenceMean = clamp01((overall + domain + category) / 3);
+  const missingSlots = Array.isArray(intent?.ambiguity?.missing_slots)
+    ? intent.ambiguity.missing_slots.length
+    : 0;
+  const missingRatio = clamp01(missingSlots / 6);
+  const clarifySignal = intent?.ambiguity?.needs_clarification ? 1 : 0;
+  let score = clamp01(0.55 * (1 - confidenceMean) + 0.3 * missingRatio + 0.15 * clarifySignal);
+  if (queryClass === 'lookup') score *= 0.55;
+  else if (['category', 'attribute'].includes(queryClass)) score *= 0.75;
+  else if (isAmbiguitySensitiveQueryClass(queryClass)) score = clamp01(score + 0.05);
+  return clamp01(score);
+}
+
+function computeAmbiguityScorePost({ ambiguityPre, products, rawQuery, intent, queryClassInput = null }) {
+  const list = Array.isArray(products) ? products : [];
+  const queryClass = normalizeQueryClass(queryClassInput ?? intent?.query_class, {
+    defaultValue: null,
+  });
+  const candidateSparsity = clamp01(list.length === 0 ? 1 : (3 - Math.min(list.length, 3)) / 3);
+  const domainEntropy = computeDomainEntropy(list);
+  const anchorRatio = computeAnchorRatio(rawQuery, list);
+  const domainKey = inferSearchDomainKey(intent, rawQuery);
+  const inDomainCount = list.filter((product) => inferProductDomainKey(product) === domainKey).length;
+  const inDomainRatio = list.length > 0 ? clamp01(inDomainCount / list.length) : 0;
+  let score = clamp01(
+    0.35 * clamp01(ambiguityPre) +
+      0.25 * candidateSparsity +
+      0.2 * domainEntropy +
+      0.15 * (1 - anchorRatio) +
+      0.05 * (1 - inDomainRatio),
+  );
+  if (['lookup', 'category', 'attribute'].includes(queryClass) && list.length > 0) {
+    score *= 0.8;
+  }
+  return clamp01(score);
+}
+
+function estimateRewriteDriftRisk(rawQuery, terms = []) {
+  const queryTokens = new Set(normalizeWordTokens(rawQuery));
+  const termTokens = new Set(normalizeWordTokens(Array.isArray(terms) ? terms.join(' ') : terms));
+  if (!queryTokens.size || !termTokens.size) return 0;
+  let overlap = 0;
+  for (const token of termTokens) {
+    if (queryTokens.has(token)) overlap += 1;
+  }
+  const anchorRatio = overlap / Math.max(1, termTokens.size);
+  return clamp01(1 - anchorRatio);
+}
+
+function shouldUseAggressiveRewrite({
+  expansionMode,
+  intent,
+  queryClass,
+  driftRisk,
+  associationPlan,
+}) {
+  if (!SEARCH_AGGRESSIVE_REWRITE_ENABLED) return false;
+  if (String(expansionMode || '').toLowerCase() !== 'aggressive') return false;
+  if (!['mission', 'scenario', 'gift'].includes(normalizeQueryClass(queryClass))) return false;
+  if (clamp01(intent?.confidence?.overall) < 0.75) return false;
+  if (clamp01(intent?.confidence?.domain) < 0.65) return false;
+  if (clamp01(driftRisk) > 0.3) return false;
+  return Boolean(associationPlan?.applied);
+}
+
+function matchesDomainAllowlist(product, domainKey) {
+  if (!SEARCH_DOMAIN_HARD_FILTER_ENABLED) return true;
+  if (!domainKey || domainKey === 'general') return true;
+  const productDomain = inferProductDomainKey(product);
+  if (domainKey === 'pet') return productDomain === 'pet';
+  if (domainKey === 'beauty') return productDomain === 'beauty';
+  if (domainKey === 'travel') return productDomain === 'travel';
+  if (domainKey === 'hiking') return productDomain === 'hiking';
+  return true;
+}
+
+function applyDomainHardFilter(products, intent, rawQuery) {
+  if (!SEARCH_DOMAIN_HARD_FILTER_ENABLED) return { products: Array.isArray(products) ? products : [], dropped: 0 };
+  const list = Array.isArray(products) ? products : [];
+  const domainKey = inferSearchDomainKey(intent, rawQuery);
+  if (domainKey === 'general') return { products: list, dropped: 0 };
+  const filtered = list.filter((product) => matchesDomainAllowlist(product, domainKey));
+  return {
+    products: filtered,
+    dropped: Math.max(0, list.length - filtered.length),
+    domain_key: domainKey,
+  };
 }
 
 function normalizeStringArray(arr, maxItems, maxLen) {
@@ -1757,17 +2086,74 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     if (raw === 'aggressive') return 'aggressive';
     return 'conservative';
   };
-  const expansionMode = normalizeExpansionMode(
+  const requestedExpansionMode = normalizeExpansionMode(
     metadata?.expansion_mode ||
       payload?.search?.expansion_mode ||
       payload?.search?.expansionMode ||
       payload?.expansion_mode ||
       payload?.expansionMode,
   );
+  const queryClass = inferQueryClassFromIntentAndQuery(intent, latestUserQuery);
+  const ambiguityScorePre = computeAmbiguityScorePre(intent, queryClass);
+  const associationPlan = SEARCH_SCENARIO_ASSOCIATION_ENABLED
+    ? buildScenarioAssociationPlan({
+        query: latestUserQuery,
+        intent,
+        queryClass,
+      })
+    : {
+        applied: false,
+        blocked_reason: 'association_disabled',
+        domain_key: null,
+        scenario_key: null,
+        category_keywords: [],
+      };
+  const associationTerms = Array.isArray(associationPlan?.category_keywords)
+    ? associationPlan.category_keywords
+    : [];
+  const rewriteDriftRisk = estimateRewriteDriftRisk(latestUserQuery, associationTerms);
+  const aggressiveGatePassed = shouldUseAggressiveRewrite({
+    expansionMode: requestedExpansionMode,
+    intent,
+    queryClass,
+    driftRisk: rewriteDriftRisk,
+    associationPlan,
+  });
+  let rewriteBlockedReason = null;
+  if (requestedExpansionMode === 'aggressive' && !aggressiveGatePassed) {
+    if (!SEARCH_AGGRESSIVE_REWRITE_ENABLED) rewriteBlockedReason = 'aggressive_flag_disabled';
+    else if (!['mission', 'scenario', 'gift'].includes(queryClass)) {
+      rewriteBlockedReason = 'query_class_not_supported';
+    } else if (clamp01(intent?.confidence?.overall) < 0.75) {
+      rewriteBlockedReason = 'low_overall_confidence';
+    } else if (clamp01(intent?.confidence?.domain) < 0.65) {
+      rewriteBlockedReason = 'low_domain_confidence';
+    } else if (clamp01(rewriteDriftRisk) > 0.3) {
+      rewriteBlockedReason = 'rewrite_drift_risk_high';
+    } else if (!associationPlan?.applied) {
+      rewriteBlockedReason = String(associationPlan?.blocked_reason || 'association_plan_unavailable');
+    } else {
+      rewriteBlockedReason = 'aggressive_gate_blocked';
+    }
+  }
+  const baseExpansionMode = requestedExpansionMode === 'off' ? 'off' : 'conservative';
+  const rewriteGate = {
+    requested_mode: requestedExpansionMode,
+    mode:
+      requestedExpansionMode === 'off'
+        ? 'off'
+        : aggressiveGatePassed
+          ? 'aggressive'
+          : 'conservative',
+    blocked_reason: rewriteBlockedReason,
+    rewrite_drift_risk: clamp01(rewriteDriftRisk),
+    use_association_only: Boolean(aggressiveGatePassed),
+  };
 
   const expandedQuery = (() => {
     const q = latestUserQuery;
     if (!q) return q;
+    const expansionMode = baseExpansionMode;
     if (expansionMode === 'off') return q;
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
@@ -1779,7 +2165,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       const wantsLeash = detectLeashSignal(q);
       const wantsApparel = detectPetApparelSignal(q);
       if (wantsLeash) {
-        extra.push('dog leash', 'pet leash', 'lead', 'dog collar');
+        extra.push('dog leash', 'pet leash', 'lead', 'dog collar', 'dog harness');
         if (expansionMode === 'aggressive') {
           extra.push('training leash', 'hands free leash', 'reflective leash');
         }
@@ -1806,7 +2192,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
           extra.push('pet');
         }
         if (wantsLeash) {
-          extra.push('leash', 'collar');
+          extra.push('leash', 'collar', 'harness');
         } else if (wantsHarness) {
           extra.push('leash');
           if (expansionMode === 'aggressive') {
@@ -1909,7 +2295,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	      if (lang === 'es') extra.push('pincel de sombra', 'pincel difuminador', 'pincel delineador');
 	      if (lang === 'fr') extra.push('pinceau fard à paupières', 'pinceau estompeur', 'pinceau eye-liner');
 	      if (lang === 'ja') extra.push('アイシャドウブラシ', 'ブレンディングブラシ', 'アイライナーブラシ', '下まぶた');
-	    } else if (intent?.primary_domain === 'beauty' && scenario === 'beauty_tools') {
+	      } else if (intent?.primary_domain === 'beauty' && scenario === 'beauty_tools') {
 	      if (expansionMode === 'aggressive') {
 	        extra.push(
 	          'makeup tools',
@@ -1926,7 +2312,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	        if (lang === 'fr') extra.push('pinceaux', 'éponge maquillage', 'houppette');
 	        if (lang === 'ja') extra.push('メイクブラシ', 'ブラシセット', 'メイクスポンジ', 'パフ');
 	      } else {
-	        extra.push('makeup brush', 'foundation brush', 'powder brush');
+	        extra.push('makeup tools', 'makeup brush', 'foundation brush', 'powder brush');
 	        if (lang === 'zh') extra.push('化妆刷', '粉底刷');
 	        if (lang === 'es') extra.push('brochas');
 	        if (lang === 'fr') extra.push('pinceaux');
@@ -1961,6 +2347,18 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     return combined.length > maxCombinedLength ? combined.slice(0, maxCombinedLength).trim() : combined;
   })();
 
+  const expandedWithAssociation = (() => {
+    if (!aggressiveGatePassed || !associationTerms.length) return expandedQuery;
+    const rawParts = [expandedQuery, ...associationTerms]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    if (!rawParts.length) return expandedQuery;
+    const deduped = Array.from(new Set(rawParts.join(' ').split(/\s+/).map((token) => token.trim()).filter(Boolean)));
+    const candidate = deduped.join(' ').trim();
+    const maxCombinedLength = 240;
+    return candidate.length > maxCombinedLength ? candidate.slice(0, maxCombinedLength).trim() : candidate;
+  })();
+
   const adjustedPayload = {
     ...(payload || {}),
     user: {
@@ -1970,15 +2368,21 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     search: {
       ...topLevelSearchCompat,
       ...(payload?.search || {}),
-      ...(expandedQuery ? { query: expandedQuery } : {}),
+      ...(expandedWithAssociation ? { query: expandedWithAssociation } : {}),
     },
   };
 
   const expansionMeta = {
-    mode: expansionMode,
+    mode: rewriteGate.mode,
+    strategy_version: STRATEGY_VERSION,
     raw_query: latestUserQuery,
-    expanded_query: expandedQuery,
-    applied: Boolean(expandedQuery && String(expandedQuery) !== String(latestUserQuery)),
+    expanded_query: expandedWithAssociation,
+    applied: Boolean(expandedWithAssociation && String(expandedWithAssociation) !== String(latestUserQuery)),
+    query_class: queryClass,
+    rewrite_gate: rewriteGate,
+    association_plan: associationPlan,
+    ambiguity_score_pre: ambiguityScorePre,
+    external_fill_gated: SEARCH_EXTERNAL_FILL_GATED,
   };
 
   return { intent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
@@ -2041,6 +2445,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (!skipConstraintReorder) {
     filtered = reorderProductsForConstraints(filtered, intent, rawQuery);
   }
+  const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery);
+  filtered = Array.isArray(domainFilterResult.products) ? domainFilterResult.products : [];
   let diversityDebug = null;
   if (shouldApplyBeautyDiversity(intent, rawQuery)) {
     const diversityResult = applyBeautyDiversityPolicy(filtered, {
@@ -2077,11 +2483,62 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       }
     }
   }
-  const after = filtered.length;
+  let after = filtered.length;
 
-  // By default, keep ordering. LLM rerank (optional) can be added later.
+  const queryClass = inferQueryClassFromIntentAndQuery(intent, rawQuery);
+  const ambiguityScorePre = Number.isFinite(Number(metadata?.ambiguity_score_pre))
+    ? clamp01(Number(metadata.ambiguity_score_pre))
+    : computeAmbiguityScorePre(intent, queryClass);
+  const baselineStats = computeMatchStats(filtered, intent, { rawQuery });
+  const ambiguityScorePost = computeAmbiguityScorePost({
+    ambiguityPre: ambiguityScorePre,
+    products: filtered,
+    rawQuery,
+    intent,
+    queryClassInput: queryClass,
+  });
+
+  const ambiguitySensitiveClass = isAmbiguitySensitiveQueryClass(queryClass);
+  const clarifyEligible =
+    SEARCH_AMBIGUITY_GATE_ENABLED &&
+    SEARCH_CLARIFY_ON_MEDIUM_AMBIGUITY &&
+    ambiguitySensitiveClass;
+  const strictEmptyByAmbiguity =
+    SEARCH_AMBIGUITY_GATE_ENABLED &&
+    ambiguitySensitiveClass &&
+    ambiguityScorePre > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
+    ambiguityScorePost > AMBIGUITY_THRESHOLD_STRICT_EMPTY &&
+    (!baselineStats.has_good_match || filtered.length === 0);
+  const keepProductsForDirectedClass =
+    filtered.length > 0 && ['mission', 'scenario', 'gift'].includes(queryClass);
+  const clarifyByAmbiguity =
+    clarifyEligible &&
+    !strictEmptyByAmbiguity &&
+    !keepProductsForDirectedClass &&
+    ambiguityScorePost > AMBIGUITY_THRESHOLD_CLARIFY &&
+    (!baselineStats.has_good_match ||
+      queryClass === 'exploratory' ||
+      queryClass === 'non_shopping' ||
+      ambiguityScorePre > AMBIGUITY_THRESHOLD_CLARIFY);
+
+  let clarification = null;
+  let finalDecision = 'products_returned';
+  if (strictEmptyByAmbiguity) {
+    filtered = [];
+    finalDecision = 'strict_empty';
+  } else if (clarifyByAmbiguity) {
+    clarification = buildClarification({
+      queryClass,
+      intent,
+      language: intent?.language,
+    });
+    filtered = [];
+    finalDecision = 'clarify';
+  }
+  after = filtered.length;
+
   let stats = computeMatchStats(filtered, intent, { rawQuery });
-  if (toolRec?.stats) {
+  if (toolRec?.stats && finalDecision === 'products_returned') {
     stats = {
       ...stats,
       has_good_match: Boolean(toolRec.stats.has_good_match),
@@ -2111,6 +2568,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (diversityDebug?.reason === 'beauty_non_tool_min_not_met') {
     reasonCodes.add('BEAUTY_NON_TOOL_MIN_NOT_MET');
   }
+  if (strictEmptyByAmbiguity) reasonCodes.add('AMBIGUITY_STRICT_EMPTY');
+  if (clarifyByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY');
+  if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
 
   const augmented = setResponseProductList(response, key, filtered);
   const filtersApplied = buildFiltersApplied(intent);
@@ -2132,6 +2592,15 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               ...(existingRouteDebug?.policy || {}),
               ...(policyDebug ? { filter_debug: policyDebug } : {}),
               ...(diversityDebug ? { diversity: diversityDebug } : {}),
+              ambiguity: {
+                score_pre: ambiguityScorePre,
+                score_post: ambiguityScorePost,
+                clarify_triggered: Boolean(clarification),
+                strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
+                query_class: queryClass,
+                domain_filter_dropped: Number(domainFilterResult?.dropped || 0),
+                domain_filter_key: domainFilterResult?.domain_key || null,
+              },
             },
           },
         }
@@ -2295,6 +2764,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   const reply = toolFirstReply
     ? toolFirstReply
+    : clarification
+      ? `${clarification.question}\n${(clarification.options || []).map((option, index) => `${index + 1}) ${option}`).join('\n')}`
     : shouldOverrideReply
       ? buildReply(intent, stats.match_tier, Array.from(reasonCodes), {
           creatorName: metadata?.creator_name || metadata?.creatorName || null,
@@ -2314,7 +2785,35 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 
   return {
     ...augmented,
-    ...(mergedMetadata !== existingMeta ? { metadata: mergedMetadata } : {}),
+    ...(mergedMetadata !== existingMeta
+      ? {
+          metadata: {
+            ...mergedMetadata,
+            strategy_version: STRATEGY_VERSION,
+            search_decision: {
+              query_class: queryClass,
+              ambiguity_score_pre: ambiguityScorePre,
+              ambiguity_score_post: ambiguityScorePost,
+              clarify_triggered: Boolean(clarification),
+              strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
+              final_decision: finalDecision,
+            },
+          },
+        }
+      : {
+          metadata: {
+            ...(augmented?.metadata && typeof augmented.metadata === 'object' ? augmented.metadata : {}),
+            strategy_version: STRATEGY_VERSION,
+            search_decision: {
+              query_class: queryClass,
+              ambiguity_score_pre: ambiguityScorePre,
+              ambiguity_score_post: ambiguityScorePost,
+              clarify_triggered: Boolean(clarification),
+              strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
+              final_decision: finalDecision,
+            },
+          },
+        }),
     policy_version: POLICY_VERSION,
     reply,
     intent,
@@ -2323,6 +2822,15 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     has_good_match: stats.has_good_match,
     match_tier: stats.match_tier,
     reason_codes: Array.from(reasonCodes),
+    ...(clarification
+      ? {
+          clarification: {
+            question: clarification.question,
+            options: clarification.options,
+            reason_code: clarification.reason_code,
+          },
+        }
+      : {}),
     ...(toolRec?.tool_kits ? { tool_kits: toolRec.tool_kits } : {}),
     ...(toolRec?.user_summary ? { user_summary: toolRec.user_summary } : {}),
     ...(toolRec?.follow_up_questions ? { follow_up_questions: toolRec.follow_up_questions } : {}),

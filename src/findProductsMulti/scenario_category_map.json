@@ -1,0 +1,29 @@
+{
+  "beauty": {
+    "date": ["foundation", "concealer", "mascara", "lipstick", "setting spray"],
+    "business_trip": ["travel skincare", "cleanser", "moisturizer", "sunscreen", "lip balm"],
+    "travel": ["travel skincare", "mini cleanser", "serum", "sunscreen", "lip balm"],
+    "general": ["makeup", "foundation", "eyeshadow", "lipstick", "skincare"],
+    "default": ["makeup", "foundation", "mascara", "lipstick"]
+  },
+  "pet": {
+    "walk": ["dog leash", "dog harness", "pet collar", "waste bag dispenser"],
+    "hiking": ["dog harness", "dog leash", "pet outdoor gear", "dog raincoat"],
+    "travel": ["pet carrier", "pet leash", "pet water bottle", "pet travel accessories"],
+    "default": ["pet leash", "pet harness", "pet apparel"]
+  },
+  "travel": {
+    "business_trip": ["packing cubes", "toiletry bag", "travel adapter", "carry-on organizer"],
+    "travel": ["luggage", "travel accessories", "packing cubes", "toiletry bottles"],
+    "default": ["travel accessories", "packing cubes", "toiletry bag"]
+  },
+  "hiking": {
+    "hiking": ["hiking jacket", "trekking shoes", "backpack", "water bottle", "trekking poles"],
+    "camping": ["camping gear", "outdoor jacket", "backpack", "hydration pack"],
+    "default": ["hiking jacket", "backpack", "outdoor gear"]
+  },
+  "default": {
+    "gift": ["gift set", "popular picks", "top rated"],
+    "default": ["popular products", "best sellers"]
+  }
+}

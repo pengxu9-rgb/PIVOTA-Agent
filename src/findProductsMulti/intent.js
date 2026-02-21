@@ -14,6 +14,16 @@ const DomainEnum = z.enum([
 ]);
 const TargetTypeEnum = z.enum(['human', 'toy', 'pet', 'unknown']);
 const AgeGroupEnum = z.enum(['adult', 'teen', 'kid', 'baby', 'all', 'unknown']);
+const QueryClassEnum = z.enum([
+  'lookup',
+  'category',
+  'attribute',
+  'mission',
+  'scenario',
+  'gift',
+  'exploratory',
+  'non_shopping',
+]);
 
 const PivotaIntentV1Zod = z
   .object({
@@ -95,6 +105,7 @@ const PivotaIntentV1Zod = z
         ignored_queries: z.array(z.string().max(80)).max(5).optional(),
       })
       .strict(),
+    query_class: QueryClassEnum.optional(),
   })
   .strict();
 
@@ -297,6 +308,14 @@ const BROWSE_SIGNALS_EN = [
   'show me something',
   'surprise me',
 ];
+const SCENARIO_SIGNALS_ZH = ['约会', '約會', '通勤', '上班', '面试', '面試', '露营', '露營', '登山', '徒步', 'hiking', '出差', '旅行', '旅游'];
+const SCENARIO_SIGNALS_EN = ['date', 'date night', 'commute', 'interview', 'camping', 'hiking', 'travel', 'business trip'];
+const MISSION_SIGNALS_ZH = ['要买', '要買', '需要', '清单', '清單', '准备', '準備', '带什么', '帶什麼', '买什么', '買什麼'];
+const MISSION_SIGNALS_EN = ['need to buy', 'checklist', 'what should i buy', 'what to bring', 'starter kit'];
+const GIFT_SIGNALS_ZH = ['送礼', '送禮', '送朋友', '送女朋友', '送男朋友', '礼物', '禮物'];
+const GIFT_SIGNALS_EN = ['gift', 'for my girlfriend', 'for my boyfriend', 'for my friend', 'birthday present'];
+const NON_SHOPPING_SIGNALS_ZH = ['怎么用', '怎麼用', '教程', '教我', '退货', '退貨', '售后', '售後', '攻略'];
+const NON_SHOPPING_SIGNALS_EN = ['how to', 'tutorial', 'guide', 'return policy', 'refund policy', 'after sales'];
 
 const LINGERIE_SIGNALS_ZH = ['内衣', '性感内衣', '文胸', '胸罩', '丁字裤', '情趣', '情趣内衣', '成人用品'];
 const LINGERIE_SIGNALS_EN = ['lingerie', 'underwear', 'bra', 'panties', 'panty', 'thong', 'sexy lingerie'];
@@ -848,6 +867,64 @@ function buildNoResultClarifiers(language, options = {}) {
   ];
 }
 
+function classifyQueryClass({
+  latest,
+  scenarioName,
+  categoryRequired,
+  budget,
+  hasBeautyBrandOrProductSignalLocal,
+  hasOuterwearSignal,
+  hasPetSignal,
+  hasLingerieSignal,
+  hasWomenClothingSignal,
+  isBrowse,
+  isGreeting,
+  isChitchat,
+}) {
+  const text = String(latest || '');
+  const lower = text.toLowerCase();
+  const hasLookupToken =
+    /\b[a-z]{1,6}\d{2,}\b/i.test(text) ||
+    /\b(sku|model|型号|型號)\b/i.test(text) ||
+    hasBeautyBrandOrProductSignalLocal;
+  const hasGiftSignal =
+    includesAny(text, GIFT_SIGNALS_ZH) || includesAny(text, GIFT_SIGNALS_EN);
+  const hasMissionSignal =
+    includesAny(text, MISSION_SIGNALS_ZH) || includesAny(text, MISSION_SIGNALS_EN);
+  const hasScenarioSignal =
+    includesAny(text, SCENARIO_SIGNALS_ZH) || includesAny(text, SCENARIO_SIGNALS_EN);
+  const hasNonShoppingSignal =
+    includesAny(text, NON_SHOPPING_SIGNALS_ZH) || includesAny(text, NON_SHOPPING_SIGNALS_EN);
+  const hasAttributeSignal =
+    Boolean(budget) ||
+    /预算|預算|以内|以內|以上|至少|不超过|不超過|无香|無香|防水|防风|防風|size|color|material|budget|under|above|at least|waterproof|windproof|fragrance[-\s]?free/i.test(
+      lower,
+    );
+  const hasExploratorySignal =
+    isBrowse ||
+    /随便|隨便|whatever|anything|surprise me|random/i.test(lower);
+
+  if (hasNonShoppingSignal && !hasLookupToken && !hasAttributeSignal) return 'non_shopping';
+  if (hasGiftSignal) return 'gift';
+  if (hasLookupToken && !hasMissionSignal && !hasScenarioSignal) return 'lookup';
+  if (hasAttributeSignal && !hasMissionSignal && !hasScenarioSignal) return 'attribute';
+  if (hasMissionSignal) return 'mission';
+  if (hasScenarioSignal) return 'scenario';
+  if (hasExploratorySignal || scenarioName === 'browse' || scenarioName === 'discovery') {
+    return isGreeting || isChitchat ? 'non_shopping' : 'exploratory';
+  }
+  if (
+    categoryRequired.length > 0 ||
+    hasOuterwearSignal ||
+    hasPetSignal ||
+    hasLingerieSignal ||
+    hasWomenClothingSignal
+  ) {
+    return 'category';
+  }
+  return 'exploratory';
+}
+
 function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_messages = []) {
   const latest = String(latest_user_query || '').trim();
   const language = detectLanguage(latest);
@@ -1254,6 +1331,20 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
   const overall = Math.max(0, Math.min(1, (confidenceDomain + confidenceTarget + confidenceCategory) / 3));
 
   const budget = parseBudgetToPriceConstraint(latest);
+  const queryClass = classifyQueryClass({
+    latest,
+    scenarioName,
+    categoryRequired,
+    budget,
+    hasBeautyBrandOrProductSignalLocal,
+    hasOuterwearSignal,
+    hasPetSignal,
+    hasLingerieSignal,
+    hasWomenClothingSignal,
+    isBrowse,
+    isGreeting,
+    isChitchat,
+  });
 
   const intent = {
     intent_version: INTENT_VERSION,
@@ -1315,6 +1406,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
       ...(useHistory ? { used_queries: used } : {}),
       ...(!useHistory ? { ignored_queries: ignored } : {}),
     },
+    query_class: queryClass,
   };
 
   return PivotaIntentV1Zod.parse(intent);
@@ -1329,4 +1421,5 @@ module.exports = {
   EYE_SHADOW_BRUSH_SIGNALS_ZH,
   EYE_SHADOW_BRUSH_SIGNALS_EN,
   INTENT_VERSION,
+  QueryClassEnum,
 };
