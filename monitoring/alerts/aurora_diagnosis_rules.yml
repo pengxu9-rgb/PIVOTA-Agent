@@ -202,3 +202,48 @@ groups:
           summary: "Chat proxy fallback rate elevated"
           description: "proxy.fallback_rate stayed above 5%. Check client /api/chat proxy path and BFF availability."
           runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraRecoTimeoutDegradedRateHigh
+        expr: |
+          aurora:skin_reco_request_rate:15m > 0.02
+          and
+          aurora_skin_reco_timeout_degraded_rate > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Reco timeout-degraded rate elevated"
+          description: "reco timeout_degraded_rate stayed above 1%. Check upstream p95/p99 latency and transient network failures."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraAnalysisTimeoutDegradedRateHigh
+        expr: |
+          increase(aurora_skin_flow_total{stage="analysis_request",outcome="hit"}[15m]) > 20
+          and
+          aurora_skin_analysis_timeout_degraded_rate > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Analysis timeout-degraded rate elevated"
+          description: "analysis timeout_degraded_rate stayed above 1%. Check photo fetch/vision latency and upstream instability."
+          runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraRecoOutputGuardFallbackRateHigh
+        expr: |
+          aurora:skin_reco_request_rate:15m > 0.02
+          and
+          aurora_skin_reco_output_guard_fallback_rate > 0.001
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Reco output-guard fallback rate elevated"
+          description: "reco_output_guard_fallback_rate stayed above 0.1%. Check upstream recommendation card schema/serialization drift."
+          runbook: "docs/MONITORING_RUNBOOK.md"

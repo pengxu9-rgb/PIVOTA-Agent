@@ -67,14 +67,19 @@ Contract definition:
 - Note: this alert depends on proxy-side metrics (`aurora_chat_proxy_requests_total` / `aurora_chat_proxy_fallback_total`) being exported by the gateway runtime.
 
 11. `AuroraRecoTimeoutDegradedRateHigh`
-- Trigger: `aurora_skin_reco_timeout_degraded_rate > 0.02` with `aurora:skin_reco_request_rate:15m > 0.02` for 20m
+- Trigger: `aurora_skin_reco_timeout_degraded_rate > 0.01` with `aurora:skin_reco_request_rate:15m > 0.02` for 10m
 - Severity: `warning`
 - Meaning: reco stage is degrading too often due to budget timeout.
 
 12. `AuroraAnalysisTimeoutDegradedRateHigh`
-- Trigger: `aurora_skin_analysis_timeout_degraded_rate > 0.02` with `increase(aurora_skin_flow_total{stage="analysis_request",outcome="hit"}[15m]) > 20` for 20m
+- Trigger: `aurora_skin_analysis_timeout_degraded_rate > 0.01` with `increase(aurora_skin_flow_total{stage="analysis_request",outcome="hit"}[15m]) > 20` for 10m
 - Severity: `warning`
 - Meaning: analysis stage is degrading too often due to budget timeout.
+
+13. `AuroraRecoOutputGuardFallbackRateHigh`
+- Trigger: `aurora_skin_reco_output_guard_fallback_rate > 0.001` with `aurora:skin_reco_request_rate:15m > 0.02` for 10m
+- Severity: `warning`
+- Meaning: upstream reco payload quality drift (empty/unrenderable cards) is rising and guard fallback is being consumed too often.
 
 ## First Response Procedure
 
@@ -97,6 +102,8 @@ Contract definition:
 - Runtime/API instability: rollback recent deploy.
 - Verifier instability only: set `DIAG_GEMINI_VERIFY=false` (shadow rollback).
 - Geometry spike only: keep service up, investigate sanitizer thresholds and source geometry quality.
+- Timeout-degraded spike: verify upstream p95/p99 and connection reset rates before tightening budgets (budgets are clamped to `>=1000ms` by design).
+- Output-guard fallback spike: inspect upstream reco card schema/serialization and reco-stage contract violations.
 
 ## Sanity Gates in CI/Bench
 
