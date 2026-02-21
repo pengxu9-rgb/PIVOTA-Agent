@@ -509,13 +509,13 @@ const PRODUCT_URL_REALTIME_COMPETITOR_ASYNC_ENRICH_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_TIMEOUT_MS || 8200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 8200;
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_TIMEOUT_MS || 11000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 11000;
   return Math.max(600, Math.min(12000, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_CAP_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_TIMEOUT_CAP_MS || 9000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_TIMEOUT_CAP_MS || 11000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 11000;
   return Math.max(1200, Math.min(12000, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_QUERIES = (() => {
@@ -4863,7 +4863,7 @@ async function buildRealtimeCompetitorCandidates({
         ? (() => {
           const reserveForFollowupMs =
             plannedQueries.length > 1 && queryIdx === 0
-              ? Math.min(2200, Math.max(1200, Math.trunc(remainingMs * 0.32)))
+              ? Math.min(1800, Math.max(1200, Math.trunc(remainingMs * 0.2)))
               : 0;
           return Math.max(260, remainingMs - reserveAfterSearchMs - reserveForFollowupMs);
         })()
