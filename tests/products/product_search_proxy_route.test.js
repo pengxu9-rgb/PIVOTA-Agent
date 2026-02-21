@@ -1533,7 +1533,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('aurora semantic retry also maps copper tripeptide query to multi-peptide fallback', async () => {
+  test('aurora semantic retry maps copper tripeptide query to copper peptide fallback', async () => {
     const queryText = 'copper tripeptide serum';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
     process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
@@ -1578,12 +1578,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       .post('/agent/shop/v1/invoke', (body) => {
         const parsed = typeof body === 'string' ? JSON.parse(body) : body;
         const q = String(parsed?.payload?.search?.query || '').toLowerCase();
-        return q.includes('multi peptide') || q.includes('copper tripeptide');
+        return q.includes('copper peptide');
       })
       .reply(200, {
         status: 'success',
         success: true,
-        products: [{ product_id: 'cp_tri_hit', merchant_id: 'merch_efbc46b4619cfbdf', title: 'The Multi-Peptide Collection' }],
+        products: [{ product_id: 'cp_tri_hit', merchant_id: 'merch_efbc46b4619cfbdf', title: 'Copper Peptide Serum' }],
         total: 1,
       });
 
@@ -1601,7 +1601,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products[0]).toEqual(expect.objectContaining({ product_id: 'cp_tri_hit' }));
     expect(String(resp.body?.metadata?.fallback_strategy?.secondary_selected_query || '').toLowerCase()).toContain(
-      'copper tripeptide',
+      'copper peptide',
     );
     expect(resp.body?.metadata?.fallback_strategy?.secondary_attempt_count).toBeGreaterThanOrEqual(1);
   });
