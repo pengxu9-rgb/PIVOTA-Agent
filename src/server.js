@@ -372,6 +372,13 @@ const PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = Math.max(
     Math.max(250, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
   ),
 );
+const PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS = Math.max(
+  200,
+  Math.min(
+    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS, 450),
+    3000,
+  ),
+);
 const PROXY_SEARCH_RESOLVER_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
   1600,
@@ -754,7 +761,11 @@ function buildProxySearchResolverCacheKey({
   preferMerchants,
   searchAllMerchants,
   fetchDetail,
+  resolverTimeoutMs,
 }) {
+  const timeoutBucket = Number.isFinite(Number(resolverTimeoutMs))
+    ? Math.max(100, Math.round(Number(resolverTimeoutMs) / 50) * 50)
+    : null;
   return JSON.stringify({
     q: String(queryText || '').trim().toLowerCase(),
     lang: String(lang || '').trim().toLowerCase() || 'en',
@@ -763,6 +774,7 @@ function buildProxySearchResolverCacheKey({
       : [],
     search_all_merchants: searchAllMerchants === true ? true : false,
     fetch_detail: fetchDetail === true,
+    resolver_timeout_ms_bucket: timeoutBucket,
   });
 }
 
@@ -3980,7 +3992,13 @@ function buildResolverReferenceOnlyResult({
   };
 }
 
-async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, fetchDetail = true }) {
+async function queryResolveSearchFallback({
+  queryParams,
+  checkoutToken,
+  reason,
+  fetchDetail = true,
+  timeoutMs,
+}) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
   if (!queryText) return null;
@@ -3993,10 +4011,14 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     ...merchantIds,
   ]);
   const searchAllMerchants = parseQueryBoolean(query.search_all_merchants || query.searchAllMerchants);
+  const effectiveResolverTimeoutMs = Math.max(
+    200,
+    Number(timeoutMs || PROXY_SEARCH_RESOLVER_TIMEOUT_MS) || PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
+  );
   const resolveOptions = {
     ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
     ...(searchAllMerchants !== undefined ? { search_all_merchants: searchAllMerchants } : {}),
-    timeout_ms: PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
+    timeout_ms: effectiveResolverTimeoutMs,
     upstream_retries: 0,
     stable_alias_short_circuit: true,
   };
@@ -4006,6 +4028,7 @@ async function queryResolveSearchFallback({ queryParams, checkoutToken, reason, 
     preferMerchants,
     searchAllMerchants,
     fetchDetail,
+    resolverTimeoutMs: effectiveResolverTimeoutMs,
   });
   const cached = getProxySearchResolverCacheEntry(resolverCacheKey);
   if (cached) return cached;
@@ -8308,6 +8331,9 @@ async function proxyAgentSearchToBackend(req, res) {
   const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
   const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
   const auroraFallbackOverrides = getAuroraFallbackOverrides(source, 'find_products_multi');
+  const resolverTimeoutMs = auroraFallbackOverrides.active
+    ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
+    : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
   const guardedQueryParams = applyShoppingCatalogQueryGuards(queryParams, source);
   const resolverFirstMetadata = source ? { source } : null;
   const traceId = randomUUID();
@@ -8403,6 +8429,7 @@ async function proxyAgentSearchToBackend(req, res) {
         queryParams: guardedQueryParams,
         checkoutToken,
         reason: 'resolver_first',
+        timeoutMs: resolverTimeoutMs,
         }),
         FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS,
         'resolver_stage',
@@ -8551,6 +8578,7 @@ async function proxyAgentSearchToBackend(req, res) {
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_primary',
+            timeoutMs: resolverTimeoutMs,
           });
           if (
             resolverFallback &&
@@ -8807,6 +8835,7 @@ async function proxyAgentSearchToBackend(req, res) {
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_exception',
+            timeoutMs: resolverTimeoutMs,
           });
           resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
           if (
@@ -13901,6 +13930,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 },
                 checkoutToken,
                 reason: 'resolver_after_cache_miss',
+                timeoutMs: isAuroraSource(source)
+                  ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
+                  : PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
               });
               if (
                 resolverFallback &&
@@ -14821,6 +14853,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
     const resolverQueryParams = resolverQueryText ? { ...queryParams, query: resolverQueryText } : queryParams;
     const auroraFallbackOverrides = getAuroraFallbackOverrides(metadata?.source, operation);
+    const resolverTimeoutMs = auroraFallbackOverrides.active
+      ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
+      : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
     const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation,
       metadata,
@@ -14833,6 +14868,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           queryParams: resolverQueryParams,
           checkoutToken,
           reason: 'resolver_first',
+          timeoutMs: resolverTimeoutMs,
         });
         if (
           resolverFirstResult &&
@@ -15054,6 +15090,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryParams: resolverQueryParams,
                 checkoutToken,
                 reason: 'resolver_after_exception',
+                timeoutMs: resolverTimeoutMs,
               });
               if (
                 resolverFallback &&
@@ -15343,6 +15380,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               checkoutToken,
               reason: 'resolver_after_primary',
+              timeoutMs: resolverTimeoutMs,
             });
             if (
               resolverFallback &&
