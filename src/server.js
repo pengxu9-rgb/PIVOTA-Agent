@@ -3548,6 +3548,7 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
 
 async function invokeFindProductsMultiFallbackOnce({
   url,
+  searchUrl,
   payload,
   checkoutToken,
   requestSource,
@@ -3556,38 +3557,55 @@ async function invokeFindProductsMultiFallbackOnce({
   fallbackSource,
   relevanceQuery,
   attemptNo,
+  useSearchEndpoint = false,
 }) {
   const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
-  const requestBody = {
-    operation: 'find_products_multi',
-    payload,
-    metadata: {
-      source: preserveAuroraSource
-        ? normalizedRequestSource
-        : fallbackSource || 'agent_search_proxy_fallback',
-      ...(normalizedRequestSource ? { request_source: normalizedRequestSource } : {}),
-      trigger_reason: triggerReason || 'unknown',
-      proxy_fallback_source: 'agent_search_proxy_fallback',
-      proxy_fallback_attempt: Number(attemptNo || 1),
-    },
+  const requestSourceValue = preserveAuroraSource
+    ? normalizedRequestSource
+    : fallbackSource || 'agent_search_proxy_fallback';
+  const requestHeaders = {
+    ...(checkoutToken
+      ? { 'X-Checkout-Token': checkoutToken }
+      : {
+          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+        }),
   };
+  const searchPayload = payload?.search && typeof payload.search === 'object' ? payload.search : {};
 
-  const resp = await axios({
-    method: 'POST',
-    url,
-    data: requestBody,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(checkoutToken
-        ? { 'X-Checkout-Token': checkoutToken }
-        : {
-            ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-            ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-          }),
-    },
-    timeout: PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
-    validateStatus: () => true,
-  });
+  const resp = useSearchEndpoint
+    ? await axios({
+        method: 'GET',
+        url: searchUrl,
+        params: {
+          ...searchPayload,
+          source: requestSourceValue,
+        },
+        headers: requestHeaders,
+        timeout: PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+        validateStatus: () => true,
+      })
+    : await axios({
+        method: 'POST',
+        url,
+        data: {
+          operation: 'find_products_multi',
+          payload,
+          metadata: {
+            source: requestSourceValue,
+            ...(normalizedRequestSource ? { request_source: normalizedRequestSource } : {}),
+            trigger_reason: triggerReason || 'unknown',
+            proxy_fallback_source: 'agent_search_proxy_fallback',
+            proxy_fallback_attempt: Number(attemptNo || 1),
+          },
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          ...requestHeaders,
+        },
+        timeout: PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+        validateStatus: () => true,
+      });
 
   const normalized = normalizeAgentProductsListResponse(resp.data, {
     limit: parseQueryNumber(payload?.search?.limit ?? payload?.search?.page_size),
@@ -3622,6 +3640,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   const fallbackSource = String(payload?.metadata?.source || '').trim();
 
   const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const searchUrl = `${PIVOTA_API_BASE}/agent/v1/products/search`;
   const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
   const preserveAuroraSource =
     PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
@@ -3649,16 +3668,19 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
               query: queryText,
             },
           };
+    const useSearchEndpoint = isAuroraSemanticRetry && i > 0;
     const attempt = await invokeFindProductsMultiFallbackOnce({
       url,
+      searchUrl,
       payload: attemptPayload,
       checkoutToken,
       requestSource: normalizedRequestSource,
       triggerReason: reason,
       preserveAuroraSource,
       fallbackSource,
-      relevanceQuery: baseQueryText,
+      relevanceQuery: queryText,
       attemptNo: i + 1,
+      useSearchEndpoint,
     });
 
     attempts.push({
