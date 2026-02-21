@@ -2751,14 +2751,26 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
       : {};
   if (!isCatalogGuardSource(source)) return params;
   const isAurora = isAuroraSource(source);
+  const explicitAllowExternalSeed = parseQueryBoolean(
+    params.allow_external_seed ?? params.allowExternalSeed,
+  );
+  const explicitFastMode = parseQueryBoolean(params.fast_mode ?? params.fastMode);
+  const explicitExternalSeedStrategy = firstQueryParamValue(
+    params.external_seed_strategy ?? params.externalSeedStrategy,
+  );
+  const allowExternalSeed =
+    explicitAllowExternalSeed !== undefined
+      ? explicitAllowExternalSeed
+      : (isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true);
+  const externalSeedStrategy =
+    explicitExternalSeedStrategy ||
+    (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first');
   return {
     ...params,
-    allow_external_seed: isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true,
+    allow_external_seed: allowExternalSeed,
     allow_stale_cache: false,
-    external_seed_strategy: isAurora
-      ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
-      : 'supplement_internal_first',
-    fast_mode: true,
+    external_seed_strategy: externalSeedStrategy,
+    fast_mode: explicitFastMode !== undefined ? explicitFastMode : true,
   };
 }
 

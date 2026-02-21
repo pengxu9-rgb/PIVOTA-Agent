@@ -312,6 +312,53 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('aurora source honors explicit allow_external_seed override from query params', async () => {
+    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
+    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === 'Copper peptide serum' &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.fast_mode || '') === 'true' &&
+          String(q.allow_external_seed || '') === 'false' &&
+          String(q.external_seed_strategy || '') === 'legacy'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'beauty_override_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper peptide serum',
+          },
+        ],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'Copper peptide serum',
+        source: 'aurora-bff',
+        allow_external_seed: 'false',
+        external_seed_strategy: 'legacy',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'beauty_override_1',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+  });
+
   test('aurora source does not skip secondary fallback after resolver miss', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';

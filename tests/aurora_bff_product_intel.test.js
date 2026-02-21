@@ -40,6 +40,10 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_ALLOW_EXTERNAL_SEED;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_ALLOW_EXTERNAL_SEED;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_EXTERNAL_SEED_STRATEGY;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.AURORA_DECISION_BASE_URL;
     nock.cleanAll();
@@ -213,6 +217,49 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const urls = __internal.buildRecoCatalogSearchBaseUrlCandidates();
     expect(urls[0]).toBe('http://127.0.0.1:3999');
     expect(urls).toContain('https://web-production-fedb.up.railway.app');
+  });
+
+  test('catalog search forwards explicit external-seed controls to upstream search query', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'false';
+
+    nock('http://catalog-primary.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === 'peptide serum' &&
+          String(q.allow_external_seed || '') === 'false' &&
+          String(q.external_seed_strategy || '') === 'legacy' &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_explicit_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            brand: 'Alt Brand',
+            name: 'Alt Serum',
+            display_name: 'Alt Brand Alt Serum',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      timeoutMs: 1200,
+      allowExternalSeed: false,
+      externalSeedStrategy: 'legacy',
+      fastMode: true,
+      logger: { warn: jest.fn(), info: jest.fn() },
+    });
+
+    expect(out.ok).toBe(true);
+    expect(Array.isArray(out.products)).toBe(true);
+    expect(out.products[0].product_id).toBe('comp_explicit_1');
   });
 
   test('catalog search fails over to secondary source on repeated primary empty results', async () => {
