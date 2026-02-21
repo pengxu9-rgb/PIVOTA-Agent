@@ -16490,6 +16490,7 @@ function coerceRecoItemForUi(item, { lang } = {}) {
 }
 
 const LOW_CONF_TREATMENT_TOKEN_RE = /\b(treatment|retinol|retinoid|retinal|tretinoin|adapalene|exfoliant|chemical peel|aha|bha|pha|glycolic|salicylic|mandelic|lactic)\b|(?:视黄醇|阿达帕林|维a|果酸|水杨酸|杏仁酸|乳酸|焕肤|去角质|刷酸)/i;
+const MEDIUM_CONFIDENCE_UPPER_BOUND = 0.75;
 
 function isTreatmentLikeRecommendationForLowConfidence(item) {
   const base = isPlainObject(item) ? item : null;
@@ -16565,6 +16566,197 @@ function applyLowConfidenceRecoGuard(payload) {
     },
     filteredCount,
     totalCount: recommendations.length,
+  };
+}
+
+function isLowOrMediumConfidenceLevelToken(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  return token === 'low' || token === 'medium';
+}
+
+function isLowOrMediumConfidenceScore(raw) {
+  const score = Number(raw);
+  if (!Number.isFinite(score)) return false;
+  return score <= MEDIUM_CONFIDENCE_UPPER_BOUND;
+}
+
+function isLowOrMediumConfidenceNode(node) {
+  if (!isPlainObject(node)) return false;
+  if (isLowOrMediumConfidenceLevelToken(node.level)) return true;
+  if (isLowOrMediumConfidenceScore(node.score)) return true;
+  return false;
+}
+
+function envelopeRequiresConservativeRecoGuard(envelope) {
+  const base = isPlainObject(envelope) ? envelope : {};
+  const cards = Array.isArray(base.cards) ? base.cards : [];
+  const events = Array.isArray(base.events) ? base.events : [];
+
+  for (const card of cards) {
+    if (!isPlainObject(card)) continue;
+    const type = String(card.type || '').trim().toLowerCase();
+    const payload = isPlainObject(card.payload) ? card.payload : {};
+    if (type === 'confidence_notice' && String(payload.reason || '').trim().toLowerCase() === 'low_confidence') {
+      return true;
+    }
+    if (isLowOrMediumConfidenceNode(payload.confidence)) return true;
+    if (isLowOrMediumConfidenceLevelToken(payload.recommendation_confidence_level)) return true;
+    if (isLowOrMediumConfidenceScore(payload.recommendation_confidence_score)) return true;
+  }
+
+  for (const evt of events) {
+    if (!isPlainObject(evt)) continue;
+    const data = isPlainObject(evt.data) ? evt.data : {};
+    if (String(evt.event_name || '').trim() === 'recos_requested') {
+      if (data.low_confidence === true) return true;
+      if (isLowOrMediumConfidenceLevelToken(data.confidence_level)) return true;
+      if (isLowOrMediumConfidenceScore(data.confidence_score)) return true;
+    }
+  }
+
+  return false;
+}
+
+function pickConfidenceNodeForConservativeRecoFallback(envelope) {
+  const base = isPlainObject(envelope) ? envelope : {};
+  const cards = Array.isArray(base.cards) ? base.cards : [];
+  for (const card of cards) {
+    if (!isPlainObject(card)) continue;
+    const payload = isPlainObject(card.payload) ? card.payload : null;
+    if (!payload) continue;
+    if (isLowOrMediumConfidenceNode(payload.confidence)) {
+      return payload.confidence;
+    }
+  }
+  return { score: LOW_CONFIDENCE_THRESHOLD, level: 'medium', rationale: ['low_medium_reco_policy'] };
+}
+
+function buildConservativeRecoNoticeCard({ ctx, language, confidence, details } = {}) {
+  return {
+    card_id: `conf_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_low_medium`,
+    type: 'confidence_notice',
+    payload: buildConfidenceNoticeCardPayload({
+      language,
+      reason: 'low_confidence',
+      confidence,
+      actions: ['upload_daylight_and_indoor_white', 'update_current_routine', 'retry_recommendations'],
+      details: Array.isArray(details) ? details : [],
+    }),
+  };
+}
+
+function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
+  const baseEnvelope = isPlainObject(envelope)
+    ? {
+        ...envelope,
+        cards: Array.isArray(envelope.cards) ? envelope.cards.slice() : [],
+        events: Array.isArray(envelope.events) ? envelope.events.slice() : [],
+      }
+    : {
+        assistant_message: null,
+        suggested_chips: [],
+        cards: [],
+        session_patch: {},
+        events: [],
+      };
+
+  if (!envelopeRequiresConservativeRecoGuard(baseEnvelope)) {
+    return { envelope: baseEnvelope, applied: false, filteredCount: 0, totalCount: 0, fallbackApplied: false };
+  }
+
+  const nextCards = [];
+  let filteredCount = 0;
+  let totalCount = 0;
+  for (const card of baseEnvelope.cards) {
+    if (!isPlainObject(card)) {
+      nextCards.push(card);
+      continue;
+    }
+    const payload = isPlainObject(card.payload) ? card.payload : null;
+    if (!payload || !Array.isArray(payload.recommendations)) {
+      nextCards.push(card);
+      continue;
+    }
+
+    const guarded = applyLowConfidenceRecoGuard(payload);
+    filteredCount += guarded.filteredCount;
+    totalCount += guarded.totalCount;
+
+    const nextPayload = guarded.payload;
+    const nextRecs = Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations : [];
+    const nextCard = {
+      ...card,
+      payload: nextPayload,
+      ...(guarded.filteredCount > 0
+        ? {
+            field_missing: mergeFieldMissing(card.field_missing, [
+              { field: 'recommendations', reason: 'low_confidence_treatment_filtered' },
+            ]),
+          }
+        : {}),
+    };
+
+    if (nextRecs.length > 0) {
+      nextCards.push(nextCard);
+      continue;
+    }
+    const cardType = String(card.type || '').trim().toLowerCase();
+    if (cardType !== 'recommendations') nextCards.push(nextCard);
+  }
+
+  if (filteredCount <= 0) {
+    return { envelope: baseEnvelope, applied: false, filteredCount: 0, totalCount, fallbackApplied: false };
+  }
+
+  let fallbackApplied = false;
+  let finalCards = nextCards;
+  const hasReco = finalCards.some((card) => {
+    if (!isPlainObject(card)) return false;
+    if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return false;
+    const payload = isPlainObject(card.payload) ? card.payload : {};
+    return Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
+  });
+
+  if (!hasReco) {
+    fallbackApplied = true;
+    const hasLowConfidenceNotice = finalCards.some((card) => {
+      if (!isPlainObject(card)) return false;
+      if (String(card.type || '').trim().toLowerCase() !== 'confidence_notice') return false;
+      const payload = isPlainObject(card.payload) ? card.payload : {};
+      return String(payload.reason || '').trim().toLowerCase() === 'low_confidence';
+    });
+    if (!hasLowConfidenceNotice) {
+      finalCards = [
+        ...finalCards,
+        buildConservativeRecoNoticeCard({
+          ctx,
+          language,
+          confidence: pickConfidenceNodeForConservativeRecoFallback(baseEnvelope),
+          details: ['low_medium_treatment_filtered_all'],
+        }),
+      ];
+    }
+  }
+
+  const nextEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice(0, 64) : [];
+  nextEvents.push(
+    makeEvent(ctx || {}, 'reco_low_medium_treatment_filtered', {
+      filtered_count: filteredCount,
+      total_count: totalCount,
+      fallback_applied: fallbackApplied,
+    }),
+  );
+
+  return {
+    envelope: {
+      ...baseEnvelope,
+      cards: finalCards,
+      events: nextEvents,
+    },
+    applied: true,
+    filteredCount,
+    totalCount,
+    fallbackApplied,
   };
 }
 
@@ -23649,9 +23841,36 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       const normalized = applyReplyTemplates({ envelope: dogfoodAugmented, ctx: templateCtx });
       const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: normalized, ctx });
+      const lowMediumFiltered = guardEligible
+        ? applyLowOrMediumRecoGuardToEnvelope({ envelope: normalized, ctx, language: ctx.lang })
+        : { envelope: normalized, applied: false, filteredCount: 0, totalCount: 0, fallbackApplied: false };
+      if (lowMediumFiltered.applied) {
+        logger?.info(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            filtered_count: lowMediumFiltered.filteredCount,
+            total_count: lowMediumFiltered.totalCount,
+            fallback_applied: lowMediumFiltered.fallbackApplied,
+          },
+          'aurora bff: low/medium confidence reco treatment filter applied',
+        );
+        logger?.info(
+          {
+            kind: 'metric',
+            name: 'aurora.skin.reco.low_medium_treatment_filtered',
+            value: lowMediumFiltered.filteredCount,
+          },
+          'metric',
+        );
+        recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_treatment_filtered', hit: true });
+        if (lowMediumFiltered.fallbackApplied) {
+          recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_notice_fallback', hit: true });
+        }
+      }
       const guarded = guardEligible
-        ? ensureNonEmptyChatCardsEnvelope({ envelope: normalized, ctx, language: ctx.lang })
-        : { envelope: normalized, applied: false, reason: null };
+        ? ensureNonEmptyChatCardsEnvelope({ envelope: lowMediumFiltered.envelope, ctx, language: ctx.lang })
+        : { envelope: lowMediumFiltered.envelope, applied: false, reason: null };
       if (guarded.applied) {
         logger?.warn(
           {
@@ -24986,6 +25205,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
         // Legacy reco mode (matcher disabled) should not be downgraded by artifact confidence.
         const lowConfidenceArtifact = AURORA_PRODUCT_MATCHER_ENABLED && artifactConfidenceLevel === 'low';
+        const artifactConfidenceScoreRaw = Number(
+          latestArtifact &&
+          latestArtifact.artifact_json &&
+          latestArtifact.artifact_json.overall_confidence &&
+          latestArtifact.artifact_json.overall_confidence.score,
+        );
+        const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
 
         if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
           try {
@@ -25148,6 +25374,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+        if (isPlainObject(payload)) {
+          payload.recommendation_confidence_level = artifactConfidenceLevel;
+          if (artifactConfidenceScore != null) payload.recommendation_confidence_score = artifactConfidenceScore;
+        }
 
         const recoAssistantBase = buildRouteAwareAssistantText({
           route: 'reco',
@@ -25270,6 +25500,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               explicit: true,
               source: matcherPayload ? 'artifact_matcher_v1' : 'upstream_fallback',
               low_confidence: lowConfidenceArtifact,
+              confidence_level: artifactConfidenceLevel,
+              ...(artifactConfidenceScore != null ? { confidence_score: artifactConfidenceScore } : {}),
             }),
           ],
         });
@@ -26501,6 +26733,8 @@ const __internal = {
   maybeBuildPhotoModulesCardForAnalysis,
   isTreatmentLikeRecommendationForLowConfidence,
   applyLowConfidenceRecoGuard,
+  envelopeRequiresConservativeRecoGuard,
+  applyLowOrMediumRecoGuardToEnvelope,
   buildEmotionalPreamble,
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,

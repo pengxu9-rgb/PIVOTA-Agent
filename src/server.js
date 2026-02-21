@@ -121,9 +121,17 @@ const getAuroraPdpPrefetchStateSnapshot =
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
-const SERVICE_GIT_SHA = String(process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || '').trim();
+const SERVICE_GIT_SHA = String(
+  process.env.AURORA_GIT_SHA ||
+  process.env.RAILWAY_GIT_COMMIT_SHA ||
+  process.env.GIT_COMMIT_SHA ||
+  process.env.SOURCE_VERSION ||
+  ''
+).trim();
+const SERVICE_GIT_SHA_SHORT = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
 const SERVICE_GIT_BRANCH = String(process.env.RAILWAY_GIT_BRANCH || process.env.GIT_BRANCH || '').trim();
 const SERVICE_NAME = String(process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'pivota-agent-gateway').trim();
+const SERVICE_BUILD_ID = SERVICE_GIT_SHA_SHORT || `started-${SERVICE_STARTED_AT}`;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PROXY_SEARCH_AURORA_API_BASE = String(
@@ -7902,8 +7910,12 @@ app.use(express.json({
 
 // Add a lightweight build marker for debugging deployments (no secrets).
 app.use((req, res, next) => {
-  if (SERVICE_GIT_SHA) res.setHeader('X-Service-Commit', SERVICE_GIT_SHA.slice(0, 12));
+  if (SERVICE_GIT_SHA_SHORT) {
+    res.setHeader('X-Service-Commit', SERVICE_GIT_SHA_SHORT);
+    res.setHeader('X-Aurora-Git-Sha', SERVICE_GIT_SHA_SHORT);
+  }
   if (SERVICE_GIT_BRANCH) res.setHeader('X-Service-Branch', SERVICE_GIT_BRANCH);
+  res.setHeader('X-Aurora-Build', SERVICE_BUILD_ID);
   res.setHeader('X-Service-Name', SERVICE_NAME);
   return next();
 });
@@ -7919,6 +7931,8 @@ app.use((req, res, next) => {
       path: req.path,
       status: res.statusCode,
       duration_ms: Date.now() - start,
+      build_id: SERVICE_BUILD_ID,
+      service_commit: SERVICE_GIT_SHA_SHORT,
     });
   });
   next();
@@ -7958,7 +7972,8 @@ const healthRouteHandler = (req, res) => {
     },
     version: {
       service: SERVICE_NAME,
-      commit: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
+      commit: SERVICE_GIT_SHA_SHORT,
+      build_id: SERVICE_BUILD_ID,
       branch: SERVICE_GIT_BRANCH || null,
       started_at: SERVICE_STARTED_AT,
     },
@@ -8027,7 +8042,8 @@ const healthRouteHandler = (req, res) => {
         api_mode: API_MODE,
         version: {
           service: SERVICE_NAME,
-          commit: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
+          commit: SERVICE_GIT_SHA_SHORT,
+          build_id: SERVICE_BUILD_ID,
           branch: SERVICE_GIT_BRANCH || null,
           started_at: SERVICE_STARTED_AT,
         },
@@ -8055,8 +8071,9 @@ app.get('/version', (req, res) => {
   return res.json({
     ok: true,
     service: SERVICE_NAME,
-    commit: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
+    commit: SERVICE_GIT_SHA_SHORT,
     full_sha: SERVICE_GIT_SHA || null,
+    build_id: SERVICE_BUILD_ID,
     branch: SERVICE_GIT_BRANCH || null,
     started_at: SERVICE_STARTED_AT,
   });

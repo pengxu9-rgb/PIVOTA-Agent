@@ -167,7 +167,8 @@
                   ],
                   "properties": {
                     "recommendations": {
-                      "type": "array"
+                      "type": "array",
+                      "description": "In low/medium confidence context, treatment/high-irritation entries must be removed by server-side policy and validator checks."
                     }
                   },
                   "additionalProperties": true

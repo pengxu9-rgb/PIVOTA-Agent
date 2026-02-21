@@ -110,6 +110,7 @@ Returned by `POST /v1/chat` (reco-gate paths) and `POST /v1/analysis/skin` (degr
 Contract rules:
 - `reason=safety_block` must not be accompanied by `recommendations` card.
 - `reason=low_confidence` must keep recommendation outputs conservative (no high-irritation treatment push).
+- Low/medium confidence context may still return recommendations, but any treatment/high-irritation item must be removed before output.
 - `reason=timeout_degraded` is a valid business downgrade path (not a transport failure).
 
 ### `routine_simulation`
@@ -246,6 +247,7 @@ Per-item enrichment (best-effort):
 Notes:
 - Do not return checkout links unless explicitly requested in the trigger.
 - Prefer external outbound/affiliate routes by default.
+- In low/medium confidence context, recommendation items must exclude treatment/high-irritation content.
 
 ### `offers_resolved`
 

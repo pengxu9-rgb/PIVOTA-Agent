@@ -231,6 +231,15 @@ function validateEnvelope({ body, schemaPath }) {
     const recLevel = normalizeLevel(payload.recommendation_confidence_level);
     if (recLevel === 'low' || recLevel === 'medium') lowOrMedium = true;
   }
+  for (const evt of events) {
+    const data = asObject(evt && evt.data) || {};
+    if (String(evt && evt.event_name || '').trim() !== 'recos_requested') continue;
+    if (data.low_confidence === true) lowOrMedium = true;
+    const evtLevel = normalizeLevel(data.confidence_level);
+    if (evtLevel === 'low' || evtLevel === 'medium') lowOrMedium = true;
+    const evtScore = toNum(data.confidence_score);
+    if (evtScore != null && evtScore <= 0.75) lowOrMedium = true;
+  }
 
   const recommendations = collectRecommendations(cards);
   let lowMedLeakCount = 0;

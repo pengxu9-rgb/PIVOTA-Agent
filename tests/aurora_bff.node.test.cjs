@@ -207,6 +207,116 @@ test('shouldApplyRecoOutputGuard: non-reco empty envelope should not trigger gua
   }
 });
 
+function looksTreatmentOrHighIrritation(rec) {
+  const row = rec && typeof rec === 'object' ? rec : {};
+  const bucket = [
+    row.step,
+    row.slot,
+    row.category,
+    row.name,
+    row.title,
+    row.sku && row.sku.name,
+    ...(Array.isArray(row.notes) ? row.notes : []),
+    ...(Array.isArray(row.reasons) ? row.reasons : []),
+  ]
+    .filter((x) => x != null)
+    .map((x) => String(x).toLowerCase())
+    .join(' | ');
+  return /\b(treatment|retinoid|retinol|retinal|tretinoin|adapalene|aha|bha|salicylic|glycolic|lactic|mandelic|peel|resurfacing)\b/.test(bucket);
+}
+
+test('applyLowOrMediumRecoGuardToEnvelope: medium confidence removes treatment/high-irritation recs', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'test', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_1',
+          type: 'recommendations',
+          payload: {
+            recommendation_confidence_level: 'medium',
+            recommendations: [
+              { step: 'Treatment', slot: 'pm', category: 'treatment', sku: { sku_id: 'sku_treat_1', name: 'Retinoid Serum' } },
+              { step: 'Moisturizer', slot: 'pm', category: 'moisturizer', sku: { sku_id: 'sku_safe_1', name: 'Barrier Cream' } },
+            ],
+          },
+        },
+      ],
+      session_patch: { next_state: 'S7_PRODUCT_RECO' },
+      events: [{ event_name: 'recos_requested', data: { explicit: true, confidence_level: 'medium' } }],
+    };
+
+    const out = __internal.applyLowOrMediumRecoGuardToEnvelope({
+      envelope,
+      ctx: { request_id: 'req_medium_filter', trace_id: 'trace_medium_filter', lang: 'EN' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.filteredCount, 1);
+    assert.equal(out.fallbackApplied, false);
+    const recoCard = Array.isArray(out.envelope.cards)
+      ? out.envelope.cards.find((c) => c && c.type === 'recommendations')
+      : null;
+    assert.ok(recoCard);
+    const recs = Array.isArray(recoCard.payload && recoCard.payload.recommendations)
+      ? recoCard.payload.recommendations
+      : [];
+    assert.equal(recs.length, 1);
+    assert.equal(recs.some((item) => looksTreatmentOrHighIrritation(item)), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to confidence_notice(low_confidence)', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'test', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_1',
+          type: 'recommendations',
+          payload: {
+            recommendation_confidence_level: 'low',
+            recommendations: [
+              { step: 'Treatment', slot: 'pm', category: 'treatment', sku: { sku_id: 'sku_treat_only', name: 'Strong Retinoid' } },
+            ],
+          },
+        },
+      ],
+      session_patch: { next_state: 'S7_PRODUCT_RECO' },
+      events: [{ event_name: 'recos_requested', data: { explicit: true, confidence_level: 'low' } }],
+    };
+
+    const out = __internal.applyLowOrMediumRecoGuardToEnvelope({
+      envelope,
+      ctx: { request_id: 'req_low_filter', trace_id: 'trace_low_filter', lang: 'EN' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.filteredCount, 1);
+    assert.equal(out.fallbackApplied, true);
+    const cards = Array.isArray(out.envelope.cards) ? out.envelope.cards : [];
+    const recoCard = cards.find((c) => c && c.type === 'recommendations');
+    const recs = Array.isArray(recoCard && recoCard.payload && recoCard.payload.recommendations)
+      ? recoCard.payload.recommendations
+      : [];
+    assert.equal(recs.length, 0);
+    const notice = cards.find((c) => c && c.type === 'confidence_notice');
+    assert.ok(notice);
+    assert.equal(notice.payload && notice.payload.reason, 'low_confidence');
+    assert.ok(Array.isArray(notice.payload && notice.payload.actions) && notice.payload.actions.length > 0);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('detectBrandAvailabilityIntent: detects Winona/IPSA availability intent (CN/EN/mixed) and rejects generic diagnosis', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

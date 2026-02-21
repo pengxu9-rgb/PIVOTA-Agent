@@ -39,6 +39,24 @@ function assertNoticeReason(cards, expectedReason) {
   assert.ok(Array.isArray(notice.payload && notice.payload.actions), 'notice.actions must exist');
 }
 
+function looksTreatmentOrHighIrritation(rec) {
+  const row = rec && typeof rec === 'object' ? rec : {};
+  const bucket = [
+    row.step,
+    row.slot,
+    row.category,
+    row.name,
+    row.title,
+    row.sku && row.sku.name,
+    ...(Array.isArray(row.notes) ? row.notes : []),
+    ...(Array.isArray(row.reasons) ? row.reasons : []),
+  ]
+    .filter((x) => x != null)
+    .map((x) => String(x).toLowerCase())
+    .join(' | ');
+  return /\b(treatment|retinoid|retinol|retinal|tretinoin|adapalene|aha|bha|salicylic|glycolic|lactic|mandelic|peel|resurfacing)\b/.test(bucket);
+}
+
 async function setupRecoHarnessWithArtifact({
   auroraChatImpl,
   uidSeed,
@@ -221,6 +239,62 @@ test('P2-1 contract: low confidence artifact yields confidence_notice(low_confid
         assertEnvelopeValid(resp.body);
         const cards = parseCards(resp.body);
         assertNoticeReason(cards, 'low_confidence');
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('P2-1 contract: medium confidence recommendations must exclude treatment/high-irritation items', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+    },
+    async () => {
+      const { harness, uid } = await setupRecoHarnessWithArtifact({
+        auroraChatImpl: async () => ({
+          answer: '{}',
+          intent: 'chat',
+          structured: {
+            recommendations: [
+              { step: 'Treatment', slot: 'pm', category: 'treatment', notes: ['retinoid'], sku: { sku_id: 'sku_treat' } },
+              { step: 'Moisturizer', slot: 'pm', category: 'moisturizer', notes: ['ceramide'], sku: { sku_id: 'sku_safe' } },
+            ],
+          },
+        }),
+        uidSeed: 'contract_medium_no_treatment',
+        artifactScore: 0.66,
+        artifactLevel: 'medium',
+        artifactSource: 'rule_based',
+        artifactUsePhoto: false,
+      });
+
+      try {
+        const resp = await harness.request
+          .post('/v1/chat')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            message: 'recommend products',
+            action: { action_id: 'chip.start.reco_products', kind: 'chip', data: {} },
+            language: 'EN',
+            session: { state: 'idle' },
+          })
+          .expect(200);
+
+        assertEnvelopeValid(resp.body);
+        const cards = parseCards(resp.body);
+        const reco = findCard(cards, 'recommendations');
+        const recs = Array.isArray(reco && reco.payload && reco.payload.recommendations)
+          ? reco.payload.recommendations
+          : [];
+        if (recs.length > 0) {
+          assert.equal(recs.some((row) => looksTreatmentOrHighIrritation(row)), false);
+        }
       } finally {
         harness.restore();
       }

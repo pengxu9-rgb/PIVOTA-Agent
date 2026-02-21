@@ -26,6 +26,77 @@ STOP_CHECK_EVERY_RESPONSES="${STOP_CHECK_EVERY_RESPONSES:-20}"
 
 TOXIPROXY_ENABLED="${TOXIPROXY_ENABLED:-false}"
 TOXIPROXY_MODES="${TOXIPROXY_MODES:-latency,timeout,reset,bandwidth}"
+ONE_SHOT="${ONE_SHOT:-false}"
+FORCE_SCENARIO="${FORCE_SCENARIO:-}"
+FORCE_LANG="${FORCE_LANG:-}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  smoke_chaos_soak_aurora_skin.sh [options]
+
+Options:
+  --base <url>         Override BASE URL
+  --out <dir>          Override OUTPUT_DIR
+  --hours <n>          Override DURATION_HOURS
+  --seconds <n>        Override DURATION_SECONDS
+  --scenario <name>    Force a single scenario: use_photo_false|photo_usable|photo_forced_fail|safety_block
+  --lang <CN|EN>       Force language
+  --once               Run exactly one scenario iteration then exit with summary
+  -h, --help           Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base)
+      BASE="${2:-}"
+      shift 2
+      ;;
+    --out|--output-dir)
+      OUTPUT_DIR="${2:-}"
+      shift 2
+      ;;
+    --hours)
+      DURATION_HOURS="${2:-}"
+      shift 2
+      ;;
+    --seconds)
+      DURATION_SECONDS="${2:-}"
+      shift 2
+      ;;
+    --scenario)
+      FORCE_SCENARIO="${2:-}"
+      shift 2
+      ;;
+    --lang)
+      FORCE_LANG="$(printf '%s' "${2:-}" | tr '[:lower:]' '[:upper:]')"
+      shift 2
+      ;;
+    --once)
+      ONE_SHOT="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -n "$FORCE_SCENARIO" && ! "$FORCE_SCENARIO" =~ ^(use_photo_false|photo_usable|photo_forced_fail|safety_block)$ ]]; then
+  echo "invalid --scenario: $FORCE_SCENARIO" >&2
+  exit 2
+fi
+if [[ -n "$FORCE_LANG" && ! "$FORCE_LANG" =~ ^(CN|EN)$ ]]; then
+  echo "invalid --lang: $FORCE_LANG (expected CN or EN)" >&2
+  exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -168,13 +239,15 @@ stop_now() {
 append_fail_sample() {
   local body_file="$1"
   local validation_file="$2"
-  local reason="$3"
+  local header_file="$3"
+  local reason="$4"
   jq -cn \
     --arg body_file "$body_file" \
     --arg validation_file "$validation_file" \
+    --arg header_file "$header_file" \
     --arg reason "$reason" \
     --arg ts "$(date +%s)" \
-    '{ts:($ts|tonumber),body_file:$body_file,validation_file:$validation_file,reason:$reason}' >>"$FAIL_INDEX_FILE"
+    '{ts:($ts|tonumber),body_file:$body_file,validation_file:$validation_file,header_file:$header_file,reason:$reason}' >>"$FAIL_INDEX_FILE"
 }
 
 check_rolling_thresholds() {
@@ -235,10 +308,11 @@ PY
 
 record_response() {
   local body_file="$1"
-  local code="$2"
-  local scenario="$3"
-  local request_phase="$4"
-  local lang="$5"
+  local header_file="$2"
+  local code="$3"
+  local scenario="$4"
+  local request_phase="$5"
+  local lang="$6"
 
   TOTAL_RESPONSES=$(( TOTAL_RESPONSES + 1 ))
   local http_5xx=0
@@ -259,6 +333,8 @@ record_response() {
   local low_med_leak=0
   local safety_with_reco=0
   local violations=""
+  local response_build_id=""
+  local response_git_sha=""
 
   if [[ -s "$val_file" ]]; then
     schema_ok="$(jq -r '.schema_ok // false' "$val_file" 2>/dev/null || echo false)"
@@ -277,6 +353,17 @@ record_response() {
     violations="validator_output_missing"
   fi
 
+  if [[ -s "$header_file" ]]; then
+    response_build_id="$(
+      tr -d '\r' <"$header_file" \
+        | awk 'BEGIN{IGNORECASE=1} /^x-aurora-build:/ {sub(/^[^:]*:[[:space:]]*/, "", $0); print; exit}'
+    )"
+    response_git_sha="$(
+      tr -d '\r' <"$header_file" \
+        | awk 'BEGIN{IGNORECASE=1} /^x-aurora-git-sha:/ {sub(/^[^:]*:[[:space:]]*/, "", $0); print; exit}'
+    )"
+  fi
+
   if (( timeout_degraded > 0 )); then TOTAL_TIMEOUT_DEGRADED=$(( TOTAL_TIMEOUT_DEGRADED + 1 )); fi
   if (( guard_fallback > 0 )); then TOTAL_GUARD_FALLBACK=$(( TOTAL_GUARD_FALLBACK + 1 )); fi
   if [[ "$schema_ok" != "true" ]]; then TOTAL_SCHEMA_VIOLATIONS=$(( TOTAL_SCHEMA_VIOLATIONS + 1 )); fi
@@ -293,10 +380,13 @@ record_response() {
     --arg lang "$lang" \
     --arg code "$code" \
     --arg body_file "$body_file" \
+    --arg header_file "$header_file" \
     --arg val_file "$val_file" \
     --arg response_ok "$response_ok" \
     --arg schema_ok "$schema_ok" \
     --arg violations "$violations" \
+    --arg response_build_id "$response_build_id" \
+    --arg response_git_sha "$response_git_sha" \
     --argjson http_5xx "$http_5xx" \
     --argjson timeout_degraded "$timeout_degraded" \
     --argjson guard_fallback "$guard_fallback" \
@@ -312,9 +402,12 @@ record_response() {
       lang: $lang,
       code: $code,
       body_file: $body_file,
+      header_file: $header_file,
       validation_file: $val_file,
       response_ok: ($response_ok=="true"),
       schema_ok: ($schema_ok=="true"),
+      response_build_id: (if ($response_build_id|length)>0 then $response_build_id else null end),
+      response_git_sha: (if ($response_git_sha|length)>0 then $response_git_sha else null end),
       violations: (if ($violations|length)>0 then ($violations|split("|")) else [] end),
       http_5xx: $http_5xx,
       timeout_degraded: $timeout_degraded,
@@ -327,12 +420,13 @@ record_response() {
     }' >>"$EVENTS_FILE"
 
   if [[ "$schema_ok" != "true" || "$response_ok" != "true" || "$http_5xx" == "1" ]]; then
-    append_fail_sample "$body_file" "$val_file" "schema_or_invariant_or_5xx"
+    append_fail_sample "$body_file" "$val_file" "$header_file" "schema_or_invariant_or_5xx"
   fi
 
   if (( TOTAL_SCHEMA_VIOLATIONS > 0 )); then stop_now "schema_violation_detected"; fi
   if (( TOTAL_EMPTY_CARDS > 0 )); then stop_now "empty_cards_detected"; fi
   if (( TOTAL_NOTICE_WITHOUT_ACTIONS > 0 )); then stop_now "notice_without_actions_detected"; fi
+  if (( TOTAL_LOW_MED_LEAK > 0 )); then stop_now "low_medium_treatment_leak_detected"; fi
 
   if (( TOTAL_RESPONSES % STOP_CHECK_EVERY_RESPONSES == 0 )); then
     check_rolling_thresholds
@@ -348,9 +442,10 @@ send_json() {
   local payload="$6"
   SEQ=$(( SEQ + 1 ))
   local out="$OUTPUT_DIR/responses/resp_${SEQ}_${scenario}_${request_phase}_${lang}.json"
+  local hdr="$OUTPUT_DIR/responses/resp_${SEQ}_${scenario}_${request_phase}_${lang}.headers"
   local code
   code="$(
-    curl -sS -m "$CURL_MAX_TIME_SEC" -o "$out" -w "%{http_code}" \
+    curl -sS -m "$CURL_MAX_TIME_SEC" -D "$hdr" -o "$out" -w "%{http_code}" \
       -X POST "${BASE}${path}" \
       -H "Content-Type: application/json" \
       -H "X-Aurora-UID: ${uid}" \
@@ -360,7 +455,7 @@ send_json() {
       --data "$payload" || true
   )"
   code="${code:-000}"
-  record_response "$out" "$code" "$scenario" "$request_phase" "$lang"
+  record_response "$out" "$hdr" "$code" "$scenario" "$request_phase" "$lang"
   printf "%s" "$out"
 }
 
@@ -371,9 +466,10 @@ send_photo_upload() {
   local request_phase="$4"
   SEQ=$(( SEQ + 1 ))
   local out="$OUTPUT_DIR/responses/resp_${SEQ}_${scenario}_${request_phase}_${lang}.json"
+  local hdr="$OUTPUT_DIR/responses/resp_${SEQ}_${scenario}_${request_phase}_${lang}.headers"
   local code
   code="$(
-    curl -sS -m "$CURL_MAX_TIME_SEC" -o "$out" -w "%{http_code}" \
+    curl -sS -m "$CURL_MAX_TIME_SEC" -D "$hdr" -o "$out" -w "%{http_code}" \
       -X POST "${BASE}/v1/photos/upload" \
       -H "X-Aurora-UID: ${uid}" \
       -H "X-Lang: ${lang}" \
@@ -382,7 +478,7 @@ send_photo_upload() {
       -F "photo=@${SAMPLE_IMAGE_PATH}" || true
   )"
   code="${code:-000}"
-  record_response "$out" "$code" "$scenario" "$request_phase" "$lang"
+  record_response "$out" "$hdr" "$code" "$scenario" "$request_phase" "$lang"
   printf "%s" "$out"
 }
 
@@ -487,19 +583,28 @@ write_summary() {
   local status="$1"
   local reason="$2"
   local r_5xx r_timeout r_guard r_schema
+  local now_ts finished_at actual_seconds actual_hours requested_hours
   r_5xx="$(calc_rate "$TOTAL_HTTP_5XX" "$TOTAL_RESPONSES")"
   r_timeout="$(calc_rate "$TOTAL_TIMEOUT_DEGRADED" "$TOTAL_RESPONSES")"
   r_guard="$(calc_rate "$TOTAL_GUARD_FALLBACK" "$TOTAL_RESPONSES")"
   r_schema="$(calc_rate "$TOTAL_SCHEMA_VIOLATIONS" "$TOTAL_RESPONSES")"
+  now_ts="$(date +%s)"
+  finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  actual_seconds=$(( now_ts - START_TS ))
+  if (( actual_seconds < 0 )); then actual_seconds=0; fi
+  actual_hours="$(awk -v s="$actual_seconds" 'BEGIN{printf "%.6f", s/3600}')"
+  requested_hours="$(awk -v s="$TOTAL_SECONDS" 'BEGIN{printf "%.6f", s/3600}')"
 
   jq -cn \
     --arg status "$status" \
     --arg reason "$reason" \
     --arg base "$BASE" \
     --arg started_at "$STARTED_AT_ISO" \
-    --arg finished_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --argjson duration_hours "$DURATION_HOURS" \
-    --argjson total_seconds "$TOTAL_SECONDS" \
+    --arg finished_at "$finished_at" \
+    --argjson duration_hours "$actual_hours" \
+    --argjson duration_hours_requested "$requested_hours" \
+    --argjson total_seconds "$actual_seconds" \
+    --argjson total_seconds_requested "$TOTAL_SECONDS" \
     --argjson base_rps "$BASE_RPS" \
     --argjson chaos_rps "$CHAOS_RPS" \
     --argjson spike_rps "$SPIKE_RPS" \
@@ -526,7 +631,9 @@ write_summary() {
       started_at: $started_at,
       finished_at: $finished_at,
       duration_hours: $duration_hours,
+      duration_hours_requested: $duration_hours_requested,
       total_seconds: $total_seconds,
+      total_seconds_requested: $total_seconds_requested,
       load_profile: {
         base_rps: $base_rps,
         chaos_rps: $chaos_rps,
@@ -594,6 +701,17 @@ if [[ "$TOXIPROXY_ENABLED" == "true" ]]; then
   "$TOXIPROXY_SETUP" >/dev/null
   "$TOXIPROXY_OFF" >/dev/null || true
   log_line "toxiproxy enabled; hourly chaos windows active"
+fi
+
+if [[ "$ONE_SHOT" == "true" ]]; then
+  CURRENT_LOAD_PHASE="single"
+  scenario="${FORCE_SCENARIO:-$(pick_scenario)}"
+  lang="${FORCE_LANG:-$(pick_lang)}"
+  log_line "single run start scenario=${scenario} lang=${lang}"
+  run_scenario_once "$scenario" "$lang"
+  write_summary "completed" ""
+  log_line "single run completed; summary_json=${SUMMARY_JSON} summary_csv=${SUMMARY_CSV}"
+  exit 0
 fi
 
 while (( $(date +%s) < END_TS )); do

@@ -19,12 +19,31 @@ function normalizeActions(payload) {
   return Array.from(new Set(actions.map((x) => String(x || '').trim()).filter(Boolean))).sort();
 }
 
+function looksTreatmentOrHighIrritation(rec) {
+  const row = rec && typeof rec === 'object' ? rec : {};
+  const bucket = [
+    row.step,
+    row.slot,
+    row.category,
+    row.name,
+    row.title,
+    row.sku && row.sku.name,
+    ...(Array.isArray(row.notes) ? row.notes : []),
+    ...(Array.isArray(row.reasons) ? row.reasons : []),
+  ]
+    .filter((x) => x != null)
+    .map((x) => String(x).toLowerCase())
+    .join(' | ');
+  return /\b(treatment|retinoid|retinol|retinal|tretinoin|adapalene|aha|bha|salicylic|glycolic|lactic|mandelic|peel|resurfacing)\b/.test(bucket);
+}
+
 function summarizeResponseCards(cards) {
   const notice = findCard(cards, 'confidence_notice');
   const reco = findCard(cards, 'recommendations');
   const recommendations = Array.isArray(reco && reco.payload && reco.payload.recommendations)
     ? reco.payload.recommendations
     : [];
+  const treatmentLeakCount = recommendations.filter((row) => looksTreatmentOrHighIrritation(row)).length;
   const reason = notice && notice.payload ? String(notice.payload.reason || '') : '';
   return {
     reason,
@@ -32,6 +51,7 @@ function summarizeResponseCards(cards) {
     hasNotice: Boolean(notice),
     hasRecommendations: recommendations.length > 0,
     recommendationsCount: recommendations.length,
+    treatmentLeakCount,
     cardTypes: cards.map((c) => String(c && c.type || '')).filter(Boolean).sort(),
   };
 }
@@ -125,19 +145,23 @@ async function runScenarioForLang(scenario, lang) {
     const uid = buildTestUid(`parity_${scenario.id}_${lang}`);
     try {
       await seedCompleteProfile(harness.request, uid, lang);
-      if (scenario.artifact === 'high') {
-        await seedDiagnosisArtifactForUid(uid, createDiagnosisArtifactFixture({ confidenceScore: 0.86, confidenceLevel: 'high' }));
-      } else if (scenario.artifact === 'medium') {
-        await seedDiagnosisArtifactForUid(uid, createDiagnosisArtifactFixture({ confidenceScore: 0.66, confidenceLevel: 'medium' }));
-      } else if (scenario.artifact === 'low') {
-        await seedDiagnosisArtifactForUid(
-          uid,
-          createDiagnosisArtifactFixture({
+      if (scenario.artifact === 'high' || scenario.artifact === 'medium' || scenario.artifact === 'low') {
+        const defaultsByLevel = {
+          high: { confidenceScore: 0.86, confidenceLevel: 'high' },
+          medium: { confidenceScore: 0.66, confidenceLevel: 'medium' },
+          low: {
             confidenceScore: 0.42,
             confidenceLevel: 'low',
             analysisSource: 'baseline_low_confidence',
             usePhoto: false,
             qualityGrade: 'degraded',
+          },
+        };
+        await seedDiagnosisArtifactForUid(
+          uid,
+          createDiagnosisArtifactFixture({
+            ...(defaultsByLevel[scenario.artifact] || {}),
+            ...(scenario.artifactFixture || {}),
           }),
         );
       }
@@ -171,6 +195,9 @@ async function runScenarioForLang(scenario, lang) {
       }
       if (scenario.expectRecommendations === false) {
         assert.equal(summary.hasRecommendations, false, `scenario=${scenario.id} lang=${lang} should not have recommendations`);
+      }
+      if (scenario.expectNoTreatmentLeak === true) {
+        assert.equal(summary.treatmentLeakCount, 0, `scenario=${scenario.id} lang=${lang} should not leak treatment/high-irritation`);
       }
       return summary;
     } finally {
@@ -255,7 +282,21 @@ test('P2-2 CN/EN parity: structure and reason remain aligned across 20 scenario 
       artifact: 'medium',
       upstreamKind: 'normal',
       useMock: true,
+      expectRecommendations: false,
+    },
+    {
+      id: 'medium_rule_based_use_photo_false_no_treatment_leak',
+      artifact: 'medium',
+      artifactFixture: {
+        confidenceScore: 0.66,
+        confidenceLevel: 'medium',
+        analysisSource: 'rule_based',
+        usePhoto: false,
+        qualityGrade: 'degraded',
+      },
+      upstreamKind: 'mixed_reco',
       expectRecommendations: true,
+      expectNoTreatmentLeak: true,
     },
   ];
 
@@ -271,5 +312,5 @@ test('P2-2 CN/EN parity: structure and reason remain aligned across 20 scenario 
     assert.equal(cn.hasNotice, en.hasNotice, `notice parity failed: ${scenario.id}`);
   }
 
-  assert.equal(runCount, 20);
+  assert.equal(runCount, scenarios.length * 2);
 });
