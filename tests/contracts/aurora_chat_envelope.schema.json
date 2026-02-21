@@ -62,6 +62,12 @@
     },
     "events": {
       "type": "array"
+    },
+    "meta": {
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "additionalProperties": false,
