@@ -75,6 +75,21 @@ function hasPetSignal(text) {
     /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/.test(lower);
 }
 
+function hasPetHarnessSignal(text) {
+  const t = String(text || '');
+  const lower = t.toLowerCase();
+  if (!t) return false;
+  return (
+    /背带|背帶|胸背|牵引|牽引|牵引绳|牽引繩|遛狗绳|狗链|狗鏈|狗链子|狗鏈子|项圈|項圈|胸背带|胸背帶|宠物背带|寵物背帶|狗绳|狗繩|犬用ハーネス|ハーネス|リード|首輪/.test(
+      t,
+    ) ||
+    /\b(harness|leash|collar|lead|no-?pull|dog\s+harness|dog\s+leash|pet\s+harness|pet\s+leash)\b/.test(
+      lower,
+    ) ||
+    /\b(arn[eé]s|correa|collier|harnais)\b/.test(lower)
+  );
+}
+
 function hasToyStrongSignal(text) {
   return includesAny(text, TOY_KEYWORDS_STRONG);
 }
@@ -107,6 +122,21 @@ function hasBeautyToolSignal(text) {
   }
   // Latin: makeup brush/sponge terms
   return /\b(makeup|cosmetic)\b/.test(lower) && /\b(brush|brushes|sponge|puff)\b/.test(lower);
+}
+
+function hasBeautyGeneralSignal(text) {
+  const t = String(text || '');
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  if (/[\u4e00-\u9fff]/.test(t)) {
+    return /化妆|化妝|妆容|妝容|彩妆|彩妝|美妆|美妝|护肤|護膚|底妆|底妝|眼妆|眼妝|唇妆|唇妝|约会妆|約會妝|出差护肤|出差護膚|旅行护肤|旅行護膚/.test(
+      t,
+    );
+  }
+  if (/[\u3040-\u30ff]/.test(t)) {
+    return /メイク|化粧|スキンケア/.test(t);
+  }
+  return /\b(makeup|cosmetic|cosmetics|beauty|skincare|skin care)\b/.test(lower);
 }
 
 function hasBeautyBrandOrProductSignal(text) {
@@ -147,14 +177,22 @@ function applyHardOverrides(latestQuery, intent) {
   // Priority rule (enforced): latest query dominates target_object decisions.
   // If user is clearly asking for pet apparel, do not let history or vague wording override it.
   if (hasPetSignal(q) && !hasToyStrongSignal(q)) {
-    const scenarioName = hasHikingSignal(q) ? 'pet_hiking' : 'pet_apparel_general';
+    const hasHarnessIntent = hasPetHarnessSignal(q);
+    const scenarioName = hasHarnessIntent
+      ? 'pet_harness'
+      : hasHikingSignal(q)
+      ? 'pet_hiking'
+      : 'pet_apparel_general';
+    const requiredCategories = hasHarnessIntent
+      ? ['pet_accessory', 'pet_harness', 'pet_leash']
+      : ['pet_apparel', 'dog_jacket', 'dog_sweater'].slice(0, 3);
     const patched = {
       ...intent,
       language,
       primary_domain: 'sports_outdoor',
       target_object: { ...(intent.target_object || {}), type: 'pet', age_group: 'all' },
       category: {
-        required: ['pet_apparel', 'dog_jacket', 'dog_sweater'].slice(0, 3),
+        required: requiredCategories,
         optional: Array.isArray(intent.category?.optional) ? intent.category.optional : [],
       },
       scenario: {
@@ -184,6 +222,8 @@ function applyHardOverrides(latestQuery, intent) {
         used: Boolean(intent.history_usage?.used),
         reason: intent.history_usage?.used
           ? intent.history_usage.reason
+          : hasHarnessIntent
+          ? 'Pet harness/leash intent detected from latest query; history not allowed to override target_object.'
           : 'Pet apparel intent detected from latest query; history not allowed to override target_object.',
       },
     };
@@ -216,6 +256,35 @@ function applyHardOverrides(latestQuery, intent) {
         reason: intent.history_usage?.used
           ? intent.history_usage.reason
           : 'Beauty tools intent detected from latest query; forcing tool-first scenario.',
+      },
+    };
+    return PivotaIntentV1Zod.parse(patched);
+  }
+
+  if (hasBeautyGeneralSignal(q)) {
+    const patched = {
+      ...intent,
+      language,
+      primary_domain: 'beauty',
+      target_object: {
+        ...(intent.target_object || {}),
+        type: 'human',
+        age_group: intent?.target_object?.age_group || 'all',
+      },
+      category: {
+        required: [],
+        optional: Array.isArray(intent?.category?.optional) ? intent.category.optional : [],
+      },
+      scenario: {
+        name: 'general',
+        signals: Array.isArray(intent?.scenario?.signals) ? intent.scenario.signals : [],
+      },
+      history_usage: {
+        ...(intent.history_usage || {}),
+        used: Boolean(intent.history_usage?.used),
+        reason: intent.history_usage?.used
+          ? intent.history_usage.reason
+          : 'Beauty intent detected from latest query; keeping non-tool beauty scenario.',
       },
     };
     return PivotaIntentV1Zod.parse(patched);
@@ -358,7 +427,12 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
 
 async function extractIntent(latest_user_query, recent_queries = [], recent_messages = []) {
   if (!isEnabled()) {
-    return extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
+    const intent = extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
+    try {
+      return applyHardOverrides(latest_user_query, intent);
+    } catch (err) {
+      return intent;
+    }
   }
   try {
     const primary = (process.env.PIVOTA_INTENT_LLM_PROVIDER || 'openai').toLowerCase();
@@ -384,7 +458,8 @@ async function extractIntent(latest_user_query, recent_queries = [], recent_mess
     }
   } catch (err) {
     // Fail-safe: never block search; fall back to deterministic extraction.
-    return extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
+    const intent = extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
+    return applyHardOverrides(latest_user_query, intent);
   }
 }
 

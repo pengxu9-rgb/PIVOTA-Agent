@@ -102,6 +102,21 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.target_object.type).toBe('human');
   });
 
+  test('date makeup query is classified as beauty general (non-tool)', () => {
+    const intent = extractIntentRuleBased('我今晚有个约会，要化妆，要推荐点商品吧？', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('general');
+    expect(intent.ambiguity.needs_clarification).toBe(false);
+  });
+
+  test('travel skincare query is classified as beauty general', () => {
+    const intent = extractIntentRuleBased('出差护肤推荐', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.scenario.name).toBe('general');
+  });
+
   test('pet min budget is prioritized in results ordering (>= $30 first)', () => {
     const intent = extractIntentRuleBased('我要送朋友，可以贵一点，30美金以上的狗狗衣服', [], []);
     expect(intent.target_object.type).toBe('pet');
@@ -644,5 +659,82 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products).toHaveLength(0);
     expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['ALL_HARD_BLOCKED']));
     expect(resp.reason_codes || []).not.toEqual(expect.arrayContaining(['TOY_ONLY_LEFT']));
+  });
+
+  test('beauty general query enforces multi-category diversity and tool cap', () => {
+    const intent = {
+      language: 'zh',
+      primary_domain: 'beauty',
+      target_object: { type: 'human', age_group: 'all', notes: '' },
+      category: { required: [], optional: [] },
+      scenario: { name: 'general', signals: [] },
+      hard_constraints: {
+        must_exclude_domains: [],
+        must_exclude_keywords: [],
+      },
+      ambiguity: { needs_clarification: false, missing_slots: [], clarifying_questions: [] },
+    };
+    const products = [
+      makeRawProduct({ id: 'tool-1', title: 'Foundation Brush Set' }),
+      makeRawProduct({ id: 'tool-2', title: 'Powder Brush Pro' }),
+      makeRawProduct({ id: 'tool-3', title: 'Contour Brush Duo' }),
+      makeRawProduct({ id: 'tool-4', title: 'Blush Brush' }),
+      makeRawProduct({ id: 'tool-5', title: 'Eye Blending Brush' }),
+      makeRawProduct({ id: 'tool-6', title: 'Makeup Sponge Puff' }),
+      makeRawProduct({ id: 'base-1', title: 'Hydrating Foundation SPF' }),
+      makeRawProduct({ id: 'eye-1', title: 'Longwear Mascara' }),
+      makeRawProduct({ id: 'lip-1', title: 'Velvet Lipstick' }),
+      makeRawProduct({ id: 'skin-1', title: 'Brightening Toner Essence' }),
+    ];
+
+    const resp = applyFindProductsMultiPolicy({
+      response: { products, reply: null },
+      intent,
+      requestPayload: { search: { query: '今晚约会妆推荐商品' } },
+      rawUserQuery: '今晚约会妆推荐商品',
+    });
+
+    const top10 = Array.isArray(resp.products) ? resp.products.slice(0, 10) : [];
+    const toolsInTop10 = top10.filter((p) => /brush|sponge|puff|化妆刷|刷具|粉扑/i.test(String(p.title || ''))).length;
+    expect(toolsInTop10).toBeLessThanOrEqual(4);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['BEAUTY_DIVERSITY_REORDERED']));
+    expect(resp.metadata?.route_debug?.policy?.diversity).toEqual(
+      expect.objectContaining({
+        applied: true,
+        category_mix_topN: expect.any(Object),
+      }),
+    );
+  });
+
+  test('beauty diversity can return strict-empty when only one category is available', () => {
+    const intent = {
+      language: 'en',
+      primary_domain: 'beauty',
+      target_object: { type: 'human', age_group: 'all', notes: '' },
+      category: { required: [], optional: [] },
+      scenario: { name: 'general', signals: [] },
+      hard_constraints: {
+        must_exclude_domains: [],
+        must_exclude_keywords: [],
+      },
+      ambiguity: { needs_clarification: false, missing_slots: [], clarifying_questions: [] },
+    };
+    const products = [
+      makeRawProduct({ id: 'tool-1', title: 'Foundation Brush Set' }),
+      makeRawProduct({ id: 'tool-2', title: 'Powder Brush Pro' }),
+      makeRawProduct({ id: 'tool-3', title: 'Contour Brush Duo' }),
+      makeRawProduct({ id: 'tool-4', title: 'Eye Blending Brush' }),
+      makeRawProduct({ id: 'tool-5', title: 'Makeup Sponge Puff' }),
+    ];
+
+    const resp = applyFindProductsMultiPolicy({
+      response: { products, reply: null },
+      intent,
+      requestPayload: { search: { query: 'date makeup kit recommendation' } },
+      rawUserQuery: 'date makeup kit recommendation',
+    });
+
+    expect(resp.products).toHaveLength(0);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET']));
   });
 });

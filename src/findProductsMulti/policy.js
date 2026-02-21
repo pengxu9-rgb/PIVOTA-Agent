@@ -4,7 +4,25 @@ const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
-const POLICY_VERSION = 'find_products_multi_policy_v37';
+const POLICY_VERSION = 'find_products_multi_policy_v38';
+const BEAUTY_DIVERSITY_ENABLED =
+  String(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_ENABLED || 'true').toLowerCase() !==
+  'false';
+const BEAUTY_DIVERSITY_TOPN = Math.max(
+  4,
+  Math.min(20, Number(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_TOPN || 10) || 10),
+);
+const BEAUTY_DIVERSITY_MIN_BUCKETS = Math.max(
+  2,
+  Math.min(5, Number(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_MIN_BUCKETS || 3) || 3),
+);
+const BEAUTY_DIVERSITY_TOOLS_MAX_RATIO = Math.max(
+  0,
+  Math.min(1, Number(process.env.FIND_PRODUCTS_MULTI_BEAUTY_TOOLS_MAX_RATIO || 0.4)),
+);
+const BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE =
+  String(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE || 'true').toLowerCase() !==
+  'false';
 
 // Feature flags / tunables for the global three-layer policy.
 const ENABLE_WEAK_TIER = process.env.FIND_PRODUCTS_MULTI_ENABLE_WEAK_TIER !== 'false';
@@ -359,6 +377,175 @@ function reorderProductsForConstraints(products, intent, rawQuery) {
     ...interleavePetHarnessAndApparel(groups[1]),
     ...interleavePetHarnessAndApparel(groups[2]),
   ];
+}
+
+function classifyBeautyBucketForDiversity(product) {
+  const text = buildProductText(product);
+  if (!text) return 'other';
+
+  const isToolLike =
+    /\b(brush|brushes|sponge|puff|applicator|curler|tweezer|tool|tools|brush set)\b/i.test(text) ||
+    /(化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|睫毛夹|睫毛夾|工具)/.test(text);
+  if (isToolLike) {
+    return 'tools';
+  }
+
+  if (
+    /\b(foundation|concealer|primer|powder|cushion|bb cream|cc cream|setting spray)\b/i.test(text) ||
+    /(粉底|遮瑕|妆前|妝前|定妆|定妝|气垫|氣墊|散粉|粉饼|粉餅)/.test(text)
+  ) {
+    return 'base_makeup';
+  }
+  if (
+    /\b(eyeshadow|eye shadow|eyeliner|mascara|brow|eyebrow)\b/i.test(text) ||
+    /(眼影|眼线|眼線|睫毛膏|眉笔|眉筆|眉粉)/.test(text)
+  ) {
+    return 'eye_makeup';
+  }
+  if (
+    /\b(lipstick|lip gloss|lip tint|lip balm|lip liner)\b/i.test(text) ||
+    /(口红|口紅|唇釉|唇膏|唇蜜|唇线|唇線)/.test(text)
+  ) {
+    return 'lip_makeup';
+  }
+  if (
+    /\b(toner|serum|essence|lotion|moisturizer|sunscreen|cleanser|cream)\b/i.test(text) ||
+    /(化妆水|化妝水|精华|精華|乳液|面霜|防晒|防曬|洁面|潔面|面膜)/.test(text)
+  ) {
+    return 'skincare';
+  }
+  return 'other';
+}
+
+function computeBeautyCategoryMixTopN(products, topN = 10) {
+  const out = {};
+  const list = Array.isArray(products) ? products.slice(0, Math.max(1, Number(topN) || 10)) : [];
+  for (const product of list) {
+    const bucket = classifyBeautyBucketForDiversity(product);
+    out[bucket] = (out[bucket] || 0) + 1;
+  }
+  return out;
+}
+
+function isBeautyLookupLikeQuery(rawQuery) {
+  const q = String(rawQuery || '').trim().toLowerCase();
+  if (!q) return false;
+  const hasBrand = /\b(ipsa|winona|fenty|tom\s*ford|nars|dior|chanel|ysl|armani)\b/.test(q) || /茵芙莎|薇诺娜|汤姆福特|圣罗兰|迪奥/.test(q);
+  const hasAvailabilityCue =
+    /\b(available|in stock|where to buy|availability)\b/.test(q) ||
+    /有货|库存|有没有|哪里买|能买|能买吗/.test(q);
+  return hasBrand && (hasAvailabilityCue || q.length <= 32);
+}
+
+function shouldApplyBeautyDiversity(intent, rawQuery) {
+  if (!BEAUTY_DIVERSITY_ENABLED) return false;
+  if (intent?.primary_domain !== 'beauty') return false;
+  if (isBeautyLookupLikeQuery(rawQuery)) return false;
+  const scenario = String(intent?.scenario?.name || '');
+  if (scenario === 'beauty_tools' || scenario === 'eye_shadow_brush') return false;
+  return true;
+}
+
+function applyBeautyDiversityPolicy(products, options = {}) {
+  const input = Array.isArray(products) ? products : [];
+  if (input.length <= 1) {
+    return {
+      products: input,
+      strict_empty: false,
+      debug: {
+        applied: false,
+        penalty_applied: false,
+        reason: 'insufficient_candidates',
+        top_n: options.topN || BEAUTY_DIVERSITY_TOPN,
+        min_buckets: options.minBuckets || BEAUTY_DIVERSITY_MIN_BUCKETS,
+        tools_max_ratio: options.toolsMaxRatio ?? BEAUTY_DIVERSITY_TOOLS_MAX_RATIO,
+        category_mix_topN: computeBeautyCategoryMixTopN(input, options.topN || BEAUTY_DIVERSITY_TOPN),
+      },
+    };
+  }
+
+  const topN = Math.max(1, Number(options.topN || BEAUTY_DIVERSITY_TOPN));
+  const minBuckets = Math.max(1, Number(options.minBuckets || BEAUTY_DIVERSITY_MIN_BUCKETS));
+  const toolsMaxRatio = Math.max(0, Math.min(1, Number(options.toolsMaxRatio ?? BEAUTY_DIVERSITY_TOOLS_MAX_RATIO)));
+  const strictEmptyOnFailure =
+    options.strictEmptyOnFailure == null
+      ? BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE
+      : Boolean(options.strictEmptyOnFailure);
+
+  const annotated = input.map((product, idx) => ({
+    product,
+    idx,
+    bucket: classifyBeautyBucketForDiversity(product),
+  }));
+  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'tools', 'other'];
+  const queues = new Map(priorityBuckets.map((bucket) => [bucket, []]));
+  for (const item of annotated) {
+    if (!queues.has(item.bucket)) queues.set(item.bucket, []);
+    queues.get(item.bucket).push(item);
+  }
+
+  const interleaved = [];
+  let remaining = annotated.length;
+  while (remaining > 0) {
+    let took = false;
+    for (const bucket of priorityBuckets) {
+      const queue = queues.get(bucket);
+      if (!queue || !queue.length) continue;
+      interleaved.push(queue.shift());
+      remaining -= 1;
+      took = true;
+      if (remaining <= 0) break;
+    }
+    if (!took) break;
+  }
+
+  const toolsCap = Math.max(0, Math.floor(topN * toolsMaxRatio));
+  const topSegment = interleaved.slice(0, topN);
+  const restSegment = interleaved.slice(topN);
+  const topTools = topSegment.filter((item) => item.bucket === 'tools');
+  const topNonTools = topSegment.filter((item) => item.bucket !== 'tools');
+  const overflowTools = topTools.slice(toolsCap);
+  const keptTools = topTools.slice(0, toolsCap);
+  const topRebalanced = topNonTools.concat(keptTools);
+  const rebalancedAnnotated = topRebalanced.concat(restSegment);
+  const reordered = rebalancedAnnotated.map((item) => item.product);
+  const orderChanged =
+    rebalancedAnnotated.length !== annotated.length ||
+    rebalancedAnnotated.some((item, idx) => item !== annotated[idx]);
+
+  const mixTopN = computeBeautyCategoryMixTopN(reordered, topN);
+  const distinctBeautyBuckets = Object.entries(mixTopN).filter(
+    ([bucket, count]) => bucket !== 'other' && Number(count || 0) > 0,
+  ).length;
+  const meetsDiversity = distinctBeautyBuckets >= minBuckets;
+  const toolsInTopN = Number(mixTopN.tools || 0);
+  const toolCapViolated = toolsInTopN > toolsCap;
+
+  const strictEmpty = strictEmptyOnFailure && !meetsDiversity;
+  const penaltyApplied = orderChanged || toolCapViolated || !meetsDiversity || overflowTools.length > 0;
+  return {
+    products: strictEmpty ? [] : reordered,
+    strict_empty: strictEmpty,
+    debug: {
+      applied: true,
+      penalty_applied: penaltyApplied,
+      reason: strictEmpty
+        ? 'beauty_diversity_not_met'
+        : toolCapViolated
+          ? 'beauty_tools_cap_enforced'
+          : orderChanged
+            ? 'beauty_diversity_reordered'
+            : 'beauty_diversity_ok',
+      top_n: topN,
+      min_buckets: minBuckets,
+      tools_max_ratio: toolsMaxRatio,
+      tools_cap: toolsCap,
+      overflow_tools_dropped: overflowTools.length,
+      category_mix_topN: mixTopN,
+      distinct_beauty_buckets: distinctBeautyBuckets,
+      strict_empty: strictEmpty,
+    },
+  };
 }
 
 function clamp01(n) {
@@ -1372,6 +1559,9 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
 
   if (isZh) {
     if (isNone) {
+      if (intent?.primary_domain === 'beauty') {
+        return '我没在当前货盘里凑出足够可靠的彩妆清单（为了避免误导，这次不展示无关商品）。你可以改成更明确的需求，比如：底妆 + 眼妆 + 唇妆（预算区间），或直接给我品牌/产品名。';
+      }
       if ((intent?.scenario?.name || '') === 'women_clothing') {
         return '我没在当前货盘里找到足够匹配的女生衣服（可能品类覆盖不足）。你可以告诉我：更想要裙子/上衣/裤子/卫衣哪一类？尺码和预算（例如 ≤$20）也可以，我再帮你更精准地筛。';
       }
@@ -1381,6 +1571,9 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
       return '我没找到足够匹配的商品（当前货盘里可能缺少相关品类）。你可以换个关键词，或告诉我预算/尺码/场景，我再帮你缩小范围。';
     }
     if (matchTier === 'weak') {
+      if (intent?.primary_domain === 'beauty') {
+        return '我找到了一些美妆候选，但还不够稳。我建议你补充 1–2 个条件：预算、肤质（油/干/混）、以及你更看重底妆/眼妆/唇妆哪两类，我会按多品类清单重排。';
+      }
       if ((intent?.target_object?.type || '') === 'pet') {
         const sizeHint = needsLargeDogSizingHelp ? '胸围/背长（cm）或常穿尺码（L/XL/XXL）' : '体型/胸围';
         return `我只找到少量勉强相关的狗狗/宠物衣服（匹配度不高），所以先不强行推荐不相关的商品。你可以补充：狗狗${sizeHint}、最低温度、是否需要防风防水，我再帮你精准筛。`;
@@ -1413,6 +1606,18 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   }
 
   if (isNone) {
+    if (intent?.primary_domain === 'beauty') {
+      if (isEs) {
+        return 'No encontré un set de belleza suficientemente consistente en el inventario actual, así que no mostraré productos irrelevantes. Prueba con requisitos más concretos (base + ojos + labios, rango de precio) o una marca/producto exacto.';
+      }
+      if (isFr) {
+        return "Je n’ai pas trouvé un panier beauté assez cohérent dans l’inventaire actuel, donc je n’affiche pas d’articles hors sujet. Donne un besoin plus précis (teint + yeux + lèvres, budget) ou une marque/produit exact.";
+      }
+      if (isJa) {
+        return '現在の在庫では、十分に一貫したビューティー候補を組めなかったため、無関係な商品は表示しません。ベース/アイ/リップの希望と予算、またはブランド名を教えてください。';
+      }
+      return "I couldn't build a reliable beauty set from current inventory, so I won't show unrelated products. Try specifying base + eye + lip needs with budget, or give an exact brand/product anchor.";
+    }
     if ((intent?.target_object?.type || '') === 'pet') {
       if (isEs) {
         return 'No encontré opciones realmente adecuadas de ropa de senderismo para tu perro/mascota en el inventario actual, así que no voy a recomendar cosas que no correspondan. Prueba con: "chaqueta para perro", "abrigo para perro", "impermeable para perro" o dime la talla de tu perro y la temperatura.';
@@ -1428,6 +1633,18 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     return "I couldn’t find solid matches for adult cold-weather outerwear in the current inventory, so I won’t recommend unrelated items. Try searching for: down jacket, hiking shell, parka, or share your lowest temperature and budget.";
   }
   if (matchTier === 'weak') {
+    if (intent?.primary_domain === 'beauty') {
+      if (isEs) {
+        return 'Encontré algunas opciones de belleza, pero la relevancia aún es débil. Dime 1–2 condiciones (presupuesto, tipo de piel, y prioridad entre base/ojos/labios) y lo reordeno con mezcla de categorías.';
+      }
+      if (isFr) {
+        return "J’ai trouvé quelques options beauté, mais la pertinence reste faible. Donne 1–2 contraintes (budget, type de peau, priorité teint/yeux/lèvres) et je réordonne en mix multi-catégories.";
+      }
+      if (isJa) {
+        return '美容候補はいくつかありますが、まだ一致度が弱めです。予算・肌質・優先（ベース/アイ/リップ）を1〜2点教えてくれれば、多カテゴリで再構成します。';
+      }
+      return 'I found a few beauty options but relevance is still weak. Share 1–2 constraints (budget, skin type, and priority among base/eye/lip) and I will rerank into a multi-category list.';
+    }
     if ((intent?.target_object?.type || '') === 'pet') {
       if (isEs) {
         return 'Solo encontré unas pocas opciones flojas para ropa de perro/mascota, así que no voy a recomendar artículos fuera de tema. Dime la talla de tu perro (pecho/espalda), la temperatura y si necesitas impermeable/cortaviento.';
@@ -1674,6 +1891,26 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	        if (lang === 'fr') extra.push('pinceaux');
 	        if (lang === 'ja') extra.push('メイクブラシ');
 	      }
+	    } else if (intent?.primary_domain === 'beauty') {
+	      const wantsSkincare =
+	        /护肤|護膚|skincare|skin\s*care|serum|toner|essence|moisturizer|cleanser|sunscreen|cream/i.test(
+	          q,
+	        );
+	      const wantsDateLook = /约会|約會|\bdate\b|\bnight\s*out\b/i.test(q);
+	      if (wantsSkincare) {
+	        extra.push('skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser');
+	        if (lang === 'zh') extra.push('护肤', '精华', '化妆水', '乳液', '面霜', '防晒');
+	        if (lang === 'es') extra.push('cuidado de la piel', 'suero', 'tónico', 'hidratante');
+	        if (lang === 'fr') extra.push('soin de la peau', 'sérum', 'tonique', 'hydratant');
+	        if (lang === 'ja') extra.push('スキンケア', '美容液', '化粧水', '乳液');
+	      } else {
+	        extra.push('makeup', 'foundation', 'concealer', 'mascara', 'lipstick');
+	        if (wantsDateLook) extra.push('date makeup', 'longwear', 'natural glow');
+	        if (lang === 'zh') extra.push('彩妆', '底妆', '眼妆', '唇妆');
+	        if (lang === 'es') extra.push('maquillaje', 'base', 'máscara', 'labial');
+	        if (lang === 'fr') extra.push('maquillage', 'fond de teint', 'mascara', 'rouge à lèvres');
+	        if (lang === 'ja') extra.push('メイク', 'ファンデーション', 'マスカラ', 'リップ');
+	      }
 	    }
 
     if (!extra.length) return q;
@@ -1763,6 +2000,17 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (!skipConstraintReorder) {
     filtered = reorderProductsForConstraints(filtered, intent, rawQuery);
   }
+  let diversityDebug = null;
+  if (shouldApplyBeautyDiversity(intent, rawQuery)) {
+    const diversityResult = applyBeautyDiversityPolicy(filtered, {
+      topN: BEAUTY_DIVERSITY_TOPN,
+      minBuckets: BEAUTY_DIVERSITY_MIN_BUCKETS,
+      toolsMaxRatio: BEAUTY_DIVERSITY_TOOLS_MAX_RATIO,
+      strictEmptyOnFailure: BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE,
+    });
+    filtered = Array.isArray(diversityResult.products) ? diversityResult.products : [];
+    diversityDebug = diversityResult.debug || null;
+  }
   const after = filtered.length;
 
   // By default, keep ordering. LLM rerank (optional) can be added later.
@@ -1792,6 +2040,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       reasonCodes.add('WEAK_RELEVANCE');
     }
   }
+  if (diversityDebug?.strict_empty) reasonCodes.add('BEAUTY_DIVERSITY_NOT_MET');
+  if (diversityDebug?.penalty_applied) reasonCodes.add('BEAUTY_DIVERSITY_REORDERED');
 
   const augmented = setResponseProductList(response, key, filtered);
   const filtersApplied = buildFiltersApplied(intent);
@@ -1802,8 +2052,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       ? existingMeta.route_debug
       : null;
   const policyDebug = filteredResult?.debug || null;
+  const shouldAttachPolicyDebug = DEBUG_STATS_ENABLED || existingRouteDebug || diversityDebug;
   const mergedMetadata =
-    DEBUG_STATS_ENABLED || existingRouteDebug
+    shouldAttachPolicyDebug
       ? {
           ...existingMeta,
           route_debug: {
@@ -1811,6 +2062,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             policy: {
               ...(existingRouteDebug?.policy || {}),
               ...(policyDebug ? { filter_debug: policyDebug } : {}),
+              ...(diversityDebug ? { diversity: diversityDebug } : {}),
             },
           },
         }
