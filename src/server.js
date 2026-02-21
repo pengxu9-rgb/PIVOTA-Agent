@@ -2540,6 +2540,7 @@ function withStrictEmptyFallback({
   upstreamCode = null,
   upstreamMessage = null,
   route = null,
+  fallbackStrategy = null,
 }) {
   const emptyBody = buildProxySearchSoftFallbackResponse({
     queryParams,
@@ -2552,6 +2553,9 @@ function withStrictEmptyFallback({
   return withSearchDiagnostics(emptyBody, {
     strict_empty: true,
     strict_empty_reason: reason || 'strict_empty',
+    ...(fallbackStrategy && typeof fallbackStrategy === 'object'
+      ? { fallback_strategy: fallbackStrategy }
+      : {}),
   });
 }
 
@@ -3131,6 +3135,7 @@ function shouldFallbackProxySearch(normalized, statusCode) {
 function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const search = {};
+  const metadata = {};
 
   const textQuery = extractSearchQueryText(query);
   if (!textQuery) return null;
@@ -3154,11 +3159,28 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   const category = String(firstQueryParamValue(query.category) || '').trim();
   if (category) search.category = category;
 
+  const catalogSurface = String(firstQueryParamValue(query.catalog_surface || query.catalogSurface) || '').trim();
+  if (catalogSurface) search.catalog_surface = catalogSurface;
+
   const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
   if (minPrice !== undefined) search.min_price = minPrice;
 
   const maxPrice = parseQueryNumber(query.max_price ?? query.price_max);
   if (maxPrice !== undefined) search.max_price = maxPrice;
+
+  const allowExternalSeed = parseQueryBoolean(query.allow_external_seed ?? query.allowExternalSeed);
+  if (allowExternalSeed !== undefined) search.allow_external_seed = allowExternalSeed;
+
+  const allowStaleCache = parseQueryBoolean(query.allow_stale_cache ?? query.allowStaleCache);
+  if (allowStaleCache !== undefined) search.allow_stale_cache = allowStaleCache;
+
+  const fastMode = parseQueryBoolean(query.fast_mode ?? query.fastMode);
+  if (fastMode !== undefined) search.fast_mode = fastMode;
+
+  const externalSeedStrategy = String(
+    firstQueryParamValue(query.external_seed_strategy || query.externalSeedStrategy) || '',
+  ).trim();
+  if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
   if (limit !== undefined) search.limit = Math.max(1, Math.min(100, Math.floor(limit)));
@@ -3173,7 +3195,12 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
     }
   }
 
-  return { search };
+  const source = String(firstQueryParamValue(query.source) || '').trim().toLowerCase();
+  if (source) metadata.source = source;
+
+  const payload = { search };
+  if (Object.keys(metadata).length > 0) payload.metadata = metadata;
+  return payload;
 }
 
 async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount }) {
@@ -3261,14 +3288,16 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
 async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason }) {
   const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
   if (!payload) return null;
+  const fallbackSource = String(payload?.metadata?.source || '').trim();
 
   const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   const requestBody = {
     operation: 'find_products_multi',
     payload,
     metadata: {
-      source: 'agent_search_proxy_fallback',
+      source: fallbackSource || 'agent_search_proxy_fallback',
       trigger_reason: reason || 'unknown',
+      proxy_fallback_source: 'agent_search_proxy_fallback',
     },
   };
 
@@ -7970,6 +7999,7 @@ async function proxyAgentSearchToBackend(req, res) {
           reason,
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_irrelevant',
+          fallbackStrategy,
         }),
         {
           finalDecision: 'strict_empty',
@@ -7993,6 +8023,7 @@ async function proxyAgentSearchToBackend(req, res) {
           reason,
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_status',
+          fallbackStrategy,
         }),
         {
           finalDecision: 'strict_empty',
@@ -8180,6 +8211,7 @@ async function proxyAgentSearchToBackend(req, res) {
           upstreamCode: code || err?.code || null,
           upstreamMessage: message || err?.message || null,
           route: 'proxy_search_exception',
+          fallbackStrategy,
         }),
         {
           finalDecision: 'strict_empty',
