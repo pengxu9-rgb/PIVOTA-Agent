@@ -1473,16 +1473,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke', (body) => {
-        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-        const q = String(parsed?.payload?.search?.query || '').toLowerCase();
-        return (
-          parsed &&
-          parsed.operation === 'find_products_multi' &&
-          parsed.payload &&
-          parsed.payload.search &&
-          q.includes('multi peptide')
-        );
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const queryValue = String(q?.query || '').toLowerCase();
+        return String(q?.source || '').toLowerCase() === 'aurora-bff' && queryValue.includes('multi peptide');
       })
       .reply(200, {
         status: 'success',
@@ -1575,10 +1569,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke', (body) => {
-        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-        const q = String(parsed?.payload?.search?.query || '').toLowerCase();
-        return q.includes('copper peptide');
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q?.source || '').toLowerCase() === 'aurora-bff' &&
+          String(q?.query || '').toLowerCase().includes('copper peptide')
+        );
       })
       .reply(200, {
         status: 'success',
