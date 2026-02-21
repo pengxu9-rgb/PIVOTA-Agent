@@ -14279,6 +14279,11 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     !rawMerchantId &&
     stableIdCandidates.length > 0 &&
     stableIdCandidates.every((value) => isUuidLikeString(value));
+  const hasStrongNamedQueryForCatalogFallback = Boolean(
+    (brand && (displayName || name)) ||
+      (displayName && String(displayName).trim().split(/\s+/).filter(Boolean).length >= 2) ||
+      (name && String(name).trim().split(/\s+/).filter(Boolean).length >= 2),
+  );
   const shouldAttemptDeterministicLocalResolver =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
     typeof resolveProductRefDirectImpl === 'function' &&
@@ -14323,8 +14328,13 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   }
   const shouldAttemptCatalogSearchFallback =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
-    reasonCode === 'no_candidates' &&
-    hasOnlyOpaqueStableIdsWithoutMerchant;
+    (
+      (reasonCode === 'no_candidates' && hasOnlyOpaqueStableIdsWithoutMerchant) ||
+      (
+        (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') &&
+        (hasOnlyOpaqueStableIdsWithoutMerchant || hasStrongNamedQueryForCatalogFallback)
+      )
+    );
   if (shouldAttemptCatalogSearchFallback) {
     const catalogResolved = await resolveRecoPdpByCatalogSearch({
       queryText,
@@ -14360,6 +14370,12 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     }
     if (catalogResolved.reasonCode && catalogResolved.reasonCode !== 'no_candidates') {
       reasonCode = catalogResolved.reasonCode;
+    } else if (
+      (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') &&
+      catalogResolved.reasonCode === 'no_candidates'
+    ) {
+      // Transient resolve failures should not force fast external fallback when catalog search can determine emptiness.
+      reasonCode = 'no_candidates';
     }
   }
   if (resolveError) {
