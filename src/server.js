@@ -121,6 +121,13 @@ const SERVICE_GIT_BRANCH = String(process.env.RAILWAY_GIT_BRANCH || process.env.
 const SERVICE_NAME = String(process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'pivota-agent-gateway').trim();
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+const PROXY_SEARCH_AURORA_API_BASE = String(
+  process.env.PROXY_SEARCH_AURORA_API_BASE ||
+    process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL ||
+    '',
+)
+  .trim()
+  .replace(/\/+$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
 const REVIEWS_API_BASE = (
   process.env.REVIEWS_API_BASE ||
@@ -2743,6 +2750,11 @@ function isAuroraSource(source) {
   return normalized === 'aurora-chatbox' || normalized === 'aurora-bff';
 }
 
+function getProxySearchApiBase(source) {
+  if (isAuroraSource(source) && PROXY_SEARCH_AURORA_API_BASE) return PROXY_SEARCH_AURORA_API_BASE;
+  return PIVOTA_API_BASE;
+}
+
 function getAuroraFallbackOverrides(source, operation) {
   const isAurora = isAuroraSource(source) && String(operation || '').trim() === 'find_products_multi';
   return {
@@ -3248,6 +3260,22 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   const category = String(firstQueryParamValue(query.category) || '').trim();
   if (category) search.category = category;
 
+  const allowExternalSeed = parseQueryBoolean(
+    query.allow_external_seed ?? query.allowExternalSeed,
+  );
+  if (allowExternalSeed !== undefined) search.allow_external_seed = allowExternalSeed;
+
+  const allowStaleCache = parseQueryBoolean(query.allow_stale_cache ?? query.allowStaleCache);
+  if (allowStaleCache !== undefined) search.allow_stale_cache = allowStaleCache;
+
+  const fastMode = parseQueryBoolean(query.fast_mode ?? query.fastMode);
+  if (fastMode !== undefined) search.fast_mode = fastMode;
+
+  const externalSeedStrategy = String(
+    firstQueryParamValue(query.external_seed_strategy || query.externalSeedStrategy) || '',
+  ).trim();
+  if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
+
   const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
   if (minPrice !== undefined) search.min_price = minPrice;
 
@@ -3270,7 +3298,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   return { search };
 }
 
-async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount }) {
+async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount, source }) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
   if (!queryText) {
@@ -3297,7 +3325,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     fast_mode: true,
   };
 
-  const url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
+  const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
   const resp = await axios({
     method: 'GET',
     url,
@@ -3362,7 +3390,7 @@ async function queryFindProductsMultiFallback({
   const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
   if (!payload) return null;
 
-  const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const url = `${getProxySearchApiBase(requestSource)}/agent/shop/v1/invoke`;
   const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
   const preserveAuroraSource =
     PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
@@ -3493,6 +3521,7 @@ async function queryResolveSearchFallback({
   queryParams,
   checkoutToken,
   reason,
+  requestSource,
   fetchDetail = true,
   timeoutMs,
 }) {
@@ -3619,7 +3648,7 @@ async function queryResolveSearchFallback({
         lang,
         hints: null,
         options: resolveOptions,
-        pivotaApiBase: PIVOTA_API_BASE,
+        pivotaApiBase: getProxySearchApiBase(requestSource),
         pivotaApiKey: PIVOTA_API_KEY,
         checkoutToken,
       });
@@ -7285,6 +7314,7 @@ const healthRouteHandler = (req, res) => {
     },
     backend: {
       api_base: PIVOTA_API_BASE,
+      aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
       api_key_configured: !!PIVOTA_API_KEY,
       db_configured: dbConfigured,
       taxonomy_enabled: taxonomyEnabled,
@@ -7824,9 +7854,10 @@ async function proxyAgentSearchToBackend(req, res) {
   const checkoutToken =
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
 
-  const url = `${PIVOTA_API_BASE}${req.path}`;
-  const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
   const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
+  const searchApiBase = getProxySearchApiBase(source);
+  const url = `${searchApiBase}${req.path}`;
+  const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
   const auroraFallbackOverrides = getAuroraFallbackOverrides(source, 'find_products_multi');
   const guardedQueryParams = applyShoppingCatalogQueryGuards(queryParams, source);
   const resolverTimeoutMs = getProxySearchResolverTimeoutMs(source);
@@ -7925,6 +7956,7 @@ async function proxyAgentSearchToBackend(req, res) {
         queryParams: guardedQueryParams,
         checkoutToken,
         reason: 'resolver_first',
+        requestSource: source,
         timeoutMs: resolverTimeoutMs,
         }),
         FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS,
@@ -7999,6 +8031,9 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_seed_strategy: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
         : null,
+      aurora_upstream_base: auroraFallbackOverrides.active
+        ? getProxySearchApiBase(source)
+        : null,
       fallback_adopt_usable_threshold: null,
     };
 
@@ -8049,6 +8084,7 @@ async function proxyAgentSearchToBackend(req, res) {
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_primary',
+            requestSource: source,
             timeoutMs: resolverTimeoutMs,
           });
           if (
@@ -8245,6 +8281,9 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_seed_strategy: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
         : null,
+      aurora_upstream_base: auroraFallbackOverrides.active
+        ? getProxySearchApiBase(source)
+        : null,
     };
     if (queryText) {
       if (allowResolverFallbackOnException) {
@@ -8256,6 +8295,7 @@ async function proxyAgentSearchToBackend(req, res) {
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'resolver_after_exception',
+            requestSource: source,
             timeoutMs: resolverTimeoutMs,
           });
           resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
@@ -12855,6 +12895,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     },
                     checkoutToken,
                     neededCount,
+                    source,
                   });
                   const seen = new Set(
                     internalProductsAfterAnchor
@@ -13233,6 +13274,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 },
                 checkoutToken,
                 reason: 'resolver_after_cache_miss',
+                requestSource: source,
                 timeoutMs: getProxySearchResolverTimeoutMs(source),
               });
               if (
@@ -13512,8 +13554,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	      }
 	    }
 	
+	    const invokeSource = String(metadata?.source || '').trim().toLowerCase();
+	    const searchInvokeBase =
+	      operation === 'find_products_multi' || operation === 'find_products'
+	        ? getProxySearchApiBase(invokeSource)
+	        : PIVOTA_API_BASE;
 	    // Build URL with path parameters
-	    let url = `${PIVOTA_API_BASE}${route.path}`;
+	    let url = `${searchInvokeBase}${route.path}`;
 	    let requestBody = {};
 	    let queryParams = {};
 
@@ -14156,6 +14203,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           queryParams: resolverQueryParams,
           checkoutToken,
           reason: 'resolver_first',
+          requestSource: metadata?.source,
           timeoutMs: resolverTimeoutMs,
         });
         if (
@@ -14378,6 +14426,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryParams: resolverQueryParams,
                 checkoutToken,
                 reason: 'resolver_after_exception',
+                requestSource: metadata?.source,
                 timeoutMs: resolverTimeoutMs,
               });
               if (
@@ -14667,6 +14716,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
               checkoutToken,
               reason: 'resolver_after_primary',
+              requestSource: metadata?.source,
               timeoutMs: resolverTimeoutMs,
             });
             if (
