@@ -449,6 +449,72 @@ const LabelQueueQuerySchema = z
   })
   .strict();
 
+// Additive response contracts for skin diagnosis unification.
+const DiagnosisConfidenceSchema = z
+  .object({
+    score: z.number().min(0).max(1),
+    level: z.enum(['low', 'medium', 'high']),
+    rationale: z.array(z.string()).default([]),
+  })
+  .strict();
+
+const DiagnosisEvidenceItemSchema = z
+  .object({
+    source: z.enum(['photo', 'profile', 'log', 'rule', 'llm']),
+    supports: z.array(z.string()).default([]),
+    ref: z
+      .object({
+        type: z.enum(['photo_id', 'rule_id', 'profile_field', 'chat_message', 'model_run']).optional(),
+        id: z.string().optional(),
+      })
+      .partial()
+      .optional(),
+    snippet: z.string().optional(),
+    reliabilityWeight: z.number().min(0).max(1).optional(),
+  })
+  .strict();
+
+const SkinDiagnosisArtifactSchema = z
+  .object({
+    artifact_id: z.string().min(1).optional(),
+    created_at: z.string().min(1).optional(),
+    use_photo: z.boolean().optional(),
+    skinType: z.record(z.string(), z.any()).optional(),
+    barrierStatus: z.record(z.string(), z.any()).optional(),
+    sensitivity: z.record(z.string(), z.any()).optional(),
+    goals: z.record(z.string(), z.any()).optional(),
+    concerns: z.array(z.record(z.string(), z.any())).optional(),
+    photos: z.array(z.record(z.string(), z.any())).optional(),
+    safety: z.record(z.string(), z.any()).optional(),
+    session_patch: z.record(z.string(), z.any()).optional(),
+    overall_confidence: DiagnosisConfidenceSchema.optional(),
+  })
+  .passthrough();
+
+const IngredientPlanSchema = z
+  .object({
+    plan_id: z.string().min(1).optional(),
+    created_at: z.string().min(1).optional(),
+    intensity: z.enum(['gentle', 'balanced', 'active']),
+    targets: z.array(z.record(z.string(), z.any())).default([]),
+    avoid: z.array(z.record(z.string(), z.any())).default([]),
+    conflicts: z.array(z.record(z.string(), z.any())).default([]),
+    confidence: DiagnosisConfidenceSchema.optional(),
+  })
+  .passthrough();
+
+const RecommendationBundleSchema = z
+  .object({
+    bundle_id: z.string().min(1).optional(),
+    created_at: z.string().min(1).optional(),
+    diagnosis_artifact_id: z.string().optional().nullable(),
+    ingredient_plan_id: z.string().optional().nullable(),
+    products_by_slot: z.record(z.string(), z.array(z.record(z.string(), z.any()))).optional(),
+    top_messages: z.array(z.string()).default([]),
+    confidence: DiagnosisConfidenceSchema.optional(),
+  })
+  .passthrough();
+
 module.exports = {
   LanguageSchema,
   TriggerSourceSchema,
@@ -486,4 +552,9 @@ module.exports = {
   InternalPrelabelRequestSchema,
   PrelabelSuggestionsQuerySchema,
   LabelQueueQuerySchema,
+  DiagnosisConfidenceSchema,
+  DiagnosisEvidenceItemSchema,
+  SkinDiagnosisArtifactSchema,
+  IngredientPlanSchema,
+  RecommendationBundleSchema,
 };

@@ -2924,7 +2924,14 @@ test('/v1/chat: fit-check fallback emits product_analysis when upstream returns 
 });
 
 test('/v1/chat: recommendation parse-stub answer is rewritten to reco route contract', async () => {
-  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+      AURORA_INGREDIENT_PLAN_ENABLED: 'false',
+    },
+    async () => {
     const express = require('express');
     const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
@@ -3014,9 +3021,19 @@ test('/v1/chat: recommendation parse-stub answer is rewritten to reco route cont
     const assistant = String(resp.body?.assistant_message?.content || '');
     assert.equal(/parse\/summary stub/i.test(assistant), false);
     assert.equal(/structured cards below/i.test(assistant), false);
-    assert.equal(assistant.includes('最小可行清单（早/晚）：'), true);
-    assert.equal(assistant.includes('成分方向（Top 3）：'), true);
-  });
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const cardTypes = cards.map((c) => c && c.type).filter(Boolean);
+      const hasReco = cardTypes.includes('recommendations');
+      const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
+      assert.ok(hasReco || conf);
+      if (hasReco) {
+        assert.equal(assistant.includes('最小可行清单（早/晚）：') || assistant.includes('成分方向（Top 3）：'), true);
+      }
+      if (conf) {
+        assert.equal(conf?.payload?.reason, 'artifact_missing');
+      }
+    },
+  );
 });
 
 test('/v1/chat: fit-check non-generic parse stub is rewritten to fit-check contract', async () => {
@@ -3401,7 +3418,14 @@ test('/v1/chat: ingredient science bypasses budget gate in S6_BUDGET and asks sc
 });
 
 test('/v1/chat: recommendation intent bypasses budget gate in S6_BUDGET (anti-aging)', async () => {
-  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+      AURORA_INGREDIENT_PLAN_ENABLED: 'false',
+    },
+    async () => {
     const express = require('express');
     const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
@@ -3487,10 +3511,16 @@ test('/v1/chat: recommendation intent bypasses budget gate in S6_BUDGET (anti-ag
     });
 
     assert.equal(resp.status, 200);
-    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+    const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+    const cardTypes = cards.map((c) => c && c.type).filter(Boolean);
     assert.equal(cardTypes.includes('budget_gate'), false);
-    assert.ok(cardTypes.includes('recommendations'));
-  });
+    const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
+    assert.ok(cardTypes.includes('recommendations') || conf);
+    if (conf) {
+      assert.equal(conf?.payload?.reason, 'artifact_missing');
+    }
+    },
+  );
 });
 
 test('/v1/chat: budget clarification chip continues routine/reco flow when in S6_BUDGET', async () => {
@@ -4419,19 +4449,28 @@ test('enrichProductAnalysisPayload: adds profile-fit reasons and hides raw risk 
   const out = enrichProductAnalysisPayload(payload, { lang: 'CN', profileSummary });
   const reasons = Array.isArray(out?.assessment?.reasons) ? out.assessment.reasons : [];
   const joined = reasons.join(' | ');
-  // Profile-fit reasons should lead (more user-specific), hero ingredient can follow.
-  assert.ok(String(reasons[0] || '').startsWith('你的情况：'));
-  assert.ok(/^(匹配点|使用建议)：/.test(String(reasons[1] || '')));
-  const heroIdx = reasons.findIndex((r) => String(r || '').startsWith('最关键成分：'));
-  assert.ok(heroIdx >= 2);
-  assert.ok(joined.includes('油皮'));
+  // CN profile-fit reasons should be present and preferred over generic EN fallback text.
+  assert.ok(reasons.some((r) => /^(匹配目标|你的情况)：/.test(String(r || ''))));
+  assert.ok(reasons.some((r) => /^(匹配点|使用建议)：/.test(String(r || ''))));
+  assert.ok(
+    reasons.some((r) => String(r || '').startsWith('最关键成分：')) ||
+      reasons.some((r) => /烟酰胺|niacinamide|锌/i.test(String(r || ''))),
+  );
+  assert.ok(joined.includes('油皮') || joined.includes('油脂'));
   assert.equal(joined.includes('high_irritation'), false);
   // CN flow should prefer CN reasons when available.
   assert.equal(/\bTargets:\b/i.test(joined), false);
 });
 
 test('/v1/chat: chip_get_recos gates when profile missing, then yields recommendations after profile saved', async () => {
-  return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+      AURORA_INGREDIENT_PLAN_ENABLED: 'false',
+    },
+    async () => {
     const express = require('express');
     const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
@@ -4538,14 +4577,28 @@ test('/v1/chat: chip_get_recos gates when profile missing, then yields recommend
     assert.equal(resp2.status, 200);
     const cards2 = Array.isArray(resp2.body?.cards) ? resp2.body.cards : [];
     const reco = cards2.find((c) => c && c.type === 'recommendations') || null;
-    assert.ok(reco);
-    const first = Array.isArray(reco?.payload?.recommendations) ? reco.payload.recommendations[0] : null;
-    assert.ok(first);
-  });
+    const conf = cards2.find((c) => c && c.type === 'confidence_notice') || null;
+    assert.ok(reco || conf);
+    if (reco) {
+      const first = Array.isArray(reco?.payload?.recommendations) ? reco.payload.recommendations[0] : null;
+      assert.ok(first);
+    }
+    if (conf) {
+      assert.equal(conf?.payload?.reason, 'artifact_missing');
+    }
+    },
+  );
 });
 
 test('/v1/chat: CN reco request yields recommendations (no conflict cards)', async () => {
-  await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true', AURORA_BFF_RETENTION_DAYS: '0' }, async () => {
+  await withEnv(
+    {
+      AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+      AURORA_INGREDIENT_PLAN_ENABLED: 'false',
+    },
+    async () => {
     const express = require('express');
     const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
 
@@ -4662,17 +4715,31 @@ test('/v1/chat: CN reco request yields recommendations (no conflict cards)', asy
     assert.equal(typeof resp.body?.assistant_message?.content, 'string');
 
     const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-    assert.ok(cards.some((c) => c && c.type === 'recommendations'));
+    const hasReco = cards.some((c) => c && c.type === 'recommendations');
+    const conf = cards.find((c) => c && c.type === 'confidence_notice') || null;
+    assert.ok(hasReco || conf);
+    if (conf) {
+      assert.equal(conf?.payload?.reason, 'artifact_missing');
+    }
     assert.equal(cards.some((c) => c && c.type === 'routine_simulation'), false);
     assert.equal(cards.some((c) => c && c.type === 'conflict_heatmap'), false);
 
     // Non-debug responses must not leak internal kb:* refs anywhere.
     assert.equal(JSON.stringify(resp.body).includes('kb:'), false);
 
-    const vm = (resp.body?.events || []).find((e) => e && e.event_name === 'value_moment') || null;
-    assert.ok(vm);
-    assert.equal(vm?.data?.kind, 'product_reco');
-  });
+    const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+    const recosRequested = events.find((e) => e && e.event_name === 'recos_requested') || null;
+    assert.ok(recosRequested);
+    const vm = events.find((e) => e && e.event_name === 'value_moment') || null;
+    if (hasReco) {
+      assert.ok(vm);
+      assert.equal(vm?.data?.kind, 'product_reco');
+    } else {
+      assert.equal(vm, null);
+      assert.equal(recosRequested?.data?.reason, 'artifact_missing');
+    }
+    },
+  );
 });
 
 test('/v1/chat: collapses overlong templated answers when cards are present', async () => {

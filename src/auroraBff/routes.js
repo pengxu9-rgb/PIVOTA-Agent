@@ -1,5 +1,4 @@
 const axios = require('axios');
-const OpenAI = require('openai');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -169,6 +168,7 @@ const {
   buildDiagnosisChips,
   buildPendingClarificationForGate,
   stripRecommendationCards,
+  hasUsableArtifactForRecommendations,
 } = require('./gating');
 const {
   DEFAULT_AGENT_STATE,
@@ -214,6 +214,23 @@ const {
   upsertProductIntelKbEntry,
 } = require('./productIntelKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
+const {
+  createArtifactId,
+  saveDiagnosisArtifact,
+  getLatestDiagnosisArtifact,
+  saveIngredientPlan,
+  getIngredientPlanByArtifactId,
+  saveRecoRun,
+} = require('./diagnosisArtifactStore');
+const {
+  LOW_CONFIDENCE_THRESHOLD,
+  buildIngredientPlan,
+} = require('./ingredientMapperV1');
+const {
+  buildProductRecommendationsBundle,
+  toLegacyRecommendationsPayload,
+} = require('./productMatcherV1');
+const { evaluateSafetyBoundary } = require('./safetyBoundary');
 const {
   resolveProductRef: resolveProductRefDirect = null,
   _internals: productGroundingResolverInternals = {},
@@ -608,11 +625,11 @@ const GEMINI_API_KEY = String(
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
 const SKIN_VISION_PROVIDER = (() => {
-  const raw = String(process.env.AURORA_SKIN_VISION_PROVIDER || 'openai')
+  const raw = String(process.env.AURORA_SKIN_VISION_PROVIDER || 'gemini')
     .trim()
     .toLowerCase();
-  if (raw === 'gemini' || raw === 'auto') return raw;
-  return 'openai';
+  if (raw === 'openai' || raw === 'gemini' || raw === 'auto') return raw;
+  return 'gemini';
 })();
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
@@ -706,6 +723,22 @@ const DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED =
 const INTERNAL_TEST_MODE = String(process.env.INTERNAL_TEST_MODE || '').toLowerCase() === 'true';
 const DIAG_INGREDIENT_KB_V2_PATH = String(process.env.INGREDIENT_KB_V2_PATH || '').trim() || null;
 const DIAG_PRODUCT_CATALOG_PATH = String(process.env.AURORA_PRODUCT_REC_CATALOG_PATH || '').trim() || null;
+const AURORA_DIAG_ARTIFACT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_DIAG_ARTIFACT_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_INGREDIENT_PLAN_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_PLAN_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_MATCHER_ENABLED = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_MATCHER_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED || 'false').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -7914,8 +7947,34 @@ function extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw 
 }
 
 let openaiClient;
+let openaiCtor;
+let openaiCtorResolved = false;
+function getOpenAIConstructor() {
+  if (openaiCtorResolved) return openaiCtor;
+  openaiCtorResolved = true;
+  try {
+    const mod = require('openai');
+    if (typeof mod === 'function') {
+      openaiCtor = mod;
+      return openaiCtor;
+    }
+    if (mod && typeof mod.OpenAI === 'function') {
+      openaiCtor = mod.OpenAI;
+      return openaiCtor;
+    }
+    if (mod && typeof mod.default === 'function') {
+      openaiCtor = mod.default;
+      return openaiCtor;
+    }
+  } catch (_err) {
+    openaiCtor = null;
+  }
+  return openaiCtor;
+}
 function getOpenAIClient() {
   if (!OPENAI_API_KEY) return null;
+  const OpenAI = getOpenAIConstructor();
+  if (!OpenAI) return null;
   if (!openaiClient) {
     openaiClient = new OpenAI({
       apiKey: OPENAI_API_KEY,
@@ -7951,9 +8010,9 @@ function resolveVisionProviderSelection() {
     return { provider: 'gemini', apiKeyConfigured: Boolean(GEMINI_API_KEY), requested };
   }
 
-  if (OPENAI_API_KEY) return { provider: 'openai', apiKeyConfigured: true, requested };
   if (GEMINI_API_KEY) return { provider: 'gemini', apiKeyConfigured: true, requested };
-  return { provider: 'openai', apiKeyConfigured: false, requested };
+  if (OPENAI_API_KEY) return { provider: 'openai', apiKeyConfigured: true, requested };
+  return { provider: 'gemini', apiKeyConfigured: false, requested };
 }
 
 async function withVisionTimeout(promise, timeoutMs) {
@@ -9137,14 +9196,60 @@ async function runGeminiVisionSkinAnalysis({
   };
 }
 
-async function runVisionSkinAnalysis({ provider, ...rest } = {}) {
-  const target = String(provider || 'openai')
+let runGeminiVisionSkinAnalysisImpl = runGeminiVisionSkinAnalysis;
+let runOpenAIVisionSkinAnalysisImpl = runOpenAIVisionSkinAnalysis;
+
+function shouldAttemptOpenAiFallbackFromGemini({ photoQuality, llmKillSwitch } = {}) {
+  if (llmKillSwitch) return false;
+  const grade = String(photoQuality && photoQuality.grade ? photoQuality.grade : '')
+    .trim()
+    .toLowerCase();
+  if (grade === 'fail') return false;
+  return true;
+}
+
+async function runVisionSkinAnalysis({ provider, llmKillSwitch, photoQuality, ...rest } = {}) {
+  const target = String(provider || 'gemini')
     .trim()
     .toLowerCase();
   if (target === 'gemini') {
-    return runGeminiVisionSkinAnalysis(rest);
+    const gemini = await runGeminiVisionSkinAnalysisImpl({ photoQuality, ...rest });
+    if (gemini && gemini.ok) {
+      return {
+        ...gemini,
+        attempted_providers: ['gemini'],
+      };
+    }
+    if (shouldAttemptOpenAiFallbackFromGemini({ photoQuality, llmKillSwitch })) {
+      const openai = await runOpenAIVisionSkinAnalysisImpl({ photoQuality, ...rest });
+      if (openai && openai.ok) {
+        return {
+          ...openai,
+          fallback_from: 'gemini',
+          primary_failure_reason: normalizeVisionReason(gemini && gemini.reason),
+          attempted_providers: ['gemini', 'openai'],
+        };
+      }
+      return {
+        ...(openai || {}),
+        ok: false,
+        provider: 'openai',
+        reason: normalizeVisionReason((openai && openai.reason) || (gemini && gemini.reason)),
+        fallback_from: 'gemini',
+        primary_failure_reason: normalizeVisionReason(gemini && gemini.reason),
+        attempted_providers: ['gemini', 'openai'],
+      };
+    }
+    return {
+      ...gemini,
+      attempted_providers: ['gemini'],
+    };
   }
-  return runOpenAIVisionSkinAnalysis(rest);
+  const openai = await runOpenAIVisionSkinAnalysisImpl({ photoQuality, ...rest });
+  return {
+    ...openai,
+    attempted_providers: ['openai'],
+  };
 }
 
 function sleep(ms) {
@@ -10423,6 +10528,426 @@ function buildRetakeSkinAnalysis({ language, photoQuality } = {}) {
     strategy: strategy.slice(0, 1200),
     needs_risk_check: false,
   };
+}
+
+function confidenceLevelFromScoreV1(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 'low';
+  if (n < LOW_CONFIDENCE_THRESHOLD) return 'low';
+  if (n <= 0.75) return 'medium';
+  return 'high';
+}
+
+function normalizeArtifactSourceMix(sources) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(sources) ? sources : []) {
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+function buildArtifactConfidence(score, rationale) {
+  const n = Number(score);
+  const safe = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  return {
+    score: safe,
+    level: confidenceLevelFromScoreV1(safe),
+    rationale: Array.from(
+      new Set(
+        (Array.isArray(rationale) ? rationale : [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+      ),
+    ).slice(0, 8),
+  };
+}
+
+function buildProfileEvidence(fieldKey) {
+  return [
+    {
+      source: 'profile',
+      supports: [fieldKey],
+      ref: { type: 'profile_field', id: fieldKey },
+      reliabilityWeight: 0.75,
+    },
+  ];
+}
+
+function buildArtifactValueNode({ value, confidence, fieldKey } = {}) {
+  const v = typeof value === 'string' ? value.trim() : '';
+  if (!v) return null;
+  return {
+    value: v,
+    confidence: buildArtifactConfidence(confidence, [`profile_${fieldKey}`]),
+    evidence: buildProfileEvidence(fieldKey),
+  };
+}
+
+function buildArtifactGoalsNode(goals, confidence = 0.7) {
+  const values = (Array.isArray(goals) ? goals : [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (!values.length) return null;
+  return {
+    values,
+    confidence: buildArtifactConfidence(confidence, ['profile_goals']),
+    evidence: buildProfileEvidence('goals'),
+  };
+}
+
+function deriveConcernConfidence({ issueType, analysis, defaultScore } = {}) {
+  const findings = Array.isArray(analysis && analysis.findings) ? analysis.findings : [];
+  for (const finding of findings) {
+    if (!finding || typeof finding !== 'object') continue;
+    const token = String(finding.issue_type || '').trim().toLowerCase();
+    if (!token || token !== String(issueType || '').trim().toLowerCase()) continue;
+    const c = Number(finding.confidence);
+    if (Number.isFinite(c)) return Math.max(0, Math.min(1, c));
+  }
+  return Number.isFinite(Number(defaultScore)) ? Math.max(0, Math.min(1, Number(defaultScore))) : 0.58;
+}
+
+function deriveConcernsFromAnalysis({ analysis, profileSummary, usedPhotos, analysisSource } = {}) {
+  const out = [];
+  const seen = new Set();
+  const findings = Array.isArray(analysis && analysis.findings) ? analysis.findings : [];
+  for (const finding of findings) {
+    if (!finding || typeof finding !== 'object') continue;
+    const concernId = String(finding.issue_type || '').trim();
+    if (!concernId) continue;
+    const key = concernId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const score = deriveConcernConfidence({ issueType: concernId, analysis, defaultScore: finding.confidence });
+    const evidence = [];
+    if (usedPhotos) {
+      const findingId = typeof finding.finding_id === 'string' ? finding.finding_id.trim() : '';
+      evidence.push({
+        source: 'photo',
+        supports: ['concerns'],
+        ...(findingId ? { ref: { type: 'model_run', id: findingId } } : {}),
+        reliabilityWeight: 0.78,
+      });
+    } else {
+      evidence.push({
+        source: 'rule',
+        supports: ['concerns'],
+        ref: { type: 'rule_id', id: 'ANALYSIS_RULE_BASELINE' },
+        reliabilityWeight: 0.68,
+      });
+    }
+    if (
+      analysisSource === 'vision_openai' ||
+      analysisSource === 'vision_openai_fallback' ||
+      analysisSource === 'vision_gemini' ||
+      analysisSource === 'aurora_text'
+    ) {
+      evidence.push({
+        source: 'llm',
+        supports: ['concerns'],
+        ref: { type: 'model_run', id: `analysis_${analysisSource}` },
+        reliabilityWeight: 0.52,
+      });
+    }
+    out.push({
+      id: concernId,
+      confidence: buildArtifactConfidence(score, [`analysis_${analysisSource || 'rule_based'}`]),
+      evidence,
+    });
+  }
+
+  const profileGoals = Array.isArray(profileSummary && profileSummary.goals) ? profileSummary.goals : [];
+  for (const goal of profileGoals) {
+    const concernId = String(goal || '').trim();
+    if (!concernId) continue;
+    const key = concernId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: concernId,
+      confidence: buildArtifactConfidence(0.56, ['goal_proxy']),
+      evidence: buildProfileEvidence('goals'),
+    });
+  }
+  return out.slice(0, 8);
+}
+
+function deriveArtifactOverallConfidence({
+  usePhoto,
+  usedPhotos,
+  photoQuality,
+  analysisSource,
+  profileSummary,
+  concerns,
+} = {}) {
+  const skinTypePresent = Boolean(profileSummary && profileSummary.skinType);
+  const barrierPresent = Boolean(profileSummary && profileSummary.barrierStatus);
+  const sensitivityPresent = Boolean(profileSummary && profileSummary.sensitivity);
+  const goalsPresent = Boolean(profileSummary && Array.isArray(profileSummary.goals) && profileSummary.goals.length > 0);
+
+  const baseParts = [];
+  baseParts.push(skinTypePresent ? 0.74 : 0);
+  baseParts.push(barrierPresent ? 0.72 : 0);
+  baseParts.push(sensitivityPresent ? 0.7 : 0);
+  baseParts.push(goalsPresent ? 0.76 : 0);
+  const base = baseParts.reduce((sum, value) => sum + value, 0) / Math.max(1, baseParts.length);
+
+  const concernBoost =
+    Array.isArray(concerns) && concerns.length
+      ? Math.min(
+          0.1,
+          concerns.reduce((sum, item) => {
+            const node = item && typeof item === 'object' ? item.confidence : null;
+            const score = node && typeof node === 'object' ? Number(node.score) : 0;
+            return sum + (Number.isFinite(score) ? score : 0);
+          }, 0) /
+            concerns.length *
+            0.12,
+        )
+      : 0;
+
+  let score = Math.max(0, Math.min(1, base + concernBoost));
+  const rationale = ['core4_weighted_mean'];
+
+  const qualityGrade = String(photoQuality && photoQuality.grade || '').trim().toLowerCase();
+  if (qualityGrade === 'degraded') {
+    score = Math.max(0, score - 0.1);
+    rationale.push('photo_qc_degraded');
+  } else if (qualityGrade === 'fail') {
+    score = Math.min(score, LOW_CONFIDENCE_THRESHOLD - 0.01);
+    rationale.push('photo_qc_failed');
+  }
+
+  if (usePhoto === false) {
+    score = Math.min(score, 0.75);
+    rationale.push('photo_skipped');
+  } else if (usePhoto && !usedPhotos) {
+    score = Math.min(score, LOW_CONFIDENCE_THRESHOLD - 0.01);
+    rationale.push('photo_requested_but_not_used');
+  }
+
+  const normalizedSource = String(analysisSource || '').trim().toLowerCase();
+  if (normalizedSource === 'baseline_low_confidence' || normalizedSource === 'retake') {
+    score = Math.min(score, LOW_CONFIDENCE_THRESHOLD - 0.01);
+    rationale.push('low_confidence_fallback');
+  }
+
+  return buildArtifactConfidence(score, rationale);
+}
+
+function buildDiagnosisArtifactV1({
+  ctx,
+  identity,
+  profileSummary,
+  recentLogsSummary,
+  analysis,
+  analysisSource,
+  usePhoto,
+  usedPhotos,
+  photos,
+  photoQuality,
+} = {}) {
+  const concerns = deriveConcernsFromAnalysis({
+    analysis,
+    profileSummary,
+    usedPhotos,
+    analysisSource,
+  });
+  const overallConfidence = deriveArtifactOverallConfidence({
+    usePhoto,
+    usedPhotos,
+    photoQuality,
+    analysisSource,
+    profileSummary,
+    concerns,
+  });
+  const photoRefs = (Array.isArray(photos) ? photos : [])
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const slot = String(item.slot_id || '').trim();
+      const photoId = String(item.photo_id || '').trim();
+      if (!slot || !photoId) return null;
+      const qcStatus = String(item.qc_status || 'unknown').trim();
+      return {
+        slot,
+        photo_id: photoId,
+        qc_status: qcStatus,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const sourceMix = normalizeArtifactSourceMix([
+    usedPhotos ? 'photo' : 'rule',
+    recentLogsSummary && recentLogsSummary.length ? 'log' : null,
+    profileSummary ? 'profile' : null,
+    analysisSource === 'vision_openai' ||
+    analysisSource === 'vision_openai_fallback' ||
+    analysisSource === 'vision_gemini' ||
+    analysisSource === 'aurora_text'
+      ? 'llm'
+      : null,
+  ]);
+
+  const artifact = {
+    artifact_id: createArtifactId(),
+    created_at: new Date().toISOString(),
+    use_photo: Boolean(usePhoto),
+    overall_confidence: overallConfidence,
+    skinType: buildArtifactValueNode({
+      value: profileSummary && profileSummary.skinType,
+      confidence: skinTypeConfidence(profileSummary),
+      fieldKey: 'skinType',
+    }),
+    barrierStatus: buildArtifactValueNode({
+      value: profileSummary && profileSummary.barrierStatus,
+      confidence: barrierConfidence(profileSummary),
+      fieldKey: 'barrierStatus',
+    }),
+    sensitivity: buildArtifactValueNode({
+      value: profileSummary && profileSummary.sensitivity,
+      confidence: sensitivityConfidence(profileSummary),
+      fieldKey: 'sensitivity',
+    }),
+    goals: buildArtifactGoalsNode(profileSummary && profileSummary.goals, 0.74),
+    concerns,
+    photos: photoRefs,
+    safety: {
+      non_medical_disclaimer_version: 'v1',
+      red_flags: [],
+    },
+    analysis_context: {
+      analysis_source: String(analysisSource || '').trim() || 'unknown',
+      used_photos: Boolean(usedPhotos),
+      quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
+    },
+    source_mix: sourceMix,
+    session_patch: {
+      next_state: 'S5_ANALYSIS_SUMMARY',
+      state: {
+        latest_artifact_id: null,
+      },
+    },
+    identity: {
+      aurora_uid: identity && identity.auroraUid ? String(identity.auroraUid).trim() : null,
+      user_id: identity && identity.userId ? String(identity.userId).trim() : null,
+      session_id: ctx && ctx.brief_id ? String(ctx.brief_id).trim() : null,
+    },
+  };
+
+  return artifact;
+}
+
+function buildConfidenceNoticeCardPayload({
+  language,
+  reason,
+  confidence,
+  actions,
+  severity = 'warn',
+  details,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const rationale = Array.isArray(confidence && confidence.rationale) ? confidence.rationale : [];
+  const score = Number(confidence && confidence.score);
+  const level = String(confidence && confidence.level || '').trim().toLowerCase() || confidenceLevelFromScoreV1(score);
+  const messageByReason = {
+    artifact_missing:
+      lang === 'CN'
+        ? '还没有可用的诊断结果，请先上传照片或先做一次低置信度分析。'
+        : 'No diagnosis artifact is available yet. Please upload photos or run a low-confidence baseline analysis first.',
+    low_confidence:
+      lang === 'CN'
+        ? '当前诊断置信度较低，已降级为温和基础方案。建议补拍 daylight + indoor_white 提升准确度。'
+        : 'Diagnosis confidence is low, so this was downgraded to a gentle baseline plan. Retake daylight + indoor_white photos to improve accuracy.',
+    safety_block:
+      lang === 'CN'
+        ? '检测到可能的医疗风险信号，已停止商品推荐。'
+        : 'Potential medical risk signals detected, so product recommendations are blocked.',
+    default:
+      lang === 'CN' ? '当前建议已按保守模式输出。' : 'Current guidance is running in conservative mode.',
+  };
+
+  return {
+    reason: reason || 'default',
+    severity,
+    confidence: {
+      score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0,
+      level,
+      rationale,
+    },
+    message: messageByReason[reason] || messageByReason.default,
+    actions: Array.isArray(actions) ? actions : [],
+    details: Array.isArray(details) ? details.slice(0, 6) : [],
+  };
+}
+
+function skinTypeConfidence(profileSummary) {
+  return profileSummary && profileSummary.skinType ? 0.74 : 0;
+}
+
+function barrierConfidence(profileSummary) {
+  return profileSummary && profileSummary.barrierStatus ? 0.72 : 0;
+}
+
+function sensitivityConfidence(profileSummary) {
+  return profileSummary && profileSummary.sensitivity ? 0.7 : 0;
+}
+
+function extractLatestArtifactIdFromSession(session) {
+  if (!session || typeof session !== 'object' || Array.isArray(session)) return null;
+  const state = session.state && typeof session.state === 'object' && !Array.isArray(session.state) ? session.state : null;
+  if (!state) return null;
+  const artifactId = String(state.latest_artifact_id || '').trim();
+  return artifactId || null;
+}
+
+function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
+  if (!sessionPatch || typeof sessionPatch !== 'object') return;
+  const id = String(artifactId || '').trim();
+  if (!id) return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.latest_artifact_id = id;
+  sessionPatch.state = state;
+}
+
+function buildIngredientPlanCard(plan, requestId) {
+  return {
+    card_id: `ing_plan_${requestId}`,
+    type: 'ingredient_plan',
+    payload: {
+      plan,
+      intensity: plan && plan.intensity ? plan.intensity : 'balanced',
+      targets: Array.isArray(plan && plan.targets) ? plan.targets : [],
+      avoid: Array.isArray(plan && plan.avoid) ? plan.avoid : [],
+      conflicts: Array.isArray(plan && plan.conflicts) ? plan.conflicts : [],
+      confidence: plan && plan.confidence && typeof plan.confidence === 'object' ? plan.confidence : null,
+    },
+  };
+}
+
+function buildRecoEntryChips(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return [
+    {
+      chip_id: 'chip.intake.upload_photos',
+      label: lang === 'CN' ? '上传 daylight + indoor_white' : 'Upload daylight + indoor_white',
+      kind: 'quick_reply',
+      data: {},
+    },
+    {
+      chip_id: 'chip.intake.skip_analysis',
+      label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
+      kind: 'quick_reply',
+      data: {},
+    },
+  ];
 }
 
 function requireAuroraUid(ctx) {
@@ -21024,6 +21549,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 imageBuffer: photoBytes,
                 language: ctx.lang,
                 photoQuality,
+                llmKillSwitch: rollout.llmKillSwitch,
                 diagnosisPolicy,
                 diagnosisV1,
                 profileSummary,
@@ -21036,15 +21562,70 @@ function mountAuroraBffRoutes(app, { logger }) {
                 analysis = vision.analysis;
                 usedPhotos = true;
                 shadowVerifyPhotoBytes = photoBytes;
-                analysisSource = vision.provider === 'gemini' ? 'vision_gemini' : 'vision_openai';
+                const openAiFallback = vision.provider === 'openai' && String(vision.fallback_from || '').trim().toLowerCase() === 'gemini';
+                analysisSource = vision.provider === 'gemini'
+                  ? 'vision_gemini'
+                  : openAiFallback
+                    ? 'vision_openai_fallback'
+                    : 'vision_openai';
+                logger?.info(
+                  {
+                    kind: 'metric',
+                    name: 'aurora.skin.analysis.provider_success.count',
+                    value: 1,
+                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    analysis_source: analysisSource,
+                  },
+                  'metric',
+                );
+                if (openAiFallback) {
+                  if (ctx.lang === 'CN') qualityReportReasons.push('Gemini 视觉结果不可用，本次已自动回退到 OpenAI 视觉模型。');
+                  else qualityReportReasons.push('Gemini vision result was unavailable, so this run fell back to OpenAI vision.');
+                  logger?.info({ kind: 'metric', name: 'aurora.skin_analysis.vision_openai_fallback.count', value: 1 }, 'metric');
+                  logger?.info(
+                    {
+                      kind: 'metric',
+                      name: 'aurora.skin.analysis.provider_fallback.count',
+                      value: 1,
+                      from: 'gemini',
+                      to: 'openai',
+                    },
+                    'metric',
+                  );
+                }
               } else if (vision && !vision.ok) {
                 const normalizedReason = normalizeVisionReason(vision.reason);
+                const fallbackFrom = String(vision.fallback_from || '').trim().toLowerCase();
                 analysisFieldMissing.push({
                   field: 'analysis.used_photos',
                   reason: normalizedReason || 'VISION_UNKNOWN',
                 });
                 if (ctx.lang === 'CN') qualityReportReasons.push(`照片解析失败（${normalizedReason || 'VISION_UNKNOWN'}）；我会退回到确定性基线。`);
                 else qualityReportReasons.push(`Photo analysis failed (${normalizedReason || 'VISION_UNKNOWN'}); falling back to deterministic baseline.`);
+                logger?.info(
+                  {
+                    kind: 'metric',
+                    name: 'aurora.skin.analysis.provider_failure.count',
+                    value: 1,
+                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    reason: normalizedReason || 'VISION_UNKNOWN',
+                    fallback_from: fallbackFrom || null,
+                  },
+                  'metric',
+                );
+                if (fallbackFrom === 'gemini' && String(vision.provider || '').trim().toLowerCase() === 'openai') {
+                  logger?.info(
+                    {
+                      kind: 'metric',
+                      name: 'aurora.skin.analysis.provider_fallback_failure.count',
+                      value: 1,
+                      from: 'gemini',
+                      to: 'openai',
+                      reason: normalizedReason || 'VISION_UNKNOWN',
+                    },
+                    'metric',
+                  );
+                }
                 logger?.warn(
                   {
                     reason: normalizedReason || 'VISION_UNKNOWN',
@@ -21152,7 +21733,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         visionDecisionForReport = {
           ...visionDecision,
           reasons: baseVisionReasons,
-          provider: selectedVisionProvider.provider || 'openai',
+          provider: selectedVisionProvider.provider || 'gemini',
           upstream_status_code: null,
           latency_ms: null,
           retry: visionRetryDefault,
@@ -21205,7 +21786,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
 
         recordVisionDecision({
-          provider: visionDecisionForReport.provider || 'openai',
+          provider: visionDecisionForReport.provider || 'gemini',
           decision: visionDecisionForReport.decision,
           reasons: visionDecisionForReport.reasons,
           latencyMs: visionDecisionForReport.latency_ms,
@@ -21340,7 +21921,121 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
+        let diagnosisArtifact = null;
+        let ingredientPlan = null;
+        let recommendationReady = false;
+        let latestArtifactId = null;
+        if (analysis && AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
+          try {
+            const artifactCandidate = buildDiagnosisArtifactV1({
+              ctx,
+              identity,
+              profileSummary,
+              recentLogsSummary,
+              analysis,
+              analysisSource: renderedAnalysisSource,
+              usePhoto: Boolean(userRequestedPhoto),
+              usedPhotos,
+              photos,
+              photoQuality,
+            });
+            const savedArtifact = await saveDiagnosisArtifact({
+              auroraUid: identity.auroraUid,
+              userId: identity.userId,
+              sessionId: ctx.brief_id || null,
+              artifact: artifactCandidate,
+              artifactId: artifactCandidate && artifactCandidate.artifact_id ? artifactCandidate.artifact_id : undefined,
+            });
+            diagnosisArtifact = savedArtifact && savedArtifact.artifact_json && typeof savedArtifact.artifact_json === 'object'
+              ? {
+                  ...savedArtifact.artifact_json,
+                  artifact_id: savedArtifact.artifact_id,
+                  created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at,
+                }
+              : artifactCandidate;
+            logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_created_rate', value: diagnosisArtifact ? 1 : 0 }, 'metric');
+            latestArtifactId = diagnosisArtifact && diagnosisArtifact.artifact_id
+              ? String(diagnosisArtifact.artifact_id).trim()
+              : null;
+
+            if (diagnosisArtifact && AURORA_INGREDIENT_PLAN_ENABLED && latestArtifactId) {
+              const planBuilt = buildIngredientPlan({
+                artifact: diagnosisArtifact,
+                profile: profileSummary || profile || {},
+              });
+              const savedPlan = await saveIngredientPlan({
+                artifactId: latestArtifactId,
+                auroraUid: identity.auroraUid,
+                userId: identity.userId,
+                plan: planBuilt,
+              });
+              ingredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                ? {
+                    ...savedPlan.plan_json,
+                    plan_id: savedPlan.plan_id,
+                    created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
+                  }
+                : planBuilt;
+              logger?.info({ kind: 'metric', name: 'aurora.skin.ingredient_plan_rate', value: ingredientPlan ? 1 : 0 }, 'metric');
+            }
+
+            const artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
+            recommendationReady = Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low');
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: diagnosis artifact/plan generation failed',
+            );
+          }
+        }
+
         profiler.start('render', { kind: 'envelope' });
+        const analysisSummaryPayload = {
+          analysis,
+          low_confidence: analysisSource === 'baseline_low_confidence',
+          photos_provided: photosProvided,
+          photo_qc: photoQcParts,
+          used_photos: usedPhotos,
+          analysis_source: renderedAnalysisSource,
+          ...(photoNotice ? { photo_notice: photoNotice } : {}),
+          quality_report: {
+            photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
+            detector_confidence: detectorConfidence,
+            ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
+            degraded_mode: SKIN_DEGRADED_MODE,
+            llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
+            reasons: qualityReportReasons.slice(0, 8),
+          },
+          ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
+          ...(ingredientPlan ? { ingredient_plan: ingredientPlan } : {}),
+          recommendation_ready: Boolean(recommendationReady),
+          photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+        };
+
+        const sessionPatch = { next_state: 'S5_ANALYSIS_SUMMARY' };
+        appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
+
+        const extraCards = [];
+        if (ingredientPlan) {
+          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
+        }
+        const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
+          ? diagnosisArtifact.overall_confidence
+          : null;
+        if (artifactConfidence && String(artifactConfidence.level || '').toLowerCase() === 'low') {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
+          extraCards.push({
+            card_id: `conf_${ctx.request_id}`,
+            type: 'confidence_notice',
+            payload: buildConfidenceNoticeCardPayload({
+              language: ctx.lang,
+              reason: 'low_confidence',
+              confidence: artifactConfidence,
+              actions: ['upload_daylight_and_indoor_white', 'update_current_routine'],
+            }),
+          });
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
           suggested_chips: [],
@@ -21348,28 +22043,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `analysis_${ctx.request_id}`,
               type: 'analysis_summary',
-              payload: {
-                analysis,
-                low_confidence: analysisSource === 'baseline_low_confidence',
-                photos_provided: photosProvided,
-                photo_qc: photoQcParts,
-                used_photos: usedPhotos,
-                analysis_source: renderedAnalysisSource,
-                ...(photoNotice ? { photo_notice: photoNotice } : {}),
-                quality_report: {
-                  photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
-                  detector_confidence: detectorConfidence,
-                  ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
-                  degraded_mode: SKIN_DEGRADED_MODE,
-                  llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
-                  reasons: qualityReportReasons.slice(0, 8),
-                },
-              },
+              payload: analysisSummaryPayload,
               ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
             },
             ...(photoModulesCard ? [photoModulesCard] : []),
+            ...extraCards,
           ],
-          session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
+          session_patch: sessionPatch,
           events: [
             makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: renderedAnalysisSource }),
           ],
@@ -23451,17 +24131,200 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         const refinementChips = refinementMissing.length ? buildDiagnosisChips(ctx.lang, refinementMissing) : [];
 
-        const { norm, upstreamDebug, alternativesDebug } = await generateProductRecommendations({
-          ctx,
-          profile,
-          recentLogs,
+        const safety = evaluateSafetyBoundary({
           message,
-          includeAlternatives,
-          debug: debugUpstream,
-          logger,
+          profile,
+          language: ctx.lang,
         });
+        if (safety.block) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.safety_block_rate', value: 1 }, 'metric');
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(safety.assistant_message),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'safety_block',
+                  confidence: { score: 0, level: 'low', rationale: ['medical_boundary'] },
+                  severity: 'block',
+                  details: safety.notice_bullets,
+                }),
+              },
+            ],
+            session_patch: {},
+            events: [
+              makeEvent(ctx, 'recos_requested', { explicit: true, blocked: true, reason: 'safety_boundary' }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
 
-        const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
+        const preferredArtifactId = extractLatestArtifactIdFromSession(parsed.data.session);
+        let latestArtifact = null;
+        let artifactLookupError = null;
+        try {
+          latestArtifact = await getLatestDiagnosisArtifact({
+            auroraUid: identity.auroraUid,
+            userId: identity.userId,
+            sessionId: ctx.brief_id || null,
+            maxAgeDays: 30,
+            preferArtifactId: preferredArtifactId,
+          });
+        } catch (err) {
+          artifactLookupError = err;
+          logger?.warn(
+            { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+            'aurora bff: failed to load latest diagnosis artifact',
+          );
+        }
+
+        const artifactGate = hasUsableArtifactForRecommendations(latestArtifact);
+        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok) {
+          const chips = buildRecoEntryChips(ctx.lang);
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+          const sessionPatch = nextState ? { next_state: nextState } : {};
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              ctx.lang === 'CN'
+                ? '我需要先拿到一份诊断结果（可上传 daylight + indoor_white，或先跑低置信度基线）再做个性化推荐。'
+                : 'I need a diagnosis result first (upload daylight + indoor_white photos, or run a low-confidence baseline) before personalized recommendations.',
+            ),
+            suggested_chips: [...refinementChips, ...chips].slice(0, 8),
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'artifact_missing',
+                  confidence: { score: 0, level: 'low', rationale: ['artifact_not_found'] },
+                  actions: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
+                  details: artifactLookupError ? [String(artifactLookupError.message || artifactLookupError)] : [],
+                }),
+              },
+            ],
+            session_patch: sessionPatch,
+            events: [
+              makeEvent(ctx, 'recos_requested', { explicit: true, gated: true, reason: 'artifact_missing' }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        let mappedIngredientPlan = null;
+        if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
+          const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
+          try {
+            const existingPlan = latestArtifactId
+              ? await getIngredientPlanByArtifactId({ artifactId: latestArtifactId })
+              : null;
+            if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
+              mappedIngredientPlan = {
+                ...existingPlan.plan_json,
+                plan_id: existingPlan.plan_id,
+                created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
+              };
+            } else {
+              const builtPlan = buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile });
+              if (latestArtifactId) {
+                const savedPlan = await saveIngredientPlan({
+                  artifactId: latestArtifactId,
+                  auroraUid: identity.auroraUid,
+                  userId: identity.userId,
+                  plan: builtPlan,
+                });
+                mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                  ? {
+                      ...savedPlan.plan_json,
+                      plan_id: savedPlan.plan_id,
+                      created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
+                    }
+                  : builtPlan;
+              } else {
+                mappedIngredientPlan = builtPlan;
+              }
+            }
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: ingredient plan lookup/build failed',
+            );
+          }
+        }
+
+        let matcherBundle = null;
+        let matcherPayload = null;
+        const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
+        const lowConfidenceArtifact = artifactConfidenceLevel === 'low';
+
+        if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
+          try {
+            const artifactPayload = latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object'
+              ? {
+                  ...latestArtifact.artifact_json,
+                  artifact_id: latestArtifact.artifact_id,
+                  created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+                }
+              : latestArtifact;
+            const planForMatcher =
+              mappedIngredientPlan ||
+              buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
+            if (!mappedIngredientPlan) mappedIngredientPlan = planForMatcher;
+
+            matcherBundle = buildProductRecommendationsBundle({
+              ingredientPlan: planForMatcher,
+              artifact: artifactPayload,
+              profile,
+              language: ctx.lang,
+              disallowTreatment: lowConfidenceArtifact,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            });
+            matcherPayload = toLegacyRecommendationsPayload(matcherBundle, { language: ctx.lang });
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: product matcher failed',
+            );
+          }
+        }
+
+        let norm = null;
+        let upstreamDebug = null;
+        let alternativesDebug = null;
+        if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
+          const upstreamReco = await generateProductRecommendations({
+            ctx,
+            profile,
+            recentLogs,
+            message,
+            includeAlternatives,
+            debug: debugUpstream,
+            logger,
+          });
+          norm = upstreamReco.norm;
+          upstreamDebug = upstreamReco.upstreamDebug;
+          alternativesDebug = upstreamReco.alternativesDebug;
+        } else {
+          norm = {
+            payload: {
+              ...matcherPayload,
+              intent: 'reco_products',
+              profile: summarizeProfileForContext(profile),
+              source: 'artifact_matcher_v1',
+            },
+            field_missing: [],
+          };
+        }
+
+        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
+          ? norm.payload.recommendations.length > 0
+          : false;
+        if (hasRecs) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
+        }
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
@@ -23474,57 +24337,118 @@ function mountAuroraBffRoutes(app, { logger }) {
         const recoUnavailableLead = ctx.lang === 'CN'
           ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
           : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
+
         const assistantTextRaw = hasRecs
-          ? (recoAssistantBase ||
-            (ctx.lang === 'CN'
-              ? profileScore >= 3
-                ? '我已经把核心结果整理成结构化卡片（见下方）。'
-                : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
-              : 'I summarized the key results into structured cards below.'))
+          ? lowConfidenceArtifact
+            ? (ctx.lang === 'CN'
+              ? '当前诊断置信度偏低，我先给你温和基础方案，并已避开高刺激 treatment。建议补拍 daylight + indoor_white 提升准确度。'
+              : 'Current diagnosis confidence is low, so I prepared a gentle baseline and avoided high-irritation treatments. Retake daylight + indoor_white photos for better precision.')
+            : (recoAssistantBase ||
+              (ctx.lang === 'CN'
+                ? profileScore >= 3
+                  ? '我已经把核心结果整理成结构化卡片（见下方）。'
+                  : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
+                : 'I summarized the key results into structured cards below.'))
           : (recoAssistantBase
             ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
             : (ctx.lang === 'CN'
-              ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
-              : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
+              ? '我还没能拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
+              : "I couldn't get a structured product recommendation yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
         const assistantText = addEmotionalPreambleToAssistantText(assistantTextRaw, {
           language: ctx.lang,
           profile,
           seed: ctx.request_id,
         });
 
+        const cards = [
+          {
+            card_id: `reco_${ctx.request_id}`,
+            type: 'recommendations',
+            payload,
+            ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+          },
+        ];
+        if (mappedIngredientPlan) {
+          cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+        }
+        if (latestArtifact && lowConfidenceArtifact) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
+          const confNode =
+            latestArtifact.artifact_json &&
+            latestArtifact.artifact_json.overall_confidence &&
+            typeof latestArtifact.artifact_json.overall_confidence === 'object'
+              ? latestArtifact.artifact_json.overall_confidence
+              : { score: 0.5, level: 'low', rationale: ['artifact_low_confidence'] };
+          cards.push({
+            card_id: `conf_${ctx.request_id}`,
+            type: 'confidence_notice',
+            payload: buildConfidenceNoticeCardPayload({
+              language: ctx.lang,
+              reason: 'low_confidence',
+              confidence: confNode,
+              actions: ['upload_daylight_and_indoor_white', 'update_current_routine'],
+            }),
+          });
+        }
+
+        if (debugUpstream && upstreamDebug) {
+          cards.push({
+            card_id: `aurora_debug_${ctx.request_id}`,
+            type: 'aurora_debug',
+            payload: upstreamDebug,
+          });
+          if (alternativesDebug) {
+            cards.push({
+              card_id: `aurora_alt_debug_${ctx.request_id}`,
+              type: 'aurora_alt_debug',
+              payload: { items: alternativesDebug },
+            });
+          }
+        }
+
+        const sessionPatch = nextState ? { next_state: nextState } : {};
+        appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
+
+        if (AURORA_PRODUCT_MATCHER_ENABLED && matcherBundle && latestArtifact) {
+          try {
+            await saveRecoRun({
+              artifactId: latestArtifact.artifact_id,
+              planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+              auroraUid: identity.auroraUid,
+              userId: identity.userId,
+              requestContext: {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                trigger_source: ctx.trigger_source,
+                low_confidence: lowConfidenceArtifact,
+                source: 'artifact_matcher_v1',
+              },
+              reco: matcherBundle,
+              overallConfidence:
+                matcherBundle.confidence && Number.isFinite(Number(matcherBundle.confidence.score))
+                  ? Number(matcherBundle.confidence.score)
+                  : null,
+            });
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: failed to persist reco run',
+            );
+          }
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(assistantText),
           suggested_chips: refinementChips,
-          cards: [
-            {
-              card_id: `reco_${ctx.request_id}`,
-              type: 'recommendations',
-              payload,
-              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
-            },
-            ...(debugUpstream && upstreamDebug
-              ? [
-                {
-                  card_id: `aurora_debug_${ctx.request_id}`,
-                  type: 'aurora_debug',
-                  payload: upstreamDebug,
-                },
-                ...(alternativesDebug
-                  ? [
-                    {
-                      card_id: `aurora_alt_debug_${ctx.request_id}`,
-                      type: 'aurora_alt_debug',
-                      payload: { items: alternativesDebug },
-                    },
-                  ]
-                  : []),
-              ]
-              : []),
-          ],
-          session_patch: nextState ? { next_state: nextState } : {},
+          cards,
+          session_patch: sessionPatch,
           events: [
             makeEvent(ctx, 'value_moment', { kind: 'product_reco' }),
-            makeEvent(ctx, 'recos_requested', { explicit: true }),
+            makeEvent(ctx, 'recos_requested', {
+              explicit: true,
+              source: matcherPayload ? 'artifact_matcher_v1' : 'upstream_fallback',
+              low_confidence: lowConfidenceArtifact,
+            }),
           ],
         });
         return sendChatEnvelope(envelope);
@@ -24733,6 +25657,7 @@ const __internal = {
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
+  shouldAttemptOpenAiFallbackFromGemini,
   resolveVisionProviderSelection,
   fetchPhotoBytesFromPivotaBackend,
   classifySignedUrlFetchFailure,
@@ -24770,6 +25695,16 @@ const __internal = {
   },
   __resetResolveProductRefForTest() {
     resolveProductRefDirectImpl = resolveProductRefDirect;
+  },
+  __setVisionRunnersForTest(runners = {}) {
+    const geminiFn = runners && typeof runners.gemini === 'function' ? runners.gemini : null;
+    const openAiFn = runners && typeof runners.openai === 'function' ? runners.openai : null;
+    runGeminiVisionSkinAnalysisImpl = geminiFn || runGeminiVisionSkinAnalysis;
+    runOpenAIVisionSkinAnalysisImpl = openAiFn || runOpenAIVisionSkinAnalysis;
+  },
+  __resetVisionRunnersForTest() {
+    runGeminiVisionSkinAnalysisImpl = runGeminiVisionSkinAnalysis;
+    runOpenAIVisionSkinAnalysisImpl = runOpenAIVisionSkinAnalysis;
   },
   __setInferSkinMaskOnFaceCropForTest(fn) {
     inferSkinMaskOnFaceCropImpl = typeof fn === 'function' ? fn : inferSkinMaskOnFaceCrop;

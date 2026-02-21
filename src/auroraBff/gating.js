@@ -400,6 +400,60 @@ function stripRecommendationCards(cards) {
   });
 }
 
+function hasUsableArtifactForRecommendations(artifact, opts = {}) {
+  const requiredCore = Array.isArray(opts.requiredCore) && opts.requiredCore.length
+    ? opts.requiredCore
+    : ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+
+  if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+    return { ok: false, reason: 'artifact_missing', confidence_level: 'low' };
+  }
+
+  const missingCore = [];
+  for (const field of requiredCore) {
+    const node = artifact[field];
+    if (field === 'goals') {
+      const values =
+        node && typeof node === 'object' && !Array.isArray(node) && Array.isArray(node.values)
+          ? node.values
+          : [];
+      if (!values.length) missingCore.push(field);
+      continue;
+    }
+    const value =
+      node && typeof node === 'object' && !Array.isArray(node)
+        ? String(node.value || '').trim()
+        : String(node || '').trim();
+    if (!value) missingCore.push(field);
+  }
+
+  const confidenceNode =
+    artifact.overall_confidence && typeof artifact.overall_confidence === 'object' ? artifact.overall_confidence : null;
+  const confidenceScore = Number(confidenceNode && confidenceNode.score);
+  const confidenceLevelRaw = String(confidenceNode && confidenceNode.level || '').trim().toLowerCase();
+  const confidenceLevel =
+    confidenceLevelRaw === 'low' || confidenceLevelRaw === 'medium' || confidenceLevelRaw === 'high'
+      ? confidenceLevelRaw
+      : Number.isFinite(confidenceScore)
+        ? confidenceScore < 0.55
+          ? 'low'
+          : confidenceScore <= 0.75
+            ? 'medium'
+            : 'high'
+        : 'low';
+
+  if (missingCore.length > 0) {
+    return { ok: false, reason: 'artifact_missing_core', missing_core: missingCore, confidence_level: confidenceLevel };
+  }
+
+  return {
+    ok: true,
+    reason: 'ok',
+    missing_core: [],
+    confidence_level: confidenceLevel,
+  };
+}
+
 module.exports = {
   profileCompleteness,
   looksLikeRecommendationRequest,
@@ -412,4 +466,5 @@ module.exports = {
   buildDiagnosisChips,
   buildPendingClarificationForGate,
   stripRecommendationCards,
+  hasUsableArtifactForRecommendations,
 };
