@@ -1,0 +1,371 @@
+{
+  "strict_empty_top_queries": [
+    {
+      "query": "狗链",
+      "count": 1,
+      "intent_top1": "category",
+      "domain": "pet",
+      "result_type": "strict_empty",
+      "reason_code": "NO_CANDIDATES",
+      "samples": [
+        {
+          "req_id": "sample-3",
+          "ts": "2026-02-21T10:08:00.000Z",
+          "result_type": "strict_empty",
+          "reason_code": "NO_CANDIDATES",
+          "summary": "U_pre=0.370; U_post=0.620; domain_entropy_topK=null; anchor_ratio_topK=null; drops.domain_filter=0; degrade.vector_skipped=false; degrade.nlu_degraded=false; degrade.behavior_skipped=false",
+          "debug": {
+            "query": "狗链",
+            "latency_ms": {
+              "total": 260,
+              "nlu": 14,
+              "lexical": 48,
+              "vector": 0,
+              "behavior": 0,
+              "rank": 7
+            },
+            "nlu": {
+              "intent_top1": "category",
+              "intent_probs": {
+                "overall": 0.58
+              },
+              "intent_entropy": null,
+              "slots": {
+                "domain": "pet",
+                "scenario": "pet_harness",
+                "budget": null,
+                "brand": null,
+                "constraints": {
+                  "in_stock_only": false,
+                  "must_include_keywords": [],
+                  "must_exclude_domains": [],
+                  "must_exclude_keywords": []
+                }
+              },
+              "slot_conf": null,
+              "overall_conf": 0.58,
+              "U_pre": 0.37
+            },
+            "rewrite": {
+              "mode": "conservative",
+              "rewrites": [
+                "dog",
+                "leash",
+                "harness"
+              ],
+              "drift_risk": 0,
+              "category_plan": null
+            },
+            "recall": {
+              "counts_raw": {
+                "lexical": 80,
+                "alias": 0,
+                "vector": 0,
+                "behavior": 0,
+                "assoc": 0,
+                "external_seed": 0
+              },
+              "counts_after_dedup": 0,
+              "drops": {
+                "domain_filter": 0,
+                "constraints_filter": 0,
+                "safety_filter": 0,
+                "inventory_filter": 0
+              }
+            },
+            "post": {
+              "candidates": 0,
+              "U_post": 0.62,
+              "domain_entropy_topK": null,
+              "lexical_anchor_ratio_topK": null,
+              "top_score": null
+            },
+            "top_items": []
+          }
+        }
+      ]
+    }
+  ],
+  "quality_risk_top_queries": [
+    {
+      "query": "约会妆",
+      "count": 1,
+      "intent_top1": "scenario",
+      "domain": "beauty",
+      "result_type": "clarify",
+      "reason_code": "AMBIGUOUS_MEDIUM",
+      "risk_score": 1,
+      "avg_domain_entropy_topk": 0,
+      "avg_anchor_ratio_topk": 0,
+      "avg_cross_domain_ratio_topk": null,
+      "samples": [
+        {
+          "req_id": "sample-2",
+          "ts": "2026-02-21T10:05:00.000Z",
+          "result_type": "clarify",
+          "reason_code": "AMBIGUOUS_MEDIUM",
+          "summary": "U_pre=0.420; U_post=0.710; domain_entropy_topK=null; anchor_ratio_topK=null; drops.domain_filter=2; degrade.vector_skipped=false; degrade.nlu_degraded=false; degrade.behavior_skipped=false",
+          "debug": {
+            "query": "约会妆",
+            "latency_ms": {
+              "total": 320,
+              "nlu": 16,
+              "lexical": 55,
+              "vector": 0,
+              "behavior": 0,
+              "rank": 8
+            },
+            "nlu": {
+              "intent_top1": "scenario",
+              "intent_probs": {
+                "overall": 0.67
+              },
+              "intent_entropy": null,
+              "slots": {
+                "domain": "beauty",
+                "scenario": "general",
+                "budget": null,
+                "brand": null,
+                "constraints": {
+                  "in_stock_only": false,
+                  "must_include_keywords": [],
+                  "must_exclude_domains": [],
+                  "must_exclude_keywords": []
+                }
+              },
+              "slot_conf": null,
+              "overall_conf": 0.67,
+              "U_pre": 0.42
+            },
+            "rewrite": {
+              "mode": "conservative",
+              "rewrites": [
+                "foundation",
+                "lipstick"
+              ],
+              "drift_risk": 0.2,
+              "category_plan": [
+                {
+                  "keyword": "foundation"
+                },
+                {
+                  "keyword": "mascara"
+                }
+              ]
+            },
+            "recall": {
+              "counts_raw": {
+                "lexical": 80,
+                "alias": 0,
+                "vector": 0,
+                "behavior": 0,
+                "assoc": 2,
+                "external_seed": 0
+              },
+              "counts_after_dedup": 4,
+              "drops": {
+                "domain_filter": 2,
+                "constraints_filter": 0,
+                "safety_filter": 0,
+                "inventory_filter": 0
+              }
+            },
+            "post": {
+              "candidates": 0,
+              "U_post": 0.71,
+              "domain_entropy_topK": null,
+              "lexical_anchor_ratio_topK": null,
+              "top_score": null
+            },
+            "top_items": []
+          }
+        }
+      ]
+    },
+    {
+      "query": "狗链",
+      "count": 1,
+      "intent_top1": "category",
+      "domain": "pet",
+      "result_type": "strict_empty",
+      "reason_code": "NO_CANDIDATES",
+      "risk_score": 1,
+      "avg_domain_entropy_topk": 0,
+      "avg_anchor_ratio_topk": 0,
+      "avg_cross_domain_ratio_topk": null,
+      "samples": [
+        {
+          "req_id": "sample-3",
+          "ts": "2026-02-21T10:08:00.000Z",
+          "result_type": "strict_empty",
+          "reason_code": "NO_CANDIDATES",
+          "summary": "U_pre=0.370; U_post=0.620; domain_entropy_topK=null; anchor_ratio_topK=null; drops.domain_filter=0; degrade.vector_skipped=false; degrade.nlu_degraded=false; degrade.behavior_skipped=false",
+          "debug": {
+            "query": "狗链",
+            "latency_ms": {
+              "total": 260,
+              "nlu": 14,
+              "lexical": 48,
+              "vector": 0,
+              "behavior": 0,
+              "rank": 7
+            },
+            "nlu": {
+              "intent_top1": "category",
+              "intent_probs": {
+                "overall": 0.58
+              },
+              "intent_entropy": null,
+              "slots": {
+                "domain": "pet",
+                "scenario": "pet_harness",
+                "budget": null,
+                "brand": null,
+                "constraints": {
+                  "in_stock_only": false,
+                  "must_include_keywords": [],
+                  "must_exclude_domains": [],
+                  "must_exclude_keywords": []
+                }
+              },
+              "slot_conf": null,
+              "overall_conf": 0.58,
+              "U_pre": 0.37
+            },
+            "rewrite": {
+              "mode": "conservative",
+              "rewrites": [
+                "dog",
+                "leash",
+                "harness"
+              ],
+              "drift_risk": 0,
+              "category_plan": null
+            },
+            "recall": {
+              "counts_raw": {
+                "lexical": 80,
+                "alias": 0,
+                "vector": 0,
+                "behavior": 0,
+                "assoc": 0,
+                "external_seed": 0
+              },
+              "counts_after_dedup": 0,
+              "drops": {
+                "domain_filter": 0,
+                "constraints_filter": 0,
+                "safety_filter": 0,
+                "inventory_filter": 0
+              }
+            },
+            "post": {
+              "candidates": 0,
+              "U_post": 0.62,
+              "domain_entropy_topK": null,
+              "lexical_anchor_ratio_topK": null,
+              "top_score": null
+            },
+            "top_items": []
+          }
+        }
+      ]
+    },
+    {
+      "query": "ipsa",
+      "count": 1,
+      "intent_top1": "lookup",
+      "domain": "beauty",
+      "result_type": "product_list",
+      "reason_code": "CACHE_HIT",
+      "risk_score": 0,
+      "avg_domain_entropy_topk": 0,
+      "avg_anchor_ratio_topk": 1,
+      "avg_cross_domain_ratio_topk": 0,
+      "samples": [
+        {
+          "req_id": "sample-1",
+          "ts": "2026-02-21T10:00:00.000Z",
+          "result_type": "product_list",
+          "reason_code": "CACHE_HIT",
+          "summary": "U_pre=0.110; U_post=0.140; domain_entropy_topK=0.000; anchor_ratio_topK=1.000; drops.domain_filter=0; degrade.vector_skipped=false; degrade.nlu_degraded=false; degrade.behavior_skipped=false",
+          "debug": {
+            "query": "ipsa",
+            "latency_ms": {
+              "total": 180,
+              "nlu": 12,
+              "lexical": 44,
+              "vector": 0,
+              "behavior": 0,
+              "rank": 6
+            },
+            "nlu": {
+              "intent_top1": "lookup",
+              "intent_probs": {
+                "overall": 0.88
+              },
+              "intent_entropy": null,
+              "slots": {
+                "domain": "beauty",
+                "scenario": "general",
+                "budget": null,
+                "brand": null,
+                "constraints": {
+                  "in_stock_only": false,
+                  "must_include_keywords": [],
+                  "must_exclude_domains": [],
+                  "must_exclude_keywords": []
+                }
+              },
+              "slot_conf": null,
+              "overall_conf": 0.88,
+              "U_pre": 0.11
+            },
+            "rewrite": {
+              "mode": "conservative",
+              "rewrites": [
+                "toner"
+              ],
+              "drift_risk": 0,
+              "category_plan": null
+            },
+            "recall": {
+              "counts_raw": {
+                "lexical": 80,
+                "alias": 1,
+                "vector": 0,
+                "behavior": 0,
+                "assoc": 0,
+                "external_seed": 0
+              },
+              "counts_after_dedup": 6,
+              "drops": {
+                "domain_filter": 0,
+                "constraints_filter": 0,
+                "safety_filter": 0,
+                "inventory_filter": 0
+              }
+            },
+            "post": {
+              "candidates": 6,
+              "U_post": 0.14,
+              "domain_entropy_topK": 0,
+              "lexical_anchor_ratio_topK": 1,
+              "top_score": 0.92
+            },
+            "top_items": [
+              {
+                "pid": "9886500127048",
+                "domain": "beauty",
+                "cat": "toner",
+                "source": "cache",
+                "final_score": 0.92
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "degrade_top_queries": []
+}

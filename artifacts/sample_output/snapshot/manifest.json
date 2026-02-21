@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-02-21T11:31:58.333Z",
+  "now": "2026-02-21T11:31:58.329Z",
+  "input_files": [
+    "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/debug_bundle_sample.jsonl"
+  ],
+  "total_bundles_loaded": 3,
+  "sample_ratio": 1,
+  "windows": [
+    {
+      "window": "24h",
+      "req_cnt": 3,
+      "health_csv": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/24h/health.csv",
+      "quality_csv": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/24h/quality.csv",
+      "casebook_json": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/24h/casebook.json",
+      "casebook_md": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/24h/casebook.md"
+    },
+    {
+      "window": "7d",
+      "req_cnt": 3,
+      "health_csv": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/7d/health.csv",
+      "quality_csv": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/7d/quality.csv",
+      "casebook_json": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/7d/casebook.json",
+      "casebook_md": "/Users/pengchydan/Desktop/Pivota Infra/Pivota-cursor-create-project-directory-structure-8344/_wt_backend_main_transient_fix/artifacts/sample_output/snapshot/7d/casebook.md"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+window,group_type,group_key,req_cnt,p50_total_latency_ms,p95_total_latency_ms,p99_total_latency_ms,p95_nlu_latency_ms,p95_lexical_latency_ms,p95_vector_latency_ms,p95_behavior_latency_ms,p95_rank_latency_ms,timeout_rate_upstream,timeout_rate_vector_skipped,timeout_rate_nlu_degraded,timeout_rate_behavior_skipped,fallback_rate,product_list_rate,clarify_rate,strict_empty_rate,external_fill_rate,no_candidate_rate
+24h,overall,all,3,260,320,320,16,55,0,0,8,0,0,0,0,0,0.3333333333333333,0.3333333333333333,0.3333333333333333,0,0.6666666666666666
+24h,intent,lookup,1,180,180,180,12,44,0,0,6,0,0,0,0,0,1,0,0,0,0
+24h,intent,scenario,1,320,320,320,16,55,0,0,8,0,0,0,0,0,0,1,0,0,1
+24h,intent,category,1,260,260,260,14,48,0,0,7,0,0,0,0,0,0,0,1,0,1
+24h,domain,beauty,2,180,320,320,16,55,0,0,8,0,0,0,0,0,0.5,0.5,0,0,0.5
+24h,domain,pet,1,260,260,260,14,48,0,0,7,0,0,0,0,0,0,0,1,0,1
+24h,result_type,product_list,1,180,180,180,12,44,0,0,6,0,0,0,0,0,1,0,0,0,0
+24h,result_type,clarify,1,320,320,320,16,55,0,0,8,0,0,0,0,0,0,1,0,0,1
+24h,result_type,strict_empty,1,260,260,260,14,48,0,0,7,0,0,0,0,0,0,0,1,0,1
+24h,degrade,clean,3,260,320,320,16,55,0,0,8,0,0,0,0,0,0.3333333333333333,0.3333333333333333,0.3333333333333333,0,0.6666666666666666

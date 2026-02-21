@@ -1,0 +1,11 @@
+window,group_type,group_key,req_cnt,non_empty_rate,domain_entropy_topk_avg,domain_entropy_topk_p95,cross_domain_in_topk_rate,lexical_anchor_ratio_topk
+7d,overall,all,3,0.3333333333333333,0,0,0,0.3333333333333333
+7d,intent,lookup,1,1,0,0,0,1
+7d,intent,scenario,1,0,0,0,,0
+7d,intent,category,1,0,0,0,,0
+7d,domain,beauty,2,0.5,0,0,0,0.5
+7d,domain,pet,1,0,0,0,,0
+7d,result_type,product_list,1,1,0,0,0,1
+7d,result_type,clarify,1,0,0,0,,0
+7d,result_type,strict_empty,1,0,0,0,,0
+7d,degrade,clean,3,0.3333333333333333,0,0,0,0.3333333333333333
