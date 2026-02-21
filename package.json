@@ -25,6 +25,7 @@
     "probe:frontend:winona-ipsa": "node scripts/run_frontend_live_regression_winona_ipsa.js",
     "probe:frontend:winona-ipsa:fixed": "WARMUP_ROUNDS=1 FORMAL_ROUNDS=100 node scripts/run_frontend_live_regression_winona_ipsa.js",
     "probe:search:stability": "node scripts/search_stability_matrix.js",
+    "obs:snapshot:export": "node scripts/export_observability_snapshot.js",
     "staging:gemini:e2e": "node scripts/staging-gemini-e2e-run.js",
     "staging:gemini:eval": "node scripts/staging-gemini-eval-run.js",
     "smoke:real": "npm --prefix .. run smoke:real --",
