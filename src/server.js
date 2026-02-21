@@ -13048,11 +13048,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ].includes(queryClassForEarlyDecision);
           const queryClassMissing = queryClassForEarlyDecision.length === 0;
           const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
+          const earlyDecisionCause =
+            internalProductsAfterAnchor.length === 0
+              ? 'cache_miss_ambiguity_sensitive'
+              : 'cache_irrelevant_ambiguity_sensitive';
           const canUseEarlyAmbiguityDecision =
             effectiveIntent &&
             !isStrongLookupForEarlyDecision &&
-            internalProductsAfterAnchor.length === 0 &&
-            (!cacheRelevant || effectiveProducts.length === 0) &&
             (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal));
           if (canUseEarlyAmbiguityDecision) {
             const earlyDecisionResponse = {
@@ -13080,7 +13082,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                             : {}),
                           early_decision: {
                             applied: true,
-                            reason: 'cache_miss_ambiguity_sensitive',
+                            reason: earlyDecisionCause,
                             query_class: queryClassForEarlyDecision,
                           },
                         },
