@@ -935,4 +935,70 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.clarification || resp.body.metadata?.strict_empty).toBeTruthy();
     expect(upstreamSearch.isDone()).toBe(false);
   });
+
+  test('uses early ambiguity decision when cache candidates are irrelevant for scenario query', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 1 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_pet',
+                merchant_name: 'Pet Merchant',
+                product_data: {
+                  id: 'pet_jacket_1',
+                  product_id: 'pet_jacket_1',
+                  merchant_id: 'merch_pet',
+                  title: 'Cute Fall/Winter Onesie for Dogs',
+                  description: 'Pet apparel for dogs and cats',
+                  status: 'active',
+                  inventory_quantity: 5,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '出差要买什么',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search_early_decision');
+    expect(resp.body.metadata?.search_trace?.upstream_stage?.called).toBe(false);
+    expect(resp.body.clarification || resp.body.metadata?.strict_empty).toBeTruthy();
+    expect(
+      String(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.reason || ''),
+    ).toBe('cache_irrelevant_ambiguity_sensitive');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
 });
