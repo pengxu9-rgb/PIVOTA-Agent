@@ -11,6 +11,8 @@ BANNED_PHRASES_EN="${BANNED_PHRASES_EN:-low-stress,anxious,panic}"
 
 CURL_BIN="${CURL_BIN:-/usr/bin/curl}"
 PY_BIN="${PY_BIN:-/usr/bin/python3}"
+CURL_CONN_RESET_RETRIES="${CURL_CONN_RESET_RETRIES:-1}"
+CURL_CONN_RESET_SLEEP_SEC="${CURL_CONN_RESET_SLEEP_SEC:-1}"
 
 if [[ ! -x "$CURL_BIN" ]]; then
   CURL_BIN="$(command -v curl)"
@@ -31,10 +33,30 @@ say() {
 post_json() {
   local path="$1"
   local data="$2"
-  "$CURL_BIN" -sS -X POST "${BASE}${path}" \
-    -H "Content-Type: application/json" \
-    -H "X-Aurora-UID: ${AURORA_UID}" \
-    -d "$data"
+  local attempt=0
+  local max_retries=0
+  local rc=0
+
+  if [[ "$CURL_CONN_RESET_RETRIES" =~ ^[0-9]+$ ]]; then
+    max_retries="$CURL_CONN_RESET_RETRIES"
+  fi
+
+  while true; do
+    if "$CURL_BIN" -sS -X POST "${BASE}${path}" \
+      -H "Content-Type: application/json" \
+      -H "X-Aurora-UID: ${AURORA_UID}" \
+      -d "$data"; then
+      return 0
+    fi
+    rc=$?
+    if [[ "$rc" -eq 35 && "$attempt" -lt "$max_retries" ]]; then
+      attempt=$((attempt + 1))
+      echo "[warn] curl connection reset (rc=35), retry ${attempt}/${max_retries} ..." >&2
+      sleep "$CURL_CONN_RESET_SLEEP_SEC"
+      continue
+    fi
+    return "$rc"
+  done
 }
 
 capture_case() {
