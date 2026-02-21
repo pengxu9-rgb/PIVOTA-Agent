@@ -3121,7 +3121,7 @@ async function resolveAvailabilityProductByLocalResolver({
     statusCode: null,
     error: responseError,
   });
-  if (responseError || reasonCode !== 'no_candidates') {
+  if (responseError || finalReasonCode !== 'no_candidates') {
     logger?.warn(
       {
         query: q.slice(0, 120),
@@ -13740,30 +13740,14 @@ async function resolveRecoPdpByLocalResolver({
     strictInternal: true,
     requestedTimeoutMs: timeoutMs,
   });
+  const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
+  const localHttpTimeoutMs = Math.max(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, resolveTimeoutMs);
+  const canUseLocalHttpFallback = Boolean(localResolveUrl && /^https?:\/\//i.test(localResolveUrl));
 
-  let responseBody = null;
-  let responseStatusCode = null;
-  let responseError = null;
-  if (typeof resolveProductRefDirectImpl === 'function') {
-    try {
-      responseBody = await resolveProductRefDirectImpl({
-        query: q,
-        lang: 'en',
-        ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
-        options: {
-          search_all_merchants: true,
-          timeout_ms: resolveTimeoutMs,
-          upstream_retries: 0,
-          stable_alias_short_circuit: true,
-          allow_stable_alias_for_uuid: true,
-        },
-        caller: 'aurora_chatbox',
-      });
-    } catch (err) {
-      responseError = err;
+  const runLocalHttpResolveFallback = async () => {
+    if (!canUseLocalHttpFallback) {
+      return { responseBody: null, responseStatusCode: null, responseError: new Error('local_resolver_unavailable') };
     }
-  } else {
-    const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
     try {
       const resp = await axios.post(
         localResolveUrl,
@@ -13783,15 +13767,48 @@ async function resolveRecoPdpByLocalResolver({
         },
         {
           headers: { 'Content-Type': 'application/json' },
-          timeout: Math.max(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, resolveTimeoutMs),
+          timeout: localHttpTimeoutMs,
           validateStatus: () => true,
         },
       );
-      responseBody = resp && typeof resp.data === 'object' ? resp.data : null;
-      responseStatusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
+      return {
+        responseBody: resp && typeof resp.data === 'object' ? resp.data : null,
+        responseStatusCode: Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null,
+        responseError: null,
+      };
+    } catch (err) {
+      return { responseBody: null, responseStatusCode: null, responseError: err };
+    }
+  };
+
+  let responseBody = null;
+  let responseStatusCode = null;
+  let responseError = null;
+  let fallbackMode = 'direct';
+  if (typeof resolveProductRefDirectImpl === 'function') {
+    try {
+      responseBody = await resolveProductRefDirectImpl({
+        query: q,
+        lang: 'en',
+        ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+        options: {
+          search_all_merchants: true,
+          timeout_ms: resolveTimeoutMs,
+          upstream_retries: 0,
+          stable_alias_short_circuit: true,
+          allow_stable_alias_for_uuid: true,
+        },
+        caller: 'aurora_chatbox',
+      });
     } catch (err) {
       responseError = err;
     }
+  } else {
+    const fallbackOut = await runLocalHttpResolveFallback();
+    responseBody = fallbackOut.responseBody;
+    responseStatusCode = fallbackOut.responseStatusCode;
+    responseError = fallbackOut.responseError;
+    fallbackMode = 'local_http';
   }
 
   const resolvedProductRef = normalizeCanonicalProductRef(responseBody?.product_ref, {
@@ -13811,13 +13828,56 @@ async function resolveRecoPdpByLocalResolver({
     statusCode: responseStatusCode,
     error: responseError,
   });
+  let finalReasonCode = reasonCode;
+
+  const shouldAttemptLocalHttpAfterDirect =
+    fallbackMode === 'direct' &&
+    canUseLocalHttpFallback &&
+    (
+      finalReasonCode === 'upstream_timeout' ||
+      finalReasonCode === 'db_error' ||
+      Boolean(responseError)
+    );
+  if (shouldAttemptLocalHttpAfterDirect) {
+    recordRecoPdpInternalRetryAttempt(1);
+    const fallbackOut = await runLocalHttpResolveFallback();
+    const fallbackResolvedProductRef = normalizeCanonicalProductRef(fallbackOut.responseBody?.product_ref, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (fallbackOut.responseBody?.resolved === true && fallbackResolvedProductRef) {
+      return {
+        ok: true,
+        canonicalProductRef: fallbackResolvedProductRef,
+        reasonCode: null,
+      };
+    }
+    const fallbackReasonCode = mapResolveFailureCode({
+      resolveBody: fallbackOut.responseBody,
+      statusCode: fallbackOut.responseStatusCode,
+      error: fallbackOut.responseError,
+    });
+    if (fallbackReasonCode && fallbackReasonCode !== 'upstream_timeout' && fallbackReasonCode !== 'db_error') {
+      finalReasonCode = fallbackReasonCode;
+    } else if (
+      (finalReasonCode === 'upstream_timeout' || finalReasonCode === 'db_error') &&
+      fallbackReasonCode === 'no_candidates'
+    ) {
+      finalReasonCode = 'no_candidates';
+    }
+    responseBody = fallbackOut.responseBody || responseBody;
+    responseStatusCode = fallbackOut.responseStatusCode || responseStatusCode;
+    responseError = fallbackOut.responseError || responseError;
+    fallbackMode = 'local_http_after_direct';
+  }
+
   if (responseError || reasonCode !== 'no_candidates') {
     logger?.warn(
       {
         query: q.slice(0, 120),
-        reason_code: reasonCode,
+        reason_code: finalReasonCode,
         status_code: responseStatusCode,
-        fallback_mode: typeof resolveProductRefDirectImpl === 'function' ? 'direct' : 'local_http',
+        fallback_mode: fallbackMode,
         err: responseError ? responseError.message || String(responseError) : null,
       },
       'aurora bff: reco pdp local resolver fallback unresolved',
@@ -13825,7 +13885,7 @@ async function resolveRecoPdpByLocalResolver({
   }
   return {
     ok: false,
-    reasonCode,
+    reasonCode: finalReasonCode,
   };
 }
 

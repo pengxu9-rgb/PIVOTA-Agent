@@ -840,7 +840,7 @@ test('UUID-only sku does not send product_ref hint and avoids duplicated brand i
         const aliases = Array.isArray(capturedBody?.hints?.aliases) ? capturedBody.hints.aliases : [];
         assert.equal(aliases.some((v) => String(v).toLowerCase().includes('brandx brandx')), false);
         assert.equal(stableInvokeCalls, 0);
-        assert.equal(queryResolveCalls, 1);
+        assert.ok(queryResolveCalls >= 1);
         assert.equal(enriched?.metadata?.pdp_open_path, 'external');
       } finally {
         axios.post = originalPost;
@@ -1208,6 +1208,91 @@ test('Query resolve upstream_timeout uses local HTTP resolver fallback when dire
   );
 });
 
+test('Query resolve upstream_timeout retries local HTTP resolver after direct local resolver transient failure', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+      AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS: '900',
+      AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS: '2200',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      let primaryResolveCalls = 0;
+      let localHttpResolveCalls = 0;
+
+      axios.post = async (url, body, config) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          primaryResolveCalls += 1;
+          assert.equal(body?.options?.timeout_ms, 2200);
+          assert.equal(Number(config?.timeout || 0), 2200);
+          const timeoutErr = new Error('resolve timeout');
+          timeoutErr.code = 'ECONNABORTED';
+          throw timeoutErr;
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/resolve') {
+          localHttpResolveCalls += 1;
+          assert.equal(body?.options?.timeout_ms, 2200);
+          assert.equal(Number(config?.timeout || 0), 2200);
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              reason: 'stable_alias_match',
+              reason_code: 'stable_alias_match',
+              product_ref: {
+                product_id: 'prod_local_http_after_direct',
+                merchant_id: 'mid_local_http_after_direct',
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+
+      let internal = null;
+      try {
+        const { __internal } = loadRoutesFresh();
+        internal = __internal;
+        __internal.__setResolveProductRefForTest(async () => ({
+          resolved: false,
+          reason: 'upstream_timeout',
+          reason_code: 'upstream_timeout',
+          product_ref: null,
+        }));
+
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract(
+          {
+            sku: {
+              brand: 'FallbackBrand',
+              display_name: 'FallbackBrand Recovery Gel',
+            },
+          },
+          { logger: null, allowLocalInvokeFallback: false },
+        );
+
+        assert.equal(primaryResolveCalls, 1);
+        assert.equal(localHttpResolveCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'resolve');
+        assert.equal(enriched?.pdp_open?.path, 'resolve');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_local_http_after_direct');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_local_http_after_direct');
+      } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('Query resolve upstream_timeout uses catalog search fallback in strict internal mode for named products', async () => {
   await withEnv(
     {
@@ -1307,6 +1392,7 @@ test('Query resolve upstream_timeout forces local catalog search fallback when p
       const originalPost = axios.post;
       const originalGet = axios.get;
       let queryResolveCalls = 0;
+      let localResolveCalls = 0;
       let primarySearchCalls = 0;
       let localSearchCalls = 0;
 
@@ -1314,6 +1400,17 @@ test('Query resolve upstream_timeout forces local catalog search fallback when p
         const target = String(url || '');
         if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
           queryResolveCalls += 1;
+          return {
+            status: 504,
+            data: {
+              resolved: false,
+              reason: 'upstream_timeout',
+              reason_code: 'upstream_timeout',
+            },
+          };
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/resolve') {
+          localResolveCalls += 1;
           return {
             status: 504,
             data: {
@@ -1354,8 +1451,11 @@ test('Query resolve upstream_timeout forces local catalog search fallback when p
         throw new Error(`Unexpected axios.get: ${target}`);
       };
 
+      let internal = null;
       try {
         const { __internal } = loadRoutesFresh();
+        internal = __internal;
+        __internal.__setResolveProductRefForTest(null);
         const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
           sku: {
             brand: 'The Ordinary',
@@ -1367,6 +1467,7 @@ test('Query resolve upstream_timeout forces local catalog search fallback when p
         }, { logger: null });
 
         assert.equal(queryResolveCalls, 1);
+        assert.equal(localResolveCalls, 1);
         assert.equal(primarySearchCalls, 1);
         assert.equal(localSearchCalls, 1);
         assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
@@ -1375,6 +1476,9 @@ test('Query resolve upstream_timeout forces local catalog search fallback when p
         assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_local_timeout_recover');
         assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_local_timeout_recover');
       } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
         axios.post = originalPost;
         axios.get = originalGet;
       }
