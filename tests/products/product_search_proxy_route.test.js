@@ -23,6 +23,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED:
+        process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
       PROXY_SEARCH_RESOLVER_DETAIL_ENABLED: process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED,
@@ -57,6 +59,9 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
       PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS:
         process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_API_BASE: process.env.PROXY_SEARCH_AURORA_API_BASE,
+      PROXY_SEARCH_AURORA_BACKEND_BASE_URL:
+        process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
         process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
     };
@@ -66,6 +71,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     process.env.API_MODE = 'REAL';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    delete process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
     delete process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED;
     delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
@@ -87,6 +93,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_API_BASE;
+    delete process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
     delete process.env.DATABASE_URL;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
@@ -121,6 +129,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED =
         prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
+        prevEnv.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
     }
     if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY === undefined) {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
@@ -242,6 +256,17 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
     }
+    if (prevEnv.PROXY_SEARCH_AURORA_API_BASE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_API_BASE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_API_BASE = prevEnv.PROXY_SEARCH_AURORA_API_BASE;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_BACKEND_BASE_URL === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL =
+        prevEnv.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
+    }
     if (prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED === undefined) {
       delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     } else {
@@ -343,6 +368,82 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       expect.objectContaining({
         product_id: 'beauty_1',
         merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+  });
+
+  test('aurora source uses dedicated upstream base for primary and invoke fallback', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
+
+    const auroraPrimaryScope = nock('http://aurora-upstream.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const auroraFallbackScope = nock('http://aurora-upstream.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'find_products_multi' &&
+          body.payload &&
+          body.payload.search &&
+          String(body.payload.search.query || '') === queryText &&
+          body.payload.search.fast_mode === true &&
+          body.payload.search.allow_stale_cache === false &&
+          body.payload.search.allow_external_seed === false &&
+          String(body.payload.search.external_seed_strategy || '') === 'legacy' &&
+          String(body.metadata?.source || '') === 'aurora-bff'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'beauty_fallback_aurora_base',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper peptide serum fallback aurora base',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(auroraPrimaryScope.isDone()).toBe(true);
+    expect(auroraFallbackScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'beauty_fallback_aurora_base',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        fallback_strategy: expect.objectContaining({
+          source: 'aurora_force_path',
+          aurora_upstream_base: 'http://aurora-upstream.test',
+        }),
       }),
     );
   });
