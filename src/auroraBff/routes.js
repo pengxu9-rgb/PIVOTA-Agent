@@ -544,6 +544,30 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ALLOW_EXTERNAL_SEED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_ALLOW_EXTERNAL_SEED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_ALLOW_EXTERNAL_SEED = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_ALLOW_EXTERNAL_SEED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_EXTERNAL_SEED_STRATEGY = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_EXTERNAL_SEED_STRATEGY || 'supplement_internal_first')
+    .trim()
+    .toLowerCase();
+  return raw || 'supplement_internal_first';
+})();
 const AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED || 'true')
     .trim()
@@ -2029,6 +2053,9 @@ async function searchPivotaBackendProducts({
   searchAllMerchants = true,
   deadlineMs = 0,
   forceLocalSearchFallback = false,
+  allowExternalSeed = undefined,
+  externalSeedStrategy = '',
+  fastMode = true,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -2049,6 +2076,10 @@ async function searchPivotaBackendProducts({
     offset: 0,
     source: RECO_CATALOG_SEARCH_SOURCE,
   };
+  if (allowExternalSeed !== undefined) params.allow_external_seed = allowExternalSeed === true;
+  const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
+  if (normalizedExternalSeedStrategy) params.external_seed_strategy = normalizedExternalSeedStrategy;
+  if (fastMode !== undefined) params.fast_mode = fastMode === true;
   const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
   const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   const forceLocalFallbackEnabled = forceLocalSearchFallback === true;
@@ -4694,6 +4725,15 @@ async function buildRealtimeCompetitorCandidates({
     runMode !== 'main_path'
       ? true
       : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
+  const allowExternalSeed =
+    runMode === 'async_backfill'
+      ? PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_ALLOW_EXTERNAL_SEED
+      : runMode === 'sync_repair'
+        ? PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ALLOW_EXTERNAL_SEED
+        : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED;
+  const externalSeedStrategy = allowExternalSeed
+    ? PRODUCT_URL_REALTIME_COMPETITOR_EXTERNAL_SEED_STRATEGY
+    : 'legacy';
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
   const reserveAfterSearchMs =
@@ -4760,6 +4800,9 @@ async function buildRealtimeCompetitorCandidates({
         timeoutMs: perQueryTimeoutMs,
         searchAllMerchants,
         deadlineMs: softDeadlineMs,
+        allowExternalSeed,
+        externalSeedStrategy,
+        fastMode: true,
       });
       return { query: queryText, searched };
     }),
