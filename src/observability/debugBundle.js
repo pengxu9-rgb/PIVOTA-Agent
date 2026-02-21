@@ -253,7 +253,11 @@ function shouldExposeDebugBundle(req) {
   const ip = pickRequestIp(req);
   const allowlist = parseAllowlist(process.env.SEARCH_DEBUG_BUNDLE_ALLOWLIST || '');
   if (allowlist.length > 0) return matchesAllowlist(ip, allowlist);
-  return isPrivateIp(ip);
+  const allowPrivate = String(process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP || 'false')
+    .trim()
+    .toLowerCase();
+  if (allowPrivate === 'true') return isPrivateIp(ip);
+  return false;
 }
 
 function shouldLogDebugBundle(req) {

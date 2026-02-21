@@ -4,6 +4,7 @@ const {
   inferResultType,
   inferReasonCode,
   buildSearchDebugBundle,
+  shouldExposeDebugBundle,
 } = require('../src/observability/debugBundle');
 
 describe('observability debug bundle', () => {
@@ -124,6 +125,30 @@ describe('observability debug bundle', () => {
       expect(RESULT_TYPE_VALUES).toContain(resultType);
       expect(typeof reasonCode).toBe('string');
       expect(REASON_CODE_VALUES.includes(reasonCode) || /^[A-Z0-9_]+$/.test(reasonCode)).toBe(true);
+    }
+  });
+
+  test('debug response exposure requires allowlist unless private mode explicitly enabled', () => {
+    const req = {
+      headers: { 'x-debug': '1', 'x-forwarded-for': '157.10.251.29' },
+      query: {},
+      body: {},
+      ip: '10.0.0.5',
+    };
+    const oldAllowlist = process.env.SEARCH_DEBUG_BUNDLE_ALLOWLIST;
+    const oldPrivate = process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP;
+    try {
+      delete process.env.SEARCH_DEBUG_BUNDLE_ALLOWLIST;
+      delete process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP;
+      expect(shouldExposeDebugBundle(req)).toBe(false);
+
+      process.env.SEARCH_DEBUG_BUNDLE_ALLOWLIST = '157.10.251.*';
+      expect(shouldExposeDebugBundle(req)).toBe(true);
+    } finally {
+      if (oldAllowlist == null) delete process.env.SEARCH_DEBUG_BUNDLE_ALLOWLIST;
+      else process.env.SEARCH_DEBUG_BUNDLE_ALLOWLIST = oldAllowlist;
+      if (oldPrivate == null) delete process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP;
+      else process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP = oldPrivate;
     }
   });
 });

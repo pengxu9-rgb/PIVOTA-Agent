@@ -13,12 +13,13 @@ This document describes how to enable `debug_bundle` for `find_products_multi`, 
    - or query param: `debug=1` (or `true`)
 2. source is allowlisted/private:
    - if `SEARCH_DEBUG_BUNDLE_ALLOWLIST` is set, requester IP must match allowlist
-   - otherwise only private/local addresses are allowed
+   - otherwise response expose is disabled by default
 
 Relevant env:
 
 - `SEARCH_DEBUG_BUNDLE_RESPONSE_ENABLED` (default: `true`)
 - `SEARCH_DEBUG_BUNDLE_ALLOWLIST` (comma-separated; supports exact IP and prefix wildcard, e.g. `10.*,192.168.1.10`)
+- `SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP` (default: `false`; set `true` only for trusted private-network environments)
 
 ### Structured logging
 
