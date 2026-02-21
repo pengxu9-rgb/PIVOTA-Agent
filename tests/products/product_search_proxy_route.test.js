@@ -50,10 +50,13 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS: process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
       PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS: process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
       PROXY_SEARCH_FALLBACK_TIMEOUT_MS: process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+      PROXY_SEARCH_RESOLVER_TIMEOUT_MS: process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
       PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS:
         process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
       PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS:
         process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
         process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
     };
@@ -80,8 +83,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
     delete process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
     delete process.env.DATABASE_URL;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
@@ -213,6 +218,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
     }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
+    }
     if (prevEnv.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
     } else {
@@ -224,6 +235,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
     }
     if (prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED === undefined) {
       delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
@@ -831,6 +848,79 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       }),
     );
     expect(resp.body.metadata.route_health.primary_latency_ms).toBeLessThan(900);
+  });
+
+  test('aurora resolver timeout budget does not poison non-aurora resolver cache', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS = '1600';
+    process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS = '350';
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: false,
+      confidence: 0,
+      reason: 'no_candidates',
+      reason_code: 'no_candidates',
+      metadata: {
+        latency_ms: 8,
+        sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }],
+      },
+    });
+
+    jest.doMock('../../src/services/productGroundingResolver', () => {
+      const actual = jest.requireActual('../../src/services/productGroundingResolver');
+      return {
+        ...actual,
+        resolveProductRef: resolverSpy,
+      };
+    });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .times(2)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'cp_anchor_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper peptide serum',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const auroraResp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+    const callCountAfterAurora = resolverSpy.mock.calls.length;
+    const genericResp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+      });
+    const auroraTimeouts = resolverSpy.mock.calls
+      .slice(0, callCountAfterAurora)
+      .map((call) => Number(call?.[0]?.options?.timeout_ms || 0));
+    const genericTimeouts = resolverSpy.mock.calls
+      .slice(callCountAfterAurora)
+      .map((call) => Number(call?.[0]?.options?.timeout_ms || 0));
+
+    expect(auroraResp.status).toBe(200);
+    expect(genericResp.status).toBe(200);
+    expect(callCountAfterAurora).toBeGreaterThan(0);
+    expect(resolverSpy.mock.calls.length).toBeGreaterThan(callCountAfterAurora);
+    expect(auroraTimeouts.every((value) => value === 350)).toBe(true);
+    expect(genericTimeouts.some((value) => value === 1600)).toBe(true);
   });
 
   test('aurora source detects same-brand external monoculture and forces semantic retry fallback', async () => {
