@@ -15289,13 +15289,12 @@ function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAtt
     (offer && typeof offer === 'object' && typeof offer.url === 'string' && offer.url.trim()) ||
     '';
   const queryText = buildProductInputText(product, offerUrl) || pickFirstTrimmed(product.display_name, product.name, product.brand);
+  const externalFailReason = normalizeResolveReasonCode(failReason || '', 'no_candidates');
   metadata.pdp_open_path = 'external';
   metadata.pdp_open_mode = 'external';
-  if (failReason) {
-    metadata.pdp_open_fail_reason = failReason;
-    metadata.resolve_reason_code = failReason;
-    metadata.resolve_fail_reason = failReason;
-  }
+  metadata.pdp_open_fail_reason = externalFailReason;
+  metadata.resolve_reason_code = externalFailReason;
+  metadata.resolve_fail_reason = externalFailReason;
 
   return {
     ...base,
@@ -15310,7 +15309,7 @@ function applyOfferItemPdpOpenContract(item, { failReasonCode = null, resolveAtt
         url: buildExternalGoogleSearchUrl(queryText),
         query: queryText || null,
       },
-      ...(failReason ? { resolve_reason_code: failReason } : {}),
+      resolve_reason_code: externalFailReason,
     },
   };
 }
