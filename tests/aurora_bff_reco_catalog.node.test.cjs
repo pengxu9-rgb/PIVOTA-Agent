@@ -1210,6 +1210,98 @@ test('Query resolve upstream_timeout uses catalog search fallback in strict inte
   );
 });
 
+test('Query resolve upstream_timeout forces local catalog search fallback when primary search times out', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
+      AURORA_BFF_RECO_PDP_SKIP_OPAQUE_STABLE_IDS: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      const originalGet = axios.get;
+      let queryResolveCalls = 0;
+      let primarySearchCalls = 0;
+      let localSearchCalls = 0;
+
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          queryResolveCalls += 1;
+          return {
+            status: 504,
+            data: {
+              resolved: false,
+              reason: 'upstream_timeout',
+              reason_code: 'upstream_timeout',
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
+          primarySearchCalls += 1;
+          const err = new Error('upstream timeout');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        if (target === 'http://127.0.0.1:3000/agent/v1/products/search') {
+          localSearchCalls += 1;
+          return {
+            status: 200,
+            data: {
+              products: [
+                {
+                  product_id: 'prod_local_timeout_recover',
+                  merchant_id: 'mid_local_timeout_recover',
+                  brand: 'The Ordinary',
+                  name: 'Glycolic Acid 7% Toning Solution',
+                  display_name: 'The Ordinary Glycolic Acid 7% Toning Solution',
+                  category: 'treatment',
+                },
+              ],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
+          sku: {
+            brand: 'The Ordinary',
+            display_name: 'The Ordinary Glycolic Acid 7% Toning Solution',
+            product_id: '9b07d4ae-b1b4-42d5-bd6d-391a83f800c8',
+            sku_id: '9b07d4ae-b1b4-42d5-bd6d-391a83f800c8',
+            category: 'treatment',
+          },
+        }, { logger: null });
+
+        assert.equal(queryResolveCalls, 1);
+        assert.equal(primarySearchCalls, 1);
+        assert.equal(localSearchCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(enriched?.pdp_open?.path, 'ref');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_local_timeout_recover');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_local_timeout_recover');
+      } finally {
+        axios.post = originalPost;
+        axios.get = originalGet;
+      }
+    },
+  );
+});
+
 test('Query resolve no_candidates with opaque UUID ids uses deterministic local resolver fallback in strict internal mode', async () => {
   await withEnv(
     {
