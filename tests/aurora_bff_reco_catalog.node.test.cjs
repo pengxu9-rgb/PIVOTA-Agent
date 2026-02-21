@@ -40,6 +40,14 @@ function loadRoutesFresh() {
   return require('../src/auroraBff/routes');
 }
 
+function isProductsSearchUrl(url) {
+  const target = String(url || '');
+  return (
+    target.includes('/agent/v1/products/search') ||
+    target.includes('/agent/v1/beauty/products/search')
+  );
+}
+
 const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
   const m = String(method || '').toLowerCase();
   const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
@@ -154,7 +162,7 @@ test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled
   const originalGet = axios.get;
   const queries = [];
   axios.get = async (url, config = {}) => {
-    if (String(url).includes('/agent/v1/products/search')) {
+    if (isProductsSearchUrl(url)) {
       const q = String(config?.params?.query || '').trim().toLowerCase();
       queries.push(q);
       const mk = (suffix) => ({
@@ -211,7 +219,7 @@ test('The Ordinary recommendation: pdp_open path is direct internal (group), no 
       const originalPost = axios.post;
       let resolveCalls = 0;
       axios.get = async (url, config = {}) => {
-        if (!String(url).includes('/agent/v1/products/search')) throw new Error(`Unexpected axios.get: ${url}`);
+        if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
         const q = String(config?.params?.query || '').toLowerCase();
         if (!q.includes('ordinary')) throw new Error(`Unexpected query: ${q}`);
         return {
@@ -285,7 +293,7 @@ test('Winona recommendation: pdp_open path is direct internal (ref), no fallback
       const originalPost = axios.post;
       let resolveCalls = 0;
       axios.get = async (url, config = {}) => {
-        if (!String(url).includes('/agent/v1/products/search')) throw new Error(`Unexpected axios.get: ${url}`);
+        if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
         const q = String(config?.params?.query || '').toLowerCase();
         if (!q.includes('winona')) throw new Error(`Unexpected query: ${q}`);
         return {
@@ -362,8 +370,22 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
       let resolveCalls = 0;
       let stableResolveCalls = 0;
       let lastResolveBody = null;
-      axios.get = async (url) => {
-        throw new Error(`Unexpected axios.get: ${url}`);
+      axios.get = async (url, config = {}) => {
+        if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+        const q = String(config?.params?.query || '').trim() || 'fallback';
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: `prod_unresolved_${q.replace(/[^a-z0-9]+/gi, '_').toLowerCase().slice(0, 20) || 'fallback'}`,
+                brand: 'Fallback',
+                name: q,
+                display_name: `Fallback ${q}`,
+              },
+            ],
+          },
+        };
       };
       axios.post = async (url, body) => {
         if (String(url).includes('/agent/shop/v1/invoke')) {
@@ -604,7 +626,7 @@ test('/v1/chat reco PDP: local invoke fallback is applied when upstream timeout 
       let queryResolveCalls = 0;
 
       axios.get = async (url, config = {}) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         const q = String(config?.params?.query || '').trim().toLowerCase();
@@ -1866,7 +1888,7 @@ test('/v1/chat availability: specific query uses catalog hit directly without re
       let resolveCalls = 0;
 
       axios.get = async (url) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         searchCalls += 1;
@@ -1955,7 +1977,7 @@ test('/v1/chat availability: generic non-whitelist product query short-circuits 
       let resolveCalls = 0;
 
       axios.get = async (url) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         searchCalls += 1;
@@ -2047,7 +2069,7 @@ test('/v1/chat availability: generic brand query skips resolve fallback on trans
       let resolveCalls = 0;
 
       axios.get = async (url) => {
-        if (String(url).includes('/agent/v1/products/search')) {
+        if (isProductsSearchUrl(url)) {
           searchCalls += 1;
           const timeoutErr = new Error('search timeout');
           timeoutErr.code = 'ECONNABORTED';
@@ -2139,7 +2161,7 @@ test('/v1/chat availability: generic concrete query uses local resolver on soft-
       let internal = null;
 
       axios.get = async (url) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         searchCalls += 1;
@@ -2262,7 +2284,7 @@ test('/v1/chat availability: specific query runs resolve fallback on transient s
       let resolveCalls = 0;
 
       axios.get = async (url) => {
-        if (String(url).includes('/agent/v1/products/search')) {
+        if (isProductsSearchUrl(url)) {
           searchCalls += 1;
           const timeoutErr = new Error('search timeout');
           timeoutErr.code = 'ECONNABORTED';
@@ -2618,7 +2640,7 @@ test('/v1/chat availability: specific query falls back to local resolver when re
       let resolveCalls = 0;
 
       axios.get = async (url) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         searchCalls += 1;
@@ -2702,7 +2724,7 @@ test('/v1/chat availability: 200 soft-timeout search keeps internal path via loc
       let resolveCalls = 0;
 
       axios.get = async (url) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         searchCalls += 1;
@@ -2823,7 +2845,7 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
 
       Date.now = () => nowMs;
       axios.get = async (url, config = {}) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         searchCalls += 1;
@@ -2923,7 +2945,7 @@ test('/v1/chat reco fail-fast open: skips PDP resolve calls via fast external fa
 
       Date.now = () => nowMs;
       axios.get = async (url, config = {}) => {
-        if (!String(url).includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
         }
         if (searchPhase === 'timeout') {
@@ -3024,7 +3046,7 @@ test('/v1/chat reco transient catalog failure: returns stable fallback payload w
 
       axios.get = async (url) => {
         const target = String(url || '');
-        if (!target.includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(target)) {
           throw new Error(`Unexpected axios.get: ${target}`);
         }
         searchCalls += 1;
@@ -3090,7 +3112,7 @@ test('/v1/chat reco: 200 soft-fallback timeout search response still returns rec
 
       axios.get = async (url) => {
         const target = String(url || '');
-        if (!target.includes('/agent/v1/products/search')) {
+        if (!isProductsSearchUrl(target)) {
           throw new Error(`Unexpected axios.get: ${target}`);
         }
         searchCalls += 1;

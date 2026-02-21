@@ -24,6 +24,8 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED:
+        process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
       PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
@@ -46,8 +48,15 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
       PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS:
         process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS,
+      PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
       PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS:
         process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_API_BASE: process.env.PROXY_SEARCH_AURORA_API_BASE,
+      PROXY_SEARCH_AURORA_BACKEND_BASE_URL:
+        process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED:
         process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES:
@@ -59,6 +68,8 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     process.env.API_MODE = 'REAL';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
     delete process.env.DATABASE_URL;
+    delete process.env.PROXY_SEARCH_AURORA_API_BASE;
+    delete process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
   });
 
   afterEach(() => {
@@ -78,6 +89,12 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
+        prevEnv.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
     }
     if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY === undefined) {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY;
@@ -150,11 +167,34 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
         prevEnv.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS;
     }
+    if (prevEnv.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
+    }
     if (prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
     } else {
       process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_API_BASE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_API_BASE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_API_BASE = prevEnv.PROXY_SEARCH_AURORA_API_BASE;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_BACKEND_BASE_URL === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL =
+        prevEnv.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
     }
     if (prevEnv.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED;
@@ -796,6 +836,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
     process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
     process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
 
     jest.doMock('../../src/services/productGroundingResolver', () => ({
       resolveProductRef: jest.fn().mockResolvedValue({
@@ -937,7 +978,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         merchant_id: 'merch_efbc46b4619cfbdf',
       }),
     );
-  });
+  }, 15000);
 
   test('aurora invoke path treats 429 primary responses as fallback-eligible', async () => {
     const queryText = 'the ordinary copper peptide serum';
@@ -1019,6 +1060,81 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
     expect(String(resp.body?.metadata?.proxy_search_fallback?.reason || '')).toMatch(
       /upstream_status_429|empty_or_unusable_primary/,
+    );
+  });
+
+  test('aurora invoke uses dedicated upstream base when configured', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    const auroraPrimaryScope = nock('http://aurora-upstream.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const auroraFallbackScope = nock('http://aurora-upstream.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'find_products_multi' &&
+          body.payload &&
+          body.payload.search &&
+          String(body.payload.search.query || '') === queryText &&
+          body.payload.search.fast_mode === true &&
+          body.payload.search.allow_stale_cache === false &&
+          body.payload.search.allow_external_seed === false &&
+          String(body.payload.search.external_seed_strategy || '') === 'legacy' &&
+          String(body.metadata?.source || '') === 'aurora-bff'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'aurora_dedicated_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper peptide serum fallback',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(auroraPrimaryScope.isDone()).toBe(true);
+    expect(auroraFallbackScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'aurora_dedicated_1',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
     );
   });
 

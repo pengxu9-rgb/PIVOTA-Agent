@@ -24953,7 +24953,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let matcherBundle = null;
         let matcherPayload = null;
         const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
-        const lowConfidenceArtifact = artifactConfidenceLevel === 'low';
+        // Legacy reco mode (matcher disabled) should not be downgraded by artifact confidence.
+        const lowConfidenceArtifact = AURORA_PRODUCT_MATCHER_ENABLED && artifactConfidenceLevel === 'low';
 
         if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
           try {
