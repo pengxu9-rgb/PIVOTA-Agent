@@ -538,6 +538,17 @@ const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_FALLBACK = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_RESOLVE_FALLBACK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP || 1);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(1, Math.min(4, v));
+})();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
     .trim()
@@ -4721,7 +4732,10 @@ async function buildRealtimeCompetitorCandidates({
       .toLowerCase();
     return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   })();
-  const allowResolveFallback = runMode === 'async_backfill' || (runMode === 'sync_repair' && syncResolveFallbackEnabled);
+  const allowResolveFallback =
+    runMode === 'async_backfill' ||
+    (runMode === 'sync_repair' && syncResolveFallbackEnabled) ||
+    (runMode === 'main_path' && PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_FALLBACK);
   const searchAllMerchants =
     runMode !== 'main_path'
       ? true
@@ -4782,7 +4796,14 @@ async function buildRealtimeCompetitorCandidates({
       Math.floor(Math.max(minimumPerQueryBudgetMs, getRemainingMs()) / minimumPerQueryBudgetMs),
     ),
   );
-  const plannedQueries = queries.slice(0, Math.max(1, Math.min(queries.length, maxQueriesByBudget)));
+  const mainPathFanoutCap =
+    runMode === 'main_path' && allowResolveFallback
+      ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP
+      : queries.length;
+  const plannedQueries = queries.slice(
+    0,
+    Math.max(1, Math.min(queries.length, Math.min(maxQueriesByBudget, mainPathFanoutCap))),
+  );
   const searchResults = [];
   const observedRecallHits = new Set();
   const earlyStopTarget =
@@ -5027,7 +5048,7 @@ async function buildRealtimeCompetitorCandidates({
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
     };
   }
-  if (runMode === 'main_path' && getRemainingMs() < 420) {
+  if (runMode === 'main_path' && getRemainingMs() < 320) {
     return {
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,

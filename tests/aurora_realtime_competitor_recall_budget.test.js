@@ -98,6 +98,8 @@ describe('aurora realtime competitor recall budget control', () => {
   });
 
   test('main path continues to next query when first query returns no candidates', async () => {
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_RESOLVE_FALLBACK = 'false';
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP = '4';
     const { __internal } = require('../src/auroraBff/routes');
 
     const searchFn = jest
@@ -146,5 +148,39 @@ describe('aurora realtime competitor recall budget control', () => {
     expect(searchFn.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(Array.isArray(out.candidates)).toBe(true);
     expect(out.candidates.length).toBeGreaterThan(0);
+  });
+
+  test('main path defaults to a single query fanout when resolve fallback is enabled', async () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const searchFn = jest.fn().mockResolvedValueOnce({ ok: true, products: [] });
+
+    const out = await __internal.buildRealtimeCompetitorCandidates({
+      productUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      parsedProduct: {
+        product_id: 'anchor_1',
+        sku_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      anchorProduct: {
+        product_id: 'anchor_1',
+        sku_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      keyIngredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate', 'Acetyl Hexapeptide-8'],
+      mode: 'main_path',
+      maxQueries: 4,
+      maxCandidates: 4,
+      timeoutMs: 1200,
+      deadlineMs: Date.now() + 1200,
+      searchFn,
+    });
+
+    expect(searchFn).toHaveBeenCalledTimes(1);
+    expect(Array.isArray(out.queries)).toBe(true);
+    expect(out.queries.length).toBe(1);
   });
 });
