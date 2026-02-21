@@ -528,6 +528,64 @@ const BEAUTY_PRODUCT_NON_TOOL_SIGNALS_JA = [
   'ファンデーション',
 ];
 const BEAUTY_BRAND_ALIAS_SIGNALS = ['ipsa', '茵芙莎', 'winona', '薇诺娜'];
+const BEAUTY_GENERAL_SIGNALS_ZH = [
+  '化妆',
+  '化妝',
+  '妆容',
+  '妝容',
+  '彩妆',
+  '彩妝',
+  '底妆',
+  '底妝',
+  '眼妆',
+  '眼妝',
+  '唇妆',
+  '唇妝',
+  '约会妆',
+  '約會妝',
+  '通勤妆',
+  '通勤妝',
+  '护肤',
+  '護膚',
+  '美妆',
+  '美妝',
+  '上妆',
+  '上妝',
+  '出差护肤',
+  '出差護膚',
+  '旅行护肤',
+  '旅行護膚',
+];
+const BEAUTY_GENERAL_SIGNALS_EN = [
+  'makeup',
+  'cosmetic',
+  'cosmetics',
+  'beauty routine',
+  'skincare',
+  'skin care',
+  'date makeup',
+  'date-night makeup',
+  'travel skincare',
+  'business trip skincare',
+];
+const BEAUTY_GENERAL_SIGNALS_ES = [
+  'maquillaje',
+  'rutina de belleza',
+  'cuidado de la piel',
+  'skincare',
+];
+const BEAUTY_GENERAL_SIGNALS_FR = [
+  'maquillage',
+  'routine beauté',
+  'soin de la peau',
+  'skincare',
+];
+const BEAUTY_GENERAL_SIGNALS_JA = [
+  'メイク',
+  'メイクアップ',
+  '化粧',
+  'スキンケア',
+];
 
 function includesAny(haystack, needles) {
   if (!haystack) return false;
@@ -750,7 +808,30 @@ function looksLikeFollowUpRefinement(latestUserQuery) {
   return false;
 }
 
-function buildNoResultClarifiers(language) {
+function buildNoResultClarifiers(language, options = {}) {
+  const primaryDomain = String(options?.primary_domain || '');
+  if (primaryDomain === 'beauty') {
+    if (language === 'zh') {
+      return [
+        '你更偏向哪类：底妆 / 眼妆 / 唇妆 / 护肤？',
+        '你的预算区间大概是多少？',
+        '你是干皮/油皮/混合皮，偏好清透还是遮瑕持妆？',
+      ];
+    }
+    if (language === 'ja') {
+      return [
+        'ベース / アイ / リップ / スキンケアのどれを優先しますか？',
+        '予算帯はどれくらいですか？',
+        '肌質（乾燥/脂性/混合）と仕上がり（ナチュラル/カバー）を教えてください。',
+      ];
+    }
+    return [
+      'Which category should we prioritize: base, eye, lip, or skincare?',
+      'What budget range should I target?',
+      'What is your skin type and finish preference (natural vs full coverage)?',
+    ];
+  }
+
   if (language === 'zh') {
     return [
       '是给自己/送礼，还是给 Labubu/娃娃/公仔配件？',
@@ -850,6 +931,14 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     (/アイシャドウ/.test(latest) && /ブラシ/.test(latest));
 
   const hasBeautyBrandOrProductSignalLocal = hasBeautyBrandOrProductSignal(latest);
+  const hasBeautyGeneralSignalLocal =
+    includesAny(latest, BEAUTY_GENERAL_SIGNALS_ZH) ||
+    includesAny(latest, BEAUTY_GENERAL_SIGNALS_EN) ||
+    includesAny(latest, BEAUTY_GENERAL_SIGNALS_ES) ||
+    includesAny(latest, BEAUTY_GENERAL_SIGNALS_FR) ||
+    includesAny(latest, BEAUTY_GENERAL_SIGNALS_JA) ||
+    ((/约会|約會/.test(latest) || /\bdate\b/i.test(latest)) &&
+      (/化妆|化妝|美妆|美妝|妆|妝/.test(latest) || /\b(makeup|beauty)\b/i.test(latest)));
   const blockBeautyToolHistoryCarryover =
     hasBeautyBrandOrProductSignalLocal &&
     !hasBeautyToolSignalLocal &&
@@ -1039,6 +1128,12 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
       cats.push('eyelash_curler');
     if (/套装|set|kit|\b\d+\s*(?:pcs|pieces|piece)\b/.test(lowered)) cats.push('brush_set');
     categoryRequired = cats.slice(0, 5);
+  } else if (hasBeautyGeneralSignalLocal) {
+    primary_domain = 'beauty';
+    targetType = 'human';
+    categoryRequired = [];
+    scenarioName = 'general';
+    scenarioSignals = [];
   } else if (hasWomenClothingSignal) {
     primary_domain = 'human_apparel';
     targetType = 'human';
@@ -1131,10 +1226,14 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
 	        ? scenarioName === 'eye_shadow_brush'
 	          ? hasEyeShadowBrushSignal
 	            ? 0.9
-            : 0.6
-          : hasBeautyToolSignal
-            ? 0.85
-            : 0.6
+	            : 0.6
+	          : scenarioName === 'beauty_tools'
+	            ? hasBeautyToolSignal
+	              ? 0.85
+	              : 0.6
+	            : hasBeautyGeneralSignalLocal
+	              ? 0.8
+	              : 0.6
       : primary_domain === 'toy_accessory'
         ? includesAny(latest, TOY_KEYWORDS)
           ? 0.9
@@ -1204,7 +1303,9 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     ambiguity: {
       needs_clarification: Boolean(needsClarification),
       missing_slots: missingSlots.slice(0, 6),
-      clarifying_questions: needsClarification ? buildNoResultClarifiers(language).slice(0, 3) : [],
+      clarifying_questions: needsClarification
+        ? buildNoResultClarifiers(language, { primary_domain: primary_domain, scenario: scenarioName }).slice(0, 3)
+        : [],
     },
     history_usage: {
       used: Boolean(useHistory),
