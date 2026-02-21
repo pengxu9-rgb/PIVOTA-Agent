@@ -35,6 +35,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
       PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS:
         process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS,
+      PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED:
+        process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
+      PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY:
+        process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
+      PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE:
+        process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
         process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
     };
@@ -52,6 +58,9 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK;
     delete process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK;
     delete process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS;
+    delete process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED;
+    delete process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY;
+    delete process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
     delete process.env.DATABASE_URL;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
@@ -129,6 +138,24 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
         prevEnv.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS;
     }
+    if (prevEnv.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED =
+        prevEnv.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY =
+        prevEnv.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
+        prevEnv.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
+    }
     if (prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED === undefined) {
       delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     } else {
@@ -200,7 +227,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           String(q.catalog_surface || '') === 'beauty' &&
           String(q.fast_mode || '') === 'true' &&
           String(q.allow_stale_cache || '') === 'false' &&
-          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+          String(q.allow_external_seed || '') === 'false' &&
+          String(q.external_seed_strategy || '') === 'legacy'
         );
       })
       .reply(200, {
@@ -274,7 +302,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           body.operation === 'find_products_multi' &&
           body.payload &&
           body.payload.search &&
-          String(body.payload.search.query || '') === queryText
+          String(body.payload.search.query || '') === queryText &&
+          String(body.metadata?.source || '') === 'aurora-bff'
         );
       })
       .reply(200, {
@@ -319,6 +348,9 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           resolver_attempted: true,
           secondary_attempted: true,
           secondary_skipped_reason: null,
+          aurora_external_seed_forced: true,
+          aurora_external_seed_enabled: false,
+          aurora_seed_strategy: 'legacy',
         }),
       }),
     );

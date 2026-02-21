@@ -392,6 +392,17 @@ const PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK =
 const PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
   String(process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS || 'true').toLowerCase() !==
   'false';
+const PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED =
+  String(process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED || 'false').toLowerCase() === 'true';
+const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
+  const raw = String(process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY || 'legacy')
+    .trim()
+    .toLowerCase();
+  return raw === 'supplement_internal_first' ? raw : 'legacy';
+})();
+const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
+  String(process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE || 'true').toLowerCase() !==
+  'false';
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
@@ -2720,11 +2731,14 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
       ? { ...queryParams }
       : {};
   if (!isCatalogGuardSource(source)) return params;
+  const isAurora = isAuroraSource(source);
   return {
     ...params,
-    allow_external_seed: true,
+    allow_external_seed: isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true,
     allow_stale_cache: false,
-    external_seed_strategy: 'supplement_internal_first',
+    external_seed_strategy: isAurora
+      ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
+      : 'supplement_internal_first',
     fast_mode: true,
   };
 }
@@ -3284,16 +3298,20 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   };
 }
 
-async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason }) {
+async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason, requestSource }) {
   const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
   if (!payload) return null;
 
   const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
+  const preserveAuroraSource =
+    PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
   const requestBody = {
     operation: 'find_products_multi',
     payload,
     metadata: {
-      source: 'agent_search_proxy_fallback',
+      source: preserveAuroraSource ? normalizedRequestSource : 'agent_search_proxy_fallback',
+      ...(normalizedRequestSource ? { request_source: normalizedRequestSource } : {}),
       trigger_reason: reason || 'unknown',
     },
   };
@@ -7895,6 +7913,13 @@ async function proxyAgentSearchToBackend(req, res) {
       allow_secondary_fallback: allowSecondaryFallback,
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
+      aurora_external_seed_forced: Boolean(auroraFallbackOverrides.active),
+      aurora_external_seed_enabled: Boolean(
+        auroraFallbackOverrides.active && PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
+      ),
+      aurora_seed_strategy: auroraFallbackOverrides.active
+        ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
+        : null,
     };
 
     const upstreamStartedAtMs = Date.now();
@@ -7974,6 +7999,7 @@ async function proxyAgentSearchToBackend(req, res) {
                 ? 'insufficient_primary'
                 : 'empty_or_unusable_primary'
               : 'primary_irrelevant',
+            requestSource: source,
           });
           if (
             fallback &&
@@ -8124,6 +8150,13 @@ async function proxyAgentSearchToBackend(req, res) {
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
       bypass_skip_after_exception: bypassSkipSecondaryFallback,
+      aurora_external_seed_forced: Boolean(auroraFallbackOverrides.active),
+      aurora_external_seed_enabled: Boolean(
+        auroraFallbackOverrides.active && PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
+      ),
+      aurora_seed_strategy: auroraFallbackOverrides.active
+        ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
+        : null,
     };
     if (queryText) {
       if (allowResolverFallbackOnException) {
@@ -8175,6 +8208,7 @@ async function proxyAgentSearchToBackend(req, res) {
             queryParams: guardedQueryParams,
             checkoutToken,
             reason: 'primary_request_failed',
+            requestSource: source,
           });
           if (
             fallback &&
@@ -12944,6 +12978,122 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             });
             return res.json(diagnosed);
           }
+          const queryClassForEarlyDecision = String(
+            traceQueryClass || effectiveIntent?.query_class || '',
+          ).toLowerCase();
+          const hasEarlyDecisionClass = [
+            'mission',
+            'scenario',
+            'gift',
+            'exploratory',
+            'non_shopping',
+          ].includes(queryClassForEarlyDecision);
+          const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
+          const canUseEarlyAmbiguityDecision =
+            effectiveIntent &&
+            internalProductsAfterAnchor.length === 0 &&
+            (!cacheRelevant || effectiveProducts.length === 0) &&
+            (hasEarlyDecisionClass || hasAmbiguitySignal);
+          if (canUseEarlyAmbiguityDecision) {
+            const earlyDecisionResponse = {
+              products: [],
+              total: 0,
+              page: fromCache.page,
+              page_size: 0,
+              reply: null,
+              metadata: {
+                query_source: 'cache_cross_merchant_search_early_decision',
+                fetched_at: new Date().toISOString(),
+                merchants_searched: merchantsReturned.length,
+                source_breakdown: {
+                  internal_count: 0,
+                  external_seed_count: 0,
+                  stale_cache_used: false,
+                  strategy_applied: 'ambiguity_gate_before_upstream',
+                },
+                ...(ROUTE_DEBUG_ENABLED
+                  ? {
+                      route_debug: {
+                        cross_merchant_cache: {
+                          ...(crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object'
+                            ? crossMerchantCacheRouteDebug
+                            : {}),
+                          early_decision: {
+                            applied: true,
+                            reason: 'cache_miss_ambiguity_sensitive',
+                            query_class: queryClassForEarlyDecision,
+                          },
+                        },
+                      },
+                    }
+                  : {}),
+              },
+            };
+            const earlyWithPolicy = applyFindProductsMultiPolicy({
+              response: earlyDecisionResponse,
+              intent: effectiveIntent,
+              requestPayload: effectivePayload,
+              metadata: policyMetadata,
+              rawUserQuery,
+            });
+            const earlyDecisionProducts = Array.isArray(earlyWithPolicy?.products)
+              ? earlyWithPolicy.products
+              : [];
+            const earlyDecisionClarification =
+              earlyWithPolicy &&
+              typeof earlyWithPolicy === 'object' &&
+              !Array.isArray(earlyWithPolicy) &&
+              earlyWithPolicy.clarification &&
+              typeof earlyWithPolicy.clarification === 'object' &&
+              earlyWithPolicy.clarification.question
+                ? earlyWithPolicy.clarification
+                : null;
+            const earlyDecisionStrictEmpty =
+              Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
+              (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
+            if (earlyDecisionClarification || earlyDecisionStrictEmpty) {
+              const earlyDiagnosed = withSearchDiagnostics(earlyWithPolicy, {
+                route_health: buildSearchRouteHealth({
+                  primaryPathUsed: 'cache_stage',
+                  primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+                  fallbackTriggered: false,
+                  fallbackReason: null,
+                  ambiguityScorePre: traceAmbiguityScorePre,
+                  clarifyTriggered: Boolean(earlyDecisionClarification),
+                }),
+                search_trace: buildSearchTrace({
+                  traceId: gatewayRequestId,
+                  rawQuery: cacheQueryText,
+                  expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
+                  expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                  queryClass: traceQueryClass,
+                  rewriteGate: traceRewriteGate,
+                  associationPlan: traceAssociationPlan,
+                  intent: effectiveIntent,
+                  cacheStage: {
+                    hit: false,
+                    candidate_count: 0,
+                    relevant_count: 0,
+                    retrieval_sources: fromCache.retrieval_sources || [],
+                  },
+                  upstreamStage: {
+                    called: false,
+                    timeout: false,
+                    status: null,
+                    latency_ms: 0,
+                  },
+                  resolverStage: {
+                    called: false,
+                    hit: false,
+                    miss: false,
+                    latency_ms: null,
+                  },
+                  finalDecision: earlyDecisionClarification ? 'clarify' : 'strict_empty',
+                }),
+              });
+              return res.json(earlyDiagnosed);
+            }
+          }
           if (
             PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED &&
             isLookupQuery &&
@@ -14142,6 +14292,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryParams: resolverQueryParams,
                 checkoutToken,
                 reason: fallbackReason,
+                requestSource: metadata?.source,
               });
               if (
                 fallback &&
@@ -14418,6 +14569,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   ? 'insufficient_primary'
                   : 'empty_or_unusable_primary'
                 : 'primary_irrelevant',
+              requestSource: metadata?.source,
             });
             if (
               fallback &&

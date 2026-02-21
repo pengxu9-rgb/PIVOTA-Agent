@@ -800,7 +800,13 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       });
 
     const secondaryScope = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .post(
+        '/agent/shop/v1/invoke',
+        (body) =>
+          body &&
+          body.operation === 'find_products_multi' &&
+          String(body.metadata?.source || '') === 'aurora-bff',
+      )
       .reply(200, {
         status: 'success',
         success: true,
