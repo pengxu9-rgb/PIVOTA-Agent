@@ -3134,6 +3134,20 @@ function shouldFallbackProxySearch(normalized, statusCode) {
   return false;
 }
 
+function getFallbackAdoptUsableThreshold({
+  operation,
+  source,
+  primaryUsableCount,
+  primaryIrrelevant,
+}) {
+  const baseThreshold = Math.max(1, Number(primaryUsableCount || 0));
+  const op = String(operation || '').trim();
+  if (op !== 'find_products_multi') return baseThreshold;
+  if (!primaryIrrelevant) return baseThreshold;
+  if (isAuroraSource(source)) return 1;
+  return baseThreshold;
+}
+
 function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const search = {};
@@ -7960,11 +7974,17 @@ async function proxyAgentSearchToBackend(req, res) {
                 : 'empty_or_unusable_primary'
               : 'primary_irrelevant',
           });
+          const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
+            operation: 'find_products_multi',
+            source,
+            primaryUsableCount,
+            primaryIrrelevant,
+          });
           if (
             fallback &&
             fallback.status >= 200 &&
             fallback.status < 300 &&
-            fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+            fallback.usableCount >= fallbackAdoptUsableThreshold &&
             isProxySearchFallbackRelevant(fallback.data, queryText)
           ) {
             return respondSearch(fallback.status, fallback.data, {
@@ -14312,11 +14332,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   : 'empty_or_unusable_primary'
                 : 'primary_irrelevant',
             });
+            const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
+              operation,
+              source: metadata?.source,
+              primaryUsableCount,
+              primaryIrrelevant,
+            });
             if (
               fallback &&
               fallback.status >= 200 &&
               fallback.status < 300 &&
-              fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+              fallback.usableCount >= fallbackAdoptUsableThreshold &&
               isProxySearchFallbackRelevant(fallback.data, queryText)
             ) {
               upstreamData = fallback.data;
