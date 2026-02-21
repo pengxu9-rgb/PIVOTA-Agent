@@ -889,4 +889,50 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       ),
     ).toBe('external_fill_gate_blocked');
   });
+
+  test('uses early ambiguity decision on cache miss for scenario query without upstream call', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '出差要买什么',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search_early_decision');
+    expect(resp.body.metadata?.search_trace?.upstream_stage?.called).toBe(false);
+    expect(resp.body.clarification || resp.body.metadata?.strict_empty).toBeTruthy();
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
 });

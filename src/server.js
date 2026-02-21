@@ -12981,6 +12981,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const queryClassForEarlyDecision = String(
             traceQueryClass || effectiveIntent?.query_class || '',
           ).toLowerCase();
+          const isStrongLookupForEarlyDecision =
+            queryClassForEarlyDecision === 'lookup' || isKnownLookupAliasQuery(cacheQueryText);
           const hasEarlyDecisionClass = [
             'mission',
             'scenario',
@@ -12988,12 +12990,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             'exploratory',
             'non_shopping',
           ].includes(queryClassForEarlyDecision);
+          const queryClassMissing = queryClassForEarlyDecision.length === 0;
           const hasAmbiguitySignal = Boolean(effectiveIntent?.ambiguity?.needs_clarification);
           const canUseEarlyAmbiguityDecision =
             effectiveIntent &&
+            !isStrongLookupForEarlyDecision &&
             internalProductsAfterAnchor.length === 0 &&
             (!cacheRelevant || effectiveProducts.length === 0) &&
-            (hasEarlyDecisionClass || hasAmbiguitySignal);
+            (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal));
           if (canUseEarlyAmbiguityDecision) {
             const earlyDecisionResponse = {
               products: [],
@@ -13051,8 +13055,24 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             const earlyDecisionStrictEmpty =
               Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
               (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
+            const earlyDecisionResponsePayload =
+              earlyDecisionStrictEmpty &&
+              earlyWithPolicy &&
+              typeof earlyWithPolicy === 'object' &&
+              !Array.isArray(earlyWithPolicy) &&
+              !earlyWithPolicy?.metadata?.strict_empty
+                ? {
+                    ...earlyWithPolicy,
+                    metadata: {
+                      ...(earlyWithPolicy.metadata && typeof earlyWithPolicy.metadata === 'object'
+                        ? earlyWithPolicy.metadata
+                        : {}),
+                      strict_empty: true,
+                    },
+                  }
+                : earlyWithPolicy;
             if (earlyDecisionClarification || earlyDecisionStrictEmpty) {
-              const earlyDiagnosed = withSearchDiagnostics(earlyWithPolicy, {
+              const earlyDiagnosed = withSearchDiagnostics(earlyDecisionResponsePayload, {
                 route_health: buildSearchRouteHealth({
                   primaryPathUsed: 'cache_stage',
                   primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),

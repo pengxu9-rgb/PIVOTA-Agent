@@ -129,6 +129,24 @@ function inferQueryClassFromQuery(query) {
 }
 
 function classifyRow(row) {
+  const requestError = !row?.ok;
+  const errorText = String(row?.error || '');
+  const requestTimeout = /timeout|etimedout|econnaborted/i.test(errorText);
+  if (requestError) {
+    return {
+      timeout: requestTimeout,
+      strictEmpty: false,
+      fallback: false,
+      irrelevant: false,
+      querySource: 'request_error',
+      productCount: 0,
+      queryClass: inferQueryClassFromQuery(row?.query),
+      finalDecision: 'request_error',
+      clarifyTriggered: false,
+      requestError: true,
+    };
+  }
+
   const data = row?.data || {};
   const metadata = (data && typeof data === 'object' && data.metadata && typeof data.metadata === 'object')
     ? data.metadata
@@ -160,6 +178,7 @@ function classifyRow(row) {
     queryClass,
     finalDecision: String(searchTrace.final_decision || metadata?.search_decision?.final_decision || ''),
     clarifyTriggered: Boolean(routeHealth?.clarify_triggered || data?.clarification),
+    requestError: false,
   };
 }
 
@@ -232,6 +251,7 @@ async function main() {
   const classified = results.map((row) => ({ ...row, metrics: classifyRow(row) }));
   const total = classified.length;
   const timeoutCount = classified.filter((row) => row.metrics.timeout).length;
+  const requestErrorCount = classified.filter((row) => row.metrics.requestError).length;
   const fallbackCount = classified.filter((row) => row.metrics.fallback).length;
   const strictEmptyCount = classified.filter((row) => row.metrics.strictEmpty).length;
   const irrelevantCount = classified.filter((row) => row.metrics.irrelevant).length;
@@ -267,6 +287,7 @@ async function main() {
     total_requests: total,
     total_duration_ms: Math.max(0, Date.now() - startedAt),
     timeout_rate: total ? timeoutCount / total : 0,
+    request_error_rate: total ? requestErrorCount / total : 0,
     fallback_rate: total ? fallbackCount / total : 0,
     strict_empty_rate: total ? strictEmptyCount / total : 0,
     irrelevant_result_rate: total ? irrelevantCount / total : 0,
@@ -319,6 +340,7 @@ async function main() {
     `- rounds: ${summary.rounds}`,
     `- total_requests: ${summary.total_requests}`,
     `- timeout_rate: ${summary.timeout_rate.toFixed(4)}`,
+    `- request_error_rate: ${summary.request_error_rate.toFixed(4)}`,
     `- fallback_rate: ${summary.fallback_rate.toFixed(4)}`,
     `- strict_empty_rate: ${summary.strict_empty_rate.toFixed(4)}`,
     `- irrelevant_result_rate: ${summary.irrelevant_result_rate.toFixed(4)}`,
@@ -328,6 +350,7 @@ async function main() {
     '| metric | value |',
     '|---|---:|',
     `| timeout_count | ${timeoutCount} |`,
+    `| request_error_count | ${requestErrorCount} |`,
     `| fallback_count | ${fallbackCount} |`,
     `| strict_empty_count | ${strictEmptyCount} |`,
     `| irrelevant_count | ${irrelevantCount} |`,
