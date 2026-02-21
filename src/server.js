@@ -2485,6 +2485,7 @@ function buildSearchTrace({
   queryClass = null,
   rewriteGate = null,
   associationPlan = null,
+  flagsSnapshot = null,
 }) {
   return {
     trace_id: String(traceId || ''),
@@ -2499,6 +2500,10 @@ function buildSearchTrace({
     association_plan:
       associationPlan && typeof associationPlan === 'object' && !Array.isArray(associationPlan)
         ? associationPlan
+        : null,
+    flags_snapshot:
+      flagsSnapshot && typeof flagsSnapshot === 'object' && !Array.isArray(flagsSnapshot)
+        ? flagsSnapshot
         : null,
     intent_domain: intent?.primary_domain || null,
     intent_target: intent?.target_object?.type || null,
@@ -8205,9 +8210,10 @@ async function proxyAgentSearchToBackend(req, res) {
       expansionMode = 'off',
       expandedQuery = normalizedQuery,
       intent = null,
-      fallbackStrategy = null,
-    } = {},
-  ) => {
+	      fallbackStrategy = null,
+	      flagsSnapshot = null,
+	    } = {},
+	  ) => {
     const latencyMs = Math.max(0, Date.now() - startedAtMs);
     let out = withSearchDiagnostics(body, {
       route_health: buildSearchRouteHealth({
@@ -8224,9 +8230,10 @@ async function proxyAgentSearchToBackend(req, res) {
         intent,
         cacheStage,
         upstreamStage,
-        resolverStage,
-        finalDecision,
-      }),
+	        resolverStage,
+	        finalDecision,
+	        flagsSnapshot,
+	      }),
       ...(fallbackStrategy && typeof fallbackStrategy === 'object'
         ? { fallback_strategy: fallbackStrategy }
         : {}),
@@ -10754,6 +10761,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       findProductsExpansionMeta?.association_plan &&
       typeof findProductsExpansionMeta.association_plan === 'object'
         ? findProductsExpansionMeta.association_plan
+        : null;
+    const traceFlagsSnapshot =
+      findProductsExpansionMeta?.flags_snapshot &&
+      typeof findProductsExpansionMeta.flags_snapshot === 'object'
+        ? findProductsExpansionMeta.flags_snapshot
         : null;
     const traceAmbiguityScorePre = Number.isFinite(
       Number(findProductsExpansionMeta?.ambiguity_score_pre),
@@ -13532,6 +13544,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryClass: traceQueryClass,
                 rewriteGate: traceRewriteGate,
                 associationPlan: traceAssociationPlan,
+                flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
                 cacheStage: {
                   hit: true,
@@ -13669,6 +13682,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   queryClass: traceQueryClass,
                   rewriteGate: traceRewriteGate,
                   associationPlan: traceAssociationPlan,
+                  flagsSnapshot: traceFlagsSnapshot,
                   intent: effectiveIntent,
                   cacheStage: {
                     hit: false,
@@ -13760,6 +13774,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     queryClass: traceQueryClass,
                     rewriteGate: traceRewriteGate,
                     associationPlan: traceAssociationPlan,
+                    flagsSnapshot: traceFlagsSnapshot,
                     intent: effectiveIntent,
                     cacheStage: {
                       hit: false,
@@ -13883,6 +13898,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 queryClass: traceQueryClass,
                 rewriteGate: traceRewriteGate,
                 associationPlan: traceAssociationPlan,
+                flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
                 cacheStage: {
                   hit: false,
@@ -15701,6 +15717,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           queryClass: searchDecision?.query_class || traceQueryClass,
           rewriteGate: traceRewriteGate,
           associationPlan: traceAssociationPlan,
+          flagsSnapshot: traceFlagsSnapshot,
           intent: effectiveIntent,
           cacheStage,
           upstreamStage,
@@ -15756,6 +15773,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               queryClass: traceQueryClass,
               rewriteGate: traceRewriteGate,
               associationPlan: traceAssociationPlan,
+              flagsSnapshot: traceFlagsSnapshot,
               intent: effectiveIntent,
               cacheStage: {
                 hit: true,
@@ -15820,10 +15838,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            findProductsExpansionMeta?.expanded_query ||
 	            String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
 	          expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-	          queryClass: traceQueryClass,
-	          rewriteGate: traceRewriteGate,
-	          associationPlan: traceAssociationPlan,
-	          intent: effectiveIntent,
+		          queryClass: traceQueryClass,
+		          rewriteGate: traceRewriteGate,
+		          associationPlan: traceAssociationPlan,
+		          flagsSnapshot: traceFlagsSnapshot,
+		          intent: effectiveIntent,
 	          cacheStage: {
 	            hit: false,
 	            candidate_count: 0,

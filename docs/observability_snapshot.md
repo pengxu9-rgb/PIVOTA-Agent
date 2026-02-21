@@ -43,6 +43,7 @@ The bundle is emitted by `src/observability/debugBundle.js` with these top-level
 - `latency_ms`: `total|nlu|lexical|vector|behavior|rank`
 - `degrade`: `nlu_degraded|vector_skipped|behavior_skipped`
 - `nlu`: intent/slots/confidence snapshot
+- `flags_snapshot`: runtime feature-flag snapshot (`SEARCH_*`)
 - `rewrite`: expansion mode and rewrite tokens
 - `recall`: stage counts and filter drops
 - `post`: candidate/post-rank quality stats
@@ -108,6 +109,8 @@ By `overall`, `intent`, `domain`, `result_type`, `degrade`:
 - timeout/degrade rates
 - `product_list_rate`, `clarify_rate`, `strict_empty_rate`
 - `external_fill_rate`, `no_candidate_rate`
+- `pre_filter_candidate_rate`, `filtered_to_empty_rate`
+- `domain_drop_ratio`, `inventory_drop_ratio`, `constraint_drop_ratio`
 
 ### Quality (`quality.csv`)
 

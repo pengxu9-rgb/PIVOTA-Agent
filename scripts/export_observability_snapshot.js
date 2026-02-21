@@ -172,6 +172,14 @@ function summarizeGroup(bundles, opts = {}) {
     return Number(bundle?.recall?.counts_raw?.external_seed || 0) > 0;
   }).length;
   const reqNoCandidates = bundles.filter((bundle) => Number(bundle?.post?.candidates || 0) < kMin).length;
+  const reqPreFilterCandidates = bundles.filter(
+    (bundle) => Number(bundle?.recall?.pre_filter_candidates ?? bundle?.recall?.counts_after_dedup ?? 0) > 0,
+  ).length;
+  const reqFilteredToEmpty = bundles.filter((bundle) => {
+    const pre = Number(bundle?.recall?.pre_filter_candidates ?? bundle?.recall?.counts_after_dedup ?? 0);
+    const post = Number(bundle?.post?.candidates || 0);
+    return pre > 0 && post === 0;
+  }).length;
   const reqTimeoutLike = bundles.filter((bundle) => String(bundle?.reason_code || '') === 'UPSTREAM_DEGRADED').length;
   const reqVectorSkipped = bundles.filter((bundle) => Boolean(bundle?.degrade?.vector_skipped)).length;
   const reqNluDegraded = bundles.filter((bundle) => Boolean(bundle?.degrade?.nlu_degraded)).length;
@@ -183,6 +191,27 @@ function summarizeGroup(bundles, opts = {}) {
   const domainEntropy = bundles.map((bundle) => safeNumber(bundle?.post?.domain_entropy_topK)).filter((v) => v != null);
   const anchorRatio = bundles.map((bundle) => safeNumber(bundle?.post?.lexical_anchor_ratio_topK)).filter((v) => v != null);
   const crossDomainRatios = bundles.map(calcCrossDomainRatio).filter((v) => v != null);
+  const domainDropRatios = bundles
+    .map((bundle) => {
+      const pre = Number(bundle?.recall?.pre_filter_candidates ?? bundle?.recall?.counts_after_dedup ?? 0);
+      if (!Number.isFinite(pre) || pre <= 0) return null;
+      return Number(bundle?.recall?.drops?.domain_filter || 0) / pre;
+    })
+    .filter((v) => v != null);
+  const inventoryDropRatios = bundles
+    .map((bundle) => {
+      const pre = Number(bundle?.recall?.pre_filter_candidates ?? bundle?.recall?.counts_after_dedup ?? 0);
+      if (!Number.isFinite(pre) || pre <= 0) return null;
+      return Number(bundle?.recall?.drops?.inventory_filter || 0) / pre;
+    })
+    .filter((v) => v != null);
+  const constraintDropRatios = bundles
+    .map((bundle) => {
+      const pre = Number(bundle?.recall?.pre_filter_candidates ?? bundle?.recall?.counts_after_dedup ?? 0);
+      if (!Number.isFinite(pre) || pre <= 0) return null;
+      return Number(bundle?.recall?.drops?.constraints_filter || 0) / pre;
+    })
+    .filter((v) => v != null);
 
   return {
     req_cnt: reqCnt,
@@ -204,6 +233,11 @@ function summarizeGroup(bundles, opts = {}) {
     strict_empty_rate: reqCnt ? reqStrictEmpty / reqCnt : 0,
     external_fill_rate: reqCnt ? reqWithExternal / reqCnt : 0,
     no_candidate_rate: reqCnt ? reqNoCandidates / reqCnt : 0,
+    pre_filter_candidate_rate: reqCnt ? reqPreFilterCandidates / reqCnt : 0,
+    filtered_to_empty_rate: reqCnt ? reqFilteredToEmpty / reqCnt : 0,
+    domain_drop_ratio: mean(domainDropRatios),
+    inventory_drop_ratio: mean(inventoryDropRatios),
+    constraint_drop_ratio: mean(constraintDropRatios),
     non_empty_rate: reqCnt ? reqProductList / reqCnt : 0,
     domain_entropy_topk_avg: mean(domainEntropy),
     domain_entropy_topk_p95: domainEntropy.length
@@ -523,6 +557,11 @@ function writeWindowOutputs({ outDir, windowKey, bundles, kMin, casebookTop, max
     'strict_empty_rate',
     'external_fill_rate',
     'no_candidate_rate',
+    'pre_filter_candidate_rate',
+    'filtered_to_empty_rate',
+    'domain_drop_ratio',
+    'inventory_drop_ratio',
+    'constraint_drop_ratio',
   ];
   const qualityHeaders = [
     'window',

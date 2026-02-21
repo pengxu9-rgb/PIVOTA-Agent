@@ -428,6 +428,27 @@ function buildSearchDebugBundle({
       overall_conf: clamp01(context.intent?.confidence?.overall ?? responseBody?.intent?.confidence?.overall),
       U_pre: clamp01(searchDecision.ambiguity_score_pre ?? routeHealth.ambiguity_score_pre),
     },
+    flags_snapshot: {
+      search_domain_hard_filter_enabled:
+        String(process.env.SEARCH_DOMAIN_HARD_FILTER_ENABLED || 'true').toLowerCase() !== 'false',
+      search_domain_hard_filter_mode: String(
+        process.env.SEARCH_DOMAIN_HARD_FILTER_MODE || 'strict',
+      ).toLowerCase(),
+      search_clarify_on_medium_ambiguity:
+        String(process.env.SEARCH_CLARIFY_ON_MEDIUM_AMBIGUITY || 'true').toLowerCase() !==
+        'false',
+      search_clarify_min_recall_candidates: Number(
+        process.env.SEARCH_CLARIFY_MIN_RECALL_CANDIDATES || 6,
+      ),
+      search_clarify_min_anchor_ratio: Number(
+        process.env.SEARCH_CLARIFY_MIN_ANCHOR_RATIO || 0.12,
+      ),
+      search_clarify_max_domain_entropy: Number(
+        process.env.SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY || 0.5,
+      ),
+      search_anchor_alias_v2:
+        String(process.env.SEARCH_ANCHOR_ALIAS_V2 || 'false').toLowerCase() === 'true',
+    },
     rewrite: {
       mode: String(searchTrace.expansion_mode || context.expansionMode || 'none'),
       rewrites: computeRewriteList(searchTrace.raw_query || query, searchTrace.expanded_query || query),
@@ -455,7 +476,17 @@ function buildSearchDebugBundle({
         assoc: toInt(context.recallAssociationCount, 0),
         external_seed: toInt(crossMerchantDebug.external_products_count, 0),
       },
-      counts_after_dedup: toInt(crossMerchantDebug.products_count ?? products.length, products.length),
+      counts_after_dedup: toInt(
+        filterDebug.before ?? crossMerchantDebug.products_count ?? products.length,
+        products.length,
+      ),
+      pre_filter_candidates: toInt(
+        filterDebug.before ?? crossMerchantDebug.products_count ?? products.length,
+        products.length,
+      ),
+      filtered_to_empty:
+        toInt(filterDebug.before ?? crossMerchantDebug.products_count ?? products.length, 0) > 0 &&
+        toInt(products.length, 0) === 0,
       drops: {
         domain_filter: toInt(ambiguityDebug.domain_filter_dropped, 0),
         constraints_filter: toInt(filterDebug.hard_blocked, 0),
@@ -469,6 +500,24 @@ function buildSearchDebugBundle({
       domain_entropy_topK: domainEntropyTopK,
       lexical_anchor_ratio_topK: lexicalAnchorRatioTopK,
       top_score: Number.isFinite(Number(topItems[0]?.final_score)) ? Number(topItems[0].final_score) : null,
+      filtered_to_empty:
+        toInt(filterDebug.before ?? crossMerchantDebug.products_count ?? products.length, 0) > 0 &&
+        toInt(products.length, 0) === 0,
+      domain_drop_ratio: (() => {
+        const pre = toInt(filterDebug.before ?? crossMerchantDebug.products_count ?? products.length, 0);
+        if (pre <= 0) return null;
+        return clamp01(toInt(ambiguityDebug.domain_filter_dropped, 0) / pre);
+      })(),
+      inventory_drop_ratio: (() => {
+        const pre = toInt(filterDebug.before ?? crossMerchantDebug.products_count ?? products.length, 0);
+        if (pre <= 0) return null;
+        return clamp01(toInt(context.inventoryDroppedCount, 0) / pre);
+      })(),
+      constraint_drop_ratio: (() => {
+        const pre = toInt(filterDebug.before ?? crossMerchantDebug.products_count ?? products.length, 0);
+        if (pre <= 0) return null;
+        return clamp01(toInt(filterDebug.hard_blocked, 0) / pre);
+      })(),
     },
     top_items: topItems,
   };

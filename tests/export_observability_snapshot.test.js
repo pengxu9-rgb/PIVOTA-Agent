@@ -18,7 +18,12 @@ describe('export_observability_snapshot', () => {
       nlu: { intent_top1: 'lookup', slots: { domain: 'beauty' }, U_pre: 0.2 },
       post: { candidates: 3, domain_entropy_topK: 0.1, lexical_anchor_ratio_topK: 1, U_post: 0.2 },
       top_items: [{ pid: 'p1', domain: 'beauty', source: 'cache' }],
-      recall: { counts_raw: { external_seed: 0 }, drops: { domain_filter: 0 } },
+      recall: {
+        counts_raw: { external_seed: 0 },
+        counts_after_dedup: 8,
+        pre_filter_candidates: 8,
+        drops: { domain_filter: 1, inventory_filter: 0, constraints_filter: 0 },
+      },
     },
     {
       req_id: 'r2',
@@ -31,7 +36,12 @@ describe('export_observability_snapshot', () => {
       nlu: { intent_top1: 'scenario', slots: { domain: 'beauty' }, U_pre: 0.4 },
       post: { candidates: 0, domain_entropy_topK: null, lexical_anchor_ratio_topK: null, U_post: 0.7 },
       top_items: [],
-      recall: { counts_raw: { external_seed: 0 }, drops: { domain_filter: 2 } },
+      recall: {
+        counts_raw: { external_seed: 0 },
+        counts_after_dedup: 7,
+        pre_filter_candidates: 7,
+        drops: { domain_filter: 2, inventory_filter: 1, constraints_filter: 1 },
+      },
     },
   ];
 
@@ -69,5 +79,8 @@ describe('export_observability_snapshot', () => {
     expect(summary.req_cnt).toBe(2);
     expect(summary.clarify_rate).toBeCloseTo(0.5, 4);
     expect(summary.no_candidate_rate).toBeCloseTo(1, 4);
+    expect(summary.pre_filter_candidate_rate).toBeCloseTo(1, 4);
+    expect(summary.filtered_to_empty_rate).toBeCloseTo(0.5, 4);
+    expect(summary.domain_drop_ratio).toBeGreaterThan(0);
   });
 });
