@@ -170,6 +170,28 @@ test('gating: artifact gate blocks missing core4 and allows complete artifact', 
   assert.equal(complete.confidence_level, 'medium');
 });
 
+test('gating: diagnosis artifact rows must be flattened before recommendation gate check', () => {
+  const artifact = makeArtifact({ score: 0.68 });
+  const artifactRow = {
+    artifact_id: artifact.artifact_id,
+    created_at: artifact.created_at,
+    artifact_json: artifact,
+  };
+
+  const rawRowGate = hasUsableArtifactForRecommendations(artifactRow);
+  assert.equal(rawRowGate.ok, false);
+  assert.equal(rawRowGate.reason, 'artifact_missing_core');
+
+  const flattened = {
+    ...artifactRow.artifact_json,
+    artifact_id: artifactRow.artifact_id,
+    created_at: artifactRow.created_at,
+  };
+  const flattenedGate = hasUsableArtifactForRecommendations(flattened);
+  assert.equal(flattenedGate.ok, true);
+  assert.equal(flattenedGate.confidence_level, 'medium');
+});
+
 test('ingredient mapper: low confidence forces gentle baseline and avoids strong actives', () => {
   const artifact = makeArtifact({
     usePhoto: false,

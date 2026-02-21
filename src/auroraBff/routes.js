@@ -24194,7 +24194,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
 
-        const artifactGate = hasUsableArtifactForRecommendations(latestArtifact);
+        const latestArtifactForGate =
+          latestArtifact &&
+          latestArtifact.artifact_json &&
+          typeof latestArtifact.artifact_json === 'object'
+            ? {
+                ...latestArtifact.artifact_json,
+                artifact_id: latestArtifact.artifact_id,
+                created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+              }
+            : latestArtifact;
+
+        const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok) {
           const chips = buildRecoEntryChips(ctx.lang);
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
