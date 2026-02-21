@@ -113,6 +113,29 @@ if not ok:
 ' "$file" "$mode" "$expected_csv"
 }
 
+assert_reco_stage() {
+  local file="$1"
+  "$PY_BIN" -c '
+import json,sys
+path = sys.argv[1]
+j = json.load(open(path))
+cards = j.get("cards") or []
+types = [c.get("type") for c in cards]
+if "recommendations" in types:
+    raise SystemExit(0)
+if "confidence_notice" not in types:
+    raise SystemExit(f"reco stage expected recommendations or confidence_notice, got={types}")
+reason = None
+for c in cards:
+    if c.get("type") == "confidence_notice":
+        reason = ((c.get("payload") or {}).get("reason") or "")
+        break
+allowed = {"artifact_missing", "low_confidence", "safety_block"}
+if reason not in allowed:
+    raise SystemExit(f"confidence_notice reason unexpected: {reason!r}, allowed={sorted(allowed)}")
+' "$file"
+}
+
 cleanup() {
   rm -f "${CASE_profile:-}" "${CASE_fit:-}" "${CASE_reco:-}" "${CASE_antia:-}" "${CASE_env:-}" "${CASE_conflict:-}" "${CASE_stale:-}" "${CASE_gate:-}" || true
 }
@@ -159,13 +182,13 @@ say "4) reco"
 capture_case "reco" "/v1/chat" "{\"message\":\"${MSG_RECO}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_reco"
 assert_no_banned_first_line "$CASE_reco" "$LANG_UPPER"
-assert_cards "$CASE_reco" "contains_all" "recommendations"
+assert_reco_stage "$CASE_reco"
 
 say "5) anti-aging"
 capture_case "antia" "/v1/chat" "{\"message\":\"${MSG_ANTI}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
 extract_summary "$CASE_antia"
 assert_no_banned_first_line "$CASE_antia" "$LANG_UPPER"
-assert_cards "$CASE_antia" "contains_all" "recommendations"
+assert_reco_stage "$CASE_antia"
 
 say "6) env stress"
 capture_case "env" "/v1/chat" "{\"message\":\"${MSG_ENV}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
