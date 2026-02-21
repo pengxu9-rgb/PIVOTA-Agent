@@ -3293,6 +3293,99 @@ function buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct
   return out.slice(0, Math.max(1, PRODUCT_INTEL_CATALOG_FALLBACK_MAX_QUERIES));
 }
 
+function buildActiveIntentRecallQuery({ keyIngredients = [], parsedProduct = null, categoryToken = '' } = {}) {
+  const normalizedCategory = normalizeProductCatalogQuery(categoryToken);
+  const productObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const ingredientText = Array.isArray(keyIngredients) ? keyIngredients.join(' | ') : '';
+  const text = `${ingredientText} ${String(productObj?.name || '')} ${String(productObj?.display_name || '')}`.toLowerCase();
+  if (!text.trim()) return '';
+
+  let keyword = '';
+  if (/\bcopper\b/.test(text) && /\b(peptide|tripeptide|tetrapeptide|hexapeptide|pentapeptide)\b/.test(text)) keyword = 'copper peptide';
+  else if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide|pentapeptide)\b/.test(text)) keyword = 'peptide';
+  else if (/\bretinol|retinal|retinoid|retinoate\b/.test(text)) keyword = 'retinol';
+  else if (/\bniacinamide\b/.test(text)) keyword = 'niacinamide';
+  else if (/\bsalicylic\b/.test(text)) keyword = 'salicylic acid';
+  else if (/\bglycolic\b/.test(text)) keyword = 'glycolic acid';
+  else if (/\blactic\b/.test(text)) keyword = 'lactic acid';
+  else if (/\bhyaluron|hyaluronic|hyaluronate\b/.test(text)) keyword = 'hyaluronic acid';
+  else if (/\bceramide\b/.test(text)) keyword = 'ceramide';
+
+  if (!keyword) return '';
+  return normalizeProductCatalogQuery(`${keyword} ${normalizedCategory}`.trim());
+}
+
+function buildRealtimeCompetitorQueryPlan({
+  fromCatalogQueries = [],
+  keyIngredients = [],
+  parsedProduct = null,
+  categoryToken = '',
+  maxQueries = 2,
+} = {}) {
+  const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxQueries)) ? Math.trunc(Number(maxQueries)) : 2));
+  const productObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const anchorBrand = String(productObj?.brand || '').trim();
+  const anchorName = String(productObj?.name || productObj?.display_name || '').trim();
+  const nameWithoutBrand = (() => {
+    if (!anchorName) return '';
+    if (!anchorBrand) return anchorName;
+    const escaped = escapeRegExp(anchorBrand);
+    const removed = anchorName.replace(new RegExp(`^${escaped}\\s+`, 'i'), '').trim();
+    return removed || anchorName;
+  })();
+  const activeIntentQuery = buildActiveIntentRecallQuery({
+    keyIngredients,
+    parsedProduct: productObj,
+    categoryToken,
+  });
+  const ingredientQuery = normalizeProductCatalogQuery(
+    `${(Array.isArray(keyIngredients) ? keyIngredients : []).slice(0, 2).join(' ')} ${categoryToken}`.trim(),
+  );
+  const categoryOnlyQuery = normalizeProductCatalogQuery(categoryToken);
+  const genericNameQuery = normalizeProductCatalogQuery(nameWithoutBrand);
+
+  const specific = [];
+  const diversified = [];
+  const pushUnique = (list, value) => {
+    const q = normalizeProductCatalogQuery(value);
+    if (!q || /^https?:\/\//i.test(q)) return;
+    if (list.includes(q)) return;
+    list.push(q);
+  };
+
+  for (const query of Array.isArray(fromCatalogQueries) ? fromCatalogQueries : []) {
+    pushUnique(specific, query);
+  }
+  pushUnique(diversified, activeIntentQuery);
+  pushUnique(diversified, ingredientQuery);
+  pushUnique(diversified, categoryOnlyQuery);
+  pushUnique(diversified, genericNameQuery);
+
+  const out = [];
+  const seen = new Set();
+  const add = (value) => {
+    const q = normalizeProductCatalogQuery(value);
+    if (!q || /^https?:\/\//i.test(q)) return;
+    const key = q.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(q);
+  };
+
+  if (specific.length) add(specific[0]);
+  if (diversified.length) add(diversified[0]);
+  for (const q of diversified.slice(1)) {
+    if (out.length >= limit) break;
+    add(q);
+  }
+  for (const q of specific.slice(1)) {
+    if (out.length >= limit) break;
+    add(q);
+  }
+
+  return out.slice(0, limit);
+}
+
 function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}) {
   const normalized = normalizeRecoCatalogProduct(rawProduct);
   if (!normalized || typeof normalized !== 'object') return null;
@@ -4595,23 +4688,13 @@ async function buildRealtimeCompetitorCandidates({
     parsedProduct: parsedProductObj,
   });
   const categoryToken = inferProductCategoryToken(`${anchorText} ${baseInput}`);
-  const categoryOnlyQuery = normalizeProductCatalogQuery(categoryToken);
-  const ingredientQuery = normalizeProductCatalogQuery(
-    `${keyIngredients.slice(0, 2).join(' ')} ${categoryToken}`,
-  );
-
-  const queries = [];
-  const seenQuery = new Set();
-  for (const raw of [...fromCatalogQueries, ingredientQuery, categoryOnlyQuery]) {
-    const q = normalizeProductCatalogQuery(raw);
-    if (!q) continue;
-    if (/^https?:\/\//i.test(q)) continue;
-    const key = q.toLowerCase();
-    if (seenQuery.has(key)) continue;
-    seenQuery.add(key);
-    queries.push(q);
-    if (queries.length >= maxQueries) break;
-  }
+  const queries = buildRealtimeCompetitorQueryPlan({
+    fromCatalogQueries,
+    keyIngredients,
+    parsedProduct: parsedProductObj,
+    categoryToken,
+    maxQueries,
+  });
   if (!queries.length) return { candidates: [], queries: [], reason: 'query_missing' };
 
   const searchResults = await Promise.all(
@@ -25730,6 +25813,7 @@ const __internal = {
   applyRecoGuardrailToProductAnalysisPayload,
   getRecoGuardrailCircuitSnapshot,
   buildProductCatalogQueryCandidates,
+  buildRealtimeCompetitorQueryPlan,
   mapCatalogProductToAnchorProduct,
   resolveCatalogProductForProductInput,
   extractProductPriceFromHtml,
