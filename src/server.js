@@ -3475,6 +3475,13 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   const base = String(baseQueryText || '').trim();
   if (!base) return [];
   const normalized = normalizeSearchTextForMatch(base);
+  const peptideNormalizedBase = base
+    .replace(/\b(tri|tetra|hexa)peptides?\b/gi, 'peptide')
+    .replace(/\bpeptides\b/gi, 'peptide')
+    .replace(/\bcopper peptide peptide\b/gi, 'copper peptide')
+    .replace(/\bpeptide peptide\b/gi, 'peptide')
+    .replace(/\s+/g, ' ')
+    .trim();
   const candidates = [];
   const seen = new Set([normalizeSearchTextForMatch(base)]);
   const push = (queryValue) => {
@@ -3486,13 +3493,16 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   };
 
   if (/\bcopper\b/.test(normalized) && /\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized)) {
+    push(peptideNormalizedBase);
+    push(`${peptideNormalizedBase} multi peptide`);
     push(`${base} multi peptide`);
     push(`${base} copper tripeptide`);
   }
-  if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized) && /\bserum|essence/.test(normalized)) {
+  if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized) && /\b(serum|essence)\b/.test(normalized)) {
+    push(`${peptideNormalizedBase} multi-peptide collection`);
     push(`${base} multi-peptide collection`);
   }
-  if (/\bniacinamide\b/.test(normalized) && /\bserum|essence/.test(normalized)) {
+  if (/\bniacinamide\b/.test(normalized) && /\b(serum|essence)\b/.test(normalized)) {
     push(`${base} vitamin b3`);
   }
 
