@@ -509,9 +509,14 @@ const PRODUCT_URL_REALTIME_COMPETITOR_ASYNC_ENRICH_ENABLED = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_TIMEOUT_MS || 3200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 3200;
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_TIMEOUT_MS || 8200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8200;
   return Math.max(600, Math.min(12000, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_CAP_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_TIMEOUT_CAP_MS || 9000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  return Math.max(1200, Math.min(12000, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_QUERIES = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_MAX_QUERIES || 3);
@@ -4717,7 +4722,7 @@ async function buildRealtimeCompetitorCandidates({
   const startedAt = Date.now();
   const effectiveTimeoutMs = Math.max(
     260,
-    Math.min(5000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS),
+    Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS),
   );
   const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
   const softDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + effectiveTimeoutMs;
@@ -4827,11 +4832,15 @@ async function buildRealtimeCompetitorCandidates({
       break;
     }
     const queriesRemaining = plannedQueries.length - queryIdx;
-    const fairShareMs = Math.max(
-      220,
-      Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
-    );
-    const perQueryTimeoutMs = Math.max(220, Math.min(effectiveSearchTimeoutMs, fairShareMs));
+    const fairShareMs =
+      runMode === 'async_backfill'
+        ? Math.max(260, remainingMs - reserveAfterSearchMs)
+        : Math.max(
+          220,
+          Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
+        );
+    const perQueryMinMs = runMode === 'async_backfill' ? 260 : 220;
+    const perQueryTimeoutMs = Math.max(perQueryMinMs, Math.min(effectiveSearchTimeoutMs, fairShareMs));
     // eslint-disable-next-line no-await-in-loop
     const searched = await runSearch({
       query: queryText,
@@ -6600,7 +6609,13 @@ async function runRecoBlocksForUrl({
         } else if (modeToken === 'async_backfill') {
           next.catalog_ann = Math.max(
             next.catalog_ann,
-            Math.min(PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS, 2600),
+            Math.max(
+              2600,
+              Math.min(
+                PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_MS,
+                PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_TIMEOUT_CAP_MS,
+              ),
+            ),
           );
         }
         return next;
