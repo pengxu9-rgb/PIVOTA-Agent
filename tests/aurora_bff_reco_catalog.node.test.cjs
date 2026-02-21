@@ -1128,6 +1128,88 @@ test('Query resolve upstream_timeout uses deterministic local resolver fallback 
   );
 });
 
+test('Query resolve upstream_timeout uses catalog search fallback in strict internal mode for named products', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'true',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'false',
+      AURORA_BFF_RECO_PDP_SKIP_OPAQUE_STABLE_IDS: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalPost = axios.post;
+      const originalGet = axios.get;
+      let queryResolveCalls = 0;
+      let catalogSearchCalls = 0;
+
+      axios.post = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/resolve') {
+          queryResolveCalls += 1;
+          return {
+            status: 504,
+            data: {
+              resolved: false,
+              reason: 'upstream_timeout',
+              reason_code: 'upstream_timeout',
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${target}`);
+      };
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
+          catalogSearchCalls += 1;
+          return {
+            status: 200,
+            data: {
+              products: [
+                {
+                  product_id: 'prod_catalog_timeout_recover',
+                  merchant_id: 'mid_catalog_timeout_recover',
+                  brand: 'Dr. Wu',
+                  name: 'Daily Renewal Serum',
+                  display_name: 'Dr. Wu Daily Renewal Serum (8% total acids)',
+                  category: 'treatment',
+                },
+              ],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const enriched = await __internal.enrichRecoItemWithPdpOpenContract({
+          sku: {
+            brand: 'Dr. Wu',
+            display_name: 'Dr. Wu Daily Renewal Serum (8% total acids)',
+            product_id: '6f747804-4f8d-4ad7-a0f6-19b9672247c1',
+            sku_id: '6f747804-4f8d-4ad7-a0f6-19b9672247c1',
+            category: 'treatment',
+          },
+        }, { logger: null });
+
+        assert.equal(queryResolveCalls, 1);
+        assert.equal(catalogSearchCalls, 1);
+        assert.equal(enriched?.metadata?.pdp_open_path, 'internal');
+        assert.equal(enriched?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(enriched?.pdp_open?.path, 'ref');
+        assert.equal(enriched?.pdp_open?.product_ref?.product_id, 'prod_catalog_timeout_recover');
+        assert.equal(enriched?.pdp_open?.product_ref?.merchant_id, 'mid_catalog_timeout_recover');
+      } finally {
+        axios.post = originalPost;
+        axios.get = originalGet;
+      }
+    },
+  );
+});
+
 test('Query resolve no_candidates with opaque UUID ids uses deterministic local resolver fallback in strict internal mode', async () => {
   await withEnv(
     {
