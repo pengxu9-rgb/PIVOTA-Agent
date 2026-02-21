@@ -11761,6 +11761,21 @@ function extractProductInputFromFitCheckText(message) {
     '',
   ).trim();
 
+  // Normalize fit-check question wrappers and keep the candidate product phrase.
+  const enSuitabilityQuestion =
+    t.match(
+      /^(?:is|are|was|were|can|could|should|will|would)\s+(?:this|that|the)?\s*([^?]{2,120}?)\s+(?:good|right|suitable|safe|okay|ok)\s+(?:for\s+me|to\s+use)\??$/i,
+    ) ||
+    t.match(/^(?:will|would)\s+(?:this|that|the)?\s*([^?]{2,120}?)\s+(?:suit|work\s+for)\s+me\??$/i);
+  if (enSuitabilityQuestion && enSuitabilityQuestion[1]) {
+    t = String(enSuitabilityQuestion[1]).trim();
+  }
+
+  const cnSuitabilityQuestion = t.match(/^(?:这款|这个|该|这支|这瓶)\s*([^，。！？?]{1,60}?)(?:适合我吗|适不适合我|能用吗|可以用吗|好用吗)[？?]?$/);
+  if (cnSuitabilityQuestion && cnSuitabilityQuestion[1]) {
+    t = String(cnSuitabilityQuestion[1]).trim();
+  }
+
   // If it still looks like a full sentence, keep the tail (often where the product appears).
   if (t.length > 160) t = t.slice(-160).trim();
   return t;

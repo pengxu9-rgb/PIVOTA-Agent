@@ -89,6 +89,10 @@ const HEURISTICS = [
     intent: INTENT_ENUM.EVALUATE_PRODUCT,
   },
   {
+    re: /(is this .{0,40}(good|right|suitable).{0,12}for me|will this .{0,30}suit me|fit\s*check|这(个|款).{0,20}(产品|面霜|精华|乳液|防晒|爽肤水).{0,10}适合我吗)/i,
+    intent: INTENT_ENUM.EVALUATE_PRODUCT,
+  },
+  {
     re: /(recommend|suggest|推荐|求推荐)/i,
     intent: INTENT_ENUM.RECO_PRODUCTS,
   },
