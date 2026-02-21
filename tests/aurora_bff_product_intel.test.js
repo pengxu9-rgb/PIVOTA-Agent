@@ -31,6 +31,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED;
+    delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL;
+    delete process.env.AURORA_BFF_BASE_URL;
     delete process.env.AURORA_BFF_RECO_BACKEND_BASE_URLS;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED;
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
@@ -196,6 +199,19 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const urls = __internal.buildRecoCatalogSearchBaseUrlCandidates();
     expect(urls[0]).toBe('https://pivota-agent-production.up.railway.app');
+    expect(urls).toContain('https://web-production-fedb.up.railway.app');
+  });
+
+  test('catalog search base urls include self proxy before upstream backend when enabled', () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'https://web-production-fedb.up.railway.app';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = '';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://127.0.0.1:3999';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const urls = __internal.buildRecoCatalogSearchBaseUrlCandidates();
+    expect(urls[0]).toBe('http://127.0.0.1:3999');
     expect(urls).toContain('https://web-production-fedb.up.railway.app');
   });
 

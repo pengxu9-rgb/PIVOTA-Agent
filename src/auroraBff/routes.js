@@ -394,6 +394,22 @@ const RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED || '').trim().toLowerCase();
+  if (raw) return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+  return process.env.NODE_ENV !== 'test';
+})();
+const RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL = (() => {
+  const explicit = String(
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL ||
+      process.env.AURORA_BFF_BASE_URL ||
+      '',
+  ).trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const port = String(process.env.PORT || '').trim();
+  if (!port) return '';
+  return `http://127.0.0.1:${port}`;
+})();
 const RECO_CATALOG_MULTI_SOURCE_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED || 'true')
     .trim()
@@ -1693,6 +1709,7 @@ function normalizeBaseUrlForRecoCatalogSearch(value) {
 function buildRecoCatalogSearchBaseUrlCandidates({
   includeLocalFallback = false,
   preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
+  includeSelfProxy = RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED,
 } = {}) {
   const out = [];
   const seen = new Set();
@@ -1713,10 +1730,12 @@ function buildRecoCatalogSearchBaseUrlCandidates({
   };
   if (preferConfigured) {
     addConfigured();
+    if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
     add(PIVOTA_BACKEND_BASE_URL);
   } else {
     add(PIVOTA_BACKEND_BASE_URL);
     addConfigured();
+    if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
   }
   if (includeLocalFallback) add(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   return out;
