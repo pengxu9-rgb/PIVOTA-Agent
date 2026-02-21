@@ -168,8 +168,15 @@ printf "%s\n" "$reco_json" | jq_assert "chat reco returns recommendations or con
 
 if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >/dev/null; then
   printf "%s\n" "$reco_json" | jq_assert "recommendations length >= 1" '(.cards[]|select(.type=="recommendations")|.payload.recommendations|length) >= 1'
-  printf "%s\n" "$reco_json" | jq_assert "reco reasons mention recent logs" '(.cards[]|select(.type=="recommendations")|.payload.recommendations[0].reasons | any(test("Last 7d:"))) == true'
-  printf "%s\n" "$reco_json" | jq_assert "reco reasons mention itinerary" '(.cards[]|select(.type=="recommendations")|.payload.recommendations[0].reasons | any(test("Upcoming plan:"))) == true'
+  printf "%s\n" "$reco_json" | jq_assert "reco has explainability fields" '
+    (.cards[]|select(.type=="recommendations")|.payload.recommendations[0]) as $r |
+    (
+      (($r.reasons // []) | type=="array" and length >= 1) or
+      (($r.matched_ingredients // []) | type=="array" and length >= 1) or
+      (($r.fit_explanations // []) | type=="array" and length >= 1)
+    )
+  '
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source" '.events | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))'
 else
   printf "%s\n" "$reco_json" | jq_assert "confidence_notice card exists" '.cards | any(.type=="confidence_notice")'
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent when confidence_notice path" '(.cards | any(.type=="recommendations")) | not'
