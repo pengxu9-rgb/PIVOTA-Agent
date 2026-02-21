@@ -49,6 +49,23 @@ const SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY || 0.5)),
 );
+const SEARCH_SCENARIO_ANCHOR_MODE = ['raw', 'derived', 'off'].includes(
+  String(process.env.SEARCH_SCENARIO_ANCHOR_MODE || 'raw').toLowerCase(),
+)
+  ? String(process.env.SEARCH_SCENARIO_ANCHOR_MODE || 'raw').toLowerCase()
+  : 'raw';
+const SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES = Math.max(
+  1,
+  Number(process.env.SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES || 4) || 4,
+);
+const SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO = Math.max(
+  0,
+  Math.min(1, Number(process.env.SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO || 0.1)),
+);
+const SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY = Math.max(
+  0,
+  Math.min(1, Number(process.env.SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY || 0.6)),
+);
 const AMBIGUITY_THRESHOLD_CLARIFY = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_AMBIGUITY_THRESHOLD_CLARIFY || 0.35)),
@@ -771,6 +788,88 @@ function normalizeWordTokens(text) {
     .filter(Boolean);
 }
 
+function isAnchorTokenAllowed(token) {
+  const stopwords = new Set([
+    '有',
+    '吗',
+    '推薦',
+    '推荐',
+    '推荐点',
+    '推薦點',
+    '什么',
+    '什麼',
+    '商品',
+    'products',
+    'recommend',
+    'recommendation',
+    'need',
+    'needs',
+    'for',
+    'the',
+    'and',
+    'with',
+  ]);
+  return !stopwords.has(String(token || '').toLowerCase());
+}
+
+function normalizeAnchorTokens(input, maxTokens = 20) {
+  const values = Array.isArray(input) ? input : [input];
+  const normalized = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const token of normalizeWordTokens(value)) {
+      if (token.length < 2) continue;
+      if (!isAnchorTokenAllowed(token)) continue;
+      if (seen.has(token)) continue;
+      seen.add(token);
+      normalized.push(token);
+      if (normalized.length >= maxTokens) return normalized;
+    }
+  }
+  return normalized;
+}
+
+function resolvePostAnchorBasis({ rawQuery, intent, queryClass, associationPlan }) {
+  const normalizedClass = normalizeQueryClass(queryClass ?? intent?.query_class, {
+    defaultValue: null,
+  });
+  const rawTokens = normalizeAnchorTokens(rawQuery, 20);
+  if (SEARCH_SCENARIO_ANCHOR_MODE === 'off') {
+    return {
+      mode: 'off',
+      source: 'disabled',
+      tokens: [],
+    };
+  }
+  if (
+    SEARCH_SCENARIO_ANCHOR_MODE !== 'derived' ||
+    !['scenario', 'mission'].includes(String(normalizedClass || ''))
+  ) {
+    return {
+      mode: 'raw',
+      source: 'raw_query',
+      tokens: rawTokens,
+    };
+  }
+  const planKeywords = Array.isArray(associationPlan?.category_keywords)
+    ? associationPlan.category_keywords
+    : [];
+  const intentTokens = extractCategoryTokensFromIntent(intent, rawQuery);
+  const derivedTokens = normalizeAnchorTokens([...planKeywords, ...intentTokens], 20);
+  if (!derivedTokens.length) {
+    return {
+      mode: 'raw_fallback',
+      source: 'derived_empty_fallback_raw',
+      tokens: rawTokens,
+    };
+  }
+  return {
+    mode: 'derived',
+    source: 'scenario_association_and_intent',
+    tokens: derivedTokens,
+  };
+}
+
 function inferSearchDomainKey(intent, rawQuery) {
   const target = String(intent?.target_object?.type || '').toLowerCase();
   const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
@@ -864,10 +963,11 @@ function computeDomainEntropy(products) {
   return clamp01(maxEntropy > 0 ? entropy / maxEntropy : 0);
 }
 
-function computeAnchorRatio(rawQuery, products) {
-  const anchors = normalizeWordTokens(rawQuery)
-    .filter((token) => token.length >= 2)
-    .slice(0, 10);
+function computeAnchorRatio(rawQuery, products, options = {}) {
+  const overrideTokens = Array.isArray(options?.anchorTokens)
+    ? normalizeAnchorTokens(options.anchorTokens, 20)
+    : null;
+  const anchors = (overrideTokens || normalizeAnchorTokens(rawQuery, 20)).slice(0, 10);
   if (!anchors.length) return 1;
   const list = Array.isArray(products) ? products.slice(0, 10) : [];
   if (!list.length) return 0;
@@ -980,14 +1080,27 @@ function computeAmbiguityScorePre(intent, queryClassInput = null) {
   return clamp01(score);
 }
 
-function computeAmbiguityScorePost({ ambiguityPre, products, rawQuery, intent, queryClassInput = null }) {
+function computeAmbiguityScorePost({
+  ambiguityPre,
+  products,
+  rawQuery,
+  intent,
+  queryClassInput = null,
+  anchorTokens = null,
+  anchorMode = 'raw',
+}) {
   const list = Array.isArray(products) ? products : [];
   const queryClass = normalizeQueryClass(queryClassInput ?? intent?.query_class, {
     defaultValue: null,
   });
   const candidateSparsity = clamp01(list.length === 0 ? 1 : (3 - Math.min(list.length, 3)) / 3);
   const domainEntropy = computeDomainEntropy(list);
-  const anchorRatio = computeAnchorRatio(rawQuery, list);
+  const anchorRatio =
+    anchorMode === 'off'
+      ? 1
+      : computeAnchorRatio(rawQuery, list, {
+          anchorTokens,
+        });
   const domainKey = inferSearchDomainKey(intent, rawQuery);
   const inDomainCount = list.filter((product) => inferProductDomainKey(product) === domainKey).length;
   const inDomainRatio = list.length > 0 ? clamp01(inDomainCount / list.length) : 0;
@@ -2608,6 +2721,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       search_clarify_min_recall_candidates: SEARCH_CLARIFY_MIN_RECALL_CANDIDATES,
       search_clarify_min_anchor_ratio: SEARCH_CLARIFY_MIN_ANCHOR_RATIO,
       search_clarify_max_domain_entropy: SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY,
+      search_scenario_anchor_mode: SEARCH_SCENARIO_ANCHOR_MODE,
+      search_scenario_derived_min_recall_candidates: SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES,
+      search_scenario_derived_min_anchor_ratio: SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO,
+      search_scenario_derived_max_domain_entropy: SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY,
       search_anchor_alias_v2: SEARCH_ANCHOR_ALIAS_V2,
     },
   };
@@ -2713,6 +2830,19 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   let after = filtered.length;
 
   const queryClass = inferQueryClassFromIntentAndQuery(intent, rawQuery);
+  const associationPlanFromMeta =
+    metadata?.association_plan && typeof metadata.association_plan === 'object'
+      ? metadata.association_plan
+      : null;
+  const postAnchorBasis = resolvePostAnchorBasis({
+    rawQuery,
+    intent,
+    queryClass,
+    associationPlan: associationPlanFromMeta,
+  });
+  const scenarioDerivedAnchorActive =
+    SEARCH_SCENARIO_ANCHOR_MODE === 'derived' &&
+    ['scenario', 'mission'].includes(String(queryClass || ''));
   const ambiguityScorePre = Number.isFinite(Number(metadata?.ambiguity_score_pre))
     ? clamp01(Number(metadata.ambiguity_score_pre))
     : computeAmbiguityScorePre(intent, queryClass);
@@ -2723,6 +2853,8 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     rawQuery,
     intent,
     queryClassInput: queryClass,
+    anchorTokens: postAnchorBasis.mode === 'off' ? null : postAnchorBasis.tokens,
+    anchorMode: postAnchorBasis.mode,
   });
 
   const ambiguitySensitiveClass = isAmbiguitySensitiveQueryClass(queryClass);
@@ -2742,16 +2874,33 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   const hasBrandHint =
     Array.isArray(intent?.soft_preferences?.brands) && intent.soft_preferences.brands.length > 0;
   const hasStructuredHint = hasCategoryHint || hasPriceConstraint || hasBrandHint;
-  const effectiveMinRecallCandidates =
+  let effectiveMinRecallCandidates =
     !intentNeedsClarification && hasStructuredHint
       ? Math.min(SEARCH_CLARIFY_MIN_RECALL_CANDIDATES, 1)
       : !intentNeedsClarification && ['scenario', 'mission', 'gift'].includes(queryClass)
         ? Math.min(SEARCH_CLARIFY_MIN_RECALL_CANDIDATES, 3)
         : SEARCH_CLARIFY_MIN_RECALL_CANDIDATES;
-  const effectiveMinAnchorRatio =
-    !intentNeedsClarification && hasStructuredHint ? 0 : SEARCH_CLARIFY_MIN_ANCHOR_RATIO;
+  if (scenarioDerivedAnchorActive) {
+    effectiveMinRecallCandidates = Math.min(
+      effectiveMinRecallCandidates,
+      SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES,
+    );
+  }
+  const effectiveMinAnchorRatio = !intentNeedsClarification && hasStructuredHint
+    ? 0
+    : scenarioDerivedAnchorActive
+      ? SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO
+      : SEARCH_CLARIFY_MIN_ANCHOR_RATIO;
+  const effectiveMaxDomainEntropy = scenarioDerivedAnchorActive
+    ? SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY
+    : SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY;
   const postCandidateCount = Array.isArray(filtered) ? filtered.length : 0;
-  const anchorRatioPost = computeAnchorRatio(rawQuery, filtered);
+  const anchorRatioPost =
+    postAnchorBasis.mode === 'off'
+      ? 1
+      : computeAnchorRatio(rawQuery, filtered, {
+          anchorTokens: postAnchorBasis.tokens,
+        });
   const domainEntropyPost = computeDomainEntropy(filtered);
   const postQuality = {
     candidates: postCandidateCount,
@@ -2759,12 +2908,15 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     domain_entropy: domainEntropyPost,
     min_recall_candidates: effectiveMinRecallCandidates,
     min_anchor_ratio: effectiveMinAnchorRatio,
-    max_domain_entropy: SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY,
+    max_domain_entropy: effectiveMaxDomainEntropy,
+    anchor_mode: postAnchorBasis.mode,
+    anchor_source: postAnchorBasis.source,
+    anchor_basis_size: Array.isArray(postAnchorBasis.tokens) ? postAnchorBasis.tokens.length : 0,
     candidates_ok: postCandidateCount >= effectiveMinRecallCandidates,
     anchor_ok:
       anchorRatioPost >= effectiveMinAnchorRatio ||
-      (clamp01(intent?.confidence?.domain) >= 0.75 && domainEntropyPost <= SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY),
-    entropy_ok: domainEntropyPost <= SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY,
+      (clamp01(intent?.confidence?.domain) >= 0.75 && domainEntropyPost <= effectiveMaxDomainEntropy),
+    entropy_ok: domainEntropyPost <= effectiveMaxDomainEntropy,
   };
   const postQualityOk =
     postQuality.candidates_ok && postQuality.anchor_ok && postQuality.entropy_ok;

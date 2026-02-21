@@ -208,6 +208,75 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('scenario query can pass post-quality with derived anchor basis', () => {
+    withPolicyEnv(
+      {
+        SEARCH_SCENARIO_ANCHOR_MODE: 'derived',
+        SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES: '4',
+        SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO: '0.1',
+        SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY: '0.6',
+        SEARCH_CLARIFY_MIN_RECALL_CANDIDATES: '6',
+        SEARCH_CLARIFY_MIN_ANCHOR_RATIO: '0.2',
+        SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY: '0.45',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('出差带什么', [], []);
+        const products = [
+          makeRawProduct({
+            id: 't1',
+            title: 'Business Travel Toiletry Kit',
+            description: 'travel toiletry organizer and bottles',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't2',
+            title: 'Packing Cubes Set',
+            description: 'lightweight luggage organizer for trip',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't3',
+            title: 'Carry-on Toiletry Bottles Set',
+            description: 'portable travel toiletry bottles',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't4',
+            title: 'Carry-on Compression Pouch',
+            description: 'portable travel storage bag',
+            category: 'travel_accessories',
+          }),
+          makeRawProduct({
+            id: 't5',
+            title: 'Passport Wallet Organizer',
+            description: 'travel document organizer for business trips',
+            category: 'travel_accessories',
+          }),
+        ];
+        const resp = applyWithEnv({
+          response: { products, reply: null },
+          intent,
+          requestPayload: { search: { query: '出差带什么' } },
+          metadata: {
+            ambiguity_score_pre: 0.4,
+            association_plan: {
+              applied: true,
+              domain_key: 'travel',
+              scenario_key: 'business_trip',
+              category_keywords: ['travel toiletries', 'packing cubes', 'adapter'],
+            },
+          },
+          rawUserQuery: '出差带什么',
+        });
+
+        expect(resp.products.length).toBeGreaterThan(0);
+        expect(resp.clarification).toBeUndefined();
+        expect(resp.metadata?.search_decision?.post_quality?.anchor_mode).toBe('derived');
+        expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+      },
+    );
+  });
+
   test('high ambiguity enforces strict empty', () => {
     const intent = extractIntentRuleBased('你好', [], []);
     const resp = applyFindProductsMultiPolicy({
