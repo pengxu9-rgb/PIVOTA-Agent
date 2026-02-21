@@ -38,6 +38,14 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         process.env.FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS,
       UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER:
         process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER,
+      PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
+      PROXY_SEARCH_AURORA_FORCE_FAST_MODE: process.env.PROXY_SEARCH_AURORA_FORCE_FAST_MODE,
+      PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK:
+        process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK,
+      PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK:
+        process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
+      PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS:
+        process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -106,6 +114,35 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     } else {
       process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER =
         prevEnv.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
+    }
+    if (prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
+        prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_FORCE_FAST_MODE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_FORCE_FAST_MODE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_FORCE_FAST_MODE = prevEnv.PROXY_SEARCH_AURORA_FORCE_FAST_MODE;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK =
+        prevEnv.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK =
+        prevEnv.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
+        prevEnv.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS;
     }
   });
 
@@ -723,6 +760,98 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
+  test('aurora source forces secondary invoke fallback even when global toggles are disabled', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'upstream_timeout',
+        metadata: {
+          latency_ms: 19,
+          sources: [{ source: 'agent_search_scoped', ok: false, reason: 'upstream_timeout' }],
+        },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const secondaryScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'beauty_fallback_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper peptide serum fallback',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'aurora-bff',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(secondaryScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'beauty_fallback_1',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'empty_or_unusable_primary',
+        }),
+      }),
+    );
+  });
+
   test('enforces safe timeout floor for find_products_multi when configured timeout is too low', async () => {
     const queryText = 'IPSA Time Reset Aqua';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
@@ -1236,6 +1365,60 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
           trace_id: expect.any(String),
           raw_query: expect.any(String),
           final_decision: 'strict_empty',
+        }),
+      }),
+    );
+    expect(resp.body.metadata.search_trace).toHaveProperty('intent_scenario');
+  });
+
+  test('emits relevance_debug when SEARCH_RELEVANCE_DEBUG is enabled', async () => {
+    const queryText = '推荐化妆刷';
+    process.env.SEARCH_RELEVANCE_DEBUG = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes('化妆刷'))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'brush_1',
+            merchant_id: 'm1',
+            title: 'Foundation Brush',
+            price: 19.9,
+            currency: 'USD',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        relevance_debug: expect.objectContaining({
+          intent_domain: expect.anything(),
+          intent_scenario: expect.anything(),
+          diversity_penalty_applied: expect.any(Boolean),
         }),
       }),
     );
