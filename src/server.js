@@ -3053,7 +3053,7 @@ function hasBeautyIngredientIntentSignal(queryText) {
   const q = normalizeSearchTextForMatch(queryText);
   if (!q) return false;
   return (
-    /\b(copper|peptide|retinol|retinal|niacinamide|ceramide|hyaluronic|ascorbic|vitamin c|salicylic|glycolic|lactic|mandelic|azelaic|tranexamic|benzoyl)\b/i.test(
+    /\b(copper|peptide|tripeptide|tetrapeptide|hexapeptide|retinol|retinal|niacinamide|ceramide|hyaluronic|ascorbic|vitamin c|salicylic|glycolic|lactic|mandelic|azelaic|tranexamic|benzoyl)\b/i.test(
       q,
     ) ||
     /(铜肽|胜肽|视黄醇|烟酰胺|神经酰胺|玻尿酸|水杨酸|果酸|壬二酸)/.test(q)
@@ -3074,14 +3074,14 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   }
 
   if (!normalized) return Array.from(out);
-  if (/\bcopper\b/.test(normalized) && /\bpeptide/.test(normalized)) {
+  if (/\bcopper\b/.test(normalized) && /\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized)) {
     pushToken('copper');
     pushToken('peptide');
     pushToken('multi peptide');
     pushToken('copper tripeptide');
     pushToken('tripeptide');
   }
-  if (/\bpeptide/.test(normalized)) {
+  if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized)) {
     pushToken('peptide');
     pushToken('multi peptide');
   }
@@ -3485,11 +3485,11 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
     candidates.push(value);
   };
 
-  if (/\bcopper\b/.test(normalized) && /\bpeptide/.test(normalized)) {
+  if (/\bcopper\b/.test(normalized) && /\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized)) {
     push(`${base} multi peptide`);
     push(`${base} copper tripeptide`);
   }
-  if (/\bpeptide/.test(normalized) && /\bserum|essence/.test(normalized)) {
+  if (/\b(peptide|tripeptide|tetrapeptide|hexapeptide)/.test(normalized) && /\bserum|essence/.test(normalized)) {
     push(`${base} multi-peptide collection`);
   }
   if (/\bniacinamide\b/.test(normalized) && /\bserum|essence/.test(normalized)) {

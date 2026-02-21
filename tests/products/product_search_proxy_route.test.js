@@ -1532,4 +1532,77 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       'multi peptide',
     );
   });
+
+  test('aurora semantic retry also maps copper tripeptide query to multi-peptide fallback', async () => {
+    const queryText = 'copper tripeptide serum';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED = 'true';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES = '1';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 8, sources: [{ source: 'agent_search_scoped', ok: false, reason: 'no_candidates' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'irrelevant_1', merchant_id: 'm1', title: 'Beauty Sponge Tools Kit' }],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return String(parsed?.payload?.search?.query || '') === queryText;
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'irrelevant_fb_1', merchant_id: 'm4', title: 'Hydrating Toner' }],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        const q = String(parsed?.payload?.search?.query || '').toLowerCase();
+        return q.includes('multi peptide') || q.includes('copper tripeptide');
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'cp_tri_hit', merchant_id: 'merch_efbc46b4619cfbdf', title: 'The Multi-Peptide Collection' }],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({ product_id: 'cp_tri_hit' }));
+    expect(String(resp.body?.metadata?.fallback_strategy?.secondary_selected_query || '').toLowerCase()).toContain(
+      'copper tripeptide',
+    );
+    expect(resp.body?.metadata?.fallback_strategy?.secondary_attempt_count).toBeGreaterThanOrEqual(1);
+  });
 });
