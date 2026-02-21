@@ -109,6 +109,18 @@ test('safety engine blocks pregnancy + retinoid', () => {
   assert.ok(result.reasons.length > 0);
 });
 
+test('safety engine blocks retinoid when pregnancy context is explicit in message only', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: 'Can I use retinol during pregnancy?',
+    profile: {},
+    language: 'EN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.ok(result.reasons.length > 0);
+});
+
 test('safety engine requires info when pregnancy unknown + retinoid', () => {
   const result = evaluateSafety({
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
