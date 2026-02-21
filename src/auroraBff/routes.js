@@ -14462,6 +14462,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     );
   if (shouldAttemptCatalogSearchFallback) {
     const transientReasonForCatalog = reasonCode === 'upstream_timeout' || reasonCode === 'db_error';
+    const reasonCodeBeforeCatalog = reasonCode;
     const catalogResolved = await resolveRecoPdpByCatalogSearch({
       queryText,
       logger,
@@ -14496,9 +14497,14 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       });
     }
     if (catalogResolved.reasonCode && catalogResolved.reasonCode !== 'no_candidates') {
-      reasonCode = catalogResolved.reasonCode;
+      const catalogReasonIsTransient =
+        catalogResolved.reasonCode === 'upstream_timeout' || catalogResolved.reasonCode === 'db_error';
+      // If local deterministic resolver already downgraded to no_candidates, do not re-upgrade on catalog transient.
+      if (!(reasonCodeBeforeCatalog === 'no_candidates' && catalogReasonIsTransient)) {
+        reasonCode = catalogResolved.reasonCode;
+      }
     } else if (
-      (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') &&
+      (reasonCodeBeforeCatalog === 'upstream_timeout' || reasonCodeBeforeCatalog === 'db_error') &&
       catalogResolved.reasonCode === 'no_candidates'
     ) {
       // Transient resolve failures should not force fast external fallback when catalog search can determine emptiness.
