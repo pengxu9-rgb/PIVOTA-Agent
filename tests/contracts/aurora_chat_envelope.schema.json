@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pivota.local/schemas/aurora_chat_envelope.schema.json",
+  "type": "object",
+  "required": [
+    "request_id",
+    "trace_id",
+    "assistant_message",
+    "suggested_chips",
+    "cards",
+    "session_patch",
+    "events"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assistant_message": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "suggested_chips": {
+      "type": "array"
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "card_id",
+          "type",
+          "payload"
+        ],
+        "properties": {
+          "card_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "session_patch": {
+      "type": "object"
+    },
+    "events": {
+      "type": "array"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "cards": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "confidence_notice"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "cards": {
+            "contains": {
+              "type": "object",
+              "required": [
+                "type",
+                "payload"
+              ],
+              "properties": {
+                "type": {
+                  "const": "confidence_notice"
+                },
+                "payload": {
+                  "type": "object",
+                  "required": [
+                    "reason",
+                    "actions"
+                  ],
+                  "properties": {
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "artifact_missing",
+                        "low_confidence",
+                        "safety_block",
+                        "timeout_degraded"
+                      ]
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "cards": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "recommendations"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "cards": {
+            "contains": {
+              "type": "object",
+              "required": [
+                "type",
+                "payload"
+              ],
+              "properties": {
+                "type": {
+                  "const": "recommendations"
+                },
+                "payload": {
+                  "type": "object",
+                  "required": [
+                    "recommendations"
+                  ],
+                  "properties": {
+                    "recommendations": {
+                      "type": "array"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

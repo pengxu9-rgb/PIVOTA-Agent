@@ -48,6 +48,15 @@ Recommended rollout defaults:
 - `staging`: `AURORA_BFF_ANALYSIS_BUDGET_MS=9000`, `AURORA_BFF_CHAT_RECO_BUDGET_MS=7000` (catch long-tail issues earlier)
 - `production`: `AURORA_BFF_ANALYSIS_BUDGET_MS=12000`, `AURORA_BFF_CHAT_RECO_BUDGET_MS=9000` (reduce over-degrade risk)
 
+Budget clamp note (intentional):
+- `AURORA_BFF_ANALYSIS_BUDGET_MS` and `AURORA_BFF_CHAT_RECO_BUDGET_MS` are clamped to a minimum of `1000ms`.
+- Setting either env below `1000` will not tighten budgets further.
+- Rationale: avoid over-sensitive tuning and prevent normal traffic from degrading due to short latency jitter.
+- Timeout downgrade behavior remains fully validated via fault injection (`timeout`, `ECONNRESET`, invalid payload, empty cards), so safety fallback contracts are still enforced even when clamp prevents ultra-tight budget forcing.
+
+Operational expectation:
+- `aurora_skin_analysis_timeout_degraded_rate` and `aurora_skin_reco_timeout_degraded_rate` should be near-baseline in healthy traffic.
+- Sustained spikes indicate upstream/network instability or slow-path regressions and should trigger investigation.
 Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`):
 - `DOWNLOAD_URL_GENERATE_FAILED`
 - `DOWNLOAD_URL_FETCH_4XX`

@@ -11183,11 +11183,50 @@ function buildConfidenceNoticeCardPayload({
 function hasRenderableCards(cards) {
   return (Array.isArray(cards) ? cards : []).some((card) => {
     if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
-    const type = String(card.type || '').trim();
-    return type.length > 0;
+    const type = String(card.type || '').trim().toLowerCase();
+    if (!type) return false;
+    if (type === 'recommendations') {
+      const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload)
+        ? card.payload
+        : {};
+      const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+      return recommendations.length > 0;
+    }
+    if (type === 'confidence_notice') {
+      const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload)
+        ? card.payload
+        : {};
+      const reason = String(payload.reason || '').trim();
+      const actions = Array.isArray(payload.actions) ? payload.actions : [];
+      if (!reason) return false;
+      if (String(reason).trim().toLowerCase() === 'safety_block') return true;
+      return actions.length > 0;
+    }
+    return true;
   });
 }
 
+function classifyRecoUpstreamFailureCode(err) {
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  const message = String((err && err.message) || '').trim().toLowerCase();
+  if (code === 'ECONNRESET' || message.includes('connection reset')) return 'ECONNRESET';
+  if (code === 'EPIPE' || message.includes('broken pipe')) return 'EPIPE';
+  if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || message.includes('timeout')) return 'ETIMEDOUT';
+  if (code === 'UND_ERR_SOCKET' || message.includes('socket hang up')) return 'UND_ERR_SOCKET';
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'DNS';
+  return '';
+}
+
+function isTransientRecoUpstreamFailureCode(code) {
+  const token = String(code || '').trim().toUpperCase();
+  return (
+    token === 'ECONNRESET' ||
+    token === 'EPIPE' ||
+    token === 'ETIMEDOUT' ||
+    token === 'UND_ERR_SOCKET' ||
+    token === 'DNS'
+  );
+}
 function inferCardGuardReasonFromEvents(events) {
   const rows = Array.isArray(events) ? events : [];
   for (const evt of rows) {
@@ -17379,6 +17418,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
 
   let upstream = null;
   let contextMeta = {};
+  let upstreamFailureCode = '';
 
   const catalogOut = await buildRecoGenerateFromCatalog({ ctx, profileSummary, debug, logger });
   const catalogStructured =
@@ -17417,8 +17457,16 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     try {
       upstream = await auroraChat({ baseUrl: AURORA_DECISION_BASE_URL, query, timeoutMs: RECO_UPSTREAM_TIMEOUT_MS });
     } catch (err) {
+      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
       if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
-        logger?.warn({ err: err.message }, 'aurora bff: product reco upstream failed');
+        logger?.warn(
+          {
+            err: err && err.message ? err.message : String(err),
+            code: err && err.code ? err.code : null,
+            normalized_code: upstreamFailureCode || null,
+          },
+          'aurora bff: product reco upstream failed',
+        );
       }
     }
 
@@ -17710,7 +17758,7 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     },
   };
 
-  return { norm, upstreamDebug, alternativesDebug };
+  return { norm, upstreamDebug, alternativesDebug, upstreamFailureCode };
 }
 
 function parseBoolQueryValue(value, fallback = false) {
@@ -24941,6 +24989,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let upstreamDebug = null;
         let alternativesDebug = null;
         let recoTimeoutDegraded = false;
+        let upstreamFailureCode = '';
         if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
           try {
             const upstreamReco = await withTimeout(
@@ -24959,16 +25008,21 @@ function mountAuroraBffRoutes(app, { logger }) {
             norm = upstreamReco.norm;
             upstreamDebug = upstreamReco.upstreamDebug;
             alternativesDebug = upstreamReco.alternativesDebug;
+            upstreamFailureCode = String(upstreamReco.upstreamFailureCode || '').trim().toUpperCase();
           } catch (err) {
-            if (!(err && err.code === 'AURORA_CHAT_RECO_BUDGET_TIMEOUT')) throw err;
+            const transientCode = classifyRecoUpstreamFailureCode(err);
+            if (!(err && err.code === 'AURORA_CHAT_RECO_BUDGET_TIMEOUT') && !isTransientRecoUpstreamFailureCode(transientCode)) {
+              throw err;
+            }
             recoTimeoutDegraded = true;
             logger?.warn(
               {
                 request_id: ctx.request_id,
                 trace_id: ctx.trace_id,
                 budget_ms: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+                transient_code: transientCode || null,
               },
-              'aurora bff: reco upstream budget timeout, degraded to confidence_notice',
+              'aurora bff: reco upstream timeout/transient failure, degraded to confidence_notice',
             );
           }
         } else {
@@ -24982,7 +25036,30 @@ function mountAuroraBffRoutes(app, { logger }) {
             field_missing: [],
           };
         }
+        if (lowConfidenceArtifact && norm && norm.payload && typeof norm.payload === 'object') {
+          const guarded = applyLowConfidenceRecoGuard(norm.payload);
+          if (guarded.filteredCount > 0) {
+            norm.payload = guarded.payload;
+            norm.field_missing = mergeFieldMissing(norm.field_missing, [
+              { field: 'recommendations', reason: 'low_confidence_treatment_filtered' },
+            ]);
+            logger?.info(
+              {
+                kind: 'metric',
+                name: 'aurora.skin.reco.low_confidence_treatment_filtered',
+                value: guarded.filteredCount,
+              },
+              'metric',
+            );
+          }
+        }
 
+        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
+          ? norm.payload.recommendations.length > 0
+          : false;
+        if (!hasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
+          recoTimeoutDegraded = true;
+        }
         if (recoTimeoutDegraded) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco.timeout_degraded_rate', value: 1 }, 'metric');
           recordAuroraSkinFlowMetric({ stage: 'reco_timeout_degraded', hit: true });
@@ -25026,33 +25103,12 @@ function mountAuroraBffRoutes(app, { logger }) {
                 gated: true,
                 reason: 'timeout_degraded',
                 source: 'upstream_timeout',
+                ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
               }),
             ],
           });
           return sendChatEnvelope(envelope);
         }
-
-        if (lowConfidenceArtifact && norm && norm.payload && typeof norm.payload === 'object') {
-          const guarded = applyLowConfidenceRecoGuard(norm.payload);
-          if (guarded.filteredCount > 0) {
-            norm.payload = guarded.payload;
-            norm.field_missing = mergeFieldMissing(norm.field_missing, [
-              { field: 'recommendations', reason: 'low_confidence_treatment_filtered' },
-            ]);
-            logger?.info(
-              {
-                kind: 'metric',
-                name: 'aurora.skin.reco.low_confidence_treatment_filtered',
-                value: guarded.filteredCount,
-              },
-              'metric',
-            );
-          }
-        }
-
-        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
-          ? norm.payload.recommendations.length > 0
-          : false;
         recordAuroraSkinFlowMetric({ stage: 'reco_generated', hit: Boolean(hasRecs) });
         if (hasRecs) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
