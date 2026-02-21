@@ -1,5 +1,4 @@
 const axios = require('axios');
-const OpenAI = require('openai');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -169,6 +168,7 @@ const {
   buildDiagnosisChips,
   buildPendingClarificationForGate,
   stripRecommendationCards,
+  hasUsableArtifactForRecommendations,
 } = require('./gating');
 const {
   DEFAULT_AGENT_STATE,
@@ -214,6 +214,23 @@ const {
   upsertProductIntelKbEntry,
 } = require('./productIntelKbStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
+const {
+  createArtifactId,
+  saveDiagnosisArtifact,
+  getLatestDiagnosisArtifact,
+  saveIngredientPlan,
+  getIngredientPlanByArtifactId,
+  saveRecoRun,
+} = require('./diagnosisArtifactStore');
+const {
+  LOW_CONFIDENCE_THRESHOLD,
+  buildIngredientPlan,
+} = require('./ingredientMapperV1');
+const {
+  buildProductRecommendationsBundle,
+  toLegacyRecommendationsPayload,
+} = require('./productMatcherV1');
+const { evaluateSafetyBoundary } = require('./safetyBoundary');
 const {
   resolveProductRef: resolveProductRefDirect = null,
   _internals: productGroundingResolverInternals = {},
@@ -358,6 +375,12 @@ const RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const RECO_CATALOG_BEAUTY_PATH_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_SEARCH_SOURCE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE || 'aurora-bff')
     .trim()
@@ -492,6 +515,12 @@ const PRODUCT_URL_REALTIME_COMPETITOR_SYNC_ENRICH_MAX_QUERIES = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 2;
   return Math.max(1, Math.min(4, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
+  const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED || 'true')
     .trim()
@@ -596,11 +625,11 @@ const GEMINI_API_KEY = String(
 const OPENAI_BASE_URL = String(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE || '').trim();
 const SKIN_VISION_ENABLED = String(process.env.AURORA_SKIN_VISION_ENABLED || '').toLowerCase() === 'true';
 const SKIN_VISION_PROVIDER = (() => {
-  const raw = String(process.env.AURORA_SKIN_VISION_PROVIDER || 'openai')
+  const raw = String(process.env.AURORA_SKIN_VISION_PROVIDER || 'gemini')
     .trim()
     .toLowerCase();
-  if (raw === 'gemini' || raw === 'auto') return raw;
-  return 'openai';
+  if (raw === 'openai' || raw === 'gemini' || raw === 'auto') return raw;
+  return 'gemini';
 })();
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
@@ -694,6 +723,22 @@ const DIAG_PRODUCT_REC_REPAIR_ONLY_WHEN_DEGRADED =
 const INTERNAL_TEST_MODE = String(process.env.INTERNAL_TEST_MODE || '').toLowerCase() === 'true';
 const DIAG_INGREDIENT_KB_V2_PATH = String(process.env.INGREDIENT_KB_V2_PATH || '').trim() || null;
 const DIAG_PRODUCT_CATALOG_PATH = String(process.env.AURORA_PRODUCT_REC_CATALOG_PATH || '').trim() || null;
+const AURORA_DIAG_ARTIFACT_ENABLED = (() => {
+  const raw = String(process.env.AURORA_DIAG_ARTIFACT_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_INGREDIENT_PLAN_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_PLAN_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PRODUCT_MATCHER_ENABLED = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_MATCHER_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED || 'false').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -743,6 +788,12 @@ const RECO_PDP_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_MS || 900);
   const v = Number.isFinite(n) ? Math.trunc(n) : 900;
   return Math.max(300, Math.min(6000, v));
+})();
+
+const RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  return Math.max(600, Math.min(12000, v));
 })();
 
 const RECO_PDP_OFFERS_RESOLVE_TIMEOUT_MS = (() => {
@@ -1696,6 +1747,7 @@ function buildRecoCatalogSearchPathCandidates() {
     add(beautyPath);
   }
   add(genericPath);
+  if (RECO_CATALOG_BEAUTY_PATH_FALLBACK_ENABLED) add(beautyPath);
 
   if (RECO_CATALOG_BEAUTY_ROUTE_FIRST_ENABLED) {
     return [
@@ -1939,6 +1991,7 @@ async function searchPivotaBackendProducts({
   logger,
   timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
   searchAllMerchants = true,
+  deadlineMs = 0,
   forceLocalSearchFallback = false,
 } = {}) {
   const startedAt = Date.now();
@@ -1946,6 +1999,11 @@ async function searchPivotaBackendProducts({
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const normalizedTimeout = Math.max(300, Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS));
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
+  const deadlineReserveMs = normalizedDeadlineMs > 0 ? 20 : 0;
+  const effectiveDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + normalizedTimeout;
+  const getRemainingOverallMs = () => Math.max(0, effectiveDeadlineMs - Date.now());
+  const hasOverallBudget = (minMs = 220) => getRemainingOverallMs() >= Math.max(40, Number(minMs) || 220);
   const useAllMerchants = searchAllMerchants === true;
   const params = {
     query: q,
@@ -2091,10 +2149,12 @@ async function searchPivotaBackendProducts({
     return rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
   };
   const normalizeAttemptTimeout = (index) => {
-    if (index <= 0) return normalizedTimeout;
-    if (!RECO_CATALOG_MULTI_SOURCE_ENABLED) return normalizedTimeout;
-    const scaled = Math.trunc(normalizedTimeout * 0.66);
-    return Math.max(260, Math.min(normalizedTimeout, scaled));
+    const baseTimeout = index <= 0 || !RECO_CATALOG_MULTI_SOURCE_ENABLED
+      ? normalizedTimeout
+      : Math.max(260, Math.min(normalizedTimeout, Math.trunc(normalizedTimeout * 0.66)));
+    const remaining = getRemainingOverallMs();
+    const capped = Math.min(baseTimeout, Math.max(0, remaining - deadlineReserveMs));
+    return Math.max(0, capped);
   };
   const shouldTrySecondaryReason = (reason) => {
     const token = String(reason || '').trim().toLowerCase();
@@ -2115,7 +2175,7 @@ async function searchPivotaBackendProducts({
     const token = String(reason || '').trim().toLowerCase();
     if (!token) return false;
     if (token === 'not_found') return true;
-    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return true;
+    if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return false;
     if (token === 'empty') return RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     return false;
   };
@@ -2127,20 +2187,73 @@ async function searchPivotaBackendProducts({
     const pathAttempts = [];
     let lastFailure = null;
     let lastEmpty = null;
+    if (!hasOverallBudget(180) || timeoutForAttemptMs < 180) {
+      return {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        source_base_url: normalizedBase,
+        source_endpoint: `${normalizedBase}${normalizedPaths[0] || '/agent/v1/products/search'}`,
+        source_path: normalizedPaths[0] || '/agent/v1/products/search',
+        attempted_endpoints: [],
+        source_path_failover: false,
+        latency_ms: Date.now() - startedAt,
+      };
+    }
     const perBaseStartedAt = Date.now();
     for (let pathIdx = 0; pathIdx < normalizedPaths.length; pathIdx += 1) {
       const pathToken = normalizeRecoCatalogSearchPath(normalizedPaths[pathIdx]) || '/agent/v1/products/search';
       const endpoint = `${normalizedBase}${pathToken}`;
       const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
+      if (!hasOverallBudget(150)) {
+        const exhausted = {
+          ok: false,
+          products: [],
+          reason: 'budget_exhausted',
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        return {
+          ...exhausted,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
+        };
+      }
       const elapsedMs = Date.now() - perBaseStartedAt;
-      const remainingBudgetMs = Math.max(200, timeoutForAttemptMs - elapsedMs);
+      const remainingBudgetMs = Math.max(0, timeoutForAttemptMs - elapsedMs);
+      const remainingOverallMs = getRemainingOverallMs();
+      const requestBudgetMs = Math.max(
+        0,
+        Math.min(
+          remainingBudgetMs,
+          Math.max(0, remainingOverallMs - deadlineReserveMs),
+        ),
+      );
+      if (requestBudgetMs < 120) {
+        const exhausted = {
+          ok: false,
+          products: [],
+          reason: 'budget_exhausted',
+          source_base_url: normalizedBase,
+          source_endpoint: endpoint,
+          source_path: pathToken,
+          latency_ms: Date.now() - startedAt,
+        };
+        return {
+          ...exhausted,
+          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          source_path_failover: pathAttempts.length > 1,
+        };
+      }
       try {
         const resp = await axios.get(endpoint, {
           params,
           headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
           timeout: isLocalInvokeBase
-            ? Math.max(250, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, remainingBudgetMs))
-            : remainingBudgetMs,
+            ? Math.max(120, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, requestBudgetMs))
+            : Math.max(120, requestBudgetMs),
           validateStatus: () => true,
         });
         const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
@@ -2167,7 +2280,8 @@ async function searchPivotaBackendProducts({
           lastFailure = failed;
           const shouldTryNextPath =
             pathIdx < normalizedPaths.length - 1 &&
-            shouldTrySecondaryPathReason(reason);
+            shouldTrySecondaryPathReason(reason) &&
+            hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
@@ -2203,7 +2317,8 @@ async function searchPivotaBackendProducts({
           lastFailure = failed;
           const shouldTryNextPath =
             pathIdx < normalizedPaths.length - 1 &&
-            shouldTrySecondaryPathReason(bodyReason);
+            shouldTrySecondaryPathReason(bodyReason) &&
+            hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
@@ -2239,7 +2354,8 @@ async function searchPivotaBackendProducts({
         lastEmpty = result;
         const shouldTryNextPath =
           pathIdx < normalizedPaths.length - 1 &&
-          shouldTrySecondaryPathReason(result.reason || 'empty');
+          shouldTrySecondaryPathReason(result.reason || 'empty') &&
+          hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...result,
@@ -2274,7 +2390,8 @@ async function searchPivotaBackendProducts({
         lastFailure = failed;
         const shouldTryNextPath =
           pathIdx < normalizedPaths.length - 1 &&
-          shouldTrySecondaryPathReason(reason);
+          shouldTrySecondaryPathReason(reason) &&
+          hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...failed,
@@ -2326,8 +2443,27 @@ async function searchPivotaBackendProducts({
     });
 
   for (let idx = 0; idx < orderedBaseUrls.length; idx += 1) {
+    if (!hasOverallBudget(180)) {
+      finalFailure = {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        latency_ms: Date.now() - startedAt,
+      };
+      break;
+    }
     const baseUrl = orderedBaseUrls[idx];
     const timeoutForAttemptMs = normalizeAttemptTimeout(idx);
+    if (timeoutForAttemptMs < 120) {
+      finalFailure = {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        source_base_url: baseUrl,
+        latency_ms: Date.now() - startedAt,
+      };
+      break;
+    }
     const attempt = await runSearchAttemptByBase(baseUrl, timeoutForAttemptMs);
     attempts.push({
       base_url: baseUrl,
@@ -2386,7 +2522,10 @@ async function searchPivotaBackendProducts({
       );
     }
 
-    const shouldTryNext = idx < orderedBaseUrls.length - 1 && shouldTrySecondaryReason(failureReason);
+    const shouldTryNext =
+      idx < orderedBaseUrls.length - 1 &&
+      shouldTrySecondaryReason(failureReason) &&
+      hasOverallBudget(150);
     if (!shouldTryNext) break;
   }
 
@@ -4422,9 +4561,10 @@ async function buildRealtimeCompetitorCandidates({
     return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   })();
   const allowResolveFallback = runMode === 'async_backfill' || (runMode === 'sync_repair' && syncResolveFallbackEnabled);
-  // Sync repair should also search across merchants; this improves cross-brand recovery
-  // when the anchor query is sparse or merchant-local index is incomplete.
-  const searchAllMerchants = runMode !== 'main_path';
+  const searchAllMerchants =
+    runMode !== 'main_path'
+      ? true
+      : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
   const reserveAfterSearchMs =
@@ -4500,6 +4640,7 @@ async function buildRealtimeCompetitorCandidates({
         logger,
         timeoutMs: perQueryTimeoutMs,
         searchAllMerchants,
+        deadlineMs: softDeadlineMs,
       });
       return { query: queryText, searched };
     }),
@@ -7313,7 +7454,6 @@ async function buildProductAnalysisFromUrlIngredients({
     },
     missing_info: uniqCaseInsensitiveStrings(
       [
-        'upstream_analysis_missing',
         'url_ingredient_analysis_used',
         'url_realtime_product_intel_used',
         ...(!anchorPrice ? ['price_unknown'] : []),
@@ -7807,8 +7947,34 @@ function extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw 
 }
 
 let openaiClient;
+let openaiCtor;
+let openaiCtorResolved = false;
+function getOpenAIConstructor() {
+  if (openaiCtorResolved) return openaiCtor;
+  openaiCtorResolved = true;
+  try {
+    const mod = require('openai');
+    if (typeof mod === 'function') {
+      openaiCtor = mod;
+      return openaiCtor;
+    }
+    if (mod && typeof mod.OpenAI === 'function') {
+      openaiCtor = mod.OpenAI;
+      return openaiCtor;
+    }
+    if (mod && typeof mod.default === 'function') {
+      openaiCtor = mod.default;
+      return openaiCtor;
+    }
+  } catch (_err) {
+    openaiCtor = null;
+  }
+  return openaiCtor;
+}
 function getOpenAIClient() {
   if (!OPENAI_API_KEY) return null;
+  const OpenAI = getOpenAIConstructor();
+  if (!OpenAI) return null;
   if (!openaiClient) {
     openaiClient = new OpenAI({
       apiKey: OPENAI_API_KEY,
@@ -7844,9 +8010,9 @@ function resolveVisionProviderSelection() {
     return { provider: 'gemini', apiKeyConfigured: Boolean(GEMINI_API_KEY), requested };
   }
 
-  if (OPENAI_API_KEY) return { provider: 'openai', apiKeyConfigured: true, requested };
   if (GEMINI_API_KEY) return { provider: 'gemini', apiKeyConfigured: true, requested };
-  return { provider: 'openai', apiKeyConfigured: false, requested };
+  if (OPENAI_API_KEY) return { provider: 'openai', apiKeyConfigured: true, requested };
+  return { provider: 'gemini', apiKeyConfigured: false, requested };
 }
 
 async function withVisionTimeout(promise, timeoutMs) {
@@ -9030,14 +9196,60 @@ async function runGeminiVisionSkinAnalysis({
   };
 }
 
-async function runVisionSkinAnalysis({ provider, ...rest } = {}) {
-  const target = String(provider || 'openai')
+let runGeminiVisionSkinAnalysisImpl = runGeminiVisionSkinAnalysis;
+let runOpenAIVisionSkinAnalysisImpl = runOpenAIVisionSkinAnalysis;
+
+function shouldAttemptOpenAiFallbackFromGemini({ photoQuality, llmKillSwitch } = {}) {
+  if (llmKillSwitch) return false;
+  const grade = String(photoQuality && photoQuality.grade ? photoQuality.grade : '')
+    .trim()
+    .toLowerCase();
+  if (grade === 'fail') return false;
+  return true;
+}
+
+async function runVisionSkinAnalysis({ provider, llmKillSwitch, photoQuality, ...rest } = {}) {
+  const target = String(provider || 'gemini')
     .trim()
     .toLowerCase();
   if (target === 'gemini') {
-    return runGeminiVisionSkinAnalysis(rest);
+    const gemini = await runGeminiVisionSkinAnalysisImpl({ photoQuality, ...rest });
+    if (gemini && gemini.ok) {
+      return {
+        ...gemini,
+        attempted_providers: ['gemini'],
+      };
+    }
+    if (shouldAttemptOpenAiFallbackFromGemini({ photoQuality, llmKillSwitch })) {
+      const openai = await runOpenAIVisionSkinAnalysisImpl({ photoQuality, ...rest });
+      if (openai && openai.ok) {
+        return {
+          ...openai,
+          fallback_from: 'gemini',
+          primary_failure_reason: normalizeVisionReason(gemini && gemini.reason),
+          attempted_providers: ['gemini', 'openai'],
+        };
+      }
+      return {
+        ...(openai || {}),
+        ok: false,
+        provider: 'openai',
+        reason: normalizeVisionReason((openai && openai.reason) || (gemini && gemini.reason)),
+        fallback_from: 'gemini',
+        primary_failure_reason: normalizeVisionReason(gemini && gemini.reason),
+        attempted_providers: ['gemini', 'openai'],
+      };
+    }
+    return {
+      ...gemini,
+      attempted_providers: ['gemini'],
+    };
   }
-  return runOpenAIVisionSkinAnalysis(rest);
+  const openai = await runOpenAIVisionSkinAnalysisImpl({ photoQuality, ...rest });
+  return {
+    ...openai,
+    attempted_providers: ['openai'],
+  };
 }
 
 function sleep(ms) {
@@ -10316,6 +10528,426 @@ function buildRetakeSkinAnalysis({ language, photoQuality } = {}) {
     strategy: strategy.slice(0, 1200),
     needs_risk_check: false,
   };
+}
+
+function confidenceLevelFromScoreV1(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 'low';
+  if (n < LOW_CONFIDENCE_THRESHOLD) return 'low';
+  if (n <= 0.75) return 'medium';
+  return 'high';
+}
+
+function normalizeArtifactSourceMix(sources) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(sources) ? sources : []) {
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+function buildArtifactConfidence(score, rationale) {
+  const n = Number(score);
+  const safe = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  return {
+    score: safe,
+    level: confidenceLevelFromScoreV1(safe),
+    rationale: Array.from(
+      new Set(
+        (Array.isArray(rationale) ? rationale : [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+      ),
+    ).slice(0, 8),
+  };
+}
+
+function buildProfileEvidence(fieldKey) {
+  return [
+    {
+      source: 'profile',
+      supports: [fieldKey],
+      ref: { type: 'profile_field', id: fieldKey },
+      reliabilityWeight: 0.75,
+    },
+  ];
+}
+
+function buildArtifactValueNode({ value, confidence, fieldKey } = {}) {
+  const v = typeof value === 'string' ? value.trim() : '';
+  if (!v) return null;
+  return {
+    value: v,
+    confidence: buildArtifactConfidence(confidence, [`profile_${fieldKey}`]),
+    evidence: buildProfileEvidence(fieldKey),
+  };
+}
+
+function buildArtifactGoalsNode(goals, confidence = 0.7) {
+  const values = (Array.isArray(goals) ? goals : [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (!values.length) return null;
+  return {
+    values,
+    confidence: buildArtifactConfidence(confidence, ['profile_goals']),
+    evidence: buildProfileEvidence('goals'),
+  };
+}
+
+function deriveConcernConfidence({ issueType, analysis, defaultScore } = {}) {
+  const findings = Array.isArray(analysis && analysis.findings) ? analysis.findings : [];
+  for (const finding of findings) {
+    if (!finding || typeof finding !== 'object') continue;
+    const token = String(finding.issue_type || '').trim().toLowerCase();
+    if (!token || token !== String(issueType || '').trim().toLowerCase()) continue;
+    const c = Number(finding.confidence);
+    if (Number.isFinite(c)) return Math.max(0, Math.min(1, c));
+  }
+  return Number.isFinite(Number(defaultScore)) ? Math.max(0, Math.min(1, Number(defaultScore))) : 0.58;
+}
+
+function deriveConcernsFromAnalysis({ analysis, profileSummary, usedPhotos, analysisSource } = {}) {
+  const out = [];
+  const seen = new Set();
+  const findings = Array.isArray(analysis && analysis.findings) ? analysis.findings : [];
+  for (const finding of findings) {
+    if (!finding || typeof finding !== 'object') continue;
+    const concernId = String(finding.issue_type || '').trim();
+    if (!concernId) continue;
+    const key = concernId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const score = deriveConcernConfidence({ issueType: concernId, analysis, defaultScore: finding.confidence });
+    const evidence = [];
+    if (usedPhotos) {
+      const findingId = typeof finding.finding_id === 'string' ? finding.finding_id.trim() : '';
+      evidence.push({
+        source: 'photo',
+        supports: ['concerns'],
+        ...(findingId ? { ref: { type: 'model_run', id: findingId } } : {}),
+        reliabilityWeight: 0.78,
+      });
+    } else {
+      evidence.push({
+        source: 'rule',
+        supports: ['concerns'],
+        ref: { type: 'rule_id', id: 'ANALYSIS_RULE_BASELINE' },
+        reliabilityWeight: 0.68,
+      });
+    }
+    if (
+      analysisSource === 'vision_openai' ||
+      analysisSource === 'vision_openai_fallback' ||
+      analysisSource === 'vision_gemini' ||
+      analysisSource === 'aurora_text'
+    ) {
+      evidence.push({
+        source: 'llm',
+        supports: ['concerns'],
+        ref: { type: 'model_run', id: `analysis_${analysisSource}` },
+        reliabilityWeight: 0.52,
+      });
+    }
+    out.push({
+      id: concernId,
+      confidence: buildArtifactConfidence(score, [`analysis_${analysisSource || 'rule_based'}`]),
+      evidence,
+    });
+  }
+
+  const profileGoals = Array.isArray(profileSummary && profileSummary.goals) ? profileSummary.goals : [];
+  for (const goal of profileGoals) {
+    const concernId = String(goal || '').trim();
+    if (!concernId) continue;
+    const key = concernId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: concernId,
+      confidence: buildArtifactConfidence(0.56, ['goal_proxy']),
+      evidence: buildProfileEvidence('goals'),
+    });
+  }
+  return out.slice(0, 8);
+}
+
+function deriveArtifactOverallConfidence({
+  usePhoto,
+  usedPhotos,
+  photoQuality,
+  analysisSource,
+  profileSummary,
+  concerns,
+} = {}) {
+  const skinTypePresent = Boolean(profileSummary && profileSummary.skinType);
+  const barrierPresent = Boolean(profileSummary && profileSummary.barrierStatus);
+  const sensitivityPresent = Boolean(profileSummary && profileSummary.sensitivity);
+  const goalsPresent = Boolean(profileSummary && Array.isArray(profileSummary.goals) && profileSummary.goals.length > 0);
+
+  const baseParts = [];
+  baseParts.push(skinTypePresent ? 0.74 : 0);
+  baseParts.push(barrierPresent ? 0.72 : 0);
+  baseParts.push(sensitivityPresent ? 0.7 : 0);
+  baseParts.push(goalsPresent ? 0.76 : 0);
+  const base = baseParts.reduce((sum, value) => sum + value, 0) / Math.max(1, baseParts.length);
+
+  const concernBoost =
+    Array.isArray(concerns) && concerns.length
+      ? Math.min(
+          0.1,
+          concerns.reduce((sum, item) => {
+            const node = item && typeof item === 'object' ? item.confidence : null;
+            const score = node && typeof node === 'object' ? Number(node.score) : 0;
+            return sum + (Number.isFinite(score) ? score : 0);
+          }, 0) /
+            concerns.length *
+            0.12,
+        )
+      : 0;
+
+  let score = Math.max(0, Math.min(1, base + concernBoost));
+  const rationale = ['core4_weighted_mean'];
+
+  const qualityGrade = String(photoQuality && photoQuality.grade || '').trim().toLowerCase();
+  if (qualityGrade === 'degraded') {
+    score = Math.max(0, score - 0.1);
+    rationale.push('photo_qc_degraded');
+  } else if (qualityGrade === 'fail') {
+    score = Math.min(score, LOW_CONFIDENCE_THRESHOLD - 0.01);
+    rationale.push('photo_qc_failed');
+  }
+
+  if (usePhoto === false) {
+    score = Math.min(score, 0.75);
+    rationale.push('photo_skipped');
+  } else if (usePhoto && !usedPhotos) {
+    score = Math.min(score, LOW_CONFIDENCE_THRESHOLD - 0.01);
+    rationale.push('photo_requested_but_not_used');
+  }
+
+  const normalizedSource = String(analysisSource || '').trim().toLowerCase();
+  if (normalizedSource === 'baseline_low_confidence' || normalizedSource === 'retake') {
+    score = Math.min(score, LOW_CONFIDENCE_THRESHOLD - 0.01);
+    rationale.push('low_confidence_fallback');
+  }
+
+  return buildArtifactConfidence(score, rationale);
+}
+
+function buildDiagnosisArtifactV1({
+  ctx,
+  identity,
+  profileSummary,
+  recentLogsSummary,
+  analysis,
+  analysisSource,
+  usePhoto,
+  usedPhotos,
+  photos,
+  photoQuality,
+} = {}) {
+  const concerns = deriveConcernsFromAnalysis({
+    analysis,
+    profileSummary,
+    usedPhotos,
+    analysisSource,
+  });
+  const overallConfidence = deriveArtifactOverallConfidence({
+    usePhoto,
+    usedPhotos,
+    photoQuality,
+    analysisSource,
+    profileSummary,
+    concerns,
+  });
+  const photoRefs = (Array.isArray(photos) ? photos : [])
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const slot = String(item.slot_id || '').trim();
+      const photoId = String(item.photo_id || '').trim();
+      if (!slot || !photoId) return null;
+      const qcStatus = String(item.qc_status || 'unknown').trim();
+      return {
+        slot,
+        photo_id: photoId,
+        qc_status: qcStatus,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const sourceMix = normalizeArtifactSourceMix([
+    usedPhotos ? 'photo' : 'rule',
+    recentLogsSummary && recentLogsSummary.length ? 'log' : null,
+    profileSummary ? 'profile' : null,
+    analysisSource === 'vision_openai' ||
+    analysisSource === 'vision_openai_fallback' ||
+    analysisSource === 'vision_gemini' ||
+    analysisSource === 'aurora_text'
+      ? 'llm'
+      : null,
+  ]);
+
+  const artifact = {
+    artifact_id: createArtifactId(),
+    created_at: new Date().toISOString(),
+    use_photo: Boolean(usePhoto),
+    overall_confidence: overallConfidence,
+    skinType: buildArtifactValueNode({
+      value: profileSummary && profileSummary.skinType,
+      confidence: skinTypeConfidence(profileSummary),
+      fieldKey: 'skinType',
+    }),
+    barrierStatus: buildArtifactValueNode({
+      value: profileSummary && profileSummary.barrierStatus,
+      confidence: barrierConfidence(profileSummary),
+      fieldKey: 'barrierStatus',
+    }),
+    sensitivity: buildArtifactValueNode({
+      value: profileSummary && profileSummary.sensitivity,
+      confidence: sensitivityConfidence(profileSummary),
+      fieldKey: 'sensitivity',
+    }),
+    goals: buildArtifactGoalsNode(profileSummary && profileSummary.goals, 0.74),
+    concerns,
+    photos: photoRefs,
+    safety: {
+      non_medical_disclaimer_version: 'v1',
+      red_flags: [],
+    },
+    analysis_context: {
+      analysis_source: String(analysisSource || '').trim() || 'unknown',
+      used_photos: Boolean(usedPhotos),
+      quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
+    },
+    source_mix: sourceMix,
+    session_patch: {
+      next_state: 'S5_ANALYSIS_SUMMARY',
+      state: {
+        latest_artifact_id: null,
+      },
+    },
+    identity: {
+      aurora_uid: identity && identity.auroraUid ? String(identity.auroraUid).trim() : null,
+      user_id: identity && identity.userId ? String(identity.userId).trim() : null,
+      session_id: ctx && ctx.brief_id ? String(ctx.brief_id).trim() : null,
+    },
+  };
+
+  return artifact;
+}
+
+function buildConfidenceNoticeCardPayload({
+  language,
+  reason,
+  confidence,
+  actions,
+  severity = 'warn',
+  details,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const rationale = Array.isArray(confidence && confidence.rationale) ? confidence.rationale : [];
+  const score = Number(confidence && confidence.score);
+  const level = String(confidence && confidence.level || '').trim().toLowerCase() || confidenceLevelFromScoreV1(score);
+  const messageByReason = {
+    artifact_missing:
+      lang === 'CN'
+        ? '还没有可用的诊断结果，请先上传照片或先做一次低置信度分析。'
+        : 'No diagnosis artifact is available yet. Please upload photos or run a low-confidence baseline analysis first.',
+    low_confidence:
+      lang === 'CN'
+        ? '当前诊断置信度较低，已降级为温和基础方案。建议补拍 daylight + indoor_white 提升准确度。'
+        : 'Diagnosis confidence is low, so this was downgraded to a gentle baseline plan. Retake daylight + indoor_white photos to improve accuracy.',
+    safety_block:
+      lang === 'CN'
+        ? '检测到可能的医疗风险信号，已停止商品推荐。'
+        : 'Potential medical risk signals detected, so product recommendations are blocked.',
+    default:
+      lang === 'CN' ? '当前建议已按保守模式输出。' : 'Current guidance is running in conservative mode.',
+  };
+
+  return {
+    reason: reason || 'default',
+    severity,
+    confidence: {
+      score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0,
+      level,
+      rationale,
+    },
+    message: messageByReason[reason] || messageByReason.default,
+    actions: Array.isArray(actions) ? actions : [],
+    details: Array.isArray(details) ? details.slice(0, 6) : [],
+  };
+}
+
+function skinTypeConfidence(profileSummary) {
+  return profileSummary && profileSummary.skinType ? 0.74 : 0;
+}
+
+function barrierConfidence(profileSummary) {
+  return profileSummary && profileSummary.barrierStatus ? 0.72 : 0;
+}
+
+function sensitivityConfidence(profileSummary) {
+  return profileSummary && profileSummary.sensitivity ? 0.7 : 0;
+}
+
+function extractLatestArtifactIdFromSession(session) {
+  if (!session || typeof session !== 'object' || Array.isArray(session)) return null;
+  const state = session.state && typeof session.state === 'object' && !Array.isArray(session.state) ? session.state : null;
+  if (!state) return null;
+  const artifactId = String(state.latest_artifact_id || '').trim();
+  return artifactId || null;
+}
+
+function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
+  if (!sessionPatch || typeof sessionPatch !== 'object') return;
+  const id = String(artifactId || '').trim();
+  if (!id) return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.latest_artifact_id = id;
+  sessionPatch.state = state;
+}
+
+function buildIngredientPlanCard(plan, requestId) {
+  return {
+    card_id: `ing_plan_${requestId}`,
+    type: 'ingredient_plan',
+    payload: {
+      plan,
+      intensity: plan && plan.intensity ? plan.intensity : 'balanced',
+      targets: Array.isArray(plan && plan.targets) ? plan.targets : [],
+      avoid: Array.isArray(plan && plan.avoid) ? plan.avoid : [],
+      conflicts: Array.isArray(plan && plan.conflicts) ? plan.conflicts : [],
+      confidence: plan && plan.confidence && typeof plan.confidence === 'object' ? plan.confidence : null,
+    },
+  };
+}
+
+function buildRecoEntryChips(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return [
+    {
+      chip_id: 'chip.intake.upload_photos',
+      label: lang === 'CN' ? '上传 daylight + indoor_white' : 'Upload daylight + indoor_white',
+      kind: 'quick_reply',
+      data: {},
+    },
+    {
+      chip_id: 'chip.intake.skip_analysis',
+      label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
+      kind: 'quick_reply',
+      data: {},
+    },
+  ];
 }
 
 function requireAuroraUid(ctx) {
@@ -12759,38 +13391,49 @@ function buildRecoDiversityToken(item) {
   return token ? `name:${token}` : '';
 }
 
-function getRecoRecentExposureTokens(historyKey, nowMs = Date.now()) {
+function getRecoRecentExposureState(historyKey, nowMs = Date.now()) {
   const key = String(historyKey || '').trim();
-  if (!key) return [];
+  if (!key) return { tokens: [], round: 0 };
   const entry = recoRecentExposureState.get(key);
-  if (!entry || typeof entry !== 'object') return [];
+  if (!entry || typeof entry !== 'object') return { tokens: [], round: 0 };
 
   const expiresAt = Number(entry.expiresAt || 0);
   if (!Number.isFinite(expiresAt) || expiresAt <= nowMs) {
     recoRecentExposureState.delete(key);
-    return [];
+    return { tokens: [], round: 0 };
   }
 
   const tokens = Array.isArray(entry.tokens) ? entry.tokens : [];
-  return tokens
+  const round = Number.isFinite(Number(entry.round)) ? Math.max(0, Math.trunc(Number(entry.round))) : 0;
+  return {
+    round,
+    tokens: tokens
     .map((token) => String(token || '').trim())
     .filter(Boolean)
-    .slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS);
+    .slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS),
+  };
+}
+
+function getRecoRecentExposureTokens(historyKey, nowMs = Date.now()) {
+  return getRecoRecentExposureState(historyKey, nowMs).tokens;
 }
 
 function updateRecoRecentExposureTokens(historyKey, nextTokens, nowMs = Date.now()) {
   const key = String(historyKey || '').trim();
   if (!key) return;
-  const current = getRecoRecentExposureTokens(key, nowMs);
+  const currentState = getRecoRecentExposureState(key, nowMs);
+  const current = currentState.tokens;
   const incoming = (Array.isArray(nextTokens) ? nextTokens : [])
     .map((token) => String(token || '').trim())
     .filter(Boolean);
   if (!incoming.length && !current.length) return;
 
   const merged = [...current, ...incoming].slice(-RECO_DIVERSITY_HISTORY_MAX_ITEMS);
+  const roundIncrement = incoming.length > 0 ? 1 : 0;
   recoRecentExposureState.delete(key);
   recoRecentExposureState.set(key, {
     tokens: merged,
+    round: Math.max(0, Math.trunc(Number(currentState.round || 0))) + roundIncrement,
     expiresAt: nowMs + RECO_DIVERSITY_HISTORY_TTL_MS,
   });
 
@@ -12805,6 +13448,7 @@ function applyRecoRecentDiversityGuard(recommendations, {
   historyTokens = [],
   maxRepeatPerResponse = RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
   minTotal = RECO_DIVERSITY_MIN_TOTAL,
+  rotationRound = 0,
 } = {}) {
   const list = Array.isArray(recommendations) ? recommendations : [];
   if (!list.length) {
@@ -12837,6 +13481,29 @@ function applyRecoRecentDiversityGuard(recommendations, {
     const repeated = Boolean(token && historySet.has(token));
     return { idx, item, token, repeated };
   });
+  const lastSeenPosByToken = new Map();
+  const historyOrdered = (Array.isArray(historyTokens) ? historyTokens : [])
+    .map((token) => String(token || '').trim())
+    .filter(Boolean);
+  for (let idx = 0; idx < historyOrdered.length; idx += 1) {
+    const token = historyOrdered[idx];
+    lastSeenPosByToken.set(token, idx);
+  }
+  const rankForNovelty = (rows) =>
+    rows
+      .slice()
+      .sort((a, b) => {
+        if (a.repeated !== b.repeated) return a.repeated ? 1 : -1;
+        if (!a.repeated && !b.repeated) return a.idx - b.idx;
+        const aPos = Number.isFinite(Number(lastSeenPosByToken.get(a.token)))
+          ? Number(lastSeenPosByToken.get(a.token))
+          : -1;
+        const bPos = Number.isFinite(Number(lastSeenPosByToken.get(b.token)))
+          ? Number(lastSeenPosByToken.get(b.token))
+          : -1;
+        if (aPos !== bPos) return aPos - bPos;
+        return a.idx - b.idx;
+      });
   const repeatedBefore = annotated.filter((row) => row.repeated).length;
   if (!repeatedBefore) {
     return {
@@ -12855,12 +13522,22 @@ function applyRecoRecentDiversityGuard(recommendations, {
   const allowedRepeats = Math.min(repeatedBefore, Math.max(maxRepeat, repeatKeepFloor));
 
   if (allowedRepeats >= repeatedBefore) {
+    const noveltyRanked = rankForNovelty(annotated).map((row) => row.item);
+    let rotated = noveltyRanked.slice();
+    if (repeatedBefore === annotated.length && rotated.length > 1) {
+      const normalizedRound = Number.isFinite(Number(rotationRound)) ? Math.max(0, Math.trunc(Number(rotationRound))) : 0;
+      const offset = normalizedRound % rotated.length;
+      if (offset > 0) {
+        rotated = [...rotated.slice(offset), ...rotated.slice(0, offset)];
+      }
+    }
+    const reRanked = rotated.some((item, idx) => item !== list[idx]);
     return {
-      recommendations: list,
+      recommendations: rotated,
       repeated_before: repeatedBefore,
       repeated_after: repeatedBefore,
       filtered_count: 0,
-      applied: false,
+      applied: reRanked,
     };
   }
 
@@ -13204,6 +13881,13 @@ function shouldAttemptLocalRecoFallback(reasonCode, error) {
   if (reasonCode === 'db_error') return true;
   if (error) return true;
   return false;
+}
+
+function getRecoPdpResolveTimeoutMs({ strictInternal = false, requestedTimeoutMs = null } = {}) {
+  const requested = Number.isFinite(Number(requestedTimeoutMs)) ? Math.trunc(Number(requestedTimeoutMs)) : RECO_PDP_RESOLVE_TIMEOUT_MS;
+  const baseline = Math.max(300, Math.min(12000, requested));
+  if (!strictInternal) return baseline;
+  return Math.max(baseline, RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS);
 }
 
 function extractCanonicalFromOffersResolveBody(body) {
@@ -13617,30 +14301,84 @@ async function resolveRecoPdpByLocalResolver({
   queryText,
   hints = null,
   logger,
+  timeoutMs = null,
 } = {}) {
   const q = String(queryText || '').trim();
-  if (!q || typeof resolveProductRefDirectImpl !== 'function') {
-    return { ok: false, reasonCode: 'db_error' };
-  }
+  if (!q) return { ok: false, reasonCode: 'no_candidates' };
+
+  const resolveTimeoutMs = getRecoPdpResolveTimeoutMs({
+    strictInternal: true,
+    requestedTimeoutMs: timeoutMs,
+  });
+  const localResolveUrl = `${String(RECO_PDP_LOCAL_INVOKE_BASE_URL || '').replace(/\/+$/, '')}/agent/v1/products/resolve`;
+  const localHttpTimeoutMs = Math.max(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, resolveTimeoutMs);
+  const canUseLocalHttpFallback = Boolean(localResolveUrl && /^https?:\/\//i.test(localResolveUrl));
+
+  const runLocalHttpResolveFallback = async () => {
+    if (!canUseLocalHttpFallback) {
+      return { responseBody: null, responseStatusCode: null, responseError: new Error('local_resolver_unavailable') };
+    }
+    try {
+      const resp = await axios.post(
+        localResolveUrl,
+        {
+          query: q,
+          lang: 'en',
+          ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+          options: {
+            search_all_merchants: true,
+            timeout_ms: resolveTimeoutMs,
+            upstream_retries: 0,
+            stable_alias_short_circuit: true,
+            allow_stable_alias_for_uuid: true,
+            allow_external_seed: false,
+          },
+          caller: 'aurora_chatbox',
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: localHttpTimeoutMs,
+          validateStatus: () => true,
+        },
+      );
+      return {
+        responseBody: resp && typeof resp.data === 'object' ? resp.data : null,
+        responseStatusCode: Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null,
+        responseError: null,
+      };
+    } catch (err) {
+      return { responseBody: null, responseStatusCode: null, responseError: err };
+    }
+  };
 
   let responseBody = null;
+  let responseStatusCode = null;
   let responseError = null;
-  try {
-    responseBody = await resolveProductRefDirectImpl({
-      query: q,
-      lang: 'en',
-      ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
-      options: {
-        search_all_merchants: true,
-        timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
-        upstream_retries: 0,
-        stable_alias_short_circuit: true,
-        allow_stable_alias_for_uuid: true,
-      },
-      caller: 'aurora_chatbox',
-    });
-  } catch (err) {
-    responseError = err;
+  let fallbackMode = 'direct';
+  if (typeof resolveProductRefDirectImpl === 'function') {
+    try {
+      responseBody = await resolveProductRefDirectImpl({
+        query: q,
+        lang: 'en',
+        ...(hints && typeof hints === 'object' && !Array.isArray(hints) ? { hints } : {}),
+        options: {
+          search_all_merchants: true,
+          timeout_ms: resolveTimeoutMs,
+          upstream_retries: 0,
+          stable_alias_short_circuit: true,
+          allow_stable_alias_for_uuid: true,
+        },
+        caller: 'aurora_chatbox',
+      });
+    } catch (err) {
+      responseError = err;
+    }
+  } else {
+    const fallbackOut = await runLocalHttpResolveFallback();
+    responseBody = fallbackOut.responseBody;
+    responseStatusCode = fallbackOut.responseStatusCode;
+    responseError = fallbackOut.responseError;
+    fallbackMode = 'local_http';
   }
 
   const resolvedProductRef = normalizeCanonicalProductRef(responseBody?.product_ref, {
@@ -13657,14 +14395,59 @@ async function resolveRecoPdpByLocalResolver({
 
   const reasonCode = mapResolveFailureCode({
     resolveBody: responseBody,
-    statusCode: null,
+    statusCode: responseStatusCode,
     error: responseError,
   });
+  let finalReasonCode = reasonCode;
+
+  const shouldAttemptLocalHttpAfterDirect =
+    fallbackMode === 'direct' &&
+    canUseLocalHttpFallback &&
+    (
+      finalReasonCode === 'upstream_timeout' ||
+      finalReasonCode === 'db_error' ||
+      Boolean(responseError)
+    );
+  if (shouldAttemptLocalHttpAfterDirect) {
+    recordRecoPdpInternalRetryAttempt(1);
+    const fallbackOut = await runLocalHttpResolveFallback();
+    const fallbackResolvedProductRef = normalizeCanonicalProductRef(fallbackOut.responseBody?.product_ref, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    });
+    if (fallbackOut.responseBody?.resolved === true && fallbackResolvedProductRef) {
+      return {
+        ok: true,
+        canonicalProductRef: fallbackResolvedProductRef,
+        reasonCode: null,
+      };
+    }
+    const fallbackReasonCode = mapResolveFailureCode({
+      resolveBody: fallbackOut.responseBody,
+      statusCode: fallbackOut.responseStatusCode,
+      error: fallbackOut.responseError,
+    });
+    if (fallbackReasonCode && fallbackReasonCode !== 'upstream_timeout' && fallbackReasonCode !== 'db_error') {
+      finalReasonCode = fallbackReasonCode;
+    } else if (
+      (finalReasonCode === 'upstream_timeout' || finalReasonCode === 'db_error') &&
+      fallbackReasonCode === 'no_candidates'
+    ) {
+      finalReasonCode = 'no_candidates';
+    }
+    responseBody = fallbackOut.responseBody || responseBody;
+    responseStatusCode = fallbackOut.responseStatusCode || responseStatusCode;
+    responseError = fallbackOut.responseError || responseError;
+    fallbackMode = 'local_http_after_direct';
+  }
+
   if (responseError || reasonCode !== 'no_candidates') {
     logger?.warn(
       {
         query: q.slice(0, 120),
-        reason_code: reasonCode,
+        reason_code: finalReasonCode,
+        status_code: responseStatusCode,
+        fallback_mode: fallbackMode,
         err: responseError ? responseError.message || String(responseError) : null,
       },
       'aurora bff: reco pdp local resolver fallback unresolved',
@@ -13672,7 +14455,7 @@ async function resolveRecoPdpByLocalResolver({
   }
   return {
     ok: false,
-    reasonCode,
+    reasonCode: finalReasonCode,
   };
 }
 
@@ -13909,7 +14692,11 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   let stableResolveReasonCode = null;
   let stableResolveRequestIds = null;
   let stableResolveLocalFallbackAttempted = false;
-  if (RECO_PDP_RESOLVE_ENABLED && PIVOTA_BACKEND_BASE_URL && (stableProductId || stableSkuId)) {
+  if (
+    PIVOTA_BACKEND_BASE_URL &&
+    (stableProductId || stableSkuId) &&
+    (RECO_PDP_RESOLVE_ENABLED || RECO_PDP_STRICT_INTERNAL_FIRST)
+  ) {
     const stableResolved = await resolveRecoPdpByStableIds({
       productId: stableProductId,
       skuId: stableSkuId,
@@ -13957,12 +14744,15 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
     stableQueryText;
   const stableResolveFailureCode = normalizeResolveReasonCode(stableResolveReasonCode || '', null);
+  const shouldSkipNoCandidateQueryResolve =
+    RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES &&
+    !RECO_PDP_STRICT_INTERNAL_FIRST;
   const shouldSkipQueryResolveForStableFailure =
     RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE &&
     Boolean(stableResolveFailureCode) &&
     (
       stableResolveFailureCode === 'no_candidates'
-        ? RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES
+        ? shouldSkipNoCandidateQueryResolve
         : RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED
     );
   if (
@@ -13989,6 +14779,9 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     name,
     displayName,
   });
+  const queryResolveTimeoutMs = getRecoPdpResolveTimeoutMs({
+    strictInternal: RECO_PDP_STRICT_INTERNAL_FIRST,
+  });
 
   if (!queryText) {
     recordRecoPdpExternalFallback(stableResolveReasonCode || 'no_candidates');
@@ -14008,6 +14801,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryText,
       hints,
       logger,
+      timeoutMs: queryResolveTimeoutMs,
     });
     if (localResolved.ok && localResolved.canonicalProductRef) {
       return withRecoPdpMetadata(base, {
@@ -14067,7 +14861,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     hints,
     options: {
       search_all_merchants: true,
-      timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      timeout_ms: queryResolveTimeoutMs,
       upstream_retries: 0,
       ...(rawMerchantId ? { prefer_merchants: [rawMerchantId] } : {}),
     },
@@ -14079,7 +14873,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryResolvePayload,
       {
         headers: buildPivotaBackendAgentHeaders(),
-        timeout: RECO_PDP_RESOLVE_TIMEOUT_MS,
+        timeout: queryResolveTimeoutMs,
         validateStatus: () => true,
       },
     );
@@ -14194,11 +14988,13 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   );
   const shouldAttemptDeterministicLocalResolver =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
-    typeof resolveProductRefDirectImpl === 'function' &&
     (
       reasonCode === 'upstream_timeout' ||
       reasonCode === 'db_error' ||
-      (reasonCode === 'no_candidates' && hasOnlyOpaqueStableIdsWithoutMerchant)
+      (
+        reasonCode === 'no_candidates' &&
+        (hasOnlyOpaqueStableIdsWithoutMerchant || hasStrongNamedQueryForCatalogFallback)
+      )
     );
   if (shouldAttemptDeterministicLocalResolver) {
     recordRecoPdpInternalRetryAttempt(1);
@@ -14206,6 +15002,7 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       queryText,
       hints,
       logger,
+      timeoutMs: queryResolveTimeoutMs,
     });
     if (localResolved.ok && localResolved.canonicalProductRef) {
       logger?.info(
@@ -14237,7 +15034,10 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   const shouldAttemptCatalogSearchFallback =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
     (
-      (reasonCode === 'no_candidates' && hasOnlyOpaqueStableIdsWithoutMerchant) ||
+      (
+        reasonCode === 'no_candidates' &&
+        (hasOnlyOpaqueStableIdsWithoutMerchant || hasStrongNamedQueryForCatalogFallback)
+      ) ||
       (
         (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') &&
         (hasOnlyOpaqueStableIdsWithoutMerchant || hasStrongNamedQueryForCatalogFallback)
@@ -14245,10 +15045,11 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     );
   if (shouldAttemptCatalogSearchFallback) {
     const transientReasonForCatalog = reasonCode === 'upstream_timeout' || reasonCode === 'db_error';
+    const reasonCodeBeforeCatalog = reasonCode;
     const catalogResolved = await resolveRecoPdpByCatalogSearch({
       queryText,
       logger,
-      timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_PDP_RESOLVE_TIMEOUT_MS),
+      timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, queryResolveTimeoutMs),
       forceLocalSearchFallback: transientReasonForCatalog,
     });
     if (catalogResolved.ok && catalogResolved.canonicalProductGroupId) {
@@ -14279,9 +15080,14 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       });
     }
     if (catalogResolved.reasonCode && catalogResolved.reasonCode !== 'no_candidates') {
-      reasonCode = catalogResolved.reasonCode;
+      const catalogReasonIsTransient =
+        catalogResolved.reasonCode === 'upstream_timeout' || catalogResolved.reasonCode === 'db_error';
+      // If local deterministic resolver already downgraded to no_candidates, do not re-upgrade on catalog transient.
+      if (!(reasonCodeBeforeCatalog === 'no_candidates' && catalogReasonIsTransient)) {
+        reasonCode = catalogResolved.reasonCode;
+      }
     } else if (
-      (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') &&
+      (reasonCodeBeforeCatalog === 'upstream_timeout' || reasonCodeBeforeCatalog === 'db_error') &&
       catalogResolved.reasonCode === 'no_candidates'
     ) {
       // Transient resolve failures should not force fast external fallback when catalog search can determine emptiness.
@@ -16195,6 +17001,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
       reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
       reco_pdp_resolve_enabled: RECO_PDP_RESOLVE_ENABLED,
+      reco_pdp_resolve_timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
+      reco_pdp_resolve_timeout_strict_min_ms: RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS,
       reco_pdp_strict_internal_first: RECO_PDP_STRICT_INTERNAL_FIRST,
       pivota_backend_base_configured: Boolean(PIVOTA_BACKEND_BASE_URL),
       reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
@@ -16260,11 +17068,13 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     let nextRecommendations = limited.recommendations;
     if (RECO_DIVERSITY_ENABLED && Array.isArray(nextRecommendations) && nextRecommendations.length) {
       const diversityHistoryKey = buildRecoDiversityHistoryKey(ctx);
-      const historyTokens = getRecoRecentExposureTokens(diversityHistoryKey);
+      const historyState = getRecoRecentExposureState(diversityHistoryKey);
+      const historyTokens = historyState.tokens;
       const diversityLimited = applyRecoRecentDiversityGuard(nextRecommendations, {
         historyTokens,
         maxRepeatPerResponse: RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
         minTotal: RECO_DIVERSITY_MIN_TOTAL,
+        rotationRound: historyState.round + 1,
       });
       nextRecommendations = diversityLimited.recommendations;
       recoDiversityInfo = {
@@ -16282,8 +17092,8 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
         .filter(Boolean)
         .slice(0, 8);
       updateRecoRecentExposureTokens(diversityHistoryKey, exposureTokens);
-      const historyAfter = getRecoRecentExposureTokens(diversityHistoryKey);
-      recoDiversityInfo.history_size_after = historyAfter.length;
+      const historyAfter = getRecoRecentExposureState(diversityHistoryKey);
+      recoDiversityInfo.history_size_after = historyAfter.tokens.length;
     }
     norm.payload = { ...norm.payload, recommendations: nextRecommendations };
   }
@@ -20799,6 +21609,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 imageBuffer: photoBytes,
                 language: ctx.lang,
                 photoQuality,
+                llmKillSwitch: rollout.llmKillSwitch,
                 diagnosisPolicy,
                 diagnosisV1,
                 profileSummary,
@@ -20811,15 +21622,70 @@ function mountAuroraBffRoutes(app, { logger }) {
                 analysis = vision.analysis;
                 usedPhotos = true;
                 shadowVerifyPhotoBytes = photoBytes;
-                analysisSource = vision.provider === 'gemini' ? 'vision_gemini' : 'vision_openai';
+                const openAiFallback = vision.provider === 'openai' && String(vision.fallback_from || '').trim().toLowerCase() === 'gemini';
+                analysisSource = vision.provider === 'gemini'
+                  ? 'vision_gemini'
+                  : openAiFallback
+                    ? 'vision_openai_fallback'
+                    : 'vision_openai';
+                logger?.info(
+                  {
+                    kind: 'metric',
+                    name: 'aurora.skin.analysis.provider_success.count',
+                    value: 1,
+                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    analysis_source: analysisSource,
+                  },
+                  'metric',
+                );
+                if (openAiFallback) {
+                  if (ctx.lang === 'CN') qualityReportReasons.push('Gemini 视觉结果不可用，本次已自动回退到 OpenAI 视觉模型。');
+                  else qualityReportReasons.push('Gemini vision result was unavailable, so this run fell back to OpenAI vision.');
+                  logger?.info({ kind: 'metric', name: 'aurora.skin_analysis.vision_openai_fallback.count', value: 1 }, 'metric');
+                  logger?.info(
+                    {
+                      kind: 'metric',
+                      name: 'aurora.skin.analysis.provider_fallback.count',
+                      value: 1,
+                      from: 'gemini',
+                      to: 'openai',
+                    },
+                    'metric',
+                  );
+                }
               } else if (vision && !vision.ok) {
                 const normalizedReason = normalizeVisionReason(vision.reason);
+                const fallbackFrom = String(vision.fallback_from || '').trim().toLowerCase();
                 analysisFieldMissing.push({
                   field: 'analysis.used_photos',
                   reason: normalizedReason || 'VISION_UNKNOWN',
                 });
                 if (ctx.lang === 'CN') qualityReportReasons.push(`照片解析失败（${normalizedReason || 'VISION_UNKNOWN'}）；我会退回到确定性基线。`);
                 else qualityReportReasons.push(`Photo analysis failed (${normalizedReason || 'VISION_UNKNOWN'}); falling back to deterministic baseline.`);
+                logger?.info(
+                  {
+                    kind: 'metric',
+                    name: 'aurora.skin.analysis.provider_failure.count',
+                    value: 1,
+                    provider: vision.provider || selectedVisionProvider.provider || 'unknown',
+                    reason: normalizedReason || 'VISION_UNKNOWN',
+                    fallback_from: fallbackFrom || null,
+                  },
+                  'metric',
+                );
+                if (fallbackFrom === 'gemini' && String(vision.provider || '').trim().toLowerCase() === 'openai') {
+                  logger?.info(
+                    {
+                      kind: 'metric',
+                      name: 'aurora.skin.analysis.provider_fallback_failure.count',
+                      value: 1,
+                      from: 'gemini',
+                      to: 'openai',
+                      reason: normalizedReason || 'VISION_UNKNOWN',
+                    },
+                    'metric',
+                  );
+                }
                 logger?.warn(
                   {
                     reason: normalizedReason || 'VISION_UNKNOWN',
@@ -20927,7 +21793,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         visionDecisionForReport = {
           ...visionDecision,
           reasons: baseVisionReasons,
-          provider: selectedVisionProvider.provider || 'openai',
+          provider: selectedVisionProvider.provider || 'gemini',
           upstream_status_code: null,
           latency_ms: null,
           retry: visionRetryDefault,
@@ -20980,7 +21846,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
 
         recordVisionDecision({
-          provider: visionDecisionForReport.provider || 'openai',
+          provider: visionDecisionForReport.provider || 'gemini',
           decision: visionDecisionForReport.decision,
           reasons: visionDecisionForReport.reasons,
           latencyMs: visionDecisionForReport.latency_ms,
@@ -21115,7 +21981,121 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
+        let diagnosisArtifact = null;
+        let ingredientPlan = null;
+        let recommendationReady = false;
+        let latestArtifactId = null;
+        if (analysis && AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
+          try {
+            const artifactCandidate = buildDiagnosisArtifactV1({
+              ctx,
+              identity,
+              profileSummary,
+              recentLogsSummary,
+              analysis,
+              analysisSource: renderedAnalysisSource,
+              usePhoto: Boolean(userRequestedPhoto),
+              usedPhotos,
+              photos,
+              photoQuality,
+            });
+            const savedArtifact = await saveDiagnosisArtifact({
+              auroraUid: identity.auroraUid,
+              userId: identity.userId,
+              sessionId: ctx.brief_id || null,
+              artifact: artifactCandidate,
+              artifactId: artifactCandidate && artifactCandidate.artifact_id ? artifactCandidate.artifact_id : undefined,
+            });
+            diagnosisArtifact = savedArtifact && savedArtifact.artifact_json && typeof savedArtifact.artifact_json === 'object'
+              ? {
+                  ...savedArtifact.artifact_json,
+                  artifact_id: savedArtifact.artifact_id,
+                  created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at,
+                }
+              : artifactCandidate;
+            logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_created_rate', value: diagnosisArtifact ? 1 : 0 }, 'metric');
+            latestArtifactId = diagnosisArtifact && diagnosisArtifact.artifact_id
+              ? String(diagnosisArtifact.artifact_id).trim()
+              : null;
+
+            if (diagnosisArtifact && AURORA_INGREDIENT_PLAN_ENABLED && latestArtifactId) {
+              const planBuilt = buildIngredientPlan({
+                artifact: diagnosisArtifact,
+                profile: profileSummary || profile || {},
+              });
+              const savedPlan = await saveIngredientPlan({
+                artifactId: latestArtifactId,
+                auroraUid: identity.auroraUid,
+                userId: identity.userId,
+                plan: planBuilt,
+              });
+              ingredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                ? {
+                    ...savedPlan.plan_json,
+                    plan_id: savedPlan.plan_id,
+                    created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
+                  }
+                : planBuilt;
+              logger?.info({ kind: 'metric', name: 'aurora.skin.ingredient_plan_rate', value: ingredientPlan ? 1 : 0 }, 'metric');
+            }
+
+            const artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
+            recommendationReady = Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low');
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: diagnosis artifact/plan generation failed',
+            );
+          }
+        }
+
         profiler.start('render', { kind: 'envelope' });
+        const analysisSummaryPayload = {
+          analysis,
+          low_confidence: analysisSource === 'baseline_low_confidence',
+          photos_provided: photosProvided,
+          photo_qc: photoQcParts,
+          used_photos: usedPhotos,
+          analysis_source: renderedAnalysisSource,
+          ...(photoNotice ? { photo_notice: photoNotice } : {}),
+          quality_report: {
+            photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
+            detector_confidence: detectorConfidence,
+            ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
+            degraded_mode: SKIN_DEGRADED_MODE,
+            llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
+            reasons: qualityReportReasons.slice(0, 8),
+          },
+          ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
+          ...(ingredientPlan ? { ingredient_plan: ingredientPlan } : {}),
+          recommendation_ready: Boolean(recommendationReady),
+          photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+        };
+
+        const sessionPatch = { next_state: 'S5_ANALYSIS_SUMMARY' };
+        appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
+
+        const extraCards = [];
+        if (ingredientPlan) {
+          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
+        }
+        const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
+          ? diagnosisArtifact.overall_confidence
+          : null;
+        if (artifactConfidence && String(artifactConfidence.level || '').toLowerCase() === 'low') {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
+          extraCards.push({
+            card_id: `conf_${ctx.request_id}`,
+            type: 'confidence_notice',
+            payload: buildConfidenceNoticeCardPayload({
+              language: ctx.lang,
+              reason: 'low_confidence',
+              confidence: artifactConfidence,
+              actions: ['upload_daylight_and_indoor_white', 'update_current_routine'],
+            }),
+          });
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
           suggested_chips: [],
@@ -21123,28 +22103,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             {
               card_id: `analysis_${ctx.request_id}`,
               type: 'analysis_summary',
-              payload: {
-                analysis,
-                low_confidence: analysisSource === 'baseline_low_confidence',
-                photos_provided: photosProvided,
-                photo_qc: photoQcParts,
-                used_photos: usedPhotos,
-                analysis_source: renderedAnalysisSource,
-                ...(photoNotice ? { photo_notice: photoNotice } : {}),
-                quality_report: {
-                  photo_quality: { grade: photoQuality.grade, reasons: photoQuality.reasons },
-                  detector_confidence: detectorConfidence,
-                  ...(diagnosisPolicy ? { detector_policy: diagnosisPolicy } : {}),
-                  degraded_mode: SKIN_DEGRADED_MODE,
-                  llm: { vision: visionDecisionForReport || visionDecision, report: reportDecision },
-                  reasons: qualityReportReasons.slice(0, 8),
-                },
-              },
+              payload: analysisSummaryPayload,
               ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
             },
             ...(photoModulesCard ? [photoModulesCard] : []),
+            ...extraCards,
           ],
-          session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
+          session_patch: sessionPatch,
           events: [
             makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: renderedAnalysisSource }),
           ],
@@ -23226,17 +24191,211 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         const refinementChips = refinementMissing.length ? buildDiagnosisChips(ctx.lang, refinementMissing) : [];
 
-        const { norm, upstreamDebug, alternativesDebug } = await generateProductRecommendations({
-          ctx,
-          profile,
-          recentLogs,
+        const safety = evaluateSafetyBoundary({
           message,
-          includeAlternatives,
-          debug: debugUpstream,
-          logger,
+          profile,
+          language: ctx.lang,
         });
+        if (safety.block) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.safety_block_rate', value: 1 }, 'metric');
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(safety.assistant_message),
+            suggested_chips: [],
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'safety_block',
+                  confidence: { score: 0, level: 'low', rationale: ['medical_boundary'] },
+                  severity: 'block',
+                  details: safety.notice_bullets,
+                }),
+              },
+            ],
+            session_patch: {},
+            events: [
+              makeEvent(ctx, 'recos_requested', { explicit: true, blocked: true, reason: 'safety_boundary' }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
 
-        const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
+        const preferredArtifactId = extractLatestArtifactIdFromSession(parsed.data.session);
+        let latestArtifact = null;
+        let artifactLookupError = null;
+        try {
+          latestArtifact = await getLatestDiagnosisArtifact({
+            auroraUid: identity.auroraUid,
+            userId: identity.userId,
+            sessionId: ctx.brief_id || null,
+            maxAgeDays: 30,
+            preferArtifactId: preferredArtifactId,
+          });
+        } catch (err) {
+          artifactLookupError = err;
+          logger?.warn(
+            { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+            'aurora bff: failed to load latest diagnosis artifact',
+          );
+        }
+
+        const latestArtifactForGate =
+          latestArtifact &&
+          latestArtifact.artifact_json &&
+          typeof latestArtifact.artifact_json === 'object'
+            ? {
+                ...latestArtifact.artifact_json,
+                artifact_id: latestArtifact.artifact_id,
+                created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+              }
+            : latestArtifact;
+
+        const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
+        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok) {
+          const chips = buildRecoEntryChips(ctx.lang);
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
+          const sessionPatch = nextState ? { next_state: nextState } : {};
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              ctx.lang === 'CN'
+                ? '我需要先拿到一份诊断结果（可上传 daylight + indoor_white，或先跑低置信度基线）再做个性化推荐。'
+                : 'I need a diagnosis result first (upload daylight + indoor_white photos, or run a low-confidence baseline) before personalized recommendations.',
+            ),
+            suggested_chips: [...refinementChips, ...chips].slice(0, 8),
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'artifact_missing',
+                  confidence: { score: 0, level: 'low', rationale: ['artifact_not_found'] },
+                  actions: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
+                  details: artifactLookupError ? [String(artifactLookupError.message || artifactLookupError)] : [],
+                }),
+              },
+            ],
+            session_patch: sessionPatch,
+            events: [
+              makeEvent(ctx, 'recos_requested', { explicit: true, gated: true, reason: 'artifact_missing' }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        let mappedIngredientPlan = null;
+        if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
+          const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
+          try {
+            const existingPlan = latestArtifactId
+              ? await getIngredientPlanByArtifactId({ artifactId: latestArtifactId })
+              : null;
+            if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
+              mappedIngredientPlan = {
+                ...existingPlan.plan_json,
+                plan_id: existingPlan.plan_id,
+                created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
+              };
+            } else {
+              const builtPlan = buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile });
+              if (latestArtifactId) {
+                const savedPlan = await saveIngredientPlan({
+                  artifactId: latestArtifactId,
+                  auroraUid: identity.auroraUid,
+                  userId: identity.userId,
+                  plan: builtPlan,
+                });
+                mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                  ? {
+                      ...savedPlan.plan_json,
+                      plan_id: savedPlan.plan_id,
+                      created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
+                    }
+                  : builtPlan;
+              } else {
+                mappedIngredientPlan = builtPlan;
+              }
+            }
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: ingredient plan lookup/build failed',
+            );
+          }
+        }
+
+        let matcherBundle = null;
+        let matcherPayload = null;
+        const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
+        const lowConfidenceArtifact = artifactConfidenceLevel === 'low';
+
+        if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
+          try {
+            const artifactPayload = latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object'
+              ? {
+                  ...latestArtifact.artifact_json,
+                  artifact_id: latestArtifact.artifact_id,
+                  created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+                }
+              : latestArtifact;
+            const planForMatcher =
+              mappedIngredientPlan ||
+              buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
+            if (!mappedIngredientPlan) mappedIngredientPlan = planForMatcher;
+
+            matcherBundle = buildProductRecommendationsBundle({
+              ingredientPlan: planForMatcher,
+              artifact: artifactPayload,
+              profile,
+              language: ctx.lang,
+              disallowTreatment: lowConfidenceArtifact,
+              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            });
+            matcherPayload = toLegacyRecommendationsPayload(matcherBundle, { language: ctx.lang });
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: product matcher failed',
+            );
+          }
+        }
+
+        let norm = null;
+        let upstreamDebug = null;
+        let alternativesDebug = null;
+        if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
+          const upstreamReco = await generateProductRecommendations({
+            ctx,
+            profile,
+            recentLogs,
+            message,
+            includeAlternatives,
+            debug: debugUpstream,
+            logger,
+          });
+          norm = upstreamReco.norm;
+          upstreamDebug = upstreamReco.upstreamDebug;
+          alternativesDebug = upstreamReco.alternativesDebug;
+        } else {
+          norm = {
+            payload: {
+              ...matcherPayload,
+              intent: 'reco_products',
+              profile: summarizeProfileForContext(profile),
+              source: 'artifact_matcher_v1',
+            },
+            field_missing: [],
+          };
+        }
+
+        const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
+          ? norm.payload.recommendations.length > 0
+          : false;
+        if (hasRecs) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
+        }
         const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
@@ -23249,57 +24408,118 @@ function mountAuroraBffRoutes(app, { logger }) {
         const recoUnavailableLead = ctx.lang === 'CN'
           ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
           : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
+
         const assistantTextRaw = hasRecs
-          ? (recoAssistantBase ||
-            (ctx.lang === 'CN'
-              ? profileScore >= 3
-                ? '我已经把核心结果整理成结构化卡片（见下方）。'
-                : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
-              : 'I summarized the key results into structured cards below.'))
+          ? lowConfidenceArtifact
+            ? (ctx.lang === 'CN'
+              ? '当前诊断置信度偏低，我先给你温和基础方案，并已避开高刺激 treatment。建议补拍 daylight + indoor_white 提升准确度。'
+              : 'Current diagnosis confidence is low, so I prepared a gentle baseline and avoided high-irritation treatments. Retake daylight + indoor_white photos for better precision.')
+            : (recoAssistantBase ||
+              (ctx.lang === 'CN'
+                ? profileScore >= 3
+                  ? '我已经把核心结果整理成结构化卡片（见下方）。'
+                  : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
+                : 'I summarized the key results into structured cards below.'))
           : (recoAssistantBase
             ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
             : (ctx.lang === 'CN'
-              ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
-              : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
+              ? '我还没能拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
+              : "I couldn't get a structured product recommendation yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
         const assistantText = addEmotionalPreambleToAssistantText(assistantTextRaw, {
           language: ctx.lang,
           profile,
           seed: ctx.request_id,
         });
 
+        const cards = [
+          {
+            card_id: `reco_${ctx.request_id}`,
+            type: 'recommendations',
+            payload,
+            ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
+          },
+        ];
+        if (mappedIngredientPlan) {
+          cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+        }
+        if (latestArtifact && lowConfidenceArtifact) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
+          const confNode =
+            latestArtifact.artifact_json &&
+            latestArtifact.artifact_json.overall_confidence &&
+            typeof latestArtifact.artifact_json.overall_confidence === 'object'
+              ? latestArtifact.artifact_json.overall_confidence
+              : { score: 0.5, level: 'low', rationale: ['artifact_low_confidence'] };
+          cards.push({
+            card_id: `conf_${ctx.request_id}`,
+            type: 'confidence_notice',
+            payload: buildConfidenceNoticeCardPayload({
+              language: ctx.lang,
+              reason: 'low_confidence',
+              confidence: confNode,
+              actions: ['upload_daylight_and_indoor_white', 'update_current_routine'],
+            }),
+          });
+        }
+
+        if (debugUpstream && upstreamDebug) {
+          cards.push({
+            card_id: `aurora_debug_${ctx.request_id}`,
+            type: 'aurora_debug',
+            payload: upstreamDebug,
+          });
+          if (alternativesDebug) {
+            cards.push({
+              card_id: `aurora_alt_debug_${ctx.request_id}`,
+              type: 'aurora_alt_debug',
+              payload: { items: alternativesDebug },
+            });
+          }
+        }
+
+        const sessionPatch = nextState ? { next_state: nextState } : {};
+        appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
+
+        if (AURORA_PRODUCT_MATCHER_ENABLED && matcherBundle && latestArtifact) {
+          try {
+            await saveRecoRun({
+              artifactId: latestArtifact.artifact_id,
+              planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
+              auroraUid: identity.auroraUid,
+              userId: identity.userId,
+              requestContext: {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                trigger_source: ctx.trigger_source,
+                low_confidence: lowConfidenceArtifact,
+                source: 'artifact_matcher_v1',
+              },
+              reco: matcherBundle,
+              overallConfidence:
+                matcherBundle.confidence && Number.isFinite(Number(matcherBundle.confidence.score))
+                  ? Number(matcherBundle.confidence.score)
+                  : null,
+            });
+          } catch (err) {
+            logger?.warn(
+              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
+              'aurora bff: failed to persist reco run',
+            );
+          }
+        }
+
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(assistantText),
           suggested_chips: refinementChips,
-          cards: [
-            {
-              card_id: `reco_${ctx.request_id}`,
-              type: 'recommendations',
-              payload,
-              ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
-            },
-            ...(debugUpstream && upstreamDebug
-              ? [
-                {
-                  card_id: `aurora_debug_${ctx.request_id}`,
-                  type: 'aurora_debug',
-                  payload: upstreamDebug,
-                },
-                ...(alternativesDebug
-                  ? [
-                    {
-                      card_id: `aurora_alt_debug_${ctx.request_id}`,
-                      type: 'aurora_alt_debug',
-                      payload: { items: alternativesDebug },
-                    },
-                  ]
-                  : []),
-              ]
-              : []),
-          ],
-          session_patch: nextState ? { next_state: nextState } : {},
+          cards,
+          session_patch: sessionPatch,
           events: [
             makeEvent(ctx, 'value_moment', { kind: 'product_reco' }),
-            makeEvent(ctx, 'recos_requested', { explicit: true }),
+            makeEvent(ctx, 'recos_requested', {
+              explicit: true,
+              source: matcherPayload ? 'artifact_matcher_v1' : 'upstream_fallback',
+              low_confidence: lowConfidenceArtifact,
+            }),
           ],
         });
         return sendChatEnvelope(envelope);
@@ -24508,6 +25728,7 @@ const __internal = {
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
+  shouldAttemptOpenAiFallbackFromGemini,
   resolveVisionProviderSelection,
   fetchPhotoBytesFromPivotaBackend,
   classifySignedUrlFetchFailure,
@@ -24545,6 +25766,16 @@ const __internal = {
   },
   __resetResolveProductRefForTest() {
     resolveProductRefDirectImpl = resolveProductRefDirect;
+  },
+  __setVisionRunnersForTest(runners = {}) {
+    const geminiFn = runners && typeof runners.gemini === 'function' ? runners.gemini : null;
+    const openAiFn = runners && typeof runners.openai === 'function' ? runners.openai : null;
+    runGeminiVisionSkinAnalysisImpl = geminiFn || runGeminiVisionSkinAnalysis;
+    runOpenAIVisionSkinAnalysisImpl = openAiFn || runOpenAIVisionSkinAnalysis;
+  },
+  __resetVisionRunnersForTest() {
+    runGeminiVisionSkinAnalysisImpl = runGeminiVisionSkinAnalysis;
+    runOpenAIVisionSkinAnalysisImpl = runOpenAIVisionSkinAnalysis;
   },
   __setInferSkinMaskOnFaceCropForTest(fn) {
     inferSkinMaskOnFaceCropImpl = typeof fn === 'function' ? fn : inferSkinMaskOnFaceCrop;

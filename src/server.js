@@ -403,6 +403,8 @@ const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
 const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
   String(process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE || 'true').toLowerCase() !==
   'false';
+const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
+  String(process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
@@ -2587,6 +2589,7 @@ function withStrictEmptyFallback({
   upstreamCode = null,
   upstreamMessage = null,
   route = null,
+  fallbackStrategy = null,
 }) {
   const emptyBody = buildProxySearchSoftFallbackResponse({
     queryParams,
@@ -2599,6 +2602,9 @@ function withStrictEmptyFallback({
   return withSearchDiagnostics(emptyBody, {
     strict_empty: true,
     strict_empty_reason: reason || 'strict_empty',
+    ...(fallbackStrategy && typeof fallbackStrategy === 'object'
+      ? { fallback_strategy: fallbackStrategy }
+      : {}),
   });
 }
 
@@ -3168,9 +3174,24 @@ function shouldFallbackProxySearch(normalized, statusCode) {
   return false;
 }
 
+function getFallbackAdoptUsableThreshold({
+  operation,
+  source,
+  primaryUsableCount,
+  primaryIrrelevant,
+}) {
+  const baseThreshold = Math.max(1, Number(primaryUsableCount || 0));
+  const op = String(operation || '').trim();
+  if (op !== 'find_products_multi') return baseThreshold;
+  if (!primaryIrrelevant) return baseThreshold;
+  if (isAuroraSource(source)) return 1;
+  return baseThreshold;
+}
+
 function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const search = {};
+  const metadata = {};
 
   const textQuery = extractSearchQueryText(query);
   if (!textQuery) return null;
@@ -3194,11 +3215,28 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
   const category = String(firstQueryParamValue(query.category) || '').trim();
   if (category) search.category = category;
 
+  const catalogSurface = String(firstQueryParamValue(query.catalog_surface || query.catalogSurface) || '').trim();
+  if (catalogSurface) search.catalog_surface = catalogSurface;
+
   const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
   if (minPrice !== undefined) search.min_price = minPrice;
 
   const maxPrice = parseQueryNumber(query.max_price ?? query.price_max);
   if (maxPrice !== undefined) search.max_price = maxPrice;
+
+  const allowExternalSeed = parseQueryBoolean(query.allow_external_seed ?? query.allowExternalSeed);
+  if (allowExternalSeed !== undefined) search.allow_external_seed = allowExternalSeed;
+
+  const allowStaleCache = parseQueryBoolean(query.allow_stale_cache ?? query.allowStaleCache);
+  if (allowStaleCache !== undefined) search.allow_stale_cache = allowStaleCache;
+
+  const fastMode = parseQueryBoolean(query.fast_mode ?? query.fastMode);
+  if (fastMode !== undefined) search.fast_mode = fastMode;
+
+  const externalSeedStrategy = String(
+    firstQueryParamValue(query.external_seed_strategy || query.externalSeedStrategy) || '',
+  ).trim();
+  if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
   if (limit !== undefined) search.limit = Math.max(1, Math.min(100, Math.floor(limit)));
@@ -3213,7 +3251,12 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery) {
     }
   }
 
-  return { search };
+  const source = String(firstQueryParamValue(query.source) || '').trim().toLowerCase();
+  if (source) metadata.source = source;
+
+  const payload = { search };
+  if (Object.keys(metadata).length > 0) payload.metadata = metadata;
+  return payload;
 }
 
 async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount }) {
@@ -3301,6 +3344,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
 async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason, requestSource }) {
   const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
   if (!payload) return null;
+  const fallbackSource = String(payload?.metadata?.source || '').trim();
 
   const url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
@@ -3310,9 +3354,12 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
     operation: 'find_products_multi',
     payload,
     metadata: {
-      source: preserveAuroraSource ? normalizedRequestSource : 'agent_search_proxy_fallback',
+      source: preserveAuroraSource
+        ? normalizedRequestSource
+        : fallbackSource || 'agent_search_proxy_fallback',
       ...(normalizedRequestSource ? { request_source: normalizedRequestSource } : {}),
       trigger_reason: reason || 'unknown',
+      proxy_fallback_source: 'agent_search_proxy_fallback',
     },
   };
 
@@ -8001,11 +8048,17 @@ async function proxyAgentSearchToBackend(req, res) {
               : 'primary_irrelevant',
             requestSource: source,
           });
+          const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
+            operation: 'find_products_multi',
+            source,
+            primaryUsableCount,
+            primaryIrrelevant,
+          });
           if (
             fallback &&
             fallback.status >= 200 &&
             fallback.status < 300 &&
-            fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+            fallback.usableCount >= fallbackAdoptUsableThreshold &&
             isProxySearchFallbackRelevant(fallback.data, queryText)
           ) {
             return respondSearch(fallback.status, fallback.data, {
@@ -8042,6 +8095,7 @@ async function proxyAgentSearchToBackend(req, res) {
           reason,
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_irrelevant',
+          fallbackStrategy,
         }),
         {
           finalDecision: 'strict_empty',
@@ -8065,6 +8119,7 @@ async function proxyAgentSearchToBackend(req, res) {
           reason,
           upstreamStatus: resp.status,
           route: 'proxy_search_primary_status',
+          fallbackStrategy,
         }),
         {
           finalDecision: 'strict_empty',
@@ -8260,6 +8315,7 @@ async function proxyAgentSearchToBackend(req, res) {
           upstreamCode: code || err?.code || null,
           upstreamMessage: message || err?.message || null,
           route: 'proxy_search_exception',
+          fallbackStrategy,
         }),
         {
           finalDecision: 'strict_empty',
@@ -13194,11 +13250,14 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               );
             }
           }
+          const bypassCacheStrictEmpty =
+            isAuroraSource(source) && PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
-            !isLookupQuery
+            !isLookupQuery &&
+            !bypassCacheStrictEmpty
           ) {
             const cacheStrictReason =
               effectiveProducts.length > 0
@@ -13309,6 +13368,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   }),
             });
             return res.json(strictEmptyDiagnosed);
+          }
+          if (
+            isCatalogGuardSource(source) &&
+            cacheQueryText.length > 0 &&
+            !effectiveCacheHit &&
+            !isLookupQuery &&
+            bypassCacheStrictEmpty
+          ) {
+            logger.info(
+              { source, query: cacheQueryText },
+              'Catalog cache miss strict-empty bypassed for aurora source; continuing to upstream search',
+            );
           }
           logger.info(
             { source, page, limit, inStockOnly, query: cacheQueryText },
@@ -14571,11 +14642,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 : 'primary_irrelevant',
               requestSource: metadata?.source,
             });
+            const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
+              operation,
+              source: metadata?.source,
+              primaryUsableCount,
+              primaryIrrelevant,
+            });
             if (
               fallback &&
               fallback.status >= 200 &&
               fallback.status < 300 &&
-              fallback.usableCount >= Math.max(1, primaryUsableCount) &&
+              fallback.usableCount >= fallbackAdoptUsableThreshold &&
               isProxySearchFallbackRelevant(fallback.data, queryText)
             ) {
               upstreamData = fallback.data;

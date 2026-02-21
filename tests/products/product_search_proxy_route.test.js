@@ -41,6 +41,11 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
       PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE:
         process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE,
+      UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER:
+        process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER,
+      UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS: process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+      PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS: process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
+      PROXY_SEARCH_FALLBACK_TIMEOUT_MS: process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:
         process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
     };
@@ -61,6 +66,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED;
     delete process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY;
     delete process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
+    delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
+    delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
+    delete process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
     delete process.env.DATABASE_URL;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
@@ -155,6 +164,30 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
         prevEnv.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
+    }
+    if (prevEnv.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER === undefined) {
+      delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
+    } else {
+      process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER =
+        prevEnv.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
+    }
+    if (prevEnv.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS === undefined) {
+      delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
+    } else {
+      process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS =
+        prevEnv.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_FALLBACK_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
     }
     if (prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED === undefined) {
       delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
@@ -297,13 +330,18 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
     const secondaryScope = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
         return (
-          body &&
-          body.operation === 'find_products_multi' &&
-          body.payload &&
-          body.payload.search &&
-          String(body.payload.search.query || '') === queryText &&
-          String(body.metadata?.source || '') === 'aurora-bff'
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText &&
+          parsed.payload.search.fast_mode === true &&
+          parsed.payload.search.allow_stale_cache === false &&
+          String(parsed.payload.search.catalog_surface || '') === 'beauty' &&
+          parsed.metadata &&
+          String(parsed.metadata.source || '') === 'aurora-bff'
         );
       })
       .reply(200, {
@@ -351,6 +389,185 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           aurora_external_seed_forced: true,
           aurora_external_seed_enabled: false,
           aurora_seed_strategy: 'legacy',
+        }),
+      }),
+    );
+  });
+
+  test('aurora source preserves fallback_strategy and attempts secondary fallback on primary 5xx', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 4, sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(504, {
+        status: 'error',
+        error: {
+          code: 'UPSTREAM_TIMEOUT',
+          message: 'Search timeout',
+        },
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return (
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText &&
+          parsed.payload.search.fast_mode === true &&
+          parsed.payload.search.allow_stale_cache === false &&
+          String(parsed.payload.search.external_seed_strategy || '') === 'legacy' &&
+          parsed.metadata &&
+          String(parsed.metadata.source || '') === 'aurora-bff'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'beauty_timeout_recover_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper peptide serum fallback',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'beauty_timeout_recover_1',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'empty_or_unusable_primary',
+        }),
+        fallback_strategy: expect.objectContaining({
+          source: 'aurora_force_path',
+          resolver_attempted: true,
+          secondary_attempted: true,
+          secondary_skipped_reason: null,
+        }),
+      }),
+    );
+  });
+
+  test('aurora source returns strict_empty with fallback_strategy when primary and secondary both fail', async () => {
+    const queryText = 'retinol serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    process.env.PROXY_SEARCH_SKIP_SECONDARY_FALLBACK_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 5, sources: [{ source: 'products_cache_global', ok: false, reason: 'no_results' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(504, {
+        status: 'error',
+        error: {
+          code: 'UPSTREAM_TIMEOUT',
+          message: 'Search timeout',
+        },
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return (
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText &&
+          parsed.payload.search.fast_mode === true &&
+          parsed.payload.search.allow_stale_cache === false &&
+          String(parsed.payload.search.external_seed_strategy || '') === 'legacy' &&
+          parsed.metadata &&
+          String(parsed.metadata.source || '') === 'aurora-bff'
+        );
+      })
+      .reply(504, {
+        status: 'error',
+        error: {
+          code: 'UPSTREAM_TIMEOUT',
+          message: 'fallback timeout',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        strict_empty: true,
+        strict_empty_reason: 'primary_status_5xx',
+        fallback_strategy: expect.objectContaining({
+          source: 'aurora_force_path',
+          resolver_attempted: true,
+          secondary_attempted: true,
+          secondary_skipped_reason: null,
         }),
       }),
     );
@@ -1097,6 +1314,90 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         proxy_search_fallback: expect.objectContaining({
           applied: true,
           reason: 'primary_irrelevant_no_fallback',
+        }),
+      }),
+    );
+  });
+
+  test('aurora source accepts relevant secondary fallback even when usable count is lower than irrelevant primary', async () => {
+    const queryText = 'copper peptides serum alternatives';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: { latency_ms: 9, sources: [{ source: 'agent_search_scoped', ok: false, reason: 'no_candidates' }] },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText && String(q.source || '') === 'aurora-bff')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          { product_id: 'irrelevant_1', merchant_id: 'm1', title: 'Round Powder Brush' },
+          { product_id: 'irrelevant_2', merchant_id: 'm2', title: 'Foundation Makeup Sponge' },
+          { product_id: 'irrelevant_3', merchant_id: 'm3', title: 'Eyeliner Brush Kit' },
+        ],
+        total: 3,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return (
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'cp_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper Peptide Serum',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'cp_1',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_irrelevant',
         }),
       }),
     );

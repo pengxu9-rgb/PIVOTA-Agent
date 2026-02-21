@@ -300,11 +300,12 @@ test('/v1/analysis/skin: missing vision key falls back to CV findings with metri
         }
         assert.match(String(card?.payload?.analysis?.photo_notice || ''), /temporarily unavailable/i);
 
+        const expectedProvider = String(mod.__internal.resolveVisionProviderSelection().provider || '').trim() || 'gemini';
         const metrics = await request.get('/metrics').expect(200);
         const body = String(metrics.text || '');
-        assert.match(body, /vision_calls_total\{provider="openai",decision="fallback"\}\s+1/);
-        assert.match(body, /vision_fallback_total\{provider="openai",reason="VISION_MISSING_KEY"\}\s+1/);
-        assert.match(body, /vision_fallback_total\{provider="openai",reason="VISION_CV_FALLBACK_USED"\}\s+1/);
+        assert.match(body, new RegExp(`vision_calls_total\\{provider="${expectedProvider}",decision="fallback"\\}\\s+1`));
+        assert.match(body, new RegExp(`vision_fallback_total\\{provider="${expectedProvider}",reason="VISION_MISSING_KEY"\\}\\s+1`));
+        assert.match(body, new RegExp(`vision_fallback_total\\{provider="${expectedProvider}",reason="VISION_CV_FALLBACK_USED"\\}\\s+1`));
       } finally {
         axios.get = originalGet;
         delete require.cache[moduleId];
