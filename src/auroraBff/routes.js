@@ -1939,6 +1939,7 @@ async function searchPivotaBackendProducts({
   logger,
   timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
   searchAllMerchants = true,
+  forceLocalSearchFallback = false,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -1956,14 +1957,20 @@ async function searchPivotaBackendProducts({
   };
   const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
   const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
+  const forceLocalFallbackEnabled = forceLocalSearchFallback === true;
   const localSearchFallbackConfigured =
-    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
-    RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED &&
+    (
+      forceLocalFallbackEnabled ||
+      (
+        RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
+        RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED
+      )
+    ) &&
     localBaseUrl &&
     localBaseUrl !== primaryBaseUrl;
   const shouldAttemptLocalSearchFallback =
     localSearchFallbackConfigured &&
-    RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT;
+    (forceLocalFallbackEnabled || RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT);
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
   });
@@ -13673,6 +13680,7 @@ async function resolveRecoPdpByCatalogSearch({
   queryText,
   logger,
   timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
+  forceLocalSearchFallback = false,
 } = {}) {
   const q = String(queryText || '').trim();
   if (!q) return { ok: false, reasonCode: 'no_candidates' };
@@ -13683,6 +13691,7 @@ async function resolveRecoPdpByCatalogSearch({
     logger,
     timeoutMs,
     searchAllMerchants: true,
+    forceLocalSearchFallback,
   });
 
   const products = Array.isArray(searchOut?.products) ? searchOut.products : [];
@@ -14235,10 +14244,12 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
       )
     );
   if (shouldAttemptCatalogSearchFallback) {
+    const transientReasonForCatalog = reasonCode === 'upstream_timeout' || reasonCode === 'db_error';
     const catalogResolved = await resolveRecoPdpByCatalogSearch({
       queryText,
       logger,
       timeoutMs: Math.max(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_PDP_RESOLVE_TIMEOUT_MS),
+      forceLocalSearchFallback: transientReasonForCatalog,
     });
     if (catalogResolved.ok && catalogResolved.canonicalProductGroupId) {
       return withRecoPdpMetadata(base, {
