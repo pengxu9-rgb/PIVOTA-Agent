@@ -352,6 +352,26 @@ const PROXY_SEARCH_FALLBACK_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
   Math.max(6500, Math.min(UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS, 10000)),
 );
+const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
+  600,
+  Math.min(
+    parseTimeoutMs(
+      process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
+      Math.min(1600, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
+    ),
+    Math.max(600, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
+  ),
+);
+const PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = Math.max(
+  400,
+  Math.min(
+    parseTimeoutMs(
+      process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
+      Math.min(1100, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
+    ),
+    Math.max(400, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
+  ),
+);
 const PROXY_SEARCH_RESOLVER_TIMEOUT_MS = parseTimeoutMs(
   process.env.PROXY_SEARCH_RESOLVER_TIMEOUT_MS,
   1600,
@@ -3706,6 +3726,7 @@ async function invokeFindProductsMultiFallbackOnce({
   relevanceQuery,
   attemptNo,
   useSearchEndpoint = false,
+  timeoutMs = PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
 }) {
   const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
   const requestSourceValue = preserveAuroraSource
@@ -3720,6 +3741,10 @@ async function invokeFindProductsMultiFallbackOnce({
         }),
   };
   const searchPayload = payload?.search && typeof payload.search === 'object' ? payload.search : {};
+  const requestTimeoutMs = Math.max(
+    250,
+    Number(timeoutMs || PROXY_SEARCH_FALLBACK_TIMEOUT_MS) || PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+  );
 
   const resp = useSearchEndpoint
     ? await axios({
@@ -3730,7 +3755,7 @@ async function invokeFindProductsMultiFallbackOnce({
           source: requestSourceValue,
         },
         headers: requestHeaders,
-        timeout: PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+        timeout: requestTimeoutMs,
         validateStatus: () => true,
       })
     : await axios({
@@ -3751,7 +3776,7 @@ async function invokeFindProductsMultiFallbackOnce({
           'Content-Type': 'application/json',
           ...requestHeaders,
         },
-        timeout: PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
+        timeout: requestTimeoutMs,
         validateStatus: () => true,
       });
 
@@ -3804,6 +3829,9 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
     ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
     : [];
   const candidateQueries = [baseQueryText, ...semanticRetryQueries].filter(Boolean);
+  const fallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
+    ? Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS)
+    : PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
 
   let selectedAttempt = null;
   const attempts = [];
@@ -3832,6 +3860,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
       relevanceQuery: queryText,
       attemptNo: i + 1,
       useSearchEndpoint,
+      timeoutMs: fallbackTimeoutMs,
     });
 
     attempts.push({
@@ -8411,10 +8440,13 @@ async function proxyAgentSearchToBackend(req, res) {
   }
 
   try {
-    const basePrimaryTimeoutMs = Math.min(
+    const basePrimaryTimeoutMsRaw = Math.min(
       getUpstreamTimeoutMs('find_products_multi'),
       PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
     );
+    const basePrimaryTimeoutMs = auroraFallbackOverrides.active
+      ? Math.min(basePrimaryTimeoutMsRaw, PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS)
+      : basePrimaryTimeoutMsRaw;
     const primaryTimeoutMs =
       shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, queryText)
         ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
@@ -8446,6 +8478,12 @@ async function proxyAgentSearchToBackend(req, res) {
       ),
       aurora_seed_strategy: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
+        : null,
+      aurora_primary_timeout_ms: auroraFallbackOverrides.active
+        ? PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS
+        : null,
+      aurora_fallback_timeout_ms: auroraFallbackOverrides.active
+        ? PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS
         : null,
       primary_monoculture_detected: false,
       primary_monoculture_dominant_brand: null,
