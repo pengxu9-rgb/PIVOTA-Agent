@@ -40,7 +40,19 @@ function hasStrongActiveMention(message) {
   );
 }
 
-function buildRequiredFields({ intent, profile, hasAnchor, message }) {
+function buildRequiredFields({ intent, profile, hasAnchor, message, safetyDecision }) {
+  if (
+    safetyDecision &&
+    typeof safetyDecision === 'object' &&
+    String(safetyDecision.block_level || '').toUpperCase() === 'REQUIRE_INFO'
+  ) {
+    const safetyRequiredFields = Array.isArray(safetyDecision.required_fields)
+      ? safetyDecision.required_fields.map((field) => String(field || '').trim()).filter(Boolean)
+      : [];
+    if (safetyRequiredFields.length) return safetyRequiredFields;
+    return ['pregnancy_status'];
+  }
+
   if (intent === INTENT_ENUM.RECO_PRODUCTS || intent === INTENT_ENUM.ROUTINE) {
     return getCoreProfileMissing(profile);
   }
@@ -67,8 +79,16 @@ function buildRequiredFields({ intent, profile, hasAnchor, message }) {
   return [];
 }
 
-function computeGateType(intent, requiredFields) {
+function computeGateType(intent, requiredFields, safetyDecision) {
   const missing = Array.isArray(requiredFields) ? requiredFields : [];
+  if (
+    safetyDecision &&
+    typeof safetyDecision === 'object' &&
+    String(safetyDecision.block_level || '').toUpperCase() === 'REQUIRE_INFO' &&
+    missing.length > 0
+  ) {
+    return 'hard';
+  }
   if (!missing.length) return 'none';
 
   if (intent === INTENT_ENUM.RECO_PRODUCTS || intent === INTENT_ENUM.ROUTINE) return 'hard';
@@ -183,12 +203,13 @@ function resolveQaPlan({
   language,
   hasAnchor,
   session,
+  safetyDecision = null,
   profileDelta = false,
   anchorDelta = false,
 } = {}) {
   const safeIntent = Object.values(INTENT_ENUM).includes(intent) ? intent : INTENT_ENUM.UNKNOWN;
-  const requiredFields = buildRequiredFields({ intent: safeIntent, profile, hasAnchor, message });
-  const gateType = computeGateType(safeIntent, requiredFields);
+  const requiredFields = buildRequiredFields({ intent: safeIntent, profile, hasAnchor, message, safetyDecision });
+  const gateType = computeGateType(safeIntent, requiredFields, safetyDecision);
   const questionTemplateId = pickQuestionTemplateId(safeIntent, requiredFields);
   const loopSignature = buildLoopSignature({
     intent: safeIntent,
@@ -199,12 +220,19 @@ function resolveQaPlan({
   const loop = computeLoopControl({ session, signature: loopSignature, profileDelta, anchorDelta });
   const questionBudget = resolveQuestionBudget(gateType, loop.break_applied);
   const nextStep = computeNextStep({ intent: safeIntent, gateType, requiredFields });
+  const safetyRequireInfo =
+    safetyDecision &&
+    typeof safetyDecision === 'object' &&
+    String(safetyDecision.block_level || '').toUpperCase() === 'REQUIRE_INFO';
 
   const canAnswerNow =
-    loop.break_applied === 'stop_asking' ||
-    loop.break_applied === 'conservative_defaults' ||
-    gateType === 'none' ||
-    (gateType === 'soft' && requiredFields.length <= 1);
+    !safetyRequireInfo &&
+    (
+      loop.break_applied === 'stop_asking' ||
+      loop.break_applied === 'conservative_defaults' ||
+      gateType === 'none' ||
+      (gateType === 'soft' && requiredFields.length <= 1)
+    );
 
   return {
     gate_type: gateType,

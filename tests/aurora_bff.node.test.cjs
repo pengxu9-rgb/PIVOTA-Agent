@@ -440,6 +440,135 @@ test('/v1/chat: brand availability query short-circuits to commerce cards (no au
   assert.equal(auroraChatCalls.length, 0);
 });
 
+test('/v1/chat: travel intent with missing destination/date asks travel fields before env_stress short-circuit', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_travel_missing_fields',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        })
+        .send({
+          message: 'Travel next week skincare plan please',
+          session: { state: 'idle', profile: { skinType: 'oily' } },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+
+      assert.match(assistant, /destination|travel dates|travel detail/i);
+      assert.equal(types.includes('env_stress'), false);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: retinoid with unknown pregnancy requires info before availability/catalog short-circuit', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_SAFETY_ENGINE_V1_ENABLED: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED: 'true',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_safety_require_info',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        })
+        .send({
+          message: 'Can I use retinol?',
+          session: { state: 'idle', profile: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'stable' } },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+
+      assert.match(assistant, /pregnan|trying to conceive|怀孕|备孕/i);
+      assert.equal(types.includes('product_parse'), false);
+      assert.equal(types.includes('offers_resolved'), false);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: text-only "Send a link" enters anchor collection prompt (no catalog fetch)', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED: 'true',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_send_link_text_only',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        })
+        .send({
+          message: 'Send a link',
+          session: { state: 'idle', profile: { skinType: 'oily' } },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+
+      assert.match(assistant, /paste the product link|paste the link|产品链接|粘贴.*链接/i);
+      assert.equal(types.includes('product_parse'), false);
+      assert.equal(types.includes('offers_resolved'), false);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('Emotional preamble: strips mismatched CN greeting when language is EN', async () => {
   const moduleId = require.resolve('../src/auroraBff/routes');
   delete require.cache[moduleId];

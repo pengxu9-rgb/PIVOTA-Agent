@@ -23,6 +23,21 @@ test('intent canonical detects ingredient science from bilingual patterns', () =
   assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
 });
 
+test('intent canonical maps "Send a link" to evaluate intent (anchor collect)', () => {
+  const out = inferCanonicalIntent({
+    message: 'Send a link',
+  });
+  assert.equal(out.intent, INTENT_ENUM.EVALUATE_PRODUCT);
+  assert.equal(out.source, 'known_option_text');
+});
+
+test('intent canonical prefers travel_planning when travel cue and weather words coexist', () => {
+  const out = inferCanonicalIntent({
+    message: 'Travel next week skincare: weather and UV advice please',
+  });
+  assert.equal(out.intent, INTENT_ENUM.TRAVEL_PLANNING);
+});
+
 test('qa planner produces hard gate for recommendation with missing core profile', () => {
   const plan = resolveQaPlan({
     intent: INTENT_ENUM.RECO_PRODUCTS,
@@ -61,6 +76,27 @@ test('qa planner loop breaker escalates after repeated same ask', () => {
   assert.equal(plan.loop_count, 3);
 });
 
+test('qa planner enforces one-question ask when safety requires info', () => {
+  const plan = resolveQaPlan({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    profile: { skinType: 'oily' },
+    message: 'Can I use retinol?',
+    language: 'EN',
+    hasAnchor: false,
+    session: {},
+    safetyDecision: {
+      block_level: BLOCK_LEVEL.REQUIRE_INFO,
+      required_fields: ['pregnancy_status'],
+      required_questions: ['Are you currently pregnant or trying to conceive?'],
+    },
+  });
+
+  assert.equal(plan.gate_type, 'hard');
+  assert.equal(plan.next_step, 'ask');
+  assert.equal(plan.question_budget, 1);
+  assert.deepEqual(plan.required_fields, ['pregnancy_status']);
+});
+
 test('safety engine blocks pregnancy + retinoid', () => {
   const result = evaluateSafety({
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
@@ -77,11 +113,12 @@ test('safety engine requires info when pregnancy unknown + retinoid', () => {
   const result = evaluateSafety({
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
     message: 'How to use adapalene?',
-    profile: { pregnancy_status: 'unknown' },
+    profile: {},
     language: 'EN',
   });
 
   assert.equal(result.block_level, BLOCK_LEVEL.REQUIRE_INFO);
+  assert.ok(result.required_fields.includes('pregnancy_status'));
   assert.ok(result.required_questions.length > 0);
 });
 

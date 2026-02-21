@@ -24227,26 +24227,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         anchorProductId,
         anchorProductUrl,
       });
-      const plannerDecision =
-        AURORA_QA_PLANNER_V1_ENABLED || AURORA_LOOP_BREAKER_V2_ENABLED
-          ? resolveQaPlan({
-            intent: canonicalIntent.intent,
-            profile,
-            message,
-            language: ctx.lang,
-            hasAnchor: hasPlannerAnchor,
-            session: parsed.data.session,
-            profileDelta: Boolean(appliedProfilePatch && Object.keys(appliedProfilePatch).length),
-            anchorDelta: Boolean(anchorProductId || anchorProductUrl),
-          })
-          : null;
-      if (plannerDecision) {
-        policyMeta.gate_type = plannerDecision.gate_type || 'none';
-        policyMeta.loop_count = Number(plannerDecision.loop_count) || 0;
-        policyMeta.break_applied = plannerDecision.break_applied || 'none';
-        plannerSessionStatePatch = plannerDecision.session_state_patch || null;
-      }
-
       const makeChatAssistantMessage = (content, format = 'text') => {
         const preambleSeed = `${ctx.request_id || ''}|${ctx.trace_id || ''}|${String(content || '').slice(0, 96)}`;
         const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
@@ -24261,6 +24241,26 @@ function mountAuroraBffRoutes(app, { logger }) {
             language: ctx.lang,
           })
           : null;
+      const plannerDecision =
+        AURORA_QA_PLANNER_V1_ENABLED || AURORA_LOOP_BREAKER_V2_ENABLED
+          ? resolveQaPlan({
+            intent: canonicalIntent.intent,
+            profile,
+            message,
+            language: ctx.lang,
+            hasAnchor: hasPlannerAnchor,
+            session: parsed.data.session,
+            safetyDecision,
+            profileDelta: Boolean(appliedProfilePatch && Object.keys(appliedProfilePatch).length),
+            anchorDelta: Boolean(anchorProductId || anchorProductUrl),
+          })
+          : null;
+      if (plannerDecision) {
+        policyMeta.gate_type = plannerDecision.gate_type || 'none';
+        policyMeta.loop_count = Number(plannerDecision.loop_count) || 0;
+        policyMeta.break_applied = plannerDecision.break_applied || 'none';
+        plannerSessionStatePatch = plannerDecision.session_state_patch || null;
+      }
       const buildSafetyNoticeText = (safety) => {
         const s = safety && typeof safety === 'object' ? safety : null;
         if (!s) return '';
@@ -24549,6 +24549,37 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
       let nextStateOverride = null;
+      const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
+      const hasFitCheckAnchor = hasPlannerAnchor;
+      const evaluateIntent =
+        (canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT || looksLikeProductEvaluationIntentV2(message, actionId)) &&
+        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
+        !ingredientScienceIntent;
+      const anchorCollectionSignal = (() => {
+        const text = String(message || '').trim().toLowerCase();
+        const aid = String(actionId || '').trim().toLowerCase();
+        if (aid === 'chip.fitcheck.send_link' || aid === 'chip.fitcheck.send_product_name') return true;
+        return (
+          /^(send (a )?(link|url|product name)|link|url|product name|发送(链接|产品名)|产品名|链接)$/i.test(text) ||
+          /(请粘贴|paste).{0,10}(link|url|链接)/i.test(text)
+        );
+      })();
+      const hasSafetySensitiveActiveMention = /(retinoid|retinol|tretinoin|adapalene|hydroquinone|isotretinoin|维a|a醇|维甲酸|阿达帕林|氢醌|异维a酸)/i.test(
+        String(message || ''),
+      );
+      const shouldBypassAvailabilityShortCircuit =
+        anchorCollectionSignal ||
+        evaluateIntent ||
+        ingredientScienceIntent ||
+        canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+        canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV ||
+        Boolean(
+          safetyDecision &&
+            (
+              safetyDecision.block_level === BLOCK_LEVEL.BLOCK ||
+              safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO
+            ),
+        );
 
       // Escape sticky budget gate early so local short-circuit paths (env/conflict) can also return a session patch.
       if (ctx.state === 'S6_BUDGET') {
@@ -24567,6 +24598,136 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           ctx.state = nextStateOverride || 'idle';
         }
+      }
+
+      if (evaluateIntent && !hasFitCheckAnchor && anchorCollectionSignal) {
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            lang === 'CN'
+              ? '好的，请直接粘贴“产品链接”或输入“完整产品名（品牌+品名）”，我会立即继续评估。'
+              : 'Great. Please paste the product link or type the full product name (brand + name), and I’ll continue immediately.',
+          ),
+          suggested_chips: [],
+          cards: [],
+          session_patch: {},
+          events: [makeEvent(ctx, 'anchor_collection_waiting_input', { intent: canonicalIntent.intent })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+      if (evaluateIntent && !hasFitCheckAnchor) {
+        const prompt = buildFitCheckAnchorPrompt(ctx.lang);
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(prompt.prompt),
+          suggested_chips: prompt.chips,
+          cards: [],
+          session_patch:
+            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'fit_check_anchor_required' })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+
+      const shouldRunSafetyPreGate = Boolean(
+        safetyDecision &&
+          (
+            hasSafetySensitiveActiveMention ||
+            ingredientScienceIntent ||
+            canonicalIntent.intent === INTENT_ENUM.RECO_PRODUCTS ||
+            canonicalIntent.intent === INTENT_ENUM.ROUTINE ||
+            canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+            canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
+          ),
+      );
+      if (shouldRunSafetyPreGate && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage(
+            buildSafetyNoticeText(safetyDecision) ||
+              (ctx.lang === 'CN'
+                ? '这个方向当前存在安全风险，我先给你更安全替代。'
+                : 'There is a safety risk for this path, so I’ll switch to safer alternatives first.'),
+          ),
+          suggested_chips: [
+            {
+              chip_id: 'chip.start.ingredients.safe_alternatives',
+              label: ctx.lang === 'CN' ? '看更安全替代' : 'Show safer alternatives',
+              kind: 'quick_reply',
+              data: {
+                reply_text:
+                  ctx.lang === 'CN'
+                    ? '请给我更安全替代成分（机制+注意事项）'
+                    : 'Show safer alternative ingredients (mechanism + watchouts)',
+              },
+            },
+          ],
+          cards: [
+            {
+              card_id: `safety_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: {
+                severity: 'block',
+                message:
+                  ctx.lang === 'CN'
+                    ? '该方向存在安全风险，已切换到更保守建议。'
+                    : 'This path carries safety risk; switched to conservative guidance.',
+                details: [...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []), ...(Array.isArray(safetyDecision.safe_alternatives) ? safetyDecision.safe_alternatives.slice(0, 3) : [])],
+                actions: ['safe_alternatives'],
+              },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'safety_gate_block', { intent: canonicalIntent.intent || INTENT_ENUM.UNKNOWN, block_level: safetyDecision.block_level })],
+        });
+        return sendChatEnvelope(envelope);
+      }
+      if (shouldRunSafetyPreGate && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.REQUIRE_INFO) {
+        const safetyQuestions = Array.isArray(safetyDecision.required_questions) ? safetyDecision.required_questions : [];
+        const firstQuestion = safetyQuestions[0] || (ctx.lang === 'CN' ? '请先补充一个关键安全信息。' : 'Please provide one key safety detail first.');
+        const asksPregnancy = /pregnan|怀孕|备孕/i.test(firstQuestion);
+        const chips = asksPregnancy
+          ? [
+            {
+              chip_id: 'chip.profile.pregnancy.not_pregnant',
+              label: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant',
+              kind: 'quick_reply',
+              data: { profile_patch: { pregnancy_status: 'not_pregnant' }, reply_text: ctx.lang === 'CN' ? '未怀孕' : 'Not pregnant' },
+            },
+            {
+              chip_id: 'chip.profile.pregnancy.pregnant',
+              label: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant',
+              kind: 'quick_reply',
+              data: { profile_patch: { pregnancy_status: 'pregnant' }, reply_text: ctx.lang === 'CN' ? '怀孕中' : 'Pregnant' },
+            },
+            {
+              chip_id: 'chip.profile.pregnancy.trying',
+              label: ctx.lang === 'CN' ? '备孕中' : 'Trying',
+              kind: 'quick_reply',
+              data: { profile_patch: { pregnancy_status: 'trying' }, reply_text: ctx.lang === 'CN' ? '备孕中' : 'Trying to conceive' },
+            },
+          ]
+          : [];
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: makeChatAssistantMessage([buildSafetyNoticeText(safetyDecision), firstQuestion].filter(Boolean).join('\n\n')),
+          suggested_chips: chips,
+          cards: [
+            {
+              card_id: `safety_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: {
+                severity: 'warn',
+                message:
+                  ctx.lang === 'CN'
+                    ? '继续前需要一个关键安全信息。'
+                    : 'One key safety detail is required before continuing.',
+                details: Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 4) : [],
+                actions: ['answer_safety_question'],
+              },
+            },
+          ],
+          session_patch: {},
+          events: [makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.UNKNOWN, question: firstQuestion })],
+        });
+        return sendChatEnvelope(envelope);
       }
 
       if (
@@ -24636,7 +24797,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         (ctx.trigger_source === 'text' || ctx.trigger_source === 'text_explicit')
       ) {
         const availabilityIntent = detectCatalogAvailabilityIntent(message, ctx.lang);
-        if (availabilityIntent) {
+        if (availabilityIntent && !shouldBypassAvailabilityShortCircuit) {
           recordCatalogAvailabilityShortCircuit({ brandId: availabilityIntent.brand_id, reason: availabilityIntent.reason });
 
           const availabilityQuery =
@@ -24835,7 +24996,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Local env-stress short-circuit: answer weather/environment questions without upstream.
       // Only for user-typed text (including text_explicit). Chips/actions should keep their intended routing.
       if (
-        AURORA_TRAVEL_WEATHER_LIVE_ENABLED &&
         plannerDecision &&
         (
           canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
@@ -25204,7 +25364,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
       if (ingredientScienceIntent && safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.BLOCK) {
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(
@@ -25318,52 +25477,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch:
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_science_clarify' })],
-        });
-        return sendChatEnvelope(envelope);
-      }
-
-      const evaluateIntent =
-        (canonicalIntent.intent === INTENT_ENUM.EVALUATE_PRODUCT || looksLikeProductEvaluationIntentV2(message, actionId)) &&
-        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
-        !looksLikeIngredientScienceIntent(message, normalizedActionPayload);
-      const hasFitCheckAnchor = hasMeaningfulFitCheckAnchor({
-        message,
-        anchorProductId,
-        anchorProductUrl,
-      });
-      const anchorCollectionSignal = (() => {
-        const text = String(message || '').trim().toLowerCase();
-        const aid = String(actionId || '').trim().toLowerCase();
-        if (aid === 'chip.fitcheck.send_link' || aid === 'chip.fitcheck.send_product_name') return true;
-        return (
-          /^(send (a )?(link|url|product name)|link|url|product name|发送(链接|产品名)|产品名|链接)$/i.test(text) ||
-          /(请粘贴|paste).{0,10}(link|url|链接)/i.test(text)
-        );
-      })();
-      if (evaluateIntent && !hasFitCheckAnchor && anchorCollectionSignal) {
-        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
-            lang === 'CN'
-              ? '好的，请直接粘贴“产品链接”或输入“完整产品名（品牌+品名）”，我会立即继续评估。'
-              : 'Great. Please paste the product link or type the full product name (brand + name), and I’ll continue immediately.',
-          ),
-          suggested_chips: [],
-          cards: [],
-          session_patch: {},
-          events: [makeEvent(ctx, 'anchor_collection_waiting_input', { intent: canonicalIntent.intent })],
-        });
-        return sendChatEnvelope(envelope);
-      }
-      if (evaluateIntent && !hasFitCheckAnchor) {
-        const prompt = buildFitCheckAnchorPrompt(ctx.lang);
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt.prompt),
-          suggested_chips: prompt.chips,
-          cards: [],
-          session_patch:
-            nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'fit_check_anchor_required' })],
         });
         return sendChatEnvelope(envelope);
       }
