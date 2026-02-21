@@ -27,6 +27,11 @@ const ACTION_MAP = Object.freeze({
   'chip.start.diagnosis': INTENT_ENUM.DIAGNOSIS_START,
 });
 
+const TRAVEL_CUE_RE =
+  /(\b(travel|trip|itinerary|destination|flight|flying|hotel|packing|next\s+week|next\s+month|weekend)\b|出差|旅行|旅途|行程|目的地|航班|飞行|酒店|打包|下周|下个月|周末)/i;
+const ANCHOR_LINK_CUE_RE =
+  /(^\s*(send\s*(a)?\s*link|paste\s*(the)?\s*link|here('s| is)\s*(the)?\s*link|link)\s*$|发链接|贴链接|发送链接|这是链接|给你链接|粘贴链接)/i;
+
 const KNOWN_OPTION_TEXT = [
   {
     re: /(recommend (a few )?products|give me products|产品推荐|推荐一些产品|给我推荐产品)/i,
@@ -38,6 +43,10 @@ const KNOWN_OPTION_TEXT = [
   },
   {
     re: /(evaluate (a )?(specific )?product|assess (this )?product|analy[sz]e (this )?product|check (this )?product|评估.*产品|分析.*产品|测评.*产品)/i,
+    intent: INTENT_ENUM.EVALUATE_PRODUCT,
+  },
+  {
+    re: /(send\s*(a)?\s*link|paste\s*(the)?\s*link|here('s| is)\s*(the)?\s*link|发链接|贴链接|发送链接|这是链接|粘贴链接)/i,
     intent: INTENT_ENUM.EVALUATE_PRODUCT,
   },
   {
@@ -131,6 +140,14 @@ function inferFromRegex(text) {
   return null;
 }
 
+function hasTravelCue(text) {
+  return TRAVEL_CUE_RE.test(String(text || '').trim());
+}
+
+function hasAnchorLinkCue(text) {
+  return ANCHOR_LINK_CUE_RE.test(String(text || '').trim());
+}
+
 function extractTravelEntities(message) {
   const text = String(message || '').trim();
   if (!text) return {};
@@ -168,23 +185,47 @@ function inferCanonicalIntent({ message, actionId, actionLabel } = {}) {
     };
   }
 
+  if (hasAnchorLinkCue(optionText)) {
+    return {
+      intent: INTENT_ENUM.EVALUATE_PRODUCT,
+      source: 'known_option_text',
+      confidence: 0.94,
+      entities: { anchor_collect: 'link' },
+    };
+  }
+
+  if (hasTravelCue(optionText)) {
+    return {
+      intent: INTENT_ENUM.TRAVEL_PLANNING,
+      source: 'known_option_text',
+      confidence: 0.93,
+      entities: extractTravelEntities(text),
+    };
+  }
+
   const fromKnownText = inferFromKnownText(optionText);
   if (fromKnownText) {
+    const intent = fromKnownText === INTENT_ENUM.WEATHER_ENV && hasTravelCue(text)
+      ? INTENT_ENUM.TRAVEL_PLANNING
+      : fromKnownText;
     return {
-      intent: fromKnownText,
+      intent,
       source: 'known_option_text',
       confidence: 0.92,
-      entities: fromKnownText === INTENT_ENUM.TRAVEL_PLANNING || fromKnownText === INTENT_ENUM.WEATHER_ENV ? extractTravelEntities(text) : {},
+      entities: intent === INTENT_ENUM.TRAVEL_PLANNING || intent === INTENT_ENUM.WEATHER_ENV ? extractTravelEntities(text) : {},
     };
   }
 
   const fromRegex = inferFromRegex(text);
   if (fromRegex) {
+    const intent = fromRegex === INTENT_ENUM.WEATHER_ENV && hasTravelCue(text)
+      ? INTENT_ENUM.TRAVEL_PLANNING
+      : fromRegex;
     return {
-      intent: fromRegex,
+      intent,
       source: 'heuristic_regex',
       confidence: 0.8,
-      entities: fromRegex === INTENT_ENUM.TRAVEL_PLANNING || fromRegex === INTENT_ENUM.WEATHER_ENV ? extractTravelEntities(text) : {},
+      entities: intent === INTENT_ENUM.TRAVEL_PLANNING || intent === INTENT_ENUM.WEATHER_ENV ? extractTravelEntities(text) : {},
     };
   }
 
@@ -204,5 +245,7 @@ module.exports = {
     inferFromActionId,
     inferFromKnownText,
     inferFromRegex,
+    hasTravelCue,
+    hasAnchorLinkCue,
   },
 };

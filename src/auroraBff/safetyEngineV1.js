@@ -20,6 +20,35 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function normalizePregnancyStatus(value) {
+  const raw = lowerText(value);
+  if (!raw) return 'unknown';
+  if (/(not[_\s-]?pregnan|未怀孕|没有怀孕|非孕)/i.test(raw)) return 'not_pregnant';
+  if (/(pregnan|怀孕|孕期)/i.test(raw)) return 'pregnant';
+  if (/(trying|conceiv|备孕)/i.test(raw)) return 'trying';
+  if (/(unknown|不确定|未知|not sure|unsure)/i.test(raw)) return 'unknown';
+  return raw;
+}
+
+function normalizeLactationStatus(value) {
+  const raw = lowerText(value);
+  if (!raw) return 'unknown';
+  if (/(not[_\s-]?lactat|非哺乳|未哺乳|不哺乳)/i.test(raw)) return 'not_lactating';
+  if (/(lactat|breastfeed|哺乳|母乳)/i.test(raw)) return 'lactating';
+  if (/(unknown|不确定|未知|not sure|unsure)/i.test(raw)) return 'unknown';
+  return raw;
+}
+
+function normalizeAgeBand(value) {
+  const raw = lowerText(value);
+  if (!raw) return 'unknown';
+  if (/(under[_\s-]?13|13[_\s-]?17|18[_\s-]?24|25[_\s-]?34|35[_\s-]?44|45[_\s-]?54|55)/i.test(raw)) {
+    return raw.replace(/\s+/g, '_');
+  }
+  if (/(unknown|不确定|未知|not sure|unsure)/i.test(raw)) return 'unknown';
+  return raw;
+}
+
 function lowerText(value) {
   return normalizeText(value).toLowerCase();
 }
@@ -31,12 +60,16 @@ function hasAny(text, patterns) {
 
 function normalizeProfile(profile) {
   const p = profile && typeof profile === 'object' ? profile : {};
+  const pregnancyRaw = p.pregnancy_status ?? p.pregnancyStatus;
+  const lactationRaw = p.lactation_status ?? p.lactationStatus;
+  const ageBandRaw = p.age_band ?? p.ageBand;
+  const medsRaw = p.high_risk_medications ?? p.highRiskMedications;
   return {
-    age_band: normalizeText(p.age_band || 'unknown') || 'unknown',
-    pregnancy_status: normalizeText(p.pregnancy_status || 'unknown') || 'unknown',
-    lactation_status: normalizeText(p.lactation_status || 'unknown') || 'unknown',
-    high_risk_medications: Array.isArray(p.high_risk_medications)
-      ? p.high_risk_medications.map((item) => normalizeText(item)).filter(Boolean)
+    age_band: normalizeAgeBand(ageBandRaw || 'unknown') || 'unknown',
+    pregnancy_status: normalizePregnancyStatus(pregnancyRaw || 'unknown') || 'unknown',
+    lactation_status: normalizeLactationStatus(lactationRaw || 'unknown') || 'unknown',
+    high_risk_medications: Array.isArray(medsRaw)
+      ? medsRaw.map((item) => normalizeText(item)).filter(Boolean)
       : [],
     barrierStatus: normalizeText(p.barrierStatus || ''),
     sensitivity: normalizeText(p.sensitivity || ''),
@@ -147,6 +180,7 @@ const SAFETY_RULES = [
     level: BLOCK_LEVEL.REQUIRE_INFO,
     when: (ctx) => ctx.profile.pregnancy_status === 'pregnant' && ctx.mentions.prescription,
     reason: bilingual('Prescription active requested during pregnancy needs a quick safety check.', '孕期涉及处方活性，需先补充安全信息。'),
+    required_fields: ['high_risk_medications'],
     required_questions: ['Are you currently using any prescription acne medication?'],
     required_questions_cn: ['你当前是否在使用处方祛痘药？'],
   },
@@ -260,6 +294,7 @@ const SAFETY_RULES = [
     level: BLOCK_LEVEL.REQUIRE_INFO,
     when: (ctx) => ctx.mentions.steroidFace && ctx.mentions.strongExfoliant,
     reason: bilingual('Facial steroid context + acids needs clinical safety confirmation.', '面部激素使用场景下叠加酸类需先确认安全。'),
+    required_fields: ['high_risk_medications'],
     required_questions: ['Is the facial steroid currently prescribed by a clinician?'],
     required_questions_cn: ['面部激素是否为医生当前处方？'],
   },
@@ -268,6 +303,7 @@ const SAFETY_RULES = [
     level: BLOCK_LEVEL.REQUIRE_INFO,
     when: (ctx) => ctx.profile.pregnancy_status === 'unknown' && ctx.mentions.retinoid,
     reason: bilingual('Pregnancy status is needed before retinoid guidance.', '给维A建议前需先确认孕期状态。'),
+    required_fields: ['pregnancy_status'],
     required_questions: ['Are you currently pregnant or trying to conceive?'],
     required_questions_cn: ['你当前是否怀孕或备孕？'],
     alternatives: bilingual('Until confirmed, use conservative non-retinoid options.', '未确认前先走非维A保守方案。'),
@@ -277,6 +313,7 @@ const SAFETY_RULES = [
     level: BLOCK_LEVEL.REQUIRE_INFO,
     when: (ctx) => ctx.profile.age_band === 'unknown' && ctx.mentions.strongAntiAging,
     reason: bilingual('Age band is needed before strong anti-aging actives.', '给高强度抗老活性前需先确认年龄段。'),
+    required_fields: ['age_band'],
     required_questions: ['Which age band are you in?'],
     required_questions_cn: ['请问你的年龄段是？'],
   },
@@ -341,10 +378,15 @@ function evaluateSafety({ intent, message, profile, language } = {}) {
     }),
     4,
   );
+  const requiredFields = dedupeStrings(
+    matched.flatMap((rule) => (Array.isArray(rule.required_fields) ? rule.required_fields : [])),
+    4,
+  );
 
   return {
     block_level: blockLevel,
     reasons,
+    required_fields: requiredFields,
     required_questions: requiredQuestions,
     safe_alternatives: safeAlternatives,
     matched_rules: matched.map((rule) => ({ id: rule.id, level: rule.level })),
