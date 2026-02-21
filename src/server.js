@@ -405,6 +405,9 @@ const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
   'false';
 const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
   String(process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY || 'true').toLowerCase() !== 'false';
+const PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT =
+  String(process.env.PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT || 'true').toLowerCase() !==
+  'false';
 const PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS = Math.max(
   1200,
   Math.min(
@@ -3184,7 +3187,7 @@ function getFallbackAdoptUsableThreshold({
   const op = String(operation || '').trim();
   if (op !== 'find_products_multi') return baseThreshold;
   if (!primaryIrrelevant) return baseThreshold;
-  if (isAuroraSource(source)) return 1;
+  if (isAuroraSource(source) && PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT) return 1;
   return baseThreshold;
 }
 
@@ -7967,6 +7970,7 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_seed_strategy: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
         : null,
+      fallback_adopt_usable_threshold: null,
     };
 
     const upstreamStartedAtMs = Date.now();
@@ -8001,6 +8005,13 @@ async function proxyAgentSearchToBackend(req, res) {
     const primaryRelevant = queryText ? isProxySearchFallbackRelevant(normalized, queryText) : true;
     const primaryIrrelevant = Boolean(queryText) && primaryUsableCount > 0 && !primaryRelevant;
     const shouldFallback = primaryUnusable || primaryIrrelevant;
+    const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
+      operation: 'find_products_multi',
+      source,
+      primaryUsableCount,
+      primaryIrrelevant,
+    });
+    fallbackStrategy.fallback_adopt_usable_threshold = fallbackAdoptUsableThreshold;
 
     if (shouldFallback) {
       if (allowResolverFallback && !skipSecondaryFallback) {
@@ -8047,12 +8058,6 @@ async function proxyAgentSearchToBackend(req, res) {
                 : 'empty_or_unusable_primary'
               : 'primary_irrelevant',
             requestSource: source,
-          });
-          const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
-            operation: 'find_products_multi',
-            source,
-            primaryUsableCount,
-            primaryIrrelevant,
           });
           if (
             fallback &&
