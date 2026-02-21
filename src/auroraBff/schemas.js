@@ -131,6 +131,7 @@ const AuroraUpstreamMessageSchema = z
 const V1ChatRequestSchema = z
   .object({
     message: z.string().min(1).optional(),
+    query: z.string().min(1).optional(),
     client_state: z.string().min(1).optional(),
     requested_transition: z
       .object({
@@ -155,6 +156,11 @@ const V1ChatRequestSchema = z
           .strict(),
       ])
       .optional(),
+    action_id: z.string().min(1).optional(),
+    action_label: z.string().min(1).optional(),
+    action_data: z.record(z.string(), z.any()).optional(),
+    clarification_id: z.string().min(1).optional(),
+    selected_option_index: z.number().int().min(0).max(99).optional(),
     session: z.record(z.string(), z.any()).optional(),
     language: LanguageSchema.optional(),
     llm_provider: z.enum(['gemini', 'openai']).optional(),
@@ -174,6 +180,21 @@ const UserProfilePatchSchema = z
     currentRoutine: z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any())]).optional(),
     itinerary: z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any())]).optional(),
     contraindications: z.array(z.string().min(1)).optional(),
+    age_band: z
+      .enum(['unknown', 'under_13', '13_17', '18_24', '25_34', '35_44', '45_54', '55_plus'])
+      .optional(),
+    pregnancy_status: z.enum(['unknown', 'not_pregnant', 'pregnant', 'trying']).optional(),
+    lactation_status: z.enum(['unknown', 'not_lactating', 'lactating']).optional(),
+    high_risk_medications: z.array(z.string().min(1)).max(30).optional(),
+    travel_plan: z
+      .object({
+        destination: z.string().min(1).optional(),
+        start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+      })
+      .strict()
+      .optional(),
     lang_pref: LanguageSchema.optional(),
   })
   .strict();
