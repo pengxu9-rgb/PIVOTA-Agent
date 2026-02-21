@@ -25203,8 +25203,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let matcherBundle = null;
         let matcherPayload = null;
         const artifactConfidenceLevel = artifactGate && artifactGate.confidence_level ? artifactGate.confidence_level : 'low';
-        // Legacy reco mode (matcher disabled) should not be downgraded by artifact confidence.
-        const lowConfidenceArtifact = AURORA_PRODUCT_MATCHER_ENABLED && artifactConfidenceLevel === 'low';
+        const lowConfidenceArtifact = artifactConfidenceLevel === 'low';
         const artifactConfidenceScoreRaw = Number(
           latestArtifact &&
           latestArtifact.artifact_json &&
