@@ -905,6 +905,36 @@ function applyDomainHardFilter(products, intent, rawQuery) {
   const domainKey = inferSearchDomainKey(intent, rawQuery);
   if (domainKey === 'general') return { products: list, dropped: 0 };
   const filtered = list.filter((product) => matchesDomainAllowlist(product, domainKey));
+  if (domainKey === 'beauty' && list.length > 0 && filtered.length === 0) {
+    const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
+    const primaryDomain = String(intent?.primary_domain || '').toLowerCase();
+    const requiredCategories = Array.isArray(intent?.category?.required)
+      ? intent.category.required.map((item) => String(item || '').toLowerCase())
+      : [];
+    const query = String(rawQuery || '').toLowerCase();
+    const isBeautyIntent =
+      primaryDomain === 'beauty' ||
+      scenarioName.includes('beauty') ||
+      requiredCategories.some(
+        (category) =>
+          category.includes('beauty') ||
+          category.includes('cosmetic') ||
+          category.includes('makeup') ||
+          category.includes('skin'),
+      ) ||
+      /化妆|化妝|美妆|美妝|彩妆|彩妝|护肤|護膚|粉底|口红|口紅|眼影|睫毛膏|刷|brush|makeup|beauty|cosmetic|skincare|foundation|lipstick|eyeshadow/.test(
+        query,
+      );
+    if (isBeautyIntent) {
+      return {
+        products: list,
+        dropped: 0,
+        domain_key: domainKey,
+        fail_open: true,
+        fail_open_reason: 'beauty_domain_filter_empty_fallback',
+      };
+    }
+  }
   return {
     products: filtered,
     dropped: Math.max(0, list.length - filtered.length),
