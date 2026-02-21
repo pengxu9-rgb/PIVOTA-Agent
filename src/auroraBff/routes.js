@@ -4793,27 +4793,53 @@ async function buildRealtimeCompetitorCandidates({
   });
   if (!queries.length) return { candidates: [], queries: [], reason: 'query_missing' };
 
+  const rankAsyncQuery = (queryText) => {
+    const text = String(queryText || '').trim().toLowerCase();
+    if (!text) return -999;
+    const tokens = text.split(/\s+/).filter(Boolean);
+    const tokenCount = tokens.length;
+    let score = 0;
+    if (categoryToken && text.includes(String(categoryToken).toLowerCase())) score += 2;
+    if (/\b(peptide|retinol|niacinamide|salicylic|glycolic|lactic|hyaluronic|ceramide)\b/.test(text)) score += 3;
+    if (tokenCount >= 2 && tokenCount <= 6) score += 1;
+    if (tokenCount >= 7) score -= 1;
+    if (anchorBrand && text.includes(String(anchorBrand).toLowerCase()) && tokenCount >= 4) score -= 2;
+    return score;
+  };
+  const orderedQueries =
+    runMode === 'async_backfill'
+      ? queries
+        .slice()
+        .sort((left, right) => {
+          const scoreDiff = rankAsyncQuery(right) - rankAsyncQuery(left);
+          if (scoreDiff !== 0) return scoreDiff;
+          return String(left || '').length - String(right || '').length;
+        })
+      : queries;
+
   const minimumPerQueryBudgetMs = runMode === 'main_path' ? 420 : 320;
   const maxQueriesByBudget = Math.max(
     1,
     Math.min(
-      queries.length,
+      orderedQueries.length,
       Math.floor(Math.max(minimumPerQueryBudgetMs, getRemainingMs()) / minimumPerQueryBudgetMs),
     ),
   );
   const mainPathFanoutCap =
     runMode === 'main_path' && allowResolveFallback
       ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP
-      : queries.length;
-  const plannedQueries = queries.slice(
+      : orderedQueries.length;
+  const plannedQueries = orderedQueries.slice(
     0,
-    Math.max(1, Math.min(queries.length, Math.min(maxQueriesByBudget, mainPathFanoutCap))),
+    Math.max(1, Math.min(orderedQueries.length, Math.min(maxQueriesByBudget, mainPathFanoutCap))),
   );
   const searchResults = [];
   const observedRecallHits = new Set();
   const earlyStopTarget =
     runMode === 'main_path'
       ? Math.max(1, Math.min(maxCandidates, PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT))
+      : runMode === 'async_backfill'
+        ? Math.max(1, Math.min(maxCandidates, Math.max(PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT, 2)))
       : Math.max(1, Math.min(maxCandidates, 6));
 
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
@@ -4834,7 +4860,13 @@ async function buildRealtimeCompetitorCandidates({
     const queriesRemaining = plannedQueries.length - queryIdx;
     const fairShareMs =
       runMode === 'async_backfill'
-        ? Math.max(260, remainingMs - reserveAfterSearchMs)
+        ? (() => {
+          const reserveForFollowupMs =
+            plannedQueries.length > 1 && queryIdx === 0
+              ? Math.min(2200, Math.max(1200, Math.trunc(remainingMs * 0.32)))
+              : 0;
+          return Math.max(260, remainingMs - reserveAfterSearchMs - reserveForFollowupMs);
+        })()
         : Math.max(
           220,
           Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
