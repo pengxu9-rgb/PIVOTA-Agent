@@ -38,6 +38,7 @@ const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
+const { buildClarification } = require('./findProductsMulti/clarification');
 const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
@@ -537,6 +538,17 @@ const SEARCH_CACHE_MIN_COUNT = Math.max(
 const SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO || 0.08)),
+);
+const SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED =
+  String(process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED || 'true').toLowerCase() !== 'false';
+const SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = new Set(
+  String(
+    process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES ||
+      'scenario,mission,gift,exploratory,category,non_shopping',
+  )
+    .split(',')
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean),
 );
 const PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
   String(process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED || 'false').toLowerCase() ===
@@ -2681,6 +2693,9 @@ function withStrictEmptyFallback({
   upstreamMessage = null,
   route = null,
   fallbackStrategy = null,
+  intent = null,
+  queryClass = null,
+  queryText = '',
 }) {
   const emptyBody = buildProxySearchSoftFallbackResponse({
     queryParams,
@@ -2689,14 +2704,49 @@ function withStrictEmptyFallback({
     upstreamCode,
     upstreamMessage,
     route,
+    intent,
+    queryClass,
+    queryText,
   });
+  const hasClarification = Boolean(emptyBody?.clarification?.question);
   return withSearchDiagnostics(emptyBody, {
-    strict_empty: true,
-    strict_empty_reason: reason || 'strict_empty',
+    strict_empty: !hasClarification,
+    ...(hasClarification ? {} : { strict_empty_reason: reason || 'strict_empty' }),
     ...(fallbackStrategy && typeof fallbackStrategy === 'object'
       ? { fallback_strategy: fallbackStrategy }
       : {}),
   });
+}
+
+function isUpstreamQuotaExhausted({ upstreamStatus = null, upstreamCode = null, upstreamMessage = null }) {
+  const status = Number(upstreamStatus || 0);
+  const code = String(upstreamCode || '').trim().toUpperCase();
+  const message = String(upstreamMessage || '').trim().toUpperCase();
+  if (code.includes('RATE_LIMIT_EXCEEDED') || code.includes('DAILY_QUOTA_EXCEEDED')) return true;
+  if (status === 429) return true;
+  if (message.includes('QUOTA EXCEEDED') || message.includes('RATE LIMIT')) return true;
+  return false;
+}
+
+function shouldClarifyOnQuota({ queryClass = null, intent = null }) {
+  if (!SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED) return false;
+  const normalizedClass = String(queryClass || intent?.query_class || '').trim().toLowerCase();
+  if (!normalizedClass) return false;
+  return SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES.has(normalizedClass);
+}
+
+function buildClarificationReplyText(clarification) {
+  if (!clarification || typeof clarification !== 'object') return '';
+  const question = String(clarification.question || '').trim();
+  if (!question) return '';
+  const options = Array.isArray(clarification.options)
+    ? clarification.options
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, 4)
+    : [];
+  if (!options.length) return question;
+  return `${question}\n${options.map((item, idx) => `${idx + 1}) ${item}`).join('\n')}`;
 }
 
 function buildProxySearchSoftFallbackResponse({
@@ -2707,7 +2757,23 @@ function buildProxySearchSoftFallbackResponse({
   upstreamMessage = null,
   route = null,
   reply = 'Search is temporarily unavailable. Please retry shortly.',
+  intent = null,
+  queryClass = null,
+  queryText = '',
 }) {
+  const quotaExhausted = isUpstreamQuotaExhausted({ upstreamStatus, upstreamCode, upstreamMessage });
+  const shouldClarify = quotaExhausted && shouldClarifyOnQuota({ queryClass, intent });
+  const clarification = shouldClarify
+    ? buildClarification({
+        queryClass: String(queryClass || intent?.query_class || 'exploratory').toLowerCase(),
+        intent: intent && typeof intent === 'object' ? intent : { language: 'en', query_class: queryClass },
+        language:
+          (intent && typeof intent === 'object' ? intent.language : null) ||
+          (typeof queryText === 'string' && /[\u4e00-\u9fff]/.test(queryText) ? 'zh' : 'en'),
+      })
+    : null;
+  const resolvedReply =
+    shouldClarify && clarification ? buildClarificationReplyText(clarification) : reply;
   const normalized = normalizeAgentProductsListResponse(
     {
       status: 'success',
@@ -2716,13 +2782,26 @@ function buildProxySearchSoftFallbackResponse({
       total: 0,
       page: 1,
       page_size: parseQueryNumber(queryParams?.limit ?? queryParams?.page_size) || 0,
-      reply,
+      reply: resolvedReply,
+      ...(clarification
+        ? {
+            clarification: {
+              question: clarification.question,
+              options: clarification.options,
+              reason_code: clarification.reason_code,
+            },
+          }
+        : {}),
+      ...(shouldClarify
+        ? { reason_codes: ['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY'] }
+        : {}),
       metadata: {
         query_source: 'agent_products_error_fallback',
         upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
         upstream_error_code: upstreamCode ? String(upstreamCode) : null,
         upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
         fallback_route: route || null,
+        ...(shouldClarify ? { upstream_quota_guarded: true } : {}),
       },
     },
     {
@@ -11188,6 +11267,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       search_cache_max_domain_entropy: SEARCH_CACHE_MAX_DOMAIN_ENTROPY,
       search_cache_min_count: SEARCH_CACHE_MIN_COUNT,
       search_cache_max_cross_domain_ratio: SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO,
+      search_upstream_quota_clarify_enabled: SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED,
+      search_upstream_quota_clarify_query_classes: Array.from(
+        SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES,
+      ),
     };
     const traceAmbiguityScorePre = Number.isFinite(
       Number(findProductsExpansionMeta?.ambiguity_score_pre),
@@ -15477,6 +15560,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               upstreamCode: upstreamCode || err?.code || null,
               upstreamMessage: upstreamMessage || err?.message || null,
               route: 'invoke_exception',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
             }),
           };
         }
@@ -15729,6 +15815,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 : 'primary_irrelevant_no_fallback',
               upstreamStatus: response.status,
               route: 'invoke_primary_irrelevant',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
             });
           } else {
             upstreamData = withProxySearchFallbackMetadata(upstreamData, {
@@ -16317,7 +16406,11 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	        upstreamCode: code || err?.code || null,
 	        upstreamMessage: message || err?.message || null,
 	        route: 'invoke_outer_catch',
+          intent: effectiveIntent,
+          queryClass: traceQueryClass,
+          queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
 	      });
+        const strictEmptyHasClarification = Boolean(strictEmpty?.clarification?.question);
 	      const diagnosed = withSearchDiagnostics(strictEmpty, {
 	        route_health: buildSearchRouteHealth({
 	          primaryPathUsed: 'invoke_outer_catch',
@@ -16325,7 +16418,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	          fallbackTriggered: true,
 	          fallbackReason: reason,
 	          ambiguityScorePre: traceAmbiguityScorePre,
-	          clarifyTriggered: false,
+	          clarifyTriggered: strictEmptyHasClarification,
 	        }),
 	        search_trace: buildSearchTrace({
 	          traceId: gatewayRequestId,
@@ -16357,10 +16450,10 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 	            miss: false,
 	            latency_ms: null,
 	          },
-	          finalDecision: 'strict_empty',
+	          finalDecision: strictEmptyHasClarification ? 'clarify' : 'strict_empty',
 	        }),
-	        strict_empty: true,
-	        strict_empty_reason: reason,
+          strict_empty: !strictEmptyHasClarification,
+	        ...(strictEmptyHasClarification ? {} : { strict_empty_reason: reason }),
 	      });
 	      return res.status(200).json(diagnosed);
 	    }

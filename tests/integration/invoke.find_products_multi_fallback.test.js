@@ -61,6 +61,10 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES:
         process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES,
+      SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED:
+        process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED,
+      SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES:
+        process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -207,6 +211,18 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES =
         prevEnv.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES;
+    }
+    if (prevEnv.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED === undefined) {
+      delete process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED;
+    } else {
+      process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED =
+        prevEnv.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED;
+    }
+    if (prevEnv.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES === undefined) {
+      delete process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES;
+    } else {
+      process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES =
+        prevEnv.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES;
     }
   });
 
@@ -410,6 +426,63 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         strict_empty: true,
       }),
     );
+  });
+
+  test('returns clarify instead of strict-empty when upstream quota is exhausted for scenario query', async () => {
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED = 'true';
+    process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = 'scenario,mission,exploratory';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(429, {
+        status: 'error',
+        error: {
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Daily quota exceeded',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hiking essentials',
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
+      }),
+    );
+    expect(resp.body.reason_codes).toEqual(
+      expect.arrayContaining(['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY']),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        upstream_quota_guarded: true,
+      }),
+    );
+    expect(resp.body.metadata?.strict_empty).not.toBe(true);
   });
 
   test('pet harness query rejects dog-apparel-only matches as strict empty', async () => {
