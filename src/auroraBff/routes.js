@@ -4691,6 +4691,7 @@ async function buildRealtimeCompetitorCandidates({
   timeoutMs = PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS,
   maxQueries = PRODUCT_URL_REALTIME_COMPETITOR_MAX_QUERIES,
   maxCandidates = PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
+  searchFn = null,
   logger,
 } = {}) {
   const isCn = String(lang || '').toUpperCase() === 'CN';
@@ -4734,6 +4735,7 @@ async function buildRealtimeCompetitorCandidates({
   const externalSeedStrategy = allowExternalSeed
     ? PRODUCT_URL_REALTIME_COMPETITOR_EXTERNAL_SEED_STRATEGY
     : 'legacy';
+  const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
   const reserveAfterSearchMs =
@@ -4772,47 +4774,77 @@ async function buildRealtimeCompetitorCandidates({
   });
   if (!queries.length) return { candidates: [], queries: [], reason: 'query_missing' };
 
-  const searchResults = await Promise.all(
-    queries.map(async (queryText) => {
-      const remainingMs = getRemainingMs();
-      if (remainingMs < 260) {
-        return {
-          query: queryText,
-          searched: {
-            ok: false,
-            products: [],
-            reason: 'budget_exhausted',
-            latency_ms: 0,
-          },
-        };
-      }
-      const perQueryTimeoutMs = Math.max(
-        250,
-        Math.min(
-          effectiveSearchTimeoutMs,
-          Math.max(250, remainingMs - 80),
-        ),
-      );
-      const searched = await searchPivotaBackendProducts({
-        query: queryText,
-        limit: 6,
-        logger,
-        timeoutMs: perQueryTimeoutMs,
-        searchAllMerchants,
-        deadlineMs: softDeadlineMs,
-        allowExternalSeed,
-        externalSeedStrategy,
-        fastMode: true,
-      });
-      return { query: queryText, searched };
-    }),
+  const minimumPerQueryBudgetMs = runMode === 'main_path' ? 420 : 320;
+  const maxQueriesByBudget = Math.max(
+    1,
+    Math.min(
+      queries.length,
+      Math.floor(Math.max(minimumPerQueryBudgetMs, getRemainingMs()) / minimumPerQueryBudgetMs),
+    ),
   );
+  const plannedQueries = queries.slice(0, Math.max(1, Math.min(queries.length, maxQueriesByBudget)));
+  const searchResults = [];
+  const observedRecallHits = new Set();
+  const earlyStopTarget =
+    runMode === 'main_path'
+      ? Math.max(1, Math.min(maxCandidates, PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT))
+      : Math.max(1, Math.min(maxCandidates, 6));
 
-  const queryTokens = tokenizeProductTextForSimilarity(queries.join(' | '));
+  for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
+    const queryText = plannedQueries[queryIdx];
+    const remainingMs = getRemainingMs();
+    if (remainingMs < 260) {
+      searchResults.push({
+        query: queryText,
+        searched: {
+          ok: false,
+          products: [],
+          reason: 'budget_exhausted',
+          latency_ms: 0,
+        },
+      });
+      break;
+    }
+    const queriesRemaining = plannedQueries.length - queryIdx;
+    const fairShareMs = Math.max(
+      220,
+      Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
+    );
+    const perQueryTimeoutMs = Math.max(220, Math.min(effectiveSearchTimeoutMs, fairShareMs));
+    // eslint-disable-next-line no-await-in-loop
+    const searched = await runSearch({
+      query: queryText,
+      limit: 6,
+      logger,
+      timeoutMs: perQueryTimeoutMs,
+      searchAllMerchants,
+      deadlineMs: softDeadlineMs,
+      allowExternalSeed,
+      externalSeedStrategy,
+      fastMode: true,
+    });
+    searchResults.push({ query: queryText, searched });
+
+    const list = Array.isArray(searched?.products) ? searched.products : [];
+    for (const product of list) {
+      const normalized = normalizeRecoCatalogProduct(product);
+      if (!normalized) continue;
+      const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+      if (!productId) continue;
+      observedRecallHits.add(String(productId).toLowerCase());
+    }
+    if (observedRecallHits.size >= earlyStopTarget) break;
+    if (observedRecallHits.size >= maxCandidates) break;
+  }
+
+  const diagnosticQueries = searchResults.map((row) => String(row?.query || '').trim()).filter(Boolean);
+  const queryTokens = tokenizeProductTextForSimilarity(
+    (diagnosticQueries.length ? diagnosticQueries : plannedQueries).join(' | '),
+  );
   const ingredientTokens = tokenizeProductTextForSimilarity(keyIngredients.slice(0, 6).join(' | '));
   const anchorIngredientTokens = ingredientTokens;
   const profileSkinTags = buildProfileSkinTags(profileSummary);
-  const totalQueriesForRecall = Math.max(1, queries.length);
+  const totalQueriesForRecall = Math.max(1, diagnosticQueries.length || plannedQueries.length || queries.length);
 
   const recallHitCountByProduct = new Map();
   for (const row of searchResults) {
@@ -4974,7 +5006,13 @@ async function buildRealtimeCompetitorCandidates({
   });
 
   let finalCandidates = candidates.slice(0, maxCandidates);
-  if (finalCandidates.length) return { candidates: finalCandidates, queries, reason: null };
+  if (finalCandidates.length) {
+    return {
+      candidates: finalCandidates,
+      queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
+      reason: null,
+    };
+  }
   const allSearchTransientFailure =
     searchResults.length > 0 &&
     searchResults.every((row) => {
@@ -4985,14 +5023,14 @@ async function buildRealtimeCompetitorCandidates({
   if (!allowResolveFallback) {
     return {
       candidates: [],
-      queries,
+      queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
     };
   }
   if (runMode === 'main_path' && getRemainingMs() < 420) {
     return {
       candidates: [],
-      queries,
+      queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
     };
   }
@@ -5135,11 +5173,21 @@ async function buildRealtimeCompetitorCandidates({
     return String(a?.name || '').localeCompare(String(b?.name || ''));
   });
   finalCandidates = candidates.slice(0, maxCandidates);
-  if (finalCandidates.length) return { candidates: finalCandidates, queries, reason: null };
+  if (finalCandidates.length) {
+    return {
+      candidates: finalCandidates,
+      queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
+      reason: null,
+    };
+  }
 
   const allFailed = searchResults.every((row) => !(row?.searched?.ok));
   const resolveAllFailed = resolveResults.every((row) => !(row?.resolved?.ok));
-  return { candidates: [], queries, reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty' };
+  return {
+    candidates: [],
+    queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
+    reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty',
+  };
 }
 
 function canonicalizeProductUrlForIntelKb(rawUrl) {
@@ -25885,6 +25933,7 @@ const __internal = {
   loadSuggestionsForAnchor,
   buildLabelQueue,
   runRecoBlocksForUrl,
+  buildRealtimeCompetitorCandidates,
   resolveProductAnalysisSocialState,
   applyProductAnalysisSocialProvenance,
   applyRecoGuardrailToProductAnalysisPayload,
