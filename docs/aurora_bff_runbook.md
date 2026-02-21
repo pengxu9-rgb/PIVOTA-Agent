@@ -246,6 +246,11 @@ All requests should include at least:
 - `safety_block` must not emit `recommendations`
 - low/medium confidence context must not leak treatment/high-irritation recommendations
 
+Transport handling policy:
+- Network/connection failures that produce no response body are classified as `transport_error` (not schema violation).
+- `curl rc=35` is retried once (short delay). If still failing, the soak writes a transport placeholder JSON and continues.
+- `transport_error` is tracked independently in `summary.json` and `events.ndjson`.
+
 ### 2h mini chaos soak (before major changes)
 
 ```bash
@@ -299,11 +304,13 @@ Each run writes to:
 
 ### Suggested pre-prod gate thresholds
 
-- `schema_violation_rate == 0`
-- `empty_cards == 0`
+- `schema_violation_rate == 0` (counted only when `response_received=true`)
+- `empty_cards == 0` (counted only when `response_received=true`)
 - `notice_without_actions == 0`
 - rolling `5xx_rate (5m) <= 0.5%`
 - rolling `reco_output_guard_fallback_rate (10m) <= 0.5%`
+- `transport_errors <= 3` for 2h mini gate
+- rolling `transport_error_rate (5m) <= 0.5%`
 
 Quick check:
 

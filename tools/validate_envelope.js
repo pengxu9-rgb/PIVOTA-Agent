@@ -133,6 +133,40 @@ function toCsvLine(fields) {
 
 function validateEnvelope({ body, schemaPath }) {
   const violations = [];
+  const marker = asObject(body) || {};
+  if (marker.transport_error === true) {
+    const curlExitCode = toNum(marker.curl_exit_code);
+    const curlError = String(marker.curl_error || 'transport error').trim();
+    const responseReceived = marker.response_received === true;
+    return {
+      ok: false,
+      schema_ok: true,
+      invariants_ok: true,
+      stats: {
+        cards_count: 0,
+        confidence_notice_count: 0,
+        recommendations_count: 0,
+        has_timeout_degraded: false,
+        has_reco_output_guard_fallback: false,
+        has_safety_block: false,
+        has_recommendations: false,
+        low_or_medium_context: false,
+        notice_without_actions_count: 0,
+        low_medium_treatment_leak_count: 0,
+        empty_cards_without_notice: false,
+        transport_error: true,
+        response_received: responseReceived,
+        curl_exit_code: curlExitCode,
+      },
+      violations: [
+        {
+          code: 'transport_error',
+          message: curlError || 'transport error',
+        },
+      ],
+    };
+  }
+
   const cards = asArray(body && body.cards);
   const events = asArray(body && body.events);
   const noticeCards = cards.filter((c) => c && c.type === 'confidence_notice');
@@ -279,6 +313,9 @@ function validateEnvelope({ body, schemaPath }) {
       notice_without_actions_count: noticeWithoutActionsCount,
       low_medium_treatment_leak_count: lowMedLeakCount,
       empty_cards_without_notice: cards.length === 0 && !hasNotice,
+      transport_error: false,
+      response_received: true,
+      curl_exit_code: null,
     },
     violations,
   };
@@ -295,10 +332,16 @@ function main() {
   try {
     body = JSON.parse(fs.readFileSync(args.input, 'utf8'));
   } catch (err) {
+    const isMissingFile = Boolean(
+      err && (
+        err.code === 'ENOENT' ||
+        /no such file/i.test(String(err.message || ''))
+      ),
+    );
     const out = {
       ok: false,
-      schema_ok: false,
-      invariants_ok: false,
+      schema_ok: isMissingFile ? true : false,
+      invariants_ok: isMissingFile ? true : false,
       stats: {
         cards_count: 0,
         confidence_notice_count: 0,
@@ -310,9 +353,17 @@ function main() {
         low_or_medium_context: false,
         notice_without_actions_count: 0,
         low_medium_treatment_leak_count: 0,
-        empty_cards_without_notice: true,
+        empty_cards_without_notice: isMissingFile ? false : true,
+        transport_error: isMissingFile,
+        response_received: false,
+        curl_exit_code: null,
       },
-      violations: [{ code: 'json_parse_failed', message: err && err.message ? err.message : 'invalid json' }],
+      violations: [
+        {
+          code: isMissingFile ? 'transport_error' : 'json_parse_failed',
+          message: err && err.message ? err.message : 'invalid json',
+        },
+      ],
     };
     const payload = `${JSON.stringify(out, null, 2)}\n`;
     if (args.output) fs.writeFileSync(args.output, payload, 'utf8');
@@ -340,6 +391,8 @@ function main() {
       'notice_without_actions_count',
       'low_medium_treatment_leak_count',
       'empty_cards_without_notice',
+      'transport_error',
+      'response_received',
       'violations',
     ];
     const line = [
@@ -357,6 +410,8 @@ function main() {
       result.stats.notice_without_actions_count,
       result.stats.low_medium_treatment_leak_count,
       result.stats.empty_cards_without_notice,
+      result.stats.transport_error,
+      result.stats.response_received,
       result.violations.map((v) => v.code).join('|'),
     ];
     fs.writeFileSync(args.csvOutput, `${toCsvLine(header)}\n${toCsvLine(line)}\n`, 'utf8');

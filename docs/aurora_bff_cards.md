@@ -112,6 +112,7 @@ Contract rules:
 - `reason=low_confidence` must keep recommendation outputs conservative (no high-irritation treatment push).
 - Low/medium confidence context may still return recommendations, but any treatment/high-irritation item must be removed before output.
 - `reason=timeout_degraded` is a valid business downgrade path (not a transport failure).
+- Transport/network failures with no response payload are tracked as `transport_error` in soak tooling and must not be reported as `schema_violation`.
 
 ### `routine_simulation`
 
