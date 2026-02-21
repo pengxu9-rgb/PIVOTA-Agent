@@ -10903,6 +10903,112 @@ function buildConfidenceNoticeCardPayload({
   };
 }
 
+function hasRenderableCards(cards) {
+  return (Array.isArray(cards) ? cards : []).some((card) => {
+    if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
+    const type = String(card.type || '').trim();
+    return type.length > 0;
+  });
+}
+
+function inferCardGuardReasonFromEvents(events) {
+  const rows = Array.isArray(events) ? events : [];
+  for (const evt of rows) {
+    if (!evt || typeof evt !== 'object' || Array.isArray(evt)) continue;
+    const eventName = String(evt.event_name || '').trim();
+    const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? evt.data : {};
+    const reason = String(data.reason || '').trim().toLowerCase();
+    const source = String(data.source || '').trim().toLowerCase();
+    if (eventName === 'analysis_timeout_degraded') return 'timeout_degraded';
+    if (reason === 'timeout_degraded') return 'timeout_degraded';
+    if (source === 'upstream_timeout') return 'timeout_degraded';
+  }
+  return 'artifact_missing';
+}
+
+function ensureNonEmptyChatCardsEnvelope({ envelope, ctx, language } = {}) {
+  const baseEnvelope = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
+    ? { ...envelope }
+    : { assistant_message: null, suggested_chips: [], cards: [], session_patch: {}, events: [] };
+  const cards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards : [];
+  if (hasRenderableCards(cards)) {
+    return { envelope: baseEnvelope, applied: false, reason: null };
+  }
+
+  const reason = inferCardGuardReasonFromEvents(baseEnvelope.events);
+  const isTimeout = reason === 'timeout_degraded';
+  const noticeActions = isTimeout
+    ? ['retry_recommendations', 'upload_daylight_and_indoor_white', 'update_current_routine']
+    : ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'];
+  const assistantText = (language === 'CN')
+    ? (isTimeout
+      ? '推荐结果暂时超时，我已切到保守降级方案。你可以稍后重试，或先补充照片与当前护肤流程。'
+      : '当前没有可用推荐卡片，我先给你保守降级路径。请先上传照片或先跑低置信度分析。')
+    : (isTimeout
+      ? 'Recommendation output timed out, so I switched to a conservative degraded path. Please retry shortly, or add photos/current routine first.'
+      : 'No usable recommendation cards were produced, so I’m returning a conservative recovery path. Please upload photos or run low-confidence baseline first.');
+  const confidenceNode = isTimeout
+    ? { score: 0.35, level: 'low', rationale: ['empty_cards_guard_timeout_degraded'] }
+    : { score: 0, level: 'low', rationale: ['empty_cards_guard_artifact_missing'] };
+
+  const noticeCard = {
+    card_id: `conf_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_guard`,
+    type: 'confidence_notice',
+    payload: buildConfidenceNoticeCardPayload({
+      language,
+      reason,
+      confidence: confidenceNode,
+      actions: noticeActions,
+      details: ['empty_cards_guard_applied'],
+    }),
+  };
+  const nextEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice(0, 32) : [];
+  nextEvents.push(
+    makeEvent(ctx || {}, 'reco_output_guard_fallback', {
+      reason,
+      applied: true,
+      previous_card_count: cards.length,
+    }),
+  );
+
+  return {
+    envelope: {
+      ...baseEnvelope,
+      assistant_message: baseEnvelope.assistant_message || makeAssistantMessage(assistantText),
+      suggested_chips: Array.isArray(baseEnvelope.suggested_chips) ? baseEnvelope.suggested_chips : [],
+      cards: [noticeCard],
+      session_patch: isPlainObject(baseEnvelope.session_patch) ? baseEnvelope.session_patch : {},
+      events: nextEvents,
+    },
+    applied: true,
+    reason,
+  };
+}
+
+function shouldApplyRecoOutputGuard({ envelope, ctx } = {}) {
+  const rows = envelope && typeof envelope === 'object' && !Array.isArray(envelope)
+    ? envelope
+    : {};
+  const events = Array.isArray(rows.events) ? rows.events : [];
+  if (events.some((evt) => evt && evt.event_name === 'recos_requested')) return true;
+
+  const cards = Array.isArray(rows.cards) ? rows.cards : [];
+  const recoCardTypes = new Set(['recommendations', 'confidence_notice', 'ingredient_plan']);
+  if (
+    cards.some((card) => {
+      if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
+      return recoCardTypes.has(String(card.type || '').trim().toLowerCase());
+    })
+  ) {
+    return true;
+  }
+
+  const state = String((ctx && ctx.state) || '').trim().toUpperCase();
+  if (state === 'S7_PRODUCT_RECO' || state === 'S6_BUDGET') return true;
+
+  return false;
+}
+
 function skinTypeConfidence(profileSummary) {
   return profileSummary && profileSummary.skinType ? 0.74 : 0;
 }
@@ -23187,9 +23293,25 @@ function mountAuroraBffRoutes(app, { logger }) {
         logger,
       });
       const normalized = applyReplyTemplates({ envelope: dogfoodAugmented, ctx: templateCtx });
-      emitAudit(normalized, templateCtx, { logger });
-      if (statusCode >= 400) return res.status(statusCode).json(normalized);
-      return res.json(normalized);
+      const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: normalized, ctx });
+      const guarded = guardEligible
+        ? ensureNonEmptyChatCardsEnvelope({ envelope: normalized, ctx, language: ctx.lang })
+        : { envelope: normalized, applied: false, reason: null };
+      if (guarded.applied) {
+        logger?.warn(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            reason: guarded.reason,
+          },
+          'aurora bff: reco output guard applied due to empty/unrenderable cards',
+        );
+        logger?.info({ kind: 'metric', name: 'aurora.skin.reco.output_guard_fallback_rate', value: 1 }, 'metric');
+        recordAuroraSkinFlowMetric({ stage: 'reco_output_guard_fallback', hit: true });
+      }
+      emitAudit(guarded.envelope, templateCtx, { logger });
+      if (statusCode >= 400) return res.status(statusCode).json(guarded.envelope);
+      return res.json(guarded.envelope);
     };
 
     try {
@@ -26003,6 +26125,10 @@ const __internal = {
   buildRuleBasedSkinAnalysis,
   normalizeSkinAnalysisFromLLM,
   mergePhotoFindingsIntoAnalysis,
+  hasRenderableCards,
+  inferCardGuardReasonFromEvents,
+  ensureNonEmptyChatCardsEnvelope,
+  shouldApplyRecoOutputGuard,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
   isTreatmentLikeRecommendationForLowConfidence,

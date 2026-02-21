@@ -465,7 +465,8 @@ function normalizeAuroraSkinFlowStage(stage) {
     token === 'reco_generated' ||
     token === 'reco_low_confidence' ||
     token === 'reco_safety_block' ||
-    token === 'reco_timeout_degraded'
+    token === 'reco_timeout_degraded' ||
+    token === 'reco_output_guard_fallback'
   ) {
     return token;
   }
@@ -1943,6 +1944,7 @@ function renderVisionMetricsPrometheus() {
   const recoLowConfidence = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_low_confidence', outcome: 'hit' });
   const recoSafetyBlock = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_safety_block', outcome: 'hit' });
   const recoTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_timeout_degraded', outcome: 'hit' });
+  const recoOutputGuardFallback = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_output_guard_fallback', outcome: 'hit' });
   const analysisRequests = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_request', outcome: 'hit' });
   const artifactCreated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'artifact_created', outcome: 'hit' });
   const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
@@ -1963,6 +1965,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP aurora_skin_reco_timeout_degraded_rate reco_timeout_degraded / reco_request.');
   lines.push('# TYPE aurora_skin_reco_timeout_degraded_rate gauge');
   lines.push(`aurora_skin_reco_timeout_degraded_rate ${recoRequests > 0 ? recoTimeoutDegraded / recoRequests : 0}`);
+
+  lines.push('# HELP aurora_skin_reco_output_guard_fallback_rate reco_output_guard_fallback / reco_request.');
+  lines.push('# TYPE aurora_skin_reco_output_guard_fallback_rate gauge');
+  lines.push(`aurora_skin_reco_output_guard_fallback_rate ${recoRequests > 0 ? recoOutputGuardFallback / recoRequests : 0}`);
 
   lines.push('# HELP aurora_skin_artifact_created_rate artifact_created / analysis_request.');
   lines.push('# TYPE aurora_skin_artifact_created_rate gauge');

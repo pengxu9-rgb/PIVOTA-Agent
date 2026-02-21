@@ -135,6 +135,78 @@ test('normalizeClarificationField: never returns empty; falls back to stable has
   assert.ok(Number(snap.clarificationIdNormalizedEmptyCount) >= 3);
 });
 
+test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards degrade to timeout confidence notice when timeout events present', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const recoEnvelope = {
+      assistant_message: null,
+      suggested_chips: [],
+      cards: [],
+      session_patch: {},
+      events: [
+        { event_name: 'recos_requested', data: { explicit: true } },
+        { event_name: 'recos_requested', data: { explicit: true, reason: 'timeout_degraded' } },
+      ],
+    };
+    assert.equal(__internal.shouldApplyRecoOutputGuard({ envelope: recoEnvelope, ctx: { state: 'S7_PRODUCT_RECO' } }), true);
+
+    const guarded = __internal.ensureNonEmptyChatCardsEnvelope({
+      envelope: recoEnvelope,
+      ctx: { request_id: 'req_guard_timeout', trace_id: 'trace_guard_timeout' },
+      language: 'CN',
+    });
+    assert.equal(guarded.applied, true);
+    assert.equal(guarded.reason, 'timeout_degraded');
+    const cards = Array.isArray(guarded.envelope.cards) ? guarded.envelope.cards : [];
+    assert.equal(cards.length, 1);
+    assert.equal(cards[0].type, 'confidence_notice');
+    assert.equal(cards[0]?.payload?.reason, 'timeout_degraded');
+    assert.ok(Array.isArray(cards[0]?.payload?.actions) && cards[0].payload.actions.length > 0);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards fallback to artifact_missing without timeout signal', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const recoEnvelope = {
+      assistant_message: null,
+      suggested_chips: [],
+      cards: [],
+      session_patch: {},
+      events: [{ event_name: 'recos_requested', data: { explicit: true } }],
+    };
+    const guarded = __internal.ensureNonEmptyChatCardsEnvelope({
+      envelope: recoEnvelope,
+      ctx: { request_id: 'req_guard_artifact', trace_id: 'trace_guard_artifact' },
+      language: 'EN',
+    });
+    assert.equal(guarded.applied, true);
+    assert.equal(guarded.reason, 'artifact_missing');
+    assert.equal(guarded.envelope?.cards?.[0]?.type, 'confidence_notice');
+    assert.equal(guarded.envelope?.cards?.[0]?.payload?.reason, 'artifact_missing');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('shouldApplyRecoOutputGuard: non-reco empty envelope should not trigger guard', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const nonRecoEnvelope = {
+      assistant_message: { role: 'assistant', content: 'hi', format: 'markdown' },
+      suggested_chips: [],
+      cards: [],
+      session_patch: {},
+      events: [{ event_name: 'value_moment', data: { kind: 'chat_reply' } }],
+    };
+    assert.equal(__internal.shouldApplyRecoOutputGuard({ envelope: nonRecoEnvelope, ctx: { state: 'idle' } }), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('detectBrandAvailabilityIntent: detects Winona/IPSA availability intent (CN/EN/mixed) and rejects generic diagnosis', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
