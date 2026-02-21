@@ -740,6 +740,16 @@ const AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED = (() => {
   const raw = String(process.env.AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED || 'false').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_BFF_ANALYSIS_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_ANALYSIS_BUDGET_MS || 12000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 12000;
+  return Math.max(1000, Math.min(60000, v));
+})();
+const AURORA_BFF_CHAT_RECO_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 9000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 9000;
+  return Math.max(1000, Math.min(60000, v));
+})();
 
 const RECO_ALTERNATIVES_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS || 9000);
@@ -10871,6 +10881,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '检测到可能的医疗风险信号，已停止商品推荐。'
         : 'Potential medical risk signals detected, so product recommendations are blocked.',
+    timeout_degraded:
+      lang === 'CN'
+        ? '系统响应超时，已降级为保守方案。请稍后重试，或先补充照片/当前护肤流程。'
+        : 'The system hit a timeout and switched to a conservative fallback. Please retry shortly, or add photos/current routine details first.',
     default:
       lang === 'CN' ? '当前建议已按保守模式输出。' : 'Current guidance is running in conservative mode.',
   };
@@ -16020,6 +16034,85 @@ function coerceRecoItemForUi(item, { lang } = {}) {
     step,
     ...(nextSku ? { sku: nextSku } : {}),
     ...(notes.length ? { notes } : {}),
+  };
+}
+
+const LOW_CONF_TREATMENT_TOKEN_RE = /\b(treatment|retinol|retinoid|retinal|tretinoin|adapalene|exfoliant|chemical peel|aha|bha|pha|glycolic|salicylic|mandelic|lactic)\b|(?:视黄醇|阿达帕林|维a|果酸|水杨酸|杏仁酸|乳酸|焕肤|去角质|刷酸)/i;
+
+function isTreatmentLikeRecommendationForLowConfidence(item) {
+  const base = isPlainObject(item) ? item : null;
+  if (!base) return false;
+
+  const sku = isPlainObject(base.sku)
+    ? base.sku
+    : isPlainObject(base.product)
+      ? base.product
+      : null;
+
+  const textCandidates = [
+    base.step,
+    base.slot_step,
+    base.slotStep,
+    base.category,
+    base.product_type,
+    base.productType,
+    base.name,
+    base.display_name,
+    base.displayName,
+    sku && sku.category,
+    sku && sku.name,
+    sku && sku.display_name,
+    sku && sku.displayName,
+    sku && sku.product_type,
+    sku && sku.productType,
+  ];
+
+  const listCandidates = [
+    ...(Array.isArray(base.notes) ? base.notes : []),
+    ...(Array.isArray(base.reasons) ? base.reasons : []),
+    ...(Array.isArray(base.why) ? base.why : []),
+    ...(Array.isArray(base.key_actives) ? base.key_actives : []),
+    ...(Array.isArray(base.keyActives) ? base.keyActives : []),
+    ...(Array.isArray(base.active_ingredients) ? base.active_ingredients : []),
+    ...(Array.isArray(base.activeIngredients) ? base.activeIngredients : []),
+    ...(sku && Array.isArray(sku.key_actives) ? sku.key_actives : []),
+    ...(sku && Array.isArray(sku.keyActives) ? sku.keyActives : []),
+    ...(sku && Array.isArray(sku.active_ingredients) ? sku.active_ingredients : []),
+    ...(sku && Array.isArray(sku.activeIngredients) ? sku.activeIngredients : []),
+  ];
+
+  const flattened = [...textCandidates, ...listCandidates]
+    .map((value) => (typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()))
+    .filter(Boolean)
+    .slice(0, 40);
+
+  return flattened.some((token) => LOW_CONF_TREATMENT_TOKEN_RE.test(token));
+}
+
+function applyLowConfidenceRecoGuard(payload) {
+  const base = isPlainObject(payload) ? { ...payload } : {};
+  const recommendations = Array.isArray(base.recommendations) ? base.recommendations : [];
+  if (!recommendations.length) {
+    return { payload: base, filteredCount: 0, totalCount: 0 };
+  }
+
+  const filtered = [];
+  let filteredCount = 0;
+  for (const row of recommendations) {
+    if (isTreatmentLikeRecommendationForLowConfidence(row)) {
+      filteredCount += 1;
+      continue;
+    }
+    filtered.push(row);
+  }
+
+  return {
+    payload: {
+      ...base,
+      recommendations: filtered,
+    },
+    filteredCount,
+    totalCount: recommendations.length,
   };
 }
 
@@ -22326,11 +22419,88 @@ function mountAuroraBffRoutes(app, { logger }) {
 	        return { envelope, report };
 	      };
 
-      const output = await runOnce({
-        pipelineVersion: outputPipelineVersion,
-        persistLastAnalysis: true,
-        shadowRun: false,
-      });
+      let output = null;
+      try {
+        output = await withTimeout(
+          runOnce({
+            pipelineVersion: outputPipelineVersion,
+            persistLastAnalysis: true,
+            shadowRun: false,
+          }),
+          AURORA_BFF_ANALYSIS_BUDGET_MS,
+          'AURORA_ANALYSIS_BUDGET_TIMEOUT',
+        );
+      } catch (err) {
+        if (!(err && err.code === 'AURORA_ANALYSIS_BUDGET_TIMEOUT')) throw err;
+        logger?.warn(
+          {
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            budget_ms: AURORA_BFF_ANALYSIS_BUDGET_MS,
+          },
+          'aurora bff: analysis budget timeout, degraded to low-confidence baseline',
+        );
+        logger?.info({ kind: 'metric', name: 'aurora.skin.analysis.timeout_degraded_rate', value: 1 }, 'metric');
+        recordAuroraSkinFlowMetric({ stage: 'analysis_timeout_degraded', hit: true });
+
+        const degradedAnalysis = buildLowConfidenceBaselineSkinAnalysis({
+          profile: null,
+          language: ctx.lang,
+        });
+        const timeoutReasonText = ctx.lang === 'CN'
+          ? '分析超时，已降级为低置信度基础方案。'
+          : 'Analysis timed out and was downgraded to a low-confidence baseline.';
+        const timeoutPayload = {
+          analysis: degradedAnalysis,
+          low_confidence: true,
+          photos_provided: Boolean(parsed.data && parsed.data.use_photo),
+          photo_qc: [],
+          used_photos: false,
+          analysis_source: 'baseline_low_confidence',
+          quality_report: {
+            photo_quality: { grade: 'unknown', reasons: ['analysis_budget_timeout'] },
+            detector_confidence: 0,
+            degraded_mode: SKIN_DEGRADED_MODE,
+            llm: {
+              vision: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
+              report: { decision: 'skip', reasons: ['analysis_budget_timeout'] },
+            },
+            reasons: [timeoutReasonText],
+          },
+          recommendation_ready: false,
+          photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
+        };
+
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: [],
+          cards: [
+            {
+              card_id: `analysis_${ctx.request_id}`,
+              type: 'analysis_summary',
+              payload: timeoutPayload,
+              field_missing: [{ field: 'analysis', reason: 'analysis_budget_timeout' }],
+            },
+            {
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'timeout_degraded',
+                confidence: { score: 0.35, level: 'low', rationale: ['analysis_budget_timeout'] },
+                actions: ['retry_analysis', 'upload_daylight_and_indoor_white', 'update_current_routine'],
+                details: [timeoutReasonText],
+              }),
+            },
+          ],
+          session_patch: { next_state: 'S5_ANALYSIS_SUMMARY' },
+          events: [
+            makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: false, analysis_source: 'baseline_low_confidence' }),
+            makeEvent(ctx, 'analysis_timeout_degraded', { budget_ms: AURORA_BFF_ANALYSIS_BUDGET_MS }),
+          ],
+        });
+        return res.json(envelope);
+      }
 
       if (shadowRunV2) {
         setImmediate(() => {
@@ -24372,19 +24542,37 @@ function mountAuroraBffRoutes(app, { logger }) {
         let norm = null;
         let upstreamDebug = null;
         let alternativesDebug = null;
+        let recoTimeoutDegraded = false;
         if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
-          const upstreamReco = await generateProductRecommendations({
-            ctx,
-            profile,
-            recentLogs,
-            message,
-            includeAlternatives,
-            debug: debugUpstream,
-            logger,
-          });
-          norm = upstreamReco.norm;
-          upstreamDebug = upstreamReco.upstreamDebug;
-          alternativesDebug = upstreamReco.alternativesDebug;
+          try {
+            const upstreamReco = await withTimeout(
+              generateProductRecommendations({
+                ctx,
+                profile,
+                recentLogs,
+                message,
+                includeAlternatives,
+                debug: debugUpstream,
+                logger,
+              }),
+              AURORA_BFF_CHAT_RECO_BUDGET_MS,
+              'AURORA_CHAT_RECO_BUDGET_TIMEOUT',
+            );
+            norm = upstreamReco.norm;
+            upstreamDebug = upstreamReco.upstreamDebug;
+            alternativesDebug = upstreamReco.alternativesDebug;
+          } catch (err) {
+            if (!(err && err.code === 'AURORA_CHAT_RECO_BUDGET_TIMEOUT')) throw err;
+            recoTimeoutDegraded = true;
+            logger?.warn(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                budget_ms: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+              },
+              'aurora bff: reco upstream budget timeout, degraded to confidence_notice',
+            );
+          }
         } else {
           norm = {
             payload: {
@@ -24395,6 +24583,73 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
             field_missing: [],
           };
+        }
+
+        if (recoTimeoutDegraded) {
+          logger?.info({ kind: 'metric', name: 'aurora.skin.reco.timeout_degraded_rate', value: 1 }, 'metric');
+          recordAuroraSkinFlowMetric({ stage: 'reco_timeout_degraded', hit: true });
+          const confNode =
+            latestArtifact &&
+            latestArtifact.artifact_json &&
+            latestArtifact.artifact_json.overall_confidence &&
+            typeof latestArtifact.artifact_json.overall_confidence === 'object'
+              ? latestArtifact.artifact_json.overall_confidence
+              : { score: 0.45, level: 'low', rationale: ['reco_budget_timeout'] };
+          const cards = [
+            {
+              card_id: `conf_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'timeout_degraded',
+                confidence: confNode,
+                actions: ['retry_recommendations', 'upload_daylight_and_indoor_white', 'update_current_routine'],
+                details: [ctx.lang === 'CN' ? '推荐阶段超时，已切换保守降级输出。' : 'Recommendation stage timed out; switched to conservative degraded output.'],
+              }),
+            },
+          ];
+          if (mappedIngredientPlan) {
+            cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+          }
+          const sessionPatch = {};
+          appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              ctx.lang === 'CN'
+                ? '推荐阶段暂时超时了。我先保守降级，不返回商品卡；你可以稍后重试，或补充照片与当前护肤流程后再继续。'
+                : "The recommendation step timed out. I’m degrading safely for now without returning product cards; retry shortly, or add photos/current routine and continue.",
+            ),
+            suggested_chips: refinementChips,
+            cards,
+            session_patch: sessionPatch,
+            events: [
+              makeEvent(ctx, 'recos_requested', {
+                explicit: true,
+                gated: true,
+                reason: 'timeout_degraded',
+                source: 'upstream_timeout',
+              }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
+
+        if (lowConfidenceArtifact && norm && norm.payload && typeof norm.payload === 'object') {
+          const guarded = applyLowConfidenceRecoGuard(norm.payload);
+          if (guarded.filteredCount > 0) {
+            norm.payload = guarded.payload;
+            norm.field_missing = mergeFieldMissing(norm.field_missing, [
+              { field: 'recommendations', reason: 'low_confidence_treatment_filtered' },
+            ]);
+            logger?.info(
+              {
+                kind: 'metric',
+                name: 'aurora.skin.reco.low_confidence_treatment_filtered',
+                value: guarded.filteredCount,
+              },
+              'metric',
+            );
+          }
         }
 
         const hasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
@@ -25750,6 +26005,8 @@ const __internal = {
   mergePhotoFindingsIntoAnalysis,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
+  isTreatmentLikeRecommendationForLowConfidence,
+  applyLowConfidenceRecoGuard,
   buildEmotionalPreamble,
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,

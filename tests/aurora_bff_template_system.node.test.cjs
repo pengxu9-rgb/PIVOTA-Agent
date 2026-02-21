@@ -119,4 +119,6 @@ test('templateSystem: reason enum contains required reasons', () => {
   assert.equal(FIELD_MISSING_REASON_ENUM.includes('catalog_not_available'), true);
   assert.equal(FIELD_MISSING_REASON_ENUM.includes('feature_flag_disabled'), true);
   assert.equal(FIELD_MISSING_REASON_ENUM.includes('upstream_timeout'), true);
+  assert.equal(FIELD_MISSING_REASON_ENUM.includes('analysis_budget_timeout'), true);
+  assert.equal(FIELD_MISSING_REASON_ENUM.includes('low_confidence_treatment_filtered'), true);
 });

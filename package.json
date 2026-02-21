@@ -112,5 +112,8 @@
     "ts-jest": "^29.4.4",
     "typescript": "^5.9.2",
     "zod-to-json-schema": "^3.25.0"
+  },
+  "overrides": {
+    "ajv": "^8.18.0"
   }
 }

@@ -130,7 +130,7 @@ for c in cards:
     if c.get("type") == "confidence_notice":
         reason = ((c.get("payload") or {}).get("reason") or "")
         break
-allowed = {"artifact_missing", "low_confidence", "safety_block"}
+allowed = {"artifact_missing", "low_confidence", "safety_block", "timeout_degraded"}
 if reason not in allowed:
     raise SystemExit(f"confidence_notice reason unexpected: {reason!r}, allowed={sorted(allowed)}")
 ' "$file"

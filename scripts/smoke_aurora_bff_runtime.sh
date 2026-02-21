@@ -203,7 +203,7 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
 else
   printf "%s\n" "$reco_json" | jq_assert "confidence_notice card exists" '.cards | any(.type=="confidence_notice")'
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent when confidence_notice path" '(.cards | any(.type=="recommendations")) | not'
-  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes gate reason" '.events | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing" or .data.reason=="artifact_low_confidence" or .data.reason=="safety_block"))'
+  printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes gate reason" '.events | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing" or .data.reason=="artifact_low_confidence" or .data.reason=="safety_block" or .data.reason=="timeout_degraded"))'
 fi
 
 say "ui events ingest (POST /v1/events should return 204)"

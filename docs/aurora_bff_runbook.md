@@ -33,6 +33,8 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 - `AURORA_SKIN_VISION_ENABLED` (`true|false`)
 - `AURORA_SKIN_VISION_MODEL`
 - `AURORA_SKIN_VISION_TIMEOUT_MS`
+- `AURORA_BFF_ANALYSIS_BUDGET_MS` (default `12000`; analysis hard budget; on timeout returns `confidence_notice(reason=timeout_degraded)` with conservative baseline)
+- `AURORA_BFF_CHAT_RECO_BUDGET_MS` (default `9000`; reco hard budget; on timeout returns `confidence_notice(reason=timeout_degraded)` without recommendations card)
 - `AURORA_PHOTO_UPLOAD_MAX_BYTES`
 - `AURORA_PHOTO_DOWNLOAD_URL_TIMEOUT_MS`
 - `AURORA_PHOTO_FETCH_TIMEOUT_MS`
@@ -41,6 +43,10 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 - `AURORA_PHOTO_FETCH_RETRY_BASE_MS`
 - `AURORA_PHOTO_CACHE_MAX_ITEMS`
 - `AURORA_PHOTO_CACHE_TTL_MS`
+
+Recommended rollout defaults:
+- `staging`: `AURORA_BFF_ANALYSIS_BUDGET_MS=9000`, `AURORA_BFF_CHAT_RECO_BUDGET_MS=7000` (catch long-tail issues earlier)
+- `production`: `AURORA_BFF_ANALYSIS_BUDGET_MS=12000`, `AURORA_BFF_CHAT_RECO_BUDGET_MS=9000` (reduce over-degrade risk)
 
 Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`):
 - `DOWNLOAD_URL_GENERATE_FAILED`

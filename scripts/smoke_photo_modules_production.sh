@@ -5,6 +5,8 @@ BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
 LANG_HEADER="${LANG_HEADER:-EN}"
 PHOTO_PATH="${PHOTO_PATH:-}"
 SLOT_ID="${SLOT_ID:-daylight}"
+EXPECT_BRANCH="${EXPECT_BRANCH:-usable}"
+FORCE_QC_STATUS="${FORCE_QC_STATUS:-}"
 AURORA_UID="${AURORA_UID:-uid_pm_prod_smoke_$(date +%s)}"
 REPORT_OUT="${REPORT_OUT:-reports/photo_modules_production_smoke.md}"
 CURL_RETRY_MAX="${CURL_RETRY_MAX:-4}"
@@ -149,6 +151,12 @@ normalize_json "$UPLOAD_RAW" "$UPLOAD_JSON"
 
 PHOTO_ID="$(jq -r '.cards[]? | select(.type=="photo_confirm") | .payload.photo_id // empty' "$UPLOAD_JSON" | head -n1)"
 QC_STATUS="$(jq -r '.cards[]? | select(.type=="photo_confirm") | .payload.qc_status // "passed"' "$UPLOAD_JSON" | head -n1)"
+QC_FOR_ANALYSIS="${FORCE_QC_STATUS:-$QC_STATUS}"
+PHOTO_ID_FOR_ANALYSIS="$PHOTO_ID"
+EXPECT_BRANCH_NORM="$(printf "%s" "$EXPECT_BRANCH" | tr '[:upper:]' '[:lower:]')"
+if [[ "$EXPECT_BRANCH_NORM" == "fail" ]]; then
+  PHOTO_ID_FOR_ANALYSIS="${FAIL_BRANCH_PHOTO_ID:-missing_photo_for_fail_smoke}"
+fi
 
 if [[ -z "$PHOTO_ID" ]]; then
   echo "photo upload did not return photo_id" >&2
@@ -156,7 +164,7 @@ if [[ -z "$PHOTO_ID" ]]; then
   exit 1
 fi
 
-ANALYSIS_PAYLOAD="$(jq -n --arg pid "$PHOTO_ID" --arg qc "$QC_STATUS" --arg slot "$SLOT_ID" '{
+ANALYSIS_PAYLOAD="$(jq -n --arg pid "$PHOTO_ID_FOR_ANALYSIS" --arg qc "$QC_FOR_ANALYSIS" --arg slot "$SLOT_ID" '{
   use_photo: true,
   currentRoutine: {
     am: [{step:"cleanser",product:"gentle cleanser"},{step:"moisturizer",product:"barrier moisturizer"}],
@@ -173,77 +181,106 @@ curl_post_retry -X POST "$BASE/v1/analysis/skin" \
 
 normalize_json "$ANALYSIS_RAW" "$ANALYSIS_JSON"
 
-python3 - <<'PY' "$ANALYSIS_JSON" "$SUMMARY_JSON"
+python3 - <<'PY' "$ANALYSIS_JSON" "$SUMMARY_JSON" "$EXPECT_BRANCH" "$QC_FOR_ANALYSIS" "$PHOTO_ID_FOR_ANALYSIS"
 import json
 import sys
 from pathlib import Path
 
 src = Path(sys.argv[1])
 out = Path(sys.argv[2])
+expect_branch = str(sys.argv[3] if len(sys.argv) > 3 else "usable").strip().lower()
+qc_for_analysis = str(sys.argv[4] if len(sys.argv) > 4 else "").strip()
+photo_id_for_analysis = str(sys.argv[5] if len(sys.argv) > 5 else "").strip()
 data = json.loads(src.read_text(encoding="utf-8"))
 cards = data.get("cards") or []
 
 analysis_card = next((card for card in cards if card.get("type") == "analysis_summary"), None)
-modules_card = next((card for card in cards if card.get("type") == "photo_modules_v1"), None)
 if analysis_card is None:
     raise AssertionError("analysis_summary card missing")
-if modules_card is None:
-    raise AssertionError("photo_modules_v1 card missing")
+modules_card = next((card for card in cards if card.get("type") == "photo_modules_v1"), None)
 
 analysis_payload = analysis_card.get("payload") or {}
-modules_payload = modules_card.get("payload") or {}
-if analysis_payload.get("used_photos") is not True:
-    raise AssertionError("expected used_photos=true")
+quality_report = analysis_payload.get("quality_report") or {}
+quality_grade = ((quality_report.get("photo_quality") or {}).get("grade")) or "unknown"
 
-quality_grade = modules_payload.get("quality_grade")
-if quality_grade not in {"pass", "degraded"}:
-    raise AssertionError(f"expected quality_grade pass/degraded, got {quality_grade!r}")
+if expect_branch == "fail":
+    if analysis_payload.get("used_photos") is True:
+        raise AssertionError("fail branch should not use photos")
+    if str(quality_grade).strip().lower() == "pass":
+        raise AssertionError(f"fail branch should not be pass quality, got {quality_grade!r}")
+    has_conf_notice = any((card or {}).get("type") == "confidence_notice" for card in cards)
+    if not has_conf_notice and not bool(analysis_payload.get("low_confidence")):
+        raise AssertionError("fail branch expects confidence_notice or low_confidence=true")
+    summary = {
+        "request_id": data.get("request_id"),
+        "analysis_source": analysis_payload.get("analysis_source"),
+        "used_photos": analysis_payload.get("used_photos"),
+        "quality_grade": quality_grade,
+        "regions_count": 0,
+        "modules_count": 0,
+        "has_photo_modules_v1": bool(modules_card),
+        "expect_branch": "fail",
+        "forced_qc_status": qc_for_analysis or None,
+        "analysis_photo_id": photo_id_for_analysis or None,
+    }
+else:
+    if modules_card is None:
+        raise AssertionError("photo_modules_v1 card missing")
+    modules_payload = modules_card.get("payload") or {}
+    if analysis_payload.get("used_photos") is not True:
+        raise AssertionError("expected used_photos=true")
+    modules_quality_grade = modules_payload.get("quality_grade")
+    if modules_quality_grade not in {"pass", "degraded"}:
+        raise AssertionError(f"expected quality_grade pass/degraded, got {modules_quality_grade!r}")
 
-regions = modules_payload.get("regions") or []
-if not regions:
-    raise AssertionError("regions must not be empty")
+    regions = modules_payload.get("regions") or []
+    if not regions:
+        raise AssertionError("regions must not be empty")
 
-region_ids = [region.get("region_id") for region in regions]
-if len(set(region_ids)) != len(region_ids):
-    raise AssertionError("region_id values are not unique")
+    region_ids = [region.get("region_id") for region in regions]
+    if len(set(region_ids)) != len(region_ids):
+        raise AssertionError("region_id values are not unique")
 
-for region in regions:
-    if region.get("coord_space") != "face_crop_norm_v1":
-        raise AssertionError("region coord_space is not face_crop_norm_v1")
-    heatmap = region.get("heatmap")
-    if heatmap:
-        grid = heatmap.get("grid") or {}
-        values = heatmap.get("values") or []
-        if grid.get("w") != 64 or grid.get("h") != 64:
-            raise AssertionError("heatmap grid must be 64x64")
-        if len(values) != 4096:
-            raise AssertionError("heatmap values length must be 4096")
-        for value in values:
-            if not (0.0 <= float(value) <= 1.0):
-                raise AssertionError("heatmap values must be in [0,1]")
+    for region in regions:
+        if region.get("coord_space") != "face_crop_norm_v1":
+            raise AssertionError("region coord_space is not face_crop_norm_v1")
+        heatmap = region.get("heatmap")
+        if heatmap:
+            grid = heatmap.get("grid") or {}
+            values = heatmap.get("values") or []
+            if grid.get("w") != 64 or grid.get("h") != 64:
+                raise AssertionError("heatmap grid must be 64x64")
+            if len(values) != 4096:
+                raise AssertionError("heatmap values length must be 4096")
+            for value in values:
+                if not (0.0 <= float(value) <= 1.0):
+                    raise AssertionError("heatmap values must be in [0,1]")
 
-region_set = set(region_ids)
-modules = modules_payload.get("modules") or []
-for module in modules:
-    for issue in module.get("issues") or []:
-        for evidence_id in issue.get("evidence_region_ids") or []:
-            if evidence_id not in region_set:
-                raise AssertionError(f"unmapped evidence_region_id: {evidence_id}")
+    region_set = set(region_ids)
+    modules = modules_payload.get("modules") or []
+    for module in modules:
+        for issue in module.get("issues") or []:
+            for evidence_id in issue.get("evidence_region_ids") or []:
+                if evidence_id not in region_set:
+                    raise AssertionError(f"unmapped evidence_region_id: {evidence_id}")
 
-serialized = json.dumps(modules_payload, ensure_ascii=False)
-for forbidden_key in ("overlay_url", "server_overlay", "overlay_image"):
-    if forbidden_key in serialized:
-        raise AssertionError(f"forbidden field present: {forbidden_key}")
+    serialized = json.dumps(modules_payload, ensure_ascii=False)
+    for forbidden_key in ("overlay_url", "server_overlay", "overlay_image"):
+        if forbidden_key in serialized:
+            raise AssertionError(f"forbidden field present: {forbidden_key}")
 
-summary = {
-    "request_id": data.get("request_id"),
-    "analysis_source": analysis_payload.get("analysis_source"),
-    "used_photos": analysis_payload.get("used_photos"),
-    "quality_grade": quality_grade,
-    "regions_count": len(regions),
-    "modules_count": len(modules),
-    "has_photo_modules_v1": True
-}
+    summary = {
+        "request_id": data.get("request_id"),
+        "analysis_source": analysis_payload.get("analysis_source"),
+        "used_photos": analysis_payload.get("used_photos"),
+        "quality_grade": modules_quality_grade,
+        "regions_count": len(regions),
+        "modules_count": len(modules),
+        "has_photo_modules_v1": True,
+        "expect_branch": "usable",
+        "forced_qc_status": qc_for_analysis or None,
+        "analysis_photo_id": photo_id_for_analysis or None,
+    }
 out.write_text(json.dumps(summary, ensure_ascii=False), encoding="utf-8")
 PY
 
@@ -257,6 +294,10 @@ FINISHED_AT="$(timestamp_utc)"
   echo "- base: $BASE"
   echo "- aurora_uid: $AURORA_UID"
   echo "- image_file: $IMAGE_FILE"
+  echo "- expect_branch: $EXPECT_BRANCH"
+  echo "- upload_qc_status: $QC_STATUS"
+  echo "- analysis_qc_status: $QC_FOR_ANALYSIS"
+  echo "- analysis_photo_id: $PHOTO_ID_FOR_ANALYSIS"
   echo
   echo "## Result"
   echo

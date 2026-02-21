@@ -460,10 +460,12 @@ function normalizeAuroraSkinFlowStage(stage) {
     token === 'analysis_request' ||
     token === 'artifact_created' ||
     token === 'ingredient_plan' ||
+    token === 'analysis_timeout_degraded' ||
     token === 'reco_request' ||
     token === 'reco_generated' ||
     token === 'reco_low_confidence' ||
-    token === 'reco_safety_block'
+    token === 'reco_safety_block' ||
+    token === 'reco_timeout_degraded'
   ) {
     return token;
   }
@@ -1940,9 +1942,11 @@ function renderVisionMetricsPrometheus() {
   const recoGenerated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_generated', outcome: 'hit' });
   const recoLowConfidence = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_low_confidence', outcome: 'hit' });
   const recoSafetyBlock = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_safety_block', outcome: 'hit' });
+  const recoTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_timeout_degraded', outcome: 'hit' });
   const analysisRequests = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_request', outcome: 'hit' });
   const artifactCreated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'artifact_created', outcome: 'hit' });
   const ingredientPlans = counterValueByLabels(auroraSkinFlowCounter, { stage: 'ingredient_plan', outcome: 'hit' });
+  const analysisTimeoutDegraded = counterValueByLabels(auroraSkinFlowCounter, { stage: 'analysis_timeout_degraded', outcome: 'hit' });
 
   lines.push('# HELP aurora_skin_reco_generated_rate reco_generated / reco_request.');
   lines.push('# TYPE aurora_skin_reco_generated_rate gauge');
@@ -1956,6 +1960,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_reco_safety_block_rate gauge');
   lines.push(`aurora_skin_reco_safety_block_rate ${recoRequests > 0 ? recoSafetyBlock / recoRequests : 0}`);
 
+  lines.push('# HELP aurora_skin_reco_timeout_degraded_rate reco_timeout_degraded / reco_request.');
+  lines.push('# TYPE aurora_skin_reco_timeout_degraded_rate gauge');
+  lines.push(`aurora_skin_reco_timeout_degraded_rate ${recoRequests > 0 ? recoTimeoutDegraded / recoRequests : 0}`);
+
   lines.push('# HELP aurora_skin_artifact_created_rate artifact_created / analysis_request.');
   lines.push('# TYPE aurora_skin_artifact_created_rate gauge');
   lines.push(`aurora_skin_artifact_created_rate ${analysisRequests > 0 ? artifactCreated / analysisRequests : 0}`);
@@ -1963,6 +1971,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP aurora_skin_ingredient_plan_rate ingredient_plan / analysis_request.');
   lines.push('# TYPE aurora_skin_ingredient_plan_rate gauge');
   lines.push(`aurora_skin_ingredient_plan_rate ${analysisRequests > 0 ? ingredientPlans / analysisRequests : 0}`);
+
+  lines.push('# HELP aurora_skin_analysis_timeout_degraded_rate analysis_timeout_degraded / analysis_request.');
+  lines.push('# TYPE aurora_skin_analysis_timeout_degraded_rate gauge');
+  lines.push(`aurora_skin_analysis_timeout_degraded_rate ${analysisRequests > 0 ? analysisTimeoutDegraded / analysisRequests : 0}`);
 
   lines.push('# HELP geometry_sanitizer_drop_rate geometry_sanitizer_drop_total / analyze_requests_total.');
   lines.push('# TYPE geometry_sanitizer_drop_rate gauge');
