@@ -354,6 +354,8 @@ test('vision metrics: aurora skin flow counters and rates are exported', () => {
   recordAuroraSkinFlowMetric({ stage: 'reco_generated', hit: true, delta: 3 });
   recordAuroraSkinFlowMetric({ stage: 'reco_low_confidence', hit: true, delta: 1 });
   recordAuroraSkinFlowMetric({ stage: 'reco_safety_block', hit: true, delta: 1 });
+  recordAuroraSkinFlowMetric({ stage: 'reco_timeout_degraded', hit: true, delta: 1 });
+  recordAuroraSkinFlowMetric({ stage: 'analysis_timeout_degraded', hit: true, delta: 1 });
 
   const metrics = renderVisionMetricsPrometheus();
   assert.match(metrics, /aurora_skin_flow_total\{stage="analysis_request",outcome="hit"\} 2/);
@@ -363,6 +365,8 @@ test('vision metrics: aurora skin flow counters and rates are exported', () => {
   assert.match(metrics, /aurora_skin_reco_generated_rate 0\.75\b/);
   assert.match(metrics, /aurora_skin_reco_low_confidence_rate 0\.25\b/);
   assert.match(metrics, /aurora_skin_reco_safety_block_rate 0\.25\b/);
+  assert.match(metrics, /aurora_skin_reco_timeout_degraded_rate 0\.25\b/);
   assert.match(metrics, /aurora_skin_artifact_created_rate 0\.5\b/);
   assert.match(metrics, /aurora_skin_ingredient_plan_rate 0\.5\b/);
+  assert.match(metrics, /aurora_skin_analysis_timeout_degraded_rate 0\.5\b/);
 });

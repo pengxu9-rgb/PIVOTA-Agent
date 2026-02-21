@@ -9,6 +9,8 @@ const FIELD_MISSING_REASON_ENUM = Object.freeze([
   'low_confidence',
   'frontend_disallows_external_seed',
   'upstream_timeout',
+  'analysis_budget_timeout',
+  'low_confidence_treatment_filtered',
 ]);
 
 const TEXT_MAX_CHARS = 280;

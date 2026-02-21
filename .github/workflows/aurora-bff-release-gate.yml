@@ -134,6 +134,27 @@ jobs:
           set -euo pipefail
           BASE="$BASE_URL" bash scripts/smoke_aurora_skin_reco_gates.sh
 
+      - name: Photo modules smoke (usable branch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$BASE_URL" \
+          LANG_HEADER=EN \
+          EXPECT_BRANCH=usable \
+          REPORT_OUT="reports/photo_modules_production_smoke_usable.md" \
+          bash scripts/smoke_photo_modules_production.sh
+
+      - name: Photo modules smoke (forced fail branch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$BASE_URL" \
+          LANG_HEADER=EN \
+          EXPECT_BRANCH=fail \
+          FORCE_QC_STATUS=fail \
+          REPORT_OUT="reports/photo_modules_production_smoke_fail.md" \
+          bash scripts/smoke_photo_modules_production.sh
+
       - name: Entry-route smoke (CN)
         shell: bash
         run: |

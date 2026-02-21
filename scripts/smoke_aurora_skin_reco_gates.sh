@@ -112,7 +112,7 @@ run_case_low_confidence() {
     }'
   )"
 
-  jq_assert_json "low confidence emits confidence_notice" '.cards | any((.type=="confidence_notice") and (.payload.reason=="low_confidence"))' "$reco_json"
+  jq_assert_json "low confidence emits confidence_notice or timeout_degraded" '.cards | any((.type=="confidence_notice") and (.payload.reason=="low_confidence" or .payload.reason=="timeout_degraded"))' "$reco_json"
   jq_assert_json "low confidence event flag true" '.events | any((.event_name=="recos_requested") and (.data.low_confidence==true))' "$reco_json"
   jq_assert_json "no safety block in low confidence case" '(.cards | any((.type=="confidence_notice") and (.payload.reason=="safety_block"))) | not' "$reco_json"
 }
@@ -145,10 +145,10 @@ run_case_medium_confidence() {
     }'
   )"
 
-  jq_assert_json "recommendations card exists in medium/high path" '.cards | any(.type=="recommendations")' "$reco_json"
+  jq_assert_json "medium/high path emits recommendations or timeout_degraded notice" '.cards | any(.type=="recommendations") or any((.type=="confidence_notice") and (.payload.reason=="timeout_degraded"))' "$reco_json"
   jq_assert_json "no artifact_missing in medium/high path" '(.cards | any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))) | not' "$reco_json"
-  jq_assert_json "recos_requested source present" '.events | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0))' "$reco_json"
-  jq_assert_json "medium/high path not marked low_confidence" '.events | any((.event_name=="recos_requested") and (.data.low_confidence==false))' "$reco_json"
+  jq_assert_json "recos_requested source or timeout reason present" '.events | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) or (.data.reason=="timeout_degraded")))' "$reco_json"
+  jq_assert_json "medium/high path not marked low_confidence unless timeout_degraded" '.events | any((.event_name=="recos_requested") and ((.data.low_confidence==false) or (.data.reason=="timeout_degraded")))' "$reco_json"
 }
 
 run_case_safety_block() {

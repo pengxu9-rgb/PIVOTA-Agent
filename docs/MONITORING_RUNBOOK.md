@@ -66,6 +66,16 @@ Contract definition:
 - Severity: `warning`
 - Note: this alert depends on proxy-side metrics (`aurora_chat_proxy_requests_total` / `aurora_chat_proxy_fallback_total`) being exported by the gateway runtime.
 
+11. `AuroraRecoTimeoutDegradedRateHigh`
+- Trigger: `aurora_skin_reco_timeout_degraded_rate > 0.02` with `aurora:skin_reco_request_rate:15m > 0.02` for 20m
+- Severity: `warning`
+- Meaning: reco stage is degrading too often due to budget timeout.
+
+12. `AuroraAnalysisTimeoutDegradedRateHigh`
+- Trigger: `aurora_skin_analysis_timeout_degraded_rate > 0.02` with `increase(aurora_skin_flow_total{stage="analysis_request",outcome="hit"}[15m]) > 20` for 20m
+- Severity: `warning`
+- Meaning: analysis stage is degrading too often due to budget timeout.
+
 ## First Response Procedure
 
 1. Confirm blast radius in dashboard.

@@ -414,4 +414,18 @@ test('safety boundary: red-flag messages block recommendations', () => {
     profile: { barrierStatus: 'healthy', sensitivity: 'low' },
   });
   assert.equal(normal.block, false);
+
+  const negated = evaluateSafetyBoundary({
+    message: "No bleeding and no fever now, just mild dryness after cleanser.",
+    language: 'EN',
+    profile: { barrierStatus: 'healthy', sensitivity: 'low' },
+  });
+  assert.equal(negated.block, false);
+
+  const cnBlocked = evaluateSafetyBoundary({
+    message: '这两天突然扩散并且有渗液，还发烧了。',
+    language: 'CN',
+    profile: { barrierStatus: 'healthy', sensitivity: 'low' },
+  });
+  assert.equal(cnBlocked.block, true);
 });
