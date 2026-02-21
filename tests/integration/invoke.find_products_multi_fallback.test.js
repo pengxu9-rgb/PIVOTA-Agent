@@ -800,7 +800,13 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       });
 
     const secondaryScope = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .post(
+        '/agent/shop/v1/invoke',
+        (body) =>
+          body &&
+          body.operation === 'find_products_multi' &&
+          String(body.metadata?.source || '') === 'aurora-bff',
+      )
       .reply(200, {
         status: 'success',
         success: true,
@@ -1447,7 +1453,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.body.products).toHaveLength(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        strict_empty: true,
         route_health: expect.objectContaining({
           primary_path_used: expect.any(String),
           fallback_triggered: expect.any(Boolean),
@@ -1455,8 +1460,14 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         search_trace: expect.objectContaining({
           trace_id: expect.any(String),
           raw_query: expect.any(String),
-          final_decision: 'strict_empty',
+          final_decision: 'clarify',
         }),
+      }),
+    );
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
       }),
     );
     expect(resp.body.metadata.search_trace).toHaveProperty('intent_scenario');

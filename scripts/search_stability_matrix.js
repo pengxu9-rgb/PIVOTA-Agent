@@ -114,18 +114,42 @@ function isRelevantResult(query, products) {
   });
 }
 
+function inferQueryClassFromQuery(query) {
+  const text = normalizeText(query);
+  if (!text) return 'exploratory';
+  if (/gift|礼物|送礼|送禮/.test(text)) return 'gift';
+  if (/how to|guide|教程|攻略|退货|退貨/.test(text)) return 'non_shopping';
+  if (/date|约会|約會|travel|出差|hiking|徒步|登山|scenario/.test(text)) return 'scenario';
+  if (/budget|预算|price|under|above|以内|以上|防水|无香/.test(text)) return 'attribute';
+  if (/ipsa|winona|tom ford|fenty|sku|model|型号|型號|\b[a-z]{1,6}\d{2,}\b/.test(text)) {
+    return 'lookup';
+  }
+  if (/recommend|推荐|products|商品/.test(text)) return 'category';
+  return 'exploratory';
+}
+
 function classifyRow(row) {
   const data = row?.data || {};
   const metadata = (data && typeof data === 'object' && data.metadata && typeof data.metadata === 'object')
     ? data.metadata
     : {};
+  const routeHealth =
+    metadata && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
+      ? metadata.route_health
+      : {};
+  const searchTrace =
+    metadata && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
+      ? metadata.search_trace
+      : {};
   const products = Array.isArray(data.products) ? data.products : [];
   const querySource = String(metadata.query_source || '');
   const upstreamCode = String(metadata.upstream_error_code || metadata?.proxy_search_fallback?.upstream_error_code || '');
   const timeout = upstreamCode.toUpperCase() === 'ECONNABORTED';
-  const strictEmpty = Boolean(metadata.strict_empty) || products.length === 0;
+  const strictEmpty = Boolean(metadata.strict_empty) || (products.length === 0 && !data.clarification);
   const fallback = querySource === 'agent_products_error_fallback';
   const irrelevant = !isRelevantResult(row.query, products);
+  const queryClass =
+    String(searchTrace.query_class || metadata?.search_decision?.query_class || inferQueryClassFromQuery(row.query));
   return {
     timeout,
     strictEmpty,
@@ -133,6 +157,9 @@ function classifyRow(row) {
     irrelevant,
     querySource,
     productCount: products.length,
+    queryClass,
+    finalDecision: String(searchTrace.final_decision || metadata?.search_decision?.final_decision || ''),
+    clarifyTriggered: Boolean(routeHealth?.clarify_triggered || data?.clarification),
   };
 }
 
@@ -208,6 +235,30 @@ async function main() {
   const fallbackCount = classified.filter((row) => row.metrics.fallback).length;
   const strictEmptyCount = classified.filter((row) => row.metrics.strictEmpty).length;
   const irrelevantCount = classified.filter((row) => row.metrics.irrelevant).length;
+  const nonEmptyCount = classified.filter((row) => row.metrics.productCount > 0).length;
+  const clarifyCount = classified.filter((row) => row.metrics.clarifyTriggered).length;
+  const perQueryClass = {};
+  for (const row of classified) {
+    const key = String(row.metrics.queryClass || 'unknown');
+    if (!perQueryClass[key]) {
+      perQueryClass[key] = {
+        total: 0,
+        timeout: 0,
+        fallback: 0,
+        strict_empty: 0,
+        irrelevant: 0,
+        non_empty: 0,
+        clarify: 0,
+      };
+    }
+    perQueryClass[key].total += 1;
+    if (row.metrics.timeout) perQueryClass[key].timeout += 1;
+    if (row.metrics.fallback) perQueryClass[key].fallback += 1;
+    if (row.metrics.strictEmpty) perQueryClass[key].strict_empty += 1;
+    if (row.metrics.irrelevant) perQueryClass[key].irrelevant += 1;
+    if (row.metrics.productCount > 0) perQueryClass[key].non_empty += 1;
+    if (row.metrics.clarifyTriggered) perQueryClass[key].clarify += 1;
+  }
   const summary = {
     generated_at: new Date().toISOString(),
     base_url: baseUrl,
@@ -219,6 +270,9 @@ async function main() {
     fallback_rate: total ? fallbackCount / total : 0,
     strict_empty_rate: total ? strictEmptyCount / total : 0,
     irrelevant_result_rate: total ? irrelevantCount / total : 0,
+    non_empty_rate: total ? nonEmptyCount / total : 0,
+    clarify_rate: total ? clarifyCount / total : 0,
+    per_query_class: perQueryClass,
     queries,
   };
 
@@ -244,6 +298,9 @@ async function main() {
           fallback: row.metrics.fallback,
           strict_empty: row.metrics.strictEmpty,
           irrelevant: row.metrics.irrelevant,
+          query_class: row.metrics.queryClass,
+          final_decision: row.metrics.finalDecision,
+          clarify_triggered: row.metrics.clarifyTriggered,
           error: row.error,
         })),
       },
@@ -265,6 +322,8 @@ async function main() {
     `- fallback_rate: ${summary.fallback_rate.toFixed(4)}`,
     `- strict_empty_rate: ${summary.strict_empty_rate.toFixed(4)}`,
     `- irrelevant_result_rate: ${summary.irrelevant_result_rate.toFixed(4)}`,
+    `- non_empty_rate: ${summary.non_empty_rate.toFixed(4)}`,
+    `- clarify_rate: ${summary.clarify_rate.toFixed(4)}`,
     '',
     '| metric | value |',
     '|---|---:|',
@@ -272,6 +331,19 @@ async function main() {
     `| fallback_count | ${fallbackCount} |`,
     `| strict_empty_count | ${strictEmptyCount} |`,
     `| irrelevant_count | ${irrelevantCount} |`,
+    `| non_empty_count | ${nonEmptyCount} |`,
+    `| clarify_count | ${clarifyCount} |`,
+    '',
+    '## Per Query Class',
+    '',
+    '| query_class | total | timeout | fallback | strict_empty | irrelevant | non_empty | clarify |',
+    '|---|---:|---:|---:|---:|---:|---:|---:|',
+    ...Object.entries(perQueryClass)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(
+        ([queryClass, metrics]) =>
+          `| ${queryClass} | ${metrics.total} | ${metrics.timeout} | ${metrics.fallback} | ${metrics.strict_empty} | ${metrics.irrelevant} | ${metrics.non_empty} | ${metrics.clarify} |`,
+      ),
     '',
     `JSON: ${path.relative(process.cwd(), jsonPath)}`,
   ].join('\n');

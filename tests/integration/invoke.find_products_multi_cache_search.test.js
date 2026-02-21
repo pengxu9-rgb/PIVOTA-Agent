@@ -741,6 +741,32 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                   inventory_quantity: 6,
                 },
               },
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_ipsa_internal_2',
+                  product_id: 'prod_ipsa_internal_2',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Internal Toner 2',
+                  description: 'Internal cache item',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_ipsa_internal_3',
+                  product_id: 'prod_ipsa_internal_3',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Internal Toner 3',
+                  description: 'Internal cache item',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
             ],
           };
         }
@@ -784,7 +810,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           search: {
             query: 'ipsa',
             page: 1,
-            limit: 3,
+            limit: 5,
             in_stock_only: true,
           },
         },
@@ -865,7 +891,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(false);
   });
 
-  test('filters external-only supplement for lookup query when internal cache is empty', async () => {
+  test('blocks external supplement for lookup query when internal cache is empty', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -943,6 +969,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       (resp.body.products || []).some((p) => String(p.merchant_id || '') === 'external_seed'),
     ).toBe(false);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(externalSupplement.isDone()).toBe(true);
+    expect(externalSupplement.isDone()).toBe(false);
+    expect(
+      String(
+        resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.reason || '',
+      ),
+    ).toBe('external_fill_gate_blocked');
   });
 });
