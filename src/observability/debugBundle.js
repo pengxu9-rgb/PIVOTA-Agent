@@ -31,6 +31,14 @@ function normalizeText(input) {
     .trim();
 }
 
+function sanitizeQuery(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  return raw
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted_email]')
+    .replace(/\b(?:\+?\d[\d\s().-]{6,}\d)\b/g, '[redacted_phone]');
+}
+
 function tokenizeAnchors(query) {
   const normalized = normalizeText(query);
   const stop = new Set([
@@ -277,13 +285,13 @@ function buildSearchDebugBundle({
   const products = Array.isArray(responseBody.products) ? responseBody.products : [];
 
   const query =
-    String(
+    sanitizeQuery(
       context.rawUserQuery ||
         searchTrace.raw_query ||
         req?.body?.payload?.search?.query ||
         req?.body?.payload?.query ||
         '',
-    ).trim();
+    );
   const locale =
     String(
       context.intent?.language ||
@@ -347,6 +355,15 @@ function buildSearchDebugBundle({
       : {};
 
   const bundle = {
+    schema_version: 'v1',
+    build_sha:
+      String(
+        process.env.BUILD_SHA ||
+          process.env.GIT_COMMIT_SHA ||
+          process.env.RAILWAY_GIT_COMMIT_SHA ||
+          process.env.VERCEL_GIT_COMMIT_SHA ||
+          '',
+      ).trim() || null,
     req_id: String(requestId || searchTrace.trace_id || '').trim() || null,
     ts: new Date().toISOString(),
     query,

@@ -10634,33 +10634,37 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         .trim()
         .toLowerCase();
       if (operation === 'find_products_multi') {
-        debugRuntime.totalLatencyMs = Math.max(0, Date.now() - invokeStartedAtMs);
-        const debugBundle = buildSearchDebugBundle({
-          requestId: gatewayRequestId,
-          req,
-          responseBody: body,
-          context: debugRuntime,
-        });
-        if (debugBundle) {
-          if (
-            shouldExposeDebugBundle(req) &&
-            finalBody &&
-            typeof finalBody === 'object' &&
-            !Array.isArray(finalBody)
-          ) {
-            finalBody = {
-              ...finalBody,
-              debug_bundle: debugBundle,
-            };
-          }
-          if (shouldLogDebugBundle(req)) {
-            logger.info(
-              {
-                gateway_request_id: gatewayRequestId,
+        const exposeDebugBundle = shouldExposeDebugBundle(req);
+        const logDebugBundle = exposeDebugBundle || shouldLogDebugBundle(req);
+        if (exposeDebugBundle || logDebugBundle) {
+          debugRuntime.totalLatencyMs = Math.max(0, Date.now() - invokeStartedAtMs);
+          const debugBundle = buildSearchDebugBundle({
+            requestId: gatewayRequestId,
+            req,
+            responseBody: body,
+            context: debugRuntime,
+          });
+          if (debugBundle) {
+            if (
+              exposeDebugBundle &&
+              finalBody &&
+              typeof finalBody === 'object' &&
+              !Array.isArray(finalBody)
+            ) {
+              finalBody = {
+                ...finalBody,
                 debug_bundle: debugBundle,
-              },
-              'find_products_multi debug bundle',
-            );
+              };
+            }
+            if (logDebugBundle) {
+              logger.info(
+                {
+                  gateway_request_id: gatewayRequestId,
+                  debug_bundle: debugBundle,
+                },
+                'find_products_multi debug bundle',
+              );
+            }
           }
         }
       }

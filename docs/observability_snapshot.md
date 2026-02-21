@@ -35,6 +35,7 @@ Sampling env:
 
 The bundle is emitted by `src/observability/debugBundle.js` with these top-level keys:
 
+- `schema_version`, `build_sha`
 - `req_id`, `ts`, `query`, `locale`
 - `result_type`: `product_list|clarify|strict_empty`
 - `reason_code`
@@ -135,4 +136,3 @@ Each query includes representative `debug_bundle` samples and one-line debug sum
 - tests:
   - `tests/observability_debug_bundle.test.js`
   - `tests/export_observability_snapshot.test.js`
-

@@ -76,6 +76,8 @@ describe('observability debug bundle', () => {
     });
 
     expect(debugBundle).toBeTruthy();
+    expect(debugBundle.schema_version).toBe('v1');
+    expect(Object.prototype.hasOwnProperty.call(debugBundle, 'build_sha')).toBe(true);
     expect(debugBundle.req_id).toBe('req-1');
     expect(debugBundle.query).toBe('ipsa');
     expect(RESULT_TYPE_VALUES).toContain(debugBundle.result_type);
