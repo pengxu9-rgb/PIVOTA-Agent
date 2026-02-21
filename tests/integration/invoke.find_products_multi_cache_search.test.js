@@ -23,6 +23,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY:
         process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY,
+      SEARCH_CACHE_VALIDATE: process.env.SEARCH_CACHE_VALIDATE,
+      SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO:
+        process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO,
       CREATOR_CATALOG_CACHE_TTL_SECONDS: process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
       CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES: process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
@@ -36,6 +39,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
+    delete process.env.SEARCH_CACHE_VALIDATE;
+    delete process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
@@ -74,6 +79,17 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
         prevEnv.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
+    }
+    if (prevEnv.SEARCH_CACHE_VALIDATE === undefined) {
+      delete process.env.SEARCH_CACHE_VALIDATE;
+    } else {
+      process.env.SEARCH_CACHE_VALIDATE = prevEnv.SEARCH_CACHE_VALIDATE;
+    }
+    if (prevEnv.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO === undefined) {
+      delete process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
+    } else {
+      process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO =
+        prevEnv.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -1069,6 +1085,148 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       String(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.reason || ''),
     ).toBe('cache_irrelevant_ambiguity_sensitive');
     expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('treats low-quality cache hits as cache miss when cache validation is enabled', async () => {
+    process.env.SEARCH_CACHE_VALIDATE = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 1 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_pet',
+                merchant_name: 'Pet Merchant',
+                product_data: {
+                  id: 'prod_pet_hoodie_1',
+                  product_id: 'prod_pet_hoodie_1',
+                  merchant_id: 'merch_pet',
+                  title: 'Cute Dog Hoodie',
+                  description: 'Pet apparel for winter',
+                  status: 'active',
+                  inventory_quantity: 9,
+                  price: 29,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_ipsa_1',
+            product_id: 'prod_ipsa_1',
+            merchant_id: 'merch_beauty',
+            title: 'IPSA Time Reset Aqua',
+            description: 'Hydrating toner',
+            status: 'active',
+            inventory_quantity: 8,
+            price: 39,
+            currency: 'USD',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.metadata?.query_source).not.toBe('cache_cross_merchant_search');
+    expect(
+      Boolean(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_rejected_low_quality),
+    ).toBe(true);
+    expect(
+      String(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_validation?.reason || ''),
+    ).toBe('anchor_below_threshold');
+  });
+
+  test('forces scenario queries to continue controlled recall instead of cache early decision', async () => {
+    process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'travel_kit_1',
+            product_id: 'travel_kit_1',
+            merchant_id: 'merch_travel',
+            title: 'Business Trip Toiletry Kit',
+            description: 'Travel-size essentials set',
+            status: 'active',
+            inventory_quantity: 12,
+            price: 25,
+            currency: 'USD',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '出差要买什么',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.metadata?.query_source).not.toBe('cache_cross_merchant_search_early_decision');
+    expect(
+      Boolean(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.applied),
+    ).not.toBe(true);
   });
 
   test('pet leash recommendation does not enter lookup timeout path on cache miss', async () => {
