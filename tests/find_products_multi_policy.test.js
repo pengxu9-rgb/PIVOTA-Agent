@@ -706,7 +706,7 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
-  test('beauty diversity can return strict-empty when only one category is available', () => {
+  test('beauty diversity keeps primary results and marks unmet diversity requirement', () => {
     const intent = {
       language: 'en',
       primary_domain: 'beauty',
@@ -734,7 +734,14 @@ describe('find_products_multi intent + filtering', () => {
       rawUserQuery: 'date makeup kit recommendation',
     });
 
-    expect(resp.products).toHaveLength(0);
+    expect(resp.products.length).toBeGreaterThan(0);
     expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET']));
+    expect(resp.metadata?.route_debug?.policy?.diversity).toEqual(
+      expect.objectContaining({
+        requirement_unmet: true,
+        strict_empty: false,
+        preserve_primary_on_failure: true,
+      }),
+    );
   });
 });

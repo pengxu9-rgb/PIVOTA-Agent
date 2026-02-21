@@ -471,6 +471,10 @@ function applyBeautyDiversityPolicy(products, options = {}) {
     options.strictEmptyOnFailure == null
       ? BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE
       : Boolean(options.strictEmptyOnFailure);
+  const preservePrimaryOnFailure =
+    options.preservePrimaryOnFailure == null
+      ? true
+      : Boolean(options.preservePrimaryOnFailure);
 
   const annotated = input.map((product, idx) => ({
     product,
@@ -521,8 +525,9 @@ function applyBeautyDiversityPolicy(products, options = {}) {
   const toolsInTopN = Number(mixTopN.tools || 0);
   const toolCapViolated = toolsInTopN > toolsCap;
 
-  const strictEmpty = strictEmptyOnFailure && !meetsDiversity;
-  const penaltyApplied = orderChanged || toolCapViolated || !meetsDiversity || overflowTools.length > 0;
+  const requirementUnmet = !meetsDiversity;
+  const strictEmpty = strictEmptyOnFailure && requirementUnmet && !preservePrimaryOnFailure;
+  const penaltyApplied = orderChanged || toolCapViolated || requirementUnmet || overflowTools.length > 0;
   return {
     products: strictEmpty ? [] : reordered,
     strict_empty: strictEmpty,
@@ -531,7 +536,9 @@ function applyBeautyDiversityPolicy(products, options = {}) {
       penalty_applied: penaltyApplied,
       reason: strictEmpty
         ? 'beauty_diversity_not_met'
-        : toolCapViolated
+        : requirementUnmet
+          ? 'beauty_diversity_not_met_kept_primary'
+          : toolCapViolated
           ? 'beauty_tools_cap_enforced'
           : orderChanged
             ? 'beauty_diversity_reordered'
@@ -543,7 +550,9 @@ function applyBeautyDiversityPolicy(products, options = {}) {
       overflow_tools_dropped: overflowTools.length,
       category_mix_topN: mixTopN,
       distinct_beauty_buckets: distinctBeautyBuckets,
+      requirement_unmet: requirementUnmet,
       strict_empty: strictEmpty,
+      preserve_primary_on_failure: preservePrimaryOnFailure,
     },
   };
 }
@@ -2040,7 +2049,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       reasonCodes.add('WEAK_RELEVANCE');
     }
   }
-  if (diversityDebug?.strict_empty) reasonCodes.add('BEAUTY_DIVERSITY_NOT_MET');
+  if (diversityDebug?.requirement_unmet) reasonCodes.add('BEAUTY_DIVERSITY_NOT_MET');
   if (diversityDebug?.penalty_applied) reasonCodes.add('BEAUTY_DIVERSITY_REORDERED');
 
   const augmented = setResponseProductList(response, key, filtered);
