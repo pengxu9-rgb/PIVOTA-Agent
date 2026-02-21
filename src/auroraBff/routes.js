@@ -3154,7 +3154,7 @@ async function resolveAvailabilityProductByLocalResolver({
     statusCode: null,
     error: responseError,
   });
-  if (responseError || finalReasonCode !== 'no_candidates') {
+  if (responseError || reasonCode !== 'no_candidates') {
     logger?.warn(
       {
         query: q.slice(0, 120),
@@ -14647,7 +14647,11 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   let stableResolveReasonCode = null;
   let stableResolveRequestIds = null;
   let stableResolveLocalFallbackAttempted = false;
-  if (RECO_PDP_RESOLVE_ENABLED && PIVOTA_BACKEND_BASE_URL && (stableProductId || stableSkuId)) {
+  if (
+    PIVOTA_BACKEND_BASE_URL &&
+    (stableProductId || stableSkuId) &&
+    (RECO_PDP_RESOLVE_ENABLED || RECO_PDP_STRICT_INTERNAL_FIRST)
+  ) {
     const stableResolved = await resolveRecoPdpByStableIds({
       productId: stableProductId,
       skuId: stableSkuId,
@@ -14695,12 +14699,15 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     buildProductInputText(skuCandidate || base, typeof base.url === 'string' ? base.url : null) ||
     stableQueryText;
   const stableResolveFailureCode = normalizeResolveReasonCode(stableResolveReasonCode || '', null);
+  const shouldSkipNoCandidateQueryResolve =
+    RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES &&
+    !RECO_PDP_STRICT_INTERNAL_FIRST;
   const shouldSkipQueryResolveForStableFailure =
     RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_FAILURE &&
     Boolean(stableResolveFailureCode) &&
     (
       stableResolveFailureCode === 'no_candidates'
-        ? RECO_PDP_SKIP_QUERY_RESOLVE_ON_STABLE_NO_CANDIDATES
+        ? shouldSkipNoCandidateQueryResolve
         : RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED
     );
   if (
@@ -14939,7 +14946,10 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
     (
       reasonCode === 'upstream_timeout' ||
       reasonCode === 'db_error' ||
-      (reasonCode === 'no_candidates' && hasOnlyOpaqueStableIdsWithoutMerchant)
+      (
+        reasonCode === 'no_candidates' &&
+        (hasOnlyOpaqueStableIdsWithoutMerchant || hasStrongNamedQueryForCatalogFallback)
+      )
     );
   if (shouldAttemptDeterministicLocalResolver) {
     recordRecoPdpInternalRetryAttempt(1);
@@ -14979,7 +14989,10 @@ async function enrichRecoItemWithPdpOpenContract(item, { logger, allowLocalInvok
   const shouldAttemptCatalogSearchFallback =
     RECO_PDP_STRICT_INTERNAL_FIRST &&
     (
-      (reasonCode === 'no_candidates' && hasOnlyOpaqueStableIdsWithoutMerchant) ||
+      (
+        reasonCode === 'no_candidates' &&
+        (hasOnlyOpaqueStableIdsWithoutMerchant || hasStrongNamedQueryForCatalogFallback)
+      ) ||
       (
         (reasonCode === 'upstream_timeout' || reasonCode === 'db_error') &&
         (hasOnlyOpaqueStableIdsWithoutMerchant || hasStrongNamedQueryForCatalogFallback)

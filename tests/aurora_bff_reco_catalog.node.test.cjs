@@ -592,7 +592,7 @@ test('/v1/chat reco PDP: local invoke fallback is applied when upstream timeout 
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ON_UPSTREAM_TIMEOUT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
-      AURORA_BFF_RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP: undefined,
+      AURORA_BFF_RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP: 'false',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
     },
@@ -676,8 +676,8 @@ test('/v1/chat reco PDP: local invoke fallback is applied when upstream timeout 
         const recos = getRecoItems(resp.body);
         assert.ok(recos.length > 0);
         assert.ok(primaryStableCalls > 0);
-        assert.equal(localStableCalls, 0);
-        assert.ok(queryResolveCalls > 0);
+        assert.ok(localStableCalls > 0);
+        assert.equal(queryResolveCalls, 0);
 
         const withStableReqId = recos.find(
           (item) => item && item.metadata && item.metadata.stable_resolve_request_ids,
@@ -2642,7 +2642,7 @@ test('/v1/chat availability: specific query falls back to local resolver when re
   );
 });
 
-test('/v1/chat availability: 200 soft-timeout search still resolves via local resolver (no remote resolve)', async () => {
+test('/v1/chat availability: 200 soft-timeout search keeps internal path via local resolver (no remote resolve)', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -2718,7 +2718,7 @@ test('/v1/chat availability: 200 soft-timeout search still resolves via local re
 
         assert.equal(resp.status, 200);
         assert.equal(searchCalls, 1);
-        assert.equal(resolveCalls, 1);
+        assert.equal(resolveCalls, 0);
 
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
         const offersCard = cards.find((c) => c && c.type === 'offers_resolved');
@@ -2762,7 +2762,9 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
       AURORA_BFF_RECO_CATALOG_FAIL_FAST_THRESHOLD: '1',
       AURORA_BFF_RECO_CATALOG_FAIL_FAST_COOLDOWN_MS: '90000',
       AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS: '15000',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
       AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS: '0',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
@@ -3023,7 +3025,7 @@ test('/v1/chat reco transient catalog failure: returns stable fallback payload w
   );
 });
 
-test('/v1/chat reco: 200 soft-fallback timeout search response still returns recommendation payload', async () => {
+test('/v1/chat reco: 200 soft-fallback timeout search response still returns recommendation payload without resolve POST', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -3083,7 +3085,7 @@ test('/v1/chat reco: 200 soft-fallback timeout search response still returns rec
         const resp = await invokeRecoChat(app, { 'X-Debug': 'true' });
         assert.equal(resp.status, 200);
         assert.ok(searchCalls >= 1);
-        assert.ok(postCalls >= 1);
+        assert.equal(postCalls, 0);
 
         const recos = getRecoItems(resp.body);
         assert.ok(recos.length > 0);
@@ -3108,7 +3110,7 @@ test('Catalog search transient failure invokes local search fallback when local 
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT: 'true',
-      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT: 'true',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_BASE_URL: 'http://127.0.0.1:3000',
     },
     async () => {
