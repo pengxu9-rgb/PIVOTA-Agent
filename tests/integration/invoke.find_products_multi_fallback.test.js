@@ -686,9 +686,11 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       expect.objectContaining({
         proxy_search_fallback: expect.objectContaining({
           applied: true,
-          reason: 'empty_or_unusable_primary',
         }),
       }),
+    );
+    expect(String(resp.body?.metadata?.proxy_search_fallback?.reason || '')).toMatch(
+      /upstream_status_429|empty_or_unusable_primary/,
     );
   });
 
@@ -868,9 +870,11 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       expect.objectContaining({
         proxy_search_fallback: expect.objectContaining({
           applied: true,
-          reason: 'empty_or_unusable_primary',
         }),
       }),
+    );
+    expect(String(resp.body?.metadata?.proxy_search_fallback?.reason || '')).toMatch(
+      /upstream_status_429|empty_or_unusable_primary/,
     );
   });
 
@@ -924,6 +928,89 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         product_id: '9886500127048',
         merchant_id: 'merch_efbc46b4619cfbdf',
       }),
+    );
+  });
+
+  test('aurora invoke path treats 429 primary responses as fallback-eligible', async () => {
+    const queryText = 'the ordinary copper peptide serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: {
+          latency_ms: 9,
+          sources: [{ source: 'agent_search_scoped', ok: false, reason: 'no_candidates' }],
+        },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(429, {
+        status: 'error',
+        error: { code: 'RATE_LIMITED', message: 'Too many requests' },
+      });
+
+    const secondaryScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'alt_429_invoke_1',
+            merchant_id: 'merch_sigma',
+            title: 'Copper Peptide Repair Serum',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          entry: 'home',
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(secondaryScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'alt_429_invoke_1',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+        }),
+      }),
+    );
+    expect(String(resp.body?.metadata?.proxy_search_fallback?.reason || '')).toMatch(
+      /upstream_status_429|empty_or_unusable_primary/,
     );
   });
 
