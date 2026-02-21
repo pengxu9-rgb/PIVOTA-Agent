@@ -448,22 +448,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
-    const externalSupplement = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query((q) => {
-        return (
-          String(q.merchant_id || '') === 'external_seed' &&
-          String(q.query || '') === 'copper peptides serum' &&
-          String(q.fast_mode || '') === 'true'
-        );
-      })
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [],
-        total: 0,
-      });
-
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query((q) => {
@@ -471,8 +455,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           String(q.query || '') === 'copper peptides serum' &&
           String(q.search_all_merchants || '') === 'true' &&
           String(q.fast_mode || '') === 'true' &&
-          String(q.allow_stale_cache || '') === 'false' &&
-          String(q.external_seed_strategy || '') === 'supplement_internal_first'
+          String(q.allow_stale_cache || '') === 'false'
         );
       })
       .reply(200, {
@@ -513,7 +496,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.products.length).toBeGreaterThan(0);
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
-    expect(externalSupplement.isDone()).toBe(true);
     expect(upstreamSearch.isDone()).toBe(true);
   });
 
@@ -1086,6 +1068,56 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(
       String(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.reason || ''),
     ).toBe('cache_irrelevant_ambiguity_sensitive');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('pet leash recommendation does not enter lookup timeout path on cache miss', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '有没有狗链推荐？',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata?.search_trace?.upstream_stage?.called).toBe(false);
+    expect(
+      ['cache_cross_merchant_search', 'cache_cross_merchant_search_early_decision'].includes(
+        String(resp.body.metadata?.query_source || ''),
+      ),
+    ).toBe(true);
+    expect(resp.body.clarification || resp.body.metadata?.strict_empty).toBeTruthy();
     expect(upstreamSearch.isDone()).toBe(false);
   });
 });

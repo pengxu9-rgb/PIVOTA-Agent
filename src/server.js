@@ -2977,11 +2977,21 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
   const raw = String(queryText || '').trim();
   if (!raw) return false;
   const lower = raw.toLowerCase();
+  const hasStrongLookupEntity =
+    /\bsku\b|\bmodel\b|型号|型號/.test(raw) ||
+    /\b[a-z]{1,6}\d{2,}\b/i.test(raw) ||
+    isKnownLookupAliasQuery(raw);
   if (/(ipsa|茵芙莎|winona|薇诺娜|the ordinary|sk[\s-]?ii|流金水|神仙水|time reset aqua)/i.test(lower)) {
     return true;
   }
-  if (/(有货|库存|有没有|哪里买|能买|能买吗|where to buy|in stock|available|availability)/i.test(lower)) {
+  if (
+    /(有货|库存|有没有|哪里买|能买|能买吗|where to buy|in stock|available|availability)/i.test(lower) &&
+    hasStrongLookupEntity
+  ) {
     return true;
+  }
+  if (hasPetHarnessSearchSignal(raw) || hasBeautyMakeupSearchSignal(raw)) {
+    return false;
   }
   const anchors = Array.isArray(anchorTokens) ? anchorTokens : extractSearchAnchorTokens(raw);
   if (!anchors.length) return false;
