@@ -38,6 +38,11 @@ const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
+const {
+  buildSearchDebugBundle,
+  shouldExposeDebugBundle,
+  shouldLogDebugBundle,
+} = require('./observability/debugBundle');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
 const { embedText } = require('./services/embeddings');
 const {
@@ -10609,6 +10614,67 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
 
 app.post('/agent/shop/v1/invoke', async (req, res) => {
   const gatewayRequestId = randomUUID();
+  const invokeStartedAtMs = Date.now();
+  const debugRuntime = {
+    operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
+    invokeStartedAtMs,
+    nluLatencyMs: 0,
+    vectorLatencyMs: 0,
+    behaviorLatencyMs: 0,
+    rankLatencyMs: 0,
+    rawUserQuery: String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
+    intent: null,
+    expansionMode: null,
+  };
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    let finalBody = body;
+    try {
+      const operation = String(debugRuntime.operation || req?.body?.operation || '')
+        .trim()
+        .toLowerCase();
+      if (operation === 'find_products_multi') {
+        debugRuntime.totalLatencyMs = Math.max(0, Date.now() - invokeStartedAtMs);
+        const debugBundle = buildSearchDebugBundle({
+          requestId: gatewayRequestId,
+          req,
+          responseBody: body,
+          context: debugRuntime,
+        });
+        if (debugBundle) {
+          if (
+            shouldExposeDebugBundle(req) &&
+            finalBody &&
+            typeof finalBody === 'object' &&
+            !Array.isArray(finalBody)
+          ) {
+            finalBody = {
+              ...finalBody,
+              debug_bundle: debugBundle,
+            };
+          }
+          if (shouldLogDebugBundle(req)) {
+            logger.info(
+              {
+                gateway_request_id: gatewayRequestId,
+                debug_bundle: debugBundle,
+              },
+              'find_products_multi debug bundle',
+            );
+          }
+        }
+      }
+    } catch (debugErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: debugErr?.message || String(debugErr),
+        },
+        'failed to build/emit debug bundle',
+      );
+    }
+    return originalJson(finalBody);
+  };
   res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
 
   try {
@@ -10622,20 +10688,22 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     }
 
     const { operation, payload } = parsed.data;
+    debugRuntime.operation = String(operation || '').trim().toLowerCase();
     const metadata = normalizeMetadata(req.body.metadata, payload);
     const creatorId = extractCreatorId({ ...payload, metadata });
     const now = new Date();
-    const invokeStartedAtMs = Date.now();
-    const findProductsMultiCtx =
-      operation === 'find_products_multi'
-        ? await buildFindProductsMultiContext({
-            payload,
-            metadata: {
-              ...(metadata || {}),
-              expansion_mode: FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-            },
-          })
-        : null;
+    let findProductsMultiCtx = null;
+    if (operation === 'find_products_multi') {
+      const nluStartedAtMs = Date.now();
+      findProductsMultiCtx = await buildFindProductsMultiContext({
+        payload,
+        metadata: {
+          ...(metadata || {}),
+          expansion_mode: FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+        },
+      });
+      debugRuntime.nluLatencyMs = Math.max(0, Date.now() - nluStartedAtMs);
+    }
     const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
     const effectiveIntent = findProductsMultiCtx?.intent || null;
     const findProductsExpansionMeta = findProductsMultiCtx?.expansion_meta || null;
@@ -10646,6 +10714,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       payload?.search?.query ||
       payload?.query ||
       '';
+    debugRuntime.rawUserQuery = String(rawUserQuery || '').trim();
+    debugRuntime.intent = effectiveIntent || null;
+    debugRuntime.expansionMode = findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE;
     const policyMetadata =
       operation === 'find_products_multi'
         ? {
