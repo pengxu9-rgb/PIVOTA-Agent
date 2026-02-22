@@ -670,6 +670,11 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MIN_QUERY_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(500, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  return Math.max(320, Math.min(5000, v));
+})();
 const AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED || 'true')
     .trim()
@@ -4867,10 +4872,18 @@ async function buildRealtimeCompetitorCandidates({
   const requestedTimeoutMs = Number.isFinite(Number(timeoutMs))
     ? Math.trunc(Number(timeoutMs))
     : PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS;
-  const effectiveTimeoutFloorMs =
-    runMode === 'main_path' && allowExternalSeed
-      ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS
+  const mainPathTimeoutFloorMs =
+    runMode === 'main_path'
+      ? (
+        allowExternalSeed
+          ? Math.max(
+            PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS,
+            PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS,
+          )
+          : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
+      )
       : 260;
+  const effectiveTimeoutFloorMs = Math.max(260, mainPathTimeoutFloorMs);
   const effectiveTimeoutMs = Math.max(
     effectiveTimeoutFloorMs,
     Math.min(12000, requestedTimeoutMs),
