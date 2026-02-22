@@ -34,6 +34,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_FAIL_THRESHOLD;
     delete process.env.AURORA_BFF_RECO_CATALOG_SOURCE_EMPTY_COOLDOWN_MS;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.AURORA_DECISION_BASE_URL;
     nock.cleanAll();
@@ -324,6 +327,129 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(Array.isArray(out.attempted_endpoints)).toBe(true);
     expect(out.attempted_endpoints[0]).toBe('http://catalog-budget.test/agent/v1/beauty/products/search');
     expect(genericScope.isDone()).toBe(false);
+  });
+
+  test('buildRealtimeCompetitorCandidates keeps one main-path query attempt under tight budget', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS = '/agent/v1/products/search';
+    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS = '220';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS = '160';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS = '150';
+
+    const primaryScope = nock('http://catalog-main-budget.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_low_budget_1',
+            merchant_id: 'merch_alt_1',
+            brand: 'Alt Brand',
+            name: 'Copper Peptide Serum',
+            display_name: 'Alt Brand Copper Peptide Serum',
+            category: 'serum',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildRealtimeCompetitorCandidates({
+      productUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      parsedProduct: {
+        product_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      keyIngredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate'],
+      anchorProduct: {
+        product_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      mode: 'main_path',
+      deadlineMs: Date.now() + 420,
+      timeoutMs: 500,
+      maxQueries: 2,
+      maxCandidates: 4,
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
+    });
+
+    expect(primaryScope.isDone()).toBe(true);
+    expect(Number(out?.query_attempted || out?.meta?.query_attempted || 0)).toBeGreaterThan(0);
+    const reasonBreakdown =
+      out?.reason_breakdown && typeof out.reason_breakdown === 'object'
+        ? out.reason_breakdown
+        : out?.meta?.reason_breakdown;
+    expect(reasonBreakdown).toBeTruthy();
+    expect(typeof reasonBreakdown).toBe('object');
+  });
+
+  test('sync competitor repair runs when competitors are empty even without low-coverage token', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-sync-repair.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS = '/agent/v1/products/search';
+    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'false';
+    process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = 'true';
+
+    nock('http://catalog-sync-repair.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'comp_sync_repair_1',
+            merchant_id: 'merch_alt_1',
+            brand: 'Alt Brand',
+            name: 'Barrier Serum',
+            display_name: 'Alt Brand Barrier Serum',
+            category: 'serum',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const payload = {
+      assessment: {
+        anchor_product: {
+          product_id: 'anchor_1',
+          brand: 'The Ordinary',
+          name: 'Multi-Peptide + Copper Peptides 1% Serum',
+          category: 'serum',
+        },
+      },
+      competitors: { candidates: [] },
+      evidence: {
+        science: {
+          key_ingredients: ['Copper Tripeptide-1'],
+        },
+        social_signals: {},
+        expert_notes: [],
+        missing_info: [],
+      },
+      missing_info: [],
+    };
+
+    const out = await __internal.maybeSyncRepairLowCoverageCompetitors({
+      productUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      payload,
+      parsedProduct: payload.assessment.anchor_product,
+      lang: 'EN',
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
+    });
+
+    expect(out.reason).not.toBe('competitors_missing');
+    expect(out.reason).not.toBe('coverage_token_missing');
+    const candidates = Array.isArray(out?.payload?.competitors?.candidates)
+      ? out.payload.competitors.candidates
+      : [];
+    expect(candidates.length).toBeGreaterThan(0);
   });
 
   test('catalog search defaults to generic route first when beauty-first flag is disabled', async () => {

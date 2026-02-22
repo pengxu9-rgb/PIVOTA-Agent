@@ -436,14 +436,14 @@ const PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = Math.max(
 const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
   300,
   Math.min(
-    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS, 900),
+    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS, 1600),
     PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
   ),
 );
 const PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = Math.max(
   300,
   Math.min(
-    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS, 450),
+    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS, 1200),
     PROXY_SEARCH_FALLBACK_TIMEOUT_MS,
   ),
 );
@@ -8021,6 +8021,8 @@ async function proxyAgentSearchToBackend(req, res) {
       resolver_attempted: false,
       secondary_attempted: false,
       secondary_skipped_reason: null,
+      secondary_rejected_reason: null,
+      secondary_fallback_duration_ms: null,
       allow_secondary_fallback: allowSecondaryFallback,
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
@@ -8113,6 +8115,7 @@ async function proxyAgentSearchToBackend(req, res) {
 
       if (allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
         fallbackStrategy.secondary_attempted = true;
+        const fallbackStartedAtMs = Date.now();
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams: guardedQueryParams,
@@ -8125,6 +8128,7 @@ async function proxyAgentSearchToBackend(req, res) {
             requestSource: source,
             timeoutMs: secondaryFallbackTimeoutMs,
           });
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
           if (
             fallback &&
             fallback.status >= 200 &&
@@ -8141,7 +8145,14 @@ async function proxyAgentSearchToBackend(req, res) {
               fallbackStrategy,
             });
           }
+          fallbackStrategy.secondary_rejected_reason = fallback?.status >= 200 && fallback?.status < 300
+            ? fallback?.usableCount < fallbackAdoptUsableThreshold
+              ? 'secondary_not_better'
+              : 'secondary_irrelevant'
+            : 'secondary_status_non_2xx';
         } catch (fallbackErr) {
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
+          fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
           logger.warn(
             { err: fallbackErr?.message || String(fallbackErr) },
             'proxy agent search fallback invoke failed; keeping primary response',
@@ -8270,6 +8281,8 @@ async function proxyAgentSearchToBackend(req, res) {
       resolver_attempted: false,
       secondary_attempted: false,
       secondary_skipped_reason: null,
+      secondary_rejected_reason: null,
+      secondary_fallback_duration_ms: null,
       allow_secondary_fallback: allowSecondaryFallback,
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
@@ -8332,6 +8345,7 @@ async function proxyAgentSearchToBackend(req, res) {
 
       if (allowSecondaryFallbackOnException) {
         fallbackStrategy.secondary_attempted = true;
+        const fallbackStartedAtMs = Date.now();
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams: guardedQueryParams,
@@ -8340,6 +8354,7 @@ async function proxyAgentSearchToBackend(req, res) {
             requestSource: source,
             timeoutMs: secondaryFallbackTimeoutMs,
           });
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
           if (
             fallback &&
             fallback.status >= 200 &&
@@ -8361,7 +8376,14 @@ async function proxyAgentSearchToBackend(req, res) {
               fallbackStrategy,
             });
           }
+          fallbackStrategy.secondary_rejected_reason = fallback?.status >= 200 && fallback?.status < 300
+            ? fallback?.usableCount > 0
+              ? 'secondary_irrelevant'
+              : 'secondary_not_better'
+            : 'secondary_status_non_2xx';
         } catch (fallbackErr) {
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
+          fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
           logger.warn(
             { err: fallbackErr?.message || String(fallbackErr) },
             'proxy agent search fallback invoke failed after primary exception',

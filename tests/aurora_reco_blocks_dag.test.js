@@ -197,6 +197,45 @@ describe('aurora reco blocks dag', () => {
     expect(typeof out.diagnostics.blocks.catalog_ann.duration_ms).toBe('number');
   });
 
+  test('catalog_ann reason breakdown is exposed in diagnostics and provenance block stats', async () => {
+    const out = await recoBlocks(
+      makeAnchor(),
+      {
+        mode: 'main_path',
+        sources: {
+          catalog_ann: async () => ({
+            candidates: [],
+            meta: {
+              query_attempted: 1,
+              reason_breakdown: {
+                budget_exhausted: 1,
+                upstream_timeout: 2,
+              },
+            },
+          }),
+          ingredient_index: async () => ({ candidates: [] }),
+          skin_fit_light: async () => ({ candidates: [] }),
+          kb_backfill: async () => ({
+            candidates: [],
+            competitors: [makeCandidate({ product_id: 'kb_comp_1', source: { type: 'kb_backfill' } })],
+            dupes: [],
+          }),
+          dupe_pipeline: async () => ({ candidates: [] }),
+          on_page_related: async () => ({ candidates: [] }),
+        },
+      },
+      220,
+    );
+
+    expect(out?.diagnostics?.blocks?.catalog_ann).toBeTruthy();
+    expect(Number(out.diagnostics.blocks.catalog_ann.query_attempted || 0)).toBeGreaterThanOrEqual(1);
+    expect(Number(out.diagnostics.blocks.catalog_ann.reason_counts?.budget_exhausted || 0)).toBeGreaterThanOrEqual(1);
+    expect(Number(out.diagnostics.blocks.catalog_ann.reason_counts?.upstream_timeout || 0)).toBeGreaterThanOrEqual(2);
+    expect(Number(out?.provenance_patch?.catalog_ann_query_attempted || 0)).toBeGreaterThanOrEqual(1);
+    expect(Number(out?.provenance_patch?.catalog_ann_reason_counts?.budget_exhausted || 0)).toBeGreaterThanOrEqual(1);
+    expect(Number(out?.provenance_patch?.catalog_ann_reason_counts?.upstream_timeout || 0)).toBeGreaterThanOrEqual(2);
+  });
+
   test('dogfood exploration/interleave still preserve hard redlines in competitors', async () => {
     const out = await recoBlocks(
       makeAnchor({ brand_id: 'anchor_brand' }),

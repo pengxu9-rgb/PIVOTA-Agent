@@ -483,6 +483,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           resolver_attempted: true,
           secondary_attempted: true,
           secondary_skipped_reason: null,
+          secondary_rejected_reason: null,
+          secondary_fallback_duration_ms: expect.any(Number),
           aurora_external_seed_forced: true,
           aurora_external_seed_enabled: false,
           aurora_seed_strategy: 'legacy',

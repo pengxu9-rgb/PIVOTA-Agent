@@ -167,7 +167,22 @@ function createEmptyStat() {
     timeout: false,
     error: null,
     attempts: 0,
+    query_attempted: 0,
+    reason_counts: {},
   };
+}
+
+function mergeReasonCounts(base, patch) {
+  const out = isPlainObject(base) ? { ...base } : {};
+  const next = isPlainObject(patch) ? patch : {};
+  for (const [key, value] of Object.entries(next)) {
+    const token = String(key || '').trim();
+    if (!token) continue;
+    const n = Number(value);
+    if (!Number.isFinite(n)) continue;
+    out[token] = Math.max(0, Math.trunc((Number(out[token]) || 0) + n));
+  }
+  return out;
 }
 
 function buildAnchorForRouter(anchor) {
@@ -501,6 +516,10 @@ async function executeSource({
     const out = normalizeSourceResult(raw, sourceName, defaultSourceType);
     stat.eligible += out.candidates.length + out.competitors.length + out.related_products.length + out.dupes.length;
     stat.duration_ms += Date.now() - startedAt;
+    if (sourceName === 'catalog_ann') {
+      stat.query_attempted += Math.max(0, Math.trunc(Number(out?.meta?.query_attempted || 0)));
+      stat.reason_counts = mergeReasonCounts(stat.reason_counts, out?.meta?.reason_breakdown);
+    }
     return out;
   } catch (err) {
     stat.duration_ms += Date.now() - startedAt;
@@ -941,12 +960,19 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
     timedOutBlocks: diagnostics.timed_out_blocks,
     fallbacksUsed: diagnostics.fallbacks_used,
   });
+  const catalogAnnStats = isPlainObject(diagnostics.blocks.catalog_ann)
+    ? diagnostics.blocks.catalog_ann
+    : createEmptyStat();
 
   const provenancePatch = {
     pipeline: 'reco_blocks_dag.v1',
     validation_mode: 'soft_fail',
     timed_out_blocks: diagnostics.timed_out_blocks.slice(0, 8),
     fallbacks_used: diagnostics.fallbacks_used.slice(0, 12),
+    catalog_ann_query_attempted: Math.max(0, Math.trunc(Number(catalogAnnStats.query_attempted || 0))),
+    catalog_ann_reason_counts: isPlainObject(catalogAnnStats.reason_counts)
+      ? { ...catalogAnnStats.reason_counts }
+      : {},
     block_stats: Object.fromEntries(
       Object.entries(diagnostics.blocks).map(([key, value]) => [
         key,
