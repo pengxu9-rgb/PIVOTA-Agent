@@ -43,6 +43,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS;
+    delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
     delete process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED;
@@ -525,6 +526,61 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
             brand: 'Alt Brand',
             name: 'Copper Peptide Serum',
             display_name: 'Alt Brand Copper Peptide Serum',
+            category: 'serum',
+          },
+        ],
+      };
+    });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildRealtimeCompetitorCandidates({
+      productUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      parsedProduct: {
+        product_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      keyIngredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate'],
+      anchorProduct: {
+        product_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      mode: 'main_path',
+      deadlineMs: Date.now() + 5000,
+      timeoutMs: 450,
+      maxQueries: 2,
+      maxCandidates: 4,
+      searchFn,
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
+    });
+
+    expect(out?.candidates?.length || 0).toBeGreaterThan(0);
+    expect(searchFn).toHaveBeenCalledTimes(1);
+    expect(capturedTimeoutMs).toBeGreaterThanOrEqual(500);
+  });
+
+  test('buildRealtimeCompetitorCandidates applies main-path timeout floor even without external seed', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP = '1';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED = 'false';
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = '900';
+
+    let capturedTimeoutMs = 0;
+    const searchFn = jest.fn(async ({ timeoutMs }) => {
+      capturedTimeoutMs = Number(timeoutMs || 0);
+      return {
+        ok: true,
+        reason: null,
+        products: [
+          {
+            product_id: 'comp_timeout_floor_2',
+            merchant_id: 'merch_alt_2',
+            brand: 'Alt Brand',
+            name: 'Peptide Serum',
+            display_name: 'Alt Brand Peptide Serum',
             category: 'serum',
           },
         ],
