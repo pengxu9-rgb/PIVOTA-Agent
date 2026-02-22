@@ -940,6 +940,45 @@ test('Routine simulate: detects retinoid x acids conflict', async () => {
   assert.equal(sim.conflicts.some((c) => c.rule_id === 'retinoid_x_acids'), true);
 });
 
+test('Routine simulate: kb interaction conflict carries risk_level/recommended_action and dynamic heatmap copy', async () => {
+  const sim = simulateConflicts({
+    routine: { pm: [{ key_actives: ['retinol'] }] },
+    testProduct: { key_actives: ['glycolic acid'] },
+  });
+
+  const kbHit = sim.conflicts.find((c) => c && c.rule_id === 'RETINOID_X_AHA');
+  assert.ok(kbHit);
+  assert.equal(kbHit.severity, 'block');
+  assert.equal(kbHit.risk_level, 'high');
+  assert.equal(kbHit.recommended_action, 'avoid_same_night');
+
+  const payload = buildConflictHeatmapV1({
+    routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary },
+    routineSteps: ['Step 1', 'Step 2'],
+  });
+  assert.equal(payload.schema_version, 'aurora.ui.conflict_heatmap.v1');
+  assert.ok(Array.isArray(payload.cells.items));
+  assert.ok(payload.cells.items.length > 0);
+  const firstCell = payload.cells.items[0];
+  assert.ok(Array.isArray(firstCell.rule_ids));
+  assert.ok(firstCell.rule_ids.includes('RETINOID_X_AHA'));
+  assert.notEqual(firstCell.headline_i18n?.en, 'Compatibility caution');
+  assert.ok(typeof firstCell.why_i18n?.en === 'string' && firstCell.why_i18n.en.length > 0);
+});
+
+test('Routine simulate: low-risk interaction should keep safe=true', async () => {
+  const sim = simulateConflicts({
+    routine: { pm: [{ key_actives: ['niacinamide serum'] }] },
+    testProduct: { key_actives: ['vitamin c serum'] },
+  });
+
+  const low = sim.conflicts.find((c) => c && c.rule_id === 'NIACINAMIDE_X_VITAMIN_C');
+  assert.ok(low);
+  assert.equal(low.severity, 'low');
+  assert.equal(low.risk_level, 'low');
+  assert.equal(sim.safe, true);
+});
+
 test('Conflict heatmap V1: retinoid_x_acids maps to severity 3 at (1,2)', async () => {
   const payload = buildConflictHeatmapV1({
     routineSimulation: {
@@ -1106,7 +1145,7 @@ test('/v1/routine/simulate: emits conflict_heatmap payload when enabled', async 
     assert.equal(heatmap?.payload?.state, 'has_conflicts');
     assert.ok(Array.isArray(heatmap?.payload?.cells?.items));
     assert.equal(heatmap.payload.cells.items.length, 1);
-    assert.equal(heatmap.payload.cells.items[0].severity, 2);
+    assert.equal(heatmap.payload.cells.items[0].severity, 3);
 
     const impression = Array.isArray(resp.body?.events)
       ? resp.body.events.find((e) => e && e.event_name === 'aurora_conflict_heatmap_impression')

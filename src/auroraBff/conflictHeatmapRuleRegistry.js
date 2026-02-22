@@ -1,3 +1,5 @@
+const { getAuroraKbV0 } = require('./kbV0/loader');
+
 const ACTION_CODE_ALLOWLIST = new Set([
   'separate_time',
   'reduce_frequency',
@@ -77,7 +79,60 @@ const RULE_REGISTRY = {
 function getRuleCopy(ruleId) {
   const id = normalizeText(ruleId, { maxLen: 80 });
   if (!id) return null;
-  return RULE_REGISTRY[id] || null;
+  if (RULE_REGISTRY[id]) return RULE_REGISTRY[id];
+
+  const kb = getAuroraKbV0();
+  if (!kb || kb.ok === false) return null;
+  const interactions = Array.isArray(kb.interaction_rules && kb.interaction_rules.interactions)
+    ? kb.interaction_rules.interactions
+    : [];
+  const interaction = interactions.find((row) => row && String(row.interaction_id || '').trim() === id);
+  if (!interaction) return null;
+
+  const conceptA = String(interaction.concept_a || '').trim().toUpperCase();
+  const conceptB = String(interaction.concept_b || '').trim().toUpperCase();
+  const conceptMap = kb.concepts_by_id && typeof kb.concepts_by_id === 'object' ? kb.concepts_by_id : {};
+  const labelA = normalizeText(
+    conceptMap[conceptA] && conceptMap[conceptA].labels
+      ? (conceptMap[conceptA].labels.en || conceptMap[conceptA].labels.zh || conceptA)
+      : conceptA,
+    { maxLen: 60 },
+  ) || conceptA;
+  const labelB = normalizeText(
+    conceptMap[conceptB] && conceptMap[conceptB].labels
+      ? (conceptMap[conceptB].labels.en || conceptMap[conceptB].labels.zh || conceptB)
+      : conceptB,
+    { maxLen: 60 },
+  ) || conceptB;
+
+  const notes = normalizeText(interaction.notes, { maxLen: 220 });
+  const action = normalizeText(interaction.recommended_action, { maxLen: 60 }).toLowerCase();
+  const recommendationRows = [];
+  if (action === 'avoid_same_night') {
+    recommendationRows.push(
+      { action_code: 'avoid_layering', text_i18n: i18n('Avoid layering these in the same night.', '避免同晚叠加这两类活性。') },
+      { action_code: 'separate_time', text_i18n: i18n('Alternate nights and monitor irritation.', '建议隔天使用并观察刺激反应。') },
+    );
+  } else if (action === 'separate_days') {
+    recommendationRows.push(
+      { action_code: 'separate_time', text_i18n: i18n('Use on separate days.', '建议分开到不同天使用。') },
+      { action_code: 'reduce_frequency', text_i18n: i18n('Lower frequency if irritation appears.', '如出现刺激，先降低频次。') },
+    );
+  } else {
+    recommendationRows.push(
+      { action_code: 'reduce_frequency', text_i18n: i18n('Layer cautiously and start with low frequency.', '谨慎叠加并从低频开始。') },
+    );
+  }
+
+  return {
+    rule_id: id,
+    headline_i18n: i18n(`${labelA} × ${labelB}`, `${labelA} × ${labelB}`),
+    why_i18n: i18n(
+      notes || 'Potential interaction risk detected between these actives.',
+      notes || '这两类活性存在潜在叠加风险。',
+    ),
+    recommendations: recommendationRows,
+  };
 }
 
 function filterRecommendations(recommendations) {
@@ -113,4 +168,3 @@ module.exports = {
   i18n,
   normalizeText,
 };
-

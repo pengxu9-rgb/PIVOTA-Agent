@@ -39,6 +39,25 @@ TEST_MERCHANT_ID=<test-merchant-id>   # For safe testing
 TEST_AGENT_ID=<test-agent-id>         # For agent identification
 ```
 
+### Aurora Chat V2 KB v0 production defaults
+
+For Aurora BFF production rollout, set:
+
+```bash
+AURORA_KB_V0_DISABLE=0
+AURORA_KB_FAIL_MODE=closed
+```
+
+Emergency-only operations:
+
+```bash
+# Full rollback to legacy-only path
+AURORA_KB_V0_DISABLE=1
+
+# Temporary fail-open (use only during KB integrity incidents)
+AURORA_KB_FAIL_MODE=open
+```
+
 ### Look Replicator (optional)
 
 If you are deploying this gateway to support the `pengxu9-rgb/look-replicate-share` app (large image uploads + job polling), also set:

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { INTENT_ENUM, inferCanonicalIntent } = require('../src/auroraBff/intentCanonical');
 const { resolveQaPlan } = require('../src/auroraBff/qaPlanner');
-const { BLOCK_LEVEL, evaluateSafety } = require('../src/auroraBff/safetyEngineV1');
+const { BLOCK_LEVEL, evaluateSafety, __internal: safetyEngineInternal } = require('../src/auroraBff/safetyEngineV1');
 const { buildEpiPayload } = require('../src/auroraBff/epiCalculator');
 const { getTravelWeather } = require('../src/auroraBff/weatherAdapter');
 
@@ -142,11 +142,117 @@ test('safety engine requires info when pregnancy unknown + retinoid', () => {
   assert.ok(result.required_questions.length > 0);
 });
 
+test('safety engine warns for travel + high UV + acids', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.TRAVEL_PLANNING,
+    message: 'I am traveling to a beach with high UV. Can I keep using glycolic acid exfoliation?',
+    profile: { pregnancy_status: 'not_pregnant', age_band: 'adult' },
+    language: 'EN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.WARN);
+  assert.ok(Array.isArray(result.matched_rules));
+  assert.ok(result.matched_rules.some((rule) => /travel|uv|acid|legacy:i4|kb_v0:/i.test(String(rule.id || ''))));
+});
+
 test('safety engine blocks lactating + oral isotretinoin', () => {
   const result = evaluateSafety({
     intent: INTENT_ENUM.INGREDIENT_SCIENCE,
     message: 'I am breastfeeding and on accutane',
     profile: { lactation_status: 'lactating' },
+    language: 'EN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+});
+
+test('safety engine blocks isotretinoin + benzoyl peroxide', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: 'I use oral isotretinoin and benzoyl peroxide daily.',
+    profile: { high_risk_medications: ['isotretinoin'] },
+    language: 'EN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.equal(result.decision_source, 'kb_v0');
+  assert.ok(Array.isArray(result.triggered_by));
+  assert.ok(result.triggered_by.includes('medications'));
+});
+
+test('safety engine promotes MEDICATION_ISOTRETINOIN concept to medications_any for KB rule match', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: 'Can I use benzoyl peroxide daily?',
+    profile: {
+      pregnancy_status: 'not_pregnant',
+      lactation_status: 'not_lactating',
+      age_band: 'adult',
+    },
+    language: 'EN',
+    matched_concepts: ['MEDICATION_ISOTRETINOIN', 'BENZOYL_PEROXIDE'],
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.BLOCK);
+  assert.equal(result.decision_source, 'kb_v0');
+  assert.ok(Array.isArray(result.triggered_by));
+  assert.ok(result.triggered_by.includes('medications'));
+  assert.ok(Array.isArray(result.matched_rules));
+  assert.ok(result.matched_rules.some((rule) => String(rule.id || '').startsWith('kb_v0:MED_ISOTRETINOIN_X_BPO_WARN')));
+});
+
+test('safety engine does not promote topical retinoid mentions to isotretinoin medication context', () => {
+  const ctx = safetyEngineInternal.buildCtx({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: 'I am using adapalene gel and tretinoin cream.',
+    profile: {
+      pregnancy_status: 'not_pregnant',
+      lactation_status: 'not_lactating',
+      age_band: 'adult',
+    },
+    language: 'EN',
+    conceptIds: [],
+    contraindicationTags: [],
+    hasProductAnchor: false,
+  });
+  assert.equal(Boolean(ctx && ctx.meds && ctx.meds.isotretinoin), false);
+  assert.equal(Array.isArray(ctx && ctx.medications_any) ? ctx.medications_any.includes('isotretinoin') : false, false);
+
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: 'I am using adapalene gel and tretinoin cream.',
+    profile: {
+      pregnancy_status: 'not_pregnant',
+      lactation_status: 'not_lactating',
+      age_band: 'adult',
+    },
+    language: 'EN',
+  });
+
+  assert.ok(Array.isArray(result.matched_rules));
+  assert.equal(
+    result.matched_rules.some((rule) => /MED_ISOTRETINOIN/i.test(String(rule.id || ''))),
+    false,
+  );
+});
+
+test('safety engine requires age info for unknown age + strong actives', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: 'Need the strongest anti-aging routine with high-strength retinoid',
+    profile: { age_band: 'unknown' },
+    language: 'EN',
+  });
+
+  assert.equal(result.block_level, BLOCK_LEVEL.REQUIRE_INFO);
+  assert.ok(result.required_fields.includes('age_band') || result.required_questions.length > 0);
+});
+
+test('safety engine blocks infant/toddler + fragrance or essential oil', () => {
+  const result = evaluateSafety({
+    intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+    message: 'Can my toddler use a fragrance essential oil cream?',
+    profile: { age_band: 'toddler' },
     language: 'EN',
   });
 
@@ -190,4 +296,19 @@ test('weather adapter degrades to climate fallback when fetch is unavailable', a
   assert.equal(out.ok, true);
   assert.equal(out.source, 'climate_fallback');
   assert.ok(out.summary && typeof out.summary === 'object');
+});
+
+test('weather adapter returns climate fallback when destination is missing', async () => {
+  const out = await getTravelWeather({
+    destination: '',
+    startDate: '2026-03-01',
+    endDate: '2026-03-05',
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.source, 'climate_fallback');
+  assert.equal(out.reason, 'destination_missing');
+  assert.ok(out.raw && typeof out.raw === 'object');
+  assert.ok(out.raw.climate_profile && typeof out.raw.climate_profile === 'object');
+  assert.ok(['user_locale', 'month', 'default'].includes(String(out.raw.climate_profile.archetype_selected_by || '')));
 });

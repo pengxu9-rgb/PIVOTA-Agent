@@ -1,0 +1,121 @@
+{
+  "title": "Aurora KB v0 Production Overview",
+  "uid": "aurora-kb-v0-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "service regex",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "env",
+        "label": "env regex",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "KB Loader Errors (rate + 5m increase)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aurora_kb_v0_loader_error_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(rate(aurora_kb_v0_loader_error_total[5m]))",
+          "legendFormat": "rate_5m"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(increase(aurora_kb_v0_loader_error_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(increase(aurora_kb_v0_loader_error_total[5m]))",
+          "legendFormat": "increase_5m"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "KB Rule Match Rate (5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aurora_kb_v0_rule_match_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(rate(aurora_kb_v0_rule_match_total[5m]))",
+          "legendFormat": "rule_match_rate_5m"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Legacy Fallback Rate (5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aurora_kb_v0_legacy_fallback_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(rate(aurora_kb_v0_legacy_fallback_total[5m]))",
+          "legendFormat": "legacy_fallback_rate_5m"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Legacy Fallback Ratio (5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "((sum(rate(aurora_kb_v0_legacy_fallback_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(rate(aurora_kb_v0_legacy_fallback_total[5m]))) / clamp_min((sum(rate(aurora_kb_v0_rule_match_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(rate(aurora_kb_v0_rule_match_total[5m]))) + (sum(rate(aurora_kb_v0_legacy_fallback_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(rate(aurora_kb_v0_legacy_fallback_total[5m]))), 0.000001))",
+          "legendFormat": "legacy_fallback_ratio_5m"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Climate Fallback Rate (5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aurora_kb_v0_climate_fallback_total{service=~\"$service\",env=~\"$env\"}[5m])) or sum(rate(aurora_kb_v0_climate_fallback_total[5m]))",
+          "legendFormat": "climate_fallback_rate_5m"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Climate Fallback Increase (10m)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(aurora_kb_v0_climate_fallback_total{service=~\"$service\",env=~\"$env\"}[10m])) or sum(increase(aurora_kb_v0_climate_fallback_total[10m]))",
+          "legendFormat": "climate_fallback_increase_10m"
+        }
+      ]
+    }
+  ]
+}

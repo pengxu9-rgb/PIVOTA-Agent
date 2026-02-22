@@ -8,6 +8,9 @@ on:
       - "scripts/**"
       - "tests/**"
       - "docs/**"
+      - "monitoring/**"
+      - "ci/**"
+      - ".github/workflows/aurora-bff-release-gate.yml"
       - "Makefile"
       - "package.json"
       - "package-lock.json"
@@ -27,7 +30,7 @@ on:
 
 concurrency:
   group: aurora-bff-release-gate
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   unit:
@@ -69,6 +72,9 @@ jobs:
       - name: Generate RELEASE_GATE.md
         run: make release-gate
 
+      - name: Validate monitoring assets
+        run: make monitoring-validate
+
       - name: Upload RELEASE_GATE.md
         uses: actions/upload-artifact@v4
         with:
@@ -88,45 +94,59 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Wait for deployment to match commit (best-effort)
-        id: wait_commit_alignment
         if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
         shell: bash
         run: |
           set -euo pipefail
           target="${GITHUB_SHA:0:12}"
-          echo "aligned=false" >> "$GITHUB_OUTPUT"
           echo "BASE_URL=$BASE_URL"
           echo "target_commit=$target"
 
           deployed=""
           for i in {1..80}; do
-            probe_url="$BASE_URL/v1/session/bootstrap?t=$(date +%s)"
-            deployed="$(curl -sSI \
-              -H 'Cache-Control: no-cache' \
-              -H 'Pragma: no-cache' \
-              "$probe_url" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-service-commit" {print $2}' | head -n 1 || true)"
+            deployed="$(curl -sSI "$BASE_URL/v1/session/bootstrap" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-service-commit" {print $2}' | head -n 1 || true)"
             echo "$i deployed_commit=${deployed:-missing}"
             if [[ -n "${deployed:-}" && "$deployed" == "$target" ]]; then
               echo "Deployment matches."
-              echo "aligned=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 10
           done
 
-          echo "::warning::Timed out waiting for deployment alignment. deployed=${deployed:-missing} target=$target"
-          exit 0
-
-      - name: Runtime smoke skipped (deployment misaligned)
-        if: (github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true) && steps.wait_commit_alignment.outputs.aligned != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "::warning::Skipping runtime smoke because deployment is not aligned with commit ${GITHUB_SHA:0:12}."
+          echo "Timed out waiting for deployment to match commit. deployed=${deployed:-missing} target=$target"
+          exit 1
 
       - name: Runtime smoke (hits BASE_URL)
-        if: (github.event_name == 'workflow_dispatch' && inputs.wait_for_commit == false) || steps.wait_commit_alignment.outputs.aligned == 'true'
         shell: bash
         run: |
           set -euo pipefail
           BASE="$BASE_URL" bash scripts/smoke_aurora_bff_runtime.sh
+
+      - name: Chaos soak smoke (one-shot subset)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/ci_chaos_soak_once
+          # CI runs a deterministic one-shot subset (not full-duration soak) because runtime_smoke targets deployed env.
+          BASE="$BASE_URL" \
+          DURATION_SECONDS=60 \
+          BASE_RPS=1 \
+          CHAOS_RPS=1 \
+          SPIKE_RPS=2 \
+          TOXIPROXY_ENABLED=false \
+          bash scripts/smoke_chaos_soak_aurora_skin.sh \
+            --base "$BASE_URL" \
+            --once \
+            --scenario use_photo_false \
+            --lang EN \
+            --out tmp/ci_chaos_soak_once
+
+      - name: Upload chaos soak summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-soak-once-summary
+          path: |
+            tmp/ci_chaos_soak_once/summary.json
+            tmp/ci_chaos_soak_once/summary.csv
+            tmp/ci_chaos_soak_once/run.log
+          if-no-files-found: error

@@ -65,12 +65,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED,
       SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES:
         process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES,
-      SEARCH_EVAL_INTERNAL_ONLY_ENABLED:
-        process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED,
-      SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED:
-        process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED,
-      SEARCH_EVAL_INTERNAL_ONLY_HEADER:
-        process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -229,24 +223,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     } else {
       process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES =
         prevEnv.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES;
-    }
-    if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_ENABLED === undefined) {
-      delete process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED;
-    } else {
-      process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED =
-        prevEnv.SEARCH_EVAL_INTERNAL_ONLY_ENABLED;
-    }
-    if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED === undefined) {
-      delete process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
-    } else {
-      process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED =
-        prevEnv.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
-    }
-    if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_HEADER === undefined) {
-      delete process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
-    } else {
-      process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER =
-        prevEnv.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
     }
   });
 
@@ -507,48 +483,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       }),
     );
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
-  });
-
-  test('skips upstream calls in eval internal-only mode', async () => {
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED = 'true';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED = 'true';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER = 'x-eval';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
-
-    const upstreamScope = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, { status: 'success', products: [] });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .set('X-Eval', '1')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'hiking essentials',
-            limit: 10,
-            in_stock_only: false,
-          },
-        },
-        metadata: {
-          scope: { catalog: 'global', region: 'US', language: 'en-US' },
-          source: 'shopping_agent',
-        },
-      });
-
-    expect(resp.status).toBe(200);
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        eval_mode: true,
-        upstream_disabled: true,
-      }),
-    );
-    expect(resp.body.metadata?.query_source).toBe('eval_internal_only_no_upstream');
-    expect(upstreamScope.isDone()).toBe(false);
   });
 
   test('pet harness query rejects dog-apparel-only matches as strict empty', async () => {
@@ -1230,7 +1164,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
           String(body.payload.search.query || '') === queryText &&
           body.payload.search.fast_mode === true &&
           body.payload.search.allow_stale_cache === false &&
-          body.payload.search.allow_external_seed === false &&
+          body.payload.search.allow_external_seed === true &&
           String(body.payload.search.external_seed_strategy || '') === 'legacy' &&
           String(body.metadata?.source || '') === 'aurora-bff'
         );

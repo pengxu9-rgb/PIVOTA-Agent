@@ -28,6 +28,21 @@ This document covers deploying and operating the Aurora BFF/Orchestrator inside 
 - `PIVOTA_BACKEND_BASE_URL` (pivota-backend base). If unset, the service falls back to `PIVOTA_API_BASE`.
 - `PIVOTA_BACKEND_AGENT_API_KEY` (or compatible API key env) for photo upload/download-url bridge when checkout token is absent.
 
+### Aurora KB v0 (production defaults)
+
+- `AURORA_KB_V0_DISABLE=0` (default ON: use KB v0 + legacy merge path)
+- `AURORA_KB_FAIL_MODE=closed` (default fail-fast: structural KB errors block boot)
+
+Emergency-only overrides:
+
+- `AURORA_KB_V0_DISABLE=1` => full legacy behavior
+- `AURORA_KB_FAIL_MODE=open` => fail-open to legacy on KB load/validation errors
+
+Feature-flag mapping (env-backed):
+
+- `kb_v0_enabled = (AURORA_KB_V0_DISABLE != 1)`
+- `kb_fail_mode = AURORA_KB_FAIL_MODE` (`closed|open`)
+
 ### Skin photo diagnosis knobs
 
 - `AURORA_SKIN_VISION_ENABLED` (`true|false`)

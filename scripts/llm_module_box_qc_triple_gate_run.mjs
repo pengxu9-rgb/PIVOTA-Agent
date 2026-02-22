@@ -17,6 +17,7 @@ Options:
   --out_root <dir>                       output root dir (default: <manifest_dir>/llm_qc_triple_gate_<ts>)
   --tasks_json <path>                    tasks.json path (default: read from manifest.artifacts.tasks_json)
   --provider <mock|gemini|openai>        primary provider (default: gemini)
+  --allow_mock_provider <bool>           require explicit opt-in when any run stage uses mock provider (default: false)
   --model <name>                         primary model (default: gemini-2.5-flash)
   --escalate_provider <mock|gemini|openai|none>  second-pass provider (default: gemini)
   --escalate_model <name>                second-pass model (default: gemini-2.5-pro)
@@ -34,12 +35,20 @@ Options:
   --both_bad_risk_reasons_csv <csv>      risk reasons used by hard gate (default: module_guard_triggered,module_pixels_min_low)
   --decision_mode <qa|consumer>          third-gate policy mode (default: consumer)
   --hard_block_only <bool>               block only hard-failure both_bad (default: true in consumer, false in qa)
+  --manual_delta_guard_enabled <bool>    move high-delta pairs into manual_review queue (default: true in consumer, false in qa)
+  --manual_delta_guard_pair_max <n>      pair max mean_delta_l1 threshold for manual_review guard (default: 0.19)
+  --manual_delta_guard_min_corrected <n> min corrected modules for manual_review delta guard (default: 3)
+  --manual_delta_guard_decisions <csv>   decisions considered by manual delta guard (default: revise)
   --limit <n>                            max candidate sides to process (default: 58)
   --risk_only <bool>                     process only risk candidates (default: true)
   --risk_min_pixels <n>                  low pixel threshold (default: 56)
   --risk_min_geometry_score <0-1>        low geometry threshold (default: 0.88)
   --risk_max_abs_yaw <0-1>               high yaw threshold (default: 0.55)
+  --pre_geometry_seed_enabled <bool>     run deterministic geometry seed before LLM pass (default: false)
+  --pre_geometry_seed_max_modules <n>    max changed modules allowed in pre-geometry seed (default: 5)
+  --pre_geometry_seed_max_pair_mean_delta <n> max mean_delta_l1 allowed in pre-geometry seed (default: 0.19)
   --write_report_shortcut <bool>         write shortcut html into reports/ (default: true)
+  --update_latest_redirects <bool>       whether this run updates reports/*latest*.html redirects (default: true for non-mock runs, false for mock runs)
   --dry_run <bool>                       skip provider calls (default: false)
   --help                                 show help
 `;
@@ -262,13 +271,28 @@ async function main() {
 
   const dryRun = parseBool(args.dry_run, false);
   const provider = String(args.provider || 'gemini').trim().toLowerCase();
+  const allowMockProvider = parseBool(args.allow_mock_provider, false);
   const model = String(args.model || 'gemini-2.5-flash').trim();
   const escalateProviderRaw = String(args.escalate_provider || 'gemini').trim().toLowerCase();
   const escalateProvider = (!escalateProviderRaw || escalateProviderRaw === 'none') ? null : escalateProviderRaw;
   const escalateModel = String(args.escalate_model || 'gemini-2.5-pro').trim();
+  const mockProvidersInRun = [];
+  if (provider === 'mock') mockProvidersInRun.push('primary');
+  if (escalateProvider === 'mock') mockProvidersInRun.push('escalate');
+  const hasMockProviderInRun = mockProvidersInRun.length > 0;
+  if (hasMockProviderInRun && !allowMockProvider) {
+    process.stderr.write(
+      `Mock provider detected in stages [${mockProvidersInRun.join(', ')}]. Re-run with --allow_mock_provider true if intentional.\n`,
+    );
+    process.exitCode = 2;
+    return;
+  }
   const limit = Math.max(1, Math.min(500, Math.trunc(parseNumber(args.limit, 58, 1, 500))));
   const riskOnly = parseBool(args.risk_only, true);
   const writeReportShortcut = parseBool(args.write_report_shortcut, true);
+  const preGeometrySeedEnabled = parseBool(args.pre_geometry_seed_enabled, false);
+  const preGeometrySeedMaxModules = Math.trunc(parseNumber(args.pre_geometry_seed_max_modules, 5, 1, 20));
+  const preGeometrySeedMaxPairMeanDelta = parseNumber(args.pre_geometry_seed_max_pair_mean_delta, 0.19, 0, 2);
   const bothBadScoreMax = parseNumber(args.both_bad_score_max, 0.24, -2, 1);
   const bothBadMaxDiff = parseNumber(args.both_bad_max_diff, 0.22, 0, 2);
   const bothBadWinnerNotCleanScoreMax = parseNumber(args.both_bad_winner_not_clean_score_max, 0.4, -2, 1);
@@ -282,6 +306,11 @@ async function main() {
   const decisionModeToken = String(args.decision_mode || 'consumer').trim().toLowerCase();
   const decisionMode = decisionModeToken === 'qa' ? 'qa' : 'consumer';
   const hardBlockOnly = parseBool(args.hard_block_only, decisionMode === 'consumer');
+  const manualDeltaGuardEnabled = parseBool(args.manual_delta_guard_enabled, decisionMode === 'consumer');
+  const manualDeltaGuardPairMax = parseNumber(args.manual_delta_guard_pair_max, 0.19, 0, 2);
+  const manualDeltaGuardMinCorrected = Math.trunc(parseNumber(args.manual_delta_guard_min_corrected, 3, 0, 20));
+  const manualDeltaGuardDecisions = String(args.manual_delta_guard_decisions || 'revise').trim();
+  const updateLatestRedirects = parseBool(args.update_latest_redirects, !hasMockProviderInRun);
 
   if (!dryRun && (provider === 'gemini' || escalateProvider === 'gemini')) {
     const hasGeminiKey = Boolean(
@@ -327,6 +356,9 @@ async function main() {
     '--risk_min_pixels', String(Math.trunc(parseNumber(args.risk_min_pixels, 56, 1, 4096))),
     '--risk_min_geometry_score', String(parseNumber(args.risk_min_geometry_score, 0.88, 0, 1)),
     '--risk_max_abs_yaw', String(parseNumber(args.risk_max_abs_yaw, 0.55, 0, 1)),
+    '--pre_geometry_seed_enabled', String(preGeometrySeedEnabled),
+    '--pre_geometry_seed_max_modules', String(preGeometrySeedMaxModules),
+    '--pre_geometry_seed_max_pair_mean_delta', String(preGeometrySeedMaxPairMeanDelta),
     '--escalate_provider', String(escalateProvider || 'none'),
     '--escalate_model', escalateModel,
     '--escalate_min_confidence', String(parseNumber(args.escalate_min_confidence, 0.78, 0, 1)),
@@ -360,6 +392,10 @@ async function main() {
     '--both_bad_min_severity_penalty', String(bothBadMinSeverityPenalty),
     '--both_bad_risk_gate_enabled', String(bothBadRiskGateEnabled),
     '--both_bad_risk_reasons_csv', bothBadRiskReasonsCsv,
+    '--manual_delta_guard_enabled', String(manualDeltaGuardEnabled),
+    '--manual_delta_guard_pair_max', String(manualDeltaGuardPairMax),
+    '--manual_delta_guard_min_corrected', String(manualDeltaGuardMinCorrected),
+    '--manual_delta_guard_decisions', manualDeltaGuardDecisions,
   ];
   if (tasksJsonResolved) {
     abArgs.push('--tasks_json', tasksJsonResolved);
@@ -374,6 +410,7 @@ async function main() {
 
   let shortcutPath = null;
   let latestShortcutPath = null;
+  let latestRealShortcutPath = null;
   let latestAllPath = null;
   let latestManualPath = null;
   let latestBlockedPath = null;
@@ -388,34 +425,50 @@ async function main() {
       llmSummary,
       abSummary,
     });
-    latestShortcutPath = await writeLatestHtmlRedirect({
-      reportsDir,
-      latestFileName: 'ab_label_triple_gate_latest.html',
-      targetPath: shortcutPath,
-      title: 'Triple-Gate Shortcut (Latest)',
-    });
-    latestAllPath = await writeLatestHtmlRedirect({
-      reportsDir,
-      latestFileName: 'ab_label_review_all_latest.html',
-      targetPath: reviewAllPath,
-      title: 'A/B Review All (Latest)',
-    });
-    latestManualPath = await writeLatestHtmlRedirect({
-      reportsDir,
-      latestFileName: 'ab_label_review_manual_latest.html',
-      targetPath: reviewManualPath,
-      title: 'A/B Review Manual (Latest)',
-    });
-    latestBlockedPath = await writeLatestHtmlRedirect({
-      reportsDir,
-      latestFileName: 'ab_label_review_blocked_latest.html',
-      targetPath: reviewBlockedPath,
-      title: 'A/B Review Blocked (Latest)',
-    });
+    if (updateLatestRedirects) {
+      latestShortcutPath = await writeLatestHtmlRedirect({
+        reportsDir,
+        latestFileName: 'ab_label_triple_gate_latest.html',
+        targetPath: shortcutPath,
+        title: 'Triple-Gate Shortcut (Latest)',
+      });
+      if (!hasMockProviderInRun) {
+        latestRealShortcutPath = await writeLatestHtmlRedirect({
+          reportsDir,
+          latestFileName: 'ab_label_triple_gate_latest_real.html',
+          targetPath: shortcutPath,
+          title: 'Triple-Gate Shortcut (Latest Real)',
+        });
+      }
+      latestAllPath = await writeLatestHtmlRedirect({
+        reportsDir,
+        latestFileName: 'ab_label_review_all_latest.html',
+        targetPath: reviewAllPath,
+        title: 'A/B Review All (Latest)',
+      });
+      latestManualPath = await writeLatestHtmlRedirect({
+        reportsDir,
+        latestFileName: 'ab_label_review_manual_latest.html',
+        targetPath: reviewManualPath,
+        title: 'A/B Review Manual (Latest)',
+      });
+      latestBlockedPath = await writeLatestHtmlRedirect({
+        reportsDir,
+        latestFileName: 'ab_label_review_blocked_latest.html',
+        targetPath: reviewBlockedPath,
+        title: 'A/B Review Blocked (Latest)',
+      });
+    }
   }
 
   process.stdout.write(`${JSON.stringify({
     ok: true,
+    mock_guard: {
+      allow_mock_provider: allowMockProvider,
+      has_mock_provider_in_run: hasMockProviderInRun,
+      mock_provider_stages: mockProvidersInRun,
+      update_latest_redirects: updateLatestRedirects,
+    },
     manifest_path: manifestPath,
     tasks_json_path: tasksJsonResolved,
     out_root: outRoot,
@@ -424,12 +477,19 @@ async function main() {
       results_path: llmResultsPath,
       decision_counts: llmSummary.decision_counts || {},
       escalation: llmSummary.escalation || {},
+      pre_geometry_seed: llmSummary.pre_geometry_seed || null,
     },
     ab: {
       summary_path: abSummaryPath,
       decision_policy: {
         mode: decisionMode,
         hard_block_only: hardBlockOnly,
+      },
+      manual_delta_guard: {
+        enabled: manualDeltaGuardEnabled,
+        pair_max: manualDeltaGuardPairMax,
+        min_corrected: manualDeltaGuardMinCorrected,
+        decisions: manualDeltaGuardDecisions,
       },
       decision_class_counts: abSummary.decision_class_counts || {},
       manual_review_total: Number(abSummary.manual_review_total || 0),
@@ -441,6 +501,7 @@ async function main() {
     report_shortcut_html: shortcutPath,
     reports_latest: {
       shortcut: latestShortcutPath,
+      shortcut_real: latestRealShortcutPath,
       review_all: latestAllPath,
       review_manual: latestManualPath,
       review_blocked: latestBlockedPath,

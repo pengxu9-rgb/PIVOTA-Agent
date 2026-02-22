@@ -30,6 +30,11 @@ const MODULE_VERTICAL_RANGE = Object.freeze({
 });
 const MAX_RELATIVE_CENTER_SHIFT = 0.42;
 const MAX_RELATIVE_SIZE_SCALE = 2.7;
+const DEFAULT_PRE_GEOMETRY_SEED = Object.freeze({
+  enabled: false,
+  maxModules: 5,
+  maxPairMeanDelta: 0.19,
+});
 
 const HELP_TEXT = `llm_module_box_qc_poc.mjs
 
@@ -55,6 +60,9 @@ Options:
   --risk_min_pixels <n>                   low pixel threshold (default: 56)
   --risk_min_geometry_score <0-1>         low geometry threshold (default: 0.88)
   --risk_max_abs_yaw <0-1>                high yaw threshold (default: 0.55)
+  --pre_geometry_seed_enabled <bool>      run deterministic geometry seed before LLM pass (default: false)
+  --pre_geometry_seed_max_modules <n>     max changed modules allowed in pre-geometry seed (default: 5)
+  --pre_geometry_seed_max_pair_mean_delta <n> max mean_delta_l1 allowed in pre-geometry seed (default: 0.19)
   --write_corrected_manifest <bool>        emit corrected manifest copy (default: true)
   --write_final_manifest <bool>            emit final manifest for downstream (default: true)
   --dry_run <bool>                        skip provider call; emit candidate list only (default: false)
@@ -790,6 +798,91 @@ function computeCorrectionStats(originalBoxes, correctedBoxes) {
   };
 }
 
+function computeCorrectedMapAgainstOriginal({ originalBoxes, mergedBoxes }) {
+  const original = originalBoxes && typeof originalBoxes === 'object' ? originalBoxes : {};
+  const merged = mergedBoxes && typeof mergedBoxes === 'object' ? mergedBoxes : {};
+  const corrected = {};
+  for (const moduleId of MODULE_IDS) {
+    const before = sanitizeBox(original[moduleId]);
+    const after = sanitizeBox(merged[moduleId]);
+    if (!after) continue;
+    if (before && boxDeltaL1(before, after) <= 1e-4) continue;
+    corrected[moduleId] = after;
+  }
+  return corrected;
+}
+
+function maybeBuildPreGeometrySeed({
+  moduleBoxes,
+  summary,
+  config = DEFAULT_PRE_GEOMETRY_SEED,
+}) {
+  const cfg = config && typeof config === 'object' ? config : DEFAULT_PRE_GEOMETRY_SEED;
+  if (!cfg.enabled) {
+    return {
+      applied: false,
+      skip_reason: 'disabled',
+      corrected_boxes: {},
+      correction_stats: null,
+      validator_repairs: [],
+    };
+  }
+  const baseBoxes = moduleBoxes && typeof moduleBoxes === 'object' ? moduleBoxes : {};
+  if (Object.keys(baseBoxes).length === 0) {
+    return {
+      applied: false,
+      skip_reason: 'empty_module_boxes',
+      corrected_boxes: {},
+      correction_stats: null,
+      validator_repairs: [],
+    };
+  }
+  const seedPack = sanitizeCorrectedBoxMap(baseBoxes, baseBoxes, summary || {});
+  const merged = {
+    ...baseBoxes,
+    ...(seedPack.corrected_boxes || {}),
+  };
+  const corrected = computeCorrectedMapAgainstOriginal({
+    originalBoxes: baseBoxes,
+    mergedBoxes: merged,
+  });
+  const correctionStats = computeCorrectionStats(baseBoxes, corrected);
+  if (Number(correctionStats.corrected_modules_count || 0) <= 0) {
+    return {
+      applied: false,
+      skip_reason: 'no_change',
+      corrected_boxes: {},
+      correction_stats: correctionStats,
+      validator_repairs: Array.isArray(seedPack.validator_repairs) ? seedPack.validator_repairs : [],
+    };
+  }
+  if (Number(correctionStats.corrected_modules_count || 0) > Number(cfg.maxModules || DEFAULT_PRE_GEOMETRY_SEED.maxModules)) {
+    return {
+      applied: false,
+      skip_reason: 'too_many_changed_modules',
+      corrected_boxes: {},
+      correction_stats: correctionStats,
+      validator_repairs: Array.isArray(seedPack.validator_repairs) ? seedPack.validator_repairs : [],
+    };
+  }
+  if (Number(correctionStats.mean_delta_l1 || 0) > Number(cfg.maxPairMeanDelta || DEFAULT_PRE_GEOMETRY_SEED.maxPairMeanDelta)) {
+    return {
+      applied: false,
+      skip_reason: 'mean_delta_too_large',
+      corrected_boxes: {},
+      correction_stats: correctionStats,
+      validator_repairs: Array.isArray(seedPack.validator_repairs) ? seedPack.validator_repairs : [],
+    };
+  }
+  return {
+    applied: true,
+    skip_reason: null,
+    corrected_boxes: corrected,
+    correction_stats: correctionStats,
+    validator_repairs: Array.isArray(seedPack.validator_repairs) ? seedPack.validator_repairs : [],
+  };
+}
+
 async function callGeminiProvider({ promptText, imagePath, model }) {
   const schema = z.any();
   const result = await generateMultiImageJsonFromGemini({
@@ -1023,6 +1116,27 @@ async function main() {
     riskMinGeometryScore: parseNumber(args.risk_min_geometry_score, 0.88, 0, 1),
     riskMaxAbsYaw: parseNumber(args.risk_max_abs_yaw, 0.55, 0, 1),
   };
+  const preGeometrySeedConfig = {
+    enabled: parseBool(args.pre_geometry_seed_enabled, DEFAULT_PRE_GEOMETRY_SEED.enabled),
+    maxModules: Math.max(
+      1,
+      Math.min(
+        20,
+        Math.trunc(parseNumber(
+          args.pre_geometry_seed_max_modules,
+          DEFAULT_PRE_GEOMETRY_SEED.maxModules,
+          1,
+          20,
+        )),
+      ),
+    ),
+    maxPairMeanDelta: parseNumber(
+      args.pre_geometry_seed_max_pair_mean_delta,
+      DEFAULT_PRE_GEOMETRY_SEED.maxPairMeanDelta,
+      0,
+      2,
+    ),
+  };
   const writeCorrectedManifest = parseBool(args.write_corrected_manifest, true);
   const writeFinalManifest = parseBool(args.write_final_manifest, true);
   const dryRun = parseBool(args.dry_run, false);
@@ -1072,12 +1186,46 @@ async function main() {
   for (let index = 0; index < selected.length; index += 1) {
     const candidate = selected[index];
     const processed = index + 1;
-    const promptText = buildPrompt({
+    const preGeometrySeed = maybeBuildPreGeometrySeed({
       moduleBoxes: candidate.module_boxes,
-      summary: candidate.summary,
-      riskReasons: candidate.risk_reasons,
+      summary: candidate.summary || {},
+      config: preGeometrySeedConfig,
     });
-    const runPass = async (passProvider, passModel, passPrompt) => {
+    const preGeometrySeedApplied = Boolean(preGeometrySeed && preGeometrySeed.applied);
+    const llmInputBoxes = preGeometrySeedApplied
+      ? { ...candidate.module_boxes, ...(preGeometrySeed.corrected_boxes || {}) }
+      : candidate.module_boxes;
+    const llmInputRiskReasons = riskReasonsFromCandidate({
+      summary: candidate.summary || {},
+      moduleBoxes: llmInputBoxes,
+      thresholds,
+    });
+    const preGeometrySeedChangedModules = preGeometrySeedApplied
+      && preGeometrySeed.correction_stats
+      && Array.isArray(preGeometrySeed.correction_stats.corrected_modules)
+      ? preGeometrySeed.correction_stats.corrected_modules
+      : [];
+    const preGeometrySeedChangedModulesCount = preGeometrySeedApplied
+      ? Number((preGeometrySeed.correction_stats && preGeometrySeed.correction_stats.corrected_modules_count) || 0)
+      : 0;
+    const preGeometrySeedMeanDeltaL1 = preGeometrySeedApplied
+      ? Number((preGeometrySeed.correction_stats && preGeometrySeed.correction_stats.mean_delta_l1) || 0)
+      : 0;
+    const preGeometrySeedSkippedReason = preGeometrySeedApplied
+      ? null
+      : String(preGeometrySeed && preGeometrySeed.skip_reason ? preGeometrySeed.skip_reason : '').trim() || null;
+    const promptText = buildPrompt({
+      moduleBoxes: llmInputBoxes,
+      summary: candidate.summary,
+      riskReasons: llmInputRiskReasons,
+    });
+    const runPass = async (
+      passProvider,
+      passModel,
+      passPrompt,
+      passModuleBoxes = llmInputBoxes,
+      passRiskReasons = llmInputRiskReasons,
+    ) => {
       let llmRaw = null;
       let error = null;
       try {
@@ -1086,8 +1234,8 @@ async function main() {
           model: passModel,
           promptText: passPrompt,
           imagePath: candidate.image_path,
-          moduleBoxes: candidate.module_boxes,
-          riskReasons: candidate.risk_reasons,
+          moduleBoxes: passModuleBoxes,
+          riskReasons: passRiskReasons,
           dryRun,
         });
       } catch (err) {
@@ -1104,7 +1252,10 @@ async function main() {
     const primaryPass = await runPass(provider, model, promptText);
     const escalateDecision = shouldEscalateCandidate({
       primaryPass,
-      candidate,
+      candidate: {
+        ...candidate,
+        risk_reasons: llmInputRiskReasons,
+      },
       escalateEnabled,
       escalateIfError,
       escalateMinConfidence,
@@ -1130,9 +1281,20 @@ async function main() {
 
     const correctedPack = sanitizeCorrectedBoxMap(
       normalized.corrected_boxes || {},
-      candidate.module_boxes,
+      llmInputBoxes,
+      candidate.summary || {},
     );
-    const corrected = correctedPack.corrected_boxes;
+    let corrected = correctedPack.corrected_boxes;
+    if (preGeometrySeedApplied) {
+      const merged = {
+        ...llmInputBoxes,
+        ...corrected,
+      };
+      corrected = computeCorrectedMapAgainstOriginal({
+        originalBoxes: candidate.module_boxes,
+        mergedBoxes: merged,
+      });
+    }
     const correctionStats = computeCorrectionStats(candidate.module_boxes, corrected);
     results.push({
       sample_hash: candidate.sample_hash,
@@ -1154,8 +1316,14 @@ async function main() {
       confidence: round4(normalized.confidence),
       violations: Array.isArray(normalized.violations) ? normalized.violations : [],
       risk_reasons: candidate.risk_reasons,
+      llm_input_risk_reasons: llmInputRiskReasons,
       notes: normalized.notes || null,
       corrected_boxes: corrected,
+      pre_geometry_seed_applied: preGeometrySeedApplied,
+      pre_geometry_seed_changed_modules: preGeometrySeedChangedModules,
+      pre_geometry_seed_changed_modules_count: preGeometrySeedChangedModulesCount,
+      pre_geometry_seed_mean_delta_l1: round4(preGeometrySeedMeanDeltaL1),
+      pre_geometry_seed_skipped_reason: preGeometrySeedSkippedReason,
       validator_repairs: correctedPack.validator_repairs,
       ...correctionStats,
       error: selectedPass.selected ? selectedPass.selected.error : null,
@@ -1194,6 +1362,13 @@ async function main() {
   const escalatedTotal = results.filter((row) => Boolean(row.escalation_applied)).length;
   const escalationSelectedSecondaryTotal = results.filter((row) => Boolean(row.escalation_selected_secondary)).length;
   const escalationErrorTotal = results.filter((row) => Boolean(row.secondary_error || row.secondary_parse_error)).length;
+  const preGeometrySeedAppliedTotal = results.filter((row) => Boolean(row.pre_geometry_seed_applied)).length;
+  const preGeometrySeedSkipReasonCounts = results.reduce((acc, row) => {
+    const reason = String(row.pre_geometry_seed_skipped_reason || '').trim();
+    if (!reason) return acc;
+    acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, {});
   const summary = {
     ok: true,
     provider,
@@ -1209,6 +1384,14 @@ async function main() {
       escalated_total: escalatedTotal,
       selected_secondary_total: escalationSelectedSecondaryTotal,
       secondary_error_total: escalationErrorTotal,
+    },
+    pre_geometry_seed: {
+      enabled: preGeometrySeedConfig.enabled,
+      max_modules: preGeometrySeedConfig.maxModules,
+      max_pair_mean_delta: preGeometrySeedConfig.maxPairMeanDelta,
+      applied_sides: preGeometrySeedAppliedTotal,
+      applied_rate: results.length ? round4(preGeometrySeedAppliedTotal / results.length) : 0,
+      skip_reason_counts: preGeometrySeedSkipReasonCounts,
     },
     manifest_path: manifestPath,
     out_dir: outDir,

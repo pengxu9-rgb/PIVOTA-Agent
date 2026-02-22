@@ -1,3 +1,10 @@
+const { getAuroraKbV0 } = require('./kbV0/loader');
+const { collectConceptIdsFromText, matchIngredientOntology } = require('./kbV0/conceptMatcher');
+const {
+  recordAuroraKbV0RuleMatch,
+  recordAuroraKbV0LegacyFallback,
+} = require('./visionMetrics');
+
 const BLOCK_LEVEL = Object.freeze({
   INFO: 'INFO',
   WARN: 'WARN',
@@ -11,6 +18,17 @@ const LEVEL_WEIGHT = Object.freeze({
   REQUIRE_INFO: 2,
   BLOCK: 3,
 });
+
+const MEDICATION_ISOTRETINOIN_CONCEPT = 'MEDICATION_ISOTRETINOIN';
+const KB_ISOTRETINOIN_PARITY_BLOCK_RULE_IDS = new Set([
+  'MED_ISOTRETINOIN_X_AHA_WARN',
+  'MED_ISOTRETINOIN_X_BHA_WARN',
+  'MED_ISOTRETINOIN_X_RETINOID_WARN',
+  'MED_ISOTRETINOIN_X_BPO_WARN',
+  'MED_ISOTRETINOIN_X_PHYSICAL_EXFOLIANT_WARN',
+]);
+const ISOTRETINOIN_SPECIFIC_TOKEN_RE = /\b(isotretinoin|accutane|roaccutane)\b|异维a酸|罗可坦|泰尔丝/i;
+const ISOTRETINOIN_ORAL_HINT_RE = /\boral\b|\brx\b|\bprescription\b|口服|吃药|服用|处方药|医生开药/i;
 
 function normalizeLanguage(language) {
   return String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
@@ -34,7 +52,7 @@ function normalizeLactationStatus(value) {
   const raw = lowerText(value);
   if (!raw) return 'unknown';
   if (/(not[_\s-]?lactat|非哺乳|未哺乳|不哺乳)/i.test(raw)) return 'not_lactating';
-  if (/(lactat|breastfeed|哺乳|母乳)/i.test(raw)) return 'lactating';
+  if (/(lactat|breastfeed|哺乳|母乳|nursing)/i.test(raw)) return 'breastfeeding';
   if (/(unknown|不确定|未知|not sure|unsure)/i.test(raw)) return 'unknown';
   return raw;
 }
@@ -42,15 +60,39 @@ function normalizeLactationStatus(value) {
 function normalizeAgeBand(value) {
   const raw = lowerText(value);
   if (!raw) return 'unknown';
-  if (/(under[_\s-]?13|13[_\s-]?17|18[_\s-]?24|25[_\s-]?34|35[_\s-]?44|45[_\s-]?54|55)/i.test(raw)) {
-    return raw.replace(/\s+/g, '_');
-  }
+  if (/(under[_\s-]?13|child|kid|children|infant|toddler|baby|儿童|小孩|婴儿|幼儿|宝宝)/i.test(raw)) return 'child';
+  if (/(13[_\s-]?17|teen|minor|未成年|青少年)/i.test(raw)) return 'teen';
+  if (/(adult|18[_\s-]?24|25[_\s-]?34|35[_\s-]?44|45[_\s-]?54|55|成年)/i.test(raw)) return 'adult';
   if (/(unknown|不确定|未知|not sure|unsure)/i.test(raw)) return 'unknown';
   return raw;
 }
 
 function lowerText(value) {
   return normalizeText(value).toLowerCase();
+}
+
+function normalizeMedicationToken(value) {
+  const raw = lowerText(value);
+  if (!raw) return '';
+  if (/(isotretinoin|accutane|roaccutane|异维a酸|罗可坦|泰尔丝)/i.test(raw)) return 'isotretinoin';
+  if (raw === 'medication_isotretinoin') return 'isotretinoin';
+  return raw.replace(/\s+/g, '_');
+}
+
+function medicationTokenMatchesIsotretinoin(value) {
+  return normalizeMedicationToken(value) === 'isotretinoin';
+}
+
+function hasExplicitOralIsotretinoinSignal(text) {
+  const raw = normalizeText(text);
+  if (!raw) return false;
+  // Deterministic guardrail: only isotretinoin-specific tokens can promote medication context.
+  // Generic topical retinoid mentions (e.g., adapalene/tretinoin cream) must not be treated as oral isotretinoin.
+  if (ISOTRETINOIN_SPECIFIC_TOKEN_RE.test(raw)) return true;
+  if (ISOTRETINOIN_ORAL_HINT_RE.test(raw) && /\b(isotretinoin|accutane|roaccutane)\b|异维a酸|罗可坦|泰尔丝/i.test(raw)) {
+    return true;
+  }
+  return false;
 }
 
 function hasAny(text, patterns) {
@@ -108,20 +150,28 @@ function inferLactationStatusFromMessage(message) {
     return 'not_lactating';
   }
   if (/\b(i('| a)?m|i am|currently)\s+(lactating|breastfeeding)\b/i.test(raw) || /我(现在)?(在)?哺乳|我(现在)?母乳/.test(raw)) {
-    return 'lactating';
+    return 'breastfeeding';
   }
   if (
     /\b(while|during)\s+(lactating|breastfeeding|lactation)\b/i.test(raw) ||
     /\b(lactat|breastfeed)\b/i.test(raw) ||
     /(哺乳期|母乳期)/.test(raw)
   ) {
-    return 'lactating';
+    return 'breastfeeding';
   }
   if (/(lactat|breastfeed|哺乳|母乳)/i.test(lower)) return 'unknown';
   return 'unknown';
 }
 
-function buildCtx({ intent, message, profile, language }) {
+function buildCtx({
+  intent,
+  message,
+  profile,
+  language,
+  conceptIds = [],
+  contraindicationTags = [],
+  hasProductAnchor = false,
+} = {}) {
   const text = normalizeText(message);
   const lower = lowerText(text);
   const lang = normalizeLanguage(language);
@@ -137,13 +187,15 @@ function buildCtx({ intent, message, profile, language }) {
   const medsLower = p.high_risk_medications.map((m) => m.toLowerCase());
 
   const mentions = {
-    oralIsotretinoin: hasAny(lower, [/\b(accutane|isotretinoin|oral\s+isotretinoin|口服异维a酸|异维a酸)\b/i]),
+    oralIsotretinoin: hasExplicitOralIsotretinoinSignal(text),
     retinoid: hasAny(lower, [/\b(retinoid|retinol|retinal|tretinoin|adapalene|tazarotene|维a|a醇|维甲酸|阿达帕林)\b/i]),
     hydroquinone: hasAny(lower, [/\b(hydroquinone|氢醌)\b/i]),
     strongSalicylic: hasAny(lower, [/(salicylic\s*acid\s*(30|20|high|strong)|高浓度水杨酸|水杨酸焕肤|bha\s*peel)/i]),
     aggressivePeel: hasAny(lower, [/(chemical\s*peel|peel\s*kit|焕肤|刷酸换肤|剥脱)/i]),
     prescription: hasAny(lower, [/(prescription|rx|处方|医生开|药膏)/i]),
     essentialOilHeavy: hasAny(lower, [/(essential\s*oil|香精精油|精油类)/i]),
+    fragrance: hasAny(lower, [/(fragrance|parfum|perfume|香精|香料)/i]),
+    benzoylPeroxide: hasAny(lower, [/(benzoyl\s*peroxide|bpo|过氧化苯甲酰)/i]),
     acneAsk: hasAny(lower, [/(acne|breakout|控痘|痘痘|闭口|粉刺)/i]),
     chestArea: hasAny(lower, [/(breast|chest|areola|乳房|胸前|乳晕)/i]),
     strongExfoliant: hasAny(lower, [/(aha|bha|pha|glycolic|lactic|mandelic|果酸|水杨酸|酸类去角质)/i]),
@@ -165,9 +217,74 @@ function buildCtx({ intent, message, profile, language }) {
     breastfeedingSafeAsk: hasAny(lower, [/(breastfeeding|lactating|哺乳|母乳).{0,20}(safe|可以用|安全)/i]),
   };
 
+  const conceptSet = new Set(
+    (Array.isArray(conceptIds) ? conceptIds : [])
+      .map((value) => normalizeText(value).toUpperCase())
+      .filter(Boolean),
+  );
+  if (mentions.retinoid) conceptSet.add('RETINOID');
+  if (mentions.benzoylPeroxide) conceptSet.add('BENZOYL_PEROXIDE');
+  if (mentions.hydroquinone) conceptSet.add('HYDROQUINONE');
+  if (mentions.strongSalicylic) {
+    conceptSet.add('BHA');
+    conceptSet.add('SALICYLIC_ACID');
+    conceptSet.add('HIGH_STRENGTH');
+  }
+  if (mentions.aggressivePeel) conceptSet.add('CHEMICAL_PEEL');
+  if (mentions.prescription) conceptSet.add('PRESCRIPTION_MEDICATION');
+  if (mentions.essentialOilHeavy) conceptSet.add('ESSENTIAL_OIL');
+  if (mentions.fragrance) conceptSet.add('FRAGRANCE');
+  if (mentions.strongExfoliant) conceptSet.add('EXFOLIANT');
+  if (mentions.dailyExfoliation) conceptSet.add('DAILY_EXFOLIATION');
+  if (mentions.travelHighUv) {
+    conceptSet.add('TRAVEL');
+    conceptSet.add('HIGH_UV');
+    conceptSet.add('SUN_EXPOSURE');
+  }
+  if (mentions.wantsExfoliation) conceptSet.add('EXFOLIANT');
+  if (mentions.tretinoinRx) {
+    conceptSet.add('TRETINOIN');
+    conceptSet.add('PRESCRIPTION_MEDICATION');
+  }
+  if (mentions.breastfeedingSafeAsk) conceptSet.add('BREASTFEEDING');
+  if (p.pregnancy_status === 'pregnant') conceptSet.add('PREGNANT');
+  if (p.pregnancy_status === 'trying') conceptSet.add('TRYING_TO_CONCEIVE');
+  if (p.lactation_status === 'breastfeeding') conceptSet.add('BREASTFEEDING');
+  if (p.age_band === 'child') conceptSet.add('AGE_UNDER_13');
+  if (p.age_band === 'teen') conceptSet.add('AGE_13_17');
+  if (/(impaired|damaged|不稳定|受损)/i.test(p.barrierStatus)) conceptSet.add('BARRIER_COMPROMISED');
+  if (/(high|sensitive|高|敏感)/i.test(p.sensitivity)) conceptSet.add('SENSITIVE_SKIN');
+
+  const medicationsAnySet = new Set(
+    p.high_risk_medications.map((value) => normalizeMedicationToken(value)).filter(Boolean),
+  );
+  if (conceptSet.has(MEDICATION_ISOTRETINOIN_CONCEPT) || mentions.oralIsotretinoin) {
+    medicationsAnySet.add('isotretinoin');
+    medicationsAnySet.add('medication_isotretinoin');
+  }
+
   const meds = {
-    isotretinoin: medsLower.some((m) => /(isotretinoin|accutane|异维a酸)/i.test(m)),
+    isotretinoin:
+      medsLower.some((m) => medicationTokenMatchesIsotretinoin(m)) ||
+      medicationsAnySet.has('isotretinoin') ||
+      conceptSet.has(MEDICATION_ISOTRETINOIN_CONCEPT),
   };
+  if (meds.isotretinoin) {
+    conceptSet.add(MEDICATION_ISOTRETINOIN_CONCEPT);
+    medicationsAnySet.add('isotretinoin');
+    medicationsAnySet.add('medication_isotretinoin');
+    if (!p.high_risk_medications.some((m) => medicationTokenMatchesIsotretinoin(m))) {
+      p.high_risk_medications = [...p.high_risk_medications, 'isotretinoin'];
+    }
+  }
+
+  const normalizedContraindicationTags = Array.from(
+    new Set(
+      (Array.isArray(contraindicationTags) ? contraindicationTags : [])
+        .map((value) => normalizeText(value).toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 
   return {
     intent: String(intent || ''),
@@ -177,6 +294,10 @@ function buildCtx({ intent, message, profile, language }) {
     profile: p,
     mentions,
     meds,
+    medications_any: Array.from(medicationsAnySet),
+    concept_ids: Array.from(conceptSet),
+    contraindication_tags: normalizedContraindicationTags,
+    has_product_anchor: Boolean(hasProductAnchor),
   };
 }
 
@@ -261,28 +382,28 @@ const SAFETY_RULES = [
   {
     id: 'L1',
     level: BLOCK_LEVEL.BLOCK,
-    when: (ctx) => ctx.profile.lactation_status === 'lactating' && ctx.mentions.oralIsotretinoin,
+    when: (ctx) => ['breastfeeding', 'lactating'].includes(ctx.profile.lactation_status) && ctx.mentions.oralIsotretinoin,
     reason: bilingual('Do not use oral isotretinoin during breastfeeding.', '哺乳期不建议口服异维A酸。'),
     alternatives: bilingual('Use conservative topical options and consult clinician.', '建议保守外用并咨询医生。'),
   },
   {
     id: 'L2',
     level: BLOCK_LEVEL.WARN,
-    when: (ctx) => ctx.profile.lactation_status === 'lactating' && ctx.mentions.retinoid && ctx.mentions.chestArea,
+    when: (ctx) => ['breastfeeding', 'lactating'].includes(ctx.profile.lactation_status) && ctx.mentions.retinoid && ctx.mentions.chestArea,
     reason: bilingual('Avoid applying retinoids on chest/areola while breastfeeding.', '哺乳期避免在胸前/乳晕区域使用维A类。'),
     alternatives: bilingual('Use non-retinoid barrier products for that area.', '该区域优先使用非维A修护品。'),
   },
   {
     id: 'L3',
     level: BLOCK_LEVEL.WARN,
-    when: (ctx) => ctx.profile.lactation_status === 'lactating' && ctx.mentions.aggressivePeel,
+    when: (ctx) => ['breastfeeding', 'lactating'].includes(ctx.profile.lactation_status) && ctx.mentions.aggressivePeel,
     reason: bilingual('Strong peel routines can increase irritation during lactation.', '哺乳期激进焕肤更易刺激。'),
     alternatives: bilingual('Prefer gentle routine and reduce active overlap.', '建议温和流程并减少活性叠加。'),
   },
   {
     id: 'L4',
     level: BLOCK_LEVEL.INFO,
-    when: (ctx) => ctx.profile.lactation_status === 'lactating' && ctx.mentions.breastfeedingSafeAsk,
+    when: (ctx) => ['breastfeeding', 'lactating'].includes(ctx.profile.lactation_status) && ctx.mentions.breastfeedingSafeAsk,
     reason: bilingual('A conservative breastfeeding-safe skincare path will be used.', '将按哺乳期保守路径给出建议。'),
   },
   {
@@ -336,6 +457,13 @@ const SAFETY_RULES = [
     alternatives: bilingual('Avoid strong exfoliants and keep routine minimal.', '建议停强酸并保持最简流程。'),
   },
   {
+    id: 'M2B',
+    level: BLOCK_LEVEL.BLOCK,
+    when: (ctx) => ctx.meds.isotretinoin && ctx.mentions.benzoylPeroxide,
+    reason: bilingual('Oral isotretinoin + benzoyl peroxide is high irritation risk.', '口服异维A酸期间叠加过氧化苯甲酰风险高。'),
+    alternatives: bilingual('Pause benzoyl peroxide and keep a gentle routine unless clinician advised.', '除医生特别建议外，建议暂停过氧化苯甲酰并保持温和流程。'),
+  },
+  {
     id: 'M3',
     level: BLOCK_LEVEL.WARN,
     when: (ctx) => ctx.mentions.tretinoinRx && ctx.mentions.aggressivePeel,
@@ -370,6 +498,19 @@ const SAFETY_RULES = [
     required_questions: ['Which age band are you in?'],
     required_questions_cn: ['请问你的年龄段是？'],
   },
+  {
+    id: 'C1',
+    level: BLOCK_LEVEL.BLOCK,
+    when: (ctx) => ctx.profile.age_band === 'child' && (ctx.mentions.essentialOilHeavy || ctx.mentions.fragrance),
+    reason: bilingual(
+      'For infant/toddler skin, avoid fragrance or essential-oil-heavy products.',
+      '婴幼儿皮肤建议避免香精或高精油配方。',
+    ),
+    alternatives: bilingual(
+      'Use fragrance-free, minimal-ingredient products designed for children.',
+      '建议改用无香精、成分精简的儿童友好配方。',
+    ),
+  },
 ];
 
 function selectText(multilang, lang) {
@@ -399,10 +540,321 @@ function mergeBlockLevel(a, b) {
   return right > left ? b : a;
 }
 
-function evaluateSafety({ intent, message, profile, language } = {}) {
-  const ctx = buildCtx({ intent, message, profile, language });
-  const matched = [];
+const CONTEXT_ANCHOR_CONCEPTS = new Set([
+  'BARRIER_COMPROMISED',
+  'SUNBURN',
+  'PROCEDURE_RECENT',
+  'EYE_AREA',
+  'CONTACT_ALLERGY_HISTORY',
+  'SENSITIVE_SKIN',
+  'TRAVEL',
+  'HIGH_UV',
+  'PRODUCT_EVAL_REQUEST',
+]);
 
+function normalizeBlockLevel(level) {
+  const value = String(level || '').trim().toUpperCase();
+  if (value === BLOCK_LEVEL.BLOCK || value === BLOCK_LEVEL.REQUIRE_INFO || value === BLOCK_LEVEL.WARN || value === BLOCK_LEVEL.INFO) {
+    return value;
+  }
+  return BLOCK_LEVEL.INFO;
+}
+
+function normalizeConceptIds(values) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const value = normalizeText(raw).toUpperCase();
+    if (!value) continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+function statusMatches(allowedRaw, currentRaw, synonyms = {}) {
+  const allowed = normalizeText(allowedRaw).toLowerCase();
+  const current = normalizeText(currentRaw).toLowerCase();
+  if (!allowed) return true;
+  if (!current) return false;
+  if (allowed === current) return true;
+  const currentSyn = Array.isArray(synonyms[current]) ? synonyms[current] : [];
+  const allowedSyn = Array.isArray(synonyms[allowed]) ? synonyms[allowed] : [];
+  if (currentSyn.includes(allowed) || allowedSyn.includes(current)) return true;
+  return false;
+}
+
+function countConceptHits(requiredConcepts, presentSet) {
+  const required = normalizeConceptIds(requiredConcepts);
+  if (!required.length) return 0;
+  let hits = 0;
+  for (const conceptId of required) {
+    if (presentSet.has(conceptId)) hits += 1;
+  }
+  return hits;
+}
+
+function matchPrimaryConceptSet(requiredConcepts, presentSet) {
+  const required = normalizeConceptIds(requiredConcepts);
+  if (!required.length) return true;
+  const hits = countConceptHits(required, presentSet);
+  if (required.length === 1) return hits >= 1;
+
+  const anchors = required.filter((conceptId) => CONTEXT_ANCHOR_CONCEPTS.has(conceptId));
+  if (anchors.length > 0) {
+    const anchorHits = anchors.filter((conceptId) => presentSet.has(conceptId)).length;
+    return anchorHits >= 1 && hits >= 2;
+  }
+
+  if (required.length === 2) return hits >= 2;
+  return hits >= 2;
+}
+
+function matchSecondaryConceptSet(requiredConcepts, presentSet) {
+  const required = normalizeConceptIds(requiredConcepts);
+  if (!required.length) return true;
+  for (const conceptId of required) {
+    if (presentSet.has(conceptId)) return true;
+  }
+  return false;
+}
+
+function profileFieldMissing(ctx, field) {
+  const key = normalizeText(field).toLowerCase();
+  if (!key) return false;
+  if (key === 'pregnancy_status') return normalizeText(ctx.profile && ctx.profile.pregnancy_status).toLowerCase() === 'unknown';
+  if (key === 'lactation_status') return normalizeText(ctx.profile && ctx.profile.lactation_status).toLowerCase() === 'unknown';
+  if (key === 'age_band') return normalizeText(ctx.profile && ctx.profile.age_band).toLowerCase() === 'unknown';
+  if (key === 'high_risk_medications') return !Array.isArray(ctx.profile && ctx.profile.high_risk_medications) || ctx.profile.high_risk_medications.length === 0;
+  if (key === 'product_anchor') return !ctx.has_product_anchor;
+  const direct = ctx.profile && typeof ctx.profile === 'object' ? ctx.profile[key] : undefined;
+  if (Array.isArray(direct)) return direct.length === 0;
+  return !normalizeText(direct);
+}
+
+function questionForRequiredField(field, lang) {
+  const key = normalizeText(field).toLowerCase();
+  if (key === 'pregnancy_status') return lang === 'CN' ? '你当前是否怀孕或备孕？' : 'Are you currently pregnant or trying to conceive?';
+  if (key === 'lactation_status') return lang === 'CN' ? '你当前是否在哺乳期？' : 'Are you currently breastfeeding?';
+  if (key === 'age_band') return lang === 'CN' ? '请问你的年龄段是？' : 'Which age band are you in?';
+  if (key === 'high_risk_medications') return lang === 'CN' ? '你当前是否在使用处方/口服治疗药物？' : 'Are you currently using any prescription or oral treatment medication?';
+  if (key === 'product_anchor') return lang === 'CN' ? '请提供要评估的产品链接或完整产品名。' : 'Please share the product link or full product name to evaluate.';
+  return '';
+}
+
+function resolveConceptLabel(kb, conceptId, lang) {
+  const id = normalizeText(conceptId).toUpperCase();
+  if (!id) return '';
+  const concept = kb && kb.concepts_by_id && kb.concepts_by_id[id] ? kb.concepts_by_id[id] : null;
+  if (!concept || typeof concept !== 'object') return id;
+  const labels = concept.labels && typeof concept.labels === 'object' ? concept.labels : {};
+  if (lang === 'CN') return normalizeText(labels.zh || labels.en || id);
+  return normalizeText(labels.en || labels.zh || id);
+}
+
+function evaluateKbRules({ ctx, kb }) {
+  const matched = [];
+  if (!kb || kb.ok === false) return matched;
+  const presentConcepts = new Set(normalizeConceptIds(ctx.concept_ids));
+  const rules = Array.isArray(kb.safety_rules && kb.safety_rules.rules) ? kb.safety_rules.rules : [];
+  const templates = kb.templates_by_id && typeof kb.templates_by_id === 'object' ? kb.templates_by_id : {};
+  const medsLower = Array.isArray(ctx.profile && ctx.profile.high_risk_medications)
+    ? ctx.profile.high_risk_medications.map((m) => normalizeText(m).toLowerCase())
+    : [];
+  const medsAnySet = new Set([
+    ...medsLower.map((value) => normalizeMedicationToken(value)),
+    ...((Array.isArray(ctx.medications_any) ? ctx.medications_any : []).map((value) => normalizeMedicationToken(value))),
+  ].filter(Boolean));
+
+  for (const rule of rules) {
+    const trigger = rule && typeof rule.trigger === 'object' ? rule.trigger : {};
+    const lifeStage = trigger.life_stage && typeof trigger.life_stage === 'object' ? trigger.life_stage : {};
+    const pregnancyAllowed = Array.isArray(lifeStage.pregnancy_status) ? lifeStage.pregnancy_status : [];
+    const lactationAllowed = Array.isArray(lifeStage.lactation_status) ? lifeStage.lactation_status : [];
+    const ageAllowed = Array.isArray(lifeStage.age_band) ? lifeStage.age_band : [];
+    const medicationsAny = Array.isArray(lifeStage.medications_any) ? lifeStage.medications_any : [];
+    const requiredContextMissing = Array.isArray(trigger.required_context_missing) ? trigger.required_context_missing : [];
+    const primaryConcepts = Array.isArray(trigger.concepts_any) ? trigger.concepts_any : [];
+    const secondaryConcepts = Array.isArray(trigger.concepts_any_2) ? trigger.concepts_any_2 : [];
+
+    if (pregnancyAllowed.length > 0) {
+      const ok = pregnancyAllowed.some((value) =>
+        statusMatches(value, ctx.profile.pregnancy_status, {
+          pregnant: ['pregnant'],
+          trying: ['trying', 'trying_to_conceive'],
+          unknown: ['unknown'],
+        }));
+      if (!ok) continue;
+    }
+    if (lactationAllowed.length > 0) {
+      const ok = lactationAllowed.some((value) =>
+        statusMatches(value, ctx.profile.lactation_status, {
+          breastfeeding: ['breastfeeding', 'lactating'],
+          lactating: ['breastfeeding', 'lactating'],
+          unknown: ['unknown'],
+        }));
+      if (!ok) continue;
+    }
+    if (ageAllowed.length > 0) {
+      const ok = ageAllowed.some((value) =>
+        statusMatches(value, ctx.profile.age_band, {
+          child: ['child', 'under_13', 'minor'],
+          teen: ['teen', '13_17', 'minor'],
+          unknown: ['unknown'],
+        }));
+      if (!ok) continue;
+    }
+    if (medicationsAny.length > 0) {
+      const medsOk = medicationsAny.some((required) => {
+        const req = normalizeMedicationToken(required);
+        if (!req) return false;
+        if (req === 'isotretinoin') return ctx.meds.isotretinoin || medsAnySet.has('isotretinoin');
+        return medsAnySet.has(req) || medsLower.some((med) => med.includes(req));
+      });
+      if (!medsOk) continue;
+    }
+    if (requiredContextMissing.length > 0) {
+      const missingAny = requiredContextMissing.some((field) => profileFieldMissing(ctx, field));
+      if (!missingAny) continue;
+    }
+    if (!matchPrimaryConceptSet(primaryConcepts, presentConcepts)) continue;
+    if (!matchSecondaryConceptSet(secondaryConcepts, presentConcepts)) continue;
+
+    const decision = rule && typeof rule.decision === 'object' ? rule.decision : {};
+    const blockLevelRaw = normalizeBlockLevel(decision.block_level);
+    const ruleIdUpper = normalizeText(rule.rule_id).toUpperCase();
+    const blockLevel = (blockLevelRaw === BLOCK_LEVEL.WARN && ctx.meds.isotretinoin && KB_ISOTRETINOIN_PARITY_BLOCK_RULE_IDS.has(ruleIdUpper))
+      ? BLOCK_LEVEL.BLOCK
+      : blockLevelRaw;
+    const requiredFields = dedupeStrings(Array.isArray(decision.required_fields) ? decision.required_fields : [], 8);
+    const templateId = normalizeText(decision.template_id);
+    const template = templateId && templates[templateId] ? templates[templateId] : null;
+    const templateText = normalizeText(ctx.lang === 'CN' ? template && template.text_zh : template && template.text_en) ||
+      normalizeText(ctx.lang === 'CN' ? template && template.text_en : template && template.text_zh);
+    const reasonText = templateText || normalizeText(rule && rule.rationale);
+
+    const requiredQuestions = dedupeStrings([
+      ...(blockLevel === BLOCK_LEVEL.REQUIRE_INFO && templateText ? [templateText] : []),
+      ...requiredFields.map((field) => questionForRequiredField(field, ctx.lang)).filter(Boolean),
+    ], 4);
+
+    const safeAlternatives = dedupeStrings(
+      (Array.isArray(decision.safe_alternatives_concepts) ? decision.safe_alternatives_concepts : [])
+        .map((conceptId) => resolveConceptLabel(kb, conceptId, ctx.lang))
+        .filter(Boolean),
+      8,
+    );
+    const triggeredBy = dedupeStrings([
+      ...(primaryConcepts.length > 0 || secondaryConcepts.length > 0 ? ['concepts'] : []),
+      ...(pregnancyAllowed.length > 0 || lactationAllowed.length > 0 || ageAllowed.length > 0 ? ['life_stage'] : []),
+      ...(medicationsAny.length > 0 ? ['medications'] : []),
+    ], 4);
+
+    recordAuroraKbV0RuleMatch({ source: 'kb_v0', ruleId: rule.rule_id, level: blockLevel });
+    matched.push({
+      id: `kb_v0:${normalizeText(rule.rule_id)}`,
+      level: blockLevel,
+      reason: reasonText,
+      alternatives: safeAlternatives,
+      required_fields: requiredFields,
+      required_questions: requiredQuestions,
+      _triggered_by: triggeredBy,
+    });
+  }
+
+  return matched;
+}
+
+function evaluateOntologyContraindications(ctx) {
+  const matched = [];
+  const tags = new Set(
+    (Array.isArray(ctx.contraindication_tags) ? ctx.contraindication_tags : [])
+      .map((tag) => normalizeText(tag).toLowerCase())
+      .filter(Boolean),
+  );
+  const preg = ctx.profile && ctx.profile.pregnancy_status;
+  const isPregOrTrying = preg === 'pregnant' || preg === 'trying';
+  const barrierCompromised = /(impaired|damaged|不稳定|受损)/i.test(normalizeText(ctx.profile && ctx.profile.barrierStatus));
+
+  if (isPregOrTrying && (tags.has('pregnancy_strict_avoid') || tags.has('trying_strict_avoid'))) {
+    recordAuroraKbV0RuleMatch({ source: 'kb_v0', ruleId: 'ONTOLOGY_PREGNANCY_STRICT_AVOID', level: BLOCK_LEVEL.BLOCK });
+    matched.push({
+      id: 'kb_v0:ONTOLOGY_PREGNANCY_STRICT_AVOID',
+      level: BLOCK_LEVEL.BLOCK,
+      reason: ctx.lang === 'CN' ? '该成分在孕期/备孕阶段应严格避免。' : 'This ingredient should be strictly avoided during pregnancy/trying to conceive.',
+      alternatives: [],
+      required_fields: [],
+      required_questions: [],
+      _triggered_by: ['ingredients', 'life_stage'],
+    });
+  } else if (isPregOrTrying && (tags.has('pregnancy_avoid') || tags.has('trying_avoid'))) {
+    recordAuroraKbV0RuleMatch({ source: 'kb_v0', ruleId: 'ONTOLOGY_PREGNANCY_AVOID', level: BLOCK_LEVEL.BLOCK });
+    matched.push({
+      id: 'kb_v0:ONTOLOGY_PREGNANCY_AVOID',
+      level: BLOCK_LEVEL.BLOCK,
+      reason: ctx.lang === 'CN' ? '该成分在孕期/备孕阶段建议避免。' : 'This ingredient is generally avoided during pregnancy/trying to conceive.',
+      alternatives: [],
+      required_fields: [],
+      required_questions: [],
+      _triggered_by: ['ingredients', 'life_stage'],
+    });
+  }
+
+  if (barrierCompromised && tags.has('barrier_compromised_caution')) {
+    recordAuroraKbV0RuleMatch({ source: 'kb_v0', ruleId: 'ONTOLOGY_BARRIER_CAUTION', level: BLOCK_LEVEL.WARN });
+    matched.push({
+      id: 'kb_v0:ONTOLOGY_BARRIER_CAUTION',
+      level: BLOCK_LEVEL.WARN,
+      reason: ctx.lang === 'CN' ? '屏障受损状态下该成分可能增加刺激风险。' : 'This ingredient can increase irritation risk when the skin barrier is compromised.',
+      alternatives: [],
+      required_fields: [],
+      required_questions: [],
+      _triggered_by: ['ingredients', 'concepts'],
+    });
+  }
+
+  if (tags.has('rx_only_consult') && !ctx.mentions.prescription) {
+    recordAuroraKbV0RuleMatch({ source: 'kb_v0', ruleId: 'ONTOLOGY_RX_CONSULT', level: BLOCK_LEVEL.REQUIRE_INFO });
+    matched.push({
+      id: 'kb_v0:ONTOLOGY_RX_CONSULT',
+      level: BLOCK_LEVEL.REQUIRE_INFO,
+      reason: ctx.lang === 'CN' ? '该成分通常涉及处方场景，建议先确认是否在医生指导下使用。' : 'This ingredient is commonly prescription-context; confirm clinician guidance before use.',
+      alternatives: [],
+      required_fields: ['high_risk_medications'],
+      required_questions: [questionForRequiredField('high_risk_medications', ctx.lang)].filter(Boolean),
+      _triggered_by: ['ingredients', 'medications'],
+    });
+  }
+
+  return matched;
+}
+
+function inferLegacyTriggeredBy(ctx) {
+  const triggered = [];
+  if (Array.isArray(ctx && ctx.concept_ids) && ctx.concept_ids.length > 0) triggered.push('concepts');
+  if (
+    ctx &&
+    ctx.profile &&
+    (
+      normalizeText(ctx.profile.pregnancy_status).toLowerCase() !== 'unknown' ||
+      normalizeText(ctx.profile.lactation_status).toLowerCase() !== 'unknown' ||
+      normalizeText(ctx.profile.age_band).toLowerCase() !== 'unknown'
+    )
+  ) {
+    triggered.push('life_stage');
+  }
+  if ((ctx && ctx.meds && ctx.meds.isotretinoin) || (ctx && ctx.profile && Array.isArray(ctx.profile.high_risk_medications) && ctx.profile.high_risk_medications.length > 0)) {
+    triggered.push('medications');
+  }
+  if (ctx && ctx.mentions && (ctx.mentions.essentialOilHeavy || ctx.mentions.fragrance)) {
+    triggered.push('ingredients');
+  }
+  return dedupeStrings(triggered, 4);
+}
+
+function evaluateLegacyRules(ctx) {
+  const matched = [];
   for (const rule of SAFETY_RULES) {
     let ok = false;
     try {
@@ -411,38 +863,120 @@ function evaluateSafety({ intent, message, profile, language } = {}) {
       ok = false;
     }
     if (!ok) continue;
-    matched.push(rule);
+    recordAuroraKbV0RuleMatch({ source: 'legacy', ruleId: rule.id, level: rule.level });
+    matched.push({
+      id: `legacy:${rule.id}`,
+      level: rule.level,
+      reason: selectText(rule.reason, ctx.lang),
+      alternatives: selectText(rule.alternatives, ctx.lang) ? [selectText(rule.alternatives, ctx.lang)] : [],
+      required_fields: Array.isArray(rule.required_fields) ? rule.required_fields : [],
+      required_questions: ctx.lang === 'CN'
+        ? (Array.isArray(rule.required_questions_cn) ? rule.required_questions_cn : [])
+        : (Array.isArray(rule.required_questions) ? rule.required_questions : []),
+      _triggered_by: inferLegacyTriggeredBy(ctx),
+    });
+  }
+  return matched;
+}
+
+function evaluateSafety({
+  intent,
+  message,
+  profile,
+  language,
+  matched_concepts,
+  matched_concepts_debug,
+  ingredient_ontology_hits,
+  contraindication_tags,
+  has_product_anchor,
+} = {}) {
+  const lang = normalizeLanguage(language);
+  const messageText = normalizeText(message);
+  const kbDetectedConcepts = collectConceptIdsFromText({
+    text: messageText,
+    language: lang,
+    max: 96,
+    includeSubstring: true,
+  });
+  const ontologyHits = Array.isArray(ingredient_ontology_hits)
+    ? ingredient_ontology_hits
+    : matchIngredientOntology({ text: messageText, language: lang, max: 32 });
+  const ontologyConcepts = normalizeConceptIds(
+    (Array.isArray(ontologyHits) ? ontologyHits : []).flatMap((item) => (Array.isArray(item && item.classes) ? item.classes : [])),
+  );
+  const ontologyContraindicationTags = dedupeStrings(
+    (Array.isArray(ontologyHits) ? ontologyHits : []).flatMap((item) => (Array.isArray(item && item.contraindication_tags) ? item.contraindication_tags : [])),
+    48,
+  );
+  const mergedConcepts = normalizeConceptIds([
+    ...(Array.isArray(matched_concepts) ? matched_concepts : []),
+    ...kbDetectedConcepts,
+    ...ontologyConcepts,
+  ]);
+  const mergedContraindicationTags = dedupeStrings([
+    ...(Array.isArray(contraindication_tags) ? contraindication_tags : []),
+    ...ontologyContraindicationTags,
+  ], 64);
+  const conceptDebugRows = Array.isArray(matched_concepts_debug) ? matched_concepts_debug : [];
+
+  const ctx = buildCtx({
+    intent,
+    message: messageText,
+    profile,
+    language: lang,
+    conceptIds: mergedConcepts,
+    contraindicationTags: mergedContraindicationTags,
+    hasProductAnchor: Boolean(has_product_anchor),
+  });
+
+  const kb = getAuroraKbV0();
+  const kbAvailable = Boolean(kb && kb.ok && !kb.disabled);
+
+  const kbMatches = kbAvailable
+    ? [
+      ...evaluateKbRules({ ctx, kb }),
+      ...evaluateOntologyContraindications(ctx),
+    ]
+    : [];
+  const legacyMatches = evaluateLegacyRules(ctx);
+
+  if (!kbAvailable && legacyMatches.length > 0) {
+    recordAuroraKbV0LegacyFallback({ reason: (kb && kb.reason) || 'loader_unavailable' });
+  } else if (kbAvailable && kbMatches.length === 0 && legacyMatches.length > 0) {
+    recordAuroraKbV0LegacyFallback({ reason: 'no_kb_match' });
   }
 
+  const matched = [...kbMatches, ...legacyMatches];
   let blockLevel = BLOCK_LEVEL.INFO;
   for (const rule of matched) {
-    blockLevel = mergeBlockLevel(blockLevel, rule.level);
+    blockLevel = mergeBlockLevel(blockLevel, normalizeBlockLevel(rule.level));
   }
 
-  const reasons = dedupeStrings(matched.map((rule) => selectText(rule.reason, ctx.lang)), 10);
-  const safeAlternatives = dedupeStrings(matched.map((rule) => selectText(rule.alternatives, ctx.lang)), 10);
-
-  const requiredQuestions = dedupeStrings(
-    matched.flatMap((rule) => {
-      if (ctx.lang === 'CN') {
-        return Array.isArray(rule.required_questions_cn) ? rule.required_questions_cn : [];
-      }
-      return Array.isArray(rule.required_questions) ? rule.required_questions : [];
-    }),
-    4,
-  );
-  const requiredFields = dedupeStrings(
-    matched.flatMap((rule) => (Array.isArray(rule.required_fields) ? rule.required_fields : [])),
-    4,
-  );
+  const reasons = dedupeStrings(matched.map((rule) => normalizeText(rule.reason)).filter(Boolean), 10);
+  const safeAlternatives = dedupeStrings(matched.flatMap((rule) => (Array.isArray(rule.alternatives) ? rule.alternatives : [])), 10);
+  const requiredQuestions = dedupeStrings(matched.flatMap((rule) => (Array.isArray(rule.required_questions) ? rule.required_questions : [])), 6);
+  const requiredFields = dedupeStrings(matched.flatMap((rule) => (Array.isArray(rule.required_fields) ? rule.required_fields : [])), 6);
+  const decisiveRules = matched.filter((rule) => normalizeBlockLevel(rule.level) === blockLevel);
+  const decisionSource = decisiveRules.some((rule) => String(rule.id || '').startsWith('kb_v0:')) || (kbMatches.length > 0 && legacyMatches.length === 0)
+    ? 'kb_v0'
+    : 'legacy';
+  const triggeredBy = dedupeStrings([
+    ...matched.flatMap((rule) => (Array.isArray(rule._triggered_by) ? rule._triggered_by : [])),
+    ...(conceptDebugRows.length > 0 ? ['concepts'] : []),
+    ...(ontologyHits.length > 0 || mergedContraindicationTags.length > 0 ? ['ingredients'] : []),
+    ...((ctx.profile.pregnancy_status !== 'unknown' || ctx.profile.lactation_status !== 'unknown' || ctx.profile.age_band !== 'unknown') ? ['life_stage'] : []),
+    ...((ctx.meds.isotretinoin || (Array.isArray(ctx.profile.high_risk_medications) && ctx.profile.high_risk_medications.length > 0)) ? ['medications'] : []),
+  ], 4);
 
   return {
     block_level: blockLevel,
+    decision_source: decisionSource,
+    triggered_by: triggeredBy,
     reasons,
     required_fields: requiredFields,
     required_questions: requiredQuestions,
     safe_alternatives: safeAlternatives,
-    matched_rules: matched.map((rule) => ({ id: rule.id, level: rule.level })),
+    matched_rules: matched.map((rule) => ({ id: rule.id, level: normalizeBlockLevel(rule.level) })),
   };
 }
 

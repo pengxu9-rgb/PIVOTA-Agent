@@ -21,12 +21,16 @@ function buildSyntheticSkinRgb({
   redPatch = false,
   shinePatch = false,
   textureAmp = 10,
+  faceCenterXRatio = 0.5,
+  faceCenterYRatio = 0.52,
+  faceRadiusXRatio = 0.42,
+  faceRadiusYRatio = 0.45,
 } = {}) {
   const data = Buffer.alloc(width * height * 3);
-  const cx = width / 2;
-  const cy = height * 0.52;
-  const rx = width * 0.42;
-  const ry = height * 0.45;
+  const cx = width * faceCenterXRatio;
+  const cy = height * faceCenterYRatio;
+  const rx = Math.max(4, width * faceRadiusXRatio);
+  const ry = Math.max(4, height * faceRadiusYRatio);
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -159,4 +163,20 @@ test('quality fail produces no photo findings and only retake guidance', async (
   assert.equal(diagnosis.photo_findings.length, 0);
   assert.ok(Array.isArray(diagnosis.takeaways));
   assert.ok(diagnosis.takeaways.some((item) => /retake|重拍/i.test(String(item && item.text ? item.text : ''))));
+});
+
+test('off-center framing fails quality gate with frame reasons', async () => {
+  const diagnosis = await runSyntheticDiagnosis({
+    faceCenterXRatio: 0.9,
+    faceCenterYRatio: 0.55,
+    faceRadiusXRatio: 0.18,
+    faceRadiusYRatio: 0.35,
+  });
+  assert.equal(diagnosis?.quality?.grade, 'fail');
+  const reasons = Array.isArray(diagnosis?.quality?.reasons) ? diagnosis.quality.reasons : [];
+  assert.ok(reasons.some((reason) => /^frame_/.test(String(reason || ''))));
+  assert.ok(Array.isArray(diagnosis.takeaways));
+  assert.ok(
+    diagnosis.takeaways.some((item) => /guide frame|取景框|retake|重拍/i.test(String(item && item.text ? item.text : ''))),
+  );
 });

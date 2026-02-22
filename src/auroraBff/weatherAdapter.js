@@ -1,3 +1,6 @@
+const { getAuroraKbV0 } = require('./kbV0/loader');
+const { recordAuroraKbV0ClimateFallback } = require('./visionMetrics');
+
 const OPEN_METEO_GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 
@@ -118,33 +121,234 @@ async function callJson(url, fetchImpl, timeoutMs) {
   }
 }
 
-function climateFallback({ destination, startDate, endDate } = {}) {
+const CLIMATE_MONTH_BUCKETS = Object.freeze([1, 4, 7, 10]);
+const SOUTHERN_HEMISPHERE_COUNTRIES = new Set([
+  'AU',
+  'NZ',
+  'ZA',
+  'AR',
+  'CL',
+  'UY',
+  'PY',
+  'BO',
+  'PE',
+  'BR',
+]);
+
+function hashText(input) {
+  const text = String(input || '');
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h >>> 0);
+}
+
+function nearestMonthBucket(monthRaw) {
+  const month = Number(monthRaw);
+  const current = Number.isFinite(month) ? Math.max(1, Math.min(12, Math.trunc(month))) : new Date().getUTCMonth() + 1;
+  let best = CLIMATE_MONTH_BUCKETS[0];
+  let bestDelta = Math.abs(current - best);
+  for (const bucket of CLIMATE_MONTH_BUCKETS.slice(1)) {
+    const delta = Math.abs(current - bucket);
+    if (delta < bestDelta) {
+      best = bucket;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}
+
+function inferLocaleCountryCode(userLocaleRaw) {
+  const locale = String(userLocaleRaw || '').trim();
+  if (!locale) return '';
+  const token = locale.replace('_', '-');
+  const parts = token.split('-').filter(Boolean);
+  if (parts.length >= 2 && /^[a-z]{2}$/i.test(parts[1])) {
+    return parts[1].toUpperCase();
+  }
+  return '';
+}
+
+function hemisphereFromCountryCode(countryCodeRaw) {
+  const code = String(countryCodeRaw || '').trim().toUpperCase();
+  if (!code) return '';
+  return SOUTHERN_HEMISPHERE_COUNTRIES.has(code) ? 'south' : 'north';
+}
+
+function selectClimateRegion({ destination, month, userLocale } = {}) {
+  const kb = getAuroraKbV0();
+  const regions = Array.isArray(kb && kb.climate_normals && kb.climate_normals.regions) ? kb.climate_normals.regions : [];
+  if (!regions.length) return null;
+
+  const bucket = nearestMonthBucket(month);
+  const name = String(destination || '').trim().toLowerCase();
+  let selectedBy = 'default';
+  let region = null;
+  if (name) {
+    const regionIndex = hashText(name) % regions.length;
+    region = regions[regionIndex] || regions[0];
+    selectedBy = 'destination_hash';
+  } else {
+    const localeCountry = inferLocaleCountryCode(userLocale || process.env.AURORA_KB_CLIMATE_USER_LOCALE || process.env.LC_ALL || process.env.LANG);
+    const localeHemisphere = hemisphereFromCountryCode(localeCountry);
+    if (localeHemisphere) {
+      region = regions.find((item) => String(item && item.hemisphere || '').trim().toLowerCase() === localeHemisphere) || null;
+      if (region) selectedBy = 'user_locale';
+    }
+    if (!region && regions.length > 0) {
+      const monthIndex = CLIMATE_MONTH_BUCKETS.indexOf(bucket);
+      const regionIndex = monthIndex >= 0 ? monthIndex % regions.length : 0;
+      region = regions[regionIndex] || regions[0];
+      selectedBy = 'month';
+    }
+  }
+  region = region || regions[0];
+  if (!region || typeof region !== 'object') return null;
+
+  const profiles = Array.isArray(region.month_profiles) ? region.month_profiles : [];
+  let profile = profiles.find((item) => Number(item && item.month) === bucket) || null;
+  if (!profile && profiles.length > 0) {
+    profile = profiles
+      .slice()
+      .sort((a, b) => Math.abs(Number(a.month) - bucket) - Math.abs(Number(b.month) - bucket))[0];
+  }
+  if (!profile) return null;
+
+  return {
+    region,
+    profile,
+    month_bucket: bucket,
+    selected_by: selectedBy,
+  };
+}
+
+function mapUvLevelToIndex(levelRaw) {
+  const level = String(levelRaw || '').trim().toLowerCase();
+  if (level === 'extreme') return 11;
+  if (level === 'high') return 9;
+  if (level === 'medium') return 6;
+  return 3;
+}
+
+function mapHumidityToMean(levelRaw) {
+  const level = String(levelRaw || '').trim().toLowerCase();
+  if (level === 'humid') return 78;
+  if (level === 'balanced') return 58;
+  return 38;
+}
+
+function mapTempSwingToC(levelRaw) {
+  const level = String(levelRaw || '').trim().toLowerCase();
+  if (level === 'high') return 14;
+  if (level === 'medium') return 9;
+  return 5;
+}
+
+function mapWindToKph(levelRaw) {
+  const level = String(levelRaw || '').trim().toLowerCase();
+  if (level === 'high') return 34;
+  if (level === 'medium') return 22;
+  return 12;
+}
+
+function mapPollutionToPrecipitation(levelRaw, humidityRaw) {
+  const pollution = String(levelRaw || '').trim().toLowerCase();
+  const humidity = String(humidityRaw || '').trim().toLowerCase();
+  if (humidity === 'humid') return pollution === 'high' ? 4.0 : 3.0;
+  if (humidity === 'balanced') return pollution === 'high' ? 2.1 : 1.5;
+  return 0.8;
+}
+
+function mapArchetypeTemps(archetypeRaw, monthBucket) {
+  const archetype = String(archetypeRaw || '').trim().toLowerCase();
+  const bucket = Number(monthBucket) || 7;
+  const warmMonth = bucket === 7;
+  const coolMonth = bucket === 1;
+
+  if (archetype.includes('desert')) {
+    return warmMonth ? { max: 34, min: 21 } : coolMonth ? { max: 18, min: 7 } : { max: 27, min: 14 };
+  }
+  if (archetype.includes('tropical')) {
+    return { max: 31, min: 24 };
+  }
+  if (archetype.includes('subarctic') || archetype.includes('polar')) {
+    return warmMonth ? { max: 13, min: 4 } : coolMonth ? { max: -5, min: -14 } : { max: 4, min: -2 };
+  }
+  if (archetype.includes('continental')) {
+    return warmMonth ? { max: 29, min: 18 } : coolMonth ? { max: 4, min: -4 } : { max: 18, min: 9 };
+  }
+  if (archetype.includes('mediterranean')) {
+    return warmMonth ? { max: 31, min: 21 } : coolMonth ? { max: 13, min: 7 } : { max: 23, min: 14 };
+  }
+  return warmMonth ? { max: 30, min: 22 } : coolMonth ? { max: 9, min: 2 } : { max: 22, min: 14 };
+}
+
+function climateFallback({ destination, startDate, endDate, reason, userLocale } = {}) {
   const name = String(destination || '').trim();
   const { start, end } = clampDateRange(startDate, endDate);
   const month = Number((start || '').slice(5, 7)) || new Date().getUTCMonth() + 1;
+  const selected = selectClimateRegion({ destination: name, month, userLocale });
+  const metricReason = String(reason || 'unknown').trim().toLowerCase() || 'unknown';
+  recordAuroraKbV0ClimateFallback({ reason: metricReason });
 
-  const coldSeason = month <= 2 || month >= 11;
-  const hotSeason = month >= 6 && month <= 9;
+  const defaultSummary = (() => {
+    const coldSeason = month <= 2 || month >= 11;
+    const hotSeason = month >= 6 && month <= 9;
+    return {
+      temperature_max_c: hotSeason ? 30 : coldSeason ? 8 : 22,
+      temperature_min_c: hotSeason ? 24 : coldSeason ? 1 : 14,
+      temp_swing_c: hotSeason ? 7 : coldSeason ? 11 : 8,
+      uv_index_max: hotSeason ? 8 : 5,
+      humidity_mean: hotSeason ? 72 : 50,
+      precipitation_mm: hotSeason ? 2.6 : 1.2,
+      wind_kph_max: coldSeason ? 24 : 18,
+      days_count: 3,
+    };
+  })();
 
-  const summary = {
-    temperature_max_c: hotSeason ? 30 : coldSeason ? 8 : 22,
-    temperature_min_c: hotSeason ? 24 : coldSeason ? 1 : 14,
-    temp_swing_c: hotSeason ? 7 : coldSeason ? 11 : 8,
-    uv_index_max: hotSeason ? 8 : 5,
-    humidity_mean: hotSeason ? 72 : 50,
-    precipitation_mm: hotSeason ? 2.6 : 1.2,
-    wind_kph_max: coldSeason ? 24 : 18,
-    days_count: 3,
-  };
+  const summary = selected
+    ? (() => {
+      const profile = selected.profile || {};
+      const archetype = String(selected.region && selected.region.archetype ? selected.region.archetype : '');
+      const temps = mapArchetypeTemps(archetype, selected.month_bucket);
+      return {
+        temperature_max_c: temps.max,
+        temperature_min_c: temps.min,
+        temp_swing_c: mapTempSwingToC(profile.temp_swing),
+        uv_index_max: mapUvLevelToIndex(profile.uv_level),
+        humidity_mean: mapHumidityToMean(profile.humidity),
+        precipitation_mm: mapPollutionToPrecipitation(profile.pollution, profile.humidity),
+        wind_kph_max: mapWindToKph(profile.wind),
+        days_count: 3,
+      };
+    })()
+    : defaultSummary;
 
   return {
     ok: true,
     source: 'climate_fallback',
     destination: name || null,
+    reason: metricReason,
     date_range: { start, end },
     location: { name: name || null, latitude: null, longitude: null, timezone: null },
     summary,
-    raw: null,
+    raw: {
+      climate_profile: selected
+        ? {
+          region_id: String(selected.region.region_id || '').trim() || null,
+          archetype: String(selected.region.archetype || '').trim() || null,
+          month_bucket: selected.month_bucket,
+          archetype_selected_by: selected.selected_by || 'default',
+        }
+        : {
+          region_id: null,
+          archetype: null,
+          month_bucket: nearestMonthBucket(month),
+          archetype_selected_by: 'default',
+        },
+    },
   };
 }
 
@@ -152,30 +356,27 @@ async function getTravelWeather({
   destination,
   startDate,
   endDate,
+  userLocale,
   fetchImpl = global.fetch,
   geocodeTimeoutMs = 1600,
   forecastTimeoutMs = 1800,
 } = {}) {
   const name = String(destination || '').trim();
-  if (!name) {
-    return {
-      ok: false,
-      source: 'none',
-      reason: 'destination_missing',
-      destination: null,
-      date_range: null,
-      location: null,
-      summary: null,
-      raw: null,
-    };
-  }
-
   const { start, end } = clampDateRange(startDate, endDate);
+  if (!name) {
+    return climateFallback({
+      destination: '',
+      startDate: start,
+      endDate: end,
+      reason: 'destination_missing',
+      userLocale,
+    });
+  }
   const dateRange = { start, end };
 
   if (typeof fetchImpl !== 'function') {
     return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end }),
+      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: 'fetch_unavailable', userLocale }),
       reason: 'fetch_unavailable',
     };
   }
@@ -184,7 +385,7 @@ async function getTravelWeather({
   const geocode = await callJson(geoUrl, fetchImpl, geocodeTimeoutMs);
   if (!geocode.ok) {
     return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end }),
+      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: `geocode_${geocode.reason || 'failed'}`, userLocale }),
       reason: `geocode_${geocode.reason || 'failed'}`,
     };
   }
@@ -194,7 +395,7 @@ async function getTravelWeather({
   const lon = Number(result && result.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end }),
+      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: 'geocode_no_results', userLocale }),
       reason: 'geocode_no_results',
     };
   }
@@ -206,7 +407,7 @@ async function getTravelWeather({
   const forecast = await callJson(forecastUrl, fetchImpl, forecastTimeoutMs);
   if (!forecast.ok || !forecast.data || typeof forecast.data !== 'object') {
     return {
-      ...climateFallback({ destination: name, startDate: start, endDate: end }),
+      ...climateFallback({ destination: name, startDate: start, endDate: end, reason: `forecast_${forecast.reason || 'failed'}`, userLocale }),
       reason: `forecast_${forecast.reason || 'failed'}`,
     };
   }

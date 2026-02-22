@@ -5,6 +5,7 @@ const {
 } = require('./visionPolicy');
 
 const LATENCY_BUCKETS_MS = Object.freeze([100, 250, 500, 1000, 2000, 5000, 10000, 30000, Infinity]);
+const SNAPSHOT_AGE_BUCKETS_SEC = Object.freeze([60, 300, 1800, 3600, 21600, 86400, 259200, 604800, 1209600, Infinity]);
 
 const callsCounter = new Map();
 const failCounter = new Map();
@@ -106,6 +107,18 @@ const socialFetchRequestsCounter = new Map();
 const socialFetchSuccessCounter = new Map();
 const socialFetchTimeoutCounter = new Map();
 const socialKbBackfillCounter = new Map();
+const auroraCompSnapshotHitCounter = new Map();
+const auroraCompSnapshotStaleCounter = new Map();
+const auroraCompDegradedCounter = new Map();
+const auroraCompBackfillEnqueuedCounter = new Map();
+const auroraCompBackfillDedupDropCounter = new Map();
+const auroraCompPass2InvokedCounter = new Map();
+const auroraCompPass2TimeoutCounter = new Map();
+const auroraCompSnapshotAgeSecHistogram = {
+  count: 0,
+  sum: 0,
+  buckets: new Map(SNAPSHOT_AGE_BUCKETS_SEC.map((bucket) => [bucket, 0])),
+};
 const prelabelGeminiLatency = {
   count: 0,
   sum: 0,
@@ -125,6 +138,10 @@ let actionClickCount = 0;
 let actionCopyCount = 0;
 let retakeAfterModulesCount = 0;
 const auroraSkinFlowCounter = new Map();
+const auroraKbV0LoaderErrorCounter = new Map();
+const auroraKbV0RuleMatchCounter = new Map();
+const auroraKbV0LegacyFallbackCounter = new Map();
+const auroraKbV0ClimateFallbackCounter = new Map();
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -477,6 +494,20 @@ function normalizeAuroraSkinFlowOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'hit');
   if (token === 'hit' || token === 'miss') return token;
   return 'hit';
+}
+
+function normalizeAuroraKbV0Reason(reason) {
+  return cleanMetricToken(reason, 'unknown');
+}
+
+function normalizeAuroraKbV0RuleSource(source) {
+  const token = cleanMetricToken(source, 'unknown');
+  if (token === 'kb_v0' || token === 'legacy') return token;
+  return 'unknown';
+}
+
+function normalizeAuroraKbV0RuleLevel(level) {
+  return cleanMetricToken(level, 'unknown');
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -1065,6 +1096,101 @@ function setSocialChannelsCoverage(coverage) {
   socialChannelsCoverageGauge = clampRatio01(coverage, socialChannelsCoverageGauge);
 }
 
+function observeAuroraCompSnapshotAgeSeconds(ageSec) {
+  const value = Number(ageSec);
+  if (!Number.isFinite(value) || value < 0) return;
+  auroraCompSnapshotAgeSecHistogram.count += 1;
+  auroraCompSnapshotAgeSecHistogram.sum += value;
+  for (const bucket of SNAPSHOT_AGE_BUCKETS_SEC) {
+    if (value <= bucket) {
+      auroraCompSnapshotAgeSecHistogram.buckets.set(
+        bucket,
+        (auroraCompSnapshotAgeSecHistogram.buckets.get(bucket) || 0) + 1,
+      );
+    }
+  }
+}
+
+function recordAuroraCompSnapshotHit({ mode, source, confidence, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompSnapshotHitCounter,
+    {
+      mode: normalizeRecoMode(mode),
+      source: cleanMetricToken(source, 'snapshot'),
+      confidence: cleanMetricToken(confidence, 'unknown'),
+    },
+    amount,
+  );
+}
+
+function recordAuroraCompSnapshotStale({ mode, staleLevel, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompSnapshotStaleCounter,
+    {
+      mode: normalizeRecoMode(mode),
+      stale_level: cleanMetricToken(staleLevel, 'soft'),
+    },
+    amount,
+  );
+}
+
+function recordAuroraCompDegraded({ mode, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompDegradedCounter,
+    {
+      mode: normalizeRecoMode(mode),
+      reason: cleanMetricToken(reason, 'unknown'),
+    },
+    amount,
+  );
+}
+
+function recordAuroraCompBackfillEnqueued({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompBackfillEnqueuedCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraCompBackfillDedupDrop({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompBackfillDedupDropCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraCompPass2Invoked({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompPass2InvokedCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraCompPass2Timeout({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompPass2TimeoutCounter,
+    { mode: normalizeRecoMode(mode) },
+    amount,
+  );
+}
+
 function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
   const safeProvider = cleanLabel(provider, 'unknown');
   const safeDecision = cleanLabel(decision, 'skip').toLowerCase();
@@ -1427,6 +1553,42 @@ function recordAuroraSkinFlowMetric({ stage, outcome, hit, delta } = {}) {
       outcome: normalizedOutcome,
     },
     amount,
+  );
+}
+
+function recordAuroraKbV0LoaderError({ reason } = {}) {
+  incCounter(
+    auroraKbV0LoaderErrorCounter,
+    { reason: normalizeAuroraKbV0Reason(reason) },
+    1,
+  );
+}
+
+function recordAuroraKbV0RuleMatch({ source, ruleId, level } = {}) {
+  incCounter(
+    auroraKbV0RuleMatchCounter,
+    {
+      source: normalizeAuroraKbV0RuleSource(source),
+      rule_id: cleanMetricToken(ruleId, 'unknown'),
+      level: normalizeAuroraKbV0RuleLevel(level),
+    },
+    1,
+  );
+}
+
+function recordAuroraKbV0LegacyFallback({ reason } = {}) {
+  incCounter(
+    auroraKbV0LegacyFallbackCounter,
+    { reason: normalizeAuroraKbV0Reason(reason) },
+    1,
+  );
+}
+
+function recordAuroraKbV0ClimateFallback({ reason } = {}) {
+  incCounter(
+    auroraKbV0ClimateFallbackCounter,
+    { reason: normalizeAuroraKbV0Reason(reason) },
+    1,
   );
 }
 
@@ -1801,6 +1963,44 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE social_channels_coverage_gauge gauge');
   lines.push(`social_channels_coverage_gauge ${socialChannelsCoverageGauge}`);
 
+  lines.push('# HELP aurora_comp_snapshot_hit_total Total competitor snapshot hits on aurora product analysis path.');
+  lines.push('# TYPE aurora_comp_snapshot_hit_total counter');
+  renderCounter(lines, 'aurora_comp_snapshot_hit_total', auroraCompSnapshotHitCounter);
+
+  lines.push('# HELP aurora_comp_snapshot_stale_total Total stale competitor snapshot usages.');
+  lines.push('# TYPE aurora_comp_snapshot_stale_total counter');
+  renderCounter(lines, 'aurora_comp_snapshot_stale_total', auroraCompSnapshotStaleCounter);
+
+  lines.push('# HELP aurora_comp_degraded_total Total degraded competitor responses from snapshot/internal fallback.');
+  lines.push('# TYPE aurora_comp_degraded_total counter');
+  renderCounter(lines, 'aurora_comp_degraded_total', auroraCompDegradedCounter);
+
+  lines.push('# HELP aurora_comp_backfill_enqueued_total Total async competitor snapshot backfill jobs enqueued.');
+  lines.push('# TYPE aurora_comp_backfill_enqueued_total counter');
+  renderCounter(lines, 'aurora_comp_backfill_enqueued_total', auroraCompBackfillEnqueuedCounter);
+
+  lines.push('# HELP aurora_comp_backfill_dedup_drop_total Total async competitor snapshot backfill jobs dropped by cooldown/dedup.');
+  lines.push('# TYPE aurora_comp_backfill_dedup_drop_total counter');
+  renderCounter(lines, 'aurora_comp_backfill_dedup_drop_total', auroraCompBackfillDedupDropCounter);
+
+  lines.push('# HELP aurora_comp_pass2_invoked_total Total aurora two-pass external-seed pass2 attempts.');
+  lines.push('# TYPE aurora_comp_pass2_invoked_total counter');
+  renderCounter(lines, 'aurora_comp_pass2_invoked_total', auroraCompPass2InvokedCounter);
+
+  lines.push('# HELP aurora_comp_pass2_timeout_total Total aurora two-pass external-seed pass2 timeouts.');
+  lines.push('# TYPE aurora_comp_pass2_timeout_total counter');
+  renderCounter(lines, 'aurora_comp_pass2_timeout_total', auroraCompPass2TimeoutCounter);
+
+  lines.push('# HELP aurora_comp_snapshot_age_seconds Age distribution for competitor snapshots used in response path.');
+  lines.push('# TYPE aurora_comp_snapshot_age_seconds histogram');
+  for (const bucket of SNAPSHOT_AGE_BUCKETS_SEC) {
+    const le = bucket === Infinity ? '+Inf' : String(bucket);
+    const value = auroraCompSnapshotAgeSecHistogram.buckets.get(bucket) || 0;
+    lines.push(`aurora_comp_snapshot_age_seconds_bucket{le="${le}"} ${value}`);
+  }
+  lines.push(`aurora_comp_snapshot_age_seconds_sum ${auroraCompSnapshotAgeSecHistogram.sum}`);
+  lines.push(`aurora_comp_snapshot_age_seconds_count ${auroraCompSnapshotAgeSecHistogram.count}`);
+
   lines.push('# HELP prelabel_requests_total Total LLM prelabel suggestion requests by block/mode.');
   lines.push('# TYPE prelabel_requests_total counter');
   renderCounter(lines, 'prelabel_requests_total', prelabelRequestsCounter);
@@ -1938,6 +2138,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# HELP aurora_skin_flow_total Aurora skin diagnosis/reco flow counters by stage and outcome.');
   lines.push('# TYPE aurora_skin_flow_total counter');
   renderCounter(lines, 'aurora_skin_flow_total', auroraSkinFlowCounter);
+
+  lines.push('# HELP aurora_kb_v0_loader_error_total Total KB v0 loader errors by reason.');
+  lines.push('# TYPE aurora_kb_v0_loader_error_total counter');
+  renderCounter(lines, 'aurora_kb_v0_loader_error_total', auroraKbV0LoaderErrorCounter);
+
+  lines.push('# HELP aurora_kb_v0_rule_match_total Total KB v0 and legacy rule matches by source/rule/level.');
+  lines.push('# TYPE aurora_kb_v0_rule_match_total counter');
+  renderCounter(lines, 'aurora_kb_v0_rule_match_total', auroraKbV0RuleMatchCounter);
+
+  lines.push('# HELP aurora_kb_v0_legacy_fallback_total Total KB v0 legacy fallback hits by reason.');
+  lines.push('# TYPE aurora_kb_v0_legacy_fallback_total counter');
+  renderCounter(lines, 'aurora_kb_v0_legacy_fallback_total', auroraKbV0LegacyFallbackCounter);
+
+  lines.push('# HELP aurora_kb_v0_climate_fallback_total Total climate fallback hits by reason.');
+  lines.push('# TYPE aurora_kb_v0_climate_fallback_total counter');
+  renderCounter(lines, 'aurora_kb_v0_climate_fallback_total', auroraKbV0ClimateFallbackCounter);
 
   const recoRequests = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_request', outcome: 'hit' });
   const recoGenerated = counterValueByLabels(auroraSkinFlowCounter, { stage: 'reco_generated', outcome: 'hit' });
@@ -2087,6 +2303,18 @@ function resetVisionMetrics() {
   socialFetchSuccessCounter.clear();
   socialFetchTimeoutCounter.clear();
   socialKbBackfillCounter.clear();
+  auroraCompSnapshotHitCounter.clear();
+  auroraCompSnapshotStaleCounter.clear();
+  auroraCompDegradedCounter.clear();
+  auroraCompBackfillEnqueuedCounter.clear();
+  auroraCompBackfillDedupDropCounter.clear();
+  auroraCompPass2InvokedCounter.clear();
+  auroraCompPass2TimeoutCounter.clear();
+  auroraCompSnapshotAgeSecHistogram.count = 0;
+  auroraCompSnapshotAgeSecHistogram.sum = 0;
+  for (const key of auroraCompSnapshotAgeSecHistogram.buckets.keys()) {
+    auroraCompSnapshotAgeSecHistogram.buckets.set(key, 0);
+  }
   prelabelGeminiLatency.count = 0;
   prelabelGeminiLatency.sum = 0;
   for (const key of prelabelGeminiLatency.buckets.keys()) prelabelGeminiLatency.buckets.set(key, 0);
@@ -2104,6 +2332,10 @@ function resetVisionMetrics() {
   actionCopyCount = 0;
   retakeAfterModulesCount = 0;
   auroraSkinFlowCounter.clear();
+  auroraKbV0LoaderErrorCounter.clear();
+  auroraKbV0RuleMatchCounter.clear();
+  auroraKbV0LegacyFallbackCounter.clear();
+  auroraKbV0ClimateFallbackCounter.clear();
 }
 
 function snapshotVisionMetrics() {
@@ -2194,6 +2426,18 @@ function snapshotVisionMetrics() {
     socialFetchSuccess: Array.from(socialFetchSuccessCounter.entries()),
     socialFetchTimeout: Array.from(socialFetchTimeoutCounter.entries()),
     socialKbBackfill: Array.from(socialKbBackfillCounter.entries()),
+    auroraCompSnapshotHit: Array.from(auroraCompSnapshotHitCounter.entries()),
+    auroraCompSnapshotStale: Array.from(auroraCompSnapshotStaleCounter.entries()),
+    auroraCompDegraded: Array.from(auroraCompDegradedCounter.entries()),
+    auroraCompBackfillEnqueued: Array.from(auroraCompBackfillEnqueuedCounter.entries()),
+    auroraCompBackfillDedupDrop: Array.from(auroraCompBackfillDedupDropCounter.entries()),
+    auroraCompPass2Invoked: Array.from(auroraCompPass2InvokedCounter.entries()),
+    auroraCompPass2Timeout: Array.from(auroraCompPass2TimeoutCounter.entries()),
+    auroraCompSnapshotAgeSeconds: {
+      count: auroraCompSnapshotAgeSecHistogram.count,
+      sum: auroraCompSnapshotAgeSecHistogram.sum,
+      buckets: Array.from(auroraCompSnapshotAgeSecHistogram.buckets.entries()),
+    },
     prelabelGeminiLatency: {
       count: prelabelGeminiLatency.count,
       sum: prelabelGeminiLatency.sum,
@@ -2213,6 +2457,10 @@ function snapshotVisionMetrics() {
     actionCopyCount,
     retakeAfterModulesCount,
     auroraSkinFlow: Array.from(auroraSkinFlowCounter.entries()),
+    auroraKbV0LoaderError: Array.from(auroraKbV0LoaderErrorCounter.entries()),
+    auroraKbV0RuleMatch: Array.from(auroraKbV0RuleMatchCounter.entries()),
+    auroraKbV0LegacyFallback: Array.from(auroraKbV0LegacyFallbackCounter.entries()),
+    auroraKbV0ClimateFallback: Array.from(auroraKbV0ClimateFallbackCounter.entries()),
   };
 }
 
@@ -2270,6 +2518,14 @@ module.exports = {
   recordSocialKbBackfill,
   setSocialCacheHitRate,
   setSocialChannelsCoverage,
+  recordAuroraCompSnapshotHit,
+  recordAuroraCompSnapshotStale,
+  recordAuroraCompDegraded,
+  recordAuroraCompBackfillEnqueued,
+  recordAuroraCompBackfillDedupDrop,
+  recordAuroraCompPass2Invoked,
+  recordAuroraCompPass2Timeout,
+  observeAuroraCompSnapshotAgeSeconds,
   observeUpstreamLatency,
   recordVisionDecision,
   observeVisionLatency,
@@ -2293,6 +2549,10 @@ module.exports = {
   recordClaimsTemplateFallback,
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
+  recordAuroraKbV0LoaderError,
+  recordAuroraKbV0RuleMatch,
+  recordAuroraKbV0LegacyFallback,
+  recordAuroraKbV0ClimateFallback,
   recordSkinmaskEnabled,
   recordSkinmaskFallback,
   observeSkinmaskInferLatency,

@@ -1,0 +1,91 @@
+groups:
+  - name: aurora-kb-v0-recording
+    interval: 1m
+    rules:
+      - record: aurora:kb_v0_loader_error_increase:5m
+        expr: increase(aurora_kb_v0_loader_error_total[5m])
+
+      - record: aurora:kb_v0_rule_match_rate:5m
+        expr: sum(rate(aurora_kb_v0_rule_match_total[5m]))
+
+      - record: aurora:kb_v0_rule_match_rate:30m
+        expr: sum(rate(aurora_kb_v0_rule_match_total[30m]))
+
+      - record: aurora:kb_v0_legacy_fallback_rate:5m
+        expr: sum(rate(aurora_kb_v0_legacy_fallback_total[5m]))
+
+      - record: aurora:kb_v0_legacy_fallback_ratio:5m
+        expr: |
+          aurora:kb_v0_legacy_fallback_rate:5m
+          /
+          clamp_min(
+            aurora:kb_v0_rule_match_rate:5m + aurora:kb_v0_legacy_fallback_rate:5m,
+            0.000001
+          )
+
+      - record: aurora:kb_v0_climate_fallback_increase:10m
+        expr: increase(aurora_kb_v0_climate_fallback_total[10m])
+
+      - record: aurora:kb_v0_climate_fallback_warn_threshold:10m
+        expr: vector(30)
+
+  - name: aurora-kb-v0-alerts
+    interval: 1m
+    rules:
+      - alert: AuroraKbV0LoaderErrorDetected
+        expr: aurora:kb_v0_loader_error_increase:5m > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: pivota-agent-backend
+          env: production
+          team: aurora
+        annotations:
+          summary: "Aurora KB v0 loader errors detected"
+          description: "aurora_kb_v0_loader_error_total increased in the last 5m. Validate imported KB files and manifest integrity."
+          runbook: "docs/runbooks/aurora_kb_v0.md"
+
+      - alert: AuroraKbV0LegacyFallbackRatioHigh
+        expr: aurora:kb_v0_legacy_fallback_ratio:5m > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          service: pivota-agent-backend
+          env: production
+          team: aurora
+        annotations:
+          summary: "Aurora KB v0 legacy fallback ratio is high"
+          description: "legacy_fallback / (rule_match + legacy_fallback) stayed above 5% for 10m. Check KB loader health, matcher drift, and safety rule coverage."
+          runbook: "docs/runbooks/aurora_kb_v0.md"
+
+      - alert: AuroraKbV0RuleMatchSpike
+        expr: |
+          aurora:kb_v0_rule_match_rate:5m
+          >
+          3 * clamp_min(aurora:kb_v0_rule_match_rate:30m, 0.000001)
+          and aurora:kb_v0_rule_match_rate:5m > 0.02
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          env: production
+          team: aurora
+        annotations:
+          summary: "Aurora KB v0 rule-match rate spiked"
+          description: "5m rule-match rate is over 3x the 30m baseline for 10m. Validate recent KB import and intent distribution changes."
+          runbook: "docs/runbooks/aurora_kb_v0.md"
+
+      - alert: AuroraKbV0ClimateFallbackSpike
+        expr: |
+          aurora:kb_v0_climate_fallback_increase:10m
+          > aurora:kb_v0_climate_fallback_warn_threshold:10m
+        for: 10m
+        labels:
+          severity: warning
+          service: pivota-agent-backend
+          env: production
+          team: aurora
+        annotations:
+          summary: "Aurora KB v0 climate fallback spike"
+          description: "climate fallback increased above threshold in 10m. Check destination parsing, geocode/weather upstream health, and fallback archetype selection."
+          runbook: "docs/runbooks/aurora_kb_v0.md"

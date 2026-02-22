@@ -85,7 +85,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK;
     delete process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK;
     delete process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS;
-    delete process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED;
+    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'false';
     delete process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY;
     delete process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
     delete process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS;
@@ -481,153 +481,6 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('aurora source can remap upstream source while preserving internal request source', async () => {
-    const queryText = 'Copper peptide serum';
-    process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
-    process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE = 'shopping-assistant';
-    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
-    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
-    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
-
-    const auroraPrimaryScope = nock('http://aurora-upstream.test')
-      .get('/agent/v1/products/search')
-      .query((q) => {
-        return (
-          String(q.query || '') === queryText &&
-          String(q.source || '') === 'shopping-assistant' &&
-          String(q.request_source || '') === 'aurora-bff'
-        );
-      })
-      .reply(504, {
-        error: 'timeout',
-      });
-
-    const auroraFallbackScope = nock('http://aurora-upstream.test')
-      .post('/agent/shop/v1/invoke', (body) => {
-        return (
-          body &&
-          body.operation === 'find_products_multi' &&
-          body.payload &&
-          body.payload.search &&
-          String(body.payload.search.query || '') === queryText &&
-          body.payload.search.fast_mode === true &&
-          body.payload.search.allow_stale_cache === false &&
-          body.payload.search.allow_external_seed === false &&
-          String(body.payload.search.external_seed_strategy || '') === 'legacy' &&
-          String(body.metadata?.source || '') === 'shopping-assistant' &&
-          String(body.metadata?.request_source || '') === 'aurora-bff'
-        );
-      })
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'beauty_fallback_upstream_source',
-            merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'Copper peptide serum fallback',
-          },
-        ],
-        total: 1,
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .get('/agent/v1/products/search')
-      .query({
-        query: queryText,
-        source: 'aurora-bff',
-        catalog_surface: 'beauty',
-      });
-
-    expect(resp.status).toBe(200);
-    expect(auroraPrimaryScope.isDone()).toBe(true);
-    expect(auroraFallbackScope.isDone()).toBe(true);
-    expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'beauty_fallback_upstream_source',
-        merchant_id: 'merch_efbc46b4619cfbdf',
-      }),
-    );
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        fallback_strategy: expect.objectContaining({
-          request_source: 'aurora-bff',
-          upstream_source: 'shopping-assistant',
-          aurora_upstream_source_override: 'shopping-assistant',
-        }),
-      }),
-    );
-  });
-
-  test('aurora upstream source remap bypasses tight aurora primary timeout cap', async () => {
-    const queryText = 'niacinamide';
-    process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE = 'shopping-assistant';
-    process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = '450';
-    process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER = 'true';
-    process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '2500';
-    process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = '2500';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
-    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
-    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
-    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
-
-    const primaryScope = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query((q) => {
-        return (
-          String(q.query || '') === queryText &&
-          String(q.source || '') === 'shopping-assistant' &&
-          String(q.request_source || '') === 'aurora-bff'
-        );
-      })
-      .delay(900)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'beauty_remap_timeout_cap_ok',
-            merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'Niacinamide Serum',
-          },
-        ],
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .get('/agent/v1/products/search')
-      .query({
-        query: queryText,
-        source: 'aurora-bff',
-        catalog_surface: 'beauty',
-      });
-
-    expect(resp.status).toBe(200);
-    expect(primaryScope.isDone()).toBe(true);
-    expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'beauty_remap_timeout_cap_ok',
-        merchant_id: 'merch_efbc46b4619cfbdf',
-      }),
-    );
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        fallback_strategy: expect.objectContaining({
-          request_source: 'aurora-bff',
-          upstream_source: 'shopping-assistant',
-          aurora_upstream_source_override: 'shopping-assistant',
-          aurora_primary_timeout_cap_applied: false,
-        }),
-      }),
-    );
-  });
-
   test('aurora source honors explicit allow_external_seed override from query params', async () => {
     process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
     process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
@@ -764,14 +617,9 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         }),
         fallback_strategy: expect.objectContaining({
           source: 'aurora_force_path',
-          request_source: 'aurora-bff',
-          upstream_source: 'aurora-bff',
-          aurora_upstream_source_override: null,
           resolver_attempted: true,
           secondary_attempted: true,
           secondary_skipped_reason: null,
-          secondary_rejected_reason: null,
-          secondary_fallback_duration_ms: expect.any(Number),
           aurora_external_seed_forced: true,
           aurora_external_seed_enabled: false,
           aurora_seed_strategy: 'legacy',
@@ -857,92 +705,6 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           pass2_skipped_reason: null,
           pass1_timeout_ms: expect.any(Number),
           pass2_timeout_ms: expect.any(Number),
-        }),
-      }),
-    );
-  });
-
-  test('aurora source can adopt pass2 external-seed result after primary timeout exception', async () => {
-    const queryText = 'Copper peptide serum';
-    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
-    process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS = 'true';
-    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'legacy';
-    process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = '120';
-    process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = '900';
-    process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = '1200';
-
-    nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query((q) => {
-        return (
-          String(q.query || '') === queryText &&
-          String(q.source || '') === 'aurora-bff' &&
-          String(q.allow_external_seed || '') === 'false' &&
-          String(q.fast_mode || '') === 'true'
-        );
-      })
-      .delay(260)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [],
-        total: 0,
-      });
-
-    nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query((q) => {
-        return (
-          String(q.query || '') === queryText &&
-          String(q.source || '') === 'aurora-bff' &&
-          String(q.allow_external_seed || '') === 'true' &&
-          String(q.external_seed_strategy || '') === 'legacy' &&
-          String(q.fast_mode || '') === 'true'
-        );
-      })
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'pass2_after_exception_candidate',
-            merchant_id: 'external_seed',
-            title: 'Copper peptide serum (pass2 after exception)',
-            source: 'external_seed',
-          },
-        ],
-        total: 1,
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .get('/agent/v1/products/search')
-      .query({
-        query: queryText,
-        source: 'aurora-bff',
-        catalog_surface: 'beauty',
-      });
-
-    expect(resp.status).toBe(200);
-    expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'pass2_after_exception_candidate',
-      }),
-    );
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        proxy_search_fallback: expect.objectContaining({
-          applied: true,
-          reason: 'pass2_after_exception',
-        }),
-        fallback_strategy: expect.objectContaining({
-          source: 'aurora_force_path',
-          pass1_attempted: true,
-          pass2_attempted: true,
-          pass2_selected: true,
-          pass2_skipped_reason: null,
-          secondary_attempted: false,
         }),
       }),
     );

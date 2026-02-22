@@ -20,6 +20,16 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeBool(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const token = String(value == null ? '' : value).trim().toLowerCase();
+  if (!token) return fallback;
+  if (token === '1' || token === 'true' || token === 'yes' || token === 'on') return true;
+  if (token === '0' || token === 'false' || token === 'no' || token === 'off') return false;
+  return fallback;
+}
+
 function round3(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.round(value * 1000) / 1000;
@@ -256,6 +266,92 @@ const DEFAULT_QUALITY_GATE = Object.freeze({
   }),
 });
 
+const DEFAULT_CAPTURE_FRAME_GATE = Object.freeze({
+  enabled: true,
+  fail: Object.freeze({
+    max_center_dx: 0.18,
+    min_center_y: 0.28,
+    max_center_y: 0.72,
+    min_bbox_w: 0.24,
+    min_bbox_h: 0.34,
+    max_bbox_w: 0.93,
+    max_bbox_h: 0.96,
+    min_edge_margin: 0.005,
+    require_touch_center: true,
+  }),
+  degraded: Object.freeze({
+    max_center_dx: 0.13,
+    min_center_y: 0.33,
+    max_center_y: 0.69,
+    min_bbox_w: 0.3,
+    min_bbox_h: 0.4,
+    max_bbox_w: 0.88,
+    max_bbox_h: 0.93,
+    min_edge_margin: 0.015,
+    require_touch_center: true,
+  }),
+});
+
+function normalizeCaptureFrameSubGate(raw, fallback) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  return {
+    max_center_dx: clamp01(
+      clamp(Number(src && src.max_center_dx != null ? src.max_center_dx : fallback.max_center_dx), 0, 1),
+    ),
+    min_center_y: clamp01(
+      clamp(Number(src && src.min_center_y != null ? src.min_center_y : fallback.min_center_y), 0, 1),
+    ),
+    max_center_y: clamp01(
+      clamp(Number(src && src.max_center_y != null ? src.max_center_y : fallback.max_center_y), 0, 1),
+    ),
+    min_bbox_w: clamp01(
+      clamp(Number(src && src.min_bbox_w != null ? src.min_bbox_w : fallback.min_bbox_w), 0, 1),
+    ),
+    min_bbox_h: clamp01(
+      clamp(Number(src && src.min_bbox_h != null ? src.min_bbox_h : fallback.min_bbox_h), 0, 1),
+    ),
+    max_bbox_w: clamp01(
+      clamp(Number(src && src.max_bbox_w != null ? src.max_bbox_w : fallback.max_bbox_w), 0, 1),
+    ),
+    max_bbox_h: clamp01(
+      clamp(Number(src && src.max_bbox_h != null ? src.max_bbox_h : fallback.max_bbox_h), 0, 1),
+    ),
+    min_edge_margin: clamp01(
+      clamp(Number(src && src.min_edge_margin != null ? src.min_edge_margin : fallback.min_edge_margin), 0, 1),
+    ),
+    require_touch_center: normalizeBool(
+      src && src.require_touch_center != null ? src.require_touch_center : fallback.require_touch_center,
+      fallback.require_touch_center,
+    ),
+  };
+}
+
+function normalizeCaptureFrameGateConfig(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  const fail = normalizeCaptureFrameSubGate(src && src.fail, DEFAULT_CAPTURE_FRAME_GATE.fail);
+  const degraded = normalizeCaptureFrameSubGate(src && src.degraded, DEFAULT_CAPTURE_FRAME_GATE.degraded);
+
+  const minCenterFail = Math.min(fail.min_center_y, fail.max_center_y);
+  const maxCenterFail = Math.max(fail.min_center_y, fail.max_center_y);
+  fail.min_center_y = minCenterFail;
+  fail.max_center_y = maxCenterFail;
+  fail.max_bbox_w = Math.max(fail.max_bbox_w, fail.min_bbox_w);
+  fail.max_bbox_h = Math.max(fail.max_bbox_h, fail.min_bbox_h);
+
+  const minCenterDegraded = Math.min(degraded.min_center_y, degraded.max_center_y);
+  const maxCenterDegraded = Math.max(degraded.min_center_y, degraded.max_center_y);
+  degraded.min_center_y = minCenterDegraded;
+  degraded.max_center_y = maxCenterDegraded;
+  degraded.max_bbox_w = Math.max(degraded.max_bbox_w, degraded.min_bbox_w);
+  degraded.max_bbox_h = Math.max(degraded.max_bbox_h, degraded.min_bbox_h);
+
+  return {
+    enabled: normalizeBool(src && src.enabled != null ? src.enabled : DEFAULT_CAPTURE_FRAME_GATE.enabled, DEFAULT_CAPTURE_FRAME_GATE.enabled),
+    fail,
+    degraded,
+  };
+}
+
 function normalizeQualityGateConfig(overrides) {
   const obj = overrides && typeof overrides === 'object' && !Array.isArray(overrides) ? overrides : null;
   const failRaw = obj && obj.fail && typeof obj.fail === 'object' && !Array.isArray(obj.fail) ? obj.fail : null;
@@ -352,10 +448,14 @@ function normalizeQualityGateConfig(overrides) {
     ),
   };
 
-  return { fail, degraded };
+  return {
+    fail,
+    degraded,
+    capture_frame: normalizeCaptureFrameGateConfig(obj && obj.capture_frame),
+  };
 }
 
-function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox, qualityGateConfig }) {
+function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox, touchCenter, qualityGateConfig }) {
   const n = width * height;
 
   let sumY = 0;
@@ -416,6 +516,18 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox,
 
   const qualityFactor = clamp01(blurFactor * exposureFactor * wbFactor * coverageFactor);
 
+  const bboxWNorm = clamp01((bbox.x1 - bbox.x0 + 1) / Math.max(1, width));
+  const bboxHNorm = clamp01((bbox.y1 - bbox.y0 + 1) / Math.max(1, height));
+  const centerXNorm = clamp01((bbox.x0 + bbox.x1 + 1) / (2 * Math.max(1, width)));
+  const centerYNorm = clamp01((bbox.y0 + bbox.y1 + 1) / (2 * Math.max(1, height)));
+  const centerDx = Math.abs(centerXNorm - 0.5);
+  const edgeMargin = Math.min(
+    clamp01(bbox.x0 / Math.max(1, width)),
+    clamp01(bbox.y0 / Math.max(1, height)),
+    clamp01((width - (bbox.x1 + 1)) / Math.max(1, width)),
+    clamp01((height - (bbox.y1 + 1)) / Math.max(1, height)),
+  );
+
   const reasons = [];
   if (coverage < 0.06) reasons.push('low_skin_coverage');
   if (blurFactor < 0.35) reasons.push('blur');
@@ -425,18 +537,72 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox,
   const gate = normalizeQualityGateConfig(qualityGateConfig);
   const failGate = gate.fail;
   const degradedGate = gate.degraded;
+  const frameGate = gate.capture_frame;
+
+  const frameFailReasons = [];
+  const frameDegradedReasons = [];
+
+  if (frameGate.enabled) {
+    const frameFail = frameGate.fail;
+    const frameDegraded = frameGate.degraded;
+
+    if (
+      centerDx > frameFail.max_center_dx ||
+      centerYNorm < frameFail.min_center_y ||
+      centerYNorm > frameFail.max_center_y
+    ) {
+      frameFailReasons.push('frame_off_center');
+    }
+    if (bboxWNorm < frameFail.min_bbox_w || bboxHNorm < frameFail.min_bbox_h) {
+      frameFailReasons.push('frame_face_too_small');
+    }
+    if (bboxWNorm > frameFail.max_bbox_w || bboxHNorm > frameFail.max_bbox_h) {
+      frameFailReasons.push('frame_face_too_large');
+    }
+    if (edgeMargin < frameFail.min_edge_margin) {
+      frameFailReasons.push('frame_face_cutoff');
+    }
+    if (frameFail.require_touch_center && !touchCenter) {
+      frameFailReasons.push('frame_not_in_center_zone');
+    }
+
+    if (frameFailReasons.length === 0) {
+      if (
+        centerDx > frameDegraded.max_center_dx ||
+        centerYNorm < frameDegraded.min_center_y ||
+        centerYNorm > frameDegraded.max_center_y
+      ) {
+        frameDegradedReasons.push('frame_guidance_center');
+      }
+      if (
+        bboxWNorm < frameDegraded.min_bbox_w ||
+        bboxHNorm < frameDegraded.min_bbox_h ||
+        bboxWNorm > frameDegraded.max_bbox_w ||
+        bboxHNorm > frameDegraded.max_bbox_h
+      ) {
+        frameDegradedReasons.push('frame_guidance_scale');
+      }
+      if (edgeMargin < frameDegraded.min_edge_margin || (frameDegraded.require_touch_center && !touchCenter)) {
+        frameDegradedReasons.push('frame_guidance_cutoff');
+      }
+    }
+  }
 
   // Keep FAIL reserved for hard failure conditions (coverage / blur / exposure).
   // Composite quality_factor is still used for DEGRADED, but not for FAIL to
   // avoid over-failing clear photos with warm/cool cast.
   let grade = 'pass';
+  for (const reason of frameFailReasons) reasons.push(reason);
+  for (const reason of frameDegradedReasons) reasons.push(reason);
   if (
+    frameFailReasons.length > 0 ||
     coverage < failGate.min_coverage ||
     blurFactor < failGate.min_blur_factor ||
     exposureFactor < failGate.min_exposure_factor
   ) {
     grade = 'fail';
   } else if (
+    frameDegradedReasons.length > 0 ||
     blurFactor < degradedGate.min_blur_factor ||
     exposureFactor < degradedGate.min_exposure_factor ||
     wbFactor < degradedGate.min_wb_factor ||
@@ -459,6 +625,15 @@ function computeQualityMetrics({ rgb, width, height, skinMask, skinPixels, bbox,
       exposure_factor: round3(exposureFactor),
       wb_factor: round3(wbFactor),
       coverage_factor: round3(coverageFactor),
+      frame_bbox_w: round3(bboxWNorm),
+      frame_bbox_h: round3(bboxHNorm),
+      frame_center_x: round3(centerXNorm),
+      frame_center_y: round3(centerYNorm),
+      frame_center_dx: round3(centerDx),
+      frame_edge_margin: round3(edgeMargin),
+      frame_touch_center: touchCenter ? 1 : 0,
+      frame_fail_count: frameFailReasons.length,
+      frame_degraded_count: frameDegradedReasons.length,
     },
   };
 }
@@ -1049,8 +1224,8 @@ function buildPhotoFindings({
         issue_type: 'quality',
         text:
           lang === 'CN'
-            ? 'From photo: 本次图像质量未通过（模糊/曝光/白平衡/覆盖），建议按提示重拍后再继续分析。'
-            : 'From photo: image quality failed (blur/exposure/WB/coverage), so please retake before analysis.',
+            ? 'From photo: 本次图像质量未通过（模糊/曝光/白平衡/覆盖或取景框未对齐），建议按引导框重拍后再继续分析。'
+            : 'From photo: image quality failed (blur/exposure/WB/coverage or framing misalignment), so please retake with your face aligned in the guide frame.',
         confidence: 1,
         linked_finding_ids: [],
         linked_issue_types: ['quality'],
@@ -1395,6 +1570,7 @@ async function runSkinDiagnosisV1({
       skinMask: skin.mask,
       skinPixels: skin.skinPixels,
       bbox: skin.bbox,
+      touchCenter: Boolean(skin.touchCenter),
       qualityGateConfig,
     });
     if (prof)

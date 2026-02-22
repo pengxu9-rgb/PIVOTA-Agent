@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
+LOCAL_BASE_DEFAULT="http://127.0.0.1:3100"
 DURATION_HOURS="${DURATION_HOURS:-24}"
 DURATION_SECONDS="${DURATION_SECONDS:-}"
 BASE_RPS="${BASE_RPS:-1}"
@@ -14,6 +15,9 @@ CN_PERCENT="${CN_PERCENT:-50}"
 CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-20}"
 SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg}"
 OUTPUT_DIR="${OUTPUT_DIR:-tmp/chaos_soak_run_$(date +%Y%m%d_%H%M%S)}"
+STARTUP_HEALTH_MAX_WAIT_SEC="${STARTUP_HEALTH_MAX_WAIT_SEC:-45}"
+STARTUP_HEALTH_POLL_SEC="${STARTUP_HEALTH_POLL_SEC:-2}"
+SOAK_ALLOW_DB_NOT_CONFIGURED="${SOAK_ALLOW_DB_NOT_CONFIGURED:-false}"
 
 SCENARIO_USE_PHOTO_FALSE_WEIGHT="${SCENARIO_USE_PHOTO_FALSE_WEIGHT:-40}"
 SCENARIO_PHOTO_USABLE_WEIGHT="${SCENARIO_PHOTO_USABLE_WEIGHT:-30}"
@@ -41,6 +45,7 @@ Usage:
 
 Options:
   --base <url>         Override BASE URL
+  --local              Shortcut for --base http://127.0.0.1:3100
   --out <dir>          Override OUTPUT_DIR
   --hours <n>          Override DURATION_HOURS
   --seconds <n>        Override DURATION_SECONDS
@@ -56,6 +61,10 @@ while [[ $# -gt 0 ]]; do
     --base)
       BASE="${2:-}"
       shift 2
+      ;;
+    --local)
+      BASE="$LOCAL_BASE_DEFAULT"
+      shift
       ;;
     --out|--output-dir)
       OUTPUT_DIR="${2:-}"
@@ -183,6 +192,67 @@ calc_rate() {
 log_line() {
   local line="$1"
   printf "%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line" | tee -a "$RUN_LOG"
+}
+
+wait_for_startup_health() {
+  local health_url="${BASE%/}/healthz"
+  local started_ts
+  started_ts="$(date +%s)"
+  local deadline_ts=$(( started_ts + STARTUP_HEALTH_MAX_WAIT_SEC ))
+  local last_code="000"
+  local attempt=0
+  while (( $(date +%s) <= deadline_ts )); do
+    attempt=$(( attempt + 1 ))
+    local code
+    code="$(
+      curl -sS -m 5 -o /dev/null -w "%{http_code}" "$health_url" || true
+    )"
+    code="${code:-000}"
+    last_code="$code"
+    if [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+      log_line "startup health preflight passed url=${health_url} code=${code} attempts=${attempt}"
+      return 0
+    fi
+    sleep "$STARTUP_HEALTH_POLL_SEC"
+  done
+  log_line "startup health preflight failed url=${health_url} last_code=${last_code} wait_sec=${STARTUP_HEALTH_MAX_WAIT_SEC}"
+  exit 2
+}
+
+preflight_local_database_config() {
+  if [[ ! "$BASE" =~ ^https?://(127\.0\.0\.1|localhost)(:[0-9]+)?(/|$) ]]; then
+    return 0
+  fi
+
+  local db_health_url="${BASE%/}/healthz/db"
+  local payload
+  payload="$(curl -sS -m 5 "$db_health_url" || true)"
+  if [[ -z "$payload" ]]; then
+    log_line "local db preflight skipped url=${db_health_url} reason=empty_response"
+    return 0
+  fi
+
+  local db_ready
+  db_ready="$(printf "%s" "$payload" | jq -r 'if has("db_ready") then (.db_ready|tostring) else empty end' 2>/dev/null || true)"
+  local reason
+  reason="$(printf "%s" "$payload" | jq -r '.reason // .error // empty' 2>/dev/null || true)"
+
+  if [[ "$db_ready" == "false" ]]; then
+    local allow_raw
+    allow_raw="$(printf '%s' "$SOAK_ALLOW_DB_NOT_CONFIGURED" | tr '[:upper:]' '[:lower:]')"
+    local allow_mock="${AURORA_BFF_USE_MOCK:-false}"
+    allow_mock="$(printf '%s' "$allow_mock" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$allow_raw" =~ ^(1|true|yes|y|on)$ || "$allow_mock" =~ ^(1|true|yes|y|on)$ ]]; then
+      log_line "local db preflight warning url=${db_health_url} db_ready=false reason=${reason:-unknown} (continuing due mock/override)"
+      return 0
+    fi
+
+    log_line "local db preflight failed url=${db_health_url} db_ready=false reason=${reason:-DATABASE_URL not configured}"
+    log_line "hint: configure DATABASE_URL, or start server with AURORA_BFF_USE_MOCK=true AURORA_BFF_RETENTION_DAYS=0, or set SOAK_ALLOW_DB_NOT_CONFIGURED=true to bypass"
+    exit 2
+  fi
+
+  log_line "local db preflight passed url=${db_health_url} db_ready=${db_ready:-unknown}"
 }
 
 pick_lang() {
@@ -804,6 +874,8 @@ START_TS="$(date +%s)"
 END_TS=$(( START_TS + TOTAL_SECONDS ))
 
 log_line "chaos soak start base=${BASE} duration_h=${DURATION_HOURS} base_rps=${BASE_RPS} chaos_rps=${CHAOS_RPS} spike_rps=${SPIKE_RPS} output=${OUTPUT_DIR}"
+wait_for_startup_health
+preflight_local_database_config
 if [[ "$TOXIPROXY_ENABLED" == "true" ]]; then
   "$TOXIPROXY_SETUP" >/dev/null
   "$TOXIPROXY_OFF" >/dev/null || true

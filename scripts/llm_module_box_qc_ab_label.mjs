@@ -32,6 +32,10 @@ Options:
   --both_bad_min_severity_penalty <n>    min violation severity penalty to mark side as poor (default: 0.2)
   --both_bad_risk_gate_enabled <bool>    treat selected risk reasons as low-quality signals (default: false)
   --both_bad_risk_reasons_csv <csv>      risk reasons for risk gate (default: module_guard_triggered,module_pixels_min_low)
+  --manual_delta_guard_enabled <bool>    move high-delta pairs to manual_review queue (default: false)
+  --manual_delta_guard_pair_max <n>      pair max mean_delta_l1 threshold for manual_review guard (default: 0.19)
+  --manual_delta_guard_min_corrected <n> min corrected modules for manual_review delta guard (default: 3)
+  --manual_delta_guard_decisions <csv>   decisions considered by manual delta guard (default: revise)
   --help                                 show help
 `;
 
@@ -353,7 +357,17 @@ function classifySideQuality({ row, score, config }) {
   };
 }
 
-function buildPairDecision({ sampleHash, source, rowA, rowB, rejectDelta, roleMeta, bothBadConfig, decisionPolicy }) {
+function buildPairDecision({
+  sampleHash,
+  source,
+  rowA,
+  rowB,
+  rejectDelta,
+  roleMeta,
+  bothBadConfig,
+  manualDeltaGuardConfig,
+  decisionPolicy,
+}) {
   const scoreA = sideScore(rowA);
   const scoreB = sideScore(rowB);
   const diff = round4(scoreA - scoreB);
@@ -364,6 +378,36 @@ function buildPairDecision({ sampleHash, source, rowA, rowB, rejectDelta, roleMe
   const sideQualityA = classifySideQuality({ row: rowA, score: scoreA, config: bothBadConfig });
   const sideQualityB = classifySideQuality({ row: rowB, score: scoreB, config: bothBadConfig });
   const bothLowQuality = sideQualityA.is_low_quality && sideQualityB.is_low_quality;
+  const manualDeltaGuard = manualDeltaGuardConfig && typeof manualDeltaGuardConfig === 'object'
+    ? manualDeltaGuardConfig
+    : {
+        enabled: false,
+        pairMax: 0.19,
+        minCorrected: 3,
+        decisions: ['revise'],
+      };
+  const manualDeltaGuardDecisions = Array.isArray(manualDeltaGuard.decisions)
+    ? manualDeltaGuard.decisions
+    : [];
+  const manualDeltaGuardReasons = [];
+  const shouldGuardSide = (sideLabel, row) => {
+    if (!manualDeltaGuard.enabled) return;
+    const sideRow = row && typeof row === 'object' ? row : {};
+    const decision = String(sideRow.decision || '').trim().toLowerCase();
+    const correctedCount = Number.isFinite(Number(sideRow.corrected_modules_count))
+      ? Math.max(0, Number(sideRow.corrected_modules_count))
+      : 0;
+    const meanDelta = Number.isFinite(Number(sideRow.mean_delta_l1))
+      ? Math.max(0, Number(sideRow.mean_delta_l1))
+      : 0;
+    if (!manualDeltaGuardDecisions.includes(decision)) return;
+    if (correctedCount < Number(manualDeltaGuard.minCorrected || 0)) return;
+    if (meanDelta < Number(manualDeltaGuard.pairMax || 0)) return;
+    manualDeltaGuardReasons.push(`side_${String(sideLabel || '').toLowerCase()}_high_mean_delta`);
+  };
+  shouldGuardSide('A', rowA);
+  shouldGuardSide('B', rowB);
+  const manualDeltaGuardTriggered = manualDeltaGuardReasons.length > 0;
 
   const provisionalWinnerSide = scoreA >= scoreB ? 'A' : 'B';
   const provisionalWinnerRow = provisionalWinnerSide === 'A' ? rowA : rowB;
@@ -442,6 +486,8 @@ function buildPairDecision({ sampleHash, source, rowA, rowB, rejectDelta, roleMe
       both_bad_triggered: bothBadTriggered,
       both_bad_reasons: gateReasons,
       hard_failure_signals: hardFailureReasons,
+      manual_delta_guard_triggered: manualDeltaGuardTriggered,
+      manual_delta_guard_reasons: manualDeltaGuardReasons,
       rationale: {
         reason: gateReasons.length === 1 ? gateReasons[0] : 'multi_gate_block',
         reasons: gateReasons,
@@ -468,6 +514,14 @@ function buildPairDecision({ sampleHash, source, rowA, rowB, rejectDelta, roleMe
         },
         side_a_quality: sideQualityA,
         side_b_quality: sideQualityB,
+        manual_delta_guard: {
+          enabled: manualDeltaGuard.enabled,
+          reasons: manualDeltaGuardReasons,
+          triggered: manualDeltaGuardTriggered,
+          pair_max: manualDeltaGuard.pairMax,
+          min_corrected: manualDeltaGuard.minCorrected,
+          decisions: manualDeltaGuardDecisions,
+        },
       },
       side_quality: {
         A: sideQualityA,
@@ -501,8 +555,8 @@ function buildPairDecision({ sampleHash, source, rowA, rowB, rejectDelta, roleMe
   const rejectedPipelineId = resolvePipelineForRole(rejectedRole, roleMeta);
   const baseNeedsManualReview = label === 'weak_preference' || !preferredRole || !rejectedRole;
   const needsManualReview = decisionPolicy && decisionPolicy.mode === 'consumer'
-    ? (!preferredRole || !rejectedRole)
-    : baseNeedsManualReview;
+    ? (!preferredRole || !rejectedRole || manualDeltaGuardTriggered)
+    : (baseNeedsManualReview || manualDeltaGuardTriggered);
 
   const reason = {
     winner_decision: winner ? winner.decision : null,
@@ -522,6 +576,14 @@ function buildPairDecision({ sampleHash, source, rowA, rowB, rejectDelta, roleMe
       bypassed_soft_block: softBlockBypassed,
       mode: decisionPolicy && decisionPolicy.mode ? decisionPolicy.mode : 'qa',
       hard_block_only: hardBlockOnly,
+    },
+    manual_delta_guard: {
+      enabled: manualDeltaGuard.enabled,
+      reasons: manualDeltaGuardReasons,
+      triggered: manualDeltaGuardTriggered,
+      pair_max: manualDeltaGuard.pairMax,
+      min_corrected: manualDeltaGuard.minCorrected,
+      decisions: manualDeltaGuardDecisions,
     },
   };
 
@@ -550,6 +612,8 @@ function buildPairDecision({ sampleHash, source, rowA, rowB, rejectDelta, roleMe
     both_bad_triggered: bothBadTriggered,
     both_bad_reasons: gateReasons,
     hard_failure_signals: hardFailureReasons,
+    manual_delta_guard_triggered: manualDeltaGuardTriggered,
+    manual_delta_guard_reasons: manualDeltaGuardReasons,
     rationale: reason,
     side_quality: {
       A: sideQualityA,
@@ -646,6 +710,12 @@ async function main() {
       ['module_guard_triggered', 'module_pixels_min_low'],
     ),
   };
+  const manualDeltaGuardConfig = {
+    enabled: parseBool(args.manual_delta_guard_enabled, false),
+    pairMax: parseNumber(args.manual_delta_guard_pair_max, 0.19, 0, 2),
+    minCorrected: Math.max(0, Math.min(20, Math.trunc(parseNumber(args.manual_delta_guard_min_corrected, 3, 0, 20)))),
+    decisions: parseCsvList(args.manual_delta_guard_decisions, ['revise']),
+  };
   const outDir = path.resolve(String(args.out || path.join(path.dirname(llmResultsPath), 'ab_label_from_llm_qc')).trim());
   await fsp.mkdir(outDir, { recursive: true });
 
@@ -687,6 +757,7 @@ async function main() {
         rowB,
         rejectDelta,
         bothBadConfig,
+        manualDeltaGuardConfig,
         decisionPolicy,
         roleMeta: roleMap.get(sampleHash) || null,
       }),
@@ -731,6 +802,14 @@ async function main() {
   const blockedRows = decisions
     .filter((row) => Boolean(row.blocked_before_manual))
     .sort((a, b) => Math.abs(a.score_diff_a_minus_b) - Math.abs(b.score_diff_a_minus_b));
+  const manualDeltaGuardTotal = decisions.reduce((acc, row) => acc + (row.manual_delta_guard_triggered ? 1 : 0), 0);
+  const manualReviewReasonCounts = manualReviewRows.reduce((acc, row) => {
+    if (row.manual_delta_guard_triggered) acc.manual_delta_guard = (acc.manual_delta_guard || 0) + 1;
+    if (row.decision_class === 'both_bad') acc.both_bad = (acc.both_bad || 0) + 1;
+    if (row.preference_strength === 'weak_preference') acc.weak_preference = (acc.weak_preference || 0) + 1;
+    if (!row.preferred_role || !row.rejected_role) acc.role_mapping_missing = (acc.role_mapping_missing || 0) + 1;
+    return acc;
+  }, {});
 
   const summary = {
     ok: true,
@@ -741,6 +820,7 @@ async function main() {
     reject_delta: rejectDelta,
     decision_policy: decisionPolicy,
     both_bad: bothBadConfig,
+    manual_delta_guard: manualDeltaGuardConfig,
     rows_total: rows.length,
     paired_total: decisions.length,
     missing_pairs_total: missingPairs.length,
@@ -751,6 +831,8 @@ async function main() {
     preference_strength_counts: strengthCounts,
     blocked_total: blockedRows.length,
     manual_review_total: manualReviewRows.length,
+    manual_delta_guard_total: manualDeltaGuardTotal,
+    manual_review_reasons_counts: manualReviewReasonCounts,
   };
 
   const summaryPath = path.join(outDir, 'summary.json');
@@ -838,6 +920,8 @@ async function main() {
       hard_block_only: Boolean(row.hard_block_only),
       both_bad_triggered: Boolean(row.both_bad_triggered),
       hard_failure_signals: Array.isArray(row.hard_failure_signals) ? row.hard_failure_signals : [],
+      manual_delta_guard_triggered: Boolean(row.manual_delta_guard_triggered),
+      manual_delta_guard_reasons: Array.isArray(row.manual_delta_guard_reasons) ? row.manual_delta_guard_reasons : [],
     },
   }));
   await fsp.writeFile(labelStudioPath, `${JSON.stringify(lsTasks, null, 2)}\n`, 'utf8');

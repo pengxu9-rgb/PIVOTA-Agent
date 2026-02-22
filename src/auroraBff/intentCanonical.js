@@ -1,3 +1,5 @@
+const { matchConcepts } = require('./kbV0/conceptMatcher');
+
 const INTENT_ENUM = Object.freeze({
   RECO_PRODUCTS: 'reco_products',
   ROUTINE: 'routine',
@@ -101,6 +103,17 @@ const HEURISTICS = [
     intent: INTENT_ENUM.ROUTINE,
   },
 ];
+
+function isIngredientScienceConceptId(conceptId) {
+  const id = String(conceptId || '').trim().toUpperCase();
+  if (!id) return false;
+  if (
+    /(RETINO|AHA|BHA|PHA|HYDROQUINONE|BENZOYL|SALICYLIC|GLYCOLIC|LACTIC|MANDELIC|AZELAIC|TRANEXAMIC|NIACINAMIDE|VITAMIN_C|ASCORBIC|CERAMIDE|PEPTIDE|ARBUTIN|ISOTRETINOIN)/.test(id)
+  ) {
+    return true;
+  }
+  return id === 'EXFOLIANT' || id === 'CHEMICAL_PEEL' || id === 'SUNSCREEN';
+}
 
 function normalizeActionId(raw) {
   const value = String(raw || '').trim().toLowerCase();
@@ -218,6 +231,27 @@ function inferCanonicalIntent({ message, actionId, actionLabel } = {}) {
       confidence: 0.92,
       entities: intent === INTENT_ENUM.TRAVEL_PLANNING || intent === INTENT_ENUM.WEATHER_ENV ? extractTravelEntities(text) : {},
     };
+  }
+
+  if (text) {
+    const language = /[\u4e00-\u9fff]/.test(text) ? 'CN' : 'EN';
+    const conceptMatches = matchConcepts({
+      text,
+      language,
+      max: 24,
+      includeSubstring: true,
+    });
+    const hasIngredientConcept = conceptMatches.some((row) => isIngredientScienceConceptId(row && row.concept_id));
+    const hasRecoCue = /(recommend|products?|shop|buy|购物|购买|推荐|产品|精华|面霜|防晒|乳液|routine|护肤流程)/i.test(text);
+    const hasScienceCue = /(ingredient science|evidence|mechanism|clinical|citation|成分(科学|机理|机制|证据)|循证|证据链)/i.test(text);
+    if (hasIngredientConcept && (!hasRecoCue || hasScienceCue)) {
+      return {
+        intent: INTENT_ENUM.INGREDIENT_SCIENCE,
+        source: 'kb_v0_concept_match',
+        confidence: 0.82,
+        entities: {},
+      };
+    }
   }
 
   const fromRegex = inferFromRegex(text);
