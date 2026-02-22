@@ -649,6 +649,16 @@ const PRODUCT_URL_REALTIME_COMPETITOR_RETURN_SLACK_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 220;
   return Math.max(60, Math.min(1000, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS || 160);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 160;
+  return Math.max(120, Math.min(600, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MIN_QUERY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS || 150);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 150;
+  return Math.max(120, Math.min(500, v));
+})();
 const AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED || 'true')
     .trim()
@@ -4893,11 +4903,50 @@ async function buildRealtimeCompetitorCandidates({
       ? queries
         .slice()
         .sort((left, right) => {
-          const scoreDiff = rankAsyncQuery(right) - rankAsyncQuery(left);
-          if (scoreDiff !== 0) return scoreDiff;
-          return String(left || '').length - String(right || '').length;
-        })
+    const scoreDiff = rankAsyncQuery(right) - rankAsyncQuery(left);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(left || '').length - String(right || '').length;
+  })
       : queries;
+
+  const reasonBreakdown = {
+    budget_exhausted: 0,
+    upstream_timeout: 0,
+    upstream_error: 0,
+    rate_limited: 0,
+    empty: 0,
+    not_found: 0,
+    other: 0,
+  };
+  let queryAttempted = 0;
+  const bucketSearchReason = (searched) => {
+    const reasonToken = String(searched?.reason || '').trim().toLowerCase();
+    if (!searched?.ok) {
+      if (reasonToken === 'budget_exhausted') return 'budget_exhausted';
+      if (reasonToken === 'upstream_timeout') return 'upstream_timeout';
+      if (reasonToken === 'upstream_error') return 'upstream_error';
+      if (reasonToken === 'rate_limited') return 'rate_limited';
+      if (reasonToken === 'not_found') return 'not_found';
+      return 'other';
+    }
+    const productCount = Array.isArray(searched?.products) ? searched.products.length : 0;
+    if (productCount > 0) return null;
+    if (reasonToken === 'not_found') return 'not_found';
+    return 'empty';
+  };
+  const markReasonBreakdown = (searched) => {
+    const bucket = bucketSearchReason(searched);
+    if (!bucket || !Object.prototype.hasOwnProperty.call(reasonBreakdown, bucket)) return;
+    reasonBreakdown[bucket] += 1;
+  };
+  const buildRecallMeta = () => ({
+    query_attempted: queryAttempted,
+    reason_breakdown: { ...reasonBreakdown },
+  });
+  const minRemainingForSearchMs =
+    runMode === 'main_path'
+      ? PRODUCT_URL_REALTIME_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS
+      : 260;
 
   const minimumPerQueryBudgetMs = runMode === 'main_path' ? 420 : 320;
   const maxQueriesByBudget = Math.max(
@@ -4927,19 +4976,33 @@ async function buildRealtimeCompetitorCandidates({
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
     const queryText = plannedQueries[queryIdx];
     const remainingMs = getRemainingMs();
-    if (remainingMs < 260) {
+    const isLastQuery = queryIdx === plannedQueries.length - 1;
+    const allowLastQueryGrace =
+      runMode === 'main_path' &&
+      queryAttempted === 0 &&
+      isLastQuery &&
+      remainingMs >= minRemainingForSearchMs;
+    if (remainingMs < 260 && !allowLastQueryGrace) {
+      const searched = {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        latency_ms: 0,
+        attempted: false,
+      };
+      markReasonBreakdown(searched);
       searchResults.push({
         query: queryText,
-        searched: {
-          ok: false,
-          products: [],
-          reason: 'budget_exhausted',
-          latency_ms: 0,
-        },
+        searched,
       });
       break;
     }
     const queriesRemaining = plannedQueries.length - queryIdx;
+    const perQueryMinMsBase = runMode === 'async_backfill' ? 260 : 220;
+    const perQueryMinMs =
+      runMode === 'main_path'
+        ? Math.max(120, Math.min(perQueryMinMsBase, PRODUCT_URL_REALTIME_COMPETITOR_MIN_QUERY_TIMEOUT_MS))
+        : perQueryMinMsBase;
     const fairShareMs =
       runMode === 'async_backfill'
         ? (() => {
@@ -4947,16 +5010,15 @@ async function buildRealtimeCompetitorCandidates({
             plannedQueries.length > 1 && queryIdx === 0
               ? Math.min(1800, Math.max(1200, Math.trunc(remainingMs * 0.2)))
               : 0;
-          return Math.max(260, remainingMs - reserveAfterSearchMs - reserveForFollowupMs);
+          return Math.max(perQueryMinMs, remainingMs - reserveAfterSearchMs - reserveForFollowupMs);
         })()
         : Math.max(
-          220,
-          Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
+          perQueryMinMs,
+          Math.trunc(Math.max(perQueryMinMs, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
         );
-    const perQueryMinMs = runMode === 'async_backfill' ? 260 : 220;
     const perQueryTimeoutMs = Math.max(perQueryMinMs, Math.min(effectiveSearchTimeoutMs, fairShareMs));
     // eslint-disable-next-line no-await-in-loop
-    const searched = await runSearch({
+    const searchedRaw = await runSearch({
       query: queryText,
       limit: 6,
       logger,
@@ -4967,6 +5029,12 @@ async function buildRealtimeCompetitorCandidates({
       externalSeedStrategy,
       fastMode: true,
     });
+    const searched = {
+      ...searchedRaw,
+      attempted: true,
+    };
+    queryAttempted += 1;
+    markReasonBreakdown(searched);
     searchResults.push({ query: queryText, searched });
 
     const list = Array.isArray(searched?.products) ? searched.products : [];
@@ -5155,6 +5223,8 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
+      ...buildRecallMeta(),
+      meta: buildRecallMeta(),
     };
   }
   const allSearchTransientFailure =
@@ -5169,6 +5239,8 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
+      ...buildRecallMeta(),
+      meta: buildRecallMeta(),
     };
   }
   if (runMode === 'main_path' && !allSearchTransientFailure) {
@@ -5176,6 +5248,8 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: 'catalog_search_no_candidates',
+      ...buildRecallMeta(),
+      meta: buildRecallMeta(),
     };
   }
   if (runMode === 'main_path' && getRemainingMs() < 420) {
@@ -5183,6 +5257,8 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
+      ...buildRecallMeta(),
+      meta: buildRecallMeta(),
     };
   }
 
@@ -5332,6 +5408,8 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
+      ...buildRecallMeta(),
+      meta: buildRecallMeta(),
     };
   }
 
@@ -5341,6 +5419,8 @@ async function buildRealtimeCompetitorCandidates({
     candidates: [],
     queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
     reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty',
+    ...buildRecallMeta(),
+    meta: buildRecallMeta(),
   };
 }
 
@@ -7145,11 +7225,10 @@ async function maybeSyncRepairLowCoverageCompetitors({
     max: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   });
   const lowCoverageTokenPresent = hasLowCoverageCompetitorToken(payloadObj);
-  if (!existingCandidates.length && !lowCoverageTokenPresent) {
-    return { payload: payloadObj, enhanced: false, reason: 'competitors_missing' };
+  if (existingCandidates.length > 0) {
+    if (existingCandidates.length >= preferredCount) return { payload: payloadObj, enhanced: false, reason: 'coverage_ok' };
+    if (!lowCoverageTokenPresent) return { payload: payloadObj, enhanced: false, reason: 'coverage_token_missing' };
   }
-  if (existingCandidates.length >= preferredCount) return { payload: payloadObj, enhanced: false, reason: 'coverage_ok' };
-  if (!lowCoverageTokenPresent) return { payload: payloadObj, enhanced: false, reason: 'coverage_token_missing' };
 
   const assessment =
     payloadObj.assessment && typeof payloadObj.assessment === 'object' && !Array.isArray(payloadObj.assessment)
@@ -27677,6 +27756,9 @@ const __internal = {
   buildRealtimeCompetitorQueryPlan,
   mapCatalogProductToAnchorProduct,
   resolveCatalogProductForProductInput,
+  buildRealtimeCompetitorCandidates,
+  maybeSyncRepairLowCoverageCompetitors,
+  shouldRepairCompetitorCoverage,
   extractProductPriceFromHtml,
   normalizePriceObject,
   runOpenAIVisionSkinAnalysis,

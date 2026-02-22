@@ -373,7 +373,7 @@ const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
   Math.min(
     parseTimeoutMs(
       process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
-      Math.min(900, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
+      Math.min(1600, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
     ),
     Math.max(450, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
   ),
@@ -383,7 +383,7 @@ const PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = Math.max(
   Math.min(
     parseTimeoutMs(
       process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
-      Math.min(450, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
+      Math.min(1200, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
     ),
     Math.max(250, PROXY_SEARCH_FALLBACK_TIMEOUT_MS),
   ),
@@ -8778,6 +8778,8 @@ async function proxyAgentSearchToBackend(req, res) {
       resolver_attempted: false,
       secondary_attempted: false,
       secondary_skipped_reason: null,
+      secondary_rejected_reason: null,
+      secondary_fallback_duration_ms: null,
       allow_secondary_fallback: allowSecondaryFallback,
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
@@ -8900,6 +8902,7 @@ async function proxyAgentSearchToBackend(req, res) {
 
       if (allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
         fallbackStrategy.secondary_attempted = true;
+        const fallbackStartedAtMs = Date.now();
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams: guardedQueryParams,
@@ -8923,6 +8926,7 @@ async function proxyAgentSearchToBackend(req, res) {
           if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
             fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
           }
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
           if (
             fallback &&
             fallback.status >= 200 &&
@@ -8954,6 +8958,7 @@ async function proxyAgentSearchToBackend(req, res) {
             ? 'secondary_irrelevant'
             : 'secondary_not_adopted';
         } catch (fallbackErr) {
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
           fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
           logger.warn(
             { err: fallbackErr?.message || String(fallbackErr) },
@@ -9099,6 +9104,8 @@ async function proxyAgentSearchToBackend(req, res) {
       resolver_attempted: false,
       secondary_attempted: false,
       secondary_skipped_reason: null,
+      secondary_rejected_reason: null,
+      secondary_fallback_duration_ms: null,
       allow_secondary_fallback: allowSecondaryFallback,
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
@@ -9161,6 +9168,7 @@ async function proxyAgentSearchToBackend(req, res) {
 
       if (allowSecondaryFallbackOnException) {
         fallbackStrategy.secondary_attempted = true;
+        const fallbackStartedAtMs = Date.now();
         try {
           const fallback = await queryFindProductsMultiFallback({
             queryParams: guardedQueryParams,
@@ -9184,6 +9192,7 @@ async function proxyAgentSearchToBackend(req, res) {
           if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
             fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
           }
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
           if (
             fallback &&
             fallback.status >= 200 &&
@@ -9216,6 +9225,7 @@ async function proxyAgentSearchToBackend(req, res) {
             ? 'secondary_irrelevant'
             : 'secondary_not_adopted';
         } catch (fallbackErr) {
+          fallbackStrategy.secondary_fallback_duration_ms = Math.max(0, Date.now() - fallbackStartedAtMs);
           fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
           logger.warn(
             { err: fallbackErr?.message || String(fallbackErr) },
