@@ -53,6 +53,10 @@ jobs:
           make claims-audit
 
       - name: Aurora BFF unit tests (offline)
+        env:
+          AURORA_ROLLOUT_ENABLED: "false"
+          AURORA_FORCE_VARIANT_ENABLED: "false"
+          AURORA_CHAT_RESPONSE_META_ENABLED: "true"
         run: npm run test:aurora-bff:unit
 
       - name: Replay quality gate (deterministic)
