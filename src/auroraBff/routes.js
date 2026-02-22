@@ -634,6 +634,11 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(800, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS || 120);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 120;
+  return Math.max(0, Math.min(320, v));
+})();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 150);
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
@@ -4971,11 +4976,13 @@ async function buildRealtimeCompetitorCandidates({
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
     const queryText = plannedQueries[queryIdx];
     const remainingMs = getRemainingMs();
+    const isMainFirstQuery = runMode === 'main_path' && queryIdx === 0;
+    const firstQueryGraceMs = isMainFirstQuery ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS : 0;
+    const gatedRemainingMs = remainingMs + firstQueryGraceMs;
     const allowFirstQueryWithTightBudget =
-      runMode === 'main_path' &&
-      queryIdx === 0 &&
-      remainingMs >= PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS;
-    if (remainingMs < 260 && !allowFirstQueryWithTightBudget) {
+      isMainFirstQuery &&
+      gatedRemainingMs >= PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS;
+    if (gatedRemainingMs < 260 && !allowFirstQueryWithTightBudget) {
       searchResults.push({
         query: queryText,
         searched: {

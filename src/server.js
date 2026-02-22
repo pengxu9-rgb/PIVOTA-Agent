@@ -409,7 +409,7 @@ const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
   Math.min(
     parseTimeoutMs(
       process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
-      Math.min(1800, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
+      Math.min(1600, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
     ),
     Math.max(450, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
   ),
@@ -488,7 +488,7 @@ const PROXY_SEARCH_AURORA_FORCE_TWO_PASS =
   String(process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = Math.max(
   250,
-  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS, 800),
+  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS, 900),
 );
 const PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = Math.max(
   200,
@@ -8995,6 +8995,7 @@ async function proxyAgentSearchToBackend(req, res) {
           };
           fallbackStrategy.pass2_attempted = true;
           fallbackStrategy.pass2_timeout_ms = pass2TimeoutMs;
+          recordAuroraCompPass2Invoked({ mode: 'main_path' });
           try {
             const pass2Run = await runPrimarySearchRequest({
               params: pass2QueryParams,
@@ -9022,6 +9023,9 @@ async function proxyAgentSearchToBackend(req, res) {
               String(pass2Err?.code || '').toUpperCase() === 'ECONNABORTED'
                 ? 'pass2_timeout'
                 : 'pass2_exception';
+            if (fallbackStrategy.pass2_skipped_reason === 'pass2_timeout') {
+              recordAuroraCompPass2Timeout({ mode: 'main_path' });
+            }
             logger.warn(
               { err: pass2Err?.message || String(pass2Err) },
               'proxy agent search aurora pass2 failed; keeping pass1',
