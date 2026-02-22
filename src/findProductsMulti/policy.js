@@ -66,6 +66,20 @@ const SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY || 0.6)),
 );
+const SEARCH_DOMAIN_CONDENSER_ENABLED =
+  String(process.env.SEARCH_DOMAIN_CONDENSER_ENABLED || 'false').toLowerCase() === 'true';
+const SEARCH_DOMAIN_CONDENSER_ENTROPY_TH = Math.max(
+  0,
+  Math.min(1, Number(process.env.SEARCH_DOMAIN_CONDENSER_ENTROPY_TH || 0.8)),
+);
+const SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE = Math.max(
+  1,
+  Number(process.env.SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE || 8) || 8,
+);
+const SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER = Math.max(
+  1,
+  Number(process.env.SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER || 4) || 4,
+);
 const AMBIGUITY_THRESHOLD_CLARIFY = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_AMBIGUITY_THRESHOLD_CLARIFY || 0.35)),
@@ -988,6 +1002,172 @@ function inferSuperDomainKey(domainKey) {
   if (key === 'hiking') return 'outdoor';
   if (key === 'travel') return 'travel';
   return 'general';
+}
+
+function inferSuperDomainFromToken(token) {
+  const t = String(token || '').toLowerCase();
+  if (!t) return null;
+  if (
+    /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|化妆|美妆|护肤|口红|粉底|眼影|睫毛)/.test(t)
+  ) {
+    return 'beauty';
+  }
+  if (
+    /(dog|cat|pet|leash|harness|collar|puppy|kitten|宠物|狗链|牵引|背带|项圈|猫砂|遛狗)/.test(t)
+  ) {
+    return 'pet';
+  }
+  if (
+    /(hiking|outdoor|camping|trekking|trail|backpack|hydration|pole|徒步|登山|露营|户外)/.test(t)
+  ) {
+    return 'outdoor';
+  }
+  if (
+    /(travel|trip|business|packing|luggage|toiletry|adapter|carryon|carry-on|出差|旅行|差旅|行李|分装)/.test(
+      t,
+    )
+  ) {
+    return 'travel';
+  }
+  return null;
+}
+
+function resolveDomainCondenserTargetSuperDomain({ intent, rawQuery, anchorTokens }) {
+  const tokens = normalizeAnchorTokens(anchorTokens, 40);
+  const scoreByDomain = new Map();
+  for (const token of tokens) {
+    const superDomain = inferSuperDomainFromToken(token);
+    if (!superDomain) continue;
+    scoreByDomain.set(superDomain, (scoreByDomain.get(superDomain) || 0) + 1);
+  }
+  if (scoreByDomain.size > 0) {
+    let bestDomain = null;
+    let bestScore = -1;
+    for (const [domain, score] of scoreByDomain.entries()) {
+      if (score > bestScore) {
+        bestDomain = domain;
+        bestScore = score;
+      }
+    }
+    if (bestDomain) return bestDomain;
+  }
+  const inferredDomain = inferSearchDomainKey(intent, rawQuery);
+  const inferredSuper = inferSuperDomainKey(inferredDomain);
+  if (inferredSuper !== 'general') return inferredSuper;
+  const primary = inferSuperDomainKey(intent?.primary_domain);
+  return primary === 'general' ? null : primary;
+}
+
+function applyScenarioDomainCondenser({
+  products,
+  fallbackProducts,
+  intent,
+  rawQuery,
+  queryClass,
+  anchorTokens,
+  sourceCandidateCount,
+}) {
+  const list = Array.isArray(products) ? products : [];
+  const fallbackList = Array.isArray(fallbackProducts) ? fallbackProducts : [];
+  const normalizedClass = normalizeQueryClass(queryClass ?? intent?.query_class, {
+    defaultValue: null,
+  });
+  const debug = {
+    enabled: SEARCH_DOMAIN_CONDENSER_ENABLED,
+    applied: false,
+    query_class: normalizedClass,
+    source_candidates: Number.isFinite(Number(sourceCandidateCount))
+      ? Number(sourceCandidateCount)
+      : Math.max(list.length, fallbackList.length),
+    candidates_before: list.length,
+    entropy_before: computeDomainEntropy(list),
+    min_candidates_before: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE,
+    min_candidates_after: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER,
+    entropy_threshold: SEARCH_DOMAIN_CONDENSER_ENTROPY_TH,
+  };
+  if (!SEARCH_DOMAIN_CONDENSER_ENABLED) {
+    return { products: list, debug: { ...debug, reason: 'disabled' } };
+  }
+  if (!['scenario', 'mission'].includes(String(normalizedClass || ''))) {
+    return { products: list, debug: { ...debug, reason: 'query_class_not_supported' } };
+  }
+  const effectiveSourceCount = debug.source_candidates;
+  const triggerByEmpty = list.length === 0 && effectiveSourceCount >= SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE;
+  const triggerByEntropy =
+    list.length > 0 &&
+    effectiveSourceCount >= SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE &&
+    debug.entropy_before >= SEARCH_DOMAIN_CONDENSER_ENTROPY_TH;
+  if (!triggerByEmpty && !triggerByEntropy) {
+    return {
+      products: list,
+      debug: {
+        ...debug,
+        reason: 'gate_not_met',
+        trigger_by_empty: triggerByEmpty,
+        trigger_by_entropy: triggerByEntropy,
+      },
+    };
+  }
+
+  const targetSuperDomain = resolveDomainCondenserTargetSuperDomain({
+    intent,
+    rawQuery,
+    anchorTokens,
+  });
+  if (!targetSuperDomain) {
+    return { products: list, debug: { ...debug, reason: 'target_super_domain_unknown' } };
+  }
+  const pool = list.length > 0 ? list : fallbackList;
+  if (!pool.length) {
+    return { products: list, debug: { ...debug, reason: 'no_candidate_pool', target_super_domain: targetSuperDomain } };
+  }
+  const allowTokens = normalizeAnchorTokens(
+    [
+      ...(Array.isArray(anchorTokens) ? anchorTokens : []),
+      ...extractCategoryTokensFromIntent(intent, rawQuery),
+    ],
+    40,
+  );
+  if (!allowTokens.length) {
+    return { products: list, debug: { ...debug, reason: 'allow_tokens_empty', target_super_domain: targetSuperDomain } };
+  }
+  const condensed = [];
+  for (const product of pool) {
+    const productDomain = inferProductDomainKey(product);
+    const productSuperDomain = inferSuperDomainKey(productDomain);
+    const taxonomyDistance = computeTaxonomyDistanceToAllowSet(product, allowTokens);
+    const nearTaxonomy = taxonomyDistance <= 1;
+    const superDomainMatch =
+      productSuperDomain === targetSuperDomain ||
+      (productSuperDomain === 'general' && nearTaxonomy);
+    if (!superDomainMatch || !nearTaxonomy) continue;
+    condensed.push(product);
+  }
+  if (condensed.length < SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER) {
+    return {
+      products: list,
+      debug: {
+        ...debug,
+        reason: 'insufficient_condensed_candidates',
+        target_super_domain: targetSuperDomain,
+        candidates_after: condensed.length,
+        entropy_after: computeDomainEntropy(condensed),
+      },
+    };
+  }
+  return {
+    products: condensed,
+    debug: {
+      ...debug,
+      applied: true,
+      reason: triggerByEmpty ? 'applied_on_empty_candidates' : 'applied_on_high_entropy',
+      target_super_domain: targetSuperDomain,
+      candidates_after: condensed.length,
+      entropy_after: computeDomainEntropy(condensed),
+      trigger_by_empty: triggerByEmpty,
+      trigger_by_entropy: triggerByEntropy,
+    },
+  };
 }
 
 function extractCategoryTokensFromIntent(intent, rawQuery) {
@@ -2725,6 +2905,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       search_scenario_derived_min_recall_candidates: SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES,
       search_scenario_derived_min_anchor_ratio: SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO,
       search_scenario_derived_max_domain_entropy: SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY,
+      search_domain_condenser_enabled: SEARCH_DOMAIN_CONDENSER_ENABLED,
+      search_domain_condenser_entropy_th: SEARCH_DOMAIN_CONDENSER_ENTROPY_TH,
+      search_domain_condenser_min_cands_before: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE,
+      search_domain_condenser_min_cands_after: SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER,
       search_anchor_alias_v2: SEARCH_ANCHOR_ALIAS_V2,
     },
   };
@@ -2789,6 +2973,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (!skipConstraintReorder) {
     filtered = reorderProductsForConstraints(filtered, intent, rawQuery);
   }
+  const preDomainFilterCandidates = Array.isArray(filtered) ? filtered.slice() : [];
   const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery);
   filtered = Array.isArray(domainFilterResult.products) ? domainFilterResult.products : [];
   let diversityDebug = null;
@@ -2840,6 +3025,16 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     queryClass,
     associationPlan: associationPlanFromMeta,
   });
+  const domainCondenserResult = applyScenarioDomainCondenser({
+    products: filtered,
+    fallbackProducts: preDomainFilterCandidates,
+    intent,
+    rawQuery,
+    queryClass,
+    anchorTokens: postAnchorBasis?.tokens,
+    sourceCandidateCount: before,
+  });
+  filtered = Array.isArray(domainCondenserResult.products) ? domainCondenserResult.products : filtered;
   const scenarioDerivedAnchorActive =
     SEARCH_SCENARIO_ANCHOR_MODE === 'derived' &&
     ['scenario', 'mission'].includes(String(queryClass || ''));
@@ -2986,6 +3181,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (clarifyByAmbiguity) reasonCodes.add('AMBIGUITY_CLARIFY');
   if (clarifyByAmbiguity && postQualityTriggered) reasonCodes.add('LOW_CONF_POST');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
+  if (domainCondenserResult?.debug?.applied) reasonCodes.add('DOMAIN_CONDENSED');
 
   const augmented = setResponseProductList(response, key, filtered);
   const filtersApplied = buildFiltersApplied(intent);
@@ -3208,16 +3404,17 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           metadata: {
             ...mergedMetadata,
             strategy_version: STRATEGY_VERSION,
-            search_decision: {
-              query_class: queryClass,
-              ambiguity_score_pre: ambiguityScorePre,
-              ambiguity_score_post: ambiguityScorePost,
-              clarify_triggered: Boolean(clarification),
-              strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
-              final_decision: finalDecision,
-              post_quality: postQuality,
-            },
-          },
+    search_decision: {
+      query_class: queryClass,
+      ambiguity_score_pre: ambiguityScorePre,
+      ambiguity_score_post: ambiguityScorePost,
+      clarify_triggered: Boolean(clarification),
+      strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
+      final_decision: finalDecision,
+      domain_condenser: domainCondenserResult?.debug || null,
+      post_quality: postQuality,
+    },
+  },
         }
       : {
           metadata: {
@@ -3230,6 +3427,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               clarify_triggered: Boolean(clarification),
               strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
               final_decision: finalDecision,
+              domain_condenser: domainCondenserResult?.debug || null,
               post_quality: postQuality,
             },
           },
