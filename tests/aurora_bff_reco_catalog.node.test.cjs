@@ -15,6 +15,7 @@ process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
 
 const axios = require('axios');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
+const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
 
 async function withEnv(overrides, fn) {
   const prev = {};
@@ -38,6 +39,25 @@ function loadRoutesFresh() {
   delete require.cache[ROUTES_MODULE_PATH];
   // eslint-disable-next-line global-require, import/no-dynamic-require
   return require('../src/auroraBff/routes');
+}
+
+async function seedHighConfidenceArtifactForReco({
+  auroraUid,
+  briefId = 'test_brief',
+  userId = null,
+} = {}) {
+  return saveDiagnosisArtifact({
+    auroraUid,
+    userId,
+    sessionId: briefId,
+    artifact: {
+      overall_confidence: { score: 0.92, level: 'high' },
+      skinType: { value: 'oily' },
+      sensitivity: { value: 'low' },
+      barrierStatus: { value: 'stable' },
+      goals: { values: ['acne'] },
+    },
+  });
 }
 
 function isProductsSearchUrl(url) {
@@ -172,10 +192,10 @@ test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled
         name: `Test ${suffix}`,
         display_name: `Test ${suffix}`,
       });
-      if (q.includes('cleanser')) return { data: { products: [mk('cleanser')] } };
-      if (q.includes('moisturizer')) return { data: { products: [mk('moisturizer')] } };
-      if (q.includes('sunscreen')) return { data: { products: [mk('sunscreen')] } };
-      return { data: { products: [mk('fallback')] } };
+      if (q.includes('cleanser')) return { status: 200, data: { products: [mk('cleanser')] } };
+      if (q.includes('moisturizer')) return { status: 200, data: { products: [mk('moisturizer')] } };
+      if (q.includes('sunscreen')) return { status: 200, data: { products: [mk('sunscreen')] } };
+      return { status: 200, data: { products: [mk('fallback')] } };
     }
     throw new Error(`Unexpected axios.get: ${url}`);
   };
@@ -188,6 +208,7 @@ test('/v1/chat: reco_products uses catalog grounded PDP-ready items when enabled
     app.use(express.json({ limit: '1mb' }));
     mountAuroraBffRoutes(app, { logger: null });
 
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'test_uid', briefId: 'test_brief' });
     const resp = await invokeRecoChat(app);
 
     assert.equal(resp.status, 200);
@@ -425,6 +446,7 @@ test('Unresolved recommendation: external fallback only after one resolve attemp
         app.use(express.json({ limit: '1mb' }));
         mountAuroraBffRoutes(app, { logger: null });
 
+        await seedHighConfidenceArtifactForReco({ auroraUid: 'test_uid_unresolved', briefId: 'test_brief' });
         const resp = await invokeRecoChat(app, { 'X-Aurora-UID': 'test_uid_unresolved' });
         assert.equal(resp.status, 200);
 
@@ -2879,6 +2901,7 @@ test('/v1/chat reco fail-fast: open state skips until probe interval, then probe
         app.use(express.json({ limit: '1mb' }));
         mountAuroraBffRoutes(app, { logger: null });
 
+        await seedHighConfidenceArtifactForReco({ auroraUid: 'test_uid', briefId: 'test_brief' });
         const first = await invokeRecoChat(app, { 'X-Debug': 'true' });
         assert.equal(first.status, 200);
         assert.equal(searchCalls, 1);
