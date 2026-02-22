@@ -5537,17 +5537,100 @@ const ROUTE_MAP = {
   }
 };
 
-let openaiClient;
-function getOpenAIClient() {
-  if (!openaiClient) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is required for /ui/chat');
-    }
-    openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+let uiChatLlmClient;
+let uiChatLlmModel;
+let uiChatLlmProvider;
+
+function resolveUiChatProvider() {
+  const explicit = String(process.env.PIVOTA_UI_CHAT_LLM_PROVIDER || '').trim().toLowerCase();
+  if (explicit === 'openai' || explicit === 'gemini') return explicit;
+
+  const hasOpenAI = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+  const hasGemini = Boolean(
+    String(
+      process.env.GEMINI_API_KEY ||
+        process.env.PIVOTA_GEMINI_API_KEY ||
+        process.env.GOOGLE_API_KEY ||
+        '',
+    ).trim(),
+  );
+
+  if (hasGemini && !hasOpenAI) return 'gemini';
+  if (hasOpenAI) return 'openai';
+  if (hasGemini) return 'gemini';
+  return 'openai';
+}
+
+function resolveGeminiApiKey() {
+  return String(
+    process.env.GEMINI_API_KEY ||
+      process.env.PIVOTA_GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      '',
+  ).trim();
+}
+
+function resolveGeminiBaseUrl() {
+  const raw = String(
+    process.env.PIVOTA_UI_CHAT_GEMINI_BASE_URL ||
+      process.env.GEMINI_BASE_URL ||
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+  ).trim();
+  return raw.replace(/\/+$/, '');
+}
+
+function resolveUiChatModel(provider) {
+  if (provider === 'gemini') {
+    return String(
+      process.env.PIVOTA_UI_CHAT_LLM_MODEL_GEMINI ||
+        process.env.PIVOTA_UI_CHAT_LLM_MODEL ||
+        'gemini-2.0-flash',
+    ).trim();
   }
-  return openaiClient;
+  return String(
+    process.env.PIVOTA_UI_CHAT_LLM_MODEL_OPENAI ||
+      process.env.PIVOTA_UI_CHAT_LLM_MODEL ||
+      'gpt-5.1',
+  ).trim();
+}
+
+function getUiChatLlmClient() {
+  if (!uiChatLlmClient) {
+    const provider = resolveUiChatProvider();
+    uiChatLlmProvider = provider;
+    uiChatLlmModel = resolveUiChatModel(provider);
+
+    if (provider === 'gemini') {
+      const geminiApiKey = resolveGeminiApiKey();
+      if (!geminiApiKey) {
+        throw new Error('GEMINI_API_KEY (or PIVOTA_GEMINI_API_KEY/GOOGLE_API_KEY) is required for /ui/chat provider=gemini');
+      }
+      uiChatLlmClient = new OpenAI({
+        apiKey: geminiApiKey,
+        baseURL: resolveGeminiBaseUrl(),
+      });
+    } else {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY is required for /ui/chat provider=openai');
+      }
+      uiChatLlmClient = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+    }
+
+    logger.info(
+      {
+        provider: uiChatLlmProvider,
+        model: uiChatLlmModel,
+      },
+      'Configured /ui/chat LLM provider',
+    );
+  }
+  return {
+    client: uiChatLlmClient,
+    provider: uiChatLlmProvider,
+    model: uiChatLlmModel,
+  };
 }
 
 // Helper: call upstream Pivota API with a slightly longer timeout and a
@@ -18342,7 +18425,7 @@ function uiChatShouldUseRetryResult(initialResult, retryResult) {
 
 async function runAgentWithTools(messages) {
   // messages already contain system message
-  const openai = getOpenAIClient();
+  const { client: llmClient, model: llmModel } = getUiChatLlmClient();
   const startTs = Date.now();
   let steps = 0;
   let totalToolCalls = 0;
@@ -18386,8 +18469,8 @@ async function runAgentWithTools(messages) {
       return budgetExceededMessage('steps');
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-5.1',
+    const completion = await llmClient.chat.completions.create({
+      model: llmModel,
       messages,
       tools: [
         {
