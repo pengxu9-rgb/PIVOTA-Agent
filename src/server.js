@@ -2901,6 +2901,97 @@ function withStrictEmptyFallback({
   });
 }
 
+function enforceFindProductsMultiDecisionInvariant(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const products = Array.isArray(body.products) ? body.products : [];
+  const clarification =
+    body.clarification && typeof body.clarification === 'object' ? body.clarification : null;
+  const hasClarification = Boolean(clarification?.question);
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : {};
+  const existingTrace =
+    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
+      ? { ...metadata.search_trace }
+      : {};
+  const existingDecision =
+    metadata.search_decision &&
+    typeof metadata.search_decision === 'object' &&
+    !Array.isArray(metadata.search_decision)
+      ? { ...metadata.search_decision }
+      : {};
+  const declaredDecision = String(
+    existingDecision.final_decision || existingTrace.final_decision || '',
+  )
+    .trim()
+    .toLowerCase();
+  let canonicalDecision = deriveCanonicalSearchDecision(body, metadata);
+  let invariantViolation = false;
+
+  if (canonicalDecision === 'clarify' && !hasClarification) {
+    canonicalDecision = 'strict_empty';
+    invariantViolation = true;
+  }
+  if (canonicalDecision === 'products_returned' && products.length === 0) {
+    canonicalDecision = 'strict_empty';
+    invariantViolation = true;
+  }
+
+  const normalizedReasonCodes = Array.from(
+    new Set(
+      (Array.isArray(body.reason_codes) ? body.reason_codes : [])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  if (declaredDecision && declaredDecision !== canonicalDecision) {
+    invariantViolation = true;
+  }
+  if (invariantViolation && !normalizedReasonCodes.includes('INVARIANT_VIOLATION')) {
+    normalizedReasonCodes.push('INVARIANT_VIOLATION');
+  }
+
+  const nextTrace = {
+    ...existingTrace,
+    final_decision: canonicalDecision,
+  };
+  const nextDecision = {
+    ...existingDecision,
+    final_decision: canonicalDecision,
+    decision_source: 'canonical_body',
+  };
+  const nextMetadata = {
+    ...metadata,
+    search_trace: nextTrace,
+    search_decision: nextDecision,
+  };
+  if (canonicalDecision === 'strict_empty') {
+    nextMetadata.strict_empty = true;
+    if (!nextMetadata.strict_empty_reason) {
+      nextMetadata.strict_empty_reason = normalizedReasonCodes[0] || 'no_candidates';
+    }
+  } else {
+    nextMetadata.strict_empty = false;
+    delete nextMetadata.strict_empty_reason;
+  }
+
+  const finalProducts =
+    canonicalDecision === 'products_returned' ? products : [];
+  return {
+    ...body,
+    products: finalProducts,
+    ...(canonicalDecision === 'products_returned'
+      ? {}
+      : {
+          total: 0,
+          page_size: 0,
+        }),
+    reason_codes: normalizedReasonCodes,
+    metadata: nextMetadata,
+  };
+}
+
 function isUpstreamQuotaExhausted({ upstreamStatus = null, upstreamCode = null, upstreamMessage = null }) {
   const status = Number(upstreamStatus || 0);
   const code = String(upstreamCode || '').trim().toUpperCase();
@@ -11789,6 +11880,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             queryText: debugRuntime.rawUserQuery,
             intent: debugRuntime.intent,
           });
+          finalBody = enforceFindProductsMultiDecisionInvariant(finalBody);
         }
         if (exposeDebugBundle || logDebugBundle) {
           debugRuntime.totalLatencyMs = Math.max(0, Date.now() - invokeStartedAtMs);
