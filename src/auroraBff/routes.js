@@ -620,11 +620,6 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(800, v));
 })();
-const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 150);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 150;
-  return Math.max(120, Math.min(1000, v));
-})();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
     .trim()
@@ -5067,7 +5062,7 @@ async function buildRealtimeCompetitorCandidates({
     }
     const queriesRemaining = plannedQueries.length - queryIdx;
     const perQueryMinMsBase = runMode === 'async_backfill' ? 260 : 220;
-    const perQueryMinMs =
+    const perQueryMinForShareMs =
       runMode === 'main_path'
         ? Math.max(120, perQueryMinMsBase, PRODUCT_URL_REALTIME_COMPETITOR_MIN_QUERY_TIMEOUT_MS)
         : perQueryMinMsBase;
@@ -5078,11 +5073,11 @@ async function buildRealtimeCompetitorCandidates({
             plannedQueries.length > 1 && queryIdx === 0
               ? Math.min(1800, Math.max(1200, Math.trunc(remainingMs * 0.2)))
               : 0;
-          return Math.max(perQueryMinMs, remainingMs - reserveAfterSearchMs - reserveForFollowupMs);
+          return Math.max(perQueryMinForShareMs, remainingMs - reserveAfterSearchMs - reserveForFollowupMs);
         })()
         : Math.max(
-          perQueryMinMs,
-          Math.trunc(Math.max(perQueryMinMs, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
+          perQueryMinForShareMs,
+          Math.trunc(Math.max(perQueryMinForShareMs, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
         );
     const perQueryMinMs =
       runMode === 'async_backfill'

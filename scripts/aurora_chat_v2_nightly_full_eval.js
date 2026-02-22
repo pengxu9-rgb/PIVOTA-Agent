@@ -46,6 +46,116 @@ function runCommand(cmd, args, env = process.env) {
   };
 }
 
+function extractMeta(body) {
+  if (body && body.meta && typeof body.meta === 'object' && !Array.isArray(body.meta)) return body.meta;
+  if (
+    body &&
+    body.session_patch &&
+    typeof body.session_patch === 'object' &&
+    !Array.isArray(body.session_patch) &&
+    body.session_patch.meta &&
+    typeof body.session_patch.meta === 'object' &&
+    !Array.isArray(body.session_patch.meta)
+  ) {
+    return body.session_patch.meta;
+  }
+  return null;
+}
+
+function normalizeHeaders(inputHeaders) {
+  const out = {};
+  const entries = inputHeaders && typeof inputHeaders.entries === 'function' ? Array.from(inputHeaders.entries()) : [];
+  for (const [k, v] of entries) out[String(k || '').toLowerCase()] = String(v || '');
+  return out;
+}
+
+async function runStagingTravelPreflight(base) {
+  const startedAt = new Date().toISOString();
+  const cmd = `preflight:aurora-travel ${String(base).replace(/\/+$/, '')}/v1/chat`;
+  const payload = {
+    message: 'Travel next week skincare plan please.',
+    session: {
+      state: 'idle',
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'medium',
+        barrierStatus: 'stable',
+        goals: ['hydration'],
+      },
+    },
+    language: 'EN',
+  };
+
+  try {
+    const res = await fetch(`${String(base).replace(/\/+$/, '')}/v1/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Aurora-UID': `nightly_preflight_uid_${Date.now()}`,
+        'X-Trace-ID': `nightly_preflight_trace_${Date.now()}`,
+        'X-Brief-ID': `nightly_preflight_brief_${Date.now()}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    let body = {};
+    try {
+      body = await res.json();
+    } catch (_err) {
+      body = {};
+    }
+    const headers = normalizeHeaders(res.headers);
+    const meta = extractMeta(body);
+    const errors = [];
+    const status = Number(res.status || 0);
+    if (status !== 200) errors.push(`status expected 200, actual=${status}`);
+    if (!meta) errors.push('meta is missing in preflight');
+
+    const policy = String((meta && meta.policy_version) || headers['x-aurora-policy-version'] || '');
+    if (policy && policy !== 'aurora_chat_v2_p0') {
+      errors.push(`policy_version expected aurora_chat_v2_p0, actual=${policy}`);
+    }
+
+    const intent = String((meta && meta.intent_canonical) || '');
+    if (intent && intent !== 'travel_planning') {
+      errors.push(`intent_canonical expected travel_planning, actual=${intent}`);
+    }
+
+    const gate = String((meta && meta.gate_type) || '');
+    if (gate && gate !== 'soft') {
+      errors.push(`gate_type expected soft, actual=${gate}`);
+    }
+
+    return {
+      cmd,
+      started_at: startedAt,
+      ended_at: new Date().toISOString(),
+      exit_code: errors.length ? 2 : 0,
+      signal: null,
+      ok: errors.length === 0,
+      error: errors.length ? errors.join(' | ') : null,
+      preflight: {
+        status,
+        policy_version: meta ? meta.policy_version || null : null,
+        intent_canonical: meta ? meta.intent_canonical || null : null,
+        gate_type: meta ? meta.gate_type || null : null,
+        rollout_variant: meta ? meta.rollout_variant || null : null,
+        build_sha: meta ? meta.build_sha || null : null,
+      },
+    };
+  } catch (err) {
+    return {
+      cmd,
+      started_at: startedAt,
+      ended_at: new Date().toISOString(),
+      exit_code: 2,
+      signal: null,
+      ok: false,
+      error: `preflight request failed: ${String(err && err.message ? err.message : err)}`,
+    };
+  }
+}
+
 function buildMarkdown(report) {
   const lines = [];
   lines.push('# Aurora Chat V2 Nightly Full Eval');
@@ -85,7 +195,7 @@ function buildMarkdown(report) {
   return `${lines.join('\n')}\n`;
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv);
   const base = String(args.base || process.env.AURORA_EVAL_BASE_URL || 'https://pivota-agent-staging.up.railway.app').replace(/\/+$/, '');
   const stamp = nowStamp();
@@ -98,6 +208,9 @@ function main() {
   steps.push(runCommand('npm', ['run', 'test:aurora-bff:unit']));
   if (steps[steps.length - 1].ok) {
     steps.push(runCommand('npm', ['run', 'test:replay-quality']));
+  }
+  if (steps[steps.length - 1].ok) {
+    steps.push(await runStagingTravelPreflight(base));
   }
   if (steps[steps.length - 1].ok) {
     steps.push(
@@ -231,10 +344,8 @@ function main() {
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     process.stderr.write(`[aurora_chat_v2_nightly_full_eval] fatal: ${String(err && err.stack ? err.stack : err)}\n`);
     process.exit(1);
-  }
+  });
 }
