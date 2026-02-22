@@ -167,6 +167,8 @@ function createEmptyStat() {
     timeout: false,
     error: null,
     attempts: 0,
+    query_attempted: 0,
+    reason_counts: {},
   };
 }
 
@@ -500,6 +502,26 @@ async function executeSource({
     );
     const out = normalizeSourceResult(raw, sourceName, defaultSourceType);
     stat.eligible += out.candidates.length + out.competitors.length + out.related_products.length + out.dupes.length;
+    if (out.meta && typeof out.meta === 'object') {
+      const queryAttempted = Number(out.meta.query_attempted || out.meta.queries_attempted || 0);
+      if (Number.isFinite(queryAttempted) && queryAttempted > 0) {
+        stat.query_attempted += Math.max(0, Math.trunc(queryAttempted));
+      }
+      const reasonCounts = out.meta.reason_counts && typeof out.meta.reason_counts === 'object'
+        ? out.meta.reason_counts
+        : null;
+      if (reasonCounts) {
+        const merged = { ...(stat.reason_counts && typeof stat.reason_counts === 'object' ? stat.reason_counts : {}) };
+        for (const [rawKey, rawCount] of Object.entries(reasonCounts)) {
+          const key = String(rawKey || '').trim();
+          if (!key) continue;
+          const count = Number(rawCount || 0);
+          if (!Number.isFinite(count) || count <= 0) continue;
+          merged[key] = Number(merged[key] || 0) + Math.max(1, Math.trunc(count));
+        }
+        stat.reason_counts = merged;
+      }
+    }
     stat.duration_ms += Date.now() - startedAt;
     return out;
   } catch (err) {
@@ -955,6 +977,16 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
           returned: Number(value.returned || 0),
           timeout: value.timeout === true,
           duration_ms: Number(value.duration_ms || 0),
+          query_attempted: Number(value.query_attempted || 0),
+          ...(value.reason_counts && typeof value.reason_counts === 'object' && Object.keys(value.reason_counts).length
+            ? {
+                reason_counts: Object.fromEntries(
+                  Object.entries(value.reason_counts)
+                    .map(([rawKey, rawCount]) => [String(rawKey || '').trim(), Number(rawCount || 0)])
+                    .filter(([key, count]) => key && Number.isFinite(count) && count > 0),
+                ),
+              }
+            : {}),
           ...(value.error ? { error: value.error } : {}),
         },
       ]),
@@ -974,6 +1006,10 @@ async function recoBlocks(anchor, ctx = {}, budgetMs = DEFAULT_BUDGET_MS) {
       rankerB: dogfoodConfig.interleave.rankerB,
     },
     exploration_inserted_count_by_block: diagnostics.exploration_inserted_count_by_block,
+    ...(diagnostics.blocks.catalog_ann?.reason_counts &&
+    Object.keys(diagnostics.blocks.catalog_ann.reason_counts).length
+      ? { catalog_ann_reason_counts: diagnostics.blocks.catalog_ann.reason_counts }
+      : {}),
     ...(socialChannelsUsed.length ? { social_channels_used: socialChannelsUsed } : {}),
   };
 

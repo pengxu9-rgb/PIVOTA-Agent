@@ -609,6 +609,16 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 1;
   return Math.max(1, Math.min(4, v));
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS || 150);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 150;
+  return Math.max(120, Math.min(800, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 150);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 150;
+  return Math.max(120, Math.min(1000, v));
+})();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
     .trim()
@@ -2141,6 +2151,7 @@ async function searchPivotaBackendProducts({
   limit = 6,
   logger,
   timeoutMs = RECO_CATALOG_SEARCH_TIMEOUT_MS,
+  minTimeoutMs = 300,
   searchAllMerchants = true,
   deadlineMs = 0,
   forceLocalSearchFallback = false,
@@ -2152,7 +2163,14 @@ async function searchPivotaBackendProducts({
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', latency_ms: 0 };
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
-  const normalizedTimeout = Math.max(300, Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS));
+  const normalizedMinTimeout = Math.max(
+    120,
+    Math.min(4000, Number.isFinite(Number(minTimeoutMs)) ? Math.trunc(Number(minTimeoutMs)) : 300),
+  );
+  const normalizedTimeout = Math.max(
+    normalizedMinTimeout,
+    Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS),
+  );
   const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
   const deadlineReserveMs = normalizedDeadlineMs > 0 ? 20 : 0;
   const effectiveDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + normalizedTimeout;
@@ -4916,6 +4934,12 @@ async function buildRealtimeCompetitorCandidates({
     Math.max(1, Math.min(orderedQueries.length, Math.min(maxQueriesByBudget, mainPathFanoutCap))),
   );
   const searchResults = [];
+  const reasonCounts = Object.create(null);
+  const bumpReason = (rawReason) => {
+    const token = String(rawReason || '').trim().toLowerCase();
+    if (!token) return;
+    reasonCounts[token] = Number(reasonCounts[token] || 0) + 1;
+  };
   const observedRecallHits = new Set();
   const earlyStopTarget =
     runMode === 'main_path'
@@ -4927,7 +4951,11 @@ async function buildRealtimeCompetitorCandidates({
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
     const queryText = plannedQueries[queryIdx];
     const remainingMs = getRemainingMs();
-    if (remainingMs < 260) {
+    const allowFirstQueryWithTightBudget =
+      runMode === 'main_path' &&
+      queryIdx === 0 &&
+      remainingMs >= PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS;
+    if (remainingMs < 260 && !allowFirstQueryWithTightBudget) {
       searchResults.push({
         query: queryText,
         searched: {
@@ -4937,6 +4965,7 @@ async function buildRealtimeCompetitorCandidates({
           latency_ms: 0,
         },
       });
+      bumpReason('budget_exhausted');
       break;
     }
     const queriesRemaining = plannedQueries.length - queryIdx;
@@ -4953,7 +4982,12 @@ async function buildRealtimeCompetitorCandidates({
           220,
           Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
         );
-    const perQueryMinMs = runMode === 'async_backfill' ? 260 : 220;
+    const perQueryMinMs =
+      runMode === 'async_backfill'
+        ? 260
+        : runMode === 'main_path'
+          ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
+          : 220;
     const perQueryTimeoutMs = Math.max(perQueryMinMs, Math.min(effectiveSearchTimeoutMs, fairShareMs));
     // eslint-disable-next-line no-await-in-loop
     const searched = await runSearch({
@@ -4961,6 +4995,7 @@ async function buildRealtimeCompetitorCandidates({
       limit: 6,
       logger,
       timeoutMs: perQueryTimeoutMs,
+      minTimeoutMs: perQueryMinMs,
       searchAllMerchants,
       deadlineMs: softDeadlineMs,
       allowExternalSeed,
@@ -4968,6 +5003,10 @@ async function buildRealtimeCompetitorCandidates({
       fastMode: true,
     });
     searchResults.push({ query: queryText, searched });
+    if (searched && typeof searched === 'object') {
+      if (searched.ok === false) bumpReason(searched.reason || 'upstream_error');
+      else if (Array.isArray(searched.products) && searched.products.length === 0) bumpReason('empty');
+    }
 
     const list = Array.isArray(searched?.products) ? searched.products : [];
     for (const product of list) {
@@ -5155,6 +5194,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
+      meta: {
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
+      },
     };
   }
   const allSearchTransientFailure =
@@ -5169,6 +5212,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
+      meta: {
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
+      },
     };
   }
   if (runMode === 'main_path' && !allSearchTransientFailure) {
@@ -5176,6 +5223,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: 'catalog_search_no_candidates',
+      meta: {
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
+      },
     };
   }
   if (runMode === 'main_path' && getRemainingMs() < 420) {
@@ -5183,6 +5234,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: [],
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
+      meta: {
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
+      },
     };
   }
 
@@ -5209,6 +5264,10 @@ async function buildRealtimeCompetitorCandidates({
       timeoutMs: resolveTimeoutMs,
     });
     resolveResults.push({ query: queryText, resolved });
+    if (resolved && typeof resolved === 'object') {
+      if (resolved.ok === false) bumpReason(`resolve_${resolved.reason || 'failed'}`);
+      else if (!resolved.product) bumpReason('resolve_empty');
+    }
   }
   for (const row of resolveResults) {
     const normalized = normalizeRecoCatalogProduct(row?.resolved?.product);
@@ -5332,6 +5391,10 @@ async function buildRealtimeCompetitorCandidates({
       candidates: finalCandidates,
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
+      meta: {
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
+      },
     };
   }
 
@@ -5341,6 +5404,10 @@ async function buildRealtimeCompetitorCandidates({
     candidates: [],
     queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
     reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty',
+    meta: {
+      reason_counts: reasonCounts,
+      query_attempted: searchResults.length,
+    },
   };
 }
 
@@ -7145,11 +7212,13 @@ async function maybeSyncRepairLowCoverageCompetitors({
     max: PRODUCT_URL_REALTIME_COMPETITOR_MAX_CANDIDATES,
   });
   const lowCoverageTokenPresent = hasLowCoverageCompetitorToken(payloadObj);
-  if (!existingCandidates.length && !lowCoverageTokenPresent) {
-    return { payload: payloadObj, enhanced: false, reason: 'competitors_missing' };
+  if (!existingCandidates.length) {
+    // Zero coverage must always attempt bounded sync repair.
+  } else if (existingCandidates.length >= preferredCount) {
+    return { payload: payloadObj, enhanced: false, reason: 'coverage_ok' };
+  } else if (!lowCoverageTokenPresent) {
+    return { payload: payloadObj, enhanced: false, reason: 'coverage_token_missing' };
   }
-  if (existingCandidates.length >= preferredCount) return { payload: payloadObj, enhanced: false, reason: 'coverage_ok' };
-  if (!lowCoverageTokenPresent) return { payload: payloadObj, enhanced: false, reason: 'coverage_token_missing' };
 
   const assessment =
     payloadObj.assessment && typeof payloadObj.assessment === 'object' && !Array.isArray(payloadObj.assessment)
