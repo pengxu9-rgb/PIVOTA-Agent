@@ -44,6 +44,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS;
+    delete process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_ALLOW_EXTERNAL_SEED;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_SYNC_ALLOW_EXTERNAL_SEED;
     delete process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_BACKFILL_ALLOW_EXTERNAL_SEED;
@@ -451,6 +452,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS = '220';
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS = '160';
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS = '150';
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP = '1';
 
     const searchFn = jest.fn(async () => ({
       ok: true,
@@ -493,6 +495,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     });
 
     expect(searchFn).toHaveBeenCalled();
+    expect(searchFn.mock.calls.length).toBe(1);
     expect(Number(out?.query_attempted || out?.meta?.query_attempted || 0)).toBeGreaterThan(0);
     const reasonBreakdown =
       out?.reason_breakdown && typeof out.reason_breakdown === 'object'
@@ -504,6 +507,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
   test('buildRealtimeCompetitorCandidates does not early-stop on same-brand-only first hit set', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_FANOUT_CAP = '3';
 
     const sameBrandProducts = Array.from({ length: 4 }).map((_, idx) => ({
       product_id: `same_brand_${idx + 1}`,
