@@ -123,6 +123,10 @@ const {
   listMissingCatalogProducts,
   toCsv: missingCatalogProductsToCsv,
 } = require('./services/missingCatalogProductsStore');
+const {
+  recordAuroraCompPass2Invoked,
+  recordAuroraCompPass2Timeout,
+} = require('./auroraBff/visionMetrics');
 
 const resolveStableAliasByQuery =
   typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
@@ -400,7 +404,7 @@ const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
   Math.min(
     parseTimeoutMs(
       process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
-      Math.min(1800, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
+      Math.min(1600, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
     ),
     Math.max(450, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
   ),
@@ -479,7 +483,7 @@ const PROXY_SEARCH_AURORA_FORCE_TWO_PASS =
   String(process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = Math.max(
   250,
-  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS, 1000),
+  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS, 900),
 );
 const PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = Math.max(
   200,
@@ -9278,17 +9282,18 @@ async function proxyAgentSearchToBackend(req, res) {
     const auroraTwoPassEnabled = Boolean(
       auroraFallbackOverrides.active &&
       PROXY_SEARCH_AURORA_FORCE_TWO_PASS &&
+      !auroraUpstreamSourceOverrideActive &&
       queryText,
     );
     const primaryDeadlineMs = Date.now() + primaryTimeoutMs;
     const pass1QueryParams = auroraTwoPassEnabled
       ? {
-          ...guardedQueryParams,
+          ...upstreamQueryParams,
           allow_external_seed: false,
           external_seed_strategy: 'legacy',
           fast_mode: true,
         }
-      : guardedQueryParams;
+      : upstreamQueryParams;
     const pass1TimeoutMs = auroraTwoPassEnabled
       ? Math.max(
           250,
@@ -9334,13 +9339,14 @@ async function proxyAgentSearchToBackend(req, res) {
             Math.min(PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, remainingBudgetMs),
           );
           const pass2QueryParams = {
-            ...guardedQueryParams,
+            ...upstreamQueryParams,
             allow_external_seed: true,
             external_seed_strategy: PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
             fast_mode: true,
           };
           fallbackStrategy.pass2_attempted = true;
           fallbackStrategy.pass2_timeout_ms = pass2TimeoutMs;
+          recordAuroraCompPass2Invoked({ mode: 'main_path' });
           try {
             const pass2Run = await runPrimarySearchRequest({
               params: pass2QueryParams,
@@ -9368,6 +9374,9 @@ async function proxyAgentSearchToBackend(req, res) {
               String(pass2Err?.code || '').toUpperCase() === 'ECONNABORTED'
                 ? 'pass2_timeout'
                 : 'pass2_exception';
+            if (fallbackStrategy.pass2_skipped_reason === 'pass2_timeout') {
+              recordAuroraCompPass2Timeout({ mode: 'main_path' });
+            }
             logger.warn(
               { err: pass2Err?.message || String(pass2Err) },
               'proxy agent search aurora pass2 failed; keeping pass1',
@@ -9688,6 +9697,7 @@ async function proxyAgentSearchToBackend(req, res) {
       const auroraTwoPassEnabledOnException = Boolean(
         auroraFallbackOverrides.active &&
         PROXY_SEARCH_AURORA_FORCE_TWO_PASS &&
+        !auroraUpstreamSourceOverrideActive &&
         PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
       );
       if (auroraTwoPassEnabledOnException) {
@@ -9706,7 +9716,7 @@ async function proxyAgentSearchToBackend(req, res) {
             method: 'GET',
             url,
             params: {
-              ...guardedQueryParams,
+              ...upstreamQueryParams,
               allow_external_seed: true,
               external_seed_strategy: PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
               fast_mode: true,
@@ -9723,8 +9733,8 @@ async function proxyAgentSearchToBackend(req, res) {
             validateStatus: () => true,
           });
           const pass2Normalized = normalizeAgentProductsListResponse(pass2Response.data, {
-            limit: parseQueryNumber(guardedQueryParams?.limit ?? guardedQueryParams?.page_size),
-            offset: parseQueryNumber(guardedQueryParams?.offset),
+            limit: parseQueryNumber(upstreamQueryParams?.limit ?? upstreamQueryParams?.page_size),
+            offset: parseQueryNumber(upstreamQueryParams?.offset),
           });
           const pass2UsableCount = countUsableSearchProducts(pass2Normalized?.products);
           const pass2Relevant = isProxySearchFallbackRelevant(pass2Normalized, queryText);

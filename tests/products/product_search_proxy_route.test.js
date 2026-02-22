@@ -64,6 +64,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
       PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS:
         process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_UPSTREAM_SOURCE:
+        process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE,
       PROXY_SEARCH_AURORA_API_BASE: process.env.PROXY_SEARCH_AURORA_API_BASE,
       PROXY_SEARCH_AURORA_BACKEND_BASE_URL:
         process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL,
@@ -102,6 +104,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS;
     delete process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
     delete process.env.PROXY_SEARCH_AURORA_API_BASE;
     delete process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
     delete process.env.DATABASE_URL;
@@ -288,6 +291,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE =
+        prevEnv.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
     }
     if (prevEnv.PROXY_SEARCH_AURORA_API_BASE === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_API_BASE;

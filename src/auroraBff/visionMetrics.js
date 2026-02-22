@@ -106,10 +106,23 @@ const socialFetchRequestsCounter = new Map();
 const socialFetchSuccessCounter = new Map();
 const socialFetchTimeoutCounter = new Map();
 const socialKbBackfillCounter = new Map();
+const auroraCompSnapshotHitCounter = new Map();
+const auroraCompSnapshotStaleCounter = new Map();
+const auroraCompDegradedCounter = new Map();
+const auroraCompBackfillEnqueuedCounter = new Map();
+const auroraCompBackfillDedupDropCounter = new Map();
+const auroraCompPass2InvokedCounter = new Map();
+const auroraCompPass2TimeoutCounter = new Map();
 const prelabelGeminiLatency = {
   count: 0,
   sum: 0,
   buckets: new Map(LATENCY_BUCKETS_MS.map((bucket) => [bucket, 0])),
+};
+const SNAPSHOT_AGE_BUCKETS_SEC = Object.freeze([60, 300, 900, 3600, 21600, 86400, 259200, 604800, Infinity]);
+const auroraCompSnapshotAgeSecHistogram = {
+  count: 0,
+  sum: 0,
+  buckets: new Map(SNAPSHOT_AGE_BUCKETS_SEC.map((bucket) => [bucket, 0])),
 };
 let recoCompetitorsSameBrandRateGauge = 0;
 let recoCompetitorsOnPageSourceRateGauge = 0;
@@ -410,6 +423,26 @@ function normalizeRecoMode(mode) {
   const token = cleanMetricToken(mode, 'unknown');
   if (token === 'main_path' || token === 'sync_repair' || token === 'async_backfill') return token;
   return 'unknown';
+}
+
+function normalizeAuroraCompSnapshotSource(source) {
+  const token = cleanMetricToken(source, 'unknown');
+  if (token === 'snapshot' || token === 'reco_blocks_dag' || token === 'kb_backfill' || token === 'unknown') {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraCompSnapshotConfidence(confidence) {
+  const token = cleanMetricToken(confidence, 'unknown');
+  if (token === 'high' || token === 'med' || token === 'low' || token === 'unknown') return token;
+  return 'unknown';
+}
+
+function normalizeAuroraCompStaleLevel(level) {
+  const token = cleanMetricToken(level, 'stale');
+  if (token === 'stale' || token === 'very_stale') return token;
+  return 'stale';
 }
 
 function normalizeRecoBrandRelation(brandRelation) {
@@ -1063,6 +1096,87 @@ function setSocialCacheHitRate(rate) {
 
 function setSocialChannelsCoverage(coverage) {
   socialChannelsCoverageGauge = clampRatio01(coverage, socialChannelsCoverageGauge);
+}
+
+function recordAuroraCompSnapshotHit({ mode, source, confidence, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompSnapshotHitCounter,
+    {
+      mode: normalizeRecoMode(mode),
+      source: normalizeAuroraCompSnapshotSource(source),
+      confidence: normalizeAuroraCompSnapshotConfidence(confidence),
+    },
+    amount,
+  );
+}
+
+function recordAuroraCompSnapshotStale({ mode, staleLevel, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompSnapshotStaleCounter,
+    { mode: normalizeRecoMode(mode), stale_level: normalizeAuroraCompStaleLevel(staleLevel) },
+    amount,
+  );
+}
+
+function recordAuroraCompDegraded({ mode, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompDegradedCounter,
+    { mode: normalizeRecoMode(mode), reason: cleanMetricToken(reason, 'unknown') },
+    amount,
+  );
+}
+
+function recordAuroraCompBackfillEnqueued({ mode, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompBackfillEnqueuedCounter,
+    { mode: normalizeRecoMode(mode), reason: cleanMetricToken(reason, 'unknown') },
+    amount,
+  );
+}
+
+function recordAuroraCompBackfillDedupDrop({ mode, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraCompBackfillDedupDropCounter,
+    { mode: normalizeRecoMode(mode), reason: cleanMetricToken(reason, 'cooldown') },
+    amount,
+  );
+}
+
+function recordAuroraCompPass2Invoked({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(auroraCompPass2InvokedCounter, { mode: normalizeRecoMode(mode) }, amount);
+}
+
+function recordAuroraCompPass2Timeout({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(auroraCompPass2TimeoutCounter, { mode: normalizeRecoMode(mode) }, amount);
+}
+
+function observeAuroraCompSnapshotAgeSeconds(ageSeconds) {
+  const value = Number(ageSeconds);
+  if (!Number.isFinite(value) || value < 0) return;
+  auroraCompSnapshotAgeSecHistogram.count += 1;
+  auroraCompSnapshotAgeSecHistogram.sum += value;
+  for (const bucket of SNAPSHOT_AGE_BUCKETS_SEC) {
+    if (value <= bucket) {
+      auroraCompSnapshotAgeSecHistogram.buckets.set(
+        bucket,
+        (auroraCompSnapshotAgeSecHistogram.buckets.get(bucket) || 0) + 1,
+      );
+    }
+  }
 }
 
 function recordVisionDecision({ provider, decision, reasons, latencyMs } = {}) {
@@ -1801,6 +1915,44 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE social_channels_coverage_gauge gauge');
   lines.push(`social_channels_coverage_gauge ${socialChannelsCoverageGauge}`);
 
+  lines.push('# HELP aurora_comp_snapshot_hit_total Total times competitors snapshot was used on response path.');
+  lines.push('# TYPE aurora_comp_snapshot_hit_total counter');
+  renderCounter(lines, 'aurora_comp_snapshot_hit_total', auroraCompSnapshotHitCounter);
+
+  lines.push('# HELP aurora_comp_snapshot_stale_total Total stale or very-stale competitor snapshot hits.');
+  lines.push('# TYPE aurora_comp_snapshot_stale_total counter');
+  renderCounter(lines, 'aurora_comp_snapshot_stale_total', auroraCompSnapshotStaleCounter);
+
+  lines.push('# HELP aurora_comp_degraded_total Total degraded competitor responses by reason.');
+  lines.push('# TYPE aurora_comp_degraded_total counter');
+  renderCounter(lines, 'aurora_comp_degraded_total', auroraCompDegradedCounter);
+
+  lines.push('# HELP aurora_comp_backfill_enqueued_total Total competitor snapshot refresh jobs enqueued.');
+  lines.push('# TYPE aurora_comp_backfill_enqueued_total counter');
+  renderCounter(lines, 'aurora_comp_backfill_enqueued_total', auroraCompBackfillEnqueuedCounter);
+
+  lines.push('# HELP aurora_comp_backfill_dedup_drop_total Total competitor snapshot refresh jobs skipped by cooldown dedup.');
+  lines.push('# TYPE aurora_comp_backfill_dedup_drop_total counter');
+  renderCounter(lines, 'aurora_comp_backfill_dedup_drop_total', auroraCompBackfillDedupDropCounter);
+
+  lines.push('# HELP aurora_comp_pass2_invoked_total Total Aurora two-pass external-seed pass2 attempts.');
+  lines.push('# TYPE aurora_comp_pass2_invoked_total counter');
+  renderCounter(lines, 'aurora_comp_pass2_invoked_total', auroraCompPass2InvokedCounter);
+
+  lines.push('# HELP aurora_comp_pass2_timeout_total Total Aurora two-pass external-seed pass2 timeouts.');
+  lines.push('# TYPE aurora_comp_pass2_timeout_total counter');
+  renderCounter(lines, 'aurora_comp_pass2_timeout_total', auroraCompPass2TimeoutCounter);
+
+  lines.push('# HELP aurora_comp_snapshot_age_seconds Age distribution for competitor snapshots used in response path.');
+  lines.push('# TYPE aurora_comp_snapshot_age_seconds histogram');
+  for (const bucket of SNAPSHOT_AGE_BUCKETS_SEC) {
+    const le = bucket === Infinity ? '+Inf' : String(bucket);
+    const value = auroraCompSnapshotAgeSecHistogram.buckets.get(bucket) || 0;
+    lines.push(`aurora_comp_snapshot_age_seconds_bucket{le="${le}"} ${value}`);
+  }
+  lines.push(`aurora_comp_snapshot_age_seconds_sum ${auroraCompSnapshotAgeSecHistogram.sum}`);
+  lines.push(`aurora_comp_snapshot_age_seconds_count ${auroraCompSnapshotAgeSecHistogram.count}`);
+
   lines.push('# HELP prelabel_requests_total Total LLM prelabel suggestion requests by block/mode.');
   lines.push('# TYPE prelabel_requests_total counter');
   renderCounter(lines, 'prelabel_requests_total', prelabelRequestsCounter);
@@ -2087,6 +2239,18 @@ function resetVisionMetrics() {
   socialFetchSuccessCounter.clear();
   socialFetchTimeoutCounter.clear();
   socialKbBackfillCounter.clear();
+  auroraCompSnapshotHitCounter.clear();
+  auroraCompSnapshotStaleCounter.clear();
+  auroraCompDegradedCounter.clear();
+  auroraCompBackfillEnqueuedCounter.clear();
+  auroraCompBackfillDedupDropCounter.clear();
+  auroraCompPass2InvokedCounter.clear();
+  auroraCompPass2TimeoutCounter.clear();
+  auroraCompSnapshotAgeSecHistogram.count = 0;
+  auroraCompSnapshotAgeSecHistogram.sum = 0;
+  for (const key of auroraCompSnapshotAgeSecHistogram.buckets.keys()) {
+    auroraCompSnapshotAgeSecHistogram.buckets.set(key, 0);
+  }
   prelabelGeminiLatency.count = 0;
   prelabelGeminiLatency.sum = 0;
   for (const key of prelabelGeminiLatency.buckets.keys()) prelabelGeminiLatency.buckets.set(key, 0);
@@ -2194,6 +2358,18 @@ function snapshotVisionMetrics() {
     socialFetchSuccess: Array.from(socialFetchSuccessCounter.entries()),
     socialFetchTimeout: Array.from(socialFetchTimeoutCounter.entries()),
     socialKbBackfill: Array.from(socialKbBackfillCounter.entries()),
+    auroraCompSnapshotHit: Array.from(auroraCompSnapshotHitCounter.entries()),
+    auroraCompSnapshotStale: Array.from(auroraCompSnapshotStaleCounter.entries()),
+    auroraCompDegraded: Array.from(auroraCompDegradedCounter.entries()),
+    auroraCompBackfillEnqueued: Array.from(auroraCompBackfillEnqueuedCounter.entries()),
+    auroraCompBackfillDedupDrop: Array.from(auroraCompBackfillDedupDropCounter.entries()),
+    auroraCompPass2Invoked: Array.from(auroraCompPass2InvokedCounter.entries()),
+    auroraCompPass2Timeout: Array.from(auroraCompPass2TimeoutCounter.entries()),
+    auroraCompSnapshotAgeSeconds: {
+      count: auroraCompSnapshotAgeSecHistogram.count,
+      sum: auroraCompSnapshotAgeSecHistogram.sum,
+      buckets: Array.from(auroraCompSnapshotAgeSecHistogram.buckets.entries()),
+    },
     prelabelGeminiLatency: {
       count: prelabelGeminiLatency.count,
       sum: prelabelGeminiLatency.sum,
@@ -2270,6 +2446,14 @@ module.exports = {
   recordSocialKbBackfill,
   setSocialCacheHitRate,
   setSocialChannelsCoverage,
+  recordAuroraCompSnapshotHit,
+  recordAuroraCompSnapshotStale,
+  recordAuroraCompDegraded,
+  recordAuroraCompBackfillEnqueued,
+  recordAuroraCompBackfillDedupDrop,
+  recordAuroraCompPass2Invoked,
+  recordAuroraCompPass2Timeout,
+  observeAuroraCompSnapshotAgeSeconds,
   observeUpstreamLatency,
   recordVisionDecision,
   observeVisionLatency,
