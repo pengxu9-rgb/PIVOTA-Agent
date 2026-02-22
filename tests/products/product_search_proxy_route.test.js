@@ -539,6 +539,71 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('aurora upstream source remap bypasses tight aurora primary timeout cap', async () => {
+    const queryText = 'niacinamide';
+    process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE = 'shopping-assistant';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = '450';
+    process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER = 'true';
+    process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '2500';
+    process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS = '2500';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    const primaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'shopping-assistant' &&
+          String(q.request_source || '') === 'aurora-bff'
+        );
+      })
+      .delay(900)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'beauty_remap_timeout_cap_ok',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Niacinamide Serum',
+          },
+        ],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(primaryScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'beauty_remap_timeout_cap_ok',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        fallback_strategy: expect.objectContaining({
+          request_source: 'aurora-bff',
+          upstream_source: 'shopping-assistant',
+          aurora_upstream_source_override: 'shopping-assistant',
+          aurora_primary_timeout_cap_applied: false,
+        }),
+      }),
+    );
+  });
+
   test('aurora source honors explicit allow_external_seed override from query params', async () => {
     process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
     process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
@@ -675,6 +740,9 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         }),
         fallback_strategy: expect.objectContaining({
           source: 'aurora_force_path',
+          request_source: 'aurora-bff',
+          upstream_source: 'aurora-bff',
+          aurora_upstream_source_override: null,
           resolver_attempted: true,
           secondary_attempted: true,
           secondary_skipped_reason: null,
