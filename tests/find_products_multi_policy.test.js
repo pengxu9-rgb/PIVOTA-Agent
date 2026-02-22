@@ -277,6 +277,83 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('domain condenser recovers scenario candidates when pre-quality list is emptied', () => {
+    withPolicyEnv(
+      {
+        SEARCH_DOMAIN_CONDENSER_ENABLED: 'true',
+        SEARCH_DOMAIN_CONDENSER_MIN_CANDS_BEFORE: '8',
+        SEARCH_DOMAIN_CONDENSER_MIN_CANDS_AFTER: '4',
+        SEARCH_SCENARIO_ANCHOR_MODE: 'derived',
+        SEARCH_SCENARIO_DERIVED_MIN_RECALL_CANDIDATES: '4',
+        SEARCH_SCENARIO_DERIVED_MIN_ANCHOR_RATIO: '0.05',
+        SEARCH_SCENARIO_DERIVED_MAX_DOMAIN_ENTROPY: '0.8',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('我今晚有个约会，要化妆，要推荐点商品吧？', [], []);
+        const products = Array.from({ length: 8 }).map((_, idx) =>
+          makeRawProduct({
+            id: `brush-${idx + 1}`,
+            title: `Makeup Brush Set ${idx + 1}`,
+            description: 'makeup brush tools for daily use',
+            category: 'beauty_tools',
+          }),
+        );
+        const resp = applyWithEnv({
+          response: { products, reply: null },
+          intent,
+          requestPayload: { search: { query: '我今晚有个约会，要化妆，要推荐点商品吧？' } },
+          metadata: {
+            ambiguity_score_pre: 0.4,
+            association_plan: {
+              applied: true,
+              domain_key: 'beauty',
+              scenario_key: 'date_makeup',
+              category_keywords: ['makeup brush', 'foundation', 'lipstick'],
+            },
+          },
+          rawUserQuery: '我今晚有个约会，要化妆，要推荐点商品吧？',
+        });
+
+        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(true);
+        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('applied_on_empty_candidates');
+        expect(resp.metadata?.search_decision?.post_quality?.candidates).toBeGreaterThanOrEqual(4);
+        expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+      },
+    );
+  });
+
+  test('domain condenser remains inactive for non scenario/mission classes', () => {
+    withPolicyEnv(
+      {
+        SEARCH_DOMAIN_CONDENSER_ENABLED: 'true',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('推荐化妆刷', [], []);
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'brush-1',
+                title: 'Makeup Brush Pro',
+                description: 'brush kit',
+                category: 'beauty_tools',
+              }),
+            ],
+            reply: null,
+          },
+          intent,
+          requestPayload: { search: { query: '推荐化妆刷' } },
+          metadata: { ambiguity_score_pre: 0.2 },
+          rawUserQuery: '推荐化妆刷',
+        });
+
+        expect(resp.metadata?.search_decision?.query_class).toBe('category');
+        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(false);
+        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('query_class_not_supported');
+      },
+    );
+  });
+
   test('high ambiguity enforces strict empty', () => {
     const intent = extractIntentRuleBased('你好', [], []);
     const resp = applyFindProductsMultiPolicy({
