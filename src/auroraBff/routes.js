@@ -4984,7 +4984,7 @@ async function buildRealtimeCompetitorCandidates({
     ),
   );
   const mainPathFanoutCap =
-    runMode === 'main_path' && allowResolveFallback
+    runMode === 'main_path'
       ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP
       : orderedQueries.length;
   const plannedQueries = orderedQueries.slice(
@@ -5028,7 +5028,7 @@ async function buildRealtimeCompetitorCandidates({
     const perQueryMinMsBase = runMode === 'async_backfill' ? 260 : 220;
     const perQueryMinMs =
       runMode === 'main_path'
-        ? Math.max(120, Math.min(perQueryMinMsBase, PRODUCT_URL_REALTIME_COMPETITOR_MIN_QUERY_TIMEOUT_MS))
+        ? Math.max(120, perQueryMinMsBase, PRODUCT_URL_REALTIME_COMPETITOR_MIN_QUERY_TIMEOUT_MS)
         : perQueryMinMsBase;
     const fairShareMs =
       runMode === 'async_backfill'
