@@ -158,6 +158,39 @@ function classifyRow(row) {
   const metadata = (data && typeof data === 'object' && data.metadata && typeof data.metadata === 'object')
     ? data.metadata
     : {};
+  const routeDebug =
+    metadata && typeof metadata.route_debug === 'object' && !Array.isArray(metadata.route_debug)
+      ? metadata.route_debug
+      : {};
+  const crossMerchantDebug =
+    routeDebug && typeof routeDebug.cross_merchant_cache === 'object' && !Array.isArray(routeDebug.cross_merchant_cache)
+      ? routeDebug.cross_merchant_cache
+      : {};
+  const policyAmbiguity =
+    routeDebug &&
+    routeDebug.policy &&
+    typeof routeDebug.policy === 'object' &&
+    routeDebug.policy.ambiguity &&
+    typeof routeDebug.policy.ambiguity === 'object'
+      ? routeDebug.policy.ambiguity
+      : {};
+  const policyPostQuality =
+    policyAmbiguity &&
+    policyAmbiguity.post_quality &&
+    typeof policyAmbiguity.post_quality === 'object'
+      ? policyAmbiguity.post_quality
+      : {};
+  const decisionPostQuality =
+    metadata &&
+    metadata.search_decision &&
+    typeof metadata.search_decision === 'object' &&
+    metadata.search_decision.post_quality &&
+    typeof metadata.search_decision.post_quality === 'object'
+      ? metadata.search_decision.post_quality
+      : {};
+  const postQuality = Object.keys(policyPostQuality).length
+    ? policyPostQuality
+    : decisionPostQuality;
   const routeHealth =
     metadata && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
       ? metadata.route_health
@@ -185,6 +218,20 @@ function classifyRow(row) {
     queryClass,
     finalDecision: String(searchTrace.final_decision || metadata?.search_decision?.final_decision || ''),
     clarifyTriggered: Boolean(routeHealth?.clarify_triggered || data?.clarification),
+    postCandidates: Number.isFinite(
+      Number(postQuality?.candidates ?? crossMerchantDebug?.products_count),
+    )
+      ? Number(postQuality?.candidates ?? crossMerchantDebug?.products_count)
+      : null,
+    postAnchorRatio: Number.isFinite(Number(postQuality?.anchor_ratio))
+      ? Number(postQuality.anchor_ratio)
+      : null,
+    postDomainEntropy: Number.isFinite(Number(postQuality?.domain_entropy))
+      ? Number(postQuality.domain_entropy)
+      : null,
+    postAnchorBasisSize: Number.isFinite(Number(postQuality?.anchor_basis_size))
+      ? Number(postQuality.anchor_basis_size)
+      : null,
     requestError: false,
   };
 }
@@ -334,6 +381,10 @@ async function main() {
           query_class: row.metrics.queryClass,
           final_decision: row.metrics.finalDecision,
           clarify_triggered: row.metrics.clarifyTriggered,
+          post_candidates: row.metrics.postCandidates,
+          post_anchor_ratio: row.metrics.postAnchorRatio,
+          post_domain_entropy: row.metrics.postDomainEntropy,
+          post_anchor_basis_size: row.metrics.postAnchorBasisSize,
           error: row.error,
         })),
       },

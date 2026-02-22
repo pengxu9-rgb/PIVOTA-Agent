@@ -14112,7 +14112,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
-          if (searchEvalUpstreamDisabled && !effectiveCacheHit && !isLookupQuery) {
+          if (searchEvalUpstreamDisabled) {
             const evalClarification =
               enriched &&
               typeof enriched === 'object' &&
@@ -14155,7 +14155,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
                 cacheStage: {
-                  hit: false,
+                  hit: Boolean(effectiveCacheHit),
                   candidate_count: Number(effectiveProducts.length || 0),
                   relevant_count: Number(internalProductsAfterAnchor.length || 0),
                   retrieval_sources: fromCache.retrieval_sources || [],
