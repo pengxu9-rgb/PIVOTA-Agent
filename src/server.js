@@ -539,6 +539,20 @@ const SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO || 0.08)),
 );
+const SEARCH_EVAL_INTERNAL_ONLY_ENABLED =
+  String(process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED || 'false').toLowerCase() === 'true';
+const SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED =
+  String(process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED || 'true').toLowerCase() !==
+  'false';
+const SEARCH_EVAL_INTERNAL_ONLY_HEADER = String(
+  process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER || 'x-eval',
+)
+  .trim()
+  .toLowerCase();
+const SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM = String(
+  process.env.SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM || 'eval',
+)
+  .trim();
 const SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED =
   String(process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED || 'true').toLowerCase() !== 'false';
 const SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = new Set(
@@ -2747,6 +2761,41 @@ function buildClarificationReplyText(clarification) {
     : [];
   if (!options.length) return question;
   return `${question}\n${options.map((item, idx) => `${idx + 1}) ${item}`).join('\n')}`;
+}
+
+function isTruthyFlag(input) {
+  const normalized = String(input || '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
+function isSearchEvalModeRequest(req, metadata) {
+  if (!SEARCH_EVAL_INTERNAL_ONLY_ENABLED) return false;
+  const headerValue = String(req?.headers?.[SEARCH_EVAL_INTERNAL_ONLY_HEADER] || '').trim();
+  const queryValue = String(
+    SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM
+      ? req?.query?.[SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM]
+      : '',
+  ).trim();
+  const metadataValue = metadata && typeof metadata === 'object' ? metadata.eval_mode : null;
+  return isTruthyFlag(headerValue) || isTruthyFlag(queryValue) || metadataValue === true;
+}
+
+function withEvalMetadata(responseBody, { evalMode = false, upstreamDisabled = false } = {}) {
+  if (!evalMode || !responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) {
+    return responseBody;
+  }
+  const metadata =
+    responseBody.metadata && typeof responseBody.metadata === 'object'
+      ? responseBody.metadata
+      : {};
+  return {
+    ...responseBody,
+    metadata: {
+      ...metadata,
+      eval_mode: true,
+      upstream_disabled: Boolean(upstreamDisabled),
+    },
+  };
 }
 
 function buildProxySearchSoftFallbackResponse({
@@ -11281,7 +11330,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       search_upstream_quota_clarify_query_classes: Array.from(
         SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES,
       ),
+      search_eval_internal_only_enabled: SEARCH_EVAL_INTERNAL_ONLY_ENABLED,
+      search_eval_internal_only_upstream_disabled: SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED,
+      search_eval_internal_only_header: SEARCH_EVAL_INTERNAL_ONLY_HEADER,
     };
+    const searchEvalMode =
+      operation === 'find_products_multi' ? isSearchEvalModeRequest(req, metadata) : false;
+    const searchEvalUpstreamDisabled =
+      searchEvalMode && SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
+    if (searchEvalMode) {
+      traceFlagsSnapshot.eval_mode = true;
+      traceFlagsSnapshot.upstream_disabled = Boolean(searchEvalUpstreamDisabled);
+    }
     const traceAmbiguityScorePre = Number.isFinite(
       Number(findProductsExpansionMeta?.ambiguity_score_pre),
     )
@@ -13800,7 +13860,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
-            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement)
+            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement) &&
+            !searchEvalUpstreamDisabled
           ) {
             const neededCount = needsPrimaryFillSupplement
               ? Math.max(0, safeResultLimit - internalProductsAfterAnchor.length)
@@ -14046,6 +14107,77 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
           const promotions = await getActivePromotions(now, creatorId);
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          if (searchEvalUpstreamDisabled && !effectiveCacheHit && !isLookupQuery) {
+            const evalClarification =
+              enriched &&
+              typeof enriched === 'object' &&
+              !Array.isArray(enriched) &&
+              enriched.clarification &&
+              typeof enriched.clarification === 'object' &&
+              enriched.clarification.question
+                ? enriched.clarification
+                : null;
+            const evalProducts = Array.isArray(enriched?.products) ? enriched.products : [];
+            const evalStrictEmpty =
+              Boolean(enriched?.metadata?.strict_empty) ||
+              (evalProducts.length === 0 && !evalClarification);
+            const evalFinalDecision = evalClarification
+              ? 'clarify'
+              : evalStrictEmpty
+                ? 'strict_empty'
+                : 'products_returned';
+            const evalEnrichedWithMeta = withEvalMetadata(enriched, {
+              evalMode: searchEvalMode,
+              upstreamDisabled: searchEvalUpstreamDisabled,
+            });
+            const evalDiagnosed = withSearchDiagnostics(evalEnrichedWithMeta, {
+              route_health: buildSearchRouteHealth({
+                primaryPathUsed: 'cache_stage',
+                primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+                fallbackTriggered: false,
+                fallbackReason: 'eval_internal_only',
+                ambiguityScorePre: traceAmbiguityScorePre,
+                clarifyTriggered: Boolean(evalClarification),
+              }),
+              search_trace: buildSearchTrace({
+                traceId: gatewayRequestId,
+                rawQuery: cacheQueryText,
+                expandedQuery: findProductsExpansionMeta?.expanded_query || cacheQueryText,
+                expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                queryClass: traceQueryClass,
+                rewriteGate: traceRewriteGate,
+                associationPlan: traceAssociationPlan,
+                flagsSnapshot: traceFlagsSnapshot,
+                intent: effectiveIntent,
+                cacheStage: {
+                  hit: false,
+                  candidate_count: Number(effectiveProducts.length || 0),
+                  relevant_count: Number(internalProductsAfterAnchor.length || 0),
+                  retrieval_sources: fromCache.retrieval_sources || [],
+                },
+                upstreamStage: {
+                  called: false,
+                  timeout: false,
+                  status: null,
+                  latency_ms: 0,
+                },
+                resolverStage: {
+                  called: false,
+                  hit: false,
+                  miss: false,
+                  latency_ms: null,
+                },
+                finalDecision: evalFinalDecision,
+              }),
+              ...(evalStrictEmpty && !evalClarification
+                ? {
+                    strict_empty: true,
+                    strict_empty_reason: 'eval_internal_only',
+                  }
+                : {}),
+            });
+            return res.json(evalDiagnosed);
+          }
           if (
             effectiveCacheHit &&
             internalProductsAfterAnchor.length > 0 &&
@@ -14266,7 +14398,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (
             PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED &&
             isLookupQuery &&
-            cacheQueryText.length > 0
+            cacheQueryText.length > 0 &&
+            !searchEvalUpstreamDisabled
           ) {
             try {
               const resolverFallback = await queryResolveSearchFallback({
@@ -14527,6 +14660,124 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         }
       }
 	    }
+
+      if (searchEvalUpstreamDisabled) {
+        const source = metadata?.source;
+        const search = effectivePayload.search || effectivePayload || {};
+        const queryText = String(search.query || '').trim();
+        const page = Math.max(1, Number(search.page || 1) || 1);
+        const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), 100);
+        const evalBaseResponse = {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          page,
+          page_size: 0,
+          reply: null,
+          metadata: {
+            query_source: 'eval_internal_only_no_upstream',
+            fetched_at: new Date().toISOString(),
+            merchants_searched: 0,
+            source_breakdown: {
+              internal_count: 0,
+              external_seed_count: 0,
+              stale_cache_used: false,
+              strategy_applied: 'eval_internal_only',
+            },
+            ...(ROUTE_DEBUG_ENABLED && crossMerchantCacheRouteDebug
+              ? {
+                  route_debug: {
+                    cross_merchant_cache: crossMerchantCacheRouteDebug,
+                  },
+                }
+              : {}),
+            ...(source ? { source } : {}),
+          },
+        };
+        const evalWithPolicy = effectiveIntent
+          ? applyFindProductsMultiPolicy({
+              response: evalBaseResponse,
+              intent: effectiveIntent,
+              requestPayload: effectivePayload,
+              metadata: policyMetadata,
+              rawUserQuery,
+            })
+          : evalBaseResponse;
+        const promotions = await getActivePromotions(now, creatorId);
+        const evalEnriched = withEvalMetadata(
+          applyDealsToResponse(evalWithPolicy, promotions, now, creatorId),
+          {
+            evalMode: searchEvalMode,
+            upstreamDisabled: searchEvalUpstreamDisabled,
+          },
+        );
+        const evalClarification =
+          evalEnriched &&
+          typeof evalEnriched === 'object' &&
+          !Array.isArray(evalEnriched) &&
+          evalEnriched.clarification &&
+          typeof evalEnriched.clarification === 'object' &&
+          evalEnriched.clarification.question
+            ? evalEnriched.clarification
+            : null;
+        const evalProducts = Array.isArray(evalEnriched?.products) ? evalEnriched.products : [];
+        const evalStrictEmpty =
+          Boolean(evalEnriched?.metadata?.strict_empty) ||
+          (evalProducts.length === 0 && !evalClarification);
+        const evalFinalDecision = evalClarification
+          ? 'clarify'
+          : evalStrictEmpty
+            ? 'strict_empty'
+            : 'products_returned';
+        const evalDiagnosed = withSearchDiagnostics(evalEnriched, {
+          route_health: buildSearchRouteHealth({
+            primaryPathUsed: 'eval_internal',
+            primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+            fallbackTriggered: false,
+            fallbackReason: 'eval_internal_only',
+            ambiguityScorePre: traceAmbiguityScorePre,
+            clarifyTriggered: Boolean(evalClarification),
+          }),
+          search_trace: buildSearchTrace({
+            traceId: gatewayRequestId,
+            rawQuery: queryText,
+            expandedQuery: findProductsExpansionMeta?.expanded_query || queryText,
+            expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+            queryClass: traceQueryClass,
+            rewriteGate: traceRewriteGate,
+            associationPlan: traceAssociationPlan,
+            flagsSnapshot: traceFlagsSnapshot,
+            intent: effectiveIntent,
+            cacheStage: {
+              hit: false,
+              candidate_count: 0,
+              relevant_count: 0,
+              retrieval_sources: [],
+            },
+            upstreamStage: {
+              called: false,
+              timeout: false,
+              status: null,
+              latency_ms: 0,
+            },
+            resolverStage: {
+              called: false,
+              hit: false,
+              miss: false,
+              latency_ms: null,
+            },
+            finalDecision: evalFinalDecision,
+          }),
+          ...(evalStrictEmpty && !evalClarification
+            ? {
+                strict_empty: true,
+                strict_empty_reason: 'eval_internal_only',
+              }
+            : {}),
+        });
+        return res.json(evalDiagnosed);
+      }
 
 	    if (operation === 'find_products' && process.env.DATABASE_URL) {
 	      const source = metadata?.source;

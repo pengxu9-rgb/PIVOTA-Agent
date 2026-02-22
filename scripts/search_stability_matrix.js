@@ -18,6 +18,10 @@ function parseArgs(argv) {
     outDir: process.env.SEARCH_MATRIX_OUT_DIR || 'reports',
     queryFile: process.env.SEARCH_MATRIX_QUERY_FILE || '',
     source: process.env.SEARCH_MATRIX_SOURCE || 'shopping_agent',
+    evalMode:
+      String(process.env.SEARCH_MATRIX_EVAL_MODE || '').trim().toLowerCase() === 'true',
+    evalHeader: process.env.SEARCH_MATRIX_EVAL_HEADER || 'X-Eval',
+    evalHeaderValue: process.env.SEARCH_MATRIX_EVAL_HEADER_VALUE || '1',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -30,6 +34,9 @@ function parseArgs(argv) {
     if (token === '--out-dir' && next) args.outDir = String(next);
     if (token === '--query-file' && next) args.queryFile = String(next);
     if (token === '--source' && next) args.source = String(next);
+    if (token === '--eval-mode') args.evalMode = true;
+    if (token === '--eval-header' && next) args.evalHeader = String(next);
+    if (token === '--eval-header-value' && next) args.evalHeaderValue = String(next);
   }
   return args;
 }
@@ -225,6 +232,9 @@ async function main() {
             validateStatus: () => true,
             headers: {
               'Content-Type': 'application/json',
+              ...(args.evalMode
+                ? { [String(args.evalHeader || 'X-Eval')]: String(args.evalHeaderValue || '1') }
+                : {}),
             },
           },
         );
@@ -283,6 +293,7 @@ async function main() {
     generated_at: new Date().toISOString(),
     base_url: baseUrl,
     endpoint,
+    eval_mode: Boolean(args.evalMode),
     rounds: args.rounds,
     total_requests: total,
     total_duration_ms: Math.max(0, Date.now() - startedAt),
