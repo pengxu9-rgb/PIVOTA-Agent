@@ -123,10 +123,10 @@ const getAuroraPdpPrefetchStateSnapshot =
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
 const SERVICE_GIT_SHA = String(
-  process.env.AURORA_GIT_SHA ||
   process.env.RAILWAY_GIT_COMMIT_SHA ||
   process.env.GIT_COMMIT_SHA ||
   process.env.SOURCE_VERSION ||
+  process.env.AURORA_GIT_SHA ||
   ''
 ).trim();
 const SERVICE_GIT_SHA_SHORT = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
