@@ -645,6 +645,11 @@ const PRODUCT_URL_REALTIME_COMPETITOR_EXTERNAL_SEED_STRATEGY = (() => {
     .toLowerCase();
   return raw || 'supplement_internal_first';
 })();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  return Math.max(320, Math.min(5000, v));
+})();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_RESOLVE_MAX_QUERIES = (() => {
   const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_RESOLVE_MAX_QUERIES || 1);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1;
@@ -4831,19 +4836,6 @@ async function buildRealtimeCompetitorCandidates({
     return { candidates: [], queries: [], reason: 'pivota_backend_not_configured' };
   }
   const startedAt = Date.now();
-  const effectiveTimeoutMs = Math.max(
-    260,
-    Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS),
-  );
-  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
-  const absoluteDeadlineMs = normalizedDeadlineMs > 0
-    ? Math.min(normalizedDeadlineMs, startedAt + effectiveTimeoutMs)
-    : startedAt + effectiveTimeoutMs;
-  // Return before outer DAG source timeout to avoid dropping the whole block on wrapper timeout.
-  const softDeadlineMs = Math.max(
-    startedAt + 120,
-    absoluteDeadlineMs - PRODUCT_URL_REALTIME_COMPETITOR_RETURN_SLACK_MS,
-  );
   const normalizedMode = String(mode || '').trim().toLowerCase();
   const runMode =
     normalizedMode === 'sync_repair' || normalizedMode === 'async_backfill'
@@ -4872,6 +4864,26 @@ async function buildRealtimeCompetitorCandidates({
   const externalSeedStrategy = allowExternalSeed
     ? PRODUCT_URL_REALTIME_COMPETITOR_EXTERNAL_SEED_STRATEGY
     : 'legacy';
+  const requestedTimeoutMs = Number.isFinite(Number(timeoutMs))
+    ? Math.trunc(Number(timeoutMs))
+    : PRODUCT_URL_REALTIME_COMPETITOR_TIMEOUT_MS;
+  const effectiveTimeoutFloorMs =
+    runMode === 'main_path' && allowExternalSeed
+      ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS
+      : 260;
+  const effectiveTimeoutMs = Math.max(
+    effectiveTimeoutFloorMs,
+    Math.min(12000, requestedTimeoutMs),
+  );
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
+  const absoluteDeadlineMs = normalizedDeadlineMs > 0
+    ? Math.min(normalizedDeadlineMs, startedAt + effectiveTimeoutMs)
+    : startedAt + effectiveTimeoutMs;
+  // Return before outer DAG source timeout to avoid dropping the whole block on wrapper timeout.
+  const softDeadlineMs = Math.max(
+    startedAt + 120,
+    absoluteDeadlineMs - PRODUCT_URL_REALTIME_COMPETITOR_RETURN_SLACK_MS,
+  );
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const getRemainingMs = () => Math.max(0, softDeadlineMs - Date.now());
