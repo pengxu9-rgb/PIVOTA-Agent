@@ -193,8 +193,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     expect(Array.isArray(plan)).toBe(true);
     expect(plan).toHaveLength(2);
-    expect(plan.some((q) => /the ordinary|ordinary/i.test(String(q || '')))).toBe(true);
     expect(plan.some((q) => /copper peptide|peptide/i.test(String(q || '')))).toBe(true);
+    expect(plan.some((q) => /serum/i.test(String(q || '')))).toBe(true);
     expect(plan.some((q) => /^https?:\/\//i.test(String(q || '')))).toBe(false);
   });
 
@@ -485,6 +485,65 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         : out?.meta?.reason_breakdown;
     expect(reasonBreakdown).toBeTruthy();
     expect(typeof reasonBreakdown).toBe('object');
+  });
+
+  test('buildRealtimeCompetitorCandidates does not early-stop on same-brand-only first hit set', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
+
+    const sameBrandProducts = Array.from({ length: 4 }).map((_, idx) => ({
+      product_id: `same_brand_${idx + 1}`,
+      merchant_id: `merch_same_${idx + 1}`,
+      brand: 'The Ordinary',
+      name: `Same Brand Option ${idx + 1}`,
+      display_name: `The Ordinary Same Brand Option ${idx + 1}`,
+      category: 'serum',
+    }));
+    const crossBrandProduct = {
+      product_id: 'cross_brand_1',
+      merchant_id: 'merch_cross_1',
+      brand: 'Alt Brand',
+      name: 'Copper Peptide Serum',
+      display_name: 'Alt Brand Copper Peptide Serum',
+      category: 'serum',
+    };
+
+    let invocation = 0;
+    const searchFn = jest.fn(async () => {
+      invocation += 1;
+      if (invocation === 1) {
+        return { ok: true, reason: null, products: sameBrandProducts };
+      }
+      return { ok: true, reason: null, products: [crossBrandProduct] };
+    });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildRealtimeCompetitorCandidates({
+      productUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      parsedProduct: {
+        product_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      keyIngredients: ['Copper Tripeptide-1', 'Sodium Hyaluronate'],
+      anchorProduct: {
+        product_id: 'anchor_1',
+        brand: 'The Ordinary',
+        name: 'Multi-Peptide + Copper Peptides 1% Serum',
+        category: 'serum',
+      },
+      mode: 'main_path',
+      deadlineMs: Date.now() + 5000,
+      timeoutMs: 2500,
+      maxQueries: 3,
+      maxCandidates: 6,
+      searchFn,
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
+    });
+
+    expect(searchFn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const candidateIds = new Set((out?.candidates || []).map((row) => String(row?.product_id || '').toLowerCase()));
+    expect(candidateIds.has('cross_brand_1')).toBe(true);
   });
 
   test('sync competitor repair runs when competitors are empty even without low-coverage token', async () => {

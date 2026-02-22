@@ -3530,6 +3530,7 @@ function buildRealtimeCompetitorQueryPlan({
 
   const out = [];
   const seen = new Set();
+  const preferDiversityFirst = Boolean(anchorBrand);
   const add = (value) => {
     const q = normalizeProductCatalogQuery(value);
     if (!q || /^https?:\/\//i.test(q)) return;
@@ -3539,15 +3540,26 @@ function buildRealtimeCompetitorQueryPlan({
     out.push(q);
   };
 
-  if (specific.length) add(specific[0]);
-  if (diversified.length) add(diversified[0]);
-  for (const q of diversified.slice(1)) {
-    if (out.length >= limit) break;
-    add(q);
-  }
-  for (const q of specific.slice(1)) {
-    if (out.length >= limit) break;
-    add(q);
+  if (preferDiversityFirst) {
+    for (const q of diversified) {
+      if (out.length >= limit) break;
+      add(q);
+    }
+    for (const q of specific) {
+      if (out.length >= limit) break;
+      add(q);
+    }
+  } else {
+    if (specific.length) add(specific[0]);
+    if (diversified.length) add(diversified[0]);
+    for (const q of diversified.slice(1)) {
+      if (out.length >= limit) break;
+      add(q);
+    }
+    for (const q of specific.slice(1)) {
+      if (out.length >= limit) break;
+      add(q);
+    }
   }
 
   return out.slice(0, limit);
@@ -4867,6 +4879,7 @@ async function buildRealtimeCompetitorCandidates({
   const anchorObj = anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct) ? anchorProduct : parsedProductObj;
   const anchorId = pickFirstTrimmed(anchorObj?.product_id, anchorObj?.sku_id);
   const anchorBrand = pickFirstTrimmed(anchorObj?.brand);
+  const anchorBrandToken = String(anchorBrand || '').trim().toLowerCase();
   const anchorText = buildProductInputText(anchorObj, null) || '';
 
   const baseInput = buildProductInputText(parsedProductObj, null) || String(productUrl || '').trim();
@@ -4966,6 +4979,7 @@ async function buildRealtimeCompetitorCandidates({
   );
   const searchResults = [];
   const observedRecallHits = new Set();
+  const observedCrossBrandHits = new Set();
   const earlyStopTarget =
     runMode === 'main_path'
       ? Math.max(1, Math.min(maxCandidates, PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT))
@@ -5043,9 +5057,14 @@ async function buildRealtimeCompetitorCandidates({
       const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
       if (!productId) continue;
       observedRecallHits.add(String(productId).toLowerCase());
+      const brand = pickFirstTrimmed(normalized.brand);
+      const isCrossBrand =
+        !anchorBrandToken || !brand || String(brand).trim().toLowerCase() !== anchorBrandToken;
+      if (isCrossBrand) observedCrossBrandHits.add(String(productId).toLowerCase());
     }
-    if (observedRecallHits.size >= earlyStopTarget) break;
-    if (observedRecallHits.size >= maxCandidates) break;
+    const observedHitSet = anchorBrandToken ? observedCrossBrandHits : observedRecallHits;
+    if (observedHitSet.size >= earlyStopTarget) break;
+    if (observedHitSet.size >= maxCandidates) break;
   }
 
   const diagnosticQueries = searchResults.map((row) => String(row?.query || '').trim()).filter(Boolean);
