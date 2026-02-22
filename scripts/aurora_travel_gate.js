@@ -62,6 +62,49 @@ function mergeExpected(caseDef, mode) {
   return { ...base, ...modePatch };
 }
 
+function mergeExpectedTurn(caseDef, turnDef, mode) {
+  const caseExpected = mergeExpected(caseDef, mode);
+  const turnBase = turnDef && turnDef.expected && typeof turnDef.expected === 'object' ? turnDef.expected : {};
+  const turnModePatch =
+    mode === 'local-mock'
+      ? turnDef && turnDef.expected_local && typeof turnDef.expected_local === 'object'
+        ? turnDef.expected_local
+        : {}
+      : turnDef && turnDef.expected_live && typeof turnDef.expected_live === 'object'
+        ? turnDef.expected_live
+        : {};
+  return { ...caseExpected, ...turnBase, ...turnModePatch };
+}
+
+function normalizeCaseTurns(caseDef) {
+  if (Array.isArray(caseDef && caseDef.turns) && caseDef.turns.length > 0) {
+    return caseDef.turns.map((turnDef, idx) => ({
+      turn_id: String((turnDef && turnDef.turn_id) || `turn_${idx + 1}`),
+      message: String((turnDef && turnDef.message) || ''),
+      language: String((turnDef && turnDef.language) || (caseDef && caseDef.language) || 'EN').toUpperCase(),
+      session_profile:
+        turnDef && turnDef.session_profile && typeof turnDef.session_profile === 'object' ? turnDef.session_profile : null,
+      expected: turnDef && turnDef.expected && typeof turnDef.expected === 'object' ? turnDef.expected : undefined,
+      expected_local:
+        turnDef && turnDef.expected_local && typeof turnDef.expected_local === 'object' ? turnDef.expected_local : undefined,
+      expected_live:
+        turnDef && turnDef.expected_live && typeof turnDef.expected_live === 'object' ? turnDef.expected_live : undefined,
+    }));
+  }
+
+  return [
+    {
+      turn_id: 'turn_1',
+      message: String((caseDef && caseDef.message) || ''),
+      language: String((caseDef && caseDef.language) || 'EN').toUpperCase(),
+      session_profile: caseDef && caseDef.session_profile && typeof caseDef.session_profile === 'object' ? caseDef.session_profile : null,
+      expected: undefined,
+      expected_local: undefined,
+      expected_live: undefined,
+    },
+  ];
+}
+
 function mkJsonResponse(status, payload) {
   return {
     ok: status >= 200 && status < 300,
@@ -160,6 +203,15 @@ function extractTravelMissingFields(body) {
   return fields.map((f) => String(f || '').trim()).filter(Boolean);
 }
 
+function extractRequiredFields(body, meta) {
+  const fromMeta = Array.isArray(meta && meta.required_fields)
+    ? meta.required_fields.map((f) => String(f || '').trim()).filter(Boolean)
+    : [];
+  const fromTravelGate = extractTravelMissingFields(body);
+  const set = new Set([...fromMeta, ...fromTravelGate]);
+  return Array.from(set);
+}
+
 function assertIncludesAny(target, expectedAny) {
   if (!Array.isArray(expectedAny) || !expectedAny.length) return true;
   return expectedAny.some((item) => target.includes(String(item)));
@@ -198,8 +250,8 @@ function checkHeaderMetaMismatch(headers, meta) {
   return { mismatch: details.length > 0, details };
 }
 
-function evaluateCase({ caseDef, mode, status, body, headers, meta, strictMeta, fetchCalls }) {
-  const expectation = mergeExpected(caseDef, mode);
+function evaluateCase({ caseDef, turnDef, turnIndex, mode, status, body, headers, meta, strictMeta, fetchCalls }) {
+  const expectation = mergeExpectedTurn(caseDef, turnDef, mode);
   const errors = [];
   const warnings = [];
 
@@ -222,25 +274,42 @@ function evaluateCase({ caseDef, mode, status, body, headers, meta, strictMeta, 
 
   const cards = body && Array.isArray(body.cards) ? body.cards : [];
   const cardTypes = cards.map((item) => String((item && item.type) || '')).filter(Boolean);
-  const missingFields = extractTravelMissingFields(body);
+  const requiredFields = extractRequiredFields(body, meta);
+  const eventNames = (body && Array.isArray(body.events) ? body.events : [])
+    .map((evt) => String((evt && evt.event_name) || '').trim())
+    .filter(Boolean);
 
   if (expectation.intent_canonical && meta && String(meta.intent_canonical || '') !== String(expectation.intent_canonical)) {
     errors.push(`intent_canonical expected=${expectation.intent_canonical} actual=${String(meta.intent_canonical || '')}`);
+  }
+
+  if (Array.isArray(expectation.intent_canonical_in) && expectation.intent_canonical_in.length && meta) {
+    const actual = String(meta.intent_canonical || '');
+    if (!expectation.intent_canonical_in.includes(actual)) {
+      errors.push(`intent_canonical expected in [${expectation.intent_canonical_in.join(', ')}], actual=${actual || 'null'}`);
+    }
   }
 
   if (expectation.gate_type && meta && String(meta.gate_type || '') !== String(expectation.gate_type)) {
     errors.push(`gate_type expected=${expectation.gate_type} actual=${String(meta.gate_type || '')}`);
   }
 
+  if (Array.isArray(expectation.gate_type_in) && expectation.gate_type_in.length && meta) {
+    const actual = String(meta.gate_type || '');
+    if (!expectation.gate_type_in.includes(actual)) {
+      errors.push(`gate_type expected in [${expectation.gate_type_in.join(', ')}], actual=${actual || 'null'}`);
+    }
+  }
+
   if (Array.isArray(expectation.required_fields_any) && expectation.required_fields_any.length) {
-    if (!assertIncludesAny(missingFields, expectation.required_fields_any)) {
-      errors.push(`required_fields_any not satisfied, expected any of [${expectation.required_fields_any.join(', ')}], actual [${missingFields.join(', ')}]`);
+    if (!assertIncludesAny(requiredFields, expectation.required_fields_any)) {
+      errors.push(`required_fields_any not satisfied, expected any of [${expectation.required_fields_any.join(', ')}], actual [${requiredFields.join(', ')}]`);
     }
   }
 
   if (Array.isArray(expectation.required_fields_all) && expectation.required_fields_all.length) {
-    if (!assertIncludesAll(missingFields, expectation.required_fields_all)) {
-      errors.push(`required_fields_all not satisfied, expected all of [${expectation.required_fields_all.join(', ')}], actual [${missingFields.join(', ')}]`);
+    if (!assertIncludesAll(requiredFields, expectation.required_fields_all)) {
+      errors.push(`required_fields_all not satisfied, expected all of [${expectation.required_fields_all.join(', ')}], actual [${requiredFields.join(', ')}]`);
     }
   }
 
@@ -268,11 +337,45 @@ function evaluateCase({ caseDef, mode, status, body, headers, meta, strictMeta, 
     }
   }
 
+  if (Array.isArray(expectation.assistant_contains_all) && expectation.assistant_contains_all.length) {
+    const lowerText = assistantText.toLowerCase();
+    for (const phrase of expectation.assistant_contains_all) {
+      if (!lowerText.includes(String(phrase).toLowerCase())) {
+        errors.push(`assistant content missing required phrase: ${String(phrase)}`);
+      }
+    }
+  }
+
   if (Array.isArray(expectation.assistant_not_contains) && expectation.assistant_not_contains.length) {
     const lowerText = assistantText.toLowerCase();
     for (const phrase of expectation.assistant_not_contains) {
       if (lowerText.includes(String(phrase).toLowerCase())) {
         errors.push(`assistant content includes forbidden phrase: ${String(phrase)}`);
+      }
+    }
+  }
+
+  if (Array.isArray(expectation.assistant_not_contains_any) && expectation.assistant_not_contains_any.length) {
+    const lowerText = assistantText.toLowerCase();
+    for (const phrase of expectation.assistant_not_contains_any) {
+      if (lowerText.includes(String(phrase).toLowerCase())) {
+        errors.push(`assistant content includes forbidden phrase: ${String(phrase)}`);
+      }
+    }
+  }
+
+  if (Array.isArray(expectation.must_have_events) && expectation.must_have_events.length) {
+    for (const evt of expectation.must_have_events) {
+      if (!eventNames.includes(String(evt))) {
+        errors.push(`missing required event: ${String(evt)}`);
+      }
+    }
+  }
+
+  if (Array.isArray(expectation.must_not_have_events) && expectation.must_not_have_events.length) {
+    for (const evt of expectation.must_not_have_events) {
+      if (eventNames.includes(String(evt))) {
+        errors.push(`forbidden event present: ${String(evt)}`);
       }
     }
   }
@@ -316,6 +419,8 @@ function evaluateCase({ caseDef, mode, status, body, headers, meta, strictMeta, 
 
   return {
     case_id: caseDef.case_id,
+    turn_id: turnDef && turnDef.turn_id ? turnDef.turn_id : `turn_${Number(turnIndex) + 1}`,
+    turn_index: Number(turnIndex) + 1,
     category: caseDef.category,
     language: caseDef.language,
     status,
@@ -326,7 +431,8 @@ function evaluateCase({ caseDef, mode, status, body, headers, meta, strictMeta, 
     gate_type: meta ? meta.gate_type || null : null,
     env_source: meta ? meta.env_source || null : null,
     degraded: meta ? Boolean(meta.degraded) : null,
-    required_fields: missingFields,
+    required_fields: requiredFields,
+    event_names: eventNames,
     card_types: cardTypes,
     fetch_calls: Number(fetchCalls),
     mismatch_count: mismatch.mismatch ? 1 : 0,
@@ -336,8 +442,9 @@ function evaluateCase({ caseDef, mode, status, body, headers, meta, strictMeta, 
 
 function buildMarkdownReport(payload) {
   const lines = [];
-  lines.push('# Aurora Travel20 Gate');
+  lines.push(`# Aurora Casepack Gate (${String(payload.report_prefix || 'aurora_travel_gate')})`);
   lines.push('');
+  lines.push(`- cases_file: ${payload.cases_file}`);
   lines.push(`- mode: ${payload.mode}`);
   lines.push(`- base: ${payload.base || 'local'}`);
   lines.push(`- total: ${payload.summary.total}`);
@@ -360,23 +467,42 @@ function buildMarkdownReport(payload) {
     lines.push(`### ${row.case_id}`);
     lines.push(`- category: ${row.category}`);
     lines.push(`- language: ${row.language}`);
-    lines.push(`- status: ${row.status}`);
-    for (const err of row.errors) {
-      lines.push(`- error: ${err}`);
+    if (Array.isArray(row.turn_results) && row.turn_results.length) {
+      lines.push(`- turns: ${row.turn_results.length}`);
+      for (const turn of row.turn_results) {
+        if (turn.passed) continue;
+        lines.push(`- failed_turn: ${turn.turn_id} (status=${turn.status})`);
+        for (const err of turn.errors) {
+          lines.push(`- error: ${err}`);
+        }
+      }
+    } else {
+      lines.push(`- status: ${row.status}`);
+      for (const err of row.errors) {
+        lines.push(`- error: ${err}`);
+      }
     }
     lines.push('');
   }
   return `${lines.join('\n')}\n`;
 }
 
-function runCommandRequestBody(caseDef) {
+function runCommandRequestBody(caseDef, turnDef) {
+  const profile =
+    turnDef && turnDef.session_profile && typeof turnDef.session_profile === 'object'
+      ? turnDef.session_profile
+      : caseDef.session_profile && typeof caseDef.session_profile === 'object'
+        ? caseDef.session_profile
+        : {};
+  const message = String((turnDef && turnDef.message) || caseDef.message || '');
+  const language = String((turnDef && turnDef.language) || caseDef.language || 'EN').toUpperCase();
   return {
-    message: caseDef.message,
+    message,
     session: {
       state: 'idle',
-      profile: caseDef.session_profile && typeof caseDef.session_profile === 'object' ? caseDef.session_profile : {},
+      profile,
     },
-    language: caseDef.language,
+    language,
   };
 }
 
@@ -437,25 +563,46 @@ async function runLocalMockCases(cases, strictMeta) {
         global.fetch = mockFetch;
 
         try {
-          const res = await supertest(app)
-            .post('/v1/chat')
-            .set(buildCaseHeaders(caseDef, runId))
-            .send(runCommandRequestBody(caseDef));
+          const turnDefs = normalizeCaseTurns(caseDef);
+          const turnResults = [];
+          for (let idx = 0; idx < turnDefs.length; idx += 1) {
+            const turnDef = turnDefs[idx];
+            const res = await supertest(app)
+              .post('/v1/chat')
+              .set(buildCaseHeaders({ ...caseDef, language: turnDef.language }, runId))
+              .send(runCommandRequestBody(caseDef, turnDef));
 
-          const body = res && res.body && typeof res.body === 'object' ? res.body : {};
-          const headers = buildHeaderMap(res && res.headers ? res.headers : {});
-          const meta = extractMeta(body);
-          const evaluated = evaluateCase({
-            caseDef,
-            mode: 'local-mock',
-            status: Number(res && res.status ? res.status : 0),
-            body,
-            headers,
-            meta,
-            strictMeta,
-            fetchCalls: mockFetch.getCallCount(),
+            const body = res && res.body && typeof res.body === 'object' ? res.body : {};
+            const headers = buildHeaderMap(res && res.headers ? res.headers : {});
+            const meta = extractMeta(body);
+            const evaluated = evaluateCase({
+              caseDef,
+              turnDef,
+              turnIndex: idx,
+              mode: 'local-mock',
+              status: Number(res && res.status ? res.status : 0),
+              body,
+              headers,
+              meta,
+              strictMeta,
+              fetchCalls: mockFetch.getCallCount(),
+            });
+            turnResults.push(evaluated);
+          }
+
+          const caseErrors = turnResults.flatMap((item) => item.errors || []);
+          const caseWarnings = turnResults.flatMap((item) => item.warnings || []);
+          out.push({
+            case_id: caseDef.case_id,
+            category: caseDef.category,
+            language: String(caseDef.language || 'EN'),
+            passed: caseErrors.length === 0,
+            errors: caseErrors,
+            warnings: caseWarnings,
+            turn_results: turnResults,
+            meta_missing: turnResults.reduce((sum, item) => sum + (Number(item.meta_missing) || 0), 0),
+            mismatch_count: turnResults.reduce((sum, item) => sum + (Number(item.mismatch_count) || 0), 0),
           });
-          out.push(evaluated);
         } finally {
           global.fetch = originalFetch;
         }
@@ -498,31 +645,52 @@ async function runStagingLiveCases(cases, base, strictMeta) {
   const runId = nowStamp();
   const out = [];
   for (const caseDef of cases) {
-    const res = await fetchJsonWithTimeout(
-      `${String(base).replace(/\/+$/, '')}/v1/chat`,
-      {
-        method: 'POST',
-        headers: buildCaseHeaders(caseDef, runId),
-        body: JSON.stringify(runCommandRequestBody(caseDef)),
-      },
-      20000,
-    );
+    const turnDefs = normalizeCaseTurns(caseDef);
+    const turnResults = [];
+    for (let idx = 0; idx < turnDefs.length; idx += 1) {
+      const turnDef = turnDefs[idx];
+      const res = await fetchJsonWithTimeout(
+        `${String(base).replace(/\/+$/, '')}/v1/chat`,
+        {
+          method: 'POST',
+          headers: buildCaseHeaders({ ...caseDef, language: turnDef.language }, runId),
+          body: JSON.stringify(runCommandRequestBody(caseDef, turnDef)),
+        },
+        20000,
+      );
 
-    const body = res && res.body && typeof res.body === 'object' ? res.body : {};
-    const headers = buildHeaderMap(res && res.headers ? res.headers : {});
-    const meta = extractMeta(body);
+      const body = res && res.body && typeof res.body === 'object' ? res.body : {};
+      const headers = buildHeaderMap(res && res.headers ? res.headers : {});
+      const meta = extractMeta(body);
 
-    const evaluated = evaluateCase({
-      caseDef,
-      mode: 'staging-live',
-      status: Number(res && res.status ? res.status : 0),
-      body,
-      headers,
-      meta,
-      strictMeta,
-      fetchCalls: null,
+      const evaluated = evaluateCase({
+        caseDef,
+        turnDef,
+        turnIndex: idx,
+        mode: 'staging-live',
+        status: Number(res && res.status ? res.status : 0),
+        body,
+        headers,
+        meta,
+        strictMeta,
+        fetchCalls: null,
+      });
+      turnResults.push(evaluated);
+    }
+
+    const caseErrors = turnResults.flatMap((item) => item.errors || []);
+    const caseWarnings = turnResults.flatMap((item) => item.warnings || []);
+    out.push({
+      case_id: caseDef.case_id,
+      category: caseDef.category,
+      language: String(caseDef.language || 'EN'),
+      passed: caseErrors.length === 0,
+      errors: caseErrors,
+      warnings: caseWarnings,
+      turn_results: turnResults,
+      meta_missing: turnResults.reduce((sum, item) => sum + (Number(item.meta_missing) || 0), 0),
+      mismatch_count: turnResults.reduce((sum, item) => sum + (Number(item.mismatch_count) || 0), 0),
     });
-    out.push(evaluated);
   }
   return out;
 }
@@ -562,14 +730,20 @@ async function main() {
   const base = String(args.base || process.env.AURORA_EVAL_BASE_URL || 'https://pivota-agent-staging.up.railway.app').trim();
   const reportDir = String(args['report-dir'] || 'reports').trim();
   const casesPath = String(args.cases || path.join('tests', 'golden', 'aurora_travel_weather_20.jsonl')).trim();
+  const reportPrefix = String(args['report-prefix'] || 'aurora_travel_gate').trim();
+  const expectedCount = Number.parseInt(String(args['expected-count'] || '20'), 10);
 
   if (mode !== 'local-mock' && mode !== 'staging-live') {
     throw new Error(`Unsupported --mode: ${mode}`);
   }
 
   const cases = loadJsonlCases(casesPath);
-  if (cases.length !== 20) {
-    throw new Error(`Travel gate expects exactly 20 cases, got ${cases.length}`);
+  if (!Number.isFinite(expectedCount) || expectedCount <= 0) {
+    throw new Error(`Invalid --expected-count: ${String(args['expected-count'] || '')}`);
+  }
+
+  if (cases.length !== expectedCount) {
+    throw new Error(`Casepack expects exactly ${expectedCount} cases, got ${cases.length}`);
   }
 
   let results;
@@ -582,11 +756,13 @@ async function main() {
   const summary = summarizeResults(results);
   const stamp = nowStamp();
   fs.mkdirSync(reportDir, { recursive: true });
-  const reportJsonPath = path.join(reportDir, `aurora_travel_gate_${mode.replace(/[^a-z0-9_-]/gi, '_')}_${stamp}.json`);
-  const reportMdPath = path.join(reportDir, `aurora_travel_gate_${mode.replace(/[^a-z0-9_-]/gi, '_')}_${stamp}.md`);
+  const reportJsonPath = path.join(reportDir, `${reportPrefix}_${mode.replace(/[^a-z0-9_-]/gi, '_')}_${stamp}.json`);
+  const reportMdPath = path.join(reportDir, `${reportPrefix}_${mode.replace(/[^a-z0-9_-]/gi, '_')}_${stamp}.md`);
 
   const payload = {
     schema_version: 'aurora.chat.travel_gate.v1',
+    report_prefix: reportPrefix,
+    cases_file: casesPath,
     mode,
     base: mode === 'staging-live' ? base : null,
     strict_meta: strictMeta,
@@ -618,9 +794,12 @@ module.exports = {
     toBool,
     loadJsonlCases,
     mergeExpected,
+    mergeExpectedTurn,
+    normalizeCaseTurns,
     buildMockFetch,
     extractMeta,
     extractTravelMissingFields,
+    extractRequiredFields,
     evaluateCase,
     summarizeResults,
     checkHeaderMetaMismatch,

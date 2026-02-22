@@ -78,6 +78,40 @@ function main() {
       ]),
     );
   }
+  if (steps[steps.length - 1].ok) {
+    steps.push(
+      runCommand('node', [
+        'scripts/aurora_travel_gate.js',
+        '--mode',
+        'local-mock',
+        '--strict-meta',
+        'true',
+        '--cases',
+        'tests/golden/aurora_safety_20.jsonl',
+        '--report-prefix',
+        'aurora_safety_gate',
+        '--report-dir',
+        'reports',
+      ]),
+    );
+  }
+  if (steps[steps.length - 1].ok) {
+    steps.push(
+      runCommand('node', [
+        'scripts/aurora_travel_gate.js',
+        '--mode',
+        'local-mock',
+        '--strict-meta',
+        'true',
+        '--cases',
+        'tests/golden/aurora_anchor_eval_20.jsonl',
+        '--report-prefix',
+        'aurora_anchor_eval_gate',
+        '--report-dir',
+        'reports',
+      ]),
+    );
+  }
 
   const failed = steps.filter((s) => !s.ok).length;
   const report = {
