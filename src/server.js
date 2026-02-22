@@ -9612,7 +9612,7 @@ async function proxyAgentSearchToBackend(req, res) {
       pass1_attempted: true,
       pass2_attempted: false,
       pass2_selected: false,
-      pass2_skipped_reason: 'primary_exception',
+      pass2_skipped_reason: null,
       secondary_skipped_reason: null,
       secondary_rejected_reason: null,
       secondary_fallback_duration_ms: null,
@@ -9639,12 +9639,115 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_fallback_timeout_ms: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS
         : null,
-      aurora_upstream_source_override:
+        aurora_upstream_source_override:
         auroraFallbackOverrides.active && auroraUpstreamSourceOverrideActive
           ? upstreamSource
           : null,
     };
     if (queryText) {
+      const auroraTwoPassEnabledOnException = Boolean(
+        auroraFallbackOverrides.active &&
+        PROXY_SEARCH_AURORA_FORCE_TWO_PASS &&
+        PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
+      );
+      if (auroraTwoPassEnabledOnException) {
+        const pass2TimeoutMs = Math.max(
+          200,
+          Math.min(
+            PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS,
+            PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS,
+          ),
+        );
+        fallbackStrategy.pass2_attempted = true;
+        fallbackStrategy.pass2_timeout_ms = pass2TimeoutMs;
+        try {
+          const pass2StartedAtMs = Date.now();
+          const pass2Response = await axios({
+            method: 'GET',
+            url,
+            params: {
+              ...guardedQueryParams,
+              allow_external_seed: true,
+              external_seed_strategy: PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
+              fast_mode: true,
+            },
+            headers: {
+              ...(checkoutToken
+                ? { 'X-Checkout-Token': checkoutToken }
+                : {
+                    ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+                    ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+                  }),
+            },
+            timeout: pass2TimeoutMs,
+            validateStatus: () => true,
+          });
+          const pass2Normalized = normalizeAgentProductsListResponse(pass2Response.data, {
+            limit: parseQueryNumber(guardedQueryParams?.limit ?? guardedQueryParams?.page_size),
+            offset: parseQueryNumber(guardedQueryParams?.offset),
+          });
+          const pass2UsableCount = countUsableSearchProducts(pass2Normalized?.products);
+          const pass2Relevant = isProxySearchFallbackRelevant(pass2Normalized, queryText);
+          fallbackStrategy.pass2_usable_count = Number(pass2UsableCount || 0);
+          fallbackStrategy.pass2_relevance_passed = pass2Relevant;
+          if (
+            Number(pass2Response.status) >= 200 &&
+            Number(pass2Response.status) < 300 &&
+            pass2UsableCount > 0 &&
+            pass2Relevant
+          ) {
+            fallbackStrategy.pass2_selected = true;
+            fallbackStrategy.pass2_skipped_reason = null;
+            return respondSearch(
+              pass2Response.status,
+              withProxySearchFallbackMetadata(pass2Normalized, {
+                applied: true,
+                reason: 'pass2_after_exception',
+              }),
+              {
+                finalDecision: 'upstream_returned',
+                primaryPathUsed: 'proxy_search_primary',
+                fallbackTriggered: true,
+                fallbackReason: 'pass2_after_exception',
+                upstreamStage: {
+                  called: true,
+                  timeout: false,
+                  status: Number(pass2Response.status || 0) || 0,
+                  latency_ms: Math.max(0, Date.now() - pass2StartedAtMs),
+                  pass: 'pass2_external_seed_after_exception',
+                },
+                fallbackStrategy,
+              },
+            );
+          }
+          fallbackStrategy.pass2_selected = false;
+          fallbackStrategy.pass2_skipped_reason =
+            Number(pass2Response.status) < 200 || Number(pass2Response.status) >= 300
+              ? 'pass2_status_non_2xx'
+              : pass2UsableCount <= 0
+                ? 'pass2_no_usable_products'
+                : !pass2Relevant
+                  ? 'pass2_irrelevant'
+                  : 'pass2_not_adopted';
+        } catch (pass2Err) {
+          fallbackStrategy.pass2_selected = false;
+          fallbackStrategy.pass2_skipped_reason =
+            String(pass2Err?.code || '').toUpperCase() === 'ECONNABORTED'
+              ? 'pass2_timeout'
+              : 'pass2_exception';
+          logger.warn(
+            { err: pass2Err?.message || String(pass2Err) },
+            'proxy agent search pass2 failed after primary exception; continuing fallbacks',
+          );
+        }
+      } else {
+        fallbackStrategy.pass2_skipped_reason = auroraFallbackOverrides.active
+          ? PROXY_SEARCH_AURORA_FORCE_TWO_PASS
+            ? 'external_seed_disabled'
+            : 'two_pass_disabled'
+          : 'not_aurora';
+      }
+
       if (allowResolverFallbackOnException) {
         fallbackStrategy.resolver_attempted = true;
         try {

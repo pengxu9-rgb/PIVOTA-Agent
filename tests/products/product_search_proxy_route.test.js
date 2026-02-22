@@ -862,6 +862,92 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('aurora source can adopt pass2 external-seed result after primary timeout exception', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS = 'true';
+    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'legacy';
+    process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = '120';
+    process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = '900';
+    process.env.PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS = '1200';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.allow_external_seed || '') === 'false' &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .delay(260)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.allow_external_seed || '') === 'true' &&
+          String(q.external_seed_strategy || '') === 'legacy' &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'pass2_after_exception_candidate',
+            merchant_id: 'external_seed',
+            title: 'Copper peptide serum (pass2 after exception)',
+            source: 'external_seed',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'pass2_after_exception_candidate',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'pass2_after_exception',
+        }),
+        fallback_strategy: expect.objectContaining({
+          source: 'aurora_force_path',
+          pass1_attempted: true,
+          pass2_attempted: true,
+          pass2_selected: true,
+          pass2_skipped_reason: null,
+          secondary_attempted: false,
+        }),
+      }),
+    );
+  });
+
   test('aurora source preserves fallback_strategy and attempts secondary fallback on primary 5xx', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
