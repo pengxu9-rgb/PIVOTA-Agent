@@ -70,6 +70,21 @@ const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
 const { mountRecommendationRoutes } = require('./recommendations/routes');
 let mountAuroraBffRoutes = noopMountRoute;
 let auroraBffInternal = {};
+let auroraRoutesReady = false;
+let auroraRoutesLoadError = null;
+const AURORA_ROUTES_FAIL_CLOSED = (() => {
+  const raw = String(
+    process.env.AURORA_ROUTES_FAIL_CLOSED ||
+      process.env.AURORA_BFF_FAIL_CLOSED ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (!raw) {
+    return String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  }
+  return ['1', 'true', 'yes', 'y', 'on'].includes(raw);
+})();
 try {
   const auroraRoutes = require('./auroraBff/routes');
   mountAuroraBffRoutes =
@@ -79,9 +94,21 @@ try {
   auroraBffInternal = auroraRoutes?.__internal && typeof auroraRoutes.__internal === 'object'
     ? auroraRoutes.__internal
     : {};
+  if (mountAuroraBffRoutes === noopMountRoute) {
+    const exportErr = new Error('auroraBff routes module loaded but mountAuroraBffRoutes export is missing');
+    exportErr.code = 'AURORA_ROUTES_EXPORT_MISSING';
+    throw exportErr;
+  }
+  auroraRoutesReady = true;
 } catch (err) {
+  auroraRoutesReady = false;
+  auroraRoutesLoadError = String(err?.stack || err?.message || err || 'unknown_error').slice(0, 1200);
   logger.error(
-    { err: err?.message || String(err) },
+    {
+      err: err?.message || String(err),
+      fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+      aurora_routes_ready: false,
+    },
     'auroraBff routes failed to load; disabling aurora routes for this process',
   );
 }
@@ -8372,6 +8399,7 @@ const healthRouteHandler = (req, res) => {
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
   const minSellable = Math.max(Number(process.env.HEALTHZ_MIN_SELLABLE_PRODUCTS || 20) || 20, 0);
   const includeCacheStats = process.env.HEALTHZ_INCLUDE_CACHE_STATS === 'true';
+  const auroraStartupCritical = AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady;
 
   const creatorIdForStats = process.env.HEALTHZ_CACHE_STATS_CREATOR_ID || 'nina-studio';
   const creatorConfig = getCreatorConfig(creatorIdForStats);
@@ -8389,11 +8417,14 @@ const healthRouteHandler = (req, res) => {
         : null;
       const cacheWarning = typeof sellable === 'number' ? sellable < minSellable : null;
 
-      res.json({
-    ok: true,
+      return res.status(auroraStartupCritical ? 503 : 200).json({
+    ok: !auroraStartupCritical,
     use_mock: USE_MOCK,
     port: PORT,
     api_mode: API_MODE,
+    aurora_routes_ready: auroraRoutesReady,
+    aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+    aurora_routes_error: auroraRoutesLoadError,
     modes: {
       mock: USE_MOCK,
       hybrid: USE_HYBRID,
@@ -8461,14 +8492,20 @@ const healthRouteHandler = (req, res) => {
       find_products_multi_vector_enabled:
         process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
     },
+    startup_guards: {
+      aurora_routes_critical: auroraStartupCritical,
+    },
     message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
       });
     })
     .catch((err) => {
       logger.warn({ err: err.message }, 'healthz cache stats probe failed');
-      res.json({
-        ok: true,
+      return res.status(auroraStartupCritical ? 503 : 200).json({
+        ok: !auroraStartupCritical,
         api_mode: API_MODE,
+        aurora_routes_ready: auroraRoutesReady,
+        aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+        aurora_routes_error: auroraRoutesLoadError,
         version: {
           service: SERVICE_NAME,
           commit: SERVICE_GIT_SHA_SHORT,
@@ -8488,6 +8525,9 @@ const healthRouteHandler = (req, res) => {
         pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
         pdp_recommendations_cache: getPdpRecsCacheStats(),
         products_available: true,
+        startup_guards: {
+          aurora_routes_critical: auroraStartupCritical,
+        },
         warning: 'healthz_cache_stats_failed',
       });
     });
@@ -17523,6 +17563,18 @@ module.exports._debug = {
 
 if (require.main === module) {
   (async () => {
+    if (AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady) {
+      logger.error(
+        {
+          aurora_routes_ready: false,
+          aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+          aurora_routes_error: auroraRoutesLoadError,
+        },
+        'Aurora routes unavailable at startup; fail-closed is enabled',
+      );
+      throw new Error(`AURORA_ROUTES_UNAVAILABLE: ${auroraRoutesLoadError || 'unknown_error'}`);
+    }
+
     const hasDb = Boolean(process.env.DATABASE_URL);
     const autoMigrateDisabled = String(process.env.DB_AUTO_MIGRATE || '').toLowerCase() === 'false';
     const env = String(process.env.NODE_ENV || '').toLowerCase();
