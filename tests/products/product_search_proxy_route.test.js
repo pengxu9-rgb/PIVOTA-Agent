@@ -43,8 +43,11 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
       PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE:
         process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE,
-      PROXY_SEARCH_AURORA_UPSTREAM_SOURCE:
-        process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE,
+      PROXY_SEARCH_AURORA_FORCE_TWO_PASS: process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS,
+      PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS: process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS: process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS,
+      PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE:
+        process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED:
         process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES:
@@ -85,7 +88,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED;
     delete process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY;
     delete process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
-    delete process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
+    delete process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS;
+    delete process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS;
+    delete process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES;
     delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
@@ -199,11 +205,29 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
         prevEnv.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
     }
-    if (prevEnv.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE === undefined) {
-      delete process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
+    if (prevEnv.PROXY_SEARCH_AURORA_FORCE_TWO_PASS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS;
     } else {
-      process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE =
-        prevEnv.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
+      process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS =
+        prevEnv.PROXY_SEARCH_AURORA_FORCE_TWO_PASS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE =
+        prevEnv.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE;
     }
     if (prevEnv.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED;
@@ -751,6 +775,88 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           aurora_external_seed_forced: true,
           aurora_external_seed_enabled: false,
           aurora_seed_strategy: 'legacy',
+        }),
+      }),
+    );
+  });
+
+  test('aurora source runs two-pass primary search and can adopt pass2 external-seed result', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
+    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
+    process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS = 'true';
+    process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE = '2';
+    process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = '900';
+    process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = '800';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.allow_external_seed || '') === 'false' &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.allow_external_seed || '') === 'true' &&
+          String(q.external_seed_strategy || '') === 'supplement_internal_first' &&
+          String(q.fast_mode || '') === 'true'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'pass2_seed_candidate_1',
+            merchant_id: 'external_seed',
+            title: 'Copper peptide serum (seed)',
+            source: 'external_seed',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'pass2_seed_candidate_1',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        fallback_strategy: expect.objectContaining({
+          source: 'aurora_force_path',
+          pass1_attempted: true,
+          pass2_attempted: true,
+          pass2_selected: true,
+          pass2_skipped_reason: null,
+          pass1_timeout_ms: expect.any(Number),
+          pass2_timeout_ms: expect.any(Number),
         }),
       }),
     );

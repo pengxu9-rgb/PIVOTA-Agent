@@ -373,7 +373,7 @@ const PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS = Math.max(
   Math.min(
     parseTimeoutMs(
       process.env.PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS,
-      Math.min(1600, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
+      Math.min(1800, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
     ),
     Math.max(450, UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS),
   ),
@@ -448,6 +448,20 @@ const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
     .toLowerCase();
   return raw === 'supplement_internal_first' ? raw : 'legacy';
 })();
+const PROXY_SEARCH_AURORA_FORCE_TWO_PASS =
+  String(process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS || 'true').toLowerCase() !== 'false';
+const PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = Math.max(
+  250,
+  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS, 800),
+);
+const PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = Math.max(
+  200,
+  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, 500),
+);
+const PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE = Math.max(
+  1,
+  Math.min(20, Number(process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE || 3) || 3),
+);
 const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
   String(process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE || 'true').toLowerCase() !==
   'false';
@@ -9127,6 +9141,10 @@ async function proxyAgentSearchToBackend(req, res) {
       upstream_source: upstreamSource || source || null,
       resolver_attempted: false,
       secondary_attempted: false,
+      pass1_attempted: false,
+      pass2_attempted: false,
+      pass2_selected: false,
+      pass2_skipped_reason: null,
       secondary_skipped_reason: null,
       secondary_rejected_reason: null,
       secondary_fallback_duration_ms: null,
@@ -9162,45 +9180,175 @@ async function proxyAgentSearchToBackend(req, res) {
       fallback_adopt_usable_threshold: null,
     };
 
-    const upstreamStartedAtMs = Date.now();
-    const resp = await axios({
-      method: 'GET',
-      url,
-      params: upstreamQueryParams,
-      headers: {
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : {
-              ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-              ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-            }),
-      },
-      timeout: primaryTimeoutMs,
-      validateStatus: () => true,
-    });
-    const upstreamStage = {
-      called: true,
-      timeout: false,
-      status: Number(resp?.status || 0) || 0,
-      latency_ms: Math.max(0, Date.now() - upstreamStartedAtMs),
+    const runPrimarySearchRequest = async ({ params, timeoutMs, pass }) => {
+      const startedMs = Date.now();
+      const response = await axios({
+        method: 'GET',
+        url,
+        params,
+        headers: {
+          ...(checkoutToken
+            ? { 'X-Checkout-Token': checkoutToken }
+            : {
+                ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+                ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+              }),
+        },
+        timeout: timeoutMs,
+        validateStatus: () => true,
+      });
+      const upstream = {
+        called: true,
+        timeout: false,
+        status: Number(response?.status || 0) || 0,
+        latency_ms: Math.max(0, Date.now() - startedMs),
+        pass,
+      };
+      const normalizedResponse = normalizeAgentProductsListResponse(response.data, {
+        limit: parseQueryNumber(params?.limit ?? params?.page_size),
+        offset: parseQueryNumber(params?.offset),
+      });
+      const usableCount = countUsableSearchProducts(normalizedResponse?.products);
+      const unusable = Boolean(queryText) && shouldFallbackProxySearch(normalizedResponse, response.status);
+      const relevant = queryText ? isProxySearchFallbackRelevant(normalizedResponse, queryText) : true;
+      const monocultureSignal = detectAuroraExternalSeedMonoculture({
+        normalized: normalizedResponse,
+        queryText,
+        source,
+      });
+      const monoculture = Boolean(monocultureSignal.detected);
+      const irrelevant = Boolean(queryText) && ((usableCount > 0 && !relevant) || monoculture);
+      return {
+        pass,
+        response,
+        upstream,
+        params,
+        timeout_ms: timeoutMs,
+        normalized: normalizedResponse,
+        usable_count: usableCount,
+        unusable,
+        relevant,
+        monoculture_signal: monocultureSignal,
+        monoculture,
+        irrelevant,
+        should_fallback: unusable || irrelevant,
+      };
     };
 
-    const normalized = normalizeAgentProductsListResponse(resp.data, {
-      limit: parseQueryNumber(upstreamQueryParams?.limit ?? upstreamQueryParams?.page_size),
-      offset: parseQueryNumber(upstreamQueryParams?.offset),
-    });
-    const primaryUsableCount = countUsableSearchProducts(normalized?.products);
-    const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
-    const primaryRelevant = queryText ? isProxySearchFallbackRelevant(normalized, queryText) : true;
-    const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
-      normalized,
+    const auroraTwoPassEnabled = Boolean(
+      auroraFallbackOverrides.active &&
+      PROXY_SEARCH_AURORA_FORCE_TWO_PASS &&
       queryText,
-      source,
+    );
+    const primaryDeadlineMs = Date.now() + primaryTimeoutMs;
+    const pass1QueryParams = auroraTwoPassEnabled
+      ? {
+          ...guardedQueryParams,
+          allow_external_seed: false,
+          external_seed_strategy: 'legacy',
+          fast_mode: true,
+        }
+      : guardedQueryParams;
+    const pass1TimeoutMs = auroraTwoPassEnabled
+      ? Math.max(
+          250,
+          Math.min(
+            PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS,
+            Math.max(250, primaryDeadlineMs - Date.now()),
+            primaryTimeoutMs,
+          ),
+        )
+      : primaryTimeoutMs;
+    fallbackStrategy.pass1_attempted = true;
+    fallbackStrategy.pass1_timeout_ms = pass1TimeoutMs;
+
+    let primaryRun = await runPrimarySearchRequest({
+      params: pass1QueryParams,
+      timeoutMs: pass1TimeoutMs,
+      pass: auroraTwoPassEnabled ? 'pass1_internal_fast' : 'single_pass',
     });
-    const primaryMonoculture = Boolean(primaryMonocultureSignal.detected);
-    const primaryIrrelevant =
-      Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
-    const shouldFallback = primaryUnusable || primaryIrrelevant;
+    fallbackStrategy.pass1_usable_count = Number(primaryRun.usable_count || 0);
+    fallbackStrategy.pass1_relevance_passed = primaryRun.relevant === true;
+
+    if (auroraTwoPassEnabled) {
+      const requestedLimit = parseQueryNumber(guardedQueryParams?.limit ?? guardedQueryParams?.page_size);
+      const pass2TargetUsable = Math.max(
+        1,
+        Math.min(
+          PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE,
+          Number.isFinite(Number(requestedLimit)) && Number(requestedLimit) > 0 ? Number(requestedLimit) : PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE,
+        ),
+      );
+      const needPass2 = primaryRun.usable_count < pass2TargetUsable || primaryRun.should_fallback;
+      if (!needPass2) {
+        fallbackStrategy.pass2_skipped_reason = 'pass1_sufficient';
+      } else if (!PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED) {
+        fallbackStrategy.pass2_skipped_reason = 'external_seed_disabled';
+      } else {
+        const remainingBudgetMs = Math.max(0, primaryDeadlineMs - Date.now());
+        if (remainingBudgetMs < 200) {
+          fallbackStrategy.pass2_skipped_reason = 'budget_exhausted';
+        } else {
+          const pass2TimeoutMs = Math.max(
+            200,
+            Math.min(PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, remainingBudgetMs),
+          );
+          const pass2QueryParams = {
+            ...guardedQueryParams,
+            allow_external_seed: true,
+            external_seed_strategy: PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
+            fast_mode: true,
+          };
+          fallbackStrategy.pass2_attempted = true;
+          fallbackStrategy.pass2_timeout_ms = pass2TimeoutMs;
+          try {
+            const pass2Run = await runPrimarySearchRequest({
+              params: pass2QueryParams,
+              timeoutMs: pass2TimeoutMs,
+              pass: 'pass2_external_seed',
+            });
+            fallbackStrategy.pass2_usable_count = Number(pass2Run.usable_count || 0);
+            fallbackStrategy.pass2_relevance_passed = pass2Run.relevant === true;
+            const pass2Preferred =
+              pass2Run.usable_count > primaryRun.usable_count ||
+              (
+                (primaryRun.unusable || primaryRun.irrelevant) &&
+                pass2Run.usable_count > 0 &&
+                pass2Run.relevant === true
+              );
+            if (pass2Preferred) {
+              primaryRun = pass2Run;
+              fallbackStrategy.pass2_selected = true;
+            } else {
+              fallbackStrategy.pass2_selected = false;
+              fallbackStrategy.pass2_skipped_reason = 'pass2_not_better';
+            }
+          } catch (pass2Err) {
+            fallbackStrategy.pass2_skipped_reason =
+              String(pass2Err?.code || '').toUpperCase() === 'ECONNABORTED'
+                ? 'pass2_timeout'
+                : 'pass2_exception';
+            logger.warn(
+              { err: pass2Err?.message || String(pass2Err) },
+              'proxy agent search aurora pass2 failed; keeping pass1',
+            );
+          }
+        }
+      }
+    } else {
+      fallbackStrategy.pass2_skipped_reason = auroraFallbackOverrides.active ? 'two_pass_disabled' : 'not_aurora';
+    }
+
+    const resp = primaryRun.response;
+    const upstreamStage = primaryRun.upstream;
+    const normalized = primaryRun.normalized;
+    const primaryUsableCount = primaryRun.usable_count;
+    const primaryUnusable = primaryRun.unusable;
+    const primaryRelevant = primaryRun.relevant;
+    const primaryMonocultureSignal = primaryRun.monoculture_signal;
+    const primaryMonoculture = primaryRun.monoculture;
+    const primaryIrrelevant = primaryRun.irrelevant;
+    const shouldFallback = primaryRun.should_fallback;
     fallbackStrategy.primary_monoculture_detected = primaryMonoculture;
     fallbackStrategy.primary_monoculture_dominant_brand = primaryMonocultureSignal.dominantBrand || null;
     fallbackStrategy.primary_monoculture_external_ratio = Number(
@@ -9461,6 +9609,10 @@ async function proxyAgentSearchToBackend(req, res) {
       upstream_source: upstreamSource || source || null,
       resolver_attempted: false,
       secondary_attempted: false,
+      pass1_attempted: true,
+      pass2_attempted: false,
+      pass2_selected: false,
+      pass2_skipped_reason: 'primary_exception',
       secondary_skipped_reason: null,
       secondary_rejected_reason: null,
       secondary_fallback_duration_ms: null,
