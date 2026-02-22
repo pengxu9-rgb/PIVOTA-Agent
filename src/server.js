@@ -563,6 +563,11 @@ const SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM = String(
 const SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
   String(process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION || 'true').toLowerCase() !==
   'false';
+const SEARCH_SCENARIO_ANCHOR_MODE_DEFAULT = ['raw', 'derived', 'off'].includes(
+  String(process.env.SEARCH_SCENARIO_ANCHOR_MODE || 'raw').toLowerCase(),
+)
+  ? String(process.env.SEARCH_SCENARIO_ANCHOR_MODE || 'raw').toLowerCase()
+  : 'raw';
 const SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED =
   String(process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED || 'true').toLowerCase() !== 'false';
 const SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = new Set(
@@ -3785,6 +3790,260 @@ function computeAnchorRatioTopK(queryText, products, topK = 10) {
     if (anchors.some((token) => text.includes(token))) matched += 1;
   }
   return Math.max(0, Math.min(1, matched / list.length));
+}
+
+function normalizeDiagnosticAnchorTokens(input, maxTokens = 20) {
+  const values = Array.isArray(input) ? input : [input];
+  const out = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const token of tokenizeSearchTextForMatch(value)) {
+      const normalized = normalizeSearchTextForMatch(token);
+      if (!normalized || SEARCH_QUERY_STOP_TOKENS.has(normalized)) continue;
+      if (/^[0-9]+$/.test(normalized)) continue;
+      const isLatin = /^[a-z0-9]+$/.test(normalized);
+      if (isLatin && normalized.length < 3) continue;
+      if (!isLatin && normalized.length < 2) continue;
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      out.push(normalized);
+      if (out.length >= maxTokens) return out;
+    }
+  }
+  return out;
+}
+
+function resolvePostAnchorBasisForDiagnostics({ metadata, queryText, queryClass }) {
+  const trace =
+    metadata && metadata.search_trace && typeof metadata.search_trace === 'object'
+      ? metadata.search_trace
+      : {};
+  const flagsSnapshot =
+    trace && trace.flags_snapshot && typeof trace.flags_snapshot === 'object'
+      ? trace.flags_snapshot
+      : {};
+  const policyAnchorMode = String(
+    metadata?.search_decision?.post_quality?.anchor_mode || '',
+  ).toLowerCase();
+  const configuredMode = String(
+    flagsSnapshot.search_scenario_anchor_mode || policyAnchorMode || SEARCH_SCENARIO_ANCHOR_MODE_DEFAULT,
+  )
+    .trim()
+    .toLowerCase();
+  const anchorMode = ['raw', 'derived', 'off'].includes(configuredMode)
+    ? configuredMode
+    : SEARCH_SCENARIO_ANCHOR_MODE_DEFAULT;
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  const rawTokens = extractSearchAnchorTokens(queryText);
+  if (anchorMode === 'off') {
+    return {
+      mode: 'off',
+      source: 'disabled',
+      tokens: [],
+    };
+  }
+  if (anchorMode !== 'derived' || !['scenario', 'mission'].includes(normalizedQueryClass)) {
+    return {
+      mode: 'raw',
+      source: 'raw_query',
+      tokens: rawTokens,
+    };
+  }
+  const associationPlan =
+    trace && trace.association_plan && typeof trace.association_plan === 'object'
+      ? trace.association_plan
+      : {};
+  const categoryKeywords = Array.isArray(associationPlan.category_keywords)
+    ? associationPlan.category_keywords
+    : [];
+  const derivedTokens = normalizeDiagnosticAnchorTokens(categoryKeywords, 20);
+  if (!derivedTokens.length) {
+    return {
+      mode: 'raw_fallback',
+      source: 'derived_empty_fallback_raw',
+      tokens: rawTokens,
+    };
+  }
+  return {
+    mode: 'derived',
+    source: 'scenario_association',
+    tokens: derivedTokens,
+  };
+}
+
+function computeAnchorRatioTopKWithTokens(anchorTokens, products, topK = 10) {
+  const tokens = Array.isArray(anchorTokens) ? anchorTokens.filter(Boolean) : [];
+  if (!tokens.length) return 1;
+  const list = Array.isArray(products) ? products.slice(0, topK) : [];
+  if (!list.length) return 0;
+  let matched = 0;
+  for (const product of list) {
+    const text = buildFallbackCandidateText(product);
+    if (!text) continue;
+    if (tokens.some((token) => text.includes(token))) matched += 1;
+  }
+  return Math.max(0, Math.min(1, matched / list.length));
+}
+
+function computeCrossDomainRatioTopK({ products, expectedDomain, topK = 10 }) {
+  const list = Array.isArray(products) ? products.slice(0, topK) : [];
+  if (!list.length || !expectedDomain) return null;
+  const topDomains = list.map((item) => inferCacheProductDomainKey(item));
+  const crossCount = topDomains.filter(
+    (domain) => domain && domain !== 'general' && domain !== expectedDomain,
+  ).length;
+  return Math.max(0, Math.min(1, crossCount / topDomains.length));
+}
+
+function resolveSearchFinalDecisionForDiagnostics({ body, metadata }) {
+  const searchTrace =
+    metadata && metadata.search_trace && typeof metadata.search_trace === 'object'
+      ? metadata.search_trace
+      : {};
+  const searchDecision =
+    metadata && metadata.search_decision && typeof metadata.search_decision === 'object'
+      ? metadata.search_decision
+      : {};
+  const traceDecision = String(searchTrace.final_decision || '').trim().toLowerCase();
+  if (traceDecision) return traceDecision;
+  const decisionValue = String(searchDecision.final_decision || '').trim().toLowerCase();
+  if (decisionValue) return decisionValue;
+  const clarification =
+    body && typeof body === 'object' && !Array.isArray(body) && body.clarification
+      ? body.clarification
+      : null;
+  const products = Array.isArray(body?.products) ? body.products : [];
+  if (clarification && clarification.question) return 'clarify';
+  if (Boolean(metadata?.strict_empty) || products.length === 0) return 'strict_empty';
+  return 'products_returned';
+}
+
+function hasCompletePostQualitySnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false;
+  return (
+    Number.isFinite(Number(snapshot.candidates)) &&
+    Number.isFinite(Number(snapshot.anchor_ratio)) &&
+    Number.isFinite(Number(snapshot.domain_entropy))
+  );
+}
+
+function buildPostQualityDiagnosticsSnapshot({ body, queryText, intent, metadata }) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const products = Array.isArray(body.products) ? body.products : [];
+  const trace =
+    metadata && metadata.search_trace && typeof metadata.search_trace === 'object'
+      ? metadata.search_trace
+      : {};
+  const searchDecision =
+    metadata && metadata.search_decision && typeof metadata.search_decision === 'object'
+      ? metadata.search_decision
+      : {};
+  const queryClass = String(
+    searchDecision.query_class || trace.query_class || intent?.query_class || '',
+  )
+    .trim()
+    .toLowerCase();
+  const basis = resolvePostAnchorBasisForDiagnostics({
+    metadata,
+    queryText,
+    queryClass,
+  });
+  const anchorRatio =
+    basis.mode === 'off'
+      ? 1
+      : computeAnchorRatioTopKWithTokens(basis.tokens, products, 10);
+  const domainEntropy = computeDomainEntropyTopK(products, 10);
+  const expectedDomain = inferIntentDomainKeyForCacheValidation(intent, queryText);
+  const crossDomainRatio = computeCrossDomainRatioTopK({
+    products,
+    expectedDomain,
+    topK: 10,
+  });
+  const minRecallCandidates = resolveCacheValidationMinCount(queryClass);
+  const finalDecision = resolveSearchFinalDecisionForDiagnostics({ body, metadata });
+  const crossDomainOk =
+    crossDomainRatio == null || crossDomainRatio <= SEARCH_CACHE_MAX_CROSS_DOMAIN_RATIO;
+  return {
+    candidates: products.length,
+    anchor_ratio: anchorRatio,
+    domain_entropy: domainEntropy,
+    min_recall_candidates: minRecallCandidates,
+    min_anchor_ratio: SEARCH_CACHE_MIN_ANCHOR,
+    max_domain_entropy: SEARCH_CACHE_MAX_DOMAIN_ENTROPY,
+    anchor_mode: basis.mode,
+    anchor_source: basis.source,
+    anchor_basis_size: Array.isArray(basis.tokens) ? basis.tokens.length : 0,
+    cross_domain_ratio: crossDomainRatio,
+    final_decision: finalDecision,
+    candidates_ok: products.length >= minRecallCandidates,
+    anchor_ok: anchorRatio >= SEARCH_CACHE_MIN_ANCHOR,
+    entropy_ok: domainEntropy <= SEARCH_CACHE_MAX_DOMAIN_ENTROPY,
+    cross_domain_ok: crossDomainOk,
+  };
+}
+
+function withPostQualityDiagnostics(body, { queryText = '', intent = null } = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : {};
+  const existingSearchDecision =
+    metadata.search_decision && typeof metadata.search_decision === 'object'
+      ? { ...metadata.search_decision }
+      : {};
+  if (hasCompletePostQualitySnapshot(existingSearchDecision.post_quality)) {
+    return body;
+  }
+  const computedPostQuality = buildPostQualityDiagnosticsSnapshot({
+    body,
+    queryText,
+    intent,
+    metadata,
+  });
+  if (!computedPostQuality) return body;
+  metadata.search_decision = {
+    ...existingSearchDecision,
+    ...(existingSearchDecision.query_class
+      ? {}
+      : {
+          query_class: String(
+            metadata?.search_trace?.query_class || intent?.query_class || '',
+          ).trim() || null,
+        }),
+    ...(existingSearchDecision.final_decision
+      ? {}
+      : {
+          final_decision: computedPostQuality.final_decision,
+        }),
+    post_quality: computedPostQuality,
+  };
+  const existingRouteDebug =
+    metadata.route_debug && typeof metadata.route_debug === 'object' && !Array.isArray(metadata.route_debug)
+      ? metadata.route_debug
+      : null;
+  const routeDebug = {
+    ...(existingRouteDebug || {}),
+    policy: {
+      ...((existingRouteDebug && existingRouteDebug.policy && typeof existingRouteDebug.policy === 'object'
+        ? existingRouteDebug.policy
+        : {})),
+      ambiguity: {
+        ...((existingRouteDebug &&
+        existingRouteDebug.policy &&
+        existingRouteDebug.policy.ambiguity &&
+        typeof existingRouteDebug.policy.ambiguity === 'object'
+          ? existingRouteDebug.policy.ambiguity
+          : {})),
+        post_quality: computedPostQuality,
+      },
+    },
+  };
+  metadata.route_debug = routeDebug;
+  return {
+    ...body,
+    metadata,
+  };
 }
 
 function resolveCacheValidationMinCount(queryClass) {
@@ -11246,6 +11505,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     rawUserQuery: String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
     intent: null,
     expansionMode: null,
+    searchEvalMode: false,
+    searchEvalUpstreamDisabled: false,
   };
   const originalJson = res.json.bind(res);
   res.json = (body) => {
@@ -11257,12 +11518,20 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       if (operation === 'find_products_multi') {
         const exposeDebugBundle = shouldExposeDebugBundle(req);
         const logDebugBundle = exposeDebugBundle || shouldLogDebugBundle(req);
+        const shouldBackfillPostQuality =
+          Boolean(debugRuntime.searchEvalMode) || exposeDebugBundle || logDebugBundle;
+        if (shouldBackfillPostQuality) {
+          finalBody = withPostQualityDiagnostics(finalBody, {
+            queryText: debugRuntime.rawUserQuery,
+            intent: debugRuntime.intent,
+          });
+        }
         if (exposeDebugBundle || logDebugBundle) {
           debugRuntime.totalLatencyMs = Math.max(0, Date.now() - invokeStartedAtMs);
           const debugBundle = buildSearchDebugBundle({
             requestId: gatewayRequestId,
             req,
-            responseBody: body,
+            responseBody: finalBody,
             context: debugRuntime,
           });
           if (debugBundle) {
@@ -11403,6 +11672,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       operation === 'find_products_multi' ? isSearchEvalModeRequest(req, metadata) : false;
     const searchEvalUpstreamDisabled =
       searchEvalMode && SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
+    debugRuntime.searchEvalMode = Boolean(searchEvalMode);
+    debugRuntime.searchEvalUpstreamDisabled = Boolean(searchEvalUpstreamDisabled);
     if (searchEvalMode) {
       traceFlagsSnapshot.eval_mode = true;
       traceFlagsSnapshot.upstream_disabled = Boolean(searchEvalUpstreamDisabled);
