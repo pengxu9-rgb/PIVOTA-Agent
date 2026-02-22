@@ -43,6 +43,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
       PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE:
         process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE,
+      PROXY_SEARCH_AURORA_UPSTREAM_SOURCE:
+        process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED:
         process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES:
@@ -83,6 +85,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED;
     delete process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY;
     delete process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
+    delete process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES;
     delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
@@ -195,6 +198,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
         prevEnv.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE =
+        prevEnv.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE;
     }
     if (prevEnv.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED;
@@ -443,6 +452,88 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         fallback_strategy: expect.objectContaining({
           source: 'aurora_force_path',
           aurora_upstream_base: 'http://aurora-upstream.test',
+        }),
+      }),
+    );
+  });
+
+  test('aurora source can remap upstream source while preserving internal request source', async () => {
+    const queryText = 'Copper peptide serum';
+    process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
+    process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE = 'shopping-assistant';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
+
+    const auroraPrimaryScope = nock('http://aurora-upstream.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'shopping-assistant' &&
+          String(q.request_source || '') === 'aurora-bff'
+        );
+      })
+      .reply(504, {
+        error: 'timeout',
+      });
+
+    const auroraFallbackScope = nock('http://aurora-upstream.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'find_products_multi' &&
+          body.payload &&
+          body.payload.search &&
+          String(body.payload.search.query || '') === queryText &&
+          body.payload.search.fast_mode === true &&
+          body.payload.search.allow_stale_cache === false &&
+          body.payload.search.allow_external_seed === false &&
+          String(body.payload.search.external_seed_strategy || '') === 'legacy' &&
+          String(body.metadata?.source || '') === 'shopping-assistant' &&
+          String(body.metadata?.request_source || '') === 'aurora-bff'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'beauty_fallback_upstream_source',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper peptide serum fallback',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(auroraPrimaryScope.isDone()).toBe(true);
+    expect(auroraFallbackScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'beauty_fallback_upstream_source',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        fallback_strategy: expect.objectContaining({
+          request_source: 'aurora-bff',
+          upstream_source: 'shopping-assistant',
+          aurora_upstream_source_override: 'shopping-assistant',
         }),
       }),
     );
