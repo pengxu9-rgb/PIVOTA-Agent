@@ -445,6 +445,12 @@ const RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const RECO_CATALOG_AURORA_SELF_PROXY_FIRST = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED || '').trim().toLowerCase();
   if (raw) return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1835,6 +1841,7 @@ function buildRecoCatalogSearchBaseUrlCandidates({
   includeLocalFallback = false,
   preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
   includeSelfProxy = RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED,
+  preferSelfProxyFirst = false,
 } = {}) {
   const out = [];
   const seen = new Set();
@@ -1853,14 +1860,17 @@ function buildRecoCatalogSearchBaseUrlCandidates({
       .filter(Boolean);
     for (const token of tokens) add(token);
   };
+  if (preferSelfProxyFirst && includeSelfProxy) {
+    add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+  }
   if (preferConfigured) {
     addConfigured();
-    if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+    if (includeSelfProxy && !preferSelfProxyFirst) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
     add(PIVOTA_BACKEND_BASE_URL);
   } else {
     add(PIVOTA_BACKEND_BASE_URL);
     addConfigured();
-    if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+    if (includeSelfProxy && !preferSelfProxyFirst) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
   }
   if (includeLocalFallback) add(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   return out;
@@ -2197,8 +2207,12 @@ async function searchPivotaBackendProducts({
   const shouldAttemptLocalSearchFallback =
     localSearchFallbackConfigured &&
     (forceLocalFallbackEnabled || RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT);
+  const shouldPreferSelfProxyFirst =
+    RECO_CATALOG_AURORA_SELF_PROXY_FIRST &&
+    String(RECO_CATALOG_SEARCH_SOURCE || '').trim().toLowerCase() === 'aurora-bff';
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
+    preferSelfProxyFirst: shouldPreferSelfProxyFirst,
   });
   const pathCandidates = buildRecoCatalogSearchPathCandidates();
   if (!baseUrlCandidates.length) {

@@ -31,6 +31,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     delete process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE;
     delete process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS;
+    delete process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST;
     delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED;
     delete process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL;
     delete process.env.AURORA_BFF_BASE_URL;
@@ -219,6 +220,20 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const urls = __internal.buildRecoCatalogSearchBaseUrlCandidates();
     expect(urls[0]).toBe('http://127.0.0.1:3999');
+    expect(urls).toContain('https://web-production-fedb.up.railway.app');
+  });
+
+  test('catalog search base urls can force self proxy first before configured aurora bases', () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'https://web-production-fedb.up.railway.app';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'https://catalog-remote.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://127.0.0.1:3999';
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const urls = __internal.buildRecoCatalogSearchBaseUrlCandidates({ preferSelfProxyFirst: true });
+    expect(urls[0]).toBe('http://127.0.0.1:3999');
+    expect(urls).toContain('https://catalog-remote.test');
     expect(urls).toContain('https://web-production-fedb.up.railway.app');
   });
 
@@ -644,6 +659,54 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.source_endpoint).toBe('http://catalog-primary.test/agent/v1/products/search');
     expect(Array.isArray(out.attempted_endpoints)).toBe(true);
     expect(out.attempted_endpoints[0]).toBe('http://catalog-primary.test/agent/v1/products/search');
+  });
+
+  test('aurora catalog search prefers self proxy first when aurora self-proxy-first flag is enabled', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
+    process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://catalog-self.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+
+    nock('http://catalog-self.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'self_proxy_1',
+            brand: 'Alt Brand',
+            name: 'Alt Serum Self Proxy',
+            display_name: 'Alt Brand Alt Serum Self Proxy',
+          },
+        ],
+      });
+
+    nock('http://catalog-upstream.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(504, {
+        status: 'error',
+        error: { code: 'UPSTREAM_TIMEOUT', message: 'timeout' },
+      });
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('self_proxy_1');
+    expect(Array.isArray(out.attempted_endpoints)).toBe(true);
+    expect(out.attempted_endpoints[0]).toBe('http://catalog-self.test/agent/v1/products/search');
   });
 
   test('catalog search auto-falls back to beauty path when generic route is empty', async () => {
