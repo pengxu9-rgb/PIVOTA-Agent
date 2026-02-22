@@ -553,6 +553,9 @@ const SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM = String(
   process.env.SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM || 'eval',
 )
   .trim();
+const SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
+  String(process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION || 'true').toLowerCase() !==
+  'false';
 const SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED =
   String(process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED || 'true').toLowerCase() !== 'false';
 const SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = new Set(
@@ -11333,6 +11336,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       search_eval_internal_only_enabled: SEARCH_EVAL_INTERNAL_ONLY_ENABLED,
       search_eval_internal_only_upstream_disabled: SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED,
       search_eval_internal_only_header: SEARCH_EVAL_INTERNAL_ONLY_HEADER,
+      search_eval_internal_only_force_no_early_decision:
+        SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION,
     };
     const searchEvalMode =
       operation === 'find_products_multi' ? isSearchEvalModeRequest(req, metadata) : false;
@@ -14249,6 +14254,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
             (['scenario', 'mission'].includes(queryClassForEarlyDecision) ||
               (queryClassMissing && hasAmbiguitySignal));
+          const forceNoEarlyDecisionForEval =
+            searchEvalUpstreamDisabled && SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
           const isStrongLookupForEarlyDecision =
             queryClassForEarlyDecision === 'lookup' || isKnownLookupAliasQuery(cacheQueryText);
           const hasEarlyDecisionClass = [
@@ -14266,15 +14273,18 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             effectiveIntent &&
             !isStrongLookupForEarlyDecision &&
             (hasEarlyDecisionClass || (queryClassMissing && hasAmbiguitySignal)) &&
-            !forceControlledRecallForScenario;
+            !forceControlledRecallForScenario &&
+            !forceNoEarlyDecisionForEval;
           if (
-            forceControlledRecallForScenario &&
+            (forceControlledRecallForScenario || forceNoEarlyDecisionForEval) &&
             crossMerchantCacheRouteDebug &&
             typeof crossMerchantCacheRouteDebug === 'object'
           ) {
             crossMerchantCacheRouteDebug.early_decision = {
               applied: false,
-              reason: 'force_controlled_recall_for_scenario',
+              reason: forceNoEarlyDecisionForEval
+                ? 'eval_force_no_early_decision'
+                : 'force_controlled_recall_for_scenario',
               query_class: queryClassForEarlyDecision,
             };
           }
@@ -14509,7 +14519,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             !effectiveCacheHit &&
             !isLookupQuery &&
             !bypassCacheStrictEmpty &&
-            !forceControlledRecallForScenario
+            !forceControlledRecallForScenario &&
+            !forceNoEarlyDecisionForEval
           ) {
             const cacheStrictReason =
               effectiveProducts.length > 0

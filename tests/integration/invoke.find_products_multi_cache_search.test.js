@@ -26,6 +26,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       SEARCH_CACHE_VALIDATE: process.env.SEARCH_CACHE_VALIDATE,
       SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO:
         process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO,
+      SEARCH_EVAL_INTERNAL_ONLY_ENABLED:
+        process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED,
+      SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED:
+        process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED,
+      SEARCH_EVAL_INTERNAL_ONLY_HEADER:
+        process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER,
+      SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION:
+        process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION,
       CREATOR_CATALOG_CACHE_TTL_SECONDS: process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
       CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES: process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
@@ -41,6 +49,10 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
     delete process.env.SEARCH_CACHE_VALIDATE;
     delete process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
+    delete process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED;
+    delete process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
+    delete process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
+    delete process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
@@ -90,6 +102,28 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO =
         prevEnv.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO;
+    }
+    if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_ENABLED === undefined) {
+      delete process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED;
+    } else {
+      process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED = prevEnv.SEARCH_EVAL_INTERNAL_ONLY_ENABLED;
+    }
+    if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED === undefined) {
+      delete process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
+    } else {
+      process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED =
+        prevEnv.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
+    }
+    if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_HEADER === undefined) {
+      delete process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
+    } else {
+      process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER = prevEnv.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
+    }
+    if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION === undefined) {
+      delete process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    } else {
+      process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
+        prevEnv.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -1227,6 +1261,47 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(
       Boolean(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.applied),
     ).not.toBe(true);
+  });
+
+  test('eval internal-only can disable cache early decision for scenario queries', async () => {
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED = 'true';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED = 'true';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER = 'x-eval';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION = 'true';
+    process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO = 'false';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Eval', '1')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hiking essentials',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).not.toBe('cache_cross_merchant_search_early_decision');
+    expect(
+      String(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.reason || ''),
+    ).toBe('eval_force_no_early_decision');
   });
 
   test('pet leash recommendation does not enter lookup timeout path on cache miss', async () => {

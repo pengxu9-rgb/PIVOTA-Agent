@@ -225,6 +225,7 @@ async function main() {
             },
             metadata: {
               source: args.source,
+              ...(args.evalMode ? { eval_mode: true } : {}),
             },
           },
           {
