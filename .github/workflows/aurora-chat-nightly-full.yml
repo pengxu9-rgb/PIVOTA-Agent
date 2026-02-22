@@ -48,5 +48,9 @@ jobs:
             reports/aurora_chat_v2_nightly_full_*.md
             reports/aurora_travel_gate_*.json
             reports/aurora_travel_gate_*.md
+            reports/aurora_safety_gate_*.json
+            reports/aurora_safety_gate_*.md
+            reports/aurora_anchor_eval_gate_*.json
+            reports/aurora_anchor_eval_gate_*.md
             reports/chat_followup_canary_nightly_*.md
           retention-days: 14

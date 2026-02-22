@@ -12,6 +12,8 @@ on:
       - "tests/aurora_rollout_probe.node.test.cjs"
       - "tests/aurora_travel_gate.node.test.cjs"
       - "tests/golden/aurora_travel_weather_20.jsonl"
+      - "tests/golden/aurora_safety_20.jsonl"
+      - "tests/golden/aurora_anchor_eval_20.jsonl"
       - ".github/workflows/aurora-chat-pr-lite.yml"
       - ".github/workflows/aurora-chat-nightly-full.yml"
       - ".github/workflows/aurora-bff-release-gate.yml"
@@ -54,4 +56,8 @@ jobs:
             reports/aurora_chat_v2_pr_lite_*.md
             reports/aurora_travel_gate_*.json
             reports/aurora_travel_gate_*.md
+            reports/aurora_safety_gate_*.json
+            reports/aurora_safety_gate_*.md
+            reports/aurora_anchor_eval_gate_*.json
+            reports/aurora_anchor_eval_gate_*.md
           retention-days: 7
