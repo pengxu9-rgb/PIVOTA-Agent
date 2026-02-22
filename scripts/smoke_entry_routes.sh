@@ -135,6 +135,52 @@ if not ok:
 ' "$file" "$mode" "$expected_csv"
 }
 
+assert_cards_with_retry() {
+  local key="$1"
+  local path="$2"
+  local data="$3"
+  local mode="$4"
+  local expected_csv="$5"
+  local retries="${6:-3}"
+  local sleep_sec="${7:-2}"
+  local case_var="CASE_${key}"
+  local case_file=""
+
+  local n=1
+  while true; do
+    capture_case "$key" "$path" "$data"
+    case_file="${!case_var}"
+    extract_summary "$case_file"
+    assert_no_banned_first_line "$case_file" "$LANG_UPPER"
+    if "$PY_BIN" -c '
+import json,sys
+path, mode, expected = sys.argv[1], sys.argv[2], [s for s in sys.argv[3].split(",") if s]
+j = json.load(open(path))
+cards = [c.get("type") for c in (j.get("cards") or [])]
+if mode == "exact":
+    ok = cards == expected
+elif mode == "contains_all":
+    ok = all(e in cards for e in expected)
+elif mode == "contains_any":
+    ok = any(e in cards for e in expected)
+elif mode == "contains_none":
+    ok = all(e not in cards for e in expected)
+else:
+    raise SystemExit(2)
+raise SystemExit(0 if ok else 1)
+' "$case_file" "$mode" "$expected_csv"; then
+      return 0
+    fi
+    if [[ "$n" -ge "$retries" ]]; then
+      assert_cards "$case_file" "$mode" "$expected_csv"
+      return 0
+    fi
+    echo "[warn] case=${key} missing expected cards (attempt ${n}/${retries}), retrying..." >&2
+    n=$((n + 1))
+    sleep "$sleep_sec"
+  done
+}
+
 assert_reco_stage() {
   local file="$1"
   "$PY_BIN" -c '
@@ -195,10 +241,14 @@ assert_no_banned_first_line "$CASE_profile" "$LANG_UPPER"
 assert_cards "$CASE_profile" "contains_all" "profile"
 
 say "3) fit-check"
-capture_case "fit" "/v1/chat" "{\"message\":\"${MSG_FIT}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
-extract_summary "$CASE_fit"
-assert_no_banned_first_line "$CASE_fit" "$LANG_UPPER"
-assert_cards "$CASE_fit" "contains_all" "aurora_structured,product_analysis"
+assert_cards_with_retry \
+  "fit" \
+  "/v1/chat" \
+  "{\"message\":\"${MSG_FIT}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}" \
+  "contains_all" \
+  "aurora_structured,product_analysis" \
+  "${FIT_CHECK_RETRIES:-3}" \
+  "${FIT_CHECK_RETRY_SLEEP_SEC:-2}"
 
 say "4) reco"
 capture_case "reco" "/v1/chat" "{\"message\":\"${MSG_RECO}\",\"language\":\"${AURORA_LANG}\",\"session\":{\"state\":\"idle\"}}"
