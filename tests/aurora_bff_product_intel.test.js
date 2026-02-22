@@ -433,29 +433,24 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
   test('buildRealtimeCompetitorCandidates keeps one main-path query attempt under tight budget', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-main-budget.test';
-    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';
-    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS = '/agent/v1/products/search';
-    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'false';
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_RETURN_SLACK_MS = '220';
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS = '160';
     process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_QUERY_TIMEOUT_MS = '150';
 
-    const primaryScope = nock('http://catalog-main-budget.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        ok: true,
-        products: [
-          {
-            product_id: 'comp_low_budget_1',
-            merchant_id: 'merch_alt_1',
-            brand: 'Alt Brand',
-            name: 'Copper Peptide Serum',
-            display_name: 'Alt Brand Copper Peptide Serum',
-            category: 'serum',
-          },
-        ],
-      });
+    const searchFn = jest.fn(async () => ({
+      ok: true,
+      reason: null,
+      products: [
+        {
+          product_id: 'comp_low_budget_1',
+          merchant_id: 'merch_alt_1',
+          brand: 'Alt Brand',
+          name: 'Copper Peptide Serum',
+          display_name: 'Alt Brand Copper Peptide Serum',
+          category: 'serum',
+        },
+      ],
+    }));
 
     const { __internal } = require('../src/auroraBff/routes');
     const out = await __internal.buildRealtimeCompetitorCandidates({
@@ -478,10 +473,11 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       timeoutMs: 500,
       maxQueries: 2,
       maxCandidates: 4,
+      searchFn,
       logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
     });
 
-    expect(primaryScope.isDone()).toBe(true);
+    expect(searchFn).toHaveBeenCalled();
     expect(Number(out?.query_attempted || out?.meta?.query_attempted || 0)).toBeGreaterThan(0);
     const reasonBreakdown =
       out?.reason_breakdown && typeof out.reason_breakdown === 'object'

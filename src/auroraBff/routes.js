@@ -4976,13 +4976,12 @@ async function buildRealtimeCompetitorCandidates({
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
     const queryText = plannedQueries[queryIdx];
     const remainingMs = getRemainingMs();
-    const isLastQuery = queryIdx === plannedQueries.length - 1;
-    const allowLastQueryGrace =
+    const minimumAttemptBudgetMs = Math.max(100, Math.min(120, minRemainingForSearchMs));
+    const allowMinimumAttempt =
       runMode === 'main_path' &&
       queryAttempted === 0 &&
-      isLastQuery &&
-      remainingMs >= minRemainingForSearchMs;
-    if (remainingMs < 260 && !allowLastQueryGrace) {
+      remainingMs >= minimumAttemptBudgetMs;
+    if (remainingMs < 260 && !allowMinimumAttempt) {
       const searched = {
         ok: false,
         products: [],
