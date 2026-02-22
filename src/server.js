@@ -451,6 +451,13 @@ const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
 const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
   String(process.env.PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE || 'true').toLowerCase() !==
   'false';
+const PROXY_SEARCH_AURORA_UPSTREAM_SOURCE = (() => {
+  const raw = String(process.env.PROXY_SEARCH_AURORA_UPSTREAM_SOURCE || '')
+    .trim()
+    .toLowerCase();
+  if (!raw || raw === 'preserve' || raw === 'same' || raw === 'origin') return '';
+  return raw;
+})();
 const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
   String(process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT =
@@ -2958,6 +2965,14 @@ function getAuroraFallbackOverrides(source, operation) {
   };
 }
 
+function resolveAuroraUpstreamSource(source, operation) {
+  const normalizedSource = normalizeAgentSource(source);
+  if (!normalizedSource) return '';
+  if (String(operation || '').trim() !== 'find_products_multi') return normalizedSource;
+  if (!isAuroraSource(normalizedSource)) return normalizedSource;
+  return PROXY_SEARCH_AURORA_UPSTREAM_SOURCE || normalizedSource;
+}
+
 function applyShoppingCatalogQueryGuards(queryParams, source) {
   const params =
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
@@ -4138,11 +4153,19 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   if (!payload) return null;
   const fallbackSource = String(payload?.metadata?.source || '').trim();
   const normalizedRequestSource = String(requestSource || '').trim().toLowerCase();
+  const normalizedOutboundSource = resolveAuroraUpstreamSource(
+    normalizedRequestSource,
+    'find_products_multi',
+  );
   const searchApiBase = getProxySearchApiBase(normalizedRequestSource);
   const url = `${searchApiBase}/agent/shop/v1/invoke`;
   const searchUrl = `${searchApiBase}/agent/v1/products/search`;
+  const hasOutboundSourceOverride =
+    Boolean(normalizedOutboundSource) && normalizedOutboundSource !== normalizedRequestSource;
   const preserveAuroraSource =
-    PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE && isAuroraSource(normalizedRequestSource);
+    PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE &&
+    isAuroraSource(normalizedRequestSource) &&
+    !hasOutboundSourceOverride;
   const baseQueryText = String(payload?.search?.query || '').trim();
   const isAuroraMonocultureRetry =
     isAuroraSource(normalizedRequestSource) &&
@@ -4182,7 +4205,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
       requestSource: normalizedRequestSource,
       triggerReason: reason,
       preserveAuroraSource,
-      fallbackSource,
+      fallbackSource: normalizedOutboundSource || fallbackSource,
       relevanceQuery: queryText,
       attemptNo: i + 1,
       useSearchEndpoint,
@@ -8658,6 +8681,7 @@ async function proxyAgentSearchToBackend(req, res) {
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
 
   const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
+  const upstreamSource = resolveAuroraUpstreamSource(source, 'find_products_multi');
   const searchApiBase = getProxySearchApiBase(source);
   const url = `${searchApiBase}${req.path}`;
   const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
@@ -8666,6 +8690,14 @@ async function proxyAgentSearchToBackend(req, res) {
     ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
     : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
   const guardedQueryParams = applyShoppingCatalogQueryGuards(queryParams, source);
+  const upstreamQueryParams =
+    upstreamSource && upstreamSource !== source
+      ? {
+          ...guardedQueryParams,
+          source: upstreamSource,
+          request_source: source,
+        }
+      : guardedQueryParams;
   const resolverFirstMetadata = source ? { source } : null;
   const traceId = randomUUID();
   const startedAtMs = Date.now();
@@ -8827,6 +8859,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const fallbackStrategy = {
       source: auroraFallbackOverrides.strategySource,
       request_source: source || null,
+      upstream_source: upstreamSource || source || null,
       resolver_attempted: false,
       secondary_attempted: false,
       secondary_skipped_reason: null,
@@ -8851,6 +8884,7 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_fallback_timeout_ms: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS
         : null,
+      aurora_upstream_source_override: auroraFallbackOverrides.active ? upstreamSource || source || null : null,
       primary_monoculture_detected: false,
       primary_monoculture_dominant_brand: null,
       primary_monoculture_external_ratio: 0,
@@ -8861,7 +8895,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const resp = await axios({
       method: 'GET',
       url,
-      params: guardedQueryParams,
+      params: upstreamQueryParams,
       headers: {
         ...(checkoutToken
           ? { 'X-Checkout-Token': checkoutToken }
@@ -8881,8 +8915,8 @@ async function proxyAgentSearchToBackend(req, res) {
     };
 
     const normalized = normalizeAgentProductsListResponse(resp.data, {
-      limit: parseQueryNumber(guardedQueryParams?.limit ?? guardedQueryParams?.page_size),
-      offset: parseQueryNumber(guardedQueryParams?.offset),
+      limit: parseQueryNumber(upstreamQueryParams?.limit ?? upstreamQueryParams?.page_size),
+      offset: parseQueryNumber(upstreamQueryParams?.offset),
     });
     const primaryUsableCount = countUsableSearchProducts(normalized?.products);
     const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(normalized, resp.status);
