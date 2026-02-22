@@ -481,6 +481,16 @@ const RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL = (() => {
   if (!port) return '';
   return `http://127.0.0.1:${port}`;
 })();
+const RECO_CATALOG_AURORA_SELF_PROXY_FIRST = (() => {
+  const raw = String(
+    process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST ||
+      process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_FIRST ||
+      'false',
+  )
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const RECO_CATALOG_MULTI_SOURCE_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED || 'true')
     .trim()
@@ -630,7 +640,11 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP = (() => {
   return Math.max(1, Math.min(4, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS || 150);
+  const n = Number(
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS ||
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS ||
+    150,
+  );
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(800, v));
 })();
@@ -640,9 +654,18 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS = (() => {
   return Math.max(0, Math.min(320, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 150);
+  const n = Number(
+    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS ||
+    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS ||
+    150,
+  );
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(1000, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS || 150);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 150;
+  return Math.max(120, Math.min(1500, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
@@ -1860,6 +1883,7 @@ function buildRecoCatalogSearchBaseUrlCandidates({
   includeLocalFallback = false,
   preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
   includeSelfProxy = RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED,
+  preferSelfProxyFirst = false,
 } = {}) {
   const out = [];
   const seen = new Set();
@@ -1878,7 +1902,16 @@ function buildRecoCatalogSearchBaseUrlCandidates({
       .filter(Boolean);
     for (const token of tokens) add(token);
   };
-  if (preferConfigured) {
+  if (preferSelfProxyFirst && includeSelfProxy) {
+    add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
+    if (preferConfigured) {
+      addConfigured();
+      add(PIVOTA_BACKEND_BASE_URL);
+    } else {
+      add(PIVOTA_BACKEND_BASE_URL);
+      addConfigured();
+    }
+  } else if (preferConfigured) {
     addConfigured();
     if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
     add(PIVOTA_BACKEND_BASE_URL);
@@ -2232,6 +2265,9 @@ async function searchPivotaBackendProducts({
     (forceLocalFallbackEnabled || RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT);
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
+    preferSelfProxyFirst:
+      RECO_CATALOG_AURORA_SELF_PROXY_FIRST &&
+      /aurora-(bff|chatbox)/i.test(String(RECO_CATALOG_SEARCH_SOURCE || '')),
   });
   const pathCandidates = buildRecoCatalogSearchPathCandidates();
   if (!baseUrlCandidates.length) {
@@ -4972,6 +5008,11 @@ async function buildRealtimeCompetitorCandidates({
       : runMode === 'async_backfill'
         ? Math.max(1, Math.min(maxCandidates, Math.max(PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT, 2)))
       : Math.max(1, Math.min(maxCandidates, 6));
+  const buildRecallMeta = () => ({
+    reason_counts: reasonCounts,
+    reason_breakdown: reasonCounts,
+    query_attempted: searchResults.length,
+  });
 
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
     const queryText = plannedQueries[queryIdx];
@@ -5009,11 +5050,17 @@ async function buildRealtimeCompetitorCandidates({
           220,
           Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
         );
+    const mainPathFloorMs = allowExternalSeed
+      ? Math.max(
+        PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS,
+        PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS,
+      )
+      : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS;
     const perQueryMinMs =
       runMode === 'async_backfill'
         ? 260
         : runMode === 'main_path'
-          ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
+          ? mainPathFloorMs
           : 220;
     const perQueryTimeoutMs = Math.max(perQueryMinMs, Math.min(effectiveSearchTimeoutMs, fairShareMs));
     // eslint-disable-next-line no-await-in-loop
@@ -5041,6 +5088,13 @@ async function buildRealtimeCompetitorCandidates({
       if (!normalized) continue;
       const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
       if (!productId) continue;
+      if (anchorId && String(productId).toLowerCase() === String(anchorId).toLowerCase()) continue;
+      const candidateBrand = pickFirstTrimmed(normalized.brand);
+      const sameBrand =
+        Boolean(anchorBrand) &&
+        Boolean(candidateBrand) &&
+        String(anchorBrand).toLowerCase() === String(candidateBrand).toLowerCase();
+      if (sameBrand) continue;
       observedRecallHits.add(String(productId).toLowerCase());
     }
     if (observedRecallHits.size >= earlyStopTarget) break;
@@ -5222,8 +5276,7 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
       meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
+        ...buildRecallMeta(),
       },
     };
   }
@@ -5240,8 +5293,7 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
       meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
+        ...buildRecallMeta(),
       },
     };
   }
@@ -5251,8 +5303,7 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: 'catalog_search_no_candidates',
       meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
+        ...buildRecallMeta(),
       },
     };
   }
@@ -5262,8 +5313,7 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
       meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
+        ...buildRecallMeta(),
       },
     };
   }
@@ -5419,8 +5469,7 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
       meta: {
-        reason_counts: reasonCounts,
-        query_attempted: searchResults.length,
+        ...buildRecallMeta(),
       },
     };
   }
@@ -5432,8 +5481,7 @@ async function buildRealtimeCompetitorCandidates({
     queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
     reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty',
     meta: {
-      reason_counts: reasonCounts,
-      query_attempted: searchResults.length,
+      ...buildRecallMeta(),
     },
   };
 }
@@ -28228,6 +28276,7 @@ const __internal = {
   buildLabelQueue,
   runRecoBlocksForUrl,
   buildRealtimeCompetitorCandidates,
+  maybeSyncRepairLowCoverageCompetitors,
   resolveProductAnalysisSocialState,
   applyProductAnalysisSocialProvenance,
   applyRecoGuardrailToProductAnalysisPayload,
