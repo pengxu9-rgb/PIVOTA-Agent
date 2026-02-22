@@ -4162,6 +4162,8 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
   const searchUrl = `${searchApiBase}/agent/v1/products/search`;
   const hasOutboundSourceOverride =
     Boolean(normalizedOutboundSource) && normalizedOutboundSource !== normalizedRequestSource;
+  const shouldUseAuroraFallbackTimeoutCap =
+    isAuroraSource(normalizedRequestSource) && !hasOutboundSourceOverride;
   const preserveAuroraSource =
     PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE &&
     isAuroraSource(normalizedRequestSource) &&
@@ -4178,7 +4180,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
     ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
     : [];
   const candidateQueries = [baseQueryText, ...semanticRetryQueries].filter(Boolean);
-  const fallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
+  const fallbackTimeoutMs = shouldUseAuroraFallbackTimeoutCap
     ? Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS)
     : PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
 
@@ -8699,6 +8701,8 @@ async function proxyAgentSearchToBackend(req, res) {
         }
       : guardedQueryParams;
   const resolverFirstMetadata = source ? { source } : null;
+  const auroraUpstreamSourceOverrideActive =
+    isAuroraSource(source) && Boolean(upstreamSource) && upstreamSource !== source;
   const traceId = randomUUID();
   const startedAtMs = Date.now();
   const normalizedQuery = String(queryText || '').trim();
@@ -8837,7 +8841,9 @@ async function proxyAgentSearchToBackend(req, res) {
       getUpstreamTimeoutMs('find_products_multi'),
       PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
     );
-    const basePrimaryTimeoutMs = auroraFallbackOverrides.active
+    const shouldUseAuroraPrimaryTimeoutCap =
+      auroraFallbackOverrides.active && !auroraUpstreamSourceOverrideActive;
+    const basePrimaryTimeoutMs = shouldUseAuroraPrimaryTimeoutCap
       ? Math.min(basePrimaryTimeoutMsRaw, PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS)
       : basePrimaryTimeoutMsRaw;
     const primaryTimeoutMs =
@@ -8878,13 +8884,19 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_upstream_base: auroraFallbackOverrides.active
         ? getProxySearchApiBase(source)
         : null,
+      aurora_primary_timeout_cap_applied: auroraFallbackOverrides.active
+        ? shouldUseAuroraPrimaryTimeoutCap
+        : null,
       aurora_primary_timeout_ms: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS
         : null,
       aurora_fallback_timeout_ms: auroraFallbackOverrides.active
         ? PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS
         : null,
-      aurora_upstream_source_override: auroraFallbackOverrides.active ? upstreamSource || source || null : null,
+      aurora_upstream_source_override:
+        auroraFallbackOverrides.active && auroraUpstreamSourceOverrideActive
+          ? upstreamSource
+          : null,
       primary_monoculture_detected: false,
       primary_monoculture_dominant_brand: null,
       primary_monoculture_external_ratio: 0,
@@ -9187,6 +9199,7 @@ async function proxyAgentSearchToBackend(req, res) {
     const fallbackStrategy = {
       source: auroraFallbackOverrides.strategySource,
       request_source: source || null,
+      upstream_source: upstreamSource || source || null,
       resolver_attempted: false,
       secondary_attempted: false,
       secondary_skipped_reason: null,
@@ -9206,6 +9219,19 @@ async function proxyAgentSearchToBackend(req, res) {
       aurora_upstream_base: auroraFallbackOverrides.active
         ? getProxySearchApiBase(source)
         : null,
+      aurora_primary_timeout_cap_applied: auroraFallbackOverrides.active
+        ? !auroraUpstreamSourceOverrideActive
+        : null,
+      aurora_primary_timeout_ms: auroraFallbackOverrides.active
+        ? PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS
+        : null,
+      aurora_fallback_timeout_ms: auroraFallbackOverrides.active
+        ? PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS
+        : null,
+      aurora_upstream_source_override:
+        auroraFallbackOverrides.active && auroraUpstreamSourceOverrideActive
+          ? upstreamSource
+          : null,
     };
     if (queryText) {
       if (allowResolverFallbackOnException) {
