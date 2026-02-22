@@ -153,9 +153,14 @@ const getAuroraPdpPrefetchStateSnapshot =
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
+const SERVICE_DEPLOYMENT_ID = String(
+  process.env.RAILWAY_DEPLOYMENT_ID ||
+  process.env.DEPLOYMENT_ID ||
+  ''
+).trim();
 const SERVICE_GIT_SHA = String(
-  process.env.AURORA_GIT_SHA ||
   process.env.RAILWAY_GIT_COMMIT_SHA ||
+  process.env.AURORA_GIT_SHA ||
   process.env.GIT_COMMIT_SHA ||
   process.env.SOURCE_VERSION ||
   ''
@@ -8038,6 +8043,7 @@ app.use((req, res, next) => {
     res.setHeader('X-Service-Commit', SERVICE_GIT_SHA_SHORT);
     res.setHeader('X-Aurora-Git-Sha', SERVICE_GIT_SHA_SHORT);
   }
+  if (SERVICE_DEPLOYMENT_ID) res.setHeader('X-Service-Deployment-Id', SERVICE_DEPLOYMENT_ID);
   if (SERVICE_GIT_BRANCH) res.setHeader('X-Service-Branch', SERVICE_GIT_BRANCH);
   res.setHeader('X-Aurora-Build', SERVICE_BUILD_ID);
   res.setHeader('X-Service-Name', SERVICE_NAME);
@@ -8103,6 +8109,7 @@ const healthRouteHandler = (req, res) => {
       commit: SERVICE_GIT_SHA_SHORT,
       build_id: SERVICE_BUILD_ID,
       branch: SERVICE_GIT_BRANCH || null,
+      deployment_id: SERVICE_DEPLOYMENT_ID || null,
       started_at: SERVICE_STARTED_AT,
     },
     backend: {
@@ -8179,6 +8186,7 @@ const healthRouteHandler = (req, res) => {
           commit: SERVICE_GIT_SHA_SHORT,
           build_id: SERVICE_BUILD_ID,
           branch: SERVICE_GIT_BRANCH || null,
+          deployment_id: SERVICE_DEPLOYMENT_ID || null,
           started_at: SERVICE_STARTED_AT,
         },
         backend: {
@@ -8212,6 +8220,7 @@ app.get('/version', (req, res) => {
     full_sha: SERVICE_GIT_SHA || null,
     build_id: SERVICE_BUILD_ID,
     branch: SERVICE_GIT_BRANCH || null,
+    deployment_id: SERVICE_DEPLOYMENT_ID || null,
     started_at: SERVICE_STARTED_AT,
   });
 });
