@@ -1,0 +1,52 @@
+name: Aurora Chat V2 Nightly Full Eval
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Aurora eval base URL (default: staging)"
+        required: false
+        default: "https://pivota-agent-staging.up.railway.app"
+
+concurrency:
+  group: aurora-chat-nightly-full
+  cancel-in-progress: true
+
+jobs:
+  nightly_full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      AURORA_EVAL_BASE_URL: ${{ inputs.base_url || vars.AURORA_EVAL_BASE_URL || secrets.AURORA_EVAL_BASE_URL || 'https://pivota-agent-staging.up.railway.app' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Run nightly full eval
+        run: |
+          npm run eval:aurora:nightly-full -- \
+            --base "$AURORA_EVAL_BASE_URL"
+
+      - name: Upload nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aurora-chat-nightly-full-reports
+          path: |
+            reports/aurora_chat_v2_nightly_full_*.json
+            reports/aurora_chat_v2_nightly_full_*.md
+            reports/aurora_travel_gate_*.json
+            reports/aurora_travel_gate_*.md
+            reports/chat_followup_canary_nightly_*.md
+          retention-days: 14
