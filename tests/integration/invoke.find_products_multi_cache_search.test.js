@@ -1307,6 +1307,95 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     }
   });
 
+  test('eval internal-only products_returned includes post_quality diagnostics', async () => {
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED = 'true';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED = 'true';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER = 'x-eval';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION = 'true';
+    process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO = 'false';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 1 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_ipsa_1',
+                  product_id: 'prod_ipsa_1',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Time Reset Aqua',
+                  vendor: 'IPSA',
+                  status: 'published',
+                  inventory_quantity: 9,
+                  price: 39,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Eval', '1')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        eval_mode: true,
+        upstream_disabled: true,
+      }),
+    );
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    const postQuality =
+      resp.body.metadata?.search_decision?.post_quality ||
+      resp.body.metadata?.route_debug?.policy?.ambiguity?.post_quality;
+    expect(postQuality).toEqual(
+      expect.objectContaining({
+        candidates: expect.any(Number),
+        anchor_ratio: expect.any(Number),
+        domain_entropy: expect.any(Number),
+        anchor_basis_size: expect.any(Number),
+      }),
+    );
+    expect(Number(postQuality?.candidates || 0)).toBe(resp.body.products.length);
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('pet leash recommendation does not enter lookup timeout path on cache miss', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
