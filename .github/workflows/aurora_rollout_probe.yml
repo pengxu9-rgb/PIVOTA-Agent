@@ -32,15 +32,21 @@ jobs:
           AURORA_PROBE_RETRY_COUNT: "1"
           AURORA_PROBE_WINDOW_MINUTES: "10"
         run: |
-          npm run probe:aurora:rollout -- \
-            --base "$AURORA_PROBE_BASE_URL" \
-            --samples "$AURORA_PROBE_SAMPLES" \
-            --concurrency "$AURORA_PROBE_CONCURRENCY" \
-            --retry-count "$AURORA_PROBE_RETRY_COUNT" \
-            --window-minutes "$AURORA_PROBE_WINDOW_MINUTES" \
-            --webhook "$AURORA_PROBE_WEBHOOK_URL" \
-            --webhook-token "$AURORA_PROBE_WEBHOOK_TOKEN" \
+          args=(
+            --base "$AURORA_PROBE_BASE_URL"
+            --samples "$AURORA_PROBE_SAMPLES"
+            --concurrency "$AURORA_PROBE_CONCURRENCY"
+            --retry-count "$AURORA_PROBE_RETRY_COUNT"
+            --window-minutes "$AURORA_PROBE_WINDOW_MINUTES"
             --fail-on-high true
+          )
+          if [ -n "$AURORA_PROBE_WEBHOOK_URL" ]; then
+            args+=(--webhook "$AURORA_PROBE_WEBHOOK_URL")
+            if [ -n "$AURORA_PROBE_WEBHOOK_TOKEN" ]; then
+              args+=(--webhook-token "$AURORA_PROBE_WEBHOOK_TOKEN")
+            fi
+          fi
+          npm run probe:aurora:rollout -- "${args[@]}"
 
       - name: Upload report artifacts
         if: always()
