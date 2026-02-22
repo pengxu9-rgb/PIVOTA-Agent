@@ -94,6 +94,12 @@ const {
   recordQueueItemsServed,
   setPrelabelCacheHitRate,
   setLlmSuggestionOverturnedRate,
+  recordAuroraCompSnapshotHit,
+  recordAuroraCompSnapshotStale,
+  recordAuroraCompDegraded,
+  recordAuroraCompBackfillEnqueued,
+  recordAuroraCompBackfillDedupDrop,
+  observeAuroraCompSnapshotAgeSeconds,
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
 const {
@@ -204,9 +210,23 @@ const { buildLabelQueue } = require('./recoLabelQueue');
 const { PRELABEL_PROMPT_VERSION } = require('./recoPrelabelPrompts');
 const { normalizeCanonicalScoreBreakdown, normalizeWhyCandidateObject } = require('./recoScoreExplain');
 const { extractWhitelistedSocialChannels } = require('./socialSummaryUserVisible');
+const {
+  buildSnapshotKey: buildCompetitorSnapshotKey,
+  readSnapshot: readCompetitorSnapshot,
+  writeSnapshot: writeCompetitorSnapshot,
+  canEnqueueBackfill: canEnqueueCompetitorSnapshotBackfill,
+  markBackfillCooldown: markCompetitorSnapshotBackfillCooldown,
+} = require('./competitorSnapshotStore');
 const { simulateConflicts } = require('./routineRules');
 const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { INTENT_ENUM, inferCanonicalIntent } = require('./intentCanonical');
+const {
+  collectConceptMatchesFromText,
+  collectConceptIdsFromText,
+  mapConceptsToRoutineActiveTokens,
+  matchIngredientOntology,
+} = require('./kbV0/conceptMatcher');
+const { getAuroraKbV0, getAuroraKbFailMode } = require('./kbV0/loader');
 const { resolveQaPlan } = require('./qaPlanner');
 const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
 const { getTravelWeather } = require('./weatherAdapter');
@@ -613,6 +633,11 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS || 150);
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(800, v));
+})();
+const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS || 120);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 120;
+  return Math.max(0, Math.min(320, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 150);
@@ -2175,7 +2200,7 @@ async function searchPivotaBackendProducts({
   const deadlineReserveMs = normalizedDeadlineMs > 0 ? 20 : 0;
   const effectiveDeadlineMs = normalizedDeadlineMs > 0 ? normalizedDeadlineMs : startedAt + normalizedTimeout;
   const getRemainingOverallMs = () => Math.max(0, effectiveDeadlineMs - Date.now());
-  const hasOverallBudget = (minMs = 220) => getRemainingOverallMs() >= Math.max(40, Number(minMs) || 220);
+  const hasOverallBudget = (minMs = 120) => getRemainingOverallMs() >= Math.max(40, Number(minMs) || 120);
   const useAllMerchants = searchAllMerchants === true;
   const params = {
     query: q,
@@ -2363,7 +2388,7 @@ async function searchPivotaBackendProducts({
     const pathAttempts = [];
     let lastFailure = null;
     let lastEmpty = null;
-    if (!hasOverallBudget(180) || timeoutForAttemptMs < 180) {
+    if (!hasOverallBudget(120) || timeoutForAttemptMs < 120) {
       return {
         ok: false,
         products: [],
@@ -2381,7 +2406,7 @@ async function searchPivotaBackendProducts({
       const pathToken = normalizeRecoCatalogSearchPath(normalizedPaths[pathIdx]) || '/agent/v1/products/search';
       const endpoint = `${normalizedBase}${pathToken}`;
       const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
-      if (!hasOverallBudget(150)) {
+      if (!hasOverallBudget(100)) {
         const exhausted = {
           ok: false,
           products: [],
@@ -4951,11 +4976,13 @@ async function buildRealtimeCompetitorCandidates({
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
     const queryText = plannedQueries[queryIdx];
     const remainingMs = getRemainingMs();
+    const isMainFirstQuery = runMode === 'main_path' && queryIdx === 0;
+    const firstQueryGraceMs = isMainFirstQuery ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS : 0;
+    const gatedRemainingMs = remainingMs + firstQueryGraceMs;
     const allowFirstQueryWithTightBudget =
-      runMode === 'main_path' &&
-      queryIdx === 0 &&
-      remainingMs >= PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS;
-    if (remainingMs < 260 && !allowFirstQueryWithTightBudget) {
+      isMainFirstQuery &&
+      gatedRemainingMs >= PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS;
+    if (gatedRemainingMs < 260 && !allowFirstQueryWithTightBudget) {
       searchResults.push({
         query: queryText,
         searched: {
@@ -4997,7 +5024,7 @@ async function buildRealtimeCompetitorCandidates({
       timeoutMs: perQueryTimeoutMs,
       minTimeoutMs: perQueryMinMs,
       searchAllMerchants,
-      deadlineMs: softDeadlineMs,
+      deadlineMs: isMainFirstQuery ? softDeadlineMs + firstQueryGraceMs : softDeadlineMs,
       allowExternalSeed,
       externalSeedStrategy,
       fastMode: true,
@@ -5513,6 +5540,28 @@ function applyProductAnalysisSocialProvenance(payload, patch = {}) {
     ...p,
     provenance: next,
   };
+}
+
+function shouldRefreshCompetitorSnapshot(payload, sourceMeta = null) {
+  const p = isPlainObject(payload) ? payload : {};
+  const provenance = isPlainObject(p.provenance) ? p.provenance : {};
+  const competitorMeta = isPlainObject(provenance.competitor_meta) ? provenance.competitor_meta : {};
+  const sourceMetaObj = isPlainObject(sourceMeta) ? sourceMeta : {};
+  const sourceToken = String(
+    competitorMeta.source ||
+    sourceMetaObj.competitor_source ||
+    sourceMetaObj.competitor_snapshot_meta?.source ||
+    '',
+  ).trim().toLowerCase();
+  if (sourceToken !== 'snapshot') return false;
+  if (competitorMeta.very_stale === true || competitorMeta.stale === true || competitorMeta.degraded === true) {
+    return true;
+  }
+  const ageSec = Number(competitorMeta.snapshot_age_sec);
+  if (Number.isFinite(ageSec) && ageSec > 0) {
+    return ageSec >= Math.trunc((Number(process.env.AURORA_COMP_SNAPSHOT_SOFT_TTL_MS || 259200000) || 259200000) / 1000);
+  }
+  return true;
 }
 
 function scheduleProductIntelKbBackfill({
@@ -6688,25 +6737,137 @@ async function runRecoBlocksForUrl({
     ? existingPayload
     : null;
   const modeToken = String(mode || '').trim().toLowerCase() || 'main_path';
+  const snapshotKey = buildCompetitorSnapshotKey({
+    anchor_product_id: pickFirstTrimmed(anchorObj?.product_id, anchorObj?.sku_id),
+    normalized_query: pickFirstTrimmed(anchorObj?.display_name, anchorObj?.name),
+    product_url: urlText,
+    locale: lang,
+    surface: 'product_analysis',
+    objective: 'competitors',
+    category: pickFirstTrimmed(anchorObj?.category, anchorObj?.category_name, anchorObj?.category_taxonomy),
+    price_band: inferRecoPriceBand(anchorObj?.price_band, {
+      price: normalizePriceObject(anchorObj?.price)?.amount,
+    }),
+    skin_fit_bucket: buildProfileSkinTags(profileSummary).slice(0, 2).join('_'),
+  });
+  const snapshotRead = snapshotKey ? readCompetitorSnapshot(snapshotKey) : { hit: false, payload: null, meta: null };
+  const snapshotPayload = snapshotRead.hit && snapshotRead.payload && typeof snapshotRead.payload === 'object'
+    ? snapshotRead.payload
+    : null;
+  const snapshotCompetitors = sanitizeCompetitorCandidates(snapshotPayload?.competitors, maxCandidates).map((row) => ({
+    ...row,
+    source: normalizeRecoSourceObject(row?.source || row?.source_type || 'snapshot'),
+    source_type: String(row?.source?.type || row?.source_type || 'snapshot'),
+  }));
+  const snapshotRelated = sanitizeCompetitorCandidates(snapshotPayload?.related_products, maxCandidates).map((row) => ({
+    ...row,
+    source: normalizeRecoSourceObject(row?.source || row?.source_type || 'snapshot'),
+    source_type: String(row?.source?.type || row?.source_type || 'snapshot'),
+  }));
+  const snapshotDupes = sanitizeCompetitorCandidates(snapshotPayload?.dupes, maxCandidates).map((row) => ({
+    ...row,
+    source: normalizeRecoSourceObject(row?.source || row?.source_type || 'snapshot'),
+    source_type: String(row?.source?.type || row?.source_type || 'snapshot'),
+  }));
+  const snapshotReadyForMainPath = modeToken === 'main_path' && snapshotCompetitors.length > 0;
+  const snapshotMeta = snapshotRead.hit
+    ? {
+      key: snapshotRead.key,
+      source: String(snapshotRead?.meta?.source || 'snapshot').trim() || 'snapshot',
+      confidence:
+        Number.isFinite(Number(snapshotRead?.meta?.confidence)) && Number(snapshotRead.meta.confidence) > 0
+          ? Number(snapshotRead.meta.confidence)
+          : snapshotRead.stale
+            ? 0.45
+            : 0.68,
+      stale: Boolean(snapshotRead.stale),
+      very_stale: Boolean(snapshotRead.very_stale),
+      degraded: Boolean(snapshotRead.stale || snapshotRead.very_stale),
+      age_sec: Number.isFinite(Number(snapshotRead.age_sec)) ? Number(snapshotRead.age_sec) : null,
+      coverage: Number.isFinite(Number(snapshotRead?.meta?.coverage)) ? Number(snapshotRead.meta.coverage) : snapshotCompetitors.length,
+    }
+    : null;
+  if (snapshotMeta) {
+    recordAuroraCompSnapshotHit({
+      mode: modeToken,
+      source: snapshotMeta.source,
+      confidence: snapshotMeta.confidence >= 0.7 ? 'high' : snapshotMeta.confidence >= 0.45 ? 'med' : 'low',
+    });
+    if (Number.isFinite(snapshotMeta.age_sec) && snapshotMeta.age_sec >= 0) {
+      observeAuroraCompSnapshotAgeSeconds(snapshotMeta.age_sec);
+    }
+    if (snapshotMeta.stale || snapshotMeta.very_stale) {
+      recordAuroraCompSnapshotStale({
+        mode: modeToken,
+        staleLevel: snapshotMeta.very_stale ? 'very_stale' : 'stale',
+      });
+      recordAuroraCompDegraded({
+        mode: modeToken,
+        reason: snapshotMeta.very_stale ? 'snapshot_very_stale' : 'snapshot_stale',
+      });
+    }
+  }
 
-  const kbCompetitors = sanitizeCompetitorCandidates(payloadObj?.competitors?.candidates, maxCandidates).map((row) => ({
+  const kbCompetitors = sanitizeCompetitorCandidates(
+    [
+      ...snapshotCompetitors,
+      ...(Array.isArray(payloadObj?.competitors?.candidates) ? payloadObj.competitors.candidates : []),
+    ],
+    maxCandidates,
+  ).map((row) => ({
     ...row,
-    source: normalizeRecoSourceObject(row?.source || row?.source_type || 'kb_backfill'),
-    source_type: String(row?.source?.type || row?.source_type || 'kb_backfill'),
+    source: normalizeRecoSourceObject(
+      row?.source || row?.source_type || (snapshotCompetitors.length ? 'snapshot' : 'kb_backfill'),
+    ),
+    source_type: String(
+      row?.source?.type || row?.source_type || (snapshotCompetitors.length ? 'snapshot' : 'kb_backfill'),
+    ),
   }));
-  const kbRelated = sanitizeCompetitorCandidates(payloadObj?.related_products?.candidates, maxCandidates).map((row) => ({
+  const kbRelated = sanitizeCompetitorCandidates(
+    [
+      ...snapshotRelated,
+      ...(Array.isArray(payloadObj?.related_products?.candidates) ? payloadObj.related_products.candidates : []),
+    ],
+    maxCandidates,
+  ).map((row) => ({
     ...row,
-    source: normalizeRecoSourceObject(row?.source || row?.source_type || 'on_page_related'),
-    source_type: String(row?.source?.type || row?.source_type || 'on_page_related'),
+    source: normalizeRecoSourceObject(
+      row?.source || row?.source_type || (snapshotRelated.length ? 'snapshot' : 'on_page_related'),
+    ),
+    source_type: String(
+      row?.source?.type || row?.source_type || (snapshotRelated.length ? 'snapshot' : 'on_page_related'),
+    ),
   }));
-  const kbDupes = sanitizeCompetitorCandidates(payloadObj?.dupes?.candidates, maxCandidates).map((row) => ({
+  const kbDupes = sanitizeCompetitorCandidates(
+    [
+      ...snapshotDupes,
+      ...(Array.isArray(payloadObj?.dupes?.candidates) ? payloadObj.dupes.candidates : []),
+    ],
+    maxCandidates,
+  ).map((row) => ({
     ...row,
-    source: normalizeRecoSourceObject(row?.source || row?.source_type || 'kb_backfill'),
-    source_type: String(row?.source?.type || row?.source_type || 'kb_backfill'),
+    source: normalizeRecoSourceObject(
+      row?.source || row?.source_type || (snapshotDupes.length ? 'snapshot' : 'kb_backfill'),
+    ),
+    source_type: String(
+      row?.source?.type || row?.source_type || (snapshotDupes.length ? 'snapshot' : 'kb_backfill'),
+    ),
   }));
 
   const sourceFns = {
     catalog_ann: async ({ timeout_ms: timeoutMs, deadline_ms: deadlineMs }) => {
+      if (snapshotReadyForMainPath) {
+        return {
+          candidates: [],
+          reason: 'snapshot_short_circuit',
+          meta: {
+            query_attempted: 0,
+            reason_counts: {
+              snapshot_short_circuit: 1,
+            },
+          },
+        };
+      }
       const queryLimit =
         modeToken === 'async_backfill'
           ? PRODUCT_URL_REALTIME_COMPETITOR_BACKFILL_MAX_QUERIES
@@ -6779,7 +6940,7 @@ async function runRecoBlocksForUrl({
     },
   };
 
-  return recoBlocks(
+  const dagResult = await recoBlocks(
     buildRouterAnchorFromProductLike(anchorObj),
     {
       mode,
@@ -6818,6 +6979,28 @@ async function runRecoBlocksForUrl({
     },
     budgetMs,
   );
+  if (!dagResult || typeof dagResult !== 'object') return dagResult;
+  if (snapshotMeta) {
+    dagResult.snapshot_meta = snapshotMeta;
+    if (
+      dagResult.provenance_patch &&
+      typeof dagResult.provenance_patch === 'object' &&
+      !Array.isArray(dagResult.provenance_patch)
+    ) {
+      dagResult.provenance_patch = {
+        ...dagResult.provenance_patch,
+        competitor_meta: {
+          source: snapshotMeta.source,
+          confidence: snapshotMeta.confidence,
+          snapshot_age_sec: snapshotMeta.age_sec,
+          degraded: snapshotMeta.degraded,
+          stale: snapshotMeta.stale,
+          very_stale: snapshotMeta.very_stale,
+        },
+      };
+    }
+  }
+  return dagResult;
 }
 
 function sanitizeCompetitorsInPayload(payload, { max = 10 } = {}) {
@@ -7013,19 +7196,58 @@ function scheduleProductIntelCompetitorEnrichBackfill({
   source = 'url_realtime_product_intel',
   sourceMeta = null,
   forceEnhance = false,
+  refreshSnapshot = false,
   logger,
 } = {}) {
   if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED || !PRODUCT_URL_REALTIME_COMPETITOR_ASYNC_ENRICH_ENABLED) return;
   const urlText = String(productUrl || '').trim();
   if (!/^https?:\/\//i.test(urlText)) return;
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
-  if (forceEnhance) {
-    if (!shouldRepairCompetitorCoverage(payload, { preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT })) return;
-  } else if (
+  const needsCoverageRepair = shouldRepairCompetitorCoverage(payload, {
+    preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
+  });
+  if (forceEnhance && !refreshSnapshot && !needsCoverageRepair) return;
+  if (!forceEnhance && !refreshSnapshot && (
     hasCompetitorCandidatesInPayload(payload) &&
     !hasLowCoverageCompetitorsInPayload(payload, { preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT })
-  ) {
+  )) {
     return;
+  }
+
+  const payloadAssessment =
+    payload && payload.assessment && typeof payload.assessment === 'object' && !Array.isArray(payload.assessment)
+      ? payload.assessment
+      : null;
+  const payloadAnchor =
+    payloadAssessment &&
+    payloadAssessment.anchor_product &&
+    typeof payloadAssessment.anchor_product === 'object' &&
+    !Array.isArray(payloadAssessment.anchor_product)
+      ? payloadAssessment.anchor_product
+      : null;
+  const snapshotAnchor =
+    payloadAnchor ||
+    (parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null);
+  const snapshotKey = buildCompetitorSnapshotKey({
+    anchor_product_id: pickFirstTrimmed(snapshotAnchor?.product_id, snapshotAnchor?.sku_id),
+    normalized_query: pickFirstTrimmed(snapshotAnchor?.display_name, snapshotAnchor?.name),
+    product_url: urlText,
+    locale: lang,
+    surface: 'product_analysis',
+    objective: 'competitors',
+    category: pickFirstTrimmed(snapshotAnchor?.category, snapshotAnchor?.category_name, snapshotAnchor?.category_taxonomy),
+    price_band: inferRecoPriceBand(snapshotAnchor?.price_band, {
+      price: normalizePriceObject(snapshotAnchor?.price)?.amount,
+    }),
+    skin_fit_bucket: buildProfileSkinTags(profileSummary).slice(0, 2).join('_'),
+  });
+  if (snapshotKey) {
+    if (!canEnqueueCompetitorSnapshotBackfill(snapshotKey)) {
+      recordAuroraCompBackfillDedupDrop({ mode: 'async_backfill' });
+      return;
+    }
+    markCompetitorSnapshotBackfillCooldown(snapshotKey);
+    recordAuroraCompBackfillEnqueued({ mode: 'async_backfill' });
   }
 
   let payloadSnapshot = null;
@@ -7152,6 +7374,36 @@ function scheduleProductIntelCompetitorEnrichBackfill({
         ),
       };
       const enriched = enrichProductAnalysisPayload(mergedPayload, { lang, profileSummary });
+      if (snapshotKey) {
+        writeCompetitorSnapshot(
+          snapshotKey,
+          {
+            competitors: asyncCandidates,
+            related_products: asyncRelated,
+            dupes: asyncDupes,
+            competitor_queries: Array.isArray(dagOut.catalog_queries) ? dagOut.catalog_queries : [],
+          },
+          {
+            created_at: new Date().toISOString(),
+            source: 'reco_async_backfill',
+            ranker_version:
+              String(dagOut?.provenance_patch?.pipeline || '').trim() || 'reco_blocks_dag.v1',
+            coverage: {
+              competitors: asyncCandidates.length,
+              related_products: asyncRelated.length,
+              dupes: asyncDupes.length,
+            },
+            confidence:
+              dagOut?.confidence_patch?.competitors?.score ??
+              dagOut?.confidence_patch?.competitors?.level ??
+              0.56,
+            reason_flags: [
+              ...(dagTimedOutBlocks.length ? ['async_backfill_after_timeout'] : []),
+              ...(dagFallbacksUsed.length ? ['async_backfill_after_fallback'] : []),
+            ],
+          },
+        );
+      }
       const kbKey = buildProductIntelKbKey({
         productUrl: urlText,
         parsedProduct: assessmentAnchor || anchorForReco,
@@ -7674,6 +7926,7 @@ async function buildProductAnalysisFromUrlIngredients({
   let dagConfidencePatch = null;
   let dagProvenancePatch = null;
   let dagTracking = null;
+  let competitorSnapshotMeta = null;
 
   const dagOut = await runRecoBlocksForUrl({
     productUrl: parsedUrl.toString(),
@@ -7719,7 +7972,14 @@ async function buildProductAnalysisFromUrlIngredients({
       dagOut.tracking && typeof dagOut.tracking === 'object' && !Array.isArray(dagOut.tracking)
         ? dagOut.tracking
         : null;
+    competitorSnapshotMeta =
+      dagOut.snapshot_meta && typeof dagOut.snapshot_meta === 'object' && !Array.isArray(dagOut.snapshot_meta)
+        ? dagOut.snapshot_meta
+        : null;
     competitorSource = 'reco_blocks_dag';
+    if (competitorSnapshotMeta && compPool.length) {
+      competitorSource = 'snapshot';
+    }
     dagReasonCodes = summarizeRouterReasonCodes(routedPools.routed);
     if (!compPool.length) {
       const fallbackUsed = Array.isArray(dagDiagnostics?.fallbacks_used) ? dagDiagnostics.fallbacks_used : [];
@@ -7890,6 +8150,22 @@ async function buildProductAnalysisFromUrlIngredients({
       pipeline: dagProvenancePatch?.pipeline || 'url_realtime_product_intel_v1',
       validation_mode: dagProvenancePatch?.validation_mode || 'soft_fail',
       ...(dagProvenancePatch && typeof dagProvenancePatch === 'object' ? dagProvenancePatch : {}),
+      ...(competitorSnapshotMeta
+        ? {
+          competitor_meta: {
+            source: String(competitorSnapshotMeta.source || 'snapshot'),
+            confidence: Number.isFinite(Number(competitorSnapshotMeta.confidence))
+              ? Number(competitorSnapshotMeta.confidence)
+              : null,
+            snapshot_age_sec: Number.isFinite(Number(competitorSnapshotMeta.age_sec))
+              ? Number(competitorSnapshotMeta.age_sec)
+              : null,
+            degraded: Boolean(competitorSnapshotMeta.degraded),
+            stale: Boolean(competitorSnapshotMeta.stale),
+            very_stale: Boolean(competitorSnapshotMeta.very_stale),
+          },
+        }
+        : {}),
     },
     missing_info: uniqCaseInsensitiveStrings(
       [
@@ -7908,6 +8184,50 @@ async function buildProductAnalysisFromUrlIngredients({
     ...(dupeCandidates.length ? { dupes: { candidates: dupeCandidates } } : {}),
     ...(dagTracking ? { candidate_tracking: dagTracking } : {}),
   };
+
+  const competitorSnapshotKey = buildCompetitorSnapshotKey({
+    anchor_product_id: pickFirstTrimmed(anchorProduct?.product_id, anchorProduct?.sku_id),
+    normalized_query: pickFirstTrimmed(anchorDisplayName, anchorName),
+    product_url: parsedUrl.toString(),
+    locale: lang,
+    surface: 'product_analysis',
+    objective: 'competitors',
+    category: pickFirstTrimmed(anchorProduct?.category, anchorProduct?.category_name, parsedProductObj?.category_taxonomy),
+    price_band: inferRecoPriceBand(anchorProduct?.price_band, {
+      price: normalizePriceObject(anchorProduct?.price)?.amount,
+    }),
+    skin_fit_bucket: buildProfileSkinTags(profileSummary).slice(0, 2).join('_'),
+  });
+  if (competitorSnapshotKey && competitorCandidates.length) {
+    writeCompetitorSnapshot(
+      competitorSnapshotKey,
+      {
+        competitors: competitorCandidates,
+        related_products: relatedCandidates,
+        dupes: dupeCandidates,
+        competitor_queries: competitorOut?.queries || [],
+      },
+      {
+        created_at: new Date().toISOString(),
+        source: competitorSource === 'snapshot' ? 'snapshot' : 'realtime_main',
+        ranker_version: String(dagProvenancePatch?.pipeline || 'reco_blocks_dag.v1'),
+        coverage: {
+          competitors: competitorCandidates.length,
+          related_products: relatedCandidates.length,
+          dupes: dupeCandidates.length,
+        },
+        confidence:
+          dagConfidencePatch?.competitors?.score ??
+          dagConfidencePatch?.competitors?.level ??
+          confidence,
+        reason_flags: [
+          ...(competitorMissing ? ['competitors_missing'] : []),
+          ...(dagTimedOutBlocks.length ? ['timed_out_blocks_present'] : []),
+          ...(dagFallbacksUsed.length ? ['fallbacks_used_present'] : []),
+        ],
+      },
+    );
+  }
 
   const norm = normalizeProductAnalysis(raw);
   const payloadInternalCodes = Array.isArray(norm.payload?.internal_debug_codes) ? norm.payload.internal_debug_codes : [];
@@ -7945,6 +8265,20 @@ async function buildProductAnalysisFromUrlIngredients({
       competitor_queries: competitorOut?.queries || [],
       competitor_reason: competitorReason || null,
       competitor_source: competitorSource,
+      competitor_snapshot_meta: competitorSnapshotMeta
+        ? {
+          source: String(competitorSnapshotMeta.source || 'snapshot'),
+          confidence: Number.isFinite(Number(competitorSnapshotMeta.confidence))
+            ? Number(competitorSnapshotMeta.confidence)
+            : null,
+          snapshot_age_sec: Number.isFinite(Number(competitorSnapshotMeta.age_sec))
+            ? Number(competitorSnapshotMeta.age_sec)
+            : null,
+          degraded: Boolean(competitorSnapshotMeta.degraded),
+          stale: Boolean(competitorSnapshotMeta.stale),
+          very_stale: Boolean(competitorSnapshotMeta.very_stale),
+        }
+        : null,
       social_signal_present: !socialMissing,
       competitor_count: competitorCandidates.length,
       related_count: relatedCandidates.length,
@@ -9998,12 +10332,12 @@ function buildPhotoFallbackActionCard({
     lang === 'CN'
       ? [
           '自然光拍摄：正对窗户，避免背光与强阴影。',
-          '距离 30–50cm，正脸平视，脸部占画面约 70%。',
+          '距离 30–50cm，正脸平视，按引导框对齐：额头和下巴都在框内，鼻子尽量在中心线附近。',
           '关闭美颜/滤镜，确保对焦清晰且无遮挡（头发/口罩/手）。',
         ]
       : [
           'Use daylight facing a window; avoid backlight and strong shadows.',
-          'Keep 30–50cm distance, straight-on angle, and face fills about 70% of frame.',
+          'Keep 30–50cm distance and align with the guide frame: forehead/chin inside the frame and nose near center line.',
           'Turn off beauty filters, keep sharp focus, and remove obstructions (hair/mask/hand).',
         ];
 
@@ -10515,8 +10849,8 @@ function buildExecutablePlanForAnalysis({
         checkboxes: requiredCheckboxes,
         retake_prompt:
           lang === 'CN'
-            ? '7 天内按同一光线/角度重拍，并遵循重拍指引。'
-            : 'Retake within 7 days with the same lighting/angle and follow the retake guide.',
+            ? '7 天内按同一光线/角度重拍，并按引导框对齐（额头/下巴入框，鼻子靠近中心线）。'
+            : 'Retake within 7 days with the same lighting/angle, and align to the guide frame (forehead/chin inside, nose near center line).',
         retake_after_days: 7,
       },
     };
@@ -10643,7 +10977,7 @@ function buildExecutablePlanForAnalysis({
       },
       tracking: {
         checkboxes: requiredCheckboxes,
-        retake_prompt: 'Retake in 7 days with the same lighting, angle, and camera distance; follow QC guidance before submit.',
+        retake_prompt: 'Retake in 7 days with the same lighting/angle/distance, and align to the guide frame (forehead/chin inside, nose near center line).',
         retake_after_days: 7,
       },
     };
@@ -10939,20 +11273,21 @@ function buildRetakeSkinAnalysis({ language, photoQuality } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const reasonsRaw = photoQuality && Array.isArray(photoQuality.reasons) ? photoQuality.reasons : [];
   const failedHint = reasonsRaw.includes('qc_failed');
+  const frameHint = reasonsRaw.some((reason) => String(reason || '').toLowerCase().includes('frame_'));
 
   const features = [
     {
       observation:
         lang === 'CN'
-          ? `这张照片${failedHint ? '没有通过' : '质量不够'}，我不会基于照片下皮肤结论（避免误判）。`
-          : `This photo ${failedHint ? "didn't pass" : 'is too low-quality'}, so I won’t make skin conclusions from it (to avoid wrong guesses).`,
+          ? `这张照片${failedHint ? '没有通过' : '质量不够'}${frameHint ? '（包含取景框未对齐）' : ''}，我不会基于照片下皮肤结论（避免误判）。`
+          : `This photo ${failedHint ? "didn't pass" : 'is too low-quality'}${frameHint ? ' (including frame misalignment)' : ''}, so I won’t make skin conclusions from it (to avoid wrong guesses).`,
       confidence: 'pretty_sure',
     },
     {
       observation:
         lang === 'CN'
-          ? '重拍要点：自然光/正脸/无遮挡（头发、口罩）/不美颜滤镜/对焦清晰，距离约 30–50cm。'
-          : 'Retake tips: daylight, straight-on, no obstructions (hair/mask), no beauty filters, sharp focus, ~30–50cm distance.',
+          ? '重拍要点：自然光、正脸平视，按引导框拍（额头和下巴都在框内、鼻子靠近中心线），无遮挡、无美颜滤镜、对焦清晰，距离约 30–50cm。'
+          : 'Retake tips: daylight, straight-on, follow the guide frame (forehead/chin inside, nose near center line), no obstructions, no beauty filters, sharp focus, ~30–50cm distance.',
       confidence: 'pretty_sure',
     },
   ];
@@ -13068,8 +13403,8 @@ function buildFitCheckAnchorPrompt(language) {
   const isCn = String(language || '').toUpperCase() === 'CN';
   return {
     prompt: isCn
-      ? '我可以马上评估，但先给我一个产品锚点：请直接发“产品名”或“购买链接”。'
-      : 'I can evaluate it right away, but I need one anchor first: send the product name or a product link.',
+      ? '我可以马上评估，但先给我一个锚点：请粘贴产品链接、完整产品名，或成分表（INCI）。'
+      : 'I can evaluate it right away, but I need one anchor first: paste the product link, full product name, or ingredient list (INCI).',
     chips: [
       {
         chip_id: 'chip.fitcheck.send_product_name',
@@ -13083,7 +13418,31 @@ function buildFitCheckAnchorPrompt(language) {
         kind: 'quick_reply',
         data: { reply_text: isCn ? '发送链接' : 'Send a link' },
       },
+      {
+        chip_id: 'chip.fitcheck.send_ingredients',
+        label: isCn ? '粘贴成分表' : 'Paste ingredients',
+        kind: 'quick_reply',
+        data: {
+          reply_text: isCn
+            ? '我来粘贴这款产品的成分表（INCI）'
+            : "I'll paste the product ingredient list (INCI)",
+        },
+      },
     ],
+  };
+}
+
+function buildFitCheckAnchorRequireInfoCardPayload(language) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  return {
+    severity: 'warn',
+    message: isCn
+      ? '继续评测前，需要你先提供产品锚点信息。'
+      : 'Before product evaluation, I need a product anchor.',
+    details: [
+      isCn ? '请粘贴产品链接、完整产品名，或成分表（INCI）。' : 'Please paste a product link, full product name, or ingredient list (INCI).',
+    ],
+    actions: ['provide_product_anchor'],
   };
 }
 
@@ -13546,10 +13905,11 @@ function extractWeatherScenario(message) {
   return 'unknown';
 }
 
-function extractKnownActivesFromText(text) {
+function extractKnownActivesFromText(text, language = 'EN') {
   const t = String(text || '').trim();
   if (!t) return [];
   const lower = t.toLowerCase();
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
   // Some CN inputs may contain spaces between characters (e.g. "阿达 帕林", "维 A").
   // Keep an additional whitespace-stripped view for conservative CN matching.
   const compact = t.replace(/\s+/g, '');
@@ -13560,6 +13920,28 @@ function extractKnownActivesFromText(text) {
     if (!key) return;
     if (!out.includes(key)) out.push(key);
   };
+
+  const conceptIds = collectConceptIdsFromText({
+    text: t,
+    language: lang,
+    max: 64,
+    includeSubstring: true,
+  });
+  for (const token of mapConceptsToRoutineActiveTokens(conceptIds)) {
+    push(token);
+  }
+
+  const ontologyHits = matchIngredientOntology({
+    text: t,
+    language: lang,
+    max: 32,
+  });
+  for (const row of ontologyHits) {
+    if (!row || typeof row !== 'object') continue;
+    for (const token of mapConceptsToRoutineActiveTokens(row.classes || [])) {
+      push(token);
+    }
+  }
 
   // NOTE: This is used for routing + local compatibility simulation. Keep it conservative but multilingual.
   // EN: tretinoin/adapalene/retinal/retinol/retinoid
@@ -13607,7 +13989,9 @@ function collectKnownActivesFromRoutine(routine) {
   };
 
   const scanText = (raw) => {
-    const tokens = extractKnownActivesFromText(String(raw || ''));
+    const text = String(raw || '');
+    const lang = /[\u4e00-\u9fff]/.test(text) ? 'CN' : 'EN';
+    const tokens = extractKnownActivesFromText(text, lang);
     for (const t of tokens) push(t);
   };
 
@@ -13659,13 +14043,14 @@ function looksLikeCompatibilityOrConflictQuestion(message) {
   if (!(hasCompatVerbEn || hasCompatVerbZh)) return false;
 
   // Avoid triggering on generic “conflict” questions without any known skincare actives.
-  const actives = extractKnownActivesFromText(t);
+  const actives = extractKnownActivesFromText(t, /[\u4e00-\u9fff]/.test(t) ? 'CN' : 'EN');
   return actives.length > 0;
 }
 
 function buildLocalCompatibilitySimulationInput({ message, profile } = {}) {
   const text = String(message || '').trim();
   if (!text) return null;
+  const language = /[\u4e00-\u9fff]/.test(text) ? 'CN' : 'EN';
 
   const clauses = text
     .split(/[.?!。！？\n]+/)
@@ -13686,9 +14071,9 @@ function buildLocalCompatibilitySimulationInput({ message, profile } = {}) {
     if (isTestContextEn || isTestContextZh) testText = `${testText} ${clause}`.trim();
   }
 
-  const all = extractKnownActivesFromText(text);
-  const routineActives = routineText ? extractKnownActivesFromText(routineText) : [];
-  const testActives = testText ? extractKnownActivesFromText(testText) : [];
+  const all = extractKnownActivesFromText(text, language);
+  const routineActives = routineText ? extractKnownActivesFromText(routineText, language) : [];
+  const testActives = testText ? extractKnownActivesFromText(testText, language) : [];
 
   const setEq = (a, b) => {
     const aa = new Set((a || []).map((v) => String(v).toLowerCase()));
@@ -17073,7 +17458,18 @@ function messageContainsSpecificIngredientScienceTarget(message) {
   const raw = String(message || '').trim();
   if (!raw) return false;
   const lower = raw.toLowerCase();
-  if (extractKnownActivesFromText(raw).length > 0) return true;
+  const language = /[\u4e00-\u9fff]/.test(raw) ? 'CN' : 'EN';
+  if (extractKnownActivesFromText(raw, language).length > 0) return true;
+  const conceptHits = collectConceptIdsFromText({ text: raw, language, max: 24, includeSubstring: true });
+  if (
+    conceptHits.some((conceptId) => {
+      const id = String(conceptId || '').trim().toUpperCase();
+      return /(RETINO|AHA|BHA|PHA|HYDROQUINONE|BENZOYL|SALICYLIC|GLYCOLIC|LACTIC|MANDELIC|AZELAIC|TRANEXAMIC|NIACINAMIDE|VITAMIN_C|ASCORBIC|CERAMIDE|PEPTIDE|ARBUTIN|ISOTRETINOIN|EXFOLIANT|CHEMICAL_PEEL|SUNSCREEN)/.test(id);
+    })
+  ) {
+    return true;
+  }
+  if (matchIngredientOntology({ text: raw, language, max: 8 }).length > 0) return true;
 
   const specificIngredient =
     /\b(niacinamide|retinol|retinoid|adapalene|tretinoin|vitamin\s*c|ascorbic|azelaic|salicylic|glycolic|mandelic|pha|ceramide|peptide|tranexamic|arbutin)\b/i
@@ -18299,7 +18695,40 @@ function mapSuggestionForResponse(row) {
   };
 }
 
+function preflightAuroraKbV0ForStartup({ logger } = {}) {
+  const failMode = getAuroraKbFailMode();
+  try {
+    const kb = getAuroraKbV0({ forceReload: true });
+    if (kb && kb.ok === false && failMode === 'closed') {
+      const reason = String(kb.reason || 'kb_preflight_failed').trim();
+      throw new Error(`AURORA_KB_FAIL_MODE=closed blocked startup: ${reason}`);
+    }
+    if (kb && kb.ok === false && failMode === 'open') {
+      logger?.warn?.(
+        {
+          fail_mode: failMode,
+          reason: kb.reason || 'loader_unavailable',
+          diagnostics: kb.diagnostics || null,
+        },
+        'aurora bff: kb v0 preflight failed; running with legacy fallback (open mode)',
+      );
+    }
+  } catch (error) {
+    if (failMode === 'closed') {
+      throw error;
+    }
+    logger?.warn?.(
+      {
+        fail_mode: failMode,
+        err: error && error.message ? error.message : String(error),
+      },
+      'aurora bff: kb v0 preflight threw; running with legacy fallback (open mode)',
+    );
+  }
+}
+
 function mountAuroraBffRoutes(app, { logger }) {
+  preflightAuroraKbV0ForStartup({ logger });
   startPdpHotsetPrewarmLoop({ logger });
 
   app.get('/metrics', (req, res) => {
@@ -19500,6 +19929,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             forceEnhance: shouldRepairCompetitorCoverage(kbPayload, {
               preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
             }),
+            refreshSnapshot: shouldRefreshCompetitorSnapshot(
+              kbPayload,
+              kbEntry && typeof kbEntry.source_meta === 'object' ? kbEntry.source_meta : null,
+            ),
             logger,
           });
           kbPayload = finalizeProductAnalysisRecoContract(kbPayload, {
@@ -19635,6 +20068,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             forceEnhance: shouldRepairCompetitorCoverage(realtimePayload, {
               preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
             }),
+            refreshSnapshot: shouldRefreshCompetitorSnapshot(realtimePayload, realtimeUrlNormMeta),
             logger,
           });
           realtimePayload = finalizeProductAnalysisRecoContract(realtimePayload, {
@@ -20058,6 +20492,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           forceEnhance: hasLowCoverageCompetitorsInPayload(payload, {
             preferredCount: PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT,
           }),
+          refreshSnapshot: shouldRefreshCompetitorSnapshot(payload, realtimeUrlNormMeta),
           logger,
         });
       }
@@ -23722,7 +24157,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const routine = parsed.data.routine || {};
       const testProduct = parsed.data.test_product || null;
-      const sim = simulateConflicts({ routine, testProduct });
+      const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
       const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
       const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
         ? buildConflictHeatmapV1({ routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary }, routineSteps: heatmapSteps })
@@ -24394,6 +24829,38 @@ function mountAuroraBffRoutes(app, { logger }) {
         const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
         return makeAssistantMessage(text, format);
       };
+      const safetyConceptMatch = collectConceptMatchesFromText({
+        text: message,
+        language: ctx.lang,
+        max: 96,
+        includeSubstring: true,
+        includeDebug: Boolean(debugUpstream),
+      });
+      const safetyConceptIds = Array.isArray(safetyConceptMatch && safetyConceptMatch.concept_ids)
+        ? safetyConceptMatch.concept_ids
+        : [];
+      const safetyConceptsDebug = Array.isArray(safetyConceptMatch && safetyConceptMatch.matched_concepts_debug)
+        ? safetyConceptMatch.matched_concepts_debug
+        : [];
+      const safetyOntologyHits = matchIngredientOntology({
+        text: message,
+        language: ctx.lang,
+        max: 32,
+      });
+      const safetyContraTags = (() => {
+        const out = [];
+        const seen = new Set();
+        for (const row of Array.isArray(safetyOntologyHits) ? safetyOntologyHits : []) {
+          const tags = Array.isArray(row && row.contraindication_tags) ? row.contraindication_tags : [];
+          for (const raw of tags) {
+            const tag = String(raw || '').trim().toLowerCase();
+            if (!tag || seen.has(tag)) continue;
+            seen.add(tag);
+            out.push(tag);
+          }
+        }
+        return out;
+      })();
       const safetyDecision =
         effectiveChatFlags.safety_engine_v1
           ? evaluateSafety({
@@ -24401,6 +24868,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             message,
             profile,
             language: ctx.lang,
+            matched_concepts: safetyConceptIds,
+            matched_concepts_debug: safetyConceptsDebug,
+            ingredient_ontology_hits: safetyOntologyHits,
+            contraindication_tags: safetyContraTags,
+            has_product_anchor: Boolean(hasPlannerAnchor),
           })
           : null;
       const plannerDecision =
@@ -24764,28 +25236,53 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (evaluateIntent && !hasFitCheckAnchor && anchorCollectionSignal) {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        const prompt = buildFitCheckAnchorPrompt(lang);
+        const firstQuestion = lang === 'CN'
+          ? '请粘贴产品链接、完整产品名，或成分表（INCI）。'
+          : 'Please paste the product link, full product name, or ingredient list (INCI).';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(
             lang === 'CN'
-              ? '好的，请直接粘贴“产品链接”或输入“完整产品名（品牌+品名）”，我会立即继续评估。'
-              : 'Great. Please paste the product link or type the full product name (brand + name), and I’ll continue immediately.',
+              ? '好的，我先做信息收集门控。请粘贴产品链接、完整产品名，或成分表（INCI），我会立即继续评估。'
+              : 'Great. I will run a quick info gate first. Please paste the product link, full product name, or ingredient list (INCI), and I will continue immediately.',
           ),
-          suggested_chips: [],
-          cards: [],
+          suggested_chips: prompt.chips,
+          cards: [
+            {
+              card_id: `fit_anchor_req_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildFitCheckAnchorRequireInfoCardPayload(lang),
+            },
+          ],
           session_patch: {},
-          events: [makeEvent(ctx, 'anchor_collection_waiting_input', { intent: canonicalIntent.intent })],
+          events: [
+            makeEvent(ctx, 'anchor_collection_waiting_input', { intent: canonicalIntent.intent }),
+            makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.EVALUATE_PRODUCT, question: firstQuestion }),
+          ],
         });
         return sendChatEnvelope(envelope);
       }
       if (evaluateIntent && !hasFitCheckAnchor) {
         const prompt = buildFitCheckAnchorPrompt(ctx.lang);
+        const firstQuestion = ctx.lang === 'CN'
+          ? '请粘贴产品链接、完整产品名，或成分表（INCI）。'
+          : 'Please paste the product link, full product name, or ingredient list (INCI).';
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(prompt.prompt),
           suggested_chips: prompt.chips,
-          cards: [],
+          cards: [
+            {
+              card_id: `fit_anchor_req_${ctx.request_id}`,
+              type: 'confidence_notice',
+              payload: buildFitCheckAnchorRequireInfoCardPayload(ctx.lang),
+            },
+          ],
           session_patch:
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'fit_check_anchor_required' })],
+          events: [
+            makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'fit_check_anchor_required' }),
+            makeEvent(ctx, 'safety_gate_require_info', { intent: canonicalIntent.intent || INTENT_ENUM.EVALUATE_PRODUCT, question: firstQuestion }),
+          ],
         });
         return sendChatEnvelope(envelope);
       }
@@ -25256,64 +25753,59 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? canonicalIntent.entities.date_range.end
               : '');
 
-          if (destination) {
-            const weather = await getTravelWeather({
-              destination,
-              startDate,
-              endDate,
-            });
-            const epiPayload = buildEpiPayload({
-              weather,
-              profile,
-              language: ctx.lang,
-              userReportedConditions: { condition: message },
-            });
-            policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
-            policyMeta.degraded = policyMeta.env_source !== 'weather_api';
+          const weather = await getTravelWeather({
+            destination,
+            startDate,
+            endDate,
+          });
+          const epiPayload = buildEpiPayload({
+            weather,
+            profile,
+            language: ctx.lang,
+            userReportedConditions: { condition: message },
+          });
+          policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
+          policyMeta.degraded = policyMeta.env_source !== 'weather_api';
 
-            const localEss = Number(envStressUi && envStressUi.ess);
-            envStressUi = {
-              ...(envStressUi || {}),
-              ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
-              epi: epiPayload.epi,
-              components: epiPayload.components,
-              reco_weights: epiPayload.reco_weights,
-              env_source: epiPayload.env_source,
-              travel_context: weather.date_range || null,
-            };
+          const localEss = Number(envStressUi && envStressUi.ess);
+          envStressUi = {
+            ...(envStressUi || {}),
+            ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
+            epi: epiPayload.epi,
+            components: epiPayload.components,
+            reco_weights: epiPayload.reco_weights,
+            env_source: epiPayload.env_source,
+            travel_context: weather.date_range || null,
+          };
 
-            const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-            const destinationText =
-              weather && weather.location && weather.location.name
-                ? String(weather.location.name)
-                : String(destination);
-            const dateHint =
-              weather && weather.date_range && weather.date_range.start
-                ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
-                : '';
-            const epiLinesCn = [
-              `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
-              destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
-              '建议（AM）：',
-              ...epiPayload.strategy.am.map((line) => `- ${line}`),
-              '建议（PM）：',
-              ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-              ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-            ].filter(Boolean);
-            const epiLinesEn = [
-              `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
-              destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
-              'AM strategy:',
-              ...epiPayload.strategy.am.map((line) => `- ${line}`),
-              'PM strategy:',
-              ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-              ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-            ].filter(Boolean);
-            advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
-          } else {
-            policyMeta.env_source = 'user_reported_conditions';
-            policyMeta.degraded = true;
-          }
+          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+          const destinationText =
+            weather && weather.location && weather.location.name
+              ? String(weather.location.name)
+              : String(destination || '');
+          const dateHint =
+            weather && weather.date_range && weather.date_range.start
+              ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
+              : '';
+          const epiLinesCn = [
+            `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
+            destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
+            '建议（AM）：',
+            ...epiPayload.strategy.am.map((line) => `- ${line}`),
+            '建议（PM）：',
+            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+          ].filter(Boolean);
+          const epiLinesEn = [
+            `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
+            destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
+            'AM strategy:',
+            ...epiPayload.strategy.am.map((line) => `- ${line}`),
+            'PM strategy:',
+            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+          ].filter(Boolean);
+          advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -25391,7 +25883,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const simInput = buildLocalCompatibilitySimulationInput({ message });
         if (simInput) {
           const { routine, testProduct } = simInput;
-          const sim = simulateConflicts({ routine, testProduct });
+          const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
           const simPayload = { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary };
           const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
           const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
@@ -26881,10 +27373,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null;
         const wantsConflictCards =
           Boolean(debugUpstream) ||
+          (canonicalIntent && canonicalIntent.intent === INTENT_ENUM.CONFLICT_CHECK) ||
           looksLikeCompatibilityOrConflictQuestion(responseIntentMessage) ||
-          (typeof actionId === 'string' && /(routine|compat|conflict|heatmap)/i.test(actionId)) ||
-          (conflictDetector && conflictDetector.safe === false) ||
-          (Array.isArray(conflictDetector && conflictDetector.conflicts) && conflictDetector.conflicts.length > 0);
+          (typeof actionId === 'string' && /(routine|compat|conflict|heatmap)/i.test(actionId));
 
         if (wantsConflictCards && conflictDetector && typeof conflictDetector.safe === 'boolean') {
           derivedCards.push({
