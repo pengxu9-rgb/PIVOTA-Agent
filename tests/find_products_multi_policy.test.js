@@ -277,7 +277,7 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
-  test('domain condenser recovers scenario candidates when pre-quality list is emptied', () => {
+  test('domain condenser does not override low-entropy beauty tool pool before diversity gate', () => {
     withPolicyEnv(
       {
         SEARCH_DOMAIN_CONDENSER_ENABLED: 'true',
@@ -314,10 +314,10 @@ describe('find_products_multi intent + filtering', () => {
           rawUserQuery: '我今晚有个约会，要化妆，要推荐点商品吧？',
         });
 
-        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(true);
-        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('applied_on_empty_candidates');
-        expect(resp.metadata?.search_decision?.post_quality?.candidates).toBeGreaterThanOrEqual(4);
-        expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
+        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(false);
+        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('gate_not_met');
+        expect(resp.metadata?.search_decision?.post_quality?.candidates).toBe(0);
+        expect(resp.metadata?.search_decision?.final_decision).toBe('clarify');
       },
     );
   });

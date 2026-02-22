@@ -563,6 +563,12 @@ const SEARCH_EVAL_INTERNAL_ONLY_QUERY_PARAM = String(
 const SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
   String(process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION || 'true').toLowerCase() !==
   'false';
+const SEARCH_SCENARIO_CATEGORY_PLAN_RECALL =
+  String(process.env.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL || 'false').toLowerCase() === 'true';
+const SEARCH_LOOKUP_INTERNAL_FALLBACK =
+  String(process.env.SEARCH_LOOKUP_INTERNAL_FALLBACK || 'true').toLowerCase() !== 'false';
+const SEARCH_TRACE_SINGLE_SOURCE =
+  String(process.env.SEARCH_TRACE_SINGLE_SOURCE || 'true').toLowerCase() !== 'false';
 const SEARCH_SCENARIO_ANCHOR_MODE_DEFAULT = ['raw', 'derived', 'off'].includes(
   String(process.env.SEARCH_SCENARIO_ANCHOR_MODE || 'raw').toLowerCase(),
 )
@@ -2687,6 +2693,71 @@ function buildSearchRelevanceDebug({ intent, products, diversityPenaltyApplied =
   return out;
 }
 
+function normalizeSearchDecisionMetadata(body, metadata) {
+  if (!SEARCH_TRACE_SINGLE_SOURCE) return metadata;
+  const input = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const normalizedMeta = { ...input };
+  const trace =
+    normalizedMeta.search_trace &&
+    typeof normalizedMeta.search_trace === 'object' &&
+    !Array.isArray(normalizedMeta.search_trace)
+      ? { ...normalizedMeta.search_trace }
+      : {};
+  const decision =
+    normalizedMeta.search_decision &&
+    typeof normalizedMeta.search_decision === 'object' &&
+    !Array.isArray(normalizedMeta.search_decision)
+      ? { ...normalizedMeta.search_decision }
+      : {};
+  const reasonCodes = Array.isArray(body?.reason_codes)
+    ? Array.from(
+        new Set(
+          body.reason_codes
+            .map((item) => String(item || '').trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const resolvedFinalDecision = resolveSearchFinalDecisionForDiagnostics({
+    body,
+    metadata: normalizedMeta,
+  });
+
+  if (resolvedFinalDecision) {
+    trace.final_decision = resolvedFinalDecision;
+    decision.final_decision = resolvedFinalDecision;
+  }
+  if (reasonCodes.length > 0) {
+    decision.reason_codes = reasonCodes;
+  }
+
+  const hasClarification = Boolean(body?.clarification?.question);
+  const products = Array.isArray(body?.products) ? body.products : [];
+  const effectiveDecision = String(decision.final_decision || '').toLowerCase();
+  if (effectiveDecision === 'strict_empty') {
+    normalizedMeta.strict_empty = true;
+    if (!normalizedMeta.strict_empty_reason) {
+      normalizedMeta.strict_empty_reason = reasonCodes[0] || 'no_candidates';
+    }
+  } else if (effectiveDecision === 'clarify') {
+    normalizedMeta.strict_empty = false;
+    delete normalizedMeta.strict_empty_reason;
+  } else if (effectiveDecision === 'products_returned') {
+    normalizedMeta.strict_empty = false;
+    delete normalizedMeta.strict_empty_reason;
+    if (!hasClarification && products.length === 0) {
+      decision.final_decision = 'strict_empty';
+      trace.final_decision = 'strict_empty';
+      normalizedMeta.strict_empty = true;
+      normalizedMeta.strict_empty_reason = reasonCodes[0] || 'no_candidates';
+    }
+  }
+
+  normalizedMeta.search_trace = trace;
+  normalizedMeta.search_decision = decision;
+  return normalizedMeta;
+}
+
 function withSearchDiagnostics(body, diagnostics = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
   const metadata =
@@ -2707,9 +2778,11 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     metadata.fallback_strategy = diagnostics.fallback_strategy;
   }
 
+  const normalizedMetadata = normalizeSearchDecisionMetadata(body, metadata);
+
   return {
     ...body,
-    metadata,
+    metadata: normalizedMetadata,
   };
 }
 
@@ -3593,6 +3666,78 @@ function expandLookupAnchorTokens(queryText, anchorTokens) {
   return Array.from(expanded);
 }
 
+function buildScenarioCategoryPlanRecallQuery({
+  queryText,
+  queryClass,
+  intent,
+  associationPlan,
+  anchorTokens,
+}) {
+  const rawQuery = String(queryText || '').trim();
+  const normalizedClass = String(queryClass || intent?.query_class || '').trim().toLowerCase();
+  const terms = [];
+  const pushTerms = (values) => {
+    for (const value of Array.isArray(values) ? values : [values]) {
+      const normalized = String(value || '').trim();
+      if (!normalized) continue;
+      terms.push(normalized);
+    }
+  };
+
+  pushTerms(rawQuery);
+  if (normalizedClass === 'lookup') {
+    pushTerms(expandLookupAnchorTokens(rawQuery, anchorTokens));
+  } else {
+    const categoryKeywords = Array.isArray(associationPlan?.category_keywords)
+      ? associationPlan.category_keywords
+      : [];
+    pushTerms(categoryKeywords.slice(0, 10));
+    const normalizedQuery = normalizeSearchTextForMatch(rawQuery);
+    if (
+      /(beauty|makeup|cosmetic|lip|foundation|mascara|skincare|化妆|化妝|美妆|美妝|护肤|護膚|口红|口紅|粉底|眼影|约会|約會|妆|妝)/.test(
+        normalizedQuery,
+      )
+    ) {
+      pushTerms(['makeup', 'foundation', 'lipstick', 'mascara', 'beauty tools']);
+    } else if (
+      /(travel|trip|business|packing|luggage|toiletry|adapter|carryon|carry-on|出差|旅行|差旅|行李|分装|分裝|登机|登機)/.test(
+        normalizedQuery,
+      )
+    ) {
+      pushTerms(['travel essentials', 'packing cubes', 'toiletry kit', 'travel adapter']);
+    } else if (
+      /(hiking|outdoor|camping|trekking|trail|backpack|hydration|pole|徒步|登山|露营|露營|户外|戶外)/.test(
+        normalizedQuery,
+      )
+    ) {
+      pushTerms(['hiking essentials', 'outdoor backpack', 'hydration pack', 'trekking pole']);
+    } else if (
+      /(dog|cat|pet|leash|harness|collar|puppy|kitten|宠物|寵物|狗链|狗鏈|牵引|牽引|背带|背帶|项圈|項圈|遛狗)/.test(
+        normalizedQuery,
+      )
+    ) {
+      pushTerms(['dog leash', 'pet harness', 'pet collar']);
+    }
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const token of terms) {
+    for (const part of tokenizeSearchTextForMatch(token)) {
+      const normalized = normalizeSearchTextForMatch(part);
+      if (!normalized || normalized.length < 2) continue;
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      deduped.push(normalized);
+      if (deduped.length >= 24) break;
+    }
+    if (deduped.length >= 24) break;
+  }
+  if (!deduped.length) return rawQuery;
+  const candidate = deduped.join(' ').trim();
+  return candidate.length > 240 ? candidate.slice(0, 240).trim() : candidate;
+}
+
 function isProxySearchFallbackRelevant(normalized, queryText) {
   const products = Array.isArray(normalized?.products) ? normalized.products : [];
   if (!products.length) return false;
@@ -3904,10 +4049,10 @@ function resolveSearchFinalDecisionForDiagnostics({ body, metadata }) {
     metadata && metadata.search_decision && typeof metadata.search_decision === 'object'
       ? metadata.search_decision
       : {};
-  const traceDecision = String(searchTrace.final_decision || '').trim().toLowerCase();
-  if (traceDecision) return traceDecision;
   const decisionValue = String(searchDecision.final_decision || '').trim().toLowerCase();
   if (decisionValue) return decisionValue;
+  const traceDecision = String(searchTrace.final_decision || '').trim().toLowerCase();
+  if (traceDecision) return traceDecision;
   const clarification =
     body && typeof body === 'object' && !Array.isArray(body) && body.clarification
       ? body.clarification
@@ -11667,6 +11812,9 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       search_eval_internal_only_header: SEARCH_EVAL_INTERNAL_ONLY_HEADER,
       search_eval_internal_only_force_no_early_decision:
         SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION,
+      search_scenario_category_plan_recall: SEARCH_SCENARIO_CATEGORY_PLAN_RECALL,
+      search_lookup_internal_fallback: SEARCH_LOOKUP_INTERNAL_FALLBACK,
+      search_trace_single_source: SEARCH_TRACE_SINGLE_SOURCE,
     };
     const searchEvalMode =
       operation === 'find_products_multi' ? isSearchEvalModeRequest(req, metadata) : false;
@@ -14734,6 +14882,202 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                 }),
               });
               return res.json(earlyDiagnosed);
+            }
+          }
+          const shouldAttemptScenarioPlanRecall =
+            SEARCH_SCENARIO_CATEGORY_PLAN_RECALL &&
+            !effectiveCacheHit &&
+            ['scenario', 'mission'].includes(queryClassForEarlyDecision) &&
+            cacheQueryText.length > 0;
+          const shouldAttemptLookupInternalFallback =
+            SEARCH_LOOKUP_INTERNAL_FALLBACK &&
+            !effectiveCacheHit &&
+            (queryClassForEarlyDecision === 'lookup' || isLookupQuery) &&
+            cacheQueryText.length > 0 &&
+            searchEvalUpstreamDisabled;
+          if (
+            process.env.DATABASE_URL &&
+            (shouldAttemptScenarioPlanRecall || shouldAttemptLookupInternalFallback)
+          ) {
+            const s1Mode = shouldAttemptLookupInternalFallback
+              ? 'lookup_internal_fallback'
+              : 'scenario_category_plan';
+            const s1Query = buildScenarioCategoryPlanRecallQuery({
+              queryText: cacheQueryText,
+              queryClass: queryClassForEarlyDecision,
+              intent: effectiveIntent,
+              associationPlan: traceAssociationPlan,
+              anchorTokens: lookupAnchorTokens,
+            });
+            try {
+              const s1FromCache = await withStageBudget(
+                searchCrossMerchantFromCache(s1Query, page, limit, {
+                  inStockOnly,
+                }),
+                FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+                'cache_s1_stage',
+              );
+              const s1Products = Array.isArray(s1FromCache?.products) ? s1FromCache.products : [];
+              if (crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object') {
+                crossMerchantCacheRouteDebug.s1_recall = {
+                  attempted: true,
+                  applied: s1Products.length > 0,
+                  mode: s1Mode,
+                  query: s1Query,
+                  query_class: queryClassForEarlyDecision || null,
+                  products_count: s1Products.length,
+                  retrieval_sources: s1FromCache?.retrieval_sources || [],
+                };
+              }
+              if (s1Products.length > 0) {
+                const s1UpstreamData = {
+                  products: s1Products,
+                  total: Math.max(Number(s1FromCache.total || 0), s1Products.length),
+                  page: s1FromCache.page || page,
+                  page_size: s1Products.length,
+                  reply: null,
+                  metadata: {
+                    query_source: 'cache_cross_merchant_search_s1',
+                    fetched_at: new Date().toISOString(),
+                    merchants_searched: uniqueStrings(
+                      s1Products.map((p) => p?.merchant_id || p?.merchantId),
+                    ).length,
+                    source_breakdown: {
+                      internal_count: s1Products.length,
+                      external_seed_count: 0,
+                      stale_cache_used: false,
+                      strategy_applied: s1Mode,
+                    },
+                    s1_recall: {
+                      mode: s1Mode,
+                      query: s1Query,
+                    },
+                    ...(s1FromCache?.retrieval_sources
+                      ? { retrieval_sources: s1FromCache.retrieval_sources }
+                      : {}),
+                    ...(ROUTE_DEBUG_ENABLED
+                      ? {
+                          route_debug: {
+                            cross_merchant_cache: {
+                              ...(crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object'
+                                ? crossMerchantCacheRouteDebug
+                                : {}),
+                              s1_recall: {
+                                attempted: true,
+                                applied: true,
+                                mode: s1Mode,
+                                query: s1Query,
+                                query_class: queryClassForEarlyDecision || null,
+                                products_count: s1Products.length,
+                              },
+                            },
+                          },
+                        }
+                      : {}),
+                  },
+                };
+                const s1WithPolicy = effectiveIntent
+                  ? applyFindProductsMultiPolicy({
+                      response: s1UpstreamData,
+                      intent: effectiveIntent,
+                      requestPayload: effectivePayload,
+                      metadata: policyMetadata,
+                      rawUserQuery: s1Query || rawUserQuery,
+                    })
+                  : s1UpstreamData;
+                const s1Validation = evaluateCacheQualityGate({
+                  products: Array.isArray(s1WithPolicy?.products) ? s1WithPolicy.products : s1Products,
+                  queryText: s1Query || cacheQueryText,
+                  intent: effectiveIntent,
+                  queryClass: queryClassForEarlyDecision || traceQueryClass,
+                });
+                if (!s1Validation.enabled || s1Validation.accepted) {
+                  const s1EnrichedBase = applyDealsToResponse(s1WithPolicy, promotions, now, creatorId);
+                  const s1Enriched = searchEvalUpstreamDisabled
+                    ? withEvalMetadata(s1EnrichedBase, {
+                        evalMode: searchEvalMode,
+                        upstreamDisabled: true,
+                      })
+                    : s1EnrichedBase;
+                  const s1Clarification =
+                    s1Enriched &&
+                    typeof s1Enriched === 'object' &&
+                    !Array.isArray(s1Enriched) &&
+                    s1Enriched.clarification &&
+                    typeof s1Enriched.clarification === 'object' &&
+                    s1Enriched.clarification.question
+                      ? s1Enriched.clarification
+                      : null;
+                  const s1FinalDecision = resolveSearchFinalDecisionForDiagnostics({
+                    body: s1Enriched,
+                    metadata: s1Enriched?.metadata,
+                  });
+                  const s1Diagnosed = withSearchDiagnostics(s1Enriched, {
+                    route_health: buildSearchRouteHealth({
+                      primaryPathUsed: 'cache_stage',
+                      primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
+                      fallbackTriggered: false,
+                      fallbackReason: null,
+                      ambiguityScorePre: traceAmbiguityScorePre,
+                      clarifyTriggered: Boolean(s1Clarification),
+                    }),
+                    search_trace: buildSearchTrace({
+                      traceId: gatewayRequestId,
+                      rawQuery: cacheQueryText,
+                      expandedQuery: s1Query || cacheQueryText,
+                      expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+                      queryClass: traceQueryClass,
+                      rewriteGate: traceRewriteGate,
+                      associationPlan: traceAssociationPlan,
+                      flagsSnapshot: traceFlagsSnapshot,
+                      intent: effectiveIntent,
+                      cacheStage: {
+                        hit: true,
+                        candidate_count: Number(s1Products.length || 0),
+                        relevant_count: Number(s1Products.length || 0),
+                        retrieval_sources: s1FromCache?.retrieval_sources || [],
+                      },
+                      upstreamStage: {
+                        called: false,
+                        timeout: false,
+                        status: null,
+                        latency_ms: 0,
+                      },
+                      resolverStage: {
+                        called: false,
+                        hit: false,
+                        miss: false,
+                        latency_ms: null,
+                      },
+                      finalDecision: s1FinalDecision || (s1Clarification ? 'clarify' : 'cache_returned'),
+                    }),
+                  });
+                  return res.json(s1Diagnosed);
+                }
+                if (crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object') {
+                  crossMerchantCacheRouteDebug.s1_recall = {
+                    ...(crossMerchantCacheRouteDebug.s1_recall || {}),
+                    applied: false,
+                    reason: 'cache_validation_rejected',
+                    cache_validation: s1Validation,
+                  };
+                }
+              }
+            } catch (s1Err) {
+              if (crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object') {
+                crossMerchantCacheRouteDebug.s1_recall = {
+                  attempted: true,
+                  applied: false,
+                  mode: s1Mode,
+                  query: s1Query,
+                  reason: 'exception',
+                  error: String(s1Err?.message || s1Err),
+                };
+              }
+              logger.warn(
+                { err: s1Err?.message || String(s1Err), query: cacheQueryText, mode: s1Mode },
+                'S1 controlled cache recall failed; continuing with existing fallback path',
+              );
             }
           }
           if (

@@ -34,6 +34,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER,
       SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION:
         process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION,
+      SEARCH_SCENARIO_CATEGORY_PLAN_RECALL:
+        process.env.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL,
+      SEARCH_LOOKUP_INTERNAL_FALLBACK:
+        process.env.SEARCH_LOOKUP_INTERNAL_FALLBACK,
+      SEARCH_TRACE_SINGLE_SOURCE:
+        process.env.SEARCH_TRACE_SINGLE_SOURCE,
       CREATOR_CATALOG_CACHE_TTL_SECONDS: process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
       CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES: process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
@@ -53,6 +59,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    delete process.env.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL;
+    delete process.env.SEARCH_LOOKUP_INTERNAL_FALLBACK;
+    delete process.env.SEARCH_TRACE_SINGLE_SOURCE;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
@@ -124,6 +133,23 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
         prevEnv.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    }
+    if (prevEnv.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL === undefined) {
+      delete process.env.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL;
+    } else {
+      process.env.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL =
+        prevEnv.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL;
+    }
+    if (prevEnv.SEARCH_LOOKUP_INTERNAL_FALLBACK === undefined) {
+      delete process.env.SEARCH_LOOKUP_INTERNAL_FALLBACK;
+    } else {
+      process.env.SEARCH_LOOKUP_INTERNAL_FALLBACK =
+        prevEnv.SEARCH_LOOKUP_INTERNAL_FALLBACK;
+    }
+    if (prevEnv.SEARCH_TRACE_SINGLE_SOURCE === undefined) {
+      delete process.env.SEARCH_TRACE_SINGLE_SOURCE;
+    } else {
+      process.env.SEARCH_TRACE_SINGLE_SOURCE = prevEnv.SEARCH_TRACE_SINGLE_SOURCE;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -1393,7 +1419,96 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       }),
     );
     expect(Number(postQuality?.candidates || 0)).toBe(resp.body.products.length);
+    expect(
+      String(resp.body.metadata?.search_trace?.final_decision || '').trim().toLowerCase(),
+    ).toBe(
+      String(resp.body.metadata?.search_decision?.final_decision || '').trim().toLowerCase(),
+    );
     expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('eval scenario category-plan flag keeps diagnostics coherent without upstream dependency', async () => {
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED = 'true';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED = 'true';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER = 'x-eval';
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION = 'true';
+    process.env.SEARCH_SCENARIO_CATEGORY_PLAN_RECALL = 'true';
+    process.env.SEARCH_TRACE_SINGLE_SOURCE = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params = []) => {
+        const text = String(sql || '');
+        const normalizedParams = Array.isArray(params)
+          ? params.map((item) => String(item || '').toLowerCase())
+          : [];
+        const joinedParams = normalizedParams.join(' ');
+        const hasScenarioPlanToken = /travel|packing|toiletry|adapter/.test(joinedParams);
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: hasScenarioPlanToken ? 1 : 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          if (!hasScenarioPlanToken) return { rows: [] };
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_travel',
+                merchant_name: 'Travel Store',
+                product_data: {
+                  id: 'prod_travel_1',
+                  product_id: 'prod_travel_1',
+                  merchant_id: 'merch_travel',
+                  title: 'Business Travel Toiletry Kit',
+                  description: 'travel toiletries and packing organizer',
+                  vendor: 'Travel Ready',
+                  status: 'published',
+                  inventory_quantity: 18,
+                  price: 25,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Eval', '1')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '出差要买什么',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        eval_mode: true,
+        upstream_disabled: true,
+      }),
+    );
+    expect(resp.body.metadata?.search_trace?.flags_snapshot).toEqual(
+      expect.objectContaining({
+        search_scenario_category_plan_recall: true,
+      }),
+    );
+    expect(
+      String(resp.body.metadata?.search_trace?.final_decision || '').trim().toLowerCase(),
+    ).toBe(
+      String(resp.body.metadata?.search_decision?.final_decision || '').trim().toLowerCase(),
+    );
   });
 
   test('pet leash recommendation does not enter lookup timeout path on cache miss', async () => {
