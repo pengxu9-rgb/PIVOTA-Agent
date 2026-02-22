@@ -452,11 +452,11 @@ const PROXY_SEARCH_AURORA_FORCE_TWO_PASS =
   String(process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = Math.max(
   250,
-  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS, 800),
+  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS, 1000),
 );
 const PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = Math.max(
   200,
-  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, 500),
+  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, 900),
 );
 const PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE = Math.max(
   1,
