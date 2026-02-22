@@ -271,3 +271,70 @@ test('evaluateCase supports event assertions and assistant_not_contains_any', ()
   assert.equal(out.errors.length, 0);
   assert.equal(out.turn_id, 'send_link');
 });
+
+test('evaluateCase accepts degraded local_template fallback in staging-live', () => {
+  const caseDef = {
+    case_id: 'travel_live_template_fallback',
+    category: 'complete_fields',
+    language: 'EN',
+    expected: {
+      intent_canonical: 'travel_planning',
+      gate_type: 'none',
+      must_have_card_types: ['env_stress'],
+      assistant_contains_any: ['Environmental Pressure Index', 'EPI'],
+      env_source_in: ['weather_api', 'climate_fallback'],
+    },
+  };
+
+  const body = {
+    assistant_message: { content: 'Here is a practical climate-aware travel routine you can use right now.' },
+    cards: [{ type: 'env_stress' }],
+    events: [],
+  };
+
+  const meta = {
+    intent_canonical: 'travel_planning',
+    gate_type: 'none',
+    env_source: 'local_template',
+    degraded: true,
+    rollout_variant: 'v2_core',
+    rollout_bucket: 5,
+    policy_version: 'aurora_chat_v2_p0',
+  };
+
+  const headers = {
+    'x-aurora-variant': 'v2_core',
+    'x-aurora-bucket': '5',
+    'x-aurora-policy-version': 'aurora_chat_v2_p0',
+  };
+
+  const out = __internal.evaluateCase({
+    caseDef,
+    mode: 'staging-live',
+    status: 200,
+    body,
+    headers,
+    meta,
+    strictMeta: false,
+    fetchCalls: null,
+  });
+
+  assert.equal(out.passed, true);
+  assert.equal(out.errors.length, 0);
+  assert.ok(out.warnings.some((msg) => msg.includes('local_template')));
+});
+
+test('infra flake helpers classify transient statuses and errors', () => {
+  assert.equal(__internal.isInfraFlakeStatus(403), true);
+  assert.equal(__internal.isInfraFlakeStatus(429), true);
+  assert.equal(__internal.isInfraFlakeStatus(500), true);
+  assert.equal(__internal.isInfraFlakeStatus(200), false);
+
+  const timeoutErr = new Error('request timed out');
+  timeoutErr.name = 'AbortError';
+  assert.equal(__internal.getInfraFlakeReasonFromError(timeoutErr), 'timeout');
+
+  const dnsErr = new Error('getaddrinfo ENOTFOUND staging');
+  dnsErr.code = 'ENOTFOUND';
+  assert.equal(__internal.getInfraFlakeReasonFromError(dnsErr), 'dns');
+});
