@@ -7234,6 +7234,119 @@ test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by ro
   );
 });
 
+test('/v1/analysis/skin: stringified empty routine does not count as primary input', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinModuleId];
+
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      skinDiagnosis.runSkinDiagnosisV1 = async () => ({
+        ok: true,
+        diagnosis: {
+          quality: { grade: 'pass', reasons: ['qc_passed'] },
+          findings: [],
+        },
+      });
+
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const sharp = require('sharp');
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 216, g: 180, b: 160 } },
+      })
+        .png()
+        .toBuffer();
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      axios.post = originalPost;
+      axios.request = originalRequest;
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/photo-only-routine-json-empty',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/photo-only-routine-json-empty') {
+            return {
+              status: 200,
+              data: pngBytes,
+              headers: { 'content-type': 'image/png' },
+            };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_only_routine_json_empty',
+            'X-Trace-ID': 'trace_photo_only_routine_json_empty',
+            'X-Brief-ID': 'brief_photo_only_routine_json_empty',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: '{}',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_only_2', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
+        assert.equal(Boolean(card?.payload?.low_confidence), true);
+
+        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
+          true,
+        );
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice', async () => {
   await withEnv(
     {

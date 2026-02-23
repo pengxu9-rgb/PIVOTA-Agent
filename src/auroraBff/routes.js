@@ -8361,17 +8361,38 @@ function resolvePhotoQcStatus(payload) {
   return null;
 }
 
-function hasNonEmptyRoutineInput(routineCandidate) {
-  return Boolean(
-    routineCandidate != null &&
-      (typeof routineCandidate === 'string'
-        ? String(routineCandidate).trim().length > 0
-        : Array.isArray(routineCandidate)
-          ? routineCandidate.length > 0
-          : typeof routineCandidate === 'object'
-            ? Object.keys(routineCandidate).length > 0
-            : false),
-  );
+function hasNonEmptyRoutineInput(routineCandidate, depth = 0) {
+  if (depth > 6 || routineCandidate == null) return false;
+
+  if (typeof routineCandidate === 'string') {
+    const text = String(routineCandidate).trim();
+    if (!text) return false;
+    const first = text[0];
+    const last = text[text.length - 1];
+    if ((first === '{' && last === '}') || (first === '[' && last === ']')) {
+      try {
+        const parsed = JSON.parse(text);
+        return hasNonEmptyRoutineInput(parsed, depth + 1);
+      } catch {
+        // Keep treating it as free-text routine when not valid JSON.
+      }
+    }
+    return true;
+  }
+
+  if (Array.isArray(routineCandidate)) {
+    return routineCandidate.some((item) => hasNonEmptyRoutineInput(item, depth + 1));
+  }
+
+  if (typeof routineCandidate === 'object') {
+    const values = Object.values(routineCandidate);
+    if (!values.length) return false;
+    return values.some((item) => hasNonEmptyRoutineInput(item, depth + 1));
+  }
+
+  if (typeof routineCandidate === 'number') return Number.isFinite(routineCandidate);
+  if (typeof routineCandidate === 'boolean') return routineCandidate;
+  return false;
 }
 
 function normalizeQualityGradeForMetrics(grade) {
@@ -20964,16 +20985,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         const routineCandidate = routineFromRequest !== undefined ? routineFromRequest : profileSummary && profileSummary.currentRoutine;
-        const hasRoutine = Boolean(
-          routineCandidate != null &&
-            (typeof routineCandidate === 'string'
-              ? String(routineCandidate).trim().length > 0
-              : Array.isArray(routineCandidate)
-                ? routineCandidate.length > 0
-                : typeof routineCandidate === 'object'
-                  ? Object.keys(routineCandidate).length > 0
-                  : false),
-        );
+        const hasRoutine = hasNonEmptyRoutineInput(routineCandidate);
         profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
 
         // "Dual input" policy:
