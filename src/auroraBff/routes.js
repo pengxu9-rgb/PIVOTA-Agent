@@ -17377,6 +17377,15 @@ function coerceRecoItemForUi(item, { lang } = {}) {
 
 const LOW_CONF_TREATMENT_TOKEN_RE = /\b(treatment|retinol|retinoid|retinal|tretinoin|adapalene|exfoliant|chemical peel|aha|bha|pha|glycolic|salicylic|mandelic|lactic)\b|(?:视黄醇|阿达帕林|维a|果酸|水杨酸|杏仁酸|乳酸|焕肤|去角质|刷酸)/i;
 const MEDIUM_CONFIDENCE_UPPER_BOUND = 0.75;
+const LOW_CONF_NON_TREATMENT_SLOTS = new Set(['cleanser', 'moisturizer', 'sunscreen', 'toner', 'optional']);
+
+function normalizeRoutineSlotToken(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token === 'treatment') return 'treatment';
+  if (LOW_CONF_NON_TREATMENT_SLOTS.has(token)) return token;
+  return '';
+}
 
 function isTreatmentLikeRecommendationForLowConfidence(item) {
   const base = isPlainObject(item) ? item : null;
@@ -17387,6 +17396,10 @@ function isTreatmentLikeRecommendationForLowConfidence(item) {
     : isPlainObject(base.product)
       ? base.product
       : null;
+
+  // Trust explicit matcher slot labels first so non-treatment slots are not over-filtered by keyword matches.
+  const explicitSlot = normalizeRoutineSlotToken(base.routine_slot || base.routineSlot);
+  if (explicitSlot) return explicitSlot === 'treatment';
 
   const textCandidates = [
     base.step,
@@ -27722,14 +27735,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         const finalAssistantText = [safetyWarnText, assistantText].filter(Boolean).join('\n\n');
 
-        const cards = [
-          {
+        const cards = [];
+        if (hasRecs) {
+          cards.push({
             card_id: `reco_${ctx.request_id}`,
             type: 'recommendations',
             payload,
             ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
-          },
-        ];
+          });
+        }
         if (mappedIngredientPlan) {
           cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
         }

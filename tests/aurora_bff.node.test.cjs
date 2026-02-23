@@ -271,6 +271,63 @@ test('applyLowOrMediumRecoGuardToEnvelope: medium confidence removes treatment/h
   }
 });
 
+test('applyLowOrMediumRecoGuardToEnvelope: keeps explicit non-treatment routine_slot even with active keyword', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: { role: 'assistant', content: 'test', format: 'markdown' },
+      suggested_chips: [],
+      cards: [
+        {
+          card_id: 'reco_1',
+          type: 'recommendations',
+          payload: {
+            recommendation_confidence_level: 'low',
+            recommendations: [
+              {
+                step: 'Moisturizer',
+                slot: 'pm',
+                category: 'moisturizer',
+                routine_slot: 'moisturizer',
+                sku: { sku_id: 'sku_safe_active', name: 'BHA Barrier Cream' },
+              },
+              {
+                step: 'Treatment',
+                slot: 'pm',
+                category: 'treatment',
+                routine_slot: 'treatment',
+                sku: { sku_id: 'sku_treat_drop', name: 'Strong Retinol Serum' },
+              },
+            ],
+          },
+        },
+      ],
+      session_patch: { next_state: 'S7_PRODUCT_RECO' },
+      events: [{ event_name: 'recos_requested', data: { explicit: true, confidence_level: 'low' } }],
+    };
+
+    const out = __internal.applyLowOrMediumRecoGuardToEnvelope({
+      envelope,
+      ctx: { request_id: 'req_low_slot_keep', trace_id: 'trace_low_slot_keep', lang: 'EN' },
+      language: 'EN',
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.filteredCount, 1);
+    assert.equal(out.fallbackApplied, false);
+    const cards = Array.isArray(out.envelope.cards) ? out.envelope.cards : [];
+    const recoCard = cards.find((c) => c && c.type === 'recommendations');
+    assert.ok(recoCard);
+    const recs = Array.isArray(recoCard.payload && recoCard.payload.recommendations)
+      ? recoCard.payload.recommendations
+      : [];
+    assert.equal(recs.length, 1);
+    assert.equal(String(recs[0] && (recs[0].routine_slot || recs[0].routineSlot || '')), 'moisturizer');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to confidence_notice(low_confidence)', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
