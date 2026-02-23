@@ -5,6 +5,8 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
+const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
@@ -544,6 +546,44 @@ const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_TIMEOUT =
 const OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_NO_CANDIDATES =
   String(process.env.OFFERS_RESOLVE_SKIP_CACHE_SEARCH_ON_SUBJECT_NO_CANDIDATES || 'true').toLowerCase() ===
   'true';
+const OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED =
+  String(process.env.OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED || 'true').toLowerCase() !==
+  'false';
+const OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS = parsePositiveInt(
+  process.env.OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS,
+  30000,
+  { min: 1000, max: 300000 },
+);
+const OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS = parsePositiveInt(
+  process.env.OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS,
+  128,
+  { min: 8, max: 2048 },
+);
+const OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS = parsePositiveInt(
+  process.env.OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS,
+  32,
+  { min: 1, max: 512 },
+);
+const OFFERS_RESOLVE_UPSTREAM_HTTP_AGENT = OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED
+  ? new http.Agent({
+      keepAlive: true,
+      keepAliveMsecs: OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS,
+      maxSockets: OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS,
+      maxFreeSockets: OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS,
+    })
+  : undefined;
+const OFFERS_RESOLVE_UPSTREAM_HTTPS_AGENT = OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_ENABLED
+  ? new https.Agent({
+      keepAlive: true,
+      keepAliveMsecs: OFFERS_RESOLVE_UPSTREAM_KEEPALIVE_MSECS,
+      maxSockets: OFFERS_RESOLVE_UPSTREAM_MAX_SOCKETS,
+      maxFreeSockets: OFFERS_RESOLVE_UPSTREAM_MAX_FREE_SOCKETS,
+    })
+  : undefined;
+const OFFERS_RESOLVE_UPSTREAM_AXIOS = axios.create({
+  ...(OFFERS_RESOLVE_UPSTREAM_HTTP_AGENT ? { httpAgent: OFFERS_RESOLVE_UPSTREAM_HTTP_AGENT } : {}),
+  ...(OFFERS_RESOLVE_UPSTREAM_HTTPS_AGENT ? { httpsAgent: OFFERS_RESOLVE_UPSTREAM_HTTPS_AGENT } : {}),
+});
 const OFFERS_RESOLVE_CIRCUITS = {
   subject_resolve: { failure_count: 0, open_until_ms: 0, last_reason: null },
   cache_search: { failure_count: 0, open_until_ms: 0, last_reason: null },
@@ -9256,7 +9296,7 @@ async function callOffersResolveSourceWithRetry({
   while (attempts <= safeRetries) {
     attempts += 1;
     try {
-      const resp = await axios.post(url, body, {
+      const resp = await OFFERS_RESOLVE_UPSTREAM_AXIOS.post(url, body, {
         headers,
         timeout: safeTimeoutMs,
         validateStatus: () => true,
