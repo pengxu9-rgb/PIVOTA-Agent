@@ -169,6 +169,19 @@ const V1ChatRequestSchema = z
   })
   .strict();
 
+const TravelPlanItemPatchSchema = z
+  .object({
+    trip_id: z.string().min(1).max(80).optional(),
+    destination: z.string().min(1).max(100),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+    itinerary: z.string().min(1).max(1200).optional(),
+    created_at_ms: z.number().int().positive().optional(),
+    updated_at_ms: z.number().int().positive().optional(),
+  })
+  .strict();
+
 const UserProfilePatchSchema = z
   .object({
     skinType: z.string().min(1).optional(),
@@ -192,9 +205,14 @@ const UserProfilePatchSchema = z
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
+        itinerary: z.string().min(1).max(1200).optional(),
+        trip_id: z.string().min(1).max(80).optional(),
+        created_at_ms: z.number().int().positive().optional(),
+        updated_at_ms: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),
+    travel_plans: z.array(TravelPlanItemPatchSchema).max(50).optional(),
     lang_pref: LanguageSchema.optional(),
   })
   .strict();
@@ -484,6 +502,7 @@ module.exports = {
   SessionPatchSchema,
   V1ResponseEnvelopeSchema,
   V1ChatRequestSchema,
+  TravelPlanItemPatchSchema,
   UserProfilePatchSchema,
   TrackerLogSchema,
   RoutineSimulateRequestSchema,

@@ -291,9 +291,14 @@ test('/v1/chat: travel intent with missing destination/date asks travel fields b
       const assistant = String(resp.body?.assistant_message?.content || '');
       const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
       const types = cards.map((c) => (c && typeof c.type === 'string' ? c.type : '')).filter(Boolean);
+      const chipLabels = (Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [])
+        .map((chip) => (chip && typeof chip.label === 'string' ? chip.label : ''))
+        .filter(Boolean)
+        .join(' | ');
 
       assert.match(assistant, /destination|travel dates|travel detail/i);
       assert.equal(types.includes('env_stress'), false);
+      assert.equal(/tokyo|2026-03-01|2026-03-05/i.test(chipLabels), false);
 
       delete require.cache[moduleId];
     },
@@ -4739,6 +4744,14 @@ test('/v1/chat: chip_get_recos gates when profile missing, then yields recommend
     assert.ok(reco);
     const first = Array.isArray(reco?.payload?.recommendations) ? reco.payload.recommendations[0] : null;
     assert.ok(first);
+    const recommendationMeta = reco && reco.payload && typeof reco.payload === 'object' ? reco.payload.recommendation_meta : null;
+    assert.ok(recommendationMeta && typeof recommendationMeta === 'object');
+    assert.ok(['artifact_matcher', 'upstream_fallback', 'rules_only'].includes(String(recommendationMeta.source_mode || '')));
+    assert.equal(typeof recommendationMeta.used_recent_logs, 'boolean');
+    assert.equal(typeof recommendationMeta.used_itinerary, 'boolean');
+    assert.equal(typeof recommendationMeta.used_safety_flags, 'boolean');
+    assert.ok(Object.prototype.hasOwnProperty.call(recommendationMeta, 'env_source'));
+    assert.ok(Object.prototype.hasOwnProperty.call(recommendationMeta, 'active_trip_id'));
   });
 });
 

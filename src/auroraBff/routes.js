@@ -47,6 +47,8 @@ const {
   recordResumePlaintextReaskDetected,
   recordProfileContextMissing,
   recordSessionPatchProfileEmitted,
+  recordRecoContextUsed,
+  recordTravelPlanSelection,
   recordUpstreamCall,
   recordTemplateApplied,
   recordTemplateFallback,
@@ -208,8 +210,13 @@ const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { INTENT_ENUM, inferCanonicalIntent } = require('./intentCanonical');
 const { resolveQaPlan } = require('./qaPlanner');
 const { BLOCK_LEVEL, evaluateSafety } = require('./safetyEngineV1');
-const { getTravelWeather } = require('./weatherAdapter');
+const { getTravelWeather, climateFallback } = require('./weatherAdapter');
 const { buildEpiPayload } = require('./epiCalculator');
+const {
+  normalizeTravelProfilePatch,
+  resolveTravelPlansState,
+  applyTravelExtractionToProfile,
+} = require('./travelPlans');
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
@@ -11305,10 +11312,16 @@ function extractProfilePatchFromSession(session) {
   if (rawProfile.travelPlan && typeof rawProfile.travelPlan === 'object' && !Array.isArray(rawProfile.travelPlan)) {
     patch.travel_plan = rawProfile.travelPlan;
   }
+  if (Array.isArray(rawProfile.travel_plans)) {
+    patch.travel_plans = rawProfile.travel_plans;
+  }
+  if (Array.isArray(rawProfile.travelPlans)) {
+    patch.travel_plans = rawProfile.travelPlans;
+  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
-  const clean = parsed.data;
+  const clean = normalizeTravelProfilePatch({ baseProfile: rawProfile, patch: parsed.data });
   return Object.keys(clean).length ? clean : null;
 }
 
@@ -11436,22 +11449,43 @@ function summarizeProfileForContext(profile, options = {}) {
     ? profile.high_risk_medications.filter((v) => typeof v === 'string' && v.trim()).slice(0, 16)
     : [];
 
-  const travelPlanRaw = profile.travel_plan && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
-    ? profile.travel_plan
-    : null;
-  const travelPlan = travelPlanRaw
+  const travelState = resolveTravelPlansState(profile || {});
+  const travelPlan = travelState.legacy_travel_plan && typeof travelState.legacy_travel_plan === 'object'
     ? {
-      ...(typeof travelPlanRaw.destination === 'string' && travelPlanRaw.destination.trim()
-        ? { destination: travelPlanRaw.destination.trim().slice(0, 100) }
+      ...(typeof travelState.legacy_travel_plan.destination === 'string' && travelState.legacy_travel_plan.destination.trim()
+        ? { destination: travelState.legacy_travel_plan.destination.trim().slice(0, 100) }
         : {}),
-      ...(typeof travelPlanRaw.start_date === 'string' && travelPlanRaw.start_date.trim()
-        ? { start_date: travelPlanRaw.start_date.trim().slice(0, 20) }
+      ...(typeof travelState.legacy_travel_plan.start_date === 'string' && travelState.legacy_travel_plan.start_date.trim()
+        ? { start_date: travelState.legacy_travel_plan.start_date.trim().slice(0, 20) }
         : {}),
-      ...(typeof travelPlanRaw.end_date === 'string' && travelPlanRaw.end_date.trim()
-        ? { end_date: travelPlanRaw.end_date.trim().slice(0, 20) }
+      ...(typeof travelState.legacy_travel_plan.end_date === 'string' && travelState.legacy_travel_plan.end_date.trim()
+        ? { end_date: travelState.legacy_travel_plan.end_date.trim().slice(0, 20) }
         : {}),
-      ...(Number.isFinite(Number(travelPlanRaw.indoor_outdoor_ratio))
-        ? { indoor_outdoor_ratio: Math.max(0, Math.min(1, Number(travelPlanRaw.indoor_outdoor_ratio))) }
+      ...(Number.isFinite(Number(travelState.legacy_travel_plan.indoor_outdoor_ratio))
+        ? { indoor_outdoor_ratio: Math.max(0, Math.min(1, Number(travelState.legacy_travel_plan.indoor_outdoor_ratio))) }
+        : {}),
+      ...(typeof travelState.legacy_travel_plan.itinerary === 'string' && travelState.legacy_travel_plan.itinerary.trim()
+        ? { itinerary: travelState.legacy_travel_plan.itinerary.trim().slice(0, 1200) }
+        : {}),
+      ...(typeof travelState.legacy_travel_plan.trip_id === 'string' && travelState.legacy_travel_plan.trip_id.trim()
+        ? { trip_id: travelState.legacy_travel_plan.trip_id.trim().slice(0, 80) }
+        : {}),
+    }
+    : null;
+  const activeTravelPlan = travelState.active_trip && typeof travelState.active_trip === 'object'
+    ? {
+      trip_id: String(travelState.active_trip.trip_id || '').trim().slice(0, 80),
+      destination: String(travelState.active_trip.destination || '').trim().slice(0, 100),
+      start_date: String(travelState.active_trip.start_date || '').trim().slice(0, 20),
+      end_date: String(travelState.active_trip.end_date || '').trim().slice(0, 20),
+      ...(Number.isFinite(Number(travelState.active_trip.indoor_outdoor_ratio))
+        ? { indoor_outdoor_ratio: Math.max(0, Math.min(1, Number(travelState.active_trip.indoor_outdoor_ratio))) }
+        : {}),
+      ...(typeof travelState.active_trip.itinerary === 'string' && travelState.active_trip.itinerary.trim()
+        ? { itinerary: travelState.active_trip.itinerary.trim().slice(0, 1200) }
+        : {}),
+      ...(Number.isFinite(Number(travelState.active_trip.updated_at_ms))
+        ? { updated_at_ms: Math.trunc(Number(travelState.active_trip.updated_at_ms)) }
         : {}),
     }
     : null;
@@ -11462,6 +11496,7 @@ function summarizeProfileForContext(profile, options = {}) {
     barrierStatus: profile.barrierStatus || null,
     goals: Array.isArray(profile.goals) ? profile.goals : [],
     region: profile.region || null,
+    home_region: travelState.home_region || profile.region || null,
     budgetTier: profile.budgetTier || null,
     currentRoutine,
     itinerary,
@@ -11473,6 +11508,10 @@ function summarizeProfileForContext(profile, options = {}) {
         lactation_status: profile.lactation_status || 'unknown',
         high_risk_medications: highRiskMedications,
         travel_plan: travelPlan,
+        active_travel_plan: activeTravelPlan,
+        travel_plans_count: Number.isFinite(Number(travelState.travel_plans_count))
+          ? Math.max(0, Math.trunc(Number(travelState.travel_plans_count)))
+          : 0,
       }
       : {}),
   };
@@ -16356,8 +16395,63 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   return { norm, suggestedChips };
 }
 
-async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger }) {
+async function generateProductRecommendations({ ctx, profile, recentLogs, message, includeAlternatives, debug, logger, safetyDecision = null }) {
   const profileSummary = summarizeProfileForContext(profile);
+  const travelState = resolveTravelPlansState(profile || {});
+  const activeTrip = travelState.active_trip && typeof travelState.active_trip === 'object'
+    ? travelState.active_trip
+    : null;
+  const homeRegion = typeof travelState.home_region === 'string' ? travelState.home_region.trim() : '';
+  if (activeTrip) {
+    recordTravelPlanSelection({ mode: travelState.active_mode || 'in_range' });
+    recordRecoContextUsed({ signal: 'active_trip' });
+  } else {
+    recordTravelPlanSelection({ mode: 'none' });
+    if (homeRegion) recordRecoContextUsed({ signal: 'home_region_weather' });
+  }
+
+  const travelDestination = activeTrip && typeof activeTrip.destination === 'string' && activeTrip.destination.trim()
+    ? activeTrip.destination.trim()
+    : homeRegion;
+  const travelStartDate = activeTrip && typeof activeTrip.start_date === 'string' && activeTrip.start_date.trim()
+    ? activeTrip.start_date.trim()
+    : '';
+  const travelEndDate = activeTrip && typeof activeTrip.end_date === 'string' && activeTrip.end_date.trim()
+    ? activeTrip.end_date.trim()
+    : '';
+  let recommendationEnvSource = null;
+  let recommendationEpi = null;
+  if (travelDestination) {
+    try {
+      const weather = AURORA_TRAVEL_WEATHER_LIVE_ENABLED
+        ? await getTravelWeather({
+          destination: travelDestination,
+          startDate: travelStartDate,
+          endDate: travelEndDate,
+        })
+        : climateFallback({
+          destination: travelDestination,
+          startDate: travelStartDate,
+          endDate: travelEndDate,
+        });
+      const epiPayload = buildEpiPayload({
+        weather,
+        profile: profileSummary || profile,
+        language: ctx.lang,
+        userReportedConditions: { condition: message },
+      });
+      recommendationEnvSource = epiPayload.env_source || weather.source || null;
+      recommendationEpi = Number.isFinite(Number(epiPayload.epi)) ? Number(epiPayload.epi) : null;
+      if (recommendationEnvSource === 'climate_fallback') {
+        recordRecoContextUsed({ signal: 'climate_fallback' });
+      }
+    } catch (err) {
+      logger?.warn(
+        { err: err && (err.code || err.message) ? err.code || err.message : String(err) },
+        'aurora bff: failed to build reco travel weather context',
+      );
+    }
+  }
   const analysisSummary =
     profile && profile.lastAnalysis && (!profile.lastAnalysisLang || profile.lastAnalysisLang === ctx.lang) ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
@@ -16621,7 +16715,9 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
     return out;
   };
 
-  const itineraryText = profileSummary && typeof profileSummary.itinerary === 'string' ? profileSummary.itinerary.trim() : '';
+  const itineraryTextFromTrip = activeTrip && typeof activeTrip.itinerary === 'string' ? activeTrip.itinerary.trim() : '';
+  const itineraryTextFromProfile = profileSummary && typeof profileSummary.itinerary === 'string' ? profileSummary.itinerary.trim() : '';
+  const itineraryText = itineraryTextFromTrip || itineraryTextFromProfile;
   const itinerary = itineraryText ? itineraryText.slice(0, 160) : '';
   if (itinerary && Array.isArray(norm.payload?.recommendations)) {
     const itineraryReason = ctx.lang === 'CN' ? `接下来计划：${itinerary}` : `Upcoming plan: ${itinerary}`;
@@ -16702,6 +16798,36 @@ async function generateProductRecommendations({ ctx, profile, recentLogs, messag
       pdp_open_path_stats: pdpOpenOut.path_stats,
       resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
       time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+    },
+  };
+
+  const sourceMode = (() => {
+    if (structuredSource === 'catalog_grounded') return 'artifact_matcher';
+    if (structuredSource === 'catalog_transient_fallback') return 'rules_only';
+    if (structuredSource) return 'upstream_fallback';
+    return 'rules_only';
+  })();
+  const safetyFlagsUsed = Boolean(
+    (safetyDecision &&
+      typeof safetyDecision === 'object' &&
+      String(safetyDecision.block_level || '').toUpperCase() !== 'INFO') ||
+      (profileSummary &&
+        (
+          String(profileSummary.pregnancy_status || 'unknown') !== 'unknown' ||
+          String(profileSummary.lactation_status || 'unknown') !== 'unknown' ||
+          (Array.isArray(profileSummary.high_risk_medications) && profileSummary.high_risk_medications.length > 0)
+        )),
+  );
+  norm.payload = {
+    ...norm.payload,
+    recommendation_meta: {
+      source_mode: sourceMode,
+      used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+      used_itinerary: Boolean(itinerary || activeTrip),
+      used_safety_flags: safetyFlagsUsed,
+      env_source: recommendationEnvSource || null,
+      epi: recommendationEpi,
+      active_trip_id: activeTrip && typeof activeTrip.trip_id === 'string' ? activeTrip.trip_id : null,
     },
   };
 
@@ -22623,26 +22749,33 @@ function mountAuroraBffRoutes(app, { logger }) {
           canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
         )
       ) {
-        const baseTravel =
-          profile && profile.travel_plan && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
-            ? profile.travel_plan
-            : {};
-        const nextTravel = {
-          ...baseTravel,
-          ...(canonicalIntent.entities.destination ? { destination: String(canonicalIntent.entities.destination).trim().slice(0, 100) } : {}),
+        const extraction = {
+          ...(canonicalIntent.entities.destination ? { destination: canonicalIntent.entities.destination } : {}),
           ...(canonicalIntent.entities.date_range && typeof canonicalIntent.entities.date_range === 'object'
             ? {
-              ...(canonicalIntent.entities.date_range.start
-                ? { start_date: String(canonicalIntent.entities.date_range.start).trim().slice(0, 20) }
-                : {}),
-              ...(canonicalIntent.entities.date_range.end
-                ? { end_date: String(canonicalIntent.entities.date_range.end).trim().slice(0, 20) }
-                : {}),
+              ...(canonicalIntent.entities.date_range.start ? { start_date: canonicalIntent.entities.date_range.start } : {}),
+              ...(canonicalIntent.entities.date_range.end ? { end_date: canonicalIntent.entities.date_range.end } : {}),
             }
             : {}),
         };
-        if (Object.keys(nextTravel).length) {
-          profile = { ...(profile || {}), travel_plan: nextTravel };
+        if (Object.keys(extraction).length) {
+          const extracted = applyTravelExtractionToProfile(profile || {}, extraction);
+          if (extracted && extracted.patch && Object.keys(extracted.patch).length) {
+            const baseProfile = profile && typeof profile === 'object' ? profile : {};
+            profile = extracted.nextProfile;
+            try {
+              const travelPatch = normalizeTravelProfilePatch({ baseProfile, patch: extracted.patch });
+              profile = await upsertProfileForIdentity(
+                { auroraUid: identity.auroraUid, userId: identity.userId },
+                travelPatch,
+              );
+            } catch (err) {
+              logger?.warn(
+                { err: err && (err.code || err.message) ? err.code || err.message : String(err) },
+                'aurora bff: failed to persist extracted travel entities',
+              );
+            }
+          }
         }
       }
 
@@ -23448,15 +23581,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         const chips = [
           {
             chip_id: 'chip.travel.destination',
-            label: lang === 'CN' ? '目的地：东京' : 'Destination: Tokyo',
+            label: lang === 'CN' ? '填写目的地' : 'Set destination',
             kind: 'quick_reply',
-            data: { reply_text: lang === 'CN' ? '目的地东京' : 'Destination Tokyo' },
+            data: { reply_text: lang === 'CN' ? '目的地：' : 'Destination:' },
           },
           {
             chip_id: 'chip.travel.dates',
-            label: lang === 'CN' ? '日期：2026-03-01 到 2026-03-05' : 'Dates: 2026-03-01 to 2026-03-05',
+            label: lang === 'CN' ? '填写出行日期' : 'Set travel dates',
             kind: 'quick_reply',
-            data: { reply_text: '2026-03-01 to 2026-03-05' },
+            data: { reply_text: lang === 'CN' ? '日期：YYYY-MM-DD 到 YYYY-MM-DD' : 'Dates: YYYY-MM-DD to YYYY-MM-DD' },
           },
           {
             chip_id: 'chip.travel.climate_mode',
@@ -23494,88 +23627,126 @@ function mountAuroraBffRoutes(app, { logger }) {
         policyMeta.env_source = 'local_template';
         policyMeta.degraded = true;
 
-        if (effectiveChatFlags.travel_weather_live_v1) {
-          const travelPlan =
-            profile && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
-              ? profile.travel_plan
-              : null;
-          const destination =
-            (travelPlan && typeof travelPlan.destination === 'string' && travelPlan.destination.trim()) ||
-            (canonicalIntent.entities && canonicalIntent.entities.destination) ||
-            '';
-          const startDate =
-            (travelPlan && typeof travelPlan.start_date === 'string' && travelPlan.start_date.trim()) ||
-            (canonicalIntent.entities &&
-            canonicalIntent.entities.date_range &&
-            typeof canonicalIntent.entities.date_range.start === 'string'
-              ? canonicalIntent.entities.date_range.start
-              : '');
-          const endDate =
-            (travelPlan && typeof travelPlan.end_date === 'string' && travelPlan.end_date.trim()) ||
-            (canonicalIntent.entities &&
-            canonicalIntent.entities.date_range &&
-            typeof canonicalIntent.entities.date_range.end === 'string'
-              ? canonicalIntent.entities.date_range.end
-              : '');
+        const travelState = resolveTravelPlansState(profile || {});
+        const activeTrip = travelState.active_trip && typeof travelState.active_trip === 'object'
+          ? travelState.active_trip
+          : null;
+        const legacyTrip = travelState.legacy_travel_plan && typeof travelState.legacy_travel_plan === 'object'
+          ? travelState.legacy_travel_plan
+          : null;
+        if (activeTrip) {
+          recordTravelPlanSelection({ mode: travelState.active_mode || 'in_range' });
+        } else {
+          recordTravelPlanSelection({ mode: 'none' });
+        }
 
-          if (destination) {
-            const weather = await getTravelWeather({
+        const entityDestination =
+          canonicalIntent.entities && typeof canonicalIntent.entities.destination === 'string'
+            ? canonicalIntent.entities.destination.trim()
+            : '';
+        const entityStartDate =
+          canonicalIntent.entities &&
+          canonicalIntent.entities.date_range &&
+          typeof canonicalIntent.entities.date_range.start === 'string'
+            ? canonicalIntent.entities.date_range.start.trim()
+            : '';
+        const entityEndDate =
+          canonicalIntent.entities &&
+          canonicalIntent.entities.date_range &&
+          typeof canonicalIntent.entities.date_range.end === 'string'
+            ? canonicalIntent.entities.date_range.end.trim()
+            : '';
+
+        const destination =
+          (activeTrip && typeof activeTrip.destination === 'string' && activeTrip.destination.trim()) ||
+          (legacyTrip && typeof legacyTrip.destination === 'string' && legacyTrip.destination.trim()) ||
+          entityDestination ||
+          (typeof travelState.home_region === 'string' ? travelState.home_region.trim() : '') ||
+          '';
+        const startDate =
+          (activeTrip && typeof activeTrip.start_date === 'string' && activeTrip.start_date.trim()) ||
+          (legacyTrip && typeof legacyTrip.start_date === 'string' && legacyTrip.start_date.trim()) ||
+          entityStartDate ||
+          '';
+        const endDate =
+          (activeTrip && typeof activeTrip.end_date === 'string' && activeTrip.end_date.trim()) ||
+          (legacyTrip && typeof legacyTrip.end_date === 'string' && legacyTrip.end_date.trim()) ||
+          entityEndDate ||
+          '';
+        const usingHomeRegionFallback = Boolean(
+          !activeTrip &&
+          !(
+            legacyTrip &&
+            typeof legacyTrip.destination === 'string' &&
+            legacyTrip.destination.trim()
+          ) &&
+          !entityDestination &&
+          destination,
+        );
+
+        if (destination) {
+          const weather = effectiveChatFlags.travel_weather_live_v1
+            ? await getTravelWeather({
               destination,
               startDate,
               endDate,
-            });
-            const epiPayload = buildEpiPayload({
-              weather,
-              profile,
-              language: ctx.lang,
-              userReportedConditions: { condition: message },
-            });
-            policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
-            policyMeta.degraded = policyMeta.env_source !== 'weather_api';
+            })
+            : climateFallback({ destination, startDate, endDate });
+          const epiPayload = buildEpiPayload({
+            weather,
+            profile,
+            language: ctx.lang,
+            userReportedConditions: { condition: message },
+          });
+          policyMeta.env_source = epiPayload.env_source || weather.source || 'user_reported_conditions';
+          policyMeta.degraded = policyMeta.env_source !== 'weather_api';
+          if (activeTrip) recordRecoContextUsed({ signal: 'active_trip' });
+          if (usingHomeRegionFallback) recordRecoContextUsed({ signal: 'home_region_weather' });
+          if (policyMeta.env_source === 'climate_fallback') recordRecoContextUsed({ signal: 'climate_fallback' });
 
-            const localEss = Number(envStressUi && envStressUi.ess);
-            envStressUi = {
-              ...(envStressUi || {}),
-              ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
-              epi: epiPayload.epi,
-              components: epiPayload.components,
-              reco_weights: epiPayload.reco_weights,
-              env_source: epiPayload.env_source,
-              travel_context: weather.date_range || null,
-            };
+          const localEss = Number(envStressUi && envStressUi.ess);
+          envStressUi = {
+            ...(envStressUi || {}),
+            ess: Number.isFinite(localEss) ? localEss : epiPayload.epi,
+            epi: epiPayload.epi,
+            components: epiPayload.components,
+            reco_weights: epiPayload.reco_weights,
+            env_source: epiPayload.env_source,
+            travel_context: weather.date_range || null,
+            ...(activeTrip && activeTrip.trip_id ? { active_trip_id: activeTrip.trip_id } : {}),
+          };
 
-            const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-            const destinationText =
-              weather && weather.location && weather.location.name
-                ? String(weather.location.name)
-                : String(destination);
-            const dateHint =
-              weather && weather.date_range && weather.date_range.start
-                ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
-                : '';
-            const epiLinesCn = [
-              `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
-              destinationText ? `目的地：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
-              '建议（AM）：',
-              ...epiPayload.strategy.am.map((line) => `- ${line}`),
-              '建议（PM）：',
-              ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-              ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-            ].filter(Boolean);
-            const epiLinesEn = [
-              `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
-              destinationText ? `Destination: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
-              'AM strategy:',
-              ...epiPayload.strategy.am.map((line) => `- ${line}`),
-              'PM strategy:',
-              ...epiPayload.strategy.pm.map((line) => `- ${line}`),
-              ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
-            ].filter(Boolean);
-            advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
-          } else {
-            policyMeta.env_source = 'user_reported_conditions';
-            policyMeta.degraded = true;
-          }
+          const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+          const destinationText =
+            weather && weather.location && weather.location.name
+              ? String(weather.location.name)
+              : String(destination);
+          const dateHint =
+            weather && weather.date_range && weather.date_range.start
+              ? `${weather.date_range.start}${weather.date_range.end ? ` -> ${weather.date_range.end}` : ''}`
+              : '';
+          const epiLinesCn = [
+            `旅行环境压力指数 EPI：${epiPayload.epi}/100（来源：${epiPayload.env_source}）。`,
+            destinationText ? `${usingHomeRegionFallback ? '常驻地' : '目的地'}：${destinationText}${dateHint ? `（${dateHint}）` : ''}` : '',
+            '建议（AM）：',
+            ...epiPayload.strategy.am.map((line) => `- ${line}`),
+            '建议（PM）：',
+            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+          ].filter(Boolean);
+          const epiLinesEn = [
+            `Environmental Pressure Index (EPI): ${epiPayload.epi}/100 (source: ${epiPayload.env_source}).`,
+            destinationText ? `${usingHomeRegionFallback ? 'Home region' : 'Destination'}: ${destinationText}${dateHint ? ` (${dateHint})` : ''}` : '',
+            'AM strategy:',
+            ...epiPayload.strategy.am.map((line) => `- ${line}`),
+            'PM strategy:',
+            ...epiPayload.strategy.pm.map((line) => `- ${line}`),
+            ...(epiPayload.strategy.notes || []).map((line) => `- ${line}`),
+          ].filter(Boolean);
+          advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
+        } else {
+          policyMeta.env_source = 'user_reported_conditions';
+          policyMeta.degraded = true;
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -24367,6 +24538,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           message,
           includeAlternatives,
           debug: debugUpstream,
+          safetyDecision,
           logger,
         });
 

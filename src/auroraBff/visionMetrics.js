@@ -96,6 +96,8 @@ const recoInterleaveWinCounter = new Map();
 const recoExplorationSlotCounter = new Map();
 const recoAsyncUpdateCounter = new Map();
 const recoAsyncUpdateChangedItemsCounter = new Map();
+const recoContextUsedCounter = new Map();
+const travelPlanSelectionCounter = new Map();
 const prelabelRequestsCounter = new Map();
 const prelabelSuccessCounter = new Map();
 const prelabelInvalidJsonCounter = new Map();
@@ -451,6 +453,18 @@ function normalizeRecoAsyncResult(result) {
   const token = cleanMetricToken(result, 'unknown');
   if (token === 'applied' || token === 'skipped' || token === 'noop' || token === 'error') return token;
   return 'unknown';
+}
+
+function normalizeRecoContextSignal(signal) {
+  const token = cleanMetricToken(signal, 'unknown');
+  if (token === 'active_trip' || token === 'home_region_weather' || token === 'climate_fallback') return token;
+  return 'unknown';
+}
+
+function normalizeTravelPlanSelectionMode(mode) {
+  const token = cleanMetricToken(mode, 'none');
+  if (token === 'in_range' || token === 'nearest_upcoming' || token === 'none') return token;
+  return 'none';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -892,6 +906,26 @@ function recordRecoAsyncUpdate({ block, result, mode, changedCount = 0, delta } 
       safeChanged,
     );
   }
+}
+
+function recordRecoContextUsed({ signal, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    recoContextUsedCounter,
+    { signal: normalizeRecoContextSignal(signal) },
+    amount,
+  );
+}
+
+function recordTravelPlanSelection({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    travelPlanSelectionCounter,
+    { mode: normalizeTravelPlanSelectionMode(mode) },
+    amount,
+  );
 }
 
 function clampRatio01(value, fallback = 0) {
@@ -1706,6 +1740,14 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE reco_async_update_items_changed_count counter');
   renderCounter(lines, 'reco_async_update_items_changed_count', recoAsyncUpdateChangedItemsCounter);
 
+  lines.push('# HELP aurora_reco_context_used_total Recommendation context usage by signal.');
+  lines.push('# TYPE aurora_reco_context_used_total counter');
+  renderCounter(lines, 'aurora_reco_context_used_total', recoContextUsedCounter);
+
+  lines.push('# HELP aurora_travel_plan_selection_total Travel plan selection mode distribution.');
+  lines.push('# TYPE aurora_travel_plan_selection_total counter');
+  renderCounter(lines, 'aurora_travel_plan_selection_total', travelPlanSelectionCounter);
+
   lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
   lines.push('# TYPE reco_competitors_same_brand_rate gauge');
   lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
@@ -1971,6 +2013,8 @@ function resetVisionMetrics() {
   recoExplorationSlotCounter.clear();
   recoAsyncUpdateCounter.clear();
   recoAsyncUpdateChangedItemsCounter.clear();
+  recoContextUsedCounter.clear();
+  travelPlanSelectionCounter.clear();
   prelabelRequestsCounter.clear();
   prelabelSuccessCounter.clear();
   prelabelInvalidJsonCounter.clear();
@@ -2077,6 +2121,8 @@ function snapshotVisionMetrics() {
     recoExplorationSlot: Array.from(recoExplorationSlotCounter.entries()),
     recoAsyncUpdate: Array.from(recoAsyncUpdateCounter.entries()),
     recoAsyncUpdateChangedItems: Array.from(recoAsyncUpdateChangedItemsCounter.entries()),
+    recoContextUsed: Array.from(recoContextUsedCounter.entries()),
+    travelPlanSelection: Array.from(travelPlanSelectionCounter.entries()),
     prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
     prelabelSuccess: Array.from(prelabelSuccessCounter.entries()),
     prelabelInvalidJson: Array.from(prelabelInvalidJsonCounter.entries()),
@@ -2146,6 +2192,8 @@ module.exports = {
   recordRecoInterleaveWin,
   recordRecoExplorationSlot,
   recordRecoAsyncUpdate,
+  recordRecoContextUsed,
+  recordTravelPlanSelection,
   setRecoGuardrailRates,
   recordPrelabelRequest,
   recordPrelabelSuccess,
