@@ -2456,6 +2456,11 @@ const REAL_API_ENABLED = API_MODE === 'REAL' && Boolean(PIVOTA_API_KEY);
 // Load tool schema once for chat endpoint.
 const toolSchemaPath = path.join(__dirname, '..', 'docs', 'tool-schema.json');
 const toolSchema = JSON.parse(fs.readFileSync(toolSchemaPath, 'utf-8'));
+const uiChatToolSchema = {
+  name: toolSchema.name,
+  description: toolSchema.description,
+  parameters: toolSchema.parameters,
+};
 
 function buildQueryString(params) {
   const sp = new URLSearchParams();
@@ -18475,7 +18480,7 @@ async function runAgentWithTools(messages) {
       tools: [
         {
           type: 'function',
-          function: toolSchema,
+          function: uiChatToolSchema,
         },
       ],
       tool_choice: 'auto',
