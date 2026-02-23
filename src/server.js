@@ -8361,6 +8361,41 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   };
 }
 
+const HEALTH_LITE_PATHS = new Set(['/healthz/lite', '/health/lite']);
+
+function buildHealthLiteResponsePayload() {
+  const auroraStartupCritical = AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady;
+  const statusCode = auroraStartupCritical ? 503 : 200;
+  return {
+    statusCode,
+    payload: {
+      ok: !auroraStartupCritical,
+      service: SERVICE_NAME,
+      commit: SERVICE_GIT_SHA_SHORT,
+      build_id: SERVICE_BUILD_ID,
+      branch: SERVICE_GIT_BRANCH || null,
+      deployment_id: SERVICE_DEPLOYMENT_ID || null,
+      started_at: SERVICE_STARTED_AT,
+      aurora_routes_ready: auroraRoutesReady,
+      aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+    },
+  };
+}
+
+function sendHealthLiteResponse(res) {
+  const { statusCode, payload } = buildHealthLiteResponsePayload();
+  return res.status(statusCode).json(payload);
+}
+
+// Ultra-light fast path for platform probes to reduce first-byte overhead.
+app.use((req, res, next) => {
+  const method = String(req.method || '').toUpperCase();
+  if ((method === 'GET' || method === 'HEAD') && HEALTH_LITE_PATHS.has(req.path)) {
+    return sendHealthLiteResponse(res);
+  }
+  return next();
+});
+
 // CORS configuration - allow UI to call Gateway
 // NOTE: Must run BEFORE body parsing so browser clients still receive CORS headers
 // even when JSON parsing fails (otherwise Aurora Chatbox sees "No Access-Control-Allow-Origin").
@@ -8659,19 +8694,7 @@ const HEALTH_RESPONSE_CACHE_TTL_MS = Math.max(
 );
 
 const healthLiteRouteHandler = (req, res) => {
-  const auroraStartupCritical = AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady;
-  const statusCode = auroraStartupCritical ? 503 : 200;
-  return res.status(statusCode).json({
-    ok: !auroraStartupCritical,
-    service: SERVICE_NAME,
-    commit: SERVICE_GIT_SHA_SHORT,
-    build_id: SERVICE_BUILD_ID,
-    branch: SERVICE_GIT_BRANCH || null,
-    deployment_id: SERVICE_DEPLOYMENT_ID || null,
-    started_at: SERVICE_STARTED_AT,
-    aurora_routes_ready: auroraRoutesReady,
-    aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-  });
+  return sendHealthLiteResponse(res);
 };
 
 app.get('/healthz/lite', healthLiteRouteHandler);
