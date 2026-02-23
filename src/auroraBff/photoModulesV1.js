@@ -3424,6 +3424,7 @@ function buildPhotoModulesCard({
   photoQuality,
   photoNotice,
   diagnosisInternal,
+  sourcePhoto,
   profileSummary,
   language,
   ingredientRecEnabled,
@@ -3508,7 +3509,15 @@ function buildPhotoModulesCard({
     used_photos: true,
     quality_grade: qualityGrade,
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
-    face_crop: faceCrop,
+    face_crop: {
+      ...faceCrop,
+      ...(sourcePhoto && typeof sourcePhoto.slot_id === 'string' && sourcePhoto.slot_id.trim()
+        ? { slot_id: sourcePhoto.slot_id.trim() }
+        : {}),
+      ...(sourcePhoto && typeof sourcePhoto.photo_id === 'string' && sourcePhoto.photo_id.trim()
+        ? { photo_id: sourcePhoto.photo_id.trim() }
+        : {}),
+    },
     regions,
     modules: moduleMaskBuild.modules,
     ...(Array.isArray(moduleMaskBuild.degraded_reasons) && moduleMaskBuild.degraded_reasons.length

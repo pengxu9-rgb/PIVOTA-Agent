@@ -9353,6 +9353,7 @@ function maybeBuildPhotoModulesCardForAnalysis({
   photoQuality,
   photoNotice,
   diagnosisInternal,
+  sourcePhoto,
   profileSummary,
   language,
   skinMask,
@@ -9374,6 +9375,7 @@ function maybeBuildPhotoModulesCardForAnalysis({
     photoQuality,
     photoNotice: photoNoticeText,
     diagnosisInternal,
+    sourcePhoto,
     profileSummary,
     language,
     ingredientRecEnabled: DIAG_INGREDIENT_REC,
@@ -9783,6 +9785,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     photoQuality: diagnosisV1 && diagnosisV1.quality ? diagnosisV1.quality : photoQuality,
     photoNotice,
     diagnosisInternal: diagnosisV1Internal,
+    sourcePhoto: { slot_id: slot, photo_id: photoId },
     profileSummary,
     language,
     skinMask: photoModulesSkinMask,
@@ -23050,9 +23053,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         let reportModelCalled = false;
         let reportModelErrored = false;
 
-	        let diagnosisPhoto = null;
-	        let diagnosisPhotoBytes = null;
-	        let shadowVerifyPhotoBytes = null;
+        let diagnosisPhoto = null;
+        let diagnosisPhotoBytes = null;
+        let shadowVerifyPhotoBytes = null;
+        let photoModulesSourcePhoto = null;
         let diagnosisV1 = null;
         let diagnosisV1Internal = null;
         let diagnosisPolicy = null;
@@ -23095,6 +23099,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (ctx.lang === 'CN') qualityReportReasons.push('没有可用的照片（缺少 photo_id 或未通过质量门槛）；我会跳过照片检测。');
             else qualityReportReasons.push('No usable photo (missing photo_id or failed quality gate); skipping photo checks.');
           } else {
+            photoModulesSourcePhoto = {
+              slot_id: diagnosisPhoto.slot_id,
+              photo_id: diagnosisPhoto.photo_id,
+            };
             try {
               profiler.start('decode', { kind: 'photo_fetch', slot: diagnosisPhoto.slot_id, purpose: 'diagnosis_v1' });
               const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: diagnosisPhoto.photo_id });
@@ -23274,6 +23282,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             else qualityReportReasons.push('No usable photo (missing photo_id or failed quality gate); skipping photo analysis.');
           } else {
             let photoBytes = null;
+            photoModulesSourcePhoto = { slot_id: chosen.slot_id, photo_id: chosen.photo_id };
             if (diagnosisPhotoBytes && diagnosisPhoto && diagnosisPhoto.photo_id === chosen.photo_id) {
               photoBytes = diagnosisPhotoBytes;
             } else {
@@ -23686,6 +23695,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? photoNotice.message
               : visionPhotoNoticeMessage,
           diagnosisInternal: diagnosisV1Internal,
+          sourcePhoto: photoModulesSourcePhoto,
           profileSummary,
           language: ctx.lang,
           skinMask: photoModulesSkinMask,
