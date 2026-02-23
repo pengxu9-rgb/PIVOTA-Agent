@@ -23529,10 +23529,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
 
         if (visionRuntime && visionRuntime.ok) {
+          const runtimeReasons = Array.isArray(visionDecisionForReport.reasons)
+            ? visionDecisionForReport.reasons.filter(Boolean)
+            : [];
+          const normalizedQualityGrade = String(photoQuality && photoQuality.grade ? photoQuality.grade : '')
+            .trim()
+            .toLowerCase();
+          const qualityReasonFallback =
+            normalizedQualityGrade === 'degraded' || normalizedQualityGrade === 'unknown'
+              ? ['degraded_mode_vision']
+              : ['quality_pass'];
           visionDecisionForReport = {
             ...visionDecisionForReport,
             decision: 'call',
-            reasons: ['quality_pass'],
+            // Preserve policy reasons so report metadata stays consistent with degrade decisions.
+            reasons: runtimeReasons.length ? runtimeReasons : qualityReasonFallback,
             provider: visionRuntime.provider || visionDecisionForReport.provider,
             retry: visionRuntime.retry || { attempted: 0, final: 'success', last_reason: null },
             upstream_status_code: null,
