@@ -330,6 +330,9 @@ ROUNDS=8 BASELINE_JSON=/tmp/tls_before.json OUTPUT_JSON=/tmp/tls_after.json ./sc
 - fail fast when configured latency budgets are exceeded
 - optionally fail on regression vs a saved baseline JSON
 
+For infra-side tuning order and rollback rules, see:
+`docs/runbooks/tls_infra_optimization_runbook.md`
+
 ## Performance Optimization
 
 ### 1. Node.js Configuration
