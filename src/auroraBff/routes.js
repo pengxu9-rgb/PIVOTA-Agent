@@ -22998,7 +22998,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 reportAvailable,
                 degradedMode: SKIN_DEGRADED_MODE,
               });
-        const reportDecision = rollout.llmKillSwitch
+        let reportDecision = rollout.llmKillSwitch
           ? { decision: 'skip', reasons: ['llm_kill_switch'], downgrade_confidence: true }
           : shouldCallLlm({
               kind: 'report',
@@ -23011,6 +23011,29 @@ function mountAuroraBffRoutes(app, { logger }) {
               reportAvailable,
               degradedMode: SKIN_DEGRADED_MODE,
             });
+        const forceReportOnPhotoFetchFailure = Boolean(
+          !rollout.llmKillSwitch &&
+            userRequestedPhoto &&
+            photosProvided &&
+            hasPrimaryInput &&
+            reportAvailable &&
+            photoFailureCodes.length > 0 &&
+            reportDecision.decision !== 'call',
+        );
+        if (forceReportOnPhotoFetchFailure) {
+          reportDecision = {
+            decision: 'call',
+            reasons: ['photo_fetch_failed_force_report'],
+            downgrade_confidence: true,
+          };
+          if (ctx.lang === 'CN') {
+            qualityReportReasons.push('照片上传已通过但读取失败：强制调用报告模型给出保守解释与下一步。');
+          } else {
+            qualityReportReasons.push(
+              'Photo upload passed but image bytes could not be read: forcing report model for conservative guidance.',
+            );
+          }
+        }
 
         let analysis = null;
         if (userRequestedPhoto && photosProvided && !hasPrimaryInput) {
