@@ -834,6 +834,11 @@ const PHOTO_DOWNLOAD_URL_TIMEOUT_MS = Math.max(
   1000,
   Math.min(20000, Number(process.env.AURORA_PHOTO_DOWNLOAD_URL_TIMEOUT_MS || 5000)),
 );
+const PHOTO_DOWNLOAD_URL_RETRIES = Math.max(0, Math.min(5, Number(process.env.AURORA_PHOTO_DOWNLOAD_URL_RETRIES || 1)));
+const PHOTO_DOWNLOAD_URL_RETRY_BASE_MS = Math.max(
+  100,
+  Math.min(2000, Number(process.env.AURORA_PHOTO_DOWNLOAD_URL_RETRY_BASE_MS || 250)),
+);
 const PHOTO_FETCH_TIMEOUT_MS = Math.max(
   1000,
   Math.min(20000, Number(process.env.AURORA_PHOTO_FETCH_TIMEOUT_MS || 3000)),
@@ -8870,6 +8875,79 @@ function classifySignedUrlFetchFailure({ status, detail, code } = {}) {
   return { failure_code: 'DOWNLOAD_URL_FETCH_5XX', retryable: true };
 }
 
+function classifyDownloadUrlGenerateFailure({ status, detail, code } = {}) {
+  if (isSignedUrlExpiredSignal({ status, detail, code })) {
+    // Retry once to refresh signed URL; some upstreams may return near-expired links under load.
+    return { failure_code: 'DOWNLOAD_URL_EXPIRED', retryable: true };
+  }
+  const statusNum = Number(status || 0);
+  const errorCode = String(code || '').toUpperCase();
+  if (statusNum === 408 || statusNum === 429 || (statusNum >= 500 && statusNum < 600)) {
+    return { failure_code: 'DOWNLOAD_URL_GENERATE_FAILED', retryable: true };
+  }
+  if (statusNum >= 400 && statusNum < 500) {
+    return { failure_code: 'DOWNLOAD_URL_GENERATE_FAILED', retryable: false };
+  }
+  if (errorCode === 'ECONNABORTED' || errorCode === 'ETIMEDOUT' || /timeout/i.test(String(detail || ''))) {
+    return { failure_code: 'DOWNLOAD_URL_TIMEOUT', retryable: true };
+  }
+  if (errorCode === 'ENOTFOUND' || errorCode === 'EAI_AGAIN' || errorCode === 'EAI_FAIL') {
+    return { failure_code: 'DOWNLOAD_URL_DNS', retryable: true };
+  }
+  return { failure_code: 'DOWNLOAD_URL_GENERATE_FAILED', retryable: true };
+}
+
+async function requestPhotoDownloadUrlOnce({ photoId, authHeaders } = {}) {
+  let upstreamResp = null;
+  try {
+    upstreamResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/download-url`, {
+      timeout: PHOTO_DOWNLOAD_URL_TIMEOUT_MS,
+      validateStatus: () => true,
+      headers: authHeaders,
+      params: { upload_id: photoId },
+    });
+  } catch (err) {
+    const failure = classifyDownloadUrlGenerateFailure({
+      status: null,
+      detail: err && err.message ? err.message : null,
+      code: err && err.code ? err.code : null,
+    });
+    return {
+      ok: false,
+      reason: 'download_url_generate_failed',
+      failure_code: failure.failure_code,
+      status: null,
+      detail: err && (err.code || err.message) ? String(err.code || err.message) : null,
+      retryable: failure.retryable,
+    };
+  }
+
+  const download = upstreamResp && upstreamResp.data && upstreamResp.data.download ? upstreamResp.data.download : null;
+  const downloadUrl = download && typeof download.url === 'string' ? download.url.trim() : '';
+  if (upstreamResp.status !== 200 || !downloadUrl) {
+    const detail = pickUpstreamErrorDetail(upstreamResp.data);
+    const failure = classifyDownloadUrlGenerateFailure({
+      status: upstreamResp.status,
+      detail,
+    });
+    return {
+      ok: false,
+      reason: 'download_url_generate_failed',
+      failure_code: failure.failure_code,
+      status: upstreamResp.status,
+      detail: detail || null,
+      retryable: failure.retryable,
+    };
+  }
+
+  return {
+    ok: true,
+    upstreamResp,
+    download,
+    downloadUrl,
+  };
+}
+
 async function fetchBytesFromSignedUrl(downloadUrl) {
   const startedAt = Date.now();
   let lastFailure = null;
@@ -8984,35 +9062,50 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
     };
   }
 
+  const generateAttempts = PHOTO_DOWNLOAD_URL_RETRIES + 1;
   let upstreamResp = null;
-  try {
-    upstreamResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/download-url`, {
-      timeout: PHOTO_DOWNLOAD_URL_TIMEOUT_MS,
-      validateStatus: () => true,
-      headers: authHeaders,
-      params: { upload_id: photoId },
-    });
-  } catch (err) {
-    return {
-      ok: false,
-      reason: 'download_url_generate_failed',
-      failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
-      status: null,
-      detail: err && (err.code || err.message) ? String(err.code || err.message) : null,
-    };
+  let download = null;
+  let downloadUrl = '';
+  let lastGenerateFailure = null;
+  for (let attempt = 0; attempt < generateAttempts; attempt += 1) {
+    const generated = await requestPhotoDownloadUrlOnce({ photoId, authHeaders });
+    if (generated && generated.ok) {
+      upstreamResp = generated.upstreamResp;
+      download = generated.download;
+      downloadUrl = generated.downloadUrl;
+      break;
+    }
+    lastGenerateFailure = generated
+      ? {
+          ok: false,
+          reason: generated.reason || 'download_url_generate_failed',
+          failure_code: generated.failure_code || 'DOWNLOAD_URL_GENERATE_FAILED',
+          status: generated.status == null ? null : generated.status,
+          detail: generated.detail || null,
+        }
+      : {
+          ok: false,
+          reason: 'download_url_generate_failed',
+          failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
+          status: null,
+          detail: null,
+        };
+    if (!generated || !generated.retryable || attempt >= generateAttempts - 1) {
+      return lastGenerateFailure;
+    }
+    const backoffMs = Math.min(PHOTO_DOWNLOAD_URL_RETRY_BASE_MS * (2 ** attempt), PHOTO_DOWNLOAD_URL_TIMEOUT_MS);
+    if (backoffMs > 0) await sleep(backoffMs);
   }
-
-  const download = upstreamResp && upstreamResp.data && upstreamResp.data.download ? upstreamResp.data.download : null;
-  const downloadUrl = download && typeof download.url === 'string' ? download.url.trim() : '';
-  if (upstreamResp.status !== 200 || !downloadUrl) {
-    const detail = pickUpstreamErrorDetail(upstreamResp.data);
-    return {
-      ok: false,
-      reason: 'download_url_generate_failed',
-      failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
-      status: upstreamResp.status,
-      detail: detail || null,
-    };
+  if (!upstreamResp || !downloadUrl) {
+    return (
+      lastGenerateFailure || {
+        ok: false,
+        reason: 'download_url_generate_failed',
+        failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
+        status: null,
+        detail: null,
+      }
+    );
   }
 
   const downloadExpiresAt =
