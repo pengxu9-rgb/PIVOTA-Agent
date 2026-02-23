@@ -75,10 +75,10 @@ JSON
   post_json "/v1/chat" "${uid}" "${trace}" "${brief}" /tmp/smoke_trip_a_chat.json >/tmp/smoke_trip_a_chat_resp.json
 
   if assert_jq '
-    ((.cards // []) | any(.type == "diagnosis_gate" or .type == "gate_notice")) | not
-    and (
-      ((.cards // []) | map(select(.type=="recommendations")) | .[0].payload.recommendation_meta.active_trip_id // "") == "trip_near"
-    )
+    . as $r
+    | (((($r.cards // []) | any(.type == "diagnosis_gate" or .type == "gate_notice")) | not)
+      and
+      (((($r.cards // []) | map(select(.type=="recommendations")) | .[0].payload.recommendation_meta.active_trip_id // "") == "trip_near")))
   ' /tmp/smoke_trip_a_chat_resp.json; then
     echo "[PASS] 场景A 最近未来行程命中 trip_near"
   else
@@ -128,10 +128,10 @@ JSON
   post_json "/v1/chat" "${uid}" "${trace}" "${brief}" /tmp/smoke_trip_b_chat.json >/tmp/smoke_trip_b_chat_resp.json
 
   if assert_jq '
-    ((.cards // []) | any(.type == "diagnosis_gate" or .type == "gate_notice")) | not
-    and (
-      ((.cards // []) | map(select(.type=="recommendations")) | .[0].payload.recommendation_meta.active_trip_id // "") == "trip_in_range"
-    )
+    . as $r
+    | (((($r.cards // []) | any(.type == "diagnosis_gate" or .type == "gate_notice")) | not)
+      and
+      (((($r.cards // []) | map(select(.type=="recommendations")) | .[0].payload.recommendation_meta.active_trip_id // "") == "trip_in_range")))
   ' /tmp/smoke_trip_b_chat_resp.json; then
     echo "[PASS] 场景B 命中区间行程优先 trip_in_range"
   else

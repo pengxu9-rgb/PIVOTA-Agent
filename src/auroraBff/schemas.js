@@ -125,6 +125,9 @@ const RecommendationMetaSchema = z
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
     used_safety_flags: z.boolean(),
+    env_source: z.string().min(1).nullable().optional(),
+    epi: z.number().finite().nullable().optional(),
+    active_trip_id: z.string().min(1).nullable().optional(),
   })
   .strict();
 

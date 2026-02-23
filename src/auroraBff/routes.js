@@ -17675,6 +17675,7 @@ function buildLowMediumSafeFallbackRecoCard({
   language,
   sourcePayload,
   sourceFieldMissing,
+  fallbackRecommendationMeta,
 } = {}) {
   const recommendations = buildLowMediumSafeFallbackRecommendations({ language });
   if (!recommendations.length) return null;
@@ -17691,6 +17692,7 @@ function buildLowMediumSafeFallbackRecoCard({
       time_to_pdp_ms_stats: summarizeTimeToPdpStats(recommendations),
       low_medium_safe_fallback: true,
     },
+    ...(isPlainObject(fallbackRecommendationMeta) ? { recommendation_meta: fallbackRecommendationMeta } : {}),
   };
 
   return {
@@ -17778,6 +17780,7 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
       language,
       sourcePayload: fallbackRecoSourcePayload,
       sourceFieldMissing: fallbackRecoSourceFieldMissing,
+      fallbackRecommendationMeta: isPlainObject(baseEnvelope.recommendation_meta) ? baseEnvelope.recommendation_meta : null,
     });
     if (safeRecoCard) {
       finalCards = [...finalCards, safeRecoCard];
@@ -25364,6 +25367,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (!profileValue || typeof profileValue !== 'object' || Array.isArray(profileValue)) return false;
       const itinerary = String(profileValue.itinerary || '').trim();
       if (itinerary) return true;
+      const plans = Array.isArray(profileValue.travel_plans) ? profileValue.travel_plans : [];
+      if (plans.length > 0) return true;
       const travelPlan =
         profileValue.travel_plan && typeof profileValue.travel_plan === 'object' && !Array.isArray(profileValue.travel_plan)
           ? profileValue.travel_plan
@@ -25381,17 +25386,59 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (Array.isArray(safetyValue.reasons) && safetyValue.reasons.length > 0) return true;
       return false;
     };
+    const normalizeRecommendationSourceMode = (value, fallback = 'rules_only') => {
+      const token = String(value || '').trim().toLowerCase();
+      if (token === 'artifact_matcher' || token === 'upstream_fallback' || token === 'rules_only') return token;
+      return fallback;
+    };
+    const normalizeOptionalText = (value, { maxLen = 120 } = {}) => {
+      if (typeof value !== 'string') return null;
+      const token = value.trim();
+      if (!token) return null;
+      return token.slice(0, maxLen);
+    };
+    const normalizeOptionalNumber = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    };
+    const buildNormalizedRecommendationMeta = (candidate, fallbackMeta) => {
+      const fallback = isPlainObject(fallbackMeta) ? fallbackMeta : {};
+      const src = isPlainObject(candidate) ? candidate : {};
+      const sourceMode = normalizeRecommendationSourceMode(src.source_mode, normalizeRecommendationSourceMode(fallback.source_mode));
+
+      const resolveBool = (k) => {
+        if (typeof src[k] === 'boolean') return src[k];
+        if (typeof fallback[k] === 'boolean') return fallback[k];
+        return false;
+      };
+
+      return {
+        source_mode: sourceMode,
+        used_recent_logs: resolveBool('used_recent_logs'),
+        used_itinerary: resolveBool('used_itinerary'),
+        used_safety_flags: resolveBool('used_safety_flags'),
+        env_source: normalizeOptionalText(src.env_source) ?? normalizeOptionalText(fallback.env_source),
+        epi: normalizeOptionalNumber(src.epi) ?? normalizeOptionalNumber(fallback.epi),
+        active_trip_id: normalizeOptionalText(src.active_trip_id, { maxLen: 120 }) ?? normalizeOptionalText(fallback.active_trip_id, { maxLen: 120 }),
+      };
+    };
     const applyRecommendationMetaToEnvelope = (envelope) => {
       if (!envelope || typeof envelope !== 'object') return envelope;
       const sourceMode = inferRecommendationSourceMode(envelope);
       if (!sourceMode) return envelope;
 
-      const recommendationMeta = {
+      const travelState = resolveTravelPlansState(profile, { nowMs: Date.now() });
+      const activeTrip = travelState && isPlainObject(travelState.active_trip) ? travelState.active_trip : null;
+      const baseRecommendationMeta = {
         source_mode: sourceMode,
         used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-        used_itinerary: hasItineraryContext(profile),
+        used_itinerary: hasItineraryContext(profile) || Boolean(activeTrip),
         used_safety_flags: hasSafetyFlags(safetyDecision),
+        env_source: normalizeOptionalText(policyMeta.env_source),
+        epi: null,
+        active_trip_id: normalizeOptionalText(activeTrip && activeTrip.trip_id, { maxLen: 120 }),
       };
+      const recommendationMeta = buildNormalizedRecommendationMeta(envelope.recommendation_meta, baseRecommendationMeta);
 
       if (!recoContextMetricsEmitted) {
         if (recommendationMeta.used_recent_logs) recordAuroraRecoContextUsed({ signal: 'recent_logs' });
@@ -25406,9 +25453,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (!card || typeof card !== 'object') return card;
           if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return card;
           const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+          const payloadMeta = buildNormalizedRecommendationMeta(payload.recommendation_meta, recommendationMeta);
           return {
             ...card,
-            payload: { ...payload, recommendation_meta: recommendationMeta },
+            payload: { ...payload, recommendation_meta: payloadMeta },
           };
         });
       }
