@@ -586,6 +586,9 @@ const PROXY_SEARCH_AURORA_PRESERVE_SOURCE_ON_INVOKE =
   'false';
 const PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
   String(process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY || 'true').toLowerCase() !== 'false';
+const PROXY_SEARCH_CACHE_STRICT_EMPTY_NON_LOOKUP_ENABLED =
+  String(process.env.PROXY_SEARCH_CACHE_STRICT_EMPTY_NON_LOOKUP_ENABLED || 'false').toLowerCase() ===
+  'true';
 const PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT =
   String(process.env.PROXY_SEARCH_AURORA_RELAX_PRIMARY_IRRELEVANT_ADOPT || 'true').toLowerCase() !==
   'false';
@@ -2856,6 +2859,76 @@ function withStrictEmptyFallback({
   });
 }
 
+function withPrimaryIrrelevantFailOpen({
+  body,
+  reason,
+  route = null,
+  upstreamStatus = null,
+}) {
+  const base =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? body
+      : {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          page: 1,
+          page_size: 0,
+          reply: null,
+          metadata: {},
+        };
+  const withFallbackMeta = withProxySearchFallbackMetadata(base, {
+    applied: true,
+    reason: reason || 'primary_irrelevant_fail_open',
+    route: route || 'primary_irrelevant_fail_open',
+    upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
+    upstream_error_code: null,
+    upstream_error_message: null,
+  });
+  const existingMeta =
+    withFallbackMeta.metadata &&
+    typeof withFallbackMeta.metadata === 'object' &&
+    !Array.isArray(withFallbackMeta.metadata)
+      ? { ...withFallbackMeta.metadata }
+      : {};
+  const existingDecision =
+    existingMeta.search_decision &&
+    typeof existingMeta.search_decision === 'object' &&
+    !Array.isArray(existingMeta.search_decision)
+      ? { ...existingMeta.search_decision }
+      : {};
+  const products = Array.isArray(withFallbackMeta.products) ? withFallbackMeta.products : [];
+  const preCandidates = Math.max(countUsableSearchProducts(products), products.length);
+  const normalizedReasonCodes = Array.from(
+    new Set(
+      [ ...(Array.isArray(withFallbackMeta.reason_codes) ? withFallbackMeta.reason_codes : []), 'FAIL_OPEN_PRE_NONEMPTY' ]
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const metadata = {
+    ...existingMeta,
+    strict_empty: false,
+    search_decision: {
+      ...existingDecision,
+      decision_source: 'primary_irrelevant_fail_open',
+      final_decision: 'products_returned',
+      fail_open: true,
+      fail_open_reason: reason || 'primary_irrelevant_fail_open',
+      pre_candidates: preCandidates,
+      post_candidates: products.length,
+      reason_codes: normalizedReasonCodes,
+    },
+  };
+  delete metadata.strict_empty_reason;
+  return {
+    ...withFallbackMeta,
+    reason_codes: normalizedReasonCodes,
+    metadata,
+  };
+}
+
 function isUpstreamQuotaExhausted({ upstreamStatus = null, upstreamCode = null, upstreamMessage = null }) {
   const status = Number(upstreamStatus || 0);
   const code = String(upstreamCode || '').trim().toUpperCase();
@@ -3025,7 +3098,12 @@ function isResolverFirstCatalogSource(source) {
 
 function isAuroraSource(source) {
   const normalized = normalizeAgentSource(source);
-  return normalized === 'aurora-chatbox' || normalized === 'aurora-bff';
+  return (
+    normalized === 'aurora-chatbox' ||
+    normalized === 'aurora-bff' ||
+    normalized === 'pivota-aurora-chatbox' ||
+    normalized === 'pivota-aurora-bff'
+  );
 }
 
 function getProxySearchApiBase(source) {
@@ -3491,6 +3569,15 @@ function isLookupStyleSearchQuery(queryText, anchorTokens = null) {
 
 function buildFallbackCandidateText(product) {
   if (!product || typeof product !== 'object') return '';
+  const safeStringify = (value) => {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '';
+    }
+  };
   const parts = [
     product.title,
     product.name,
@@ -3498,6 +3585,11 @@ function buildFallbackCandidateText(product) {
     product.brand,
     product.vendor,
     product.product_name,
+    product.description,
+    safeStringify(product.tags),
+    safeStringify(product.attributes),
+    safeStringify(product.options || product.product_options),
+    safeStringify(product.variants),
   ]
     .map((v) => String(v || '').trim())
     .filter(Boolean);
@@ -9392,6 +9484,26 @@ async function proxyAgentSearchToBackend(req, res) {
         : primaryMonoculture
         ? 'primary_monoculture_no_fallback'
         : 'primary_irrelevant_no_fallback';
+      if (primaryUsableCount > 0) {
+        const failOpenBody = withPrimaryIrrelevantFailOpen({
+          body: normalized,
+          reason,
+          route: 'proxy_search_primary_irrelevant_fail_open',
+          upstreamStatus: resp.status,
+        });
+        return respondSearch(
+          200,
+          failOpenBody,
+          {
+            finalDecision: 'products_returned',
+            primaryPathUsed: 'proxy_search_primary',
+            fallbackTriggered: true,
+            fallbackReason: reason,
+            upstreamStage,
+            fallbackStrategy,
+          },
+        );
+      }
       return respondSearch(
         200,
         withStrictEmptyFallback({
@@ -13937,6 +14049,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     let creatorCacheRouteDebug = null;
     let crossMerchantCacheRouteDebug = null;
     let crossMerchantCacheProtectedResponse = null;
+    let crossMerchantCacheFailOpenCandidates = null;
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
     let productDetailMerchantId = null;
@@ -14492,6 +14605,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           const withPolicyProducts = Array.isArray(withPolicy?.products)
             ? withPolicy.products
             : [];
+          const cacheFailOpenPool = withPolicyProducts.length > 0 ? withPolicyProducts : effectiveProducts;
+          if (cacheFailOpenPool.length > 0) {
+            crossMerchantCacheFailOpenCandidates = cacheFailOpenPool.slice(
+              0,
+              Math.max(4, Math.min(20, safeResultLimit)),
+            );
+          }
           const cacheValidationQueryClass =
             traceQueryClass || effectiveIntent?.query_class || (isLookupQuery ? 'lookup' : null);
           const cacheValidation = evaluateCacheQualityGate({
@@ -14836,13 +14956,15 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
           const bypassCacheStrictEmpty =
             isAuroraSource(source) && PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
+          const enforceCacheStrictEmptyForNonLookup =
+            PROXY_SEARCH_CACHE_STRICT_EMPTY_NON_LOOKUP_ENABLED && !forceControlledRecallForScenario;
           if (
             isCatalogGuardSource(source) &&
             cacheQueryText.length > 0 &&
             !effectiveCacheHit &&
             !isLookupQuery &&
             !bypassCacheStrictEmpty &&
-            !forceControlledRecallForScenario
+            enforceCacheStrictEmptyForNonLookup
           ) {
             const cacheStrictReason =
               effectiveProducts.length > 0
@@ -16017,6 +16139,41 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           }
         }
         if (!response) {
+          if (
+            operation === 'find_products_multi' &&
+            Array.isArray(crossMerchantCacheFailOpenCandidates) &&
+            crossMerchantCacheFailOpenCandidates.length > 0
+          ) {
+            const cacheFailOpenBody = normalizeAgentProductsListResponse(
+              {
+                status: 'success',
+                success: true,
+                products: crossMerchantCacheFailOpenCandidates,
+                total: crossMerchantCacheFailOpenCandidates.length,
+                page: Number(queryParams?.page || 1) || 1,
+                page_size: Number(queryParams?.limit || queryParams?.page_size || 20) || 20,
+                reply: null,
+                metadata: {
+                  query_source: 'cache_cross_merchant_search_fail_open',
+                },
+              },
+              {
+                limit: queryParams?.limit,
+                offset: queryParams?.offset,
+              },
+            );
+            response = {
+              status: 200,
+              data: withPrimaryIrrelevantFailOpen({
+                body: cacheFailOpenBody,
+                reason: 'primary_exception_cache_fail_open',
+                route: 'invoke_exception_cache_fail_open',
+                upstreamStatus,
+              }),
+            };
+          }
+        }
+        if (!response) {
           logger.warn(
             {
               operation,
@@ -16075,6 +16232,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
+      const primaryProductCount = Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0;
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
       const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
@@ -16280,21 +16438,76 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
         if (!replacedByFallback) {
           if (primaryIrrelevant) {
-            upstreamData = buildProxySearchSoftFallbackResponse({
-              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-              reason: skipSecondaryFallback
-                ? primaryMonoculture
-                  ? 'primary_monoculture_skip_secondary'
-                  : 'primary_irrelevant_skip_secondary'
-                : primaryMonoculture
-                ? 'primary_monoculture_no_fallback'
-                : 'primary_irrelevant_no_fallback',
-              upstreamStatus: response.status,
-              route: 'invoke_primary_irrelevant',
-              intent: effectiveIntent,
-              queryClass: traceQueryClass,
-              queryText,
-            });
+            const failOpenReason = skipSecondaryFallback
+              ? primaryMonoculture
+                ? 'primary_monoculture_skip_secondary'
+                : 'primary_irrelevant_skip_secondary'
+              : primaryMonoculture
+              ? 'primary_monoculture_no_fallback'
+              : 'primary_irrelevant_no_fallback';
+            const cacheFailOpenPool = Array.isArray(crossMerchantCacheFailOpenCandidates)
+              ? crossMerchantCacheFailOpenCandidates
+              : [];
+            const canFailOpenFromPrimary =
+              operation === 'find_products_multi' &&
+              (primaryUsableCount > 0 || primaryProductCount > 0);
+            const canFailOpenFromCache =
+              operation === 'find_products_multi' &&
+              !canFailOpenFromPrimary &&
+              cacheFailOpenPool.length > 0;
+            if (canFailOpenFromPrimary || canFailOpenFromCache) {
+              const failOpenBody = canFailOpenFromCache
+                ? normalizeAgentProductsListResponse(
+                    {
+                      ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                        ? upstreamData
+                        : {}),
+                      products: cacheFailOpenPool,
+                      total: Math.max(
+                        Number(
+                          upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                            ? upstreamData.total
+                            : 0,
+                        ) || 0,
+                        cacheFailOpenPool.length,
+                      ),
+                      metadata: {
+                        ...(upstreamData &&
+                        typeof upstreamData === 'object' &&
+                        !Array.isArray(upstreamData) &&
+                        upstreamData.metadata &&
+                        typeof upstreamData.metadata === 'object' &&
+                        !Array.isArray(upstreamData.metadata)
+                          ? upstreamData.metadata
+                          : {}),
+                        query_source: 'cache_cross_merchant_search_fail_open',
+                      },
+                    },
+                    {
+                      limit: queryParams?.limit,
+                      offset: queryParams?.offset,
+                    },
+                  )
+                : upstreamData;
+              upstreamData = withPrimaryIrrelevantFailOpen({
+                body: failOpenBody,
+                reason: failOpenReason,
+                route: canFailOpenFromCache
+                  ? 'invoke_primary_irrelevant_fail_open_cache'
+                  : 'invoke_primary_irrelevant_fail_open',
+                upstreamStatus: response.status,
+              });
+            } else {
+              upstreamData = buildProxySearchSoftFallbackResponse({
+                queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
+                reason: failOpenReason,
+                upstreamStatus: response.status,
+                route: 'invoke_primary_irrelevant',
+                intent: effectiveIntent,
+                queryClass: traceQueryClass,
+                queryText,
+              });
+            }
           } else {
             upstreamData = withProxySearchFallbackMetadata(upstreamData, {
               applied: false,
@@ -16518,9 +16731,13 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
         querySource === 'cache_cross_merchant_search' ||
         querySource === 'cache_cross_merchant_search_supplemented';
       const isErrorSoftFallbackSource = querySource === 'agent_products_error_fallback';
+      const errorSoftFallbackHasProducts =
+        isErrorSoftFallbackSource &&
+        Array.isArray(upstreamData?.products) &&
+        upstreamData.products.length > 0;
       const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
       const skipPolicyForLookupSoftFallback =
-        isErrorSoftFallbackSource ||
+        (isErrorSoftFallbackSource && !errorSoftFallbackHasProducts) ||
         (isResolverLookupSource && isLookupPolicyQuery) ||
         (isCacheLookupSource && isLookupPolicyQuery) ||
         (querySource === 'agent_products_search' && isAliasLookupQuery);

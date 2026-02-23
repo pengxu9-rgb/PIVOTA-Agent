@@ -54,7 +54,7 @@ describe('find_products_multi intent + filtering', () => {
     expect(String(resp.reply)).toContain('Nina');
   });
 
-  test('medium ambiguity returns clarification payload instead of drifting products', () => {
+  test('medium ambiguity can keep products when clarify gate not triggered', () => {
     const intent = extractIntentRuleBased('约会妆推荐', [], []);
     const resp = applyFindProductsMultiPolicy({
       response: {
@@ -73,16 +73,9 @@ describe('find_products_multi intent + filtering', () => {
     });
 
     expect(Array.isArray(resp.products)).toBe(true);
-    expect(resp.products).toHaveLength(0);
-    expect(resp.clarification).toEqual(
-      expect.objectContaining({
-        question: expect.any(String),
-        options: expect.any(Array),
-        reason_code: expect.any(String),
-      }),
-    );
-    expect(resp.metadata?.search_decision?.final_decision).toBe('clarify');
-    expect(resp.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+    expect(resp.products.length).toBeGreaterThan(0);
+    expect(resp.clarification).toBeUndefined();
+    expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
   });
 
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
@@ -277,7 +270,7 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
-  test('domain condenser recovers scenario candidates when pre-quality list is emptied', () => {
+  test('domain condenser keeps scenario candidates even when condenser gate is not met', () => {
     withPolicyEnv(
       {
         SEARCH_DOMAIN_CONDENSER_ENABLED: 'true',
@@ -314,15 +307,15 @@ describe('find_products_multi intent + filtering', () => {
           rawUserQuery: '我今晚有个约会，要化妆，要推荐点商品吧？',
         });
 
-        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(true);
-        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('applied_on_empty_candidates');
+        expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(false);
+        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('gate_not_met');
         expect(resp.metadata?.search_decision?.post_quality?.candidates).toBeGreaterThanOrEqual(4);
         expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
       },
     );
   });
 
-  test('domain condenser remains inactive for non scenario/mission classes', () => {
+  test('domain condenser remains inactive when gate is not met for category class', () => {
     withPolicyEnv(
       {
         SEARCH_DOMAIN_CONDENSER_ENABLED: 'true',
@@ -349,7 +342,7 @@ describe('find_products_multi intent + filtering', () => {
 
         expect(resp.metadata?.search_decision?.query_class).toBe('category');
         expect(resp.metadata?.search_decision?.domain_condenser?.applied).toBe(false);
-        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('query_class_not_supported');
+        expect(resp.metadata?.search_decision?.domain_condenser?.reason).toBe('gate_not_met');
       },
     );
   });
@@ -1094,13 +1087,13 @@ describe('find_products_multi intent + filtering', () => {
 
     expect(resp.products.length).toBe(0);
     expect(resp.reason_codes || []).toEqual(
-      expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET', 'BEAUTY_NON_TOOL_MIN_NOT_MET']),
+      expect.arrayContaining(['BEAUTY_DIVERSITY_NOT_MET', 'BEAUTY_NON_TOOL_MIN_NOT_MET', 'AMBIGUITY_CLARIFY']),
     );
     expect(resp.metadata?.route_debug?.policy?.diversity).toEqual(
       expect.objectContaining({
         requirement_unmet: true,
-        strict_empty: true,
-        preserve_primary_on_failure: false,
+        strict_empty: false,
+        preserve_primary_on_failure: true,
         required_non_tool_buckets: 2,
       }),
     );

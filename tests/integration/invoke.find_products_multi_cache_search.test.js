@@ -1488,10 +1488,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(resp.body.metadata?.query_source).toBe('agent_products_error_fallback');
+    expect(resp.body.metadata?.query_source).toBe('agent_products_search');
     expect(resp.body.metadata?.strict_empty).toBe(true);
     expect(resp.body.metadata?.search_trace?.final_decision).toBe('strict_empty');
     expect(resp.body.metadata?.proxy_search_fallback?.reason).toBe('primary_irrelevant_no_fallback');
+    expect(resp.body.reason_codes || []).toContain('FAIL_OPEN_PRE_NONEMPTY');
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
 });
