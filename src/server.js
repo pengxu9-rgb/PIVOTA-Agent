@@ -484,6 +484,25 @@ const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
     .toLowerCase();
   return raw === 'supplement_internal_first' ? raw : 'legacy';
 })();
+const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED =
+  String(process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED || 'true')
+    .trim()
+    .toLowerCase() === 'true';
+const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY = (() => {
+  const raw = String(
+    process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY || 'supplement_internal_first',
+  )
+    .trim()
+    .toLowerCase();
+  return raw === 'legacy' ? raw : 'supplement_internal_first';
+})();
+const PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS = Math.max(
+  600,
+  Math.min(
+    parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS, 1800),
+    5000,
+  ),
+);
 const PROXY_SEARCH_AURORA_FORCE_TWO_PASS =
   String(process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS || 'true').toLowerCase() !== 'false';
 const PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = Math.max(
@@ -9613,6 +9632,21 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
       options = { ...options, allow_stable_alias_for_uuid: true };
     }
   }
+  const isAuroraViewDetailsResolve = shouldDefaultPreferMerchants;
+  if (isAuroraViewDetailsResolve && PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED) {
+    const requestedTimeoutMs = parseQueryNumber(options.timeout_ms ?? options.timeoutMs);
+    options = {
+      ...options,
+      allow_external_seed: true,
+      ...(firstQueryParamValue(options.external_seed_strategy ?? options.externalSeedStrategy)
+        ? {}
+        : { external_seed_strategy: PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY }),
+      ...(requestedTimeoutMs != null && requestedTimeoutMs >= PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS
+        ? {}
+        : { timeout_ms: PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS }),
+      ...(options.search_all_merchants === undefined ? { search_all_merchants: true } : {}),
+    };
+  }
   const preferMerchantsRaw = options?.prefer_merchants;
   const hasPreferMerchants =
     (Array.isArray(preferMerchantsRaw) && preferMerchantsRaw.length > 0) ||
@@ -9642,7 +9676,7 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
     });
 
     const unresolvedReasonCode = !result?.resolved ? inferResolveFailureCode({ result }) : null;
-    const responsePayload =
+    let responsePayload =
       !result?.resolved && unresolvedReasonCode
         ? {
             ...result,
@@ -9653,6 +9687,22 @@ app.post('/agent/v1/products/resolve', async (req, res) => {
             },
           }
         : result;
+    if (isAuroraViewDetailsResolve) {
+      responsePayload = {
+        ...(responsePayload && typeof responsePayload === 'object' ? responsePayload : {}),
+        metadata: {
+          ...(responsePayload?.metadata && typeof responsePayload.metadata === 'object'
+            ? responsePayload.metadata
+            : {}),
+          view_details_external_seed_enabled: Boolean(options?.allow_external_seed === true),
+          view_details_external_seed_strategy:
+            firstQueryParamValue(options?.external_seed_strategy ?? options?.externalSeedStrategy) || null,
+          view_details_timeout_ms:
+            parseQueryNumber(options?.timeout_ms ?? options?.timeoutMs) ||
+            PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS,
+        },
+      };
+    }
 
     // Best-effort: record gaps for ops restock (do not block the UI).
     if (!responsePayload?.resolved) {

@@ -18,11 +18,20 @@ describe('POST /agent/v1/products/resolve', () => {
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
+      PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED:
+        process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED,
+      PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY:
+        process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY,
+      PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS:
+        process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
+    process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED = 'true';
+    process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
+    process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS = '1800';
     delete process.env.DATABASE_URL;
   });
 
@@ -39,6 +48,24 @@ describe('POST /agent/v1/products/resolve', () => {
     else process.env.API_MODE = prevEnv.API_MODE;
     if (prevEnv.DATABASE_URL === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = prevEnv.DATABASE_URL;
+    if (prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED =
+        prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY =
+        prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS =
+        prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS;
+    }
   });
 
   test('returns grounded product_ref (prefers prefer_merchants)', async () => {
@@ -261,6 +288,122 @@ describe('POST /agent/v1/products/resolve', () => {
     expect(resp.body.product_ref).toBeNull();
     expect(resp.body.reason).toBe('no_candidates');
     expect(resp.body.candidates).toEqual([]);
+  });
+
+  test('aurora caller enables external_seed supplement for view-details resolve', async () => {
+    const queryText = 'Rare external seed essence';
+
+    nock('http://pivota.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.allow_external_seed || '').toLowerCase() === 'true')
+      .reply(200, {
+        status: 'success',
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_hit_001',
+            title: queryText,
+            source_type: 'external_seed',
+            vendor: 'ExternalBrand',
+          },
+        ],
+      })
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        products: [],
+      });
+
+    const app = require('../../src/server');
+
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: queryText,
+        lang: 'en',
+        caller: 'aurora_chatbox',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body).toEqual(
+      expect.objectContaining({
+        resolved: true,
+        product_ref: { product_id: 'ext_hit_001', merchant_id: 'external_seed' },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        allow_external_seed: true,
+        external_seed_strategy: 'supplement_internal_first',
+        view_details_external_seed_enabled: true,
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            source: 'agent_search_external_seed',
+            ok: true,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  test('aurora caller keeps external_seed disabled when view-details override env is off', async () => {
+    process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED = 'false';
+
+    let externalSeedQueried = false;
+    nock('http://pivota.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const hit = String(q.allow_external_seed || '').toLowerCase() === 'true';
+        if (hit) externalSeedQueried = true;
+        return hit;
+      })
+      .reply(200, {
+        status: 'success',
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_should_not_be_used',
+            title: 'Should not resolve',
+            source_type: 'external_seed',
+          },
+        ],
+      })
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        products: [],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/v1/products/resolve')
+      .send({
+        query: 'external only product',
+        lang: 'en',
+        caller: 'aurora_chatbox',
+        options: {
+          search_all_merchants: true,
+          timeout_ms: 1200,
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.resolved).toBe(false);
+    expect(resp.body.product_ref).toBeNull();
+    expect(externalSeedQueried).toBe(false);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        view_details_external_seed_enabled: false,
+      }),
+    );
   });
 
   test('resolves known stable products without hints (The Ordinary + Winona + IPSA)', async () => {

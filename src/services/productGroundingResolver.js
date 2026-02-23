@@ -658,6 +658,9 @@ async function fetchCandidatesViaAgentSearch({
   timeoutMs,
   maxRetries,
   retryBackoffMs,
+  allowExternalSeed = false,
+  externalSeedStrategy = '',
+  fastMode,
 }) {
   const baseUrl = String(pivotaApiBase || '').replace(/\/$/, '');
   if (!baseUrl) return { ok: false, products: [], reason: 'pivota_api_base_missing' };
@@ -669,6 +672,11 @@ async function fetchCandidatesViaAgentSearch({
   const safeTimeout = clampInt(timeoutMs, { min: 50, max: 15000, fallback: 1500 });
   const safeMaxRetries = clampInt(maxRetries, { min: 0, max: 3, fallback: 1 });
   const safeRetryBackoff = clampInt(retryBackoffMs, { min: 25, max: 1000, fallback: 90 });
+  const seedStrategyRaw = String(externalSeedStrategy || '').trim().toLowerCase();
+  const normalizedSeedStrategy =
+    seedStrategyRaw === 'legacy' || seedStrategyRaw === 'supplement_internal_first'
+      ? seedStrategyRaw
+      : '';
 
   const params = {
     query: q,
@@ -677,6 +685,11 @@ async function fetchCandidatesViaAgentSearch({
     offset: 0,
     ...(searchAllMerchants ? { search_all_merchants: true } : {}),
     ...(Array.isArray(merchantIds) && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
+    ...(allowExternalSeed ? { allow_external_seed: true } : {}),
+    ...(allowExternalSeed && normalizedSeedStrategy
+      ? { external_seed_strategy: normalizedSeedStrategy }
+      : {}),
+    ...(typeof fastMode === 'boolean' ? { fast_mode: fastMode } : {}),
   };
 
   let attempts = 0;
@@ -934,6 +947,12 @@ function createProductGroundingResolver(deps = {}) {
     new Set(preferMerchantsList.map((m) => String(m || '').trim()).filter(Boolean)),
   ).slice(0, 20);
   const allowExternalSeed = options?.allow_external_seed === true || options?.allowExternalSeed === true;
+  const externalSeedStrategyRaw = firstNonEmptyString(
+    options?.external_seed_strategy,
+    options?.externalSeedStrategy,
+  ).toLowerCase();
+  const externalSeedStrategy =
+    externalSeedStrategyRaw === 'supplement_internal_first' ? externalSeedStrategyRaw : 'legacy';
   const searchAllMerchants =
     options?.search_all_merchants === true || options?.searchAllMerchants === true || (!preferMerchants.length && options?.search_all_merchants !== false);
   const limit = clampInt(options?.limit, { min: 1, max: 50, fallback: 20 });
@@ -1179,6 +1198,49 @@ function createProductGroundingResolver(deps = {}) {
     }
   }
 
+  // 5) View-details / deep-resolution only: budgeted external-seed supplement.
+  const externalSeedTimeout = stageTimeout({ capMs: 1200, reserveMs: 0, floorMs: 120 });
+  const shouldTryExternalSeed =
+    allowExternalSeed &&
+    externalSeedTimeout >= 120 &&
+    (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
+    products.length < Math.max(4, Math.min(10, limit));
+  if (shouldTryExternalSeed) {
+    const externalRetries = externalSeedTimeout >= 900 ? Math.min(1, upstreamRetries) : 0;
+    const upstreamExternal = await fetchAgentSearch({
+      pivotaApiBase,
+      pivotaApiKey,
+      checkoutToken,
+      query: q,
+      merchantIds: undefined,
+      searchAllMerchants: true,
+      limit: Math.max(limit, 18),
+      timeoutMs: externalSeedTimeout,
+      maxRetries: externalRetries,
+      retryBackoffMs: upstreamRetryBackoffMs,
+      allowExternalSeed: true,
+      externalSeedStrategy,
+      fastMode: true,
+    });
+    if (upstreamExternal.ok && Array.isArray(upstreamExternal.products) && upstreamExternal.products.length) {
+      products.push(...upstreamExternal.products);
+      sources.push({
+        source: 'agent_search_external_seed',
+        ok: true,
+        count: upstreamExternal.products.length,
+        attempts: upstreamExternal.attempts || 1,
+      });
+    } else {
+      sources.push({
+        source: 'agent_search_external_seed',
+        ok: false,
+        reason: upstreamExternal.reason || 'no_results',
+        ...(upstreamExternal.status ? { status: upstreamExternal.status } : {}),
+        attempts: upstreamExternal.attempts || 1,
+      });
+    }
+  }
+
   const { scored, normalized_query } = rankCandidates({
     query: q,
     lang,
@@ -1269,6 +1331,7 @@ function createProductGroundingResolver(deps = {}) {
       ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
       ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
       ...(allowExternalSeed ? { allow_external_seed: true } : {}),
+      ...(allowExternalSeed ? { external_seed_strategy: externalSeedStrategy } : {}),
     },
   };
   };
