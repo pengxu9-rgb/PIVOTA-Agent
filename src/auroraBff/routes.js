@@ -23034,8 +23034,30 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
+        const forceReportOnPhotoUpload = Boolean(
+          !rollout.llmKillSwitch &&
+            userRequestedPhoto &&
+            photosProvided &&
+            hasPrimaryInput &&
+            reportAvailable &&
+            !forceReportOnPhotoFetchFailure &&
+            reportDecision.decision !== 'call',
+        );
+        if (forceReportOnPhotoUpload) {
+          reportDecision = {
+            decision: 'call',
+            reasons: ['photo_upload_force_report'],
+            downgrade_confidence: reportDecision.downgrade_confidence === true,
+          };
+          if (ctx.lang === 'CN') {
+            qualityReportReasons.push('检测到用户上传照片：本次将强制调用报告模型做汇总解释。');
+          } else {
+            qualityReportReasons.push('Photo upload detected: forcing report model for a consolidated explanation.');
+          }
+        }
 
         let analysis = null;
+        let retakeFallbackAnalysis = null;
         if (userRequestedPhoto && photosProvided && !hasPrimaryInput) {
           analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
           if (ctx.lang === 'CN') qualityReportReasons.push('你提供了照片，但缺少“正在用什么/最近打卡”等关键信息；我会先给低风险基线。');
@@ -23043,10 +23065,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && !forceVisionCall) {
-          analysis = profiler.timeSync('detector', () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality }), {
+          retakeFallbackAnalysis = profiler.timeSync('detector', () => buildRetakeSkinAnalysis({ language: ctx.lang, photoQuality }), {
             kind: 'retake',
           });
-          analysisSource = 'retake';
           if (ctx.lang === 'CN') qualityReportReasons.push('照片质量未通过：我不会调用 AI 做皮肤结论，避免误判；建议按提示重拍。');
           else qualityReportReasons.push('Photo quality failed: skipping all AI analysis to avoid guessy results; please retake.');
         } else if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && forceVisionCall) {
@@ -23246,6 +23267,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
           else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
         }
+        if (!analysis && retakeFallbackAnalysis) {
+          analysis = retakeFallbackAnalysis;
+          analysisSource = 'retake';
+        }
 
         if (!analysis) {
           if (!hasPrimaryInput) {
@@ -23256,7 +23281,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
             analysisSource = 'baseline_low_confidence';
           } else {
-            if (userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality) {
+            if (
+              userRequestedPhoto &&
+              photosProvided &&
+              diagnosisV1 &&
+              diagnosisV1.quality &&
+              String(diagnosisV1.quality.grade || '').trim().toLowerCase() !== 'fail'
+            ) {
               analysis = profiler.timeSync(
                 'postprocess',
                 () => buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language: ctx.lang, profileSummary }),
