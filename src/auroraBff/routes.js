@@ -23734,6 +23734,54 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           skinMask: photoModulesSkinMask,
         });
+        if (photoModulesCard && photoModulesSourceResolved) {
+          const payloadObj =
+            photoModulesCard.payload && typeof photoModulesCard.payload === 'object' && !Array.isArray(photoModulesCard.payload)
+              ? photoModulesCard.payload
+              : null;
+          const faceCropObj =
+            payloadObj && payloadObj.face_crop && typeof payloadObj.face_crop === 'object' && !Array.isArray(payloadObj.face_crop)
+              ? payloadObj.face_crop
+              : null;
+
+          const hasRenderablePhoto = Boolean(
+            faceCropObj &&
+              (
+                String(faceCropObj.crop_image_url || '').trim() ||
+                String(faceCropObj.original_image_url || '').trim() ||
+                String(faceCropObj.face_crop_url || '').trim() ||
+                String(faceCropObj.source_image_url || '').trim() ||
+                String(faceCropObj.image_url || '').trim() ||
+                String(faceCropObj.src || '').trim()
+              ),
+          );
+
+          if (!hasRenderablePhoto) {
+            const authHeaders = buildPivotaBackendAuthHeaders(req);
+            if (PIVOTA_BACKEND_BASE_URL && Object.keys(authHeaders).length) {
+              const generated = await requestPhotoDownloadUrlOnce({
+                photoId: photoModulesSourceResolved.photo_id,
+                authHeaders,
+              });
+              const fallbackImageUrl =
+                generated && generated.ok && typeof generated.downloadUrl === 'string' ? generated.downloadUrl.trim() : '';
+              if (fallbackImageUrl) {
+                const nextFaceCrop = {
+                  ...(faceCropObj && typeof faceCropObj === 'object' ? faceCropObj : {}),
+                  original_image_url:
+                    (faceCropObj && typeof faceCropObj.original_image_url === 'string' && faceCropObj.original_image_url.trim()) ||
+                    fallbackImageUrl,
+                };
+                if (!String(nextFaceCrop.source_image_url || '').trim()) nextFaceCrop.source_image_url = fallbackImageUrl;
+                if (!String(nextFaceCrop.image_url || '').trim()) nextFaceCrop.image_url = fallbackImageUrl;
+                photoModulesCard.payload = {
+                  ...(payloadObj || {}),
+                  face_crop: nextFaceCrop,
+                };
+              }
+            }
+          }
+        }
 
         if (analysis && persistLastAnalysis) {
           try {
