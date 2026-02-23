@@ -9091,6 +9091,77 @@ function resolvePhotoQcStatus(payload) {
   return null;
 }
 
+function isPendingQcAdvice(advice) {
+  if (!advice || typeof advice !== 'object' || Array.isArray(advice)) return false;
+  const summary = String(advice.summary || '')
+    .trim()
+    .toLowerCase();
+  if (!summary) return false;
+  return summary.includes('pending') || summary.includes('processing');
+}
+
+function buildDefaultQcAdvice({ status, language, tips } = {}) {
+  const lang = String(language || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+  if (status === 'passed') {
+    return {
+      summary: lang === 'CN' ? '照片质检通过。' : 'Photo QC passed.',
+      suggestions: [lang === 'CN' ? '正在进入皮肤分析流程。' : 'Proceeding to skin analysis.'],
+      ...(tips && typeof tips === 'object' && !Array.isArray(tips) ? { tips } : {}),
+      retryable: false,
+    };
+  }
+  if (status === 'degraded') {
+    return {
+      summary: lang === 'CN' ? '照片可用，但质量一般。' : 'Photo is usable but quality is degraded.',
+      suggestions: [
+        lang === 'CN'
+          ? '建议在更稳定光线和清晰对焦下重拍，以提升分析准确性。'
+          : 'Retake with stable lighting and sharp focus to improve analysis accuracy.',
+      ],
+      ...(tips && typeof tips === 'object' && !Array.isArray(tips) ? { tips } : {}),
+      retryable: true,
+    };
+  }
+  return {
+    summary: lang === 'CN' ? '照片质检未通过，建议重拍。' : 'Photo QC failed; please retake.',
+    suggestions: [lang === 'CN' ? '请按引导框重拍并保持清晰对焦。' : 'Retake with the guide frame and keep sharp focus.'],
+    ...(tips && typeof tips === 'object' && !Array.isArray(tips) ? { tips } : {}),
+    retryable: true,
+  };
+}
+
+function harmonizePhotoQcCardPayload({ qcStatus, qc, nextPollMs, language } = {}) {
+  let normalizedStatus = normalizePhotoQcStatus(qcStatus);
+  let normalizedQc = qc && typeof qc === 'object' && !Array.isArray(qc) ? { ...qc } : null;
+  let normalizedNextPollMs = typeof nextPollMs === 'number' ? nextPollMs : null;
+
+  if (!normalizedStatus && normalizedQc) {
+    normalizedStatus = resolvePhotoQcStatus({ qc: normalizedQc });
+  }
+
+  if (normalizedStatus) {
+    const tips = normalizedQc && normalizedQc.advice && typeof normalizedQc.advice === 'object' && !Array.isArray(normalizedQc.advice)
+      ? normalizedQc.advice.tips
+      : null;
+    if (!normalizedQc) normalizedQc = {};
+    normalizedQc.state = 'done';
+    normalizedQc.qc_status = normalizedStatus;
+    const advice = normalizedQc.advice && typeof normalizedQc.advice === 'object' && !Array.isArray(normalizedQc.advice)
+      ? normalizedQc.advice
+      : null;
+    if (!advice || isPendingQcAdvice(advice)) {
+      normalizedQc.advice = buildDefaultQcAdvice({ status: normalizedStatus, language, tips });
+    }
+    normalizedNextPollMs = null;
+  }
+
+  return {
+    qcStatus: normalizedStatus || null,
+    qc: normalizedQc,
+    nextPollMs: normalizedNextPollMs,
+  };
+}
+
 function hasNonEmptyRoutineInput(routineCandidate) {
   return Boolean(
     routineCandidate != null &&
@@ -22317,6 +22388,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
       }
 
+      const normalizedQcPayload = harmonizePhotoQcCardPayload({
+        qcStatus,
+        qc,
+        nextPollMs,
+        language: ctx.lang,
+      });
+      qcStatus = normalizedQcPayload.qcStatus;
+      qc = normalizedQcPayload.qc;
+      nextPollMs = normalizedQcPayload.nextPollMs;
+
       const payload = {
         photo_id: uploadId,
         slot_id: slotId,
@@ -22520,6 +22601,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         qc = qcResp.data.qc && typeof qcResp.data.qc === 'object' ? qcResp.data.qc : qc;
         nextPollMs = typeof qcResp.data.next_poll_ms === 'number' ? qcResp.data.next_poll_ms : nextPollMs;
       }
+
+      const normalizedQcPayload = harmonizePhotoQcCardPayload({
+        qcStatus,
+        qc,
+        nextPollMs,
+        language: ctx.lang,
+      });
+      qcStatus = normalizedQcPayload.qcStatus;
+      qc = normalizedQcPayload.qc;
+      nextPollMs = normalizedQcPayload.nextPollMs;
 
       const payload = {
         ...parsed.data,

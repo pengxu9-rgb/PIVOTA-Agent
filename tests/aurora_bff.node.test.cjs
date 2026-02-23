@@ -6965,7 +6965,14 @@ test('/v1/photos/confirm: qc passed auto-triggers analysis_summary', async () =>
             data: {
               upload_id: 'photo_confirm_auto',
               qc_status: 'passed',
-              qc: { state: 'done', qc_status: 'passed' },
+              qc: {
+                state: 'pending',
+                qc_status: null,
+                advice: {
+                  summary: 'QC is pending.',
+                  suggestions: ['Processing your photo...'],
+                },
+              },
             },
           };
         }
@@ -7025,6 +7032,10 @@ test('/v1/photos/confirm: qc passed auto-triggers analysis_summary', async () =>
         const confirmCard = cards.find((c) => c && c.type === 'photo_confirm');
         const analysisCard = cards.find((c) => c && c.type === 'analysis_summary');
         assert.ok(confirmCard);
+        assert.equal(confirmCard?.payload?.qc_status, 'passed');
+        assert.equal(confirmCard?.payload?.qc?.state, 'done');
+        assert.equal(confirmCard?.payload?.qc?.qc_status, 'passed');
+        assert.equal(/pending/i.test(String(confirmCard?.payload?.qc?.advice?.summary || '')), false);
         assert.ok(analysisCard);
         assert.equal(typeof analysisCard?.payload?.used_photos, 'boolean');
       } finally {
