@@ -273,6 +273,20 @@ if (AGENT_AXIOS_KEEPALIVE_ENABLED) {
     'enabled axios keep-alive agents',
   );
 }
+const GATEWAY_SERVER_KEEP_ALIVE_ENABLED =
+  String(process.env.GATEWAY_SERVER_KEEP_ALIVE_ENABLED || 'true').toLowerCase() !== 'false';
+const GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS = parsePositiveInt(
+  process.env.GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS,
+  65000,
+  { min: 5000, max: 300000 },
+);
+const GATEWAY_SERVER_HEADERS_TIMEOUT_MS = Math.max(
+  GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS + 1000,
+  parsePositiveInt(process.env.GATEWAY_SERVER_HEADERS_TIMEOUT_MS, 70000, {
+    min: 6000,
+    max: 330000,
+  }),
+);
 
 const CREATOR_CATALOG_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
@@ -414,6 +428,65 @@ const UPSTREAM_TIMEOUT_SEARCH_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_SEARCH_RETRY_MS,
   Math.min(UPSTREAM_TIMEOUT_SLOW_MS, Math.max(UPSTREAM_TIMEOUT_SEARCH_MS * 3, 45_000)),
 );
+const DEFAULT_SHARED_UPSTREAM_KEEPALIVE_OPERATIONS = [
+  'find_products',
+  'find_products_multi',
+  'find_similar_products',
+  'get_product_detail',
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'get_order_status',
+  'request_after_sales',
+  'track_product_click',
+  'get_review_summary',
+];
+const UPSTREAM_SHARED_KEEPALIVE_ENABLED =
+  String(process.env.UPSTREAM_SHARED_KEEPALIVE_ENABLED || 'false').toLowerCase() === 'true';
+const UPSTREAM_SHARED_KEEPALIVE_MSECS = parsePositiveInt(
+  process.env.UPSTREAM_SHARED_KEEPALIVE_MSECS,
+  30000,
+  { min: 1000, max: 300000 },
+);
+const UPSTREAM_SHARED_MAX_SOCKETS = parsePositiveInt(
+  process.env.UPSTREAM_SHARED_MAX_SOCKETS,
+  128,
+  { min: 8, max: 2048 },
+);
+const UPSTREAM_SHARED_MAX_FREE_SOCKETS = parsePositiveInt(
+  process.env.UPSTREAM_SHARED_MAX_FREE_SOCKETS,
+  32,
+  { min: 1, max: 512 },
+);
+const UPSTREAM_SHARED_KEEPALIVE_OPERATIONS = new Set(
+  String(
+    process.env.UPSTREAM_SHARED_KEEPALIVE_OPERATIONS ||
+      DEFAULT_SHARED_UPSTREAM_KEEPALIVE_OPERATIONS.join(','),
+  )
+    .split(',')
+    .map((value) => String(value || '').trim())
+    .filter(Boolean),
+);
+const UPSTREAM_SHARED_HTTP_AGENT = UPSTREAM_SHARED_KEEPALIVE_ENABLED
+  ? new http.Agent({
+      keepAlive: true,
+      keepAliveMsecs: UPSTREAM_SHARED_KEEPALIVE_MSECS,
+      maxSockets: UPSTREAM_SHARED_MAX_SOCKETS,
+      maxFreeSockets: UPSTREAM_SHARED_MAX_FREE_SOCKETS,
+    })
+  : undefined;
+const UPSTREAM_SHARED_HTTPS_AGENT = UPSTREAM_SHARED_KEEPALIVE_ENABLED
+  ? new https.Agent({
+      keepAlive: true,
+      keepAliveMsecs: UPSTREAM_SHARED_KEEPALIVE_MSECS,
+      maxSockets: UPSTREAM_SHARED_MAX_SOCKETS,
+      maxFreeSockets: UPSTREAM_SHARED_MAX_FREE_SOCKETS,
+    })
+  : undefined;
+const UPSTREAM_SHARED_AXIOS = axios.create({
+  ...(UPSTREAM_SHARED_HTTP_AGENT ? { httpAgent: UPSTREAM_SHARED_HTTP_AGENT } : {}),
+  ...(UPSTREAM_SHARED_HTTPS_AGENT ? { httpsAgent: UPSTREAM_SHARED_HTTPS_AGENT } : {}),
+});
 const PDP_V2_CORE_HOT_CACHE_ENABLED =
   String(process.env.PDP_V2_CORE_HOT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
 const PDP_V2_CORE_HOT_CACHE_TTL_MS = Math.max(
@@ -456,6 +529,22 @@ function getUpstreamTimeoutMs(operation) {
   if (operation === 'find_products') return UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS;
   if (operation === 'find_products_multi') return UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
   return SLOW_UPSTREAM_OPS.has(operation) ? UPSTREAM_TIMEOUT_SLOW_MS : UPSTREAM_TIMEOUT_SEARCH_MS;
+}
+
+function shouldUseSharedUpstreamKeepalive(operation, axiosConfig) {
+  if (!UPSTREAM_SHARED_KEEPALIVE_ENABLED) return false;
+  if (!operation || !UPSTREAM_SHARED_KEEPALIVE_OPERATIONS.has(operation)) return false;
+  if (!axiosConfig || typeof axiosConfig !== 'object') return false;
+  // Respect per-request socket overrides.
+  if (axiosConfig.httpAgent || axiosConfig.httpsAgent || axiosConfig.socketPath) return false;
+  return true;
+}
+
+function performUpstreamRequest(operation, axiosConfig) {
+  if (shouldUseSharedUpstreamKeepalive(operation, axiosConfig)) {
+    return UPSTREAM_SHARED_AXIOS.request(axiosConfig);
+  }
+  return axios(axiosConfig);
 }
 
 const PROXY_SEARCH_FALLBACK_TIMEOUT_MS = parseTimeoutMs(
@@ -5330,7 +5419,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig) {
   let attempt = 0;
   while (true) {
     try {
-      return await axios(axiosConfig);
+      return await performUpstreamRequest(operation, axiosConfig);
     } catch (err) {
       attempt += 1;
 
@@ -17469,6 +17558,24 @@ if (require.main === module) {
         }
       }
     });
+
+    if (GATEWAY_SERVER_KEEP_ALIVE_ENABLED) {
+      server.keepAliveTimeout = GATEWAY_SERVER_KEEP_ALIVE_TIMEOUT_MS;
+    }
+    server.headersTimeout = Math.max(
+      Number(server.keepAliveTimeout || 0) + 1000,
+      GATEWAY_SERVER_HEADERS_TIMEOUT_MS,
+    );
+    logger.info(
+      {
+        keep_alive_enabled: GATEWAY_SERVER_KEEP_ALIVE_ENABLED,
+        keep_alive_timeout_ms: Number(server.keepAliveTimeout || 0),
+        headers_timeout_ms: Number(server.headersTimeout || 0),
+        upstream_shared_keepalive_enabled: UPSTREAM_SHARED_KEEPALIVE_ENABLED,
+        upstream_shared_keepalive_ops: Array.from(UPSTREAM_SHARED_KEEPALIVE_OPERATIONS),
+      },
+      'Gateway connection reuse settings',
+    );
 
     server.on('error', (err) => {
       logger.error({ err: err?.message || String(err), port: PORT }, 'Gateway failed to bind');
