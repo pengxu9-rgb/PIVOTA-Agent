@@ -6714,6 +6714,116 @@ test('/v1/analysis/skin: upload->fetch->diagnosis path uses photo bytes (used_ph
   );
 });
 
+test('/v1/analysis/skin: photo-only input still runs report LLM without routine gate blocking', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const sharp = require('sharp');
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 216, g: 180, b: 160 } },
+      })
+        .png()
+        .toBuffer();
+
+      axios.get = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/object-photo-only',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+              content_type: 'image/png',
+            },
+          };
+        }
+        if (u === 'https://signed-download.test/object-photo-only') {
+          return {
+            status: 200,
+            data: pngBytes,
+            headers: { 'content-type': 'image/png' },
+          };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+
+      axios.post = async (url, body) => {
+        const u = String(url || '');
+        if (u === 'https://aurora-decision.test/agent/query') {
+          const answerObj = {
+            features: [
+              { observation: 'Photo-backed summary was generated for this run.', confidence: 'somewhat_sure' },
+              { observation: 'Acne goal remains the primary optimization target.', confidence: 'somewhat_sure' },
+            ],
+            strategy: 'Given this photo-first read, do you want a gentler 7-day plan?',
+            needs_risk_check: false,
+          };
+          return { status: 200, data: { answer: JSON.stringify(answerObj) } };
+        }
+        throw new Error(`Unexpected axios.post url: ${u}; body keys=${Object.keys(body || {}).join(',')}`);
+      };
+
+      axios.request = originalRequest;
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_only',
+            'X-Trace-ID': 'trace_photo_only',
+            'X-Brief-ID': 'brief_photo_only',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_only_1', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.used_photos, true);
+        assert.equal(card?.payload?.quality_report?.llm?.report?.decision, 'call');
+        assert.equal(Boolean(resp.body?.analysis_meta?.llm_report_called), true);
+        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', async () => {
   await withEnv(
     {

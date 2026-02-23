@@ -10441,7 +10441,8 @@ function normalizePhotoFailureCodeForFallback(code) {
     normalized === 'DOWNLOAD_URL_FETCH_5XX' ||
     normalized === 'DOWNLOAD_URL_TIMEOUT' ||
     normalized === 'DOWNLOAD_URL_EXPIRED' ||
-    normalized === 'DOWNLOAD_URL_DNS'
+    normalized === 'DOWNLOAD_URL_DNS' ||
+    normalized === 'MISSING_PRIMARY_INPUT'
   ) {
     return normalized;
   }
@@ -10463,6 +10464,8 @@ function buildPhotoFallbackActionCard({
     DOWNLOAD_URL_TIMEOUT: 'Photo download timed out before bytes were received.',
     DOWNLOAD_URL_EXPIRED: 'The signed photo link expired before analysis could start.',
     DOWNLOAD_URL_DNS: 'Photo storage host lookup failed (DNS/network resolution).',
+    MISSING_PRIMARY_INPUT:
+      'Routine/recent logs are missing, so this run starts from a conservative photo-first baseline before deeper personalization.',
   };
   const reasonByCodeZh = {
     DOWNLOAD_URL_GENERATE_FAILED: '系统未能生成可用的照片下载链接。',
@@ -10471,6 +10474,7 @@ function buildPhotoFallbackActionCard({
     DOWNLOAD_URL_TIMEOUT: '下载照片超时，未能及时拿到图像字节。',
     DOWNLOAD_URL_EXPIRED: '签名照片链接已过期，分析前无法继续读取。',
     DOWNLOAD_URL_DNS: '照片存储域名解析失败（DNS/网络异常）。',
+    MISSING_PRIMARY_INPUT: '缺少 routine/recent logs，本次先走“照片优先 + 保守基线”，再逐步个性化。',
   };
 
   let primaryReason = '';
@@ -22937,13 +22941,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
 
-        // "Dual input" policy: photos optional, routine strongly recommended.
-        // Treat missing routine as low-confidence and fall back to a baseline when no other primary signals exist.
+        // "Dual input" policy:
+        // - routine/recent logs are primary for personalization
+        // - when photos are explicitly provided, allow a photo-first path so LLM/photo analysis is not blocked
         const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0;
 
         const userRequestedPhoto =
           parsed.data.use_photo === true || (parsed.data.use_photo == null && photosProvided);
-        const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasPrimaryInput);
+        const hasPhotoPrimaryInput = Boolean(userRequestedPhoto && photosProvided);
+        const hasLlmPrimaryInput = hasPrimaryInput || hasPhotoPrimaryInput;
+        const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasLlmPrimaryInput);
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
         const selectedVisionProvider = resolveVisionProviderSelection();
         const visionAvailability = classifyVisionAvailability({
@@ -23000,7 +23007,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           return { grade: mergedGrade, reasons: mergedReasons };
         }
 
-        if (userRequestedPhoto && photosProvided && hasPrimaryInput && photoQuality.grade !== 'fail') {
+        if (hasPhotoPrimaryInput && photoQuality.grade !== 'fail') {
           const candidates = photoQuality.grade === 'pass' ? passedPhotos : degradedPhotos.length ? degradedPhotos : passedPhotos;
           diagnosisPhoto = chooseVisionPhoto(candidates);
           if (!diagnosisPhoto) {
@@ -23082,7 +23089,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : shouldCallLlm({
                 kind: 'vision',
                 quality: photoQuality,
-                hasPrimaryInput,
+                hasPrimaryInput: hasLlmPrimaryInput,
                 userRequestedPhoto,
                 detectorConfidenceLevel: policyDetectorConfidenceLevel,
                 uncertainty: policyUncertainty,
@@ -23096,7 +23103,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           : shouldCallLlm({
               kind: 'report',
               quality: qualityForReport,
-              hasPrimaryInput,
+              hasPrimaryInput: hasLlmPrimaryInput,
               userRequestedPhoto,
               detectorConfidenceLevel: policyDetectorConfidenceLevel,
               uncertainty: policyUncertainty,
@@ -23105,10 +23112,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               degradedMode: SKIN_DEGRADED_MODE,
             });
         const forceReportOnPhotoFetchFailure = Boolean(
-          !rollout.llmKillSwitch &&
+            !rollout.llmKillSwitch &&
             userRequestedPhoto &&
             photosProvided &&
-            hasPrimaryInput &&
+            hasLlmPrimaryInput &&
             reportAvailable &&
             photoFailureCodes.length > 0 &&
             reportDecision.decision !== 'call',
@@ -23128,10 +23135,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
         const forceReportOnPhotoUpload = Boolean(
-          !rollout.llmKillSwitch &&
+            !rollout.llmKillSwitch &&
             userRequestedPhoto &&
             photosProvided &&
-            hasPrimaryInput &&
+            hasLlmPrimaryInput &&
             reportAvailable &&
             !forceReportOnPhotoFetchFailure &&
             reportDecision.decision !== 'call',
@@ -23151,10 +23158,14 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let analysis = null;
         let retakeFallbackAnalysis = null;
-        if (userRequestedPhoto && photosProvided && !hasPrimaryInput) {
-          analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
-          if (ctx.lang === 'CN') qualityReportReasons.push('你提供了照片，但缺少“正在用什么/最近打卡”等关键信息；我会先给低风险基线。');
-          else qualityReportReasons.push('You provided a photo, but I’m missing routine/recent logs; returning a low-risk baseline first.');
+        if (hasPhotoPrimaryInput && !hasPrimaryInput) {
+          if (ctx.lang === 'CN') {
+            qualityReportReasons.push('缺少 routine/recent logs：本次改为“照片优先 + 保守解释”，并建议补充日常流程提升准确性。');
+          } else {
+            qualityReportReasons.push(
+              'Routine/recent logs are missing: proceeding with photo-first analysis and conservative interpretation.',
+            );
+          }
         }
 
         if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && !forceVisionCall) {
@@ -23308,7 +23319,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push(`Skipped photo analysis: ${r.join('; ') || 'unknown reason'}`);
         }
 
-        if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+        if (reportDecision.decision === 'call' && hasLlmPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
           reportModelCalled = true;
           const promptBase = buildSkinReportPrompt({
             language: ctx.lang,
@@ -23342,9 +23353,22 @@ function mountAuroraBffRoutes(app, { logger }) {
             const answer = upstream && typeof upstream.answer === 'string' ? upstream.answer : '';
             const jsonOnly = unwrapCodeFence(answer);
             const parsedObj = parseJsonOnlyObject(jsonOnly);
-            analysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
-            if (analysis) {
-              analysisSource = 'aurora_text';
+            const reportAnalysis = normalizeSkinAnalysisFromLLM(parsedObj, { language: ctx.lang });
+            if (reportAnalysis) {
+              if (!analysis) {
+                analysis = reportAnalysis;
+                analysisSource = 'aurora_text';
+              } else {
+                const baseFeatures = Array.isArray(analysis.features) ? analysis.features : [];
+                const reportFeatures = Array.isArray(reportAnalysis.features) ? reportAnalysis.features : [];
+                if (reportFeatures.length) analysis.features = [...baseFeatures, ...reportFeatures].slice(0, 8);
+                const reportStrategy = typeof reportAnalysis.strategy === 'string' ? reportAnalysis.strategy.trim() : '';
+                if (reportStrategy) analysis.strategy = reportStrategy;
+                const reportQuestions = Array.isArray(reportAnalysis.ask_3_questions) ? reportAnalysis.ask_3_questions : [];
+                if (reportQuestions.length) analysis.ask_3_questions = reportQuestions.slice(0, 3);
+                if (ctx.lang === 'CN') qualityReportReasons.push('报告模型已调用：用于汇总照片与问卷信号。');
+                else qualityReportReasons.push('Report model called to summarize combined photo + questionnaire signals.');
+              }
               break;
             }
             reportFailure = 'report_output_invalid';
@@ -23355,7 +23379,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
           }
         }
-        if (!analysis && reportDecision.decision === 'skip' && reportAvailable && hasPrimaryInput) {
+        if (!analysis && reportDecision.decision === 'skip' && reportAvailable && hasLlmPrimaryInput) {
           const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
           if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
           else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
@@ -23366,7 +23390,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         if (!analysis) {
-          if (!hasPrimaryInput) {
+          if (!hasPrimaryInput && !hasPhotoPrimaryInput) {
             analysis = profiler.timeSync(
               'detector',
               () => buildLowConfidenceBaselineSkinAnalysis({ profile: profileSummary || profile, language: ctx.lang }),
@@ -23483,7 +23507,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
         const photoNotUsed = Boolean(userRequestedPhoto && photosProvided && !usedPhotos);
-        const photoFailureCode = photoFailureCodes[0] || null;
+        const photoFailureCode =
+          photoFailureCodes[0] || (photoNotUsed && hasPhotoPrimaryInput && !hasPrimaryInput ? 'MISSING_PRIMARY_INPUT' : null);
         let geometrySanitizer = null;
         let photoNotice = null;
         if (photoNotUsed && photoFailureCode) {
@@ -23688,6 +23713,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (renderedAnalysisSource === 'baseline_low_confidence') return 'baseline_low_confidence';
           if (renderedAnalysisSource === 'retake') return 'photo_quality_fail';
           if (renderedAnalysisSource === 'rule_based_with_photo_qc') {
+            if (photoFailureCode === 'MISSING_PRIMARY_INPUT') return 'missing_primary_input';
             if (photoFailureCode) return `photo_${String(photoFailureCode).trim().toLowerCase()}`;
             return 'photo_qc_degraded';
           }
