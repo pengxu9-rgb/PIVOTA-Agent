@@ -1263,11 +1263,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     ).not.toBe(true);
   });
 
-  test('eval internal-only can disable cache early decision for scenario queries', async () => {
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED = 'true';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED = 'true';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER = 'x-eval';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION = 'true';
+  test('scenario query uses cache early decision when force-controlled-recall is off', async () => {
     process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO = 'false';
 
     jest.doMock('../../src/db', () => ({
@@ -1281,7 +1277,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     const app = require('../../src/server');
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
-      .set('X-Eval', '1')
       .send({
         operation: 'find_products_multi',
         payload: {
@@ -1298,20 +1293,22 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.metadata?.query_source).not.toBe('cache_cross_merchant_search_early_decision');
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search_early_decision');
+    expect(resp.body.metadata?.search_trace?.upstream_stage?.called).toBe(false);
+    expect(
+      Boolean(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.applied),
+    ).toBe(true);
     const earlyDecisionReason = String(
       resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.reason || '',
     );
-    if (earlyDecisionReason) {
-      expect(earlyDecisionReason).toBe('eval_force_no_early_decision');
-    }
+    expect(
+      ['cache_miss_ambiguity_sensitive', 'cache_irrelevant_ambiguity_sensitive'].includes(
+        earlyDecisionReason,
+      ),
+    ).toBe(true);
   });
 
-  test('eval internal-only products_returned includes post_quality diagnostics', async () => {
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_ENABLED = 'true';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED = 'true';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER = 'x-eval';
-    process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION = 'true';
+  test('cache products_returned includes stable search trace diagnostics', async () => {
     process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO = 'false';
 
     jest.doMock('../../src/db', () => ({
@@ -1356,7 +1353,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     const app = require('../../src/server');
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
-      .set('X-Eval', '1')
       .send({
         operation: 'find_products_multi',
         payload: {
@@ -1373,26 +1369,20 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        eval_mode: true,
-        upstream_disabled: true,
-      }),
-    );
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products.length).toBeGreaterThan(0);
-    const postQuality =
-      resp.body.metadata?.search_decision?.post_quality ||
-      resp.body.metadata?.route_debug?.policy?.ambiguity?.post_quality;
-    expect(postQuality).toEqual(
+    expect(resp.body.metadata?.search_trace).toEqual(
       expect.objectContaining({
-        candidates: expect.any(Number),
-        anchor_ratio: expect.any(Number),
-        domain_entropy: expect.any(Number),
-        anchor_basis_size: expect.any(Number),
+        final_decision: 'cache_returned',
+        cache_stage: expect.objectContaining({
+          hit: true,
+        }),
+        upstream_stage: expect.objectContaining({
+          called: false,
+        }),
       }),
     );
-    expect(Number(postQuality?.candidates || 0)).toBe(resp.body.products.length);
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
@@ -1444,5 +1434,64 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     ).toBe(true);
     expect(resp.body.clarification || resp.body.metadata?.strict_empty).toBeTruthy();
     expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('dog leash query returns strict-empty fallback with primary_irrelevant_no_fallback when upstream is irrelevant', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+    process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO = 'true';
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_brush_1',
+            product_id: 'prod_brush_1',
+            merchant_id: 'merch_beauty',
+            title: 'Foundation Brush Set',
+            description: 'Makeup brush kit',
+            status: 'active',
+            inventory_quantity: 12,
+            price: 19,
+            currency: 'USD',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '中型犬夜间反光防爆冲狗链推荐，预算50',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'codex_debug',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_error_fallback');
+    expect(resp.body.metadata?.strict_empty).toBe(true);
+    expect(resp.body.metadata?.search_trace?.final_decision).toBe('strict_empty');
+    expect(resp.body.metadata?.proxy_search_fallback?.reason).toBe('primary_irrelevant_no_fallback');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
 });
