@@ -9663,7 +9663,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
       analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language });
       analysisSource = 'rule_based_with_photo_qc';
     } else {
-      fieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
+      fieldMissing.push({ field: 'analysis.primary_input', reason: 'routine_or_recent_logs_required' });
       qualityReasons.push(
         language === 'CN'
           ? '缺少“正在用什么/最近打卡”等关键信息；先返回低风险基线。'
@@ -23247,6 +23247,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let analysis = null;
         let retakeFallbackAnalysis = null;
         if (hasPhotoPrimaryInput && !hasPrimaryInput) {
+          analysisFieldMissing.push({ field: 'analysis.primary_input', reason: 'routine_or_recent_logs_required' });
           if (ctx.lang === 'CN') {
             qualityReportReasons.push('缺少 routine/recent logs：本次改为“照片优先 + 保守解释”，并建议补充日常流程提升准确性。');
           } else {
