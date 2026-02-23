@@ -71,6 +71,9 @@ const {
   recordClaimsTemplateFallback,
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
+  recordAuroraSkinAnalysisRealModel,
+  recordAuroraSkinLlmCall,
+  recordAuroraRecoContextUsed,
   recordSkinmaskEnabled,
   recordSkinmaskFallback,
   observeSkinmaskInferLatency,
@@ -481,16 +484,6 @@ const RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL = (() => {
   if (!port) return '';
   return `http://127.0.0.1:${port}`;
 })();
-const RECO_CATALOG_AURORA_SELF_PROXY_FIRST = (() => {
-  const raw = String(
-    process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST ||
-      process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_FIRST ||
-      'false',
-  )
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
 const RECO_CATALOG_MULTI_SOURCE_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED || 'true')
     .trim()
@@ -640,11 +633,7 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_FANOUT_CAP = (() => {
   return Math.max(1, Math.min(4, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS = (() => {
-  const n = Number(
-    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MIN_MAIN_QUERY_BUDGET_MS ||
-    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS ||
-    150,
-  );
+  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_QUERY_MIN_BUDGET_MS || 150);
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(800, v));
 })();
@@ -654,18 +643,9 @@ const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_LAST_QUERY_GRACE_MS = (() => {
   return Math.max(0, Math.min(320, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS = (() => {
-  const n = Number(
-    process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS ||
-    process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS ||
-    150,
-  );
+  const n = Number(process.env.AURORA_BFF_RECO_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS || 150);
   const v = Number.isFinite(n) ? Math.trunc(n) : 150;
   return Math.max(120, Math.min(1000, v));
-})();
-const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS || 150);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 150;
-  return Math.max(120, Math.min(1500, v));
 })();
 const PRODUCT_URL_REALTIME_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS = (() => {
   const raw = String(process.env.AURORA_BFF_PRODUCT_URL_COMPETITOR_MAIN_SEARCH_ALL_MERCHANTS || 'true')
@@ -1883,7 +1863,6 @@ function buildRecoCatalogSearchBaseUrlCandidates({
   includeLocalFallback = false,
   preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
   includeSelfProxy = RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED,
-  preferSelfProxyFirst = false,
 } = {}) {
   const out = [];
   const seen = new Set();
@@ -1902,16 +1881,7 @@ function buildRecoCatalogSearchBaseUrlCandidates({
       .filter(Boolean);
     for (const token of tokens) add(token);
   };
-  if (preferSelfProxyFirst && includeSelfProxy) {
-    add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
-    if (preferConfigured) {
-      addConfigured();
-      add(PIVOTA_BACKEND_BASE_URL);
-    } else {
-      add(PIVOTA_BACKEND_BASE_URL);
-      addConfigured();
-    }
-  } else if (preferConfigured) {
+  if (preferConfigured) {
     addConfigured();
     if (includeSelfProxy) add(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
     add(PIVOTA_BACKEND_BASE_URL);
@@ -2265,9 +2235,6 @@ async function searchPivotaBackendProducts({
     (forceLocalFallbackEnabled || RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT);
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
-    preferSelfProxyFirst:
-      RECO_CATALOG_AURORA_SELF_PROXY_FIRST &&
-      /aurora-(bff|chatbox)/i.test(String(RECO_CATALOG_SEARCH_SOURCE || '')),
   });
   const pathCandidates = buildRecoCatalogSearchPathCandidates();
   if (!baseUrlCandidates.length) {
@@ -5008,11 +4975,6 @@ async function buildRealtimeCompetitorCandidates({
       : runMode === 'async_backfill'
         ? Math.max(1, Math.min(maxCandidates, Math.max(PRODUCT_URL_REALTIME_COMPETITOR_PREFERRED_COUNT, 2)))
       : Math.max(1, Math.min(maxCandidates, 6));
-  const buildRecallMeta = () => ({
-    reason_counts: reasonCounts,
-    reason_breakdown: reasonCounts,
-    query_attempted: searchResults.length,
-  });
 
   for (let queryIdx = 0; queryIdx < plannedQueries.length; queryIdx += 1) {
     const queryText = plannedQueries[queryIdx];
@@ -5050,17 +5012,11 @@ async function buildRealtimeCompetitorCandidates({
           220,
           Math.trunc(Math.max(220, remainingMs - reserveAfterSearchMs) / Math.max(1, queriesRemaining)),
         );
-    const mainPathFloorMs = allowExternalSeed
-      ? Math.max(
-        PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS,
-        PRODUCT_URL_REALTIME_COMPETITOR_MAIN_EXTERNAL_SEED_TIMEOUT_FLOOR_MS,
-      )
-      : PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS;
     const perQueryMinMs =
       runMode === 'async_backfill'
         ? 260
         : runMode === 'main_path'
-          ? mainPathFloorMs
+          ? PRODUCT_URL_REALTIME_COMPETITOR_MAIN_TIMEOUT_FLOOR_MS
           : 220;
     const perQueryTimeoutMs = Math.max(perQueryMinMs, Math.min(effectiveSearchTimeoutMs, fairShareMs));
     // eslint-disable-next-line no-await-in-loop
@@ -5088,13 +5044,6 @@ async function buildRealtimeCompetitorCandidates({
       if (!normalized) continue;
       const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
       if (!productId) continue;
-      if (anchorId && String(productId).toLowerCase() === String(anchorId).toLowerCase()) continue;
-      const candidateBrand = pickFirstTrimmed(normalized.brand);
-      const sameBrand =
-        Boolean(anchorBrand) &&
-        Boolean(candidateBrand) &&
-        String(anchorBrand).toLowerCase() === String(candidateBrand).toLowerCase();
-      if (sameBrand) continue;
       observedRecallHits.add(String(productId).toLowerCase());
     }
     if (observedRecallHits.size >= earlyStopTarget) break;
@@ -5276,7 +5225,8 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
       meta: {
-        ...buildRecallMeta(),
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
       },
     };
   }
@@ -5293,7 +5243,8 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_no_candidates',
       meta: {
-        ...buildRecallMeta(),
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
       },
     };
   }
@@ -5303,7 +5254,8 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: 'catalog_search_no_candidates',
       meta: {
-        ...buildRecallMeta(),
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
       },
     };
   }
@@ -5313,7 +5265,8 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: allSearchTransientFailure ? 'catalog_search_transient_failed' : 'catalog_search_budget_exhausted',
       meta: {
-        ...buildRecallMeta(),
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
       },
     };
   }
@@ -5469,7 +5422,8 @@ async function buildRealtimeCompetitorCandidates({
       queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
       reason: null,
       meta: {
-        ...buildRecallMeta(),
+        reason_counts: reasonCounts,
+        query_attempted: searchResults.length,
       },
     };
   }
@@ -5481,7 +5435,8 @@ async function buildRealtimeCompetitorCandidates({
     queries: diagnosticQueries.length ? diagnosticQueries : plannedQueries,
     reason: allFailed && resolveAllFailed ? 'catalog_search_failed' : 'catalog_search_empty',
     meta: {
-      ...buildRecallMeta(),
+      reason_counts: reasonCounts,
+      query_attempted: searchResults.length,
     },
   };
 }
@@ -22821,6 +22776,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let analysisSource = 'rule_based';
         let visionRuntime = null;
         let visionDecisionForReport = null;
+        let reportModelCalled = false;
+        let reportModelErrored = false;
 
 	        let diagnosisPhoto = null;
 	        let diagnosisPhotoBytes = null;
@@ -23124,6 +23081,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+          reportModelCalled = true;
           const promptBase = buildSkinReportPrompt({
             language: ctx.lang,
             photoQuality: qualityForReport,
@@ -23164,6 +23122,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             reportFailure = 'report_output_invalid';
           }
           if (!analysis && reportFailure) {
+            reportModelErrored = true;
             if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailure}）；我会退回到确定性基线。`);
             else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
           }
@@ -23404,6 +23363,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let ingredientPlan = null;
         let recommendationReady = false;
         let latestArtifactId = null;
+        let artifactGate = null;
         if (analysis && AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
           try {
             const artifactCandidate = buildDiagnosisArtifactV1({
@@ -23460,7 +23420,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               recordAuroraSkinFlowMetric({ stage: 'ingredient_plan', hit: Boolean(ingredientPlan) });
             }
 
-            const artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
+            artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
             recommendationReady = Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low');
           } catch (err) {
             logger?.warn(
@@ -23469,6 +23429,43 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
+
+        const visionModelCalled = Boolean(visionRuntime);
+        const visionLlmOutcome =
+          visionModelCalled
+            ? visionRuntime && visionRuntime.ok
+              ? 'call'
+              : 'error'
+            : visionDecision && visionDecision.decision === 'call'
+              ? 'error'
+              : 'skip';
+        const reportLlmOutcome = reportModelCalled ? (reportModelErrored ? 'error' : 'call') : 'skip';
+        if (!shadowRun) {
+          recordAuroraSkinAnalysisRealModel({ source: renderedAnalysisSource });
+          recordAuroraSkinLlmCall({ stage: 'vision', outcome: visionLlmOutcome });
+          recordAuroraSkinLlmCall({ stage: 'report', outcome: reportLlmOutcome });
+        }
+
+        const degradeReason = (() => {
+          if (renderedAnalysisSource === 'baseline_low_confidence') return 'baseline_low_confidence';
+          if (renderedAnalysisSource === 'retake') return 'photo_quality_fail';
+          if (renderedAnalysisSource === 'rule_based_with_photo_qc') {
+            if (photoFailureCode) return `photo_${String(photoFailureCode).trim().toLowerCase()}`;
+            return 'photo_qc_degraded';
+          }
+          if (visionDecisionForReport && visionDecisionForReport.decision === 'fallback') {
+            return normalizeVisionReason(pickPrimaryVisionReason(visionDecisionForReport.reasons)) || 'vision_fallback';
+          }
+          if (reportModelErrored) return 'report_model_error';
+          return null;
+        })();
+        const analysisMeta = {
+          detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
+          llm_vision_called: visionModelCalled,
+          llm_report_called: reportModelCalled,
+          artifact_usable: Boolean(artifactGate && artifactGate.ok),
+          ...(degradeReason ? { degrade_reason: degradeReason } : {}),
+        };
 
         profiler.start('render', { kind: 'envelope' });
         const analysisSummaryPayload = {
@@ -23534,6 +23531,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           events: [
             makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: usedPhotos, analysis_source: renderedAnalysisSource }),
           ],
+          analysis_meta: analysisMeta,
         });
         profiler.end('render', { kind: 'envelope' });
 
@@ -23765,6 +23763,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         logger?.info({ kind: 'metric', name: 'aurora.skin.analysis.timeout_degraded_rate', value: 1 }, 'metric');
         recordAuroraSkinFlowMetric({ stage: 'analysis_timeout_degraded', hit: true });
+        recordAuroraSkinAnalysisRealModel({ source: 'baseline_low_confidence' });
+        recordAuroraSkinLlmCall({ stage: 'vision', outcome: 'skip' });
+        recordAuroraSkinLlmCall({ stage: 'report', outcome: 'skip' });
 
         const degradedAnalysis = buildLowConfidenceBaselineSkinAnalysis({
           profile: null,
@@ -23821,6 +23822,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             makeEvent(ctx, 'value_moment', { kind: 'skin_analysis', used_photos: false, analysis_source: 'baseline_low_confidence' }),
             makeEvent(ctx, 'analysis_timeout_degraded', { budget_ms: AURORA_BFF_ANALYSIS_BUDGET_MS }),
           ],
+          analysis_meta: {
+            detector_source: 'baseline_low_confidence',
+            llm_vision_called: false,
+            llm_report_called: false,
+            artifact_usable: false,
+            degrade_reason: 'analysis_budget_timeout',
+          },
         });
         return res.json(envelope);
       }
@@ -24079,15 +24087,25 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const saved = await upsertSkinLogForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
       const recent = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+      const recoRefreshHint = {
+        should_refresh: true,
+        reason: 'checkin_logged',
+        effective_window_days: 7,
+      };
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
         cards: [
-          { card_id: `tracker_${ctx.request_id}`, type: 'tracker_log', payload: { log: saved, recent_logs: recent } },
+          {
+            card_id: `tracker_${ctx.request_id}`,
+            type: 'tracker_log',
+            payload: { log: saved, recent_logs: recent, reco_refresh_hint: recoRefreshHint },
+          },
         ],
         session_patch: { recent_logs: recent, checkin_due: isCheckinDue(recent) },
-        events: [makeEvent(ctx, 'tracker_logged', { date: saved?.date || null })],
+        events: [makeEvent(ctx, 'tracker_logged', { date: saved?.date || null, reco_refresh: recoRefreshHint.should_refresh })],
+        reco_refresh_hint: recoRefreshHint,
       });
       return res.json(envelope);
     } catch (err) {
@@ -24503,6 +24521,10 @@ function mountAuroraBffRoutes(app, { logger }) {
     };
     let plannerSessionStatePatch = null;
     let latestClarificationId = null;
+    let profile = null;
+    let recentLogs = [];
+    let safetyDecision = null;
+    let recoContextMetricsEmitted = false;
     const refreshPolicyMetaRollout = () => {
       effectiveChatFlags = rolloutContext.effective_flags || effectiveChatFlags;
       shouldAttachPolicyMeta = Boolean(effectiveChatFlags.chat_response_meta);
@@ -24538,6 +24560,92 @@ function mountAuroraBffRoutes(app, { logger }) {
             meta.llm_model_effective
           ),
       );
+    const hasRecommendationCards = (cards) =>
+      Array.isArray(cards) &&
+      cards.some((card) => String(card && card.type ? card.type : '').trim().toLowerCase() === 'recommendations');
+    const hasRecosRequestedEvent = (events) =>
+      Array.isArray(events) &&
+      events.some((evt) => evt && typeof evt === 'object' && String(evt.event_name || '').trim() === 'recos_requested');
+    const inferRecommendationSourceMode = (envelope) => {
+      if (!envelope || typeof envelope !== 'object') return null;
+      const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
+      for (const card of cards) {
+        if (!card || typeof card !== 'object') continue;
+        if (String(card.type || '').trim().toLowerCase() !== 'recommendations') continue;
+        const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+        const source = String(payload.source || '').trim().toLowerCase();
+        if (source.includes('artifact_matcher')) return 'artifact_matcher';
+        if (source.includes('upstream')) return 'upstream_fallback';
+      }
+
+      const events = Array.isArray(envelope.events) ? envelope.events : [];
+      for (const evt of events) {
+        if (!evt || typeof evt !== 'object') continue;
+        if (String(evt.event_name || '').trim() !== 'recos_requested') continue;
+        const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? evt.data : {};
+        const source = String(data.source || '').trim().toLowerCase();
+        if (source.includes('artifact_matcher')) return 'artifact_matcher';
+        if (source.includes('upstream')) return 'upstream_fallback';
+      }
+
+      if (hasRecommendationCards(cards)) return 'upstream_fallback';
+      if (hasRecosRequestedEvent(events)) return 'rules_only';
+      return null;
+    };
+    const hasItineraryContext = (profileValue) => {
+      if (!profileValue || typeof profileValue !== 'object' || Array.isArray(profileValue)) return false;
+      const itinerary = String(profileValue.itinerary || '').trim();
+      if (itinerary) return true;
+      const travelPlan =
+        profileValue.travel_plan && typeof profileValue.travel_plan === 'object' && !Array.isArray(profileValue.travel_plan)
+          ? profileValue.travel_plan
+          : null;
+      if (!travelPlan) return false;
+      return Boolean(
+        String(travelPlan.destination || '').trim() ||
+        String(travelPlan.start_date || '').trim() ||
+        String(travelPlan.end_date || '').trim(),
+      );
+    };
+    const hasSafetyFlags = (safetyValue) => {
+      if (!safetyValue || typeof safetyValue !== 'object' || Array.isArray(safetyValue)) return false;
+      if (safetyValue.block_level && safetyValue.block_level !== BLOCK_LEVEL.INFO) return true;
+      if (Array.isArray(safetyValue.reasons) && safetyValue.reasons.length > 0) return true;
+      return false;
+    };
+    const applyRecommendationMetaToEnvelope = (envelope) => {
+      if (!envelope || typeof envelope !== 'object') return envelope;
+      const sourceMode = inferRecommendationSourceMode(envelope);
+      if (!sourceMode) return envelope;
+
+      const recommendationMeta = {
+        source_mode: sourceMode,
+        used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+        used_itinerary: hasItineraryContext(profile),
+        used_safety_flags: hasSafetyFlags(safetyDecision),
+      };
+
+      if (!recoContextMetricsEmitted) {
+        if (recommendationMeta.used_recent_logs) recordAuroraRecoContextUsed({ signal: 'recent_logs' });
+        if (recommendationMeta.used_itinerary) recordAuroraRecoContextUsed({ signal: 'itinerary' });
+        if (recommendationMeta.used_safety_flags) recordAuroraRecoContextUsed({ signal: 'safety' });
+        recoContextMetricsEmitted = true;
+      }
+
+      const out = { ...envelope, recommendation_meta: recommendationMeta };
+      if (Array.isArray(envelope.cards)) {
+        out.cards = envelope.cards.map((card) => {
+          if (!card || typeof card !== 'object') return card;
+          if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return card;
+          const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
+          return {
+            ...card,
+            payload: { ...payload, recommendation_meta: recommendationMeta },
+          };
+        });
+      }
+      return out;
+    };
     const applyLlmMetaToEnvelope = (envelope) => {
       if (!hasAnyLlmRouteMeta(llmRouteMetaForResponse)) return envelope;
       if (!envelope || typeof envelope !== 'object') return envelope;
@@ -24603,8 +24711,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         out.events = events;
         return out;
       })();
+      const withRecoMeta = applyRecommendationMetaToEnvelope(withPolicyMeta);
       const dogfoodAugmented = augmentEnvelopeProductAnalysisCardsForDogfood({
-        envelope: withPolicyMeta,
+        envelope: withRecoMeta,
         req,
         ctx,
         mode: 'main_path',
@@ -24709,8 +24818,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       refreshPolicyMetaRollout();
 
       // Best-effort context injection.
-      let profile = null;
-      let recentLogs = [];
+      profile = null;
+      recentLogs = [];
       let storageContextLoadFailed = false;
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
@@ -24909,7 +25018,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         return out;
       })();
-      const safetyDecision =
+      safetyDecision =
         effectiveChatFlags.safety_engine_v1
           ? evaluateSafety({
             intent: canonicalIntent.intent,
@@ -28276,7 +28385,6 @@ const __internal = {
   buildLabelQueue,
   runRecoBlocksForUrl,
   buildRealtimeCompetitorCandidates,
-  maybeSyncRepairLowCoverageCompetitors,
   resolveProductAnalysisSocialState,
   applyProductAnalysisSocialProvenance,
   applyRecoGuardrailToProductAnalysisPayload,

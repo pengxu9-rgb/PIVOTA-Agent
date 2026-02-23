@@ -91,6 +91,61 @@ Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`)
 - `AURORA_BFF_INCLUDE_RAW_CONTEXT=true` → includes `aurora_context_raw` card in `/v1/chat`
 - `AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED=true` → emit full `conflict_heatmap` payload (otherwise placeholder-only)
 
+## Full Rollout Gate (No Canary)
+
+Current release strategy is **full rollout directly** (no gray/canary split). Before each production deploy, explicitly verify these env vars on Railway:
+
+- `AURORA_BFF_USE_MOCK=false`
+- `AURORA_SKIN_VISION_ENABLED=true`
+- `AURORA_PROFILE_V2_ENABLED=true`
+- `AURORA_QA_PLANNER_V1_ENABLED=true`
+- `AURORA_SAFETY_ENGINE_V1_ENABLED=true`
+- `AURORA_LOOP_BREAKER_V2_ENABLED=true`
+- `AURORA_DECISION_BASE_URL` reachable and correct
+- secrets configured: `OPENAI_API_KEY` / `GEMINI_API_KEY` / `AGENT_API_KEY`
+- keep rollout non-canary:
+  - `DIAG_CANARY_PERCENT=0`
+  - `AURORA_ROLLOUT_ENABLED=false` (preferred for full rollout), or set `AURORA_ROLLOUT_V2_WEATHER_PCT + AURORA_ROLLOUT_V2_SAFETY_PCT + AURORA_ROLLOUT_V2_CORE_PCT = 100`
+
+Pre-release hard gate commands:
+
+```bash
+make runtime-smoke
+bash scripts/smoke_aurora_skin_reco_gates.sh
+make photo-modules-prod-smoke
+make synthetic-matrix-prod MATRIX_CASES=120 MATRIX_CONCURRENCY=4
+```
+
+Hard pass criteria:
+
+- schema violations = `0`
+- empty cards without notice = `0`
+- safety block with recommendation leakage = `0`
+- all runtime/smoke scripts PASS
+
+## Response Meta Contract (Optional, backward-compatible)
+
+`/v1/analysis/skin` may include top-level `analysis_meta`:
+
+- `detector_source`
+- `llm_vision_called`
+- `llm_report_called`
+- `artifact_usable`
+- `degrade_reason`
+
+`/v1/chat` may include top-level `recommendation_meta`:
+
+- `source_mode` (`artifact_matcher|upstream_fallback|rules_only`)
+- `used_recent_logs`
+- `used_itinerary`
+- `used_safety_flags`
+
+`/v1/tracker/log` may include top-level `reco_refresh_hint`:
+
+- `should_refresh`
+- `reason`
+- `effective_window_days`
+
 ## PDP hotset prewarm (Winona/IPSA jitter control)
 
 Use this block to reduce first-screen/backfill jitter on hot PDPs (for example Winona/IPSA).

@@ -1,4 +1,4 @@
-.PHONY: bench stability test golden loadtest privacy-check reco-guardrail-eval release-gate gate-debug runtime-smoke skin-reco-gate-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-round1-pack gold-label-import eval-gold eval-gold-round1 train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-celeba-parsing eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed preference-round1-pack preference-round1-real-pack
+.PHONY: bench stability test golden loadtest privacy-check reco-guardrail-eval release-gate gate-debug runtime-smoke skin-reco-gate-smoke entry-smoke status docs verify-daily verify-fail-diagnose pseudo-label-job monitoring-validate gold-label-sample gold-seed-pack gold-round1-pack gold-label-import eval-gold eval-gold-round1 train-calibrator eval-calibration eval-region-accuracy reliability-table shadow-daily shadow-smoke shadow-acceptance ingest-ingredient-sources ingredient-kb-audit ingredient-kb-dry-run claims-audit photo-modules-acceptance photo-modules-prod-smoke synthetic-matrix-prod internal-batch datasets-prepare datasets-audit datasets-ingest-local train-circle-prior eval-circle eval-circle-fasseg eval-circle-celeba-parsing eval-circle-fasseg-ab eval-circle-fasseg-matrix eval-circle-shrink-sweep eval-datasets train-skinmask export-skinmask eval-skinmask eval-skinmask-fasseg eval-gt-sanity-fasseg eval-circle-ab bench-skinmask debug-skinmask-preproc internal-photo-review-pack review-pack-mixed preference-round1-pack preference-round1-real-pack
 
 AURORA_LANG ?= EN
 REPEAT ?= 5
@@ -14,6 +14,10 @@ LOADTEST_REQUEST_TIMEOUT_S ?= 8
 LOADTEST_QC ?= pass
 LOADTEST_P95_BUDGET_MS ?= 2000
 BASE ?= https://pivota-agent-production.up.railway.app
+MATRIX_CASES ?= 120
+MATRIX_CONCURRENCY ?= 4
+MATRIX_TIMEOUT_MS ?= 30000
+MATRIX_SEED ?= 20260223
 VERIFY_IN ?= tmp/diag_pseudo_label_factory
 VERIFY_STORE_DIR ?= $(VERIFY_IN)
 VERIFY_HARD_CASES ?=
@@ -260,6 +264,9 @@ photo-modules-acceptance:
 
 photo-modules-prod-smoke:
 	bash scripts/smoke_photo_modules_production.sh
+
+synthetic-matrix-prod:
+	BASE="$(BASE)" CASES="$(MATRIX_CASES)" CONCURRENCY="$(MATRIX_CONCURRENCY)" TIMEOUT_MS="$(MATRIX_TIMEOUT_MS)" SEED="$(MATRIX_SEED)" node scripts/aurora_synthetic_matrix_prod.mjs
 
 internal-batch:
 	@TOKEN="$(TOKEN)" node scripts/internal_batch_run_photos.mjs --photos-dir "$(PHOTOS_DIR)" --base "$(BASE)" --market "$(MARKET)" --lang "$(LANG)" --mode "$(MODE)" --concurrency "$(CONCURRENCY)" --timeout_ms "$(TIMEOUT_MS)" --retry "$(RETRY)" --max-edge "$(MAX_EDGE)" $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(filter true,$(SHUFFLE)),--shuffle,) $(if $(filter false,$(SANITIZE)),--no-sanitize,) $(if $(filter true,$(FAIL_FAST_ON_CLAIM_VIOLATION)),--fail_fast_on_claim_violation,)

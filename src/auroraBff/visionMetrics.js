@@ -138,6 +138,10 @@ let actionClickCount = 0;
 let actionCopyCount = 0;
 let retakeAfterModulesCount = 0;
 const auroraSkinFlowCounter = new Map();
+const auroraSkinAnalysisRealModelCounter = new Map();
+const auroraSkinLlmCallCounter = new Map();
+const auroraRecoContextUsedCounter = new Map();
+const responseSchemaViolationCounter = new Map();
 const auroraKbV0LoaderErrorCounter = new Map();
 const auroraKbV0RuleMatchCounter = new Map();
 const auroraKbV0LegacyFallbackCounter = new Map();
@@ -494,6 +498,36 @@ function normalizeAuroraSkinFlowOutcome(outcome) {
   const token = cleanMetricToken(outcome, 'hit');
   if (token === 'hit' || token === 'miss') return token;
   return 'hit';
+}
+
+function normalizeAuroraAnalysisSource(source) {
+  return cleanMetricToken(source, 'unknown');
+}
+
+function normalizeAuroraLlmStage(stage) {
+  const token = cleanMetricToken(stage, 'vision');
+  if (token === 'vision' || token === 'report') return token;
+  return 'vision';
+}
+
+function normalizeAuroraLlmCallOutcome(outcome) {
+  const token = cleanMetricToken(outcome, 'skip');
+  if (token === 'call' || token === 'skip' || token === 'error') return token;
+  return 'skip';
+}
+
+function normalizeAuroraRecoContextSignal(signal) {
+  const token = cleanMetricToken(signal, 'recent_logs');
+  if (token === 'recent_logs' || token === 'itinerary' || token === 'safety') return token;
+  return 'recent_logs';
+}
+
+function normalizeSchemaViolationReason(reason) {
+  return cleanMetricToken(reason, 'response_validation_failed');
+}
+
+function normalizeSchemaViolationPath(path) {
+  return cleanMetricToken(path, 'unknown_path');
 }
 
 function normalizeAuroraKbV0Reason(reason) {
@@ -1556,6 +1590,54 @@ function recordAuroraSkinFlowMetric({ stage, outcome, hit, delta } = {}) {
   );
 }
 
+function recordAuroraSkinAnalysisRealModel({ source, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinAnalysisRealModelCounter,
+    { source: normalizeAuroraAnalysisSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraSkinLlmCallCounter,
+    {
+      stage: normalizeAuroraLlmStage(stage),
+      outcome: normalizeAuroraLlmCallOutcome(outcome),
+    },
+    amount,
+  );
+}
+
+function recordAuroraRecoContextUsed({ signal, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoContextUsedCounter,
+    {
+      signal: normalizeAuroraRecoContextSignal(signal),
+    },
+    amount,
+  );
+}
+
+function recordResponseSchemaViolation({ reason, path, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    responseSchemaViolationCounter,
+    {
+      reason: normalizeSchemaViolationReason(reason),
+      path: normalizeSchemaViolationPath(path),
+    },
+    amount,
+  );
+}
+
 function recordAuroraKbV0LoaderError({ reason } = {}) {
   incCounter(
     auroraKbV0LoaderErrorCounter,
@@ -2139,6 +2221,22 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_flow_total counter');
   renderCounter(lines, 'aurora_skin_flow_total', auroraSkinFlowCounter);
 
+  lines.push('# HELP aurora_skin_analysis_real_model_total Total completed skin analyses grouped by detector/model source.');
+  lines.push('# TYPE aurora_skin_analysis_real_model_total counter');
+  renderCounter(lines, 'aurora_skin_analysis_real_model_total', auroraSkinAnalysisRealModelCounter);
+
+  lines.push('# HELP aurora_skin_llm_call_total Total skin analysis LLM call decisions grouped by stage and outcome.');
+  lines.push('# TYPE aurora_skin_llm_call_total counter');
+  renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
+
+  lines.push('# HELP aurora_reco_context_used_total Total recommendation responses that used specific user-context signals.');
+  lines.push('# TYPE aurora_reco_context_used_total counter');
+  renderCounter(lines, 'aurora_reco_context_used_total', auroraRecoContextUsedCounter);
+
+  lines.push('# HELP aurora_schema_violation_total Total response schema violations observed before fallback envelope output.');
+  lines.push('# TYPE aurora_schema_violation_total counter');
+  renderCounter(lines, 'aurora_schema_violation_total', responseSchemaViolationCounter);
+
   lines.push('# HELP aurora_kb_v0_loader_error_total Total KB v0 loader errors by reason.');
   lines.push('# TYPE aurora_kb_v0_loader_error_total counter');
   renderCounter(lines, 'aurora_kb_v0_loader_error_total', auroraKbV0LoaderErrorCounter);
@@ -2332,6 +2430,10 @@ function resetVisionMetrics() {
   actionCopyCount = 0;
   retakeAfterModulesCount = 0;
   auroraSkinFlowCounter.clear();
+  auroraSkinAnalysisRealModelCounter.clear();
+  auroraSkinLlmCallCounter.clear();
+  auroraRecoContextUsedCounter.clear();
+  responseSchemaViolationCounter.clear();
   auroraKbV0LoaderErrorCounter.clear();
   auroraKbV0RuleMatchCounter.clear();
   auroraKbV0LegacyFallbackCounter.clear();
@@ -2457,6 +2559,10 @@ function snapshotVisionMetrics() {
     actionCopyCount,
     retakeAfterModulesCount,
     auroraSkinFlow: Array.from(auroraSkinFlowCounter.entries()),
+    auroraSkinAnalysisRealModel: Array.from(auroraSkinAnalysisRealModelCounter.entries()),
+    auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
+    auroraRecoContextUsed: Array.from(auroraRecoContextUsedCounter.entries()),
+    responseSchemaViolations: Array.from(responseSchemaViolationCounter.entries()),
     auroraKbV0LoaderError: Array.from(auroraKbV0LoaderErrorCounter.entries()),
     auroraKbV0RuleMatch: Array.from(auroraKbV0RuleMatchCounter.entries()),
     auroraKbV0LegacyFallback: Array.from(auroraKbV0LegacyFallbackCounter.entries()),
@@ -2549,6 +2655,10 @@ module.exports = {
   recordClaimsTemplateFallback,
   recordClaimsViolation,
   recordAuroraSkinFlowMetric,
+  recordAuroraSkinAnalysisRealModel,
+  recordAuroraSkinLlmCall,
+  recordAuroraRecoContextUsed,
+  recordResponseSchemaViolation,
   recordAuroraKbV0LoaderError,
   recordAuroraKbV0RuleMatch,
   recordAuroraKbV0LegacyFallback,

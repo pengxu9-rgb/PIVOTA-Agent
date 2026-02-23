@@ -2,7 +2,7 @@
   "title": "Aurora Diagnosis Shadow Monitor",
   "uid": "aurora-diagnosis-shadow",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "refresh": "30s",
   "time": {
@@ -191,6 +191,58 @@
           "refId": "A",
           "expr": "aurora:chat_proxy_fallback_rate:5m",
           "legendFormat": "proxy_fallback_rate"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Analysis Source Mix (Real Model)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (rate(aurora_skin_analysis_real_model_total[10m]))",
+          "legendFormat": "{{source}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Skin LLM Call Outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (stage, outcome) (rate(aurora_skin_llm_call_total[10m]))",
+          "legendFormat": "{{stage}}/{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Reco Context Usage",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 58 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (signal) (rate(aurora_reco_context_used_total[10m]))",
+          "legendFormat": "{{signal}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Schema Violations (10m Increase)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 58 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(aurora_schema_violation_total[10m])",
+          "legendFormat": "{{reason}}/{{path}}"
         }
       ]
     }

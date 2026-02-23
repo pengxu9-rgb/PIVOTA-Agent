@@ -109,6 +109,33 @@ const SessionPatchSchema = z
   })
   .passthrough();
 
+const AnalysisMetaSchema = z
+  .object({
+    detector_source: z.string().min(1),
+    llm_vision_called: z.boolean(),
+    llm_report_called: z.boolean(),
+    artifact_usable: z.boolean(),
+    degrade_reason: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+
+const RecommendationMetaSchema = z
+  .object({
+    source_mode: z.enum(['artifact_matcher', 'upstream_fallback', 'rules_only']),
+    used_recent_logs: z.boolean(),
+    used_itinerary: z.boolean(),
+    used_safety_flags: z.boolean(),
+  })
+  .strict();
+
+const RecoRefreshHintSchema = z
+  .object({
+    should_refresh: z.boolean(),
+    reason: z.string().min(1),
+    effective_window_days: z.number().int().min(1).max(30),
+  })
+  .strict();
+
 const V1ResponseEnvelopeSchema = z
   .object({
     request_id: z.string().min(1),
@@ -118,6 +145,9 @@ const V1ResponseEnvelopeSchema = z
     cards: z.array(CardSchema),
     session_patch: SessionPatchSchema,
     events: z.array(z.record(z.string(), z.any())),
+    analysis_meta: AnalysisMetaSchema.optional(),
+    recommendation_meta: RecommendationMetaSchema.optional(),
+    reco_refresh_hint: RecoRefreshHintSchema.optional(),
   })
   .strict();
 

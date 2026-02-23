@@ -6,7 +6,7 @@ This runbook covers the production monitors defined in:
 - `monitoring/alerts/aurora_diagnosis_rules.yml`
 - `monitoring/dashboards/aurora_diagnosis_overview.grafana.json`
 
-It applies to diagnosis runtime health, shadow verifier health, and geometry sanitizer stability.
+It applies to diagnosis runtime health, shadow verifier health, geometry sanitizer stability, and recommendation-context observability.
 
 ## Metric Contract
 
@@ -22,6 +22,20 @@ Contract definition:
 - `geometry_sanitizer_drop_rate = geometry_sanitizer_drop_total / analyze_requests_total`
 - `pipeline_version` must be `A|B|unknown`
 - `quality_grade` must be `pass|degraded|fail|unknown`
+
+### Analysis / recommendation observability counters
+
+- `aurora_skin_analysis_real_model_total{source}`
+- `aurora_skin_llm_call_total{stage,outcome}`
+- `aurora_reco_context_used_total{signal}`
+- `aurora_schema_violation_total{reason,path}`
+
+Interpretation:
+
+- `aurora_skin_analysis_real_model_total`: final analysis source mix (vision/rule-based/baseline/retake).
+- `aurora_skin_llm_call_total`: per-stage LLM call decision outcomes (`call|skip|error`) for `vision` and `report`.
+- `aurora_reco_context_used_total`: whether recommendation responses consumed recent logs / itinerary / safety flags.
+- `aurora_schema_violation_total`: response envelope schema mismatches before fallback envelope output. Any increase is a release blocker.
 
 ## Alert Thresholds (default)
 
@@ -81,6 +95,11 @@ Contract definition:
 - Severity: `warning`
 - Meaning: upstream reco payload quality drift (empty/unrenderable cards) is rising and guard fallback is being consumed too often.
 
+14. `AuroraResponseSchemaViolationDetected`
+- Trigger: `increase(aurora_schema_violation_total[10m]) > 0`
+- Severity: `critical`
+- Meaning: server generated an invalid envelope shape and had to fallback.
+
 ## Post-merge first-day watchlist
 
 Track these four metrics first:
@@ -89,6 +108,7 @@ Track these four metrics first:
 2. `aurora_skin_analysis_timeout_degraded_rate`
 3. `aurora_skin_reco_output_guard_fallback_rate`
 4. HTTP `5xx` rate
+5. `increase(aurora_schema_violation_total[10m])`
 
 Suggested action thresholds:
 
@@ -98,6 +118,12 @@ Suggested action thresholds:
   - inspect upstream recommendation card schema/serialization drift.
 - Any non-zero schema violations from soak/contract validation:
   - treat as P0 and stop rollout.
+
+Suggested full-rollout watch cadence:
+
+1. 0-2h after deploy: every 30 minutes run key smoke scripts and capture metrics snapshot.
+2. 24h window: continuous dashboard + alert watch; run one low-pressure 30-minute chaos soak.
+3. 72h window: publish stability report + defect priority list.
 ## First Response Procedure
 
 1. Confirm blast radius in dashboard.
@@ -121,6 +147,7 @@ Suggested action thresholds:
 - Geometry spike only: keep service up, investigate sanitizer thresholds and source geometry quality.
 - Timeout-degraded spike: verify upstream p95/p99 and connection reset rates before tightening budgets (budgets are clamped to `>=1000ms` by design).
 - Output-guard fallback spike: inspect upstream reco card schema/serialization and reco-stage contract violations.
+- Schema violation detected: stop rollout progress immediately, inspect `aurora_schema_violation_total{reason,path}` labels, and patch response builder/schema drift before continuing.
 
 ## Sanity Gates in CI/Bench
 

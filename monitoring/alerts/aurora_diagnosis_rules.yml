@@ -247,3 +247,15 @@ groups:
           summary: "Reco output-guard fallback rate elevated"
           description: "reco_output_guard_fallback_rate stayed above 0.1%. Check upstream recommendation card schema/serialization drift."
           runbook: "docs/MONITORING_RUNBOOK.md"
+
+      - alert: AuroraResponseSchemaViolationDetected
+        expr: increase(aurora_schema_violation_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: pivota-agent-backend
+          team: aurora
+        annotations:
+          summary: "Aurora response schema violation detected"
+          description: "aurora_schema_violation_total increased in the last 10m. Treat as release blocker and inspect envelope validation failures."
+          runbook: "docs/MONITORING_RUNBOOK.md"
