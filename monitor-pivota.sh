@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 
 # 监控函数
 monitor_health() {
-    RESPONSE=$(curl -s -w "\n%{http_code}" "$GATEWAY/healthz" 2>/dev/null)
+    RESPONSE=$(curl -s -w "\n%{http_code}" "$GATEWAY/healthz/lite" 2>/dev/null)
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     BODY=$(echo "$RESPONSE" | head -n-1)
     
