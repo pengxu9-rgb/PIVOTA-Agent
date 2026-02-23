@@ -155,8 +155,10 @@ metrics = {
     "first_tls": stats([r["first_tls"] for r in rows]),
     "first_ttfb": stats([r["first_ttfb"] for r in rows]),
     "first_total": stats([r["first_total"] for r in rows]),
+    "first_app_time": stats([max(0.0, r["first_ttfb"] - r["first_tls"]) for r in rows]),
     "second_ttfb": stats([r["second_ttfb"] for r in rows]),
     "second_total": stats([r["second_total"] for r in rows]),
+    "second_app_time": stats([max(0.0, r["second_ttfb"] - r["second_tls"]) for r in rows]),
 }
 
 budgets = {
@@ -235,7 +237,15 @@ with open(output_path, "w", encoding="utf-8") as f:
     f.write("\n")
 
 print("\n== Summary ==")
-for key in ["first_tls", "first_ttfb", "first_total", "second_ttfb", "second_total"]:
+for key in [
+    "first_tls",
+    "first_ttfb",
+    "first_total",
+    "first_app_time",
+    "second_ttfb",
+    "second_total",
+    "second_app_time",
+]:
     m = metrics[key]
     print(
         f"{key}: avg={m['avg']}s p50={m['p50']}s p90={m['p90']}s p95={m['p95']}s max={m['max']}s"

@@ -326,6 +326,7 @@ ROUNDS=8 BASELINE_JSON=/tmp/tls_before.json OUTPUT_JSON=/tmp/tls_after.json ./sc
 
 `eval_tls_budget.sh` will:
 - output p50/p90/p95 for first-request and warmed-request latency
+- output derived `first_app_time` (`first_ttfb - first_tls`) for bottleneck attribution
 - fail fast when configured latency budgets are exceeded
 - optionally fail on regression vs a saved baseline JSON
 
