@@ -1436,7 +1436,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
-  test('dog leash query returns strict-empty fallback with primary_irrelevant_no_fallback when upstream is irrelevant', async () => {
+  test('dog leash query returns fail-open fallback with primary_irrelevant_no_fallback when upstream is irrelevant', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -1489,9 +1489,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
     expect(resp.body.metadata?.query_source).toBe('agent_products_search');
-    expect(resp.body.metadata?.strict_empty).toBe(true);
-    expect(resp.body.metadata?.search_trace?.final_decision).toBe('strict_empty');
+    expect(resp.body.metadata?.strict_empty).toBe(false);
     expect(resp.body.metadata?.proxy_search_fallback?.reason).toBe('primary_irrelevant_no_fallback');
+    expect(resp.body.metadata?.proxy_search_fallback?.route).toBe('invoke_primary_irrelevant_fail_open');
     expect(resp.body.reason_codes || []).toContain('FAIL_OPEN_PRE_NONEMPTY');
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
