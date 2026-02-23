@@ -18,17 +18,21 @@ NC='\033[0m' # No Color
 
 # 监控函数
 monitor_health() {
-    RESPONSE=$(curl -s -w "\n%{http_code}" "$GATEWAY/healthz/lite" 2>/dev/null)
-    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    RESPONSE=$(curl -s -w "\n__META__ %{http_code} %{time_appconnect} %{time_starttransfer} %{time_total}" "$GATEWAY/healthz/lite" 2>/dev/null)
+    META=$(echo "$RESPONSE" | tail -n1)
     BODY=$(echo "$RESPONSE" | head -n-1)
+    HTTP_CODE=$(echo "$META" | awk '{print $2}')
+    TLS_TIME=$(echo "$META" | awk '{print $3}')
+    TTFB_TIME=$(echo "$META" | awk '{print $4}')
+    TOTAL_TIME=$(echo "$META" | awk '{print $5}')
     
     TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
     
     if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q '"ok":true'; then
-        echo -e "[$TIMESTAMP] ${GREEN}✅ Health Check: OK${NC}" | tee -a "$LOG_FILE"
+        echo -e "[$TIMESTAMP] ${GREEN}✅ Health Check: OK${NC} (tls=${TLS_TIME}s ttfb=${TTFB_TIME}s total=${TOTAL_TIME}s)" | tee -a "$LOG_FILE"
         return 0
     else
-        echo -e "[$TIMESTAMP] ${RED}❌ Health Check: FAILED (HTTP $HTTP_CODE)${NC}" | tee -a "$LOG_FILE"
+        echo -e "[$TIMESTAMP] ${RED}❌ Health Check: FAILED (HTTP $HTTP_CODE)${NC} (tls=${TLS_TIME:-n/a}s ttfb=${TTFB_TIME:-n/a}s total=${TOTAL_TIME:-n/a}s)" | tee -a "$LOG_FILE"
         return 1
     fi
 }
