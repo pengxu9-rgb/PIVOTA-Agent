@@ -269,15 +269,15 @@ const DEFAULT_QUALITY_GATE = Object.freeze({
 const DEFAULT_CAPTURE_FRAME_GATE = Object.freeze({
   enabled: true,
   fail: Object.freeze({
-    max_center_dx: 0.18,
-    min_center_y: 0.28,
-    max_center_y: 0.72,
+    max_center_dx: 0.24,
+    min_center_y: 0.24,
+    max_center_y: 0.78,
     min_bbox_w: 0.24,
     min_bbox_h: 0.34,
-    max_bbox_w: 0.93,
-    max_bbox_h: 0.96,
-    min_edge_margin: 0.005,
-    require_touch_center: true,
+    max_bbox_w: 0.97,
+    max_bbox_h: 0.985,
+    min_edge_margin: 0.0,
+    require_touch_center: false,
   }),
   degraded: Object.freeze({
     max_center_dx: 0.13,

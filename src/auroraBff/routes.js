@@ -860,7 +860,8 @@ const PHOTO_BYTES_CACHE_TTL_MS = Math.max(
   10 * 1000,
   Math.min(30 * 60 * 1000, Number(process.env.AURORA_PHOTO_CACHE_TTL_MS || 10 * 60 * 1000)),
 );
-const PHOTO_AUTO_ANALYZE_AFTER_CONFIRM = String(process.env.AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM || 'true').toLowerCase() !== 'false';
+const PHOTO_AUTO_ANALYZE_AFTER_CONFIRM =
+  String(process.env.AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM || 'false').toLowerCase() === 'true';
 const DIAG_PHOTO_MODULES_CARD = String(process.env.DIAG_PHOTO_MODULES_CARD || '').toLowerCase() === 'true';
 const DIAG_VERIFY_ALLOW_GUARD_TEST = String(process.env.ALLOW_GUARD_TEST || '').toLowerCase() === 'true';
 const DIAG_OVERLAY_MODE = (() => {
@@ -10727,6 +10728,24 @@ function buildExecutablePlanForAnalysis({
   const quality = photoQuality && typeof photoQuality === 'object' ? photoQuality : { grade: 'unknown', reasons: [] };
   const qualityFail = String(quality.grade || '').trim().toLowerCase() === 'fail';
   const fallbackMode = qualityFail || !usedPhotos;
+  const profileGoals =
+    profileSummary && Array.isArray(profileSummary.goals)
+      ? profileSummary.goals.filter((item) => typeof item === 'string' && item.trim())
+      : [];
+  const hasQuestionnaireSignals = Boolean(
+    profileSummary &&
+      typeof profileSummary === 'object' &&
+      !Array.isArray(profileSummary) &&
+      (
+        (typeof profileSummary.skinType === 'string' && profileSummary.skinType.trim()) ||
+        (typeof profileSummary.barrierStatus === 'string' && profileSummary.barrierStatus.trim()) ||
+        (typeof profileSummary.sensitivity === 'string' && profileSummary.sensitivity.trim()) ||
+        profileGoals.length > 0 ||
+        (Array.isArray(profileSummary.concerns) && profileSummary.concerns.some((item) => typeof item === 'string' && item.trim())) ||
+        hasNonEmptyRoutineInput(profileSummary.currentRoutine)
+      ),
+  );
+  const hardFallbackMode = fallbackMode && !hasQuestionnaireSignals;
   const defaultPhotoNotice = qualityFail
     ? lang === 'CN'
       ? '照片质量未通过，本次仅基于问卷/历史信息给出临时建议。'
@@ -10851,10 +10870,9 @@ function buildExecutablePlanForAnalysis({
     takeaways.push(normalized);
   }
 
-  if (!fallbackMode) {
-    const goals = profileSummary && Array.isArray(profileSummary.goals) ? profileSummary.goals.filter((item) => typeof item === 'string' && item.trim()) : [];
-    if (goals.length) {
-      const text = `You mentioned your goals: ${goals.slice(0, 3).join(', ')}.`;
+  if (!hardFallbackMode) {
+    if (profileGoals.length) {
+      const text = `You mentioned your goals: ${profileGoals.slice(0, 3).join(', ')}.`;
       const key = `user:${text.toLowerCase()}`;
       if (!seenTakeawayText.has(key)) {
         takeaways.push({
@@ -10930,14 +10948,15 @@ function buildExecutablePlanForAnalysis({
   ];
 
   let plan = null;
-  let fallbackActionCard = null;
-  if (fallbackMode) {
-    fallbackActionCard = buildPhotoFallbackActionCard({
+  const fallbackActionCard = fallbackMode
+    ? buildPhotoFallbackActionCard({
       language: lang,
       qualityFail,
       failureCode: photoFailureCode,
       photosProvided,
-    });
+    })
+    : null;
+  if (hardFallbackMode) {
     plan = {
       today: {
         am_steps: [],
@@ -11152,10 +11171,42 @@ function buildExecutablePlanForAnalysis({
         retake_after_days: 7,
       },
     };
+    if (fallbackMode && fallbackActionCard && typeof fallbackActionCard === 'object') {
+      const retakeStep = makeStep({
+        what:
+          lang === 'CN'
+            ? '先按当前问卷方案执行，同时补拍 daylight + indoor_white 照片。'
+            : 'Start with this questionnaire-based plan now, and retake daylight + indoor_white photos.',
+        why: (fallbackActionCard.why_i_cant_analyze && fallbackActionCard.why_i_cant_analyze[0]) || '',
+        whenToStop:
+          lang === 'CN'
+            ? '重拍通过并更新分析后，按新诊断调整。'
+            : 'Adjust after a successful retake and refreshed analysis.',
+        priority: 'P0',
+        linkedIssueTypes: ['quality'],
+        linkedFindingIds: [],
+      });
+      const pauseNow = Array.isArray(plan.today && plan.today.pause_now) ? [...plan.today.pause_now] : [];
+      const hasRetakeStep = pauseNow.some((step) => /retake|重拍|daylight|indoor_white/i.test(String((step && step.what) || '')));
+      if (!hasRetakeStep) pauseNow.unshift(retakeStep);
+      plan.today = { ...(plan.today || {}), pause_now: pauseNow.slice(0, 6) };
+
+      const retakeRule =
+        lang === 'CN'
+          ? '继续执行当前 7 天保守方案，并尽快补拍 daylight + indoor_white 提升准确度。'
+          : 'Keep this conservative 7-day plan, and retake daylight + indoor_white photos to improve precision.';
+      const currentRules = Array.isArray(plan.next_7_days && plan.next_7_days.rules)
+        ? plan.next_7_days.rules.filter((item) => typeof item === 'string' && item.trim())
+        : [];
+      if (!currentRules.some((item) => /retake|daylight|indoor_white|重拍/i.test(item))) {
+        currentRules.unshift(retakeRule);
+      }
+      plan.next_7_days = { ...(plan.next_7_days || {}), rules: currentRules.slice(0, 3) };
+    }
   }
 
   base.plan = plan;
-  if (fallbackMode) {
+  if (hardFallbackMode) {
     base.photo_findings = [];
     base.findings = [];
     base.takeaways = [];
@@ -11167,7 +11218,36 @@ function buildExecutablePlanForAnalysis({
     base.strategy = renderPhotoFallbackStrategy({ language: lang, photoNotice, actionCard: fallbackActionCard });
   } else {
     base.takeaways = takeaways.slice(0, 14);
-    delete base.next_action_card;
+    if (fallbackMode && fallbackActionCard && typeof fallbackActionCard === 'object') {
+      base.next_action_card = fallbackActionCard;
+      const warningLine = Array.isArray(fallbackActionCard.why_i_cant_analyze)
+        ? String(fallbackActionCard.why_i_cant_analyze[0] || '').trim()
+        : '';
+      const goalLine = profileGoals.length
+        ? lang === 'CN'
+          ? `先按你的目标（${profileGoals.slice(0, 2).join('、')}）执行保守方案，补拍后再精细化。`
+          : `Using your goal focus (${profileGoals.slice(0, 2).join(', ')}) for a conservative starter plan; retake will refine it.`
+        : '';
+      const originalFeatures = Array.isArray(base.features) ? base.features : [];
+      const mergedFeatures = [];
+      if (warningLine) mergedFeatures.push({ observation: warningLine, confidence: 'somewhat_sure' });
+      if (goalLine) mergedFeatures.push({ observation: goalLine, confidence: 'somewhat_sure' });
+      for (const item of originalFeatures) {
+        if (!item || typeof item !== 'object') continue;
+        const observation = typeof item.observation === 'string' ? item.observation.trim() : '';
+        if (!observation) continue;
+        if (warningLine && observation === warningLine) continue;
+        const confidence =
+          item.confidence === 'pretty_sure' || item.confidence === 'somewhat_sure' || item.confidence === 'not_sure'
+            ? item.confidence
+            : 'somewhat_sure';
+        mergedFeatures.push({ observation, confidence });
+        if (mergedFeatures.length >= 5) break;
+      }
+      if (mergedFeatures.length) base.features = mergedFeatures;
+    } else {
+      delete base.next_action_card;
+    }
     base.strategy = renderPlanAsStrategy({ plan, language: lang, photoNotice });
   }
   if (photoNotice) base.photo_notice = photoNotice;
