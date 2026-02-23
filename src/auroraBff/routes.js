@@ -17544,6 +17544,165 @@ function buildConservativeRecoNoticeCard({ ctx, language, confidence, details } 
   };
 }
 
+const LOW_MEDIUM_SAFE_RECO_FALLBACK_TEMPLATES = [
+  {
+    key: 'cleanser',
+    slot: 'am',
+    routine_slot: 'cleanser',
+    score: 74,
+    category: 'cleanser',
+    en: {
+      step: 'Gentle Cleanser',
+      name: 'Gentle Hydrating Cleanser',
+      reasons: [
+        'Low-irritation baseline pick for daily use.',
+        'Supports barrier stability while confidence is limited.',
+      ],
+    },
+    cn: {
+      step: '温和洁面',
+      name: '温和保湿洁面',
+      reasons: [
+        '低刺激的日常基础选择。',
+        '在当前置信度有限时优先稳定屏障。',
+      ],
+    },
+  },
+  {
+    key: 'moisturizer',
+    slot: 'pm',
+    routine_slot: 'moisturizer',
+    score: 76,
+    category: 'moisturizer',
+    en: {
+      step: 'Barrier Moisturizer',
+      name: 'Barrier Repair Moisturizer',
+      reasons: [
+        'Helps reduce dryness/stinging from active-heavy routines.',
+        'Works as a conservative anchor while gathering better inputs.',
+      ],
+    },
+    cn: {
+      step: '屏障修护面霜',
+      name: '屏障修护保湿面霜',
+      reasons: [
+        '有助于缓解活性叠加后的干燥或刺痛。',
+        '作为保守阶段的稳定锚点产品。',
+      ],
+    },
+  },
+  {
+    key: 'sunscreen',
+    slot: 'am',
+    routine_slot: 'sunscreen',
+    score: 80,
+    category: 'sunscreen',
+    en: {
+      step: 'Daily Sunscreen',
+      name: 'Broad-Spectrum SPF 50 Sunscreen',
+      reasons: [
+        'Daytime UV protection is non-negotiable in low-confidence mode.',
+        'Reduces irritation rebound and supports safer actives onboarding.',
+      ],
+    },
+    cn: {
+      step: '日间防晒',
+      name: '广谱 SPF50 防晒',
+      reasons: [
+        '低置信度阶段优先保证日间防晒。',
+        '有助于降低刺激反复并支持后续更安全加活性。',
+      ],
+    },
+  },
+];
+
+function buildLowMediumSafeFallbackRecommendations({ language } = {}) {
+  const isCN = String(language || '').toUpperCase() === 'CN';
+  return LOW_MEDIUM_SAFE_RECO_FALLBACK_TEMPLATES.map((template, idx) => {
+    const locale = isCN ? template.cn : template.en;
+    const name = String(locale && locale.name ? locale.name : '').trim();
+    const step = String(locale && locale.step ? locale.step : template.category || 'Recommendation').trim();
+    const reasons = Array.isArray(locale && locale.reasons)
+      ? locale.reasons.map((row) => String(row || '').trim()).filter(Boolean).slice(0, 4)
+      : [];
+    const stableKey = String(template.key || `fallback_${idx + 1}`).trim().toLowerCase();
+    const productId = `safe_fallback_${stableKey}_${idx + 1}`;
+
+    return coerceRecoItemForUi(
+      {
+        slot: template.slot,
+        routine_slot: template.routine_slot,
+        category: template.category,
+        step,
+        score: Number.isFinite(Number(template.score)) ? Number(template.score) : 70,
+        confidence: { score: 0.55, level: 'medium', rationale: ['low_medium_safe_product_fallback'] },
+        reasons,
+        metadata: { fallback_type: 'low_medium_safe_product' },
+        sku: {
+          sku_id: productId,
+          product_id: productId,
+          brand: isCN ? '稳妥基线' : 'Safe Baseline',
+          name,
+          display_name: name,
+          category: template.category,
+        },
+      },
+      { lang: isCN ? 'CN' : 'EN' },
+    );
+  })
+    .map((item) => buildRecoPdpQuickItem(item, { fastFallbackReasonCode: 'no_candidates' }))
+    .slice(0, 3);
+}
+
+function hasRenderableRecommendationsCard(cards) {
+  return (Array.isArray(cards) ? cards : []).some((card) => {
+    if (!isPlainObject(card)) return false;
+    if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return false;
+    const payload = isPlainObject(card.payload) ? card.payload : {};
+    return Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
+  });
+}
+
+function isRecoRequestFlowFromEvents(events) {
+  return (Array.isArray(events) ? events : []).some((evt) => {
+    if (!isPlainObject(evt)) return false;
+    return String(evt.event_name || '').trim() === 'recos_requested';
+  });
+}
+
+function buildLowMediumSafeFallbackRecoCard({
+  ctx,
+  language,
+  sourcePayload,
+  sourceFieldMissing,
+} = {}) {
+  const recommendations = buildLowMediumSafeFallbackRecommendations({ language });
+  if (!recommendations.length) return null;
+
+  const srcPayload = isPlainObject(sourcePayload) ? sourcePayload : {};
+  const srcMeta = isPlainObject(srcPayload.metadata) ? srcPayload.metadata : {};
+  const payload = {
+    ...srcPayload,
+    recommendations,
+    metadata: {
+      ...srcMeta,
+      pdp_open_path_stats: tallyPdpOpenPathStats(recommendations),
+      resolve_fail_reason_counts: tallyResolveFailReasonCounts(recommendations),
+      time_to_pdp_ms_stats: summarizeTimeToPdpStats(recommendations),
+      low_medium_safe_fallback: true,
+    },
+  };
+
+  return {
+    card_id: `reco_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_safe_fallback`,
+    type: 'recommendations',
+    payload,
+    field_missing: mergeFieldMissing(sourceFieldMissing, [
+      { field: 'recommendations', reason: 'low_medium_safe_product_fallback' },
+    ]),
+  };
+}
+
 function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
   const baseEnvelope = isPlainObject(envelope)
     ? {
@@ -17566,6 +17725,8 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
   const nextCards = [];
   let filteredCount = 0;
   let totalCount = 0;
+  let fallbackRecoSourcePayload = null;
+  let fallbackRecoSourceFieldMissing = null;
   for (const card of baseEnvelope.cards) {
     if (!isPlainObject(card)) {
       nextCards.push(card);
@@ -17582,6 +17743,8 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
     totalCount += guarded.totalCount;
 
     const nextPayload = guarded.payload;
+    if (!fallbackRecoSourcePayload) fallbackRecoSourcePayload = nextPayload;
+    if (!fallbackRecoSourceFieldMissing) fallbackRecoSourceFieldMissing = card.field_missing;
     const nextRecs = Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations : [];
     const nextCard = {
       ...card,
@@ -17603,21 +17766,27 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
     if (cardType !== 'recommendations') nextCards.push(nextCard);
   }
 
-  if (filteredCount <= 0) {
-    return { envelope: baseEnvelope, applied: false, filteredCount: 0, totalCount, fallbackApplied: false };
+  let finalCards = nextCards;
+  let safeRecoFallbackApplied = false;
+  let noticeFallbackApplied = false;
+  let hasReco = hasRenderableRecommendationsCard(finalCards);
+  const isRecoRequestFlow = isRecoRequestFlowFromEvents(baseEnvelope.events);
+
+  if (!hasReco && isRecoRequestFlow) {
+    const safeRecoCard = buildLowMediumSafeFallbackRecoCard({
+      ctx,
+      language,
+      sourcePayload: fallbackRecoSourcePayload,
+      sourceFieldMissing: fallbackRecoSourceFieldMissing,
+    });
+    if (safeRecoCard) {
+      finalCards = [...finalCards, safeRecoCard];
+      safeRecoFallbackApplied = true;
+      hasReco = true;
+    }
   }
 
-  let fallbackApplied = false;
-  let finalCards = nextCards;
-  const hasReco = finalCards.some((card) => {
-    if (!isPlainObject(card)) return false;
-    if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return false;
-    const payload = isPlainObject(card.payload) ? card.payload : {};
-    return Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
-  });
-
-  if (!hasReco) {
-    fallbackApplied = true;
+  if (!hasReco && filteredCount > 0) {
     const hasLowConfidenceNotice = finalCards.some((card) => {
       if (!isPlainObject(card)) return false;
       if (String(card.type || '').trim().toLowerCase() !== 'confidence_notice') return false;
@@ -17634,7 +17803,14 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
           details: ['low_medium_treatment_filtered_all'],
         }),
       ];
+      noticeFallbackApplied = true;
     }
+  }
+
+  const fallbackApplied = safeRecoFallbackApplied || noticeFallbackApplied;
+  const applied = filteredCount > 0 || fallbackApplied;
+  if (!applied) {
+    return { envelope: baseEnvelope, applied: false, filteredCount: 0, totalCount, fallbackApplied: false };
   }
 
   const nextEvents = Array.isArray(baseEnvelope.events) ? baseEnvelope.events.slice(0, 64) : [];
@@ -17643,6 +17819,8 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
       filtered_count: filteredCount,
       total_count: totalCount,
       fallback_applied: fallbackApplied,
+      safe_reco_fallback_applied: safeRecoFallbackApplied,
+      notice_fallback_applied: noticeFallbackApplied,
     }),
   );
 
@@ -17652,10 +17830,12 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
       cards: finalCards,
       events: nextEvents,
     },
-    applied: true,
+    applied,
     filteredCount,
     totalCount,
     fallbackApplied,
+    safeRecoFallbackApplied,
+    noticeFallbackApplied,
   };
 }
 
@@ -25335,6 +25515,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             filtered_count: lowMediumFiltered.filteredCount,
             total_count: lowMediumFiltered.totalCount,
             fallback_applied: lowMediumFiltered.fallbackApplied,
+            safe_reco_fallback_applied: Boolean(lowMediumFiltered.safeRecoFallbackApplied),
+            notice_fallback_applied: Boolean(lowMediumFiltered.noticeFallbackApplied),
           },
           'aurora bff: low/medium confidence reco treatment filter applied',
         );
@@ -25347,7 +25529,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           'metric',
         );
         recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_treatment_filtered', hit: true });
-        if (lowMediumFiltered.fallbackApplied) {
+        if (lowMediumFiltered.safeRecoFallbackApplied) {
+          recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_safe_product_fallback', hit: true });
+        }
+        if (lowMediumFiltered.noticeFallbackApplied) {
           recordAuroraSkinFlowMetric({ stage: 'reco_low_medium_notice_fallback', hit: true });
         }
       }

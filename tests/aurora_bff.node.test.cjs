@@ -328,7 +328,7 @@ test('applyLowOrMediumRecoGuardToEnvelope: keeps explicit non-treatment routine_
   }
 });
 
-test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to confidence_notice(low_confidence)', () => {
+test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result falls back to safe non-treatment recommendations', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const envelope = {
@@ -359,16 +359,20 @@ test('applyLowOrMediumRecoGuardToEnvelope: low confidence treatment-only result 
     assert.equal(out.applied, true);
     assert.equal(out.filteredCount, 1);
     assert.equal(out.fallbackApplied, true);
+    assert.equal(out.safeRecoFallbackApplied, true);
     const cards = Array.isArray(out.envelope.cards) ? out.envelope.cards : [];
     const recoCard = cards.find((c) => c && c.type === 'recommendations');
     const recs = Array.isArray(recoCard && recoCard.payload && recoCard.payload.recommendations)
       ? recoCard.payload.recommendations
       : [];
-    assert.equal(recs.length, 0);
+    assert.ok(recs.length > 0);
+    assert.equal(recs.some((item) => looksTreatmentOrHighIrritation(item)), false);
+    assert.equal(
+      recs.some((item) => item && item.pdp_open && String(item.pdp_open.path || '').trim().length > 0),
+      true,
+    );
     const notice = cards.find((c) => c && c.type === 'confidence_notice');
-    assert.ok(notice);
-    assert.equal(notice.payload && notice.payload.reason, 'low_confidence');
-    assert.ok(Array.isArray(notice.payload && notice.payload.actions) && notice.payload.actions.length > 0);
+    assert.equal(Boolean(notice), false);
   } finally {
     delete require.cache[moduleId];
   }
