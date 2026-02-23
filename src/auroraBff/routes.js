@@ -23696,6 +23696,29 @@ function mountAuroraBffRoutes(app, { logger }) {
           requestId: ctx.request_id,
         });
 
+        const photoModulesSourceResolved = (() => {
+          const normalizeSourcePhoto = (candidate) => {
+            if (!candidate || typeof candidate !== 'object') return null;
+            const slotId = String(candidate.slot_id || '').trim();
+            const photoId = String(candidate.photo_id || '').trim();
+            if (!slotId || !photoId) return null;
+            return { slot_id: slotId, photo_id: photoId };
+          };
+
+          const direct = normalizeSourcePhoto(photoModulesSourcePhoto);
+          if (direct) return direct;
+
+          const diagnosisFallback = normalizeSourcePhoto(diagnosisPhoto);
+          if (diagnosisFallback) return diagnosisFallback;
+
+          const bestEffort = chooseVisionPhoto([
+            ...(Array.isArray(passedPhotos) ? passedPhotos : []),
+            ...(Array.isArray(degradedPhotos) ? degradedPhotos : []),
+            ...(Array.isArray(failedPhotos) ? failedPhotos : []),
+          ]);
+          return normalizeSourcePhoto(bestEffort);
+        })();
+
         const photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
           requestId: ctx.request_id,
           analysis,
@@ -23706,7 +23729,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? photoNotice.message
               : visionPhotoNoticeMessage,
           diagnosisInternal: diagnosisV1Internal,
-          sourcePhoto: photoModulesSourcePhoto,
+          sourcePhoto: photoModulesSourceResolved,
           profileSummary,
           language: ctx.lang,
           skinMask: photoModulesSkinMask,

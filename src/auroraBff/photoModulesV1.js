@@ -3505,18 +3505,19 @@ function buildPhotoModulesCard({
     allowFaceOvalClip,
   });
 
+  const sourceSlotId = sourcePhoto && typeof sourcePhoto.slot_id === 'string' ? sourcePhoto.slot_id.trim() : '';
+  const sourcePhotoId = sourcePhoto && typeof sourcePhoto.photo_id === 'string' ? sourcePhoto.photo_id.trim() : '';
+
   const payload = {
     used_photos: true,
     quality_grade: qualityGrade,
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
+    ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
+    ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
     face_crop: {
       ...faceCrop,
-      ...(sourcePhoto && typeof sourcePhoto.slot_id === 'string' && sourcePhoto.slot_id.trim()
-        ? { slot_id: sourcePhoto.slot_id.trim() }
-        : {}),
-      ...(sourcePhoto && typeof sourcePhoto.photo_id === 'string' && sourcePhoto.photo_id.trim()
-        ? { photo_id: sourcePhoto.photo_id.trim() }
-        : {}),
+      ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
+      ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
     },
     regions,
     modules: moduleMaskBuild.modules,
