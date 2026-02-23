@@ -396,7 +396,64 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('pet harness query rejects dog-apparel-only matches as strict empty', async () => {
+  test('returns clarify instead of strict-empty when upstream quota is exhausted for scenario query', async () => {
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED = 'true';
+    process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES = 'scenario,mission,exploratory';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(429, {
+        status: 'error',
+        error: {
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Daily quota exceeded',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hiking essentials',
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
+      }),
+    );
+    expect(resp.body.reason_codes).toEqual(
+      expect.arrayContaining(['UPSTREAM_QUOTA_EXHAUSTED', 'AMBIGUITY_CLARIFY']),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        upstream_quota_guarded: true,
+      }),
+    );
+    expect(resp.body.metadata?.strict_empty).not.toBe(true);
+  });
+
+  test('pet harness query fail-opens primary result instead of strict empty', async () => {
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
 
@@ -439,11 +496,22 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'DOG_JACKET_001',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_error_fallback',
-        strict_empty: true,
+        query_source: 'agent_products_search',
+        strict_empty: false,
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_irrelevant_no_fallback',
+          route: 'invoke_primary_irrelevant_fail_open',
+        }),
       }),
     );
   });
@@ -958,6 +1026,89 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         merchant_id: 'merch_efbc46b4619cfbdf',
       }),
     );
+  }, 15000);
+
+  test('aurora invoke path treats 429 primary responses as fallback-eligible', async () => {
+    const queryText = 'the ordinary copper peptide serum';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS = 'true';
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: jest.fn().mockResolvedValue({
+        resolved: false,
+        product_ref: null,
+        confidence: 0,
+        reason: 'no_candidates',
+        metadata: {
+          latency_ms: 9,
+          sources: [{ source: 'agent_search_scoped', ok: false, reason: 'no_candidates' }],
+        },
+      }),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(429, {
+        status: 'error',
+        error: { code: 'RATE_LIMITED', message: 'Too many requests' },
+      });
+
+    const secondaryScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'alt_429_invoke_1',
+            merchant_id: 'merch_sigma',
+            title: 'Copper Peptide Repair Serum',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          entry: 'home',
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(secondaryScope.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'alt_429_invoke_1',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+        }),
+      }),
+    );
+    expect(String(resp.body?.metadata?.proxy_search_fallback?.reason || '')).toMatch(
+      /upstream_status_429|empty_or_unusable_primary/,
+    );
   });
 
   test('resolver fallback remains available when secondary invoke fallback is disabled', async () => {
@@ -1307,7 +1458,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('returns empty soft fallback when invoke lookup stays irrelevant and resolver misses', async () => {
+  test('returns fail-open primary result when invoke fallback is disabled and resolver misses', async () => {
     const queryText = 'IPSA related products';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
@@ -1362,13 +1513,21 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: '9859801710920',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+      }),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_error_fallback',
+        query_source: 'agent_products_search',
+        strict_empty: false,
         proxy_search_fallback: expect.objectContaining({
           applied: true,
           reason: 'primary_irrelevant_no_fallback',
+          route: 'invoke_primary_irrelevant_fail_open',
         }),
       }),
     );
