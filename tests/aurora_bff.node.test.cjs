@@ -5798,6 +5798,7 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
   const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
   assert.ok(card);
   assert.equal(card.payload?.analysis_source, 'baseline_low_confidence');
+  assert.equal(Boolean(card.payload?.low_confidence), true);
   const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
   assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
 });
@@ -5882,6 +5883,7 @@ test('/v1/analysis/skin: accepts routine input and avoids low-confidence baselin
   const card = resp.body.cards.find((c) => c && c.type === 'analysis_summary');
   assert.ok(card);
   assert.notEqual(card.payload?.analysis_source, 'baseline_low_confidence');
+  assert.equal(Boolean(card.payload?.low_confidence), false);
 
   const missing = Array.isArray(card.field_missing) ? card.field_missing : [];
   assert.equal(missing.some((m) => String(m?.field || '') === 'profile.currentRoutine'), false);
@@ -7214,6 +7216,12 @@ test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by ro
         assert.equal(Boolean(card?.payload?.low_confidence), true);
 
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        const primaryMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        const photoMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
         assert.equal(
           missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
           false,
@@ -7222,6 +7230,8 @@ test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by ro
           missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
           true,
         );
+        assert.equal(primaryMissingCount, 1);
+        assert.equal(photoMissingCount, 0);
       } finally {
         skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
         axios.get = originalGet;
@@ -7327,6 +7337,12 @@ test('/v1/analysis/skin: stringified empty routine does not count as primary inp
         assert.equal(Boolean(card?.payload?.low_confidence), true);
 
         const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        const primaryMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
+        const photoMissingCount = missing.filter(
+          (f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required',
+        ).length;
         assert.equal(
           missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
           true,
@@ -7335,6 +7351,8 @@ test('/v1/analysis/skin: stringified empty routine does not count as primary inp
           missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
           false,
         );
+        assert.equal(primaryMissingCount, 1);
+        assert.equal(photoMissingCount, 0);
       } finally {
         skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
         axios.get = originalGet;

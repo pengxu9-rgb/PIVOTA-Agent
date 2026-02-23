@@ -744,6 +744,12 @@ const PHOTO_BYTES_CACHE_TTL_MS = Math.max(
   10 * 1000,
   Math.min(30 * 60 * 1000, Number(process.env.AURORA_PHOTO_CACHE_TTL_MS || 10 * 60 * 1000)),
 );
+const PHOTO_MODULES_INLINE_PREVIEW_PRIMARY_MAX_WIDTH = 1024;
+const PHOTO_MODULES_INLINE_PREVIEW_PRIMARY_QUALITY = 72;
+const PHOTO_MODULES_INLINE_PREVIEW_SECONDARY_MAX_WIDTH = 768;
+const PHOTO_MODULES_INLINE_PREVIEW_SECONDARY_QUALITY = 60;
+const PHOTO_MODULES_INLINE_PREVIEW_RETRY_THRESHOLD_BYTES = 350 * 1024;
+const PHOTO_MODULES_INLINE_PREVIEW_MAX_BYTES = 450 * 1024;
 const PHOTO_AUTO_ANALYZE_AFTER_CONFIRM = String(process.env.AURORA_PHOTO_AUTO_ANALYZE_AFTER_CONFIRM || 'true').toLowerCase() !== 'false';
 const DIAG_PHOTO_MODULES_CARD = String(process.env.DIAG_PHOTO_MODULES_CARD || '').toLowerCase() === 'true';
 const DIAG_VERIFY_ALLOW_GUARD_TEST = String(process.env.ALLOW_GUARD_TEST || '').toLowerCase() === 'true';
@@ -8319,6 +8325,240 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
   };
 }
 
+const FACE_CROP_RENDERABLE_URL_KEYS = [
+  'crop_image_url',
+  'original_image_url',
+  'face_crop_url',
+  'source_image_url',
+  'image_url',
+  'src',
+];
+
+function isRenderableImageUrl(value) {
+  if (typeof value !== 'string') return false;
+  const token = value.trim();
+  if (!token || token === 'null' || token === 'undefined') return false;
+  return /^(https?:\/\/|data:image\/|blob:)/i.test(token);
+}
+
+function getRenderableFaceCropUrl(faceCrop) {
+  const source = faceCrop && typeof faceCrop === 'object' ? faceCrop : null;
+  if (!source) return '';
+  for (const key of FACE_CROP_RENDERABLE_URL_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+    const value = source[key];
+    if (isRenderableImageUrl(value)) return String(value).trim();
+  }
+  return '';
+}
+
+function setFaceCropRenderableUrl(faceCrop, url) {
+  if (!faceCrop || typeof faceCrop !== 'object') return;
+  if (!isRenderableImageUrl(url)) return;
+  const normalized = String(url).trim();
+  faceCrop.original_image_url = normalized;
+  if (!isRenderableImageUrl(faceCrop.source_image_url)) faceCrop.source_image_url = normalized;
+  if (!isRenderableImageUrl(faceCrop.image_url)) faceCrop.image_url = normalized;
+}
+
+async function buildInlinePreviewDataUrl(imageBuffer) {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+    return { ok: false, reason_code: 'no_source_photo', byte_length: 0 };
+  }
+
+  try {
+    const primary = await sharp(imageBuffer)
+      .rotate()
+      .resize({ width: PHOTO_MODULES_INLINE_PREVIEW_PRIMARY_MAX_WIDTH, withoutEnlargement: true, fit: 'inside' })
+      .jpeg({ quality: PHOTO_MODULES_INLINE_PREVIEW_PRIMARY_QUALITY, mozjpeg: true })
+      .toBuffer();
+
+    let encoded = primary;
+    if (encoded.length > PHOTO_MODULES_INLINE_PREVIEW_RETRY_THRESHOLD_BYTES) {
+      encoded = await sharp(imageBuffer)
+        .rotate()
+        .resize({ width: PHOTO_MODULES_INLINE_PREVIEW_SECONDARY_MAX_WIDTH, withoutEnlargement: true, fit: 'inside' })
+        .jpeg({ quality: PHOTO_MODULES_INLINE_PREVIEW_SECONDARY_QUALITY, mozjpeg: true })
+        .toBuffer();
+    }
+
+    if (encoded.length > PHOTO_MODULES_INLINE_PREVIEW_MAX_BYTES) {
+      return {
+        ok: false,
+        reason_code: 'inline_preview_too_large',
+        byte_length: encoded.length,
+      };
+    }
+
+    return {
+      ok: true,
+      reason_code: 'ok_inline_preview',
+      byte_length: encoded.length,
+      data_url: `data:image/jpeg;base64,${encoded.toString('base64')}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      reason_code: 'inline_preview_encode_failed',
+      detail: err && err.message ? err.message : String(err),
+      byte_length: 0,
+    };
+  }
+}
+
+async function requestPhotoDownloadUrlOnce({ req, photoId } = {}) {
+  const id = String(photoId || '').trim();
+  if (!id) return { ok: false, reason_code: 'no_source_photo', detail: 'photo_id_missing' };
+  if (!PIVOTA_BACKEND_BASE_URL) {
+    return {
+      ok: false,
+      reason_code: 'missing_base_url',
+      detail: 'pivota_backend_not_configured',
+    };
+  }
+
+  const authHeaders = buildPivotaBackendAuthHeaders(req);
+  if (!Object.keys(authHeaders).length) {
+    return {
+      ok: false,
+      reason_code: 'missing_auth',
+      detail: 'pivota_backend_auth_not_configured',
+    };
+  }
+
+  let upstreamResp = null;
+  try {
+    upstreamResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/download-url`, {
+      timeout: PHOTO_DOWNLOAD_URL_TIMEOUT_MS,
+      validateStatus: () => true,
+      headers: authHeaders,
+      params: { upload_id: id },
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      reason_code: 'signed_url_failed',
+      status: null,
+      detail: err && (err.code || err.message) ? String(err.code || err.message) : null,
+    };
+  }
+
+  const download = upstreamResp && upstreamResp.data && upstreamResp.data.download ? upstreamResp.data.download : null;
+  const downloadUrl = download && typeof download.url === 'string' ? download.url.trim() : '';
+  if (upstreamResp.status !== 200 || !downloadUrl) {
+    return {
+      ok: false,
+      reason_code: 'signed_url_failed',
+      status: upstreamResp.status,
+      detail: pickUpstreamErrorDetail(upstreamResp.data) || null,
+    };
+  }
+
+  const expiresAt =
+    (download && typeof download.expires_at === 'string' && download.expires_at) ||
+    (upstreamResp.data && typeof upstreamResp.data.expires_at === 'string' && upstreamResp.data.expires_at) ||
+    null;
+  const secLeft = secondsUntilIso(expiresAt);
+  if (secLeft != null && secLeft <= 0) {
+    return {
+      ok: false,
+      reason_code: 'signed_url_failed',
+      status: 410,
+      detail: 'signed_url_expired_before_use',
+    };
+  }
+
+  return {
+    ok: true,
+    reason_code: 'ok_signed_url',
+    url: downloadUrl,
+    expires_at: expiresAt || null,
+  };
+}
+
+async function ensurePhotoModulesRenderableFaceCrop({
+  req,
+  photoModulesCard,
+  diagnosisPhotoBytes,
+  photoId,
+  slotId,
+  logger,
+  requestId,
+} = {}) {
+  if (!photoModulesCard || typeof photoModulesCard !== 'object') return photoModulesCard;
+  const payload = photoModulesCard.payload && typeof photoModulesCard.payload === 'object' ? photoModulesCard.payload : null;
+  if (!payload) return photoModulesCard;
+
+  const faceCrop =
+    payload.face_crop && typeof payload.face_crop === 'object'
+      ? payload.face_crop
+      : (() => {
+          payload.face_crop = {};
+          return payload.face_crop;
+        })();
+
+  let source = 'none';
+  let reasonCode = 'no_source_photo';
+
+  const existingUrl = getRenderableFaceCropUrl(faceCrop);
+  if (existingUrl) {
+    source = 'existing';
+    reasonCode = 'ok_existing';
+  } else {
+    const signedUrlOut = await requestPhotoDownloadUrlOnce({ req, photoId });
+    if (signedUrlOut && signedUrlOut.ok && isRenderableImageUrl(signedUrlOut.url)) {
+      setFaceCropRenderableUrl(faceCrop, signedUrlOut.url);
+      source = 'signed_url';
+      reasonCode = 'ok_signed_url';
+    } else if (diagnosisPhotoBytes && Buffer.isBuffer(diagnosisPhotoBytes) && diagnosisPhotoBytes.length > 0) {
+      const inline = await buildInlinePreviewDataUrl(diagnosisPhotoBytes);
+      if (inline && inline.ok && isRenderableImageUrl(inline.data_url)) {
+        setFaceCropRenderableUrl(faceCrop, inline.data_url);
+        source = 'inline_preview';
+        reasonCode = 'ok_inline_preview';
+      } else {
+        source = 'none';
+        reasonCode = inline && inline.reason_code ? inline.reason_code : 'inline_preview_encode_failed';
+      }
+    } else {
+      source = 'none';
+      reasonCode =
+        signedUrlOut && typeof signedUrlOut.reason_code === 'string' && signedUrlOut.reason_code
+          ? signedUrlOut.reason_code
+          : 'no_source_photo';
+    }
+  }
+
+  payload.render_fallback = {
+    attempted: true,
+    source,
+    reason_code: reasonCode,
+  };
+
+  const renderableUrl = getRenderableFaceCropUrl(faceCrop);
+  if (logger && typeof logger.info === 'function') {
+    if (source === 'none') {
+      logger.info({ kind: 'metric', name: 'aurora.skin.photo_modules.no_renderable_rate', value: 1 }, 'metric');
+    } else {
+      logger.info({ kind: 'metric', name: 'aurora.skin.photo_modules.renderable_rate', value: 1 }, 'metric');
+    }
+    logger.info({ kind: 'metric', name: `aurora.skin.photo_modules.render_source.${source}`, value: 1 }, 'metric');
+    logger.info(
+      {
+        request_id: requestId || null,
+        photo_id: String(photoId || '').trim() || null,
+        slot_id: String(slotId || '').trim() || null,
+        source,
+        reason_code: reasonCode,
+        render_url_len: renderableUrl ? renderableUrl.length : 0,
+      },
+      'aurora bff: photo modules render fallback',
+    );
+  }
+
+  return photoModulesCard;
+}
+
 function isPassedPhotoQcStatus(qcStatus) {
   return normalizePhotoQcStatus(qcStatus) === 'passed';
 }
@@ -8876,9 +9116,11 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     });
   }
 
+  const lowConfidence = Boolean(analysisSource === 'baseline_low_confidence' || !hasPrimaryInput);
+  const dedupedFieldMissing = mergeFieldMissing([], fieldMissing);
   const payload = {
     analysis,
-    low_confidence: analysisSource === 'baseline_low_confidence' || !hasPrimaryInput,
+    low_confidence: lowConfidence,
     photos_provided: true,
     photo_qc: [`${slot}:${qc}`],
     used_photos: usedPhotos,
@@ -8922,13 +9164,24 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
     language,
     skinMask: photoModulesSkinMask,
   });
+  if (photoModulesCard) {
+    await ensurePhotoModulesRenderableFaceCrop({
+      req,
+      photoModulesCard,
+      diagnosisPhotoBytes,
+      photoId,
+      slotId: slot,
+      logger,
+      requestId: ctx.request_id,
+    });
+  }
 
   const cards = [
     {
       card_id: `analysis_${ctx.request_id}`,
       type: 'analysis_summary',
       payload,
-      ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
+      ...(dedupedFieldMissing.length ? { field_missing: dedupedFieldMissing } : {}),
     },
     ...(photoModulesCard ? [photoModulesCard] : []),
   ];
@@ -21526,6 +21779,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           skinMask: photoModulesSkinMask,
         });
+        if (photoModulesCard) {
+          await ensurePhotoModulesRenderableFaceCrop({
+            req,
+            photoModulesCard,
+            diagnosisPhotoBytes,
+            photoId: diagnosisPhoto && diagnosisPhoto.photo_id,
+            slotId: diagnosisPhoto && diagnosisPhoto.slot_id,
+            logger,
+            requestId: ctx.request_id,
+          });
+        }
 
         if (analysis && persistLastAnalysis) {
           try {
@@ -21538,6 +21802,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
+        const lowConfidence = Boolean(analysisSource === 'baseline_low_confidence' || !hasPrimaryInput);
+        const dedupedAnalysisFieldMissing = mergeFieldMissing([], analysisFieldMissing);
         profiler.start('render', { kind: 'envelope' });
         const envelope = buildEnvelope(ctx, {
           assistant_message: null,
@@ -21548,7 +21814,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               type: 'analysis_summary',
               payload: {
                 analysis,
-                low_confidence: analysisSource === 'baseline_low_confidence' || !hasPrimaryInput,
+                low_confidence: lowConfidence,
                 photos_provided: photosProvided,
                 photo_qc: photoQcParts,
                 used_photos: usedPhotos,
@@ -21563,7 +21829,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reasons: qualityReportReasons.slice(0, 8),
                 },
               },
-              ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
+              ...(dedupedAnalysisFieldMissing.length ? { field_missing: dedupedAnalysisFieldMissing } : {}),
             },
             ...(photoModulesCard ? [photoModulesCard] : []),
           ],
@@ -25834,6 +26100,11 @@ const __internal = {
   runVisionSkinAnalysis,
   resolveVisionProviderSelection,
   fetchPhotoBytesFromPivotaBackend,
+  requestPhotoDownloadUrlOnce,
+  buildInlinePreviewDataUrl,
+  ensurePhotoModulesRenderableFaceCrop,
+  getRenderableFaceCropUrl,
+  isRenderableImageUrl,
   classifySignedUrlFetchFailure,
   isSignedUrlExpiredSignal,
   setPhotoBytesCache,
