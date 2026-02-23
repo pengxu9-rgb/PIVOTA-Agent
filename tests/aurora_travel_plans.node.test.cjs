@@ -8,6 +8,7 @@ const {
   normalizeTravelProfilePatch,
   resolveTravelPlansState,
   selectActiveTrip,
+  applyTravelExtractionToProfile,
 } = require('../src/auroraBff/travelPlans');
 
 test('UserProfilePatchSchema accepts legacy travel_plan and new travel_plans', () => {
@@ -218,4 +219,19 @@ test('resolveQaPlan weather/travel uses home region fallback when all trips are 
   assert.equal(plan.gate_type, 'none');
   assert.deepEqual(plan.required_fields, []);
   assert.equal(plan.next_step, 'tool_call');
+});
+
+test('applyTravelExtractionToProfile ignores non-destination phrases', () => {
+  const out = applyTravelExtractionToProfile(
+    {
+      region: 'San Francisco',
+      travel_plans: [],
+      travel_plan: null,
+    },
+    { destination: 'weather this week' },
+    { nowMs: Date.parse('2026-02-23T10:00:00.000Z') },
+  );
+
+  assert.ok(out && typeof out === 'object');
+  assert.equal(out.patch, null);
 });

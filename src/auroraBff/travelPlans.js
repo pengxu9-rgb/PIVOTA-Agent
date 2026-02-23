@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const DATE_TOKEN_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_TRAVEL_PLANS = 20;
+const NON_DESTINATION_HINT_RE = /\b(weather|climate|this week|next week|this month|next month|today|tomorrow|tonight|skincare|routine|plan)\b/i;
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -34,6 +35,14 @@ function normalizeText(value, maxLen) {
   return typeof maxLen === 'number' && maxLen > 0 ? text.slice(0, maxLen) : text;
 }
 
+function normalizeDestinationText(value, maxLen = 100) {
+  const text = normalizeText(value, maxLen);
+  if (!text) return '';
+  if (!/[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]/.test(text)) return '';
+  if (NON_DESTINATION_HINT_RE.test(text)) return '';
+  return text;
+}
+
 function clampRatio(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -56,7 +65,7 @@ function buildTripId() {
 function normalizeLegacyTravelPlan(raw) {
   if (!isPlainObject(raw)) return null;
 
-  const destination = normalizeText(raw.destination, 100);
+  const destination = normalizeDestinationText(raw.destination, 100);
   const startDate = normalizeDateToken(raw.start_date);
   let endDate = normalizeDateToken(raw.end_date);
   const ratio = clampRatio(raw.indoor_outdoor_ratio);
@@ -83,7 +92,7 @@ function normalizeLegacyTravelPlan(raw) {
 
 function isTravelPlanComplete(plan) {
   if (!isPlainObject(plan)) return false;
-  const destination = normalizeText(plan.destination, 100);
+  const destination = normalizeDestinationText(plan.destination, 100);
   const startDate = normalizeDateToken(plan.start_date);
   const endDate = normalizeDateToken(plan.end_date);
   if (!destination || !startDate || !endDate) return false;
@@ -199,7 +208,7 @@ function selectActiveTrip(rawPlans, options = {}) {
 
 function toLegacyTravelPlan(trip) {
   if (!isPlainObject(trip)) return null;
-  const destination = normalizeText(trip.destination, 100);
+  const destination = normalizeDestinationText(trip.destination, 100);
   const startDate = normalizeDateToken(trip.start_date);
   const endDate = normalizeDateToken(trip.end_date);
   if (!destination && !startDate && !endDate) return null;
@@ -329,11 +338,16 @@ function applyTravelExtractionToProfile(profile, extraction = {}, options = {}) 
     : DEFAULT_MAX_TRAVEL_PLANS;
   const source = isPlainObject(profile) ? profile : {};
   const currentState = resolveTravelPlansState(source, { nowMs, maxItems });
-  const destination = normalizeText(extraction.destination, 100);
+  const destination = normalizeDestinationText(extraction.destination, 100);
   const startDate = normalizeDateToken(extraction.start_date || extraction.startDate);
   const endDate = normalizeDateToken(extraction.end_date || extraction.endDate);
   const itinerary = normalizeText(extraction.itinerary, 1200);
   const ratio = clampRatio(extraction.indoor_outdoor_ratio);
+
+  // Ignore empty/invalid extractions and avoid mutating profile state with metadata-only travel_plan objects.
+  if (!destination && !startDate && !endDate && !itinerary && ratio == null) {
+    return { nextProfile: source, patch: null, state: currentState };
+  }
 
   const nextLegacy = {
     ...(isPlainObject(currentState.legacy_travel_plan) ? currentState.legacy_travel_plan : {}),
