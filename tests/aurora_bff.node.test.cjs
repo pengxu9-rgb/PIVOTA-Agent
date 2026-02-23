@@ -1525,6 +1525,28 @@ test('Skin LLM policy: explicit uncertainty flag tightens LLM calls on pass qual
   assert.equal(visionSkip.decision, 'skip');
 });
 
+test('Skin LLM policy: missing primary input is downgraded, not hard-blocked', async () => {
+  const base = {
+    hasPrimaryInput: false,
+    userRequestedPhoto: true,
+    detectorConfidenceLevel: 'low',
+    visionAvailable: true,
+    reportAvailable: true,
+    degradedMode: 'report',
+    quality: { grade: 'pass', reasons: ['qc_passed'] },
+  };
+
+  const visionDecision = shouldCallLlm({ ...base, kind: 'vision' });
+  const reportDecision = shouldCallLlm({ ...base, kind: 'report' });
+
+  assert.equal(visionDecision.decision, 'call');
+  assert.equal(reportDecision.decision, 'call');
+  assert.equal(visionDecision.reasons.includes('missing_primary_input'), true);
+  assert.equal(reportDecision.reasons.includes('missing_primary_input'), true);
+  assert.equal(visionDecision.downgrade_confidence, true);
+  assert.equal(reportDecision.downgrade_confidence, true);
+});
+
 test('Diag rollout: bucket is stable and within 0..99', async () => {
   const a = hashToBucket0to99('req_abc');
   const b = hashToBucket0to99('req_abc');
@@ -6739,6 +6761,16 @@ test('/v1/photos/confirm: qc passed auto-triggers analysis_summary', async () =>
         assert.ok(confirmCard);
         assert.ok(analysisCard);
         assert.equal(typeof analysisCard?.payload?.used_photos, 'boolean');
+        assert.equal(Boolean(analysisCard?.payload?.low_confidence), true);
+        const missing = Array.isArray(analysisCard?.field_missing) ? analysisCard.field_missing : [];
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
+          true,
+        );
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -7072,6 +7104,118 @@ test('/v1/analysis/skin: photos without use_photo still default to photo analysi
         axios.post = originalPost;
         axios.request = originalRequest;
         delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: photo-only input is downgraded but not hard-gated by routine/logs', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinModuleId];
+
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      skinDiagnosis.runSkinDiagnosisV1 = async () => ({
+        ok: true,
+        diagnosis: {
+          quality: { grade: 'pass', reasons: ['qc_passed'] },
+          findings: [],
+        },
+      });
+
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const sharp = require('sharp');
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 216, g: 180, b: 160 } },
+      })
+        .png()
+        .toBuffer();
+
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      axios.post = originalPost;
+      axios.request = originalRequest;
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/photo-only',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/photo-only') {
+            return {
+              status: 200,
+              data: pngBytes,
+              headers: { 'content-type': 'image/png' },
+            };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_only',
+            'X-Trace-ID': 'trace_photo_only',
+            'X-Brief-ID': 'brief_photo_only',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_only_1', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const card = Array.isArray(resp.body?.cards) ? resp.body.cards.find((c) => c && c.type === 'analysis_summary') : null;
+        assert.ok(card);
+        assert.equal(card?.payload?.analysis_source === 'baseline_low_confidence', false);
+        assert.equal(Boolean(card?.payload?.low_confidence), true);
+
+        const missing = Array.isArray(card?.field_missing) ? card.field_missing : [];
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'routine_or_recent_logs_required'),
+          false,
+        );
+        assert.equal(
+          missing.some((f) => f && f.field === 'analysis.primary_input' && f.reason === 'routine_or_recent_logs_required'),
+          true,
+        );
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinModuleId];
       }
     },
   );

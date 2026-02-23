@@ -90,6 +90,7 @@ Returned by `POST /v1/analysis/skin`.
 Failure semantics:
 - If photo download fails, `field_missing` includes `{ field: "analysis.used_photos", reason: <failure_code> }`.
 - If `photos_provided=true` and `used_photos=false`, response must not imply photo-derived findings.
+- `field_missing.reason = "routine_or_recent_logs_required"` is a **degraded-confidence compatibility signal** (typically on `field: "analysis.primary_input"`), not a hard gate by itself.
 
 ### `routine_simulation`
 

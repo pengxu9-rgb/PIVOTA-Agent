@@ -113,18 +113,19 @@ function shouldCallLlm({
   let downgrade_confidence = false;
 
   if (!hasPrimaryInput) {
-    return { decision: 'skip', reasons: ['missing_primary_input'], downgrade_confidence: false };
+    reasons.push('missing_primary_input');
+    downgrade_confidence = true;
   }
 
   if (k === 'vision') {
-    if (!userRequestedPhoto) return { decision: 'skip', reasons: ['photo_not_requested'], downgrade_confidence: false };
+    if (!userRequestedPhoto) return { decision: 'skip', reasons: [...reasons, 'photo_not_requested'], downgrade_confidence };
     if (!visionAvailable) {
       const rawReason = String(visionUnavailabilityReason || '').trim();
       const normalizedReason = rawReason && /^VISION_[A-Z0-9_]+$/.test(rawReason) ? rawReason : 'vision_unavailable';
-      return { decision: 'skip', reasons: [normalizedReason], downgrade_confidence: false };
+      return { decision: 'skip', reasons: [...reasons, normalizedReason], downgrade_confidence };
     }
 
-    if (q === 'fail') return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
+    if (q === 'fail') return { decision: 'skip', reasons: [...reasons, 'photo_quality_fail_retake'], downgrade_confidence: true };
 
     if (q === 'degraded' || q === 'unknown') {
       downgrade_confidence = true;
@@ -139,17 +140,17 @@ function shouldCallLlm({
     // Pass quality: If the deterministic detector is confident *and* explicitly not uncertain,
     // skip the photo LMM to reduce cost / avoid redundant analysis.
     if (uncertainFlag === false && confidence === 'high') {
-      return { decision: 'skip', reasons: ['detector_confident_template'], downgrade_confidence: false };
+      return { decision: 'skip', reasons: [...reasons, 'detector_confident_template'], downgrade_confidence };
     }
 
-    return { decision: 'call', reasons: ['quality_pass'], downgrade_confidence: false };
+    return { decision: 'call', reasons: [...reasons, 'quality_pass'], downgrade_confidence };
   }
 
   if (k === 'report') {
-    if (!reportAvailable) return { decision: 'skip', reasons: ['report_unavailable'], downgrade_confidence: false };
+    if (!reportAvailable) return { decision: 'skip', reasons: [...reasons, 'report_unavailable'], downgrade_confidence };
 
     if (q === 'fail') {
-      return { decision: 'skip', reasons: ['photo_quality_fail_retake'], downgrade_confidence: true };
+      return { decision: 'skip', reasons: [...reasons, 'photo_quality_fail_retake'], downgrade_confidence: true };
     }
 
     if (q === 'degraded' || q === 'unknown') {
@@ -164,20 +165,20 @@ function shouldCallLlm({
 
     // Pass quality: only escalate to report LLM when the deterministic detector is uncertain.
     if (uncertainFlag === false) {
-      return { decision: 'skip', reasons: ['detector_confident_template'], downgrade_confidence: false };
+      return { decision: 'skip', reasons: [...reasons, 'detector_confident_template'], downgrade_confidence };
     }
     if (uncertainFlag === true) {
-      return { decision: 'call', reasons: ['detector_uncertain'], downgrade_confidence: false };
+      return { decision: 'call', reasons: [...reasons, 'detector_uncertain'], downgrade_confidence };
     }
 
     // Fallback when uncertainty is unknown: preserve legacy behavior.
     if (confidence === 'high') {
-      return { decision: 'skip', reasons: ['detector_confident_template'], downgrade_confidence: false };
+      return { decision: 'skip', reasons: [...reasons, 'detector_confident_template'], downgrade_confidence };
     }
-    return { decision: 'call', reasons: ['detector_uncertain'], downgrade_confidence: false };
+    return { decision: 'call', reasons: [...reasons, 'detector_uncertain'], downgrade_confidence };
   }
 
-  return { decision: 'skip', reasons: ['unknown_kind'], downgrade_confidence: false };
+  return { decision: 'skip', reasons: [...reasons, 'unknown_kind'], downgrade_confidence };
 }
 
 function downgradeSkinAnalysisConfidence(analysis, { language } = {}) {
@@ -209,7 +210,7 @@ function downgradeSkinAnalysisConfidence(analysis, { language } = {}) {
 const REASON_TEXT = Object.freeze({
   EN: Object.freeze({
     llm_kill_switch: 'LLM kill switch is enabled; skipping all model calls.',
-    missing_primary_input: 'Missing routine / recent logs; returning a conservative baseline first.',
+    missing_primary_input: 'Routine / recent logs are missing; proceeding with conservative confidence.',
     photo_not_requested: 'Photo analysis was not requested.',
     vision_unavailable: 'Photo model is unavailable (missing key or disabled).',
     report_unavailable: 'Report model is unavailable (upstream not configured).',
@@ -236,7 +237,7 @@ const REASON_TEXT = Object.freeze({
   }),
   CN: Object.freeze({
     llm_kill_switch: '已开启 LLM 总开关：强制跳过所有模型调用。',
-    missing_primary_input: '缺少当前流程/最近打卡等关键信息；我会先给更保守的基线。',
+    missing_primary_input: '缺少当前流程/最近打卡等关键信息；我会继续分析并降低置信度。',
     photo_not_requested: '你没有选择使用照片解析。',
     vision_unavailable: '照片解析模型不可用（缺少 key 或未启用）。',
     report_unavailable: '报告模型不可用（上游未配置或不可达）。',

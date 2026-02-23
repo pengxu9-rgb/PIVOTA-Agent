@@ -8664,11 +8664,21 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
   const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
   const routineCandidate = profileSummary && profileSummary.currentRoutine;
   const hasPrimaryInput = hasNonEmptyRoutineInput(routineCandidate) || recentLogsSummary.length > 0;
+  // Auto-analysis is entered only after a confirmed photo, so photo can serve as primary input.
+  const hasPhotoPrimaryInput = true;
   const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
   const photoQuality = classifyPhotoQuality([{ slot_id: slot, photo_id: photoId, qc_status: qc }]);
 
   const fieldMissing = [];
   const qualityReasons = [];
+  if (!hasPrimaryInput) {
+    fieldMissing.push({ field: 'analysis.primary_input', reason: 'routine_or_recent_logs_required' });
+    qualityReasons.push(
+      language === 'CN'
+        ? '缺少“正在用什么/最近打卡”等关键信息；本次继续分析并以更保守置信度返回。'
+        : 'Routine/recent logs are missing; continuing with conservative confidence.',
+    );
+  }
 
   let usedPhotos = false;
   let analysisSource = hasPrimaryInput ? 'rule_based_with_photo_qc' : 'baseline_low_confidence';
@@ -8755,11 +8765,10 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
   }
 
   if (!analysis) {
-    if (hasPrimaryInput) {
+    if (hasPrimaryInput || hasPhotoPrimaryInput) {
       analysis = buildRuleBasedSkinAnalysis({ profile: profileSummary || profile, recentLogs, language });
       analysisSource = 'rule_based_with_photo_qc';
     } else {
-      fieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
       qualityReasons.push(
         language === 'CN'
           ? '缺少“正在用什么/最近打卡”等关键信息；先返回低风险基线。'
@@ -8841,7 +8850,7 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
 
   const payload = {
     analysis,
-    low_confidence: analysisSource === 'baseline_low_confidence',
+    low_confidence: analysisSource === 'baseline_low_confidence' || !hasPrimaryInput,
     photos_provided: true,
     photo_qc: [`${slot}:${qc}`],
     used_photos: usedPhotos,
@@ -20841,13 +20850,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
 
-        // "Dual input" policy: photos optional, routine strongly recommended.
-        // Treat missing routine as low-confidence and fall back to a baseline when no other primary signals exist.
+        // "Dual input" policy:
+        // - routine/recent logs are primary for personalization
+        // - when photos are explicitly provided, allow a photo-first path so analysis can still proceed
         const hasPrimaryInput = hasRoutine || recentLogsSummary.length > 0;
 
         const userRequestedPhoto =
           parsed.data.use_photo === true || (parsed.data.use_photo == null && photosProvided);
-        const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasPrimaryInput);
+        const hasPhotoPrimaryInput = Boolean(userRequestedPhoto && photosProvided);
+        const hasLlmPrimaryInput = hasPrimaryInput || hasPhotoPrimaryInput;
+        const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasLlmPrimaryInput);
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
         const selectedVisionProvider = resolveVisionProviderSelection();
         const visionAvailability = classifyVisionAvailability({
@@ -20902,7 +20914,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           return { grade: mergedGrade, reasons: mergedReasons };
         }
 
-        if (userRequestedPhoto && photosProvided && hasPrimaryInput && photoQuality.grade !== 'fail') {
+        if (hasPhotoPrimaryInput && photoQuality.grade !== 'fail') {
           const candidates = photoQuality.grade === 'pass' ? passedPhotos : degradedPhotos.length ? degradedPhotos : passedPhotos;
           diagnosisPhoto = chooseVisionPhoto(candidates);
           if (!diagnosisPhoto) {
@@ -20984,7 +20996,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : shouldCallLlm({
                 kind: 'vision',
                 quality: photoQuality,
-                hasPrimaryInput,
+                hasPrimaryInput: hasLlmPrimaryInput,
                 userRequestedPhoto,
                 detectorConfidenceLevel: policyDetectorConfidenceLevel,
                 uncertainty: policyUncertainty,
@@ -20998,7 +21010,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           : shouldCallLlm({
               kind: 'report',
               quality: qualityForReport,
-              hasPrimaryInput,
+              hasPrimaryInput: hasLlmPrimaryInput,
               userRequestedPhoto,
               detectorConfidenceLevel: policyDetectorConfidenceLevel,
               uncertainty: policyUncertainty,
@@ -21008,10 +21020,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             });
 
         let analysis = null;
-        if (userRequestedPhoto && photosProvided && !hasPrimaryInput) {
-          analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'routine_or_recent_logs_required' });
-          if (ctx.lang === 'CN') qualityReportReasons.push('你提供了照片，但缺少“正在用什么/最近打卡”等关键信息；我会先给低风险基线。');
-          else qualityReportReasons.push('You provided a photo, but I’m missing routine/recent logs; returning a low-risk baseline first.');
+        if (hasPhotoPrimaryInput && !hasPrimaryInput) {
+          analysisFieldMissing.push({ field: 'analysis.primary_input', reason: 'routine_or_recent_logs_required' });
+          if (ctx.lang === 'CN') qualityReportReasons.push('你提供了照片，但缺少“正在用什么/最近打卡”等关键信息；本次继续分析并降低置信度。');
+          else qualityReportReasons.push('You provided a photo, but routine/recent logs are missing; continuing with downgraded confidence.');
         }
 
         if (userRequestedPhoto && photosProvided && photoQuality.grade === 'fail' && !forceVisionCall) {
@@ -21110,7 +21122,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           else qualityReportReasons.push(`Skipped photo analysis: ${r.join('; ') || 'unknown reason'}`);
         }
 
-        if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
+        if (!analysis && reportDecision.decision === 'call' && hasLlmPrimaryInput && AURORA_DECISION_BASE_URL && !USE_AURORA_BFF_MOCK) {
           const promptBase = buildSkinReportPrompt({
             language: ctx.lang,
             photoQuality: qualityForReport,
@@ -21155,14 +21167,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             else qualityReportReasons.push(`Report model output was unstable (${reportFailure}); falling back to deterministic baseline.`);
           }
         }
-        if (!analysis && reportDecision.decision === 'skip' && reportAvailable && hasPrimaryInput) {
+        if (!analysis && reportDecision.decision === 'skip' && reportAvailable && hasLlmPrimaryInput) {
           const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
           if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
           else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
         }
 
         if (!analysis) {
-          if (!hasPrimaryInput) {
+          if (!hasPrimaryInput && !hasPhotoPrimaryInput) {
+            analysisFieldMissing.push({ field: 'analysis.primary_input', reason: 'routine_or_recent_logs_required' });
             analysis = profiler.timeSync(
               'detector',
               () => buildLowConfidenceBaselineSkinAnalysis({ profile: profileSummary || profile, language: ctx.lang }),
@@ -21170,7 +21183,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
             analysisSource = 'baseline_low_confidence';
           } else {
-            if (userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality) {
+            if (hasPhotoPrimaryInput && diagnosisV1 && diagnosisV1.quality) {
               analysis = profiler.timeSync(
                 'postprocess',
                 () => buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language: ctx.lang, profileSummary }),
@@ -21397,7 +21410,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               type: 'analysis_summary',
               payload: {
                 analysis,
-                low_confidence: analysisSource === 'baseline_low_confidence',
+                low_confidence: analysisSource === 'baseline_low_confidence' || !hasPrimaryInput,
                 photos_provided: photosProvided,
                 photo_qc: photoQcParts,
                 used_photos: usedPhotos,
