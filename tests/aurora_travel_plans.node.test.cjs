@@ -185,3 +185,37 @@ test('resolveTravelPlansState falls back to home region when no active trip', ()
   assert.equal(state.active_trip, null);
   assert.equal(state.active_mode, 'none');
 });
+
+test('resolveQaPlan weather/travel uses home region fallback when all trips are expired', () => {
+  const profile = {
+    skinType: 'oily',
+    sensitivity: 'low',
+    barrierStatus: 'stable',
+    goals: ['acne'],
+    region: 'San Francisco',
+    travel_plans: [
+      {
+        trip_id: 'trip_expired',
+        destination: 'Tokyo',
+        start_date: '2020-01-01',
+        end_date: '2020-01-03',
+        created_at_ms: 1,
+        updated_at_ms: 2,
+      },
+    ],
+    travel_plan: null,
+  };
+
+  const plan = resolveQaPlan({
+    intent: INTENT_ENUM.WEATHER_ENV,
+    profile,
+    message: 'How should I adjust to weather this week?',
+    language: 'EN',
+    hasAnchor: false,
+    session: {},
+  });
+
+  assert.equal(plan.gate_type, 'none');
+  assert.deepEqual(plan.required_fields, []);
+  assert.equal(plan.next_step, 'tool_call');
+});

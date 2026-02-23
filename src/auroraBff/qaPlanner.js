@@ -25,8 +25,17 @@ function getCoreProfileMissing(profile) {
 
 function getTravelMissing(profile) {
   const state = resolveTravelPlansState(profile || {});
-  const travelObj = state.active_trip || state.legacy_travel_plan || {};
+  const activeTrip = state.active_trip && typeof state.active_trip === 'object' ? state.active_trip : null;
+  const legacyTrip = state.legacy_travel_plan && typeof state.legacy_travel_plan === 'object'
+    ? state.legacy_travel_plan
+    : null;
+  const homeRegion = isNonEmptyString(state.home_region) ? state.home_region.trim() : '';
+  const travelObj = activeTrip || legacyTrip || {};
   const missing = [];
+
+  // No active/legacy trip: allow fallback to home region weather/climate without forcing travel date collection.
+  if (!activeTrip && !legacyTrip && homeRegion) return missing;
+
   if (!isNonEmptyString(travelObj.destination)) missing.push('travel_plan.destination');
   if (!isNonEmptyString(travelObj.start_date)) missing.push('travel_plan.start_date');
   if (!isNonEmptyString(travelObj.end_date)) missing.push('travel_plan.end_date');
