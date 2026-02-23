@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { normalizeTravelProfilePatch } = require('./travelPlans');
 
 function parseRetentionDays() {
   const raw =
@@ -135,6 +136,8 @@ function mapProfileToDb(profilePatch) {
   const contraindications = Array.isArray(p.contraindications) ? p.contraindications : undefined;
   const currentRoutine = p.currentRoutine;
   const itinerary = p.itinerary;
+  const travelPlan = p.travel_plan;
+  const travelPlans = Array.isArray(p.travel_plans) ? p.travel_plans : undefined;
 
   return {
     skin_type: p.skinType,
@@ -145,6 +148,8 @@ function mapProfileToDb(profilePatch) {
     budget_tier: p.budgetTier,
     current_routine: currentRoutine !== undefined ? JSON.stringify(currentRoutine) : undefined,
     itinerary: itinerary !== undefined ? JSON.stringify(itinerary) : undefined,
+    travel_plan: travelPlan !== undefined ? JSON.stringify(travelPlan) : undefined,
+    travel_plans: travelPlans !== undefined ? JSON.stringify(travelPlans) : undefined,
     contraindications: contraindications ? JSON.stringify(contraindications) : undefined,
     lang_pref: p.lang_pref,
   };
@@ -183,6 +188,8 @@ function mapProfileFromDb(row) {
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
     itinerary: row.itinerary || null,
+    travel_plan: row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan) ? row.travel_plan : null,
+    travel_plans: Array.isArray(row.travel_plans) ? row.travel_plans : [],
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
@@ -209,6 +216,8 @@ function mapAccountProfileFromDb(row) {
     budgetTier: row.budget_tier || null,
     currentRoutine: row.current_routine || null,
     itinerary: row.itinerary || null,
+    travel_plan: row.travel_plan && typeof row.travel_plan === 'object' && !Array.isArray(row.travel_plan) ? row.travel_plan : null,
+    travel_plans: Array.isArray(row.travel_plans) ? row.travel_plans : [],
     contraindications: Array.isArray(row.contraindications)
       ? row.contraindications
       : row.contraindications
@@ -241,6 +250,8 @@ function ensureEphemeralProfile({ kind, id }) {
           budgetTier: null,
           currentRoutine: null,
           itinerary: null,
+          travel_plan: null,
+          travel_plans: [],
           contraindications: [],
           lastAnalysis: null,
           lastAnalysisAt: null,
@@ -259,6 +270,8 @@ function ensureEphemeralProfile({ kind, id }) {
           budgetTier: null,
           currentRoutine: null,
           itinerary: null,
+          travel_plan: null,
+          travel_plans: [],
           contraindications: [],
           lastAnalysis: null,
           lastAnalysisAt: null,
@@ -276,7 +289,7 @@ function upsertEphemeralProfile({ kind, id }, profilePatch) {
   if (!key) return null;
   const existing = ensureEphemeralProfile({ kind, id });
   if (!existing) return null;
-  const p = profilePatch || {};
+  const p = normalizeTravelProfilePatch({ baseProfile: existing, patch: profilePatch });
 
   const next = {
     ...existing,
@@ -288,6 +301,8 @@ function upsertEphemeralProfile({ kind, id }, profilePatch) {
     ...(p.budgetTier !== undefined ? { budgetTier: p.budgetTier } : {}),
     ...(p.currentRoutine !== undefined ? { currentRoutine: p.currentRoutine } : {}),
     ...(p.itinerary !== undefined ? { itinerary: p.itinerary } : {}),
+    ...(p.travel_plan !== undefined ? { travel_plan: p.travel_plan } : {}),
+    ...(p.travel_plans !== undefined ? { travel_plans: Array.isArray(p.travel_plans) ? p.travel_plans : [] } : {}),
     ...(p.contraindications !== undefined ? { contraindications: Array.isArray(p.contraindications) ? p.contraindications : [] } : {}),
     ...(p.lang_pref !== undefined ? { lang_pref: p.lang_pref } : {}),
     updated_at: isoTs(),
@@ -353,7 +368,9 @@ async function upsertUserProfile(auroraUid, profilePatch) {
     [uid],
   );
   const existing = existingRes.rows && existingRes.rows[0] ? existingRes.rows[0] : { aurora_uid: uid };
-  const patchDb = mapProfileToDb(profilePatch);
+  const existingProfile = mapProfileFromDb(existing);
+  const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch });
+  const patchDb = mapProfileToDb(normalizedPatch);
 
   const merged = {
     ...existing,
@@ -372,11 +389,13 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         budget_tier,
         current_routine,
         itinerary,
+        travel_plan,
+        travel_plans,
         contraindications,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
       ON CONFLICT (aurora_uid) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -386,6 +405,8 @@ async function upsertUserProfile(auroraUid, profilePatch) {
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
         itinerary = EXCLUDED.itinerary,
+        travel_plan = EXCLUDED.travel_plan,
+        travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
@@ -401,6 +422,8 @@ async function upsertUserProfile(auroraUid, profilePatch) {
       merged.budget_tier ?? null,
       normalizeJsonbParam(merged.current_routine ?? null),
       normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.travel_plan ?? null),
+      normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
       merged.lang_pref ?? null,
     ],
@@ -428,7 +451,9 @@ async function upsertAccountProfile(userId, profilePatch) {
     existingRes.rows && existingRes.rows[0]
       ? existingRes.rows[0]
       : { user_id: uid };
-  const patchDb = mapProfileToDb(profilePatch);
+  const existingProfile = mapAccountProfileFromDb(existing);
+  const normalizedPatch = normalizeTravelProfilePatch({ baseProfile: existingProfile, patch: profilePatch });
+  const patchDb = mapProfileToDb(normalizedPatch);
 
   const merged = {
     ...existing,
@@ -447,11 +472,13 @@ async function upsertAccountProfile(userId, profilePatch) {
         budget_tier,
         current_routine,
         itinerary,
+        travel_plan,
+        travel_plans,
         contraindications,
         lang_pref,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
       ON CONFLICT (user_id) DO UPDATE SET
         skin_type = EXCLUDED.skin_type,
         sensitivity = EXCLUDED.sensitivity,
@@ -461,6 +488,8 @@ async function upsertAccountProfile(userId, profilePatch) {
         budget_tier = EXCLUDED.budget_tier,
         current_routine = EXCLUDED.current_routine,
         itinerary = EXCLUDED.itinerary,
+        travel_plan = EXCLUDED.travel_plan,
+        travel_plans = EXCLUDED.travel_plans,
         contraindications = EXCLUDED.contraindications,
         lang_pref = EXCLUDED.lang_pref,
         updated_at = now(),
@@ -476,6 +505,8 @@ async function upsertAccountProfile(userId, profilePatch) {
       merged.budget_tier ?? null,
       normalizeJsonbParam(merged.current_routine ?? null),
       normalizeJsonbParam(merged.itinerary ?? null),
+      normalizeJsonbParam(merged.travel_plan ?? null),
+      normalizeJsonbParam(merged.travel_plans ?? null),
       normalizeJsonbParam(merged.contraindications ?? null),
       merged.lang_pref ?? null,
     ],

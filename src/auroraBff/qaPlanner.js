@@ -1,4 +1,5 @@
 const { INTENT_ENUM } = require('./intentCanonical');
+const { resolveTravelPlansState } = require('./travelPlans');
 
 const QA_LOOP_STATE_KEY = 'qa_planner_v2';
 
@@ -23,8 +24,8 @@ function getCoreProfileMissing(profile) {
 }
 
 function getTravelMissing(profile) {
-  const travel = profile && typeof profile === 'object' ? profile.travel_plan : null;
-  const travelObj = travel && typeof travel === 'object' && !Array.isArray(travel) ? travel : {};
+  const state = resolveTravelPlansState(profile || {});
+  const travelObj = state.active_trip || state.legacy_travel_plan || {};
   const missing = [];
   if (!isNonEmptyString(travelObj.destination)) missing.push('travel_plan.destination');
   if (!isNonEmptyString(travelObj.start_date)) missing.push('travel_plan.start_date');
