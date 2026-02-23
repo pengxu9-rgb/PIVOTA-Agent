@@ -474,7 +474,9 @@ const PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
 const PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED =
   String(process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED || 'true').toLowerCase() === 'true';
 const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = (() => {
-  const raw = String(process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY || 'legacy')
+  const raw = String(
+    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY || 'supplement_internal_first',
+  )
     .trim()
     .toLowerCase();
   return raw === 'supplement_internal_first' ? raw : 'legacy';
@@ -506,7 +508,11 @@ const PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS = Math.max(
 );
 const PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS = Math.max(
   200,
-  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, 500),
+  parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, 400),
+);
+const PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS = Math.max(
+  800,
+  Math.min(parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS, 1500), 10000),
 );
 const PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE = Math.max(
   1,
@@ -4145,7 +4151,13 @@ async function invokeFindProductsMultiFallbackOnce({
   };
 }
 
-async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reason, requestSource }) {
+async function queryFindProductsMultiFallback({
+  queryParams,
+  checkoutToken,
+  reason,
+  requestSource,
+  timeoutMs = null,
+}) {
   const payload = buildFindProductsMultiPayloadFromQuery(queryParams);
   if (!payload) return null;
   const fallbackSource = String(payload?.metadata?.source || '').trim();
@@ -4167,13 +4179,23 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
     ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
     : [];
   const candidateQueries = [baseQueryText, ...semanticRetryQueries].filter(Boolean);
-  const fallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
+  const configuredFallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
     ? Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS)
     : PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
+  const requestedBudgetMs =
+    Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : null;
+  const totalFallbackBudgetMs =
+    requestedBudgetMs == null ? configuredFallbackTimeoutMs : Math.max(100, requestedBudgetMs);
+  const fallbackDeadlineMs = Date.now() + totalFallbackBudgetMs;
 
   let selectedAttempt = null;
   const attempts = [];
   for (let i = 0; i < candidateQueries.length; i += 1) {
+    const remainingBudgetMs = Math.max(0, fallbackDeadlineMs - Date.now());
+    if (remainingBudgetMs < 100) {
+      break;
+    }
+    const attemptTimeoutMs = Math.max(100, Math.min(configuredFallbackTimeoutMs, remainingBudgetMs));
     const queryText = candidateQueries[i];
     const attemptPayload =
       i === 0
@@ -4198,7 +4220,7 @@ async function queryFindProductsMultiFallback({ queryParams, checkoutToken, reas
       relevanceQuery: queryText,
       attemptNo: i + 1,
       useSearchEndpoint,
-      timeoutMs: fallbackTimeoutMs,
+      timeoutMs: attemptTimeoutMs,
     });
 
     attempts.push({
@@ -8694,6 +8716,8 @@ async function proxyAgentSearchToBackend(req, res) {
   const resolverFirstMetadata = source ? { source } : null;
   const traceId = randomUUID();
   const startedAtMs = Date.now();
+  let requestDeadlineMs = startedAtMs + PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS;
+  const getRemainingBudgetMs = () => Math.max(0, requestDeadlineMs - Date.now());
   const normalizedQuery = String(queryText || '').trim();
   const resolverStage = {
     called: false,
@@ -8837,6 +8861,8 @@ async function proxyAgentSearchToBackend(req, res) {
       shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, queryText)
         ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
         : basePrimaryTimeoutMs;
+    const totalBudgetMs = Math.max(primaryTimeoutMs, PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS);
+    requestDeadlineMs = Date.now() + totalBudgetMs;
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
       resolverFirstResult,
       queryText,
@@ -8859,6 +8885,9 @@ async function proxyAgentSearchToBackend(req, res) {
       pass2_selected: false,
       pass2_skipped_reason: null,
       secondary_skipped_reason: null,
+      fallback_skipped_due_budget: false,
+      fallback_after_primary_timeout_attempted: false,
+      total_budget_ms: totalBudgetMs,
       allow_secondary_fallback: allowSecondaryFallback,
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
@@ -9072,36 +9101,43 @@ async function proxyAgentSearchToBackend(req, res) {
 
     if (shouldFallback) {
       if (allowResolverFallback && !skipSecondaryFallback) {
-        fallbackStrategy.resolver_attempted = true;
-        try {
-          const resolverFallback = await queryResolveSearchFallback({
-            queryParams: guardedQueryParams,
-            checkoutToken,
-            reason: 'resolver_after_primary',
-            requestSource: source,
-            timeoutMs: resolverTimeoutMs,
-          });
-          if (
-            resolverFallback &&
-            resolverFallback.status >= 200 &&
-            resolverFallback.status < 300 &&
-            resolverFallback.usableCount > 0
-          ) {
-            resolverStage.hit = true;
-            return respondSearch(resolverFallback.status, resolverFallback.data, {
-              finalDecision: 'resolver_returned',
-              primaryPathUsed: 'proxy_search_primary',
-              fallbackTriggered: true,
-              fallbackReason: 'resolver_after_primary',
-              upstreamStage,
-              fallbackStrategy,
+        const resolverRemainingBudgetMs = getRemainingBudgetMs();
+        if (resolverRemainingBudgetMs < 120) {
+          fallbackStrategy.fallback_skipped_due_budget = true;
+          fallbackStrategy.resolver_skipped_reason = 'budget_exhausted';
+        } else {
+          fallbackStrategy.resolver_attempted = true;
+          try {
+            const resolverFallback = await queryResolveSearchFallback({
+              queryParams: guardedQueryParams,
+              checkoutToken,
+              reason: 'resolver_after_primary',
+              requestSource: source,
+              timeoutMs: Math.max(120, Math.min(resolverTimeoutMs, resolverRemainingBudgetMs)),
             });
+            if (
+              resolverFallback &&
+              resolverFallback.status >= 200 &&
+              resolverFallback.status < 300 &&
+              resolverFallback.usableCount > 0
+            ) {
+              resolverStage.hit = true;
+              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
+              return respondSearch(resolverFallback.status, resolverFallback.data, {
+                finalDecision: 'resolver_returned',
+                primaryPathUsed: 'proxy_search_primary',
+                fallbackTriggered: true,
+                fallbackReason: 'resolver_after_primary',
+                upstreamStage,
+                fallbackStrategy,
+              });
+            }
+          } catch (resolverErr) {
+            logger.warn(
+              { err: resolverErr?.message || String(resolverErr) },
+              'proxy agent search resolver fallback failed; keeping primary response',
+            );
           }
-        } catch (resolverErr) {
-          logger.warn(
-            { err: resolverErr?.message || String(resolverErr) },
-            'proxy agent search resolver fallback failed; keeping primary response',
-          );
         }
       }
 
@@ -9114,66 +9150,74 @@ async function proxyAgentSearchToBackend(req, res) {
         : 'primary_irrelevant';
 
       if (allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
-        fallbackStrategy.secondary_attempted = true;
-        try {
-          const fallback = await queryFindProductsMultiFallback({
-            queryParams: guardedQueryParams,
-            checkoutToken,
-            reason: secondaryFallbackReason,
-            requestSource: source,
-          });
-          const fallbackRelevant = Boolean(
-            fallback &&
-              (fallback.relevanceMatched === true ||
-                (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
-          );
-          fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
-          fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
-          fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
-          fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
-            ? fallback.attempts.length
-            : fallback
-            ? 1
-            : 0;
-          if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
-            fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
-          }
-          if (
-            fallback &&
-            fallback.status >= 200 &&
-            fallback.status < 300 &&
-            fallback.usableCount >= fallbackAdoptUsableThreshold &&
-            fallbackRelevant
-          ) {
-            fallbackStrategy.secondary_rejected_reason = null;
-            return respondSearch(fallback.status, fallback.data, {
-              finalDecision: 'upstream_returned',
-              primaryPathUsed: 'proxy_search_primary',
-              fallbackTriggered: true,
-              fallbackReason: primaryUnusable
-                ? 'secondary_after_primary_unusable'
-                : primaryMonoculture
-                ? 'secondary_after_primary_monoculture'
-                : 'secondary_after_primary_irrelevant',
-              upstreamStage,
-              fallbackStrategy,
+        const secondaryRemainingBudgetMs = getRemainingBudgetMs();
+        if (secondaryRemainingBudgetMs < 160) {
+          fallbackStrategy.fallback_skipped_due_budget = true;
+          fallbackStrategy.secondary_skipped_reason = 'budget_exhausted';
+        } else {
+          fallbackStrategy.secondary_attempted = true;
+          try {
+            const fallback = await queryFindProductsMultiFallback({
+              queryParams: guardedQueryParams,
+              checkoutToken,
+              reason: secondaryFallbackReason,
+              requestSource: source,
+              timeoutMs: secondaryRemainingBudgetMs,
             });
+            const fallbackRelevant = Boolean(
+              fallback &&
+                (fallback.relevanceMatched === true ||
+                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
+            );
+            fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
+            fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
+            fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
+            fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
+              ? fallback.attempts.length
+              : fallback
+              ? 1
+              : 0;
+            if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
+              fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
+            }
+            if (
+              fallback &&
+              fallback.status >= 200 &&
+              fallback.status < 300 &&
+              fallback.usableCount >= fallbackAdoptUsableThreshold &&
+              fallbackRelevant
+            ) {
+              fallbackStrategy.secondary_rejected_reason = null;
+              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
+              return respondSearch(fallback.status, fallback.data, {
+                finalDecision: 'upstream_returned',
+                primaryPathUsed: 'proxy_search_primary',
+                fallbackTriggered: true,
+                fallbackReason: primaryUnusable
+                  ? 'secondary_after_primary_unusable'
+                  : primaryMonoculture
+                  ? 'secondary_after_primary_monoculture'
+                  : 'secondary_after_primary_irrelevant',
+                upstreamStage,
+                fallbackStrategy,
+              });
+            }
+            fallbackStrategy.secondary_rejected_reason = !fallback
+              ? 'secondary_unavailable'
+              : fallback.status < 200 || fallback.status >= 300
+              ? 'secondary_status_non_2xx'
+              : fallback.usableCount < fallbackAdoptUsableThreshold
+              ? 'secondary_below_usable_threshold'
+              : !fallbackRelevant
+              ? 'secondary_irrelevant'
+              : 'secondary_not_adopted';
+          } catch (fallbackErr) {
+            fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
+            logger.warn(
+              { err: fallbackErr?.message || String(fallbackErr) },
+              'proxy agent search fallback invoke failed; keeping primary response',
+            );
           }
-          fallbackStrategy.secondary_rejected_reason = !fallback
-            ? 'secondary_unavailable'
-            : fallback.status < 200 || fallback.status >= 300
-            ? 'secondary_status_non_2xx'
-            : fallback.usableCount < fallbackAdoptUsableThreshold
-            ? 'secondary_below_usable_threshold'
-            : !fallbackRelevant
-            ? 'secondary_irrelevant'
-            : 'secondary_not_adopted';
-        } catch (fallbackErr) {
-          fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
-          logger.warn(
-            { err: fallbackErr?.message || String(fallbackErr) },
-            'proxy agent search fallback invoke failed; keeping primary response',
-          );
         }
       } else if (!allowSecondaryFallback) {
         fallbackStrategy.secondary_skipped_reason = 'secondary_disabled';
@@ -9183,6 +9227,7 @@ async function proxyAgentSearchToBackend(req, res) {
         fallbackStrategy.secondary_skipped_reason = 'resolver_miss_skip_secondary';
       }
     }
+    fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
 
     if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
       const reason = skipSecondaryFallback
@@ -9289,6 +9334,7 @@ async function proxyAgentSearchToBackend(req, res) {
       },
     );
   } catch (err) {
+    const primaryTimedOut = String(err?.code || '').toUpperCase() === 'ECONNABORTED';
     const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
       resolverFirstResult,
       queryText,
@@ -9318,6 +9364,9 @@ async function proxyAgentSearchToBackend(req, res) {
       pass2_selected: false,
       pass2_skipped_reason: 'primary_exception',
       secondary_skipped_reason: null,
+      fallback_skipped_due_budget: false,
+      fallback_after_primary_timeout_attempted: false,
+      total_budget_ms: Math.max(0, requestDeadlineMs - startedAtMs),
       allow_secondary_fallback: allowSecondaryFallback,
       allow_invoke_fallback: allowInvokeFallback,
       skip_secondary_after_resolver_miss: skipSecondaryFallback,
@@ -9335,111 +9384,132 @@ async function proxyAgentSearchToBackend(req, res) {
     };
     if (queryText) {
       if (allowResolverFallbackOnException) {
-        fallbackStrategy.resolver_attempted = true;
-        try {
-          const resolverStartedAtMs = Date.now();
-          resolverStage.called = true;
-          const resolverFallback = await queryResolveSearchFallback({
-            queryParams: guardedQueryParams,
-            checkoutToken,
-            reason: 'resolver_after_exception',
-            requestSource: source,
-            timeoutMs: resolverTimeoutMs,
-          });
-          resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
-          if (
-            resolverFallback &&
-            resolverFallback.status >= 200 &&
-            resolverFallback.status < 300 &&
-            resolverFallback.usableCount > 0
-          ) {
-            resolverStage.hit = true;
-            return respondSearch(resolverFallback.status, resolverFallback.data, {
-              finalDecision: 'resolver_returned',
-              primaryPathUsed: 'proxy_search_primary',
-              fallbackTriggered: true,
-              fallbackReason: 'resolver_after_exception',
-              upstreamStage: {
-                called: true,
-                timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
-                status: Number(err?.response?.status || err?.status || 0) || 0,
-                latency_ms: Math.max(0, Date.now() - startedAtMs),
-              },
-              fallbackStrategy,
-            });
+        const resolverRemainingBudgetMs = getRemainingBudgetMs();
+        if (resolverRemainingBudgetMs < 120) {
+          fallbackStrategy.fallback_skipped_due_budget = true;
+          fallbackStrategy.resolver_skipped_reason = 'budget_exhausted';
+        } else {
+          fallbackStrategy.resolver_attempted = true;
+          if (primaryTimedOut) {
+            fallbackStrategy.fallback_after_primary_timeout_attempted = true;
           }
-          resolverStage.miss = true;
-        } catch (resolverErr) {
-          resolverStage.miss = true;
-          logger.warn(
-            { err: resolverErr?.message || String(resolverErr) },
-            'proxy agent search resolver fallback failed after primary exception',
-          );
+          try {
+            const resolverStartedAtMs = Date.now();
+            resolverStage.called = true;
+            const resolverFallback = await queryResolveSearchFallback({
+              queryParams: guardedQueryParams,
+              checkoutToken,
+              reason: 'resolver_after_exception',
+              requestSource: source,
+              timeoutMs: Math.max(120, Math.min(resolverTimeoutMs, resolverRemainingBudgetMs)),
+            });
+            resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
+            if (
+              resolverFallback &&
+              resolverFallback.status >= 200 &&
+              resolverFallback.status < 300 &&
+              resolverFallback.usableCount > 0
+            ) {
+              resolverStage.hit = true;
+              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
+              return respondSearch(resolverFallback.status, resolverFallback.data, {
+                finalDecision: 'resolver_returned',
+                primaryPathUsed: 'proxy_search_primary',
+                fallbackTriggered: true,
+                fallbackReason: 'resolver_after_exception',
+                upstreamStage: {
+                  called: true,
+                  timeout: primaryTimedOut,
+                  status: Number(err?.response?.status || err?.status || 0) || 0,
+                  latency_ms: Math.max(0, Date.now() - startedAtMs),
+                },
+                fallbackStrategy,
+              });
+            }
+            resolverStage.miss = true;
+          } catch (resolverErr) {
+            resolverStage.miss = true;
+            logger.warn(
+              { err: resolverErr?.message || String(resolverErr) },
+              'proxy agent search resolver fallback failed after primary exception',
+            );
+          }
         }
       }
 
       if (allowSecondaryFallbackOnException) {
-        fallbackStrategy.secondary_attempted = true;
-        try {
-          const fallback = await queryFindProductsMultiFallback({
-            queryParams: guardedQueryParams,
-            checkoutToken,
-            reason: 'primary_request_failed',
-            requestSource: source,
-          });
-          const fallbackRelevant = Boolean(
-            fallback &&
-              (fallback.relevanceMatched === true ||
-                (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
-          );
-          fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
-          fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
-          fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
-          fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
-            ? fallback.attempts.length
-            : fallback
-            ? 1
-            : 0;
-          if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
-            fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
+        const secondaryRemainingBudgetMs = getRemainingBudgetMs();
+        if (secondaryRemainingBudgetMs < 160) {
+          fallbackStrategy.fallback_skipped_due_budget = true;
+          fallbackStrategy.secondary_skipped_reason = 'budget_exhausted';
+        } else {
+          fallbackStrategy.secondary_attempted = true;
+          if (primaryTimedOut) {
+            fallbackStrategy.fallback_after_primary_timeout_attempted = true;
           }
-          if (
-            fallback &&
-            fallback.status >= 200 &&
-            fallback.status < 300 &&
-            fallback.usableCount > 0 &&
-            fallbackRelevant
-          ) {
-            fallbackStrategy.secondary_rejected_reason = null;
-            return respondSearch(fallback.status, fallback.data, {
-              finalDecision: 'upstream_returned',
-              primaryPathUsed: 'proxy_search_primary',
-              fallbackTriggered: true,
-              fallbackReason: 'secondary_after_exception',
-              upstreamStage: {
-                called: true,
-                timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
-                status: Number(err?.response?.status || err?.status || 0) || 0,
-                latency_ms: Math.max(0, Date.now() - startedAtMs),
-              },
-              fallbackStrategy,
+          try {
+            const fallback = await queryFindProductsMultiFallback({
+              queryParams: guardedQueryParams,
+              checkoutToken,
+              reason: 'primary_request_failed',
+              requestSource: source,
+              timeoutMs: secondaryRemainingBudgetMs,
             });
+            const fallbackRelevant = Boolean(
+              fallback &&
+                (fallback.relevanceMatched === true ||
+                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))),
+            );
+            fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
+            fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
+            fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
+            fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
+              ? fallback.attempts.length
+              : fallback
+              ? 1
+              : 0;
+            if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
+              fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
+            }
+            if (
+              fallback &&
+              fallback.status >= 200 &&
+              fallback.status < 300 &&
+              fallback.usableCount > 0 &&
+              fallbackRelevant
+            ) {
+              fallbackStrategy.secondary_rejected_reason = null;
+              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
+              return respondSearch(fallback.status, fallback.data, {
+                finalDecision: 'upstream_returned',
+                primaryPathUsed: 'proxy_search_primary',
+                fallbackTriggered: true,
+                fallbackReason: 'secondary_after_exception',
+                upstreamStage: {
+                  called: true,
+                  timeout: primaryTimedOut,
+                  status: Number(err?.response?.status || err?.status || 0) || 0,
+                  latency_ms: Math.max(0, Date.now() - startedAtMs),
+                },
+                fallbackStrategy,
+              });
+            }
+            fallbackStrategy.secondary_rejected_reason = !fallback
+              ? 'secondary_unavailable'
+              : fallback.status < 200 || fallback.status >= 300
+              ? 'secondary_status_non_2xx'
+              : fallback.usableCount <= 0
+              ? 'secondary_no_usable_products'
+              : !fallbackRelevant
+              ? 'secondary_irrelevant'
+              : 'secondary_not_adopted';
+          } catch (fallbackErr) {
+            fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
+            logger.warn(
+              { err: fallbackErr?.message || String(fallbackErr) },
+              'proxy agent search fallback invoke failed after primary exception',
+            );
           }
-          fallbackStrategy.secondary_rejected_reason = !fallback
-            ? 'secondary_unavailable'
-            : fallback.status < 200 || fallback.status >= 300
-            ? 'secondary_status_non_2xx'
-            : fallback.usableCount <= 0
-            ? 'secondary_no_usable_products'
-            : !fallbackRelevant
-            ? 'secondary_irrelevant'
-            : 'secondary_not_adopted';
-        } catch (fallbackErr) {
-          fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
-          logger.warn(
-            { err: fallbackErr?.message || String(fallbackErr) },
-            'proxy agent search fallback invoke failed after primary exception',
-          );
         }
       } else if (!allowSecondaryFallback) {
         fallbackStrategy.secondary_skipped_reason = 'secondary_disabled';
@@ -9448,6 +9518,7 @@ async function proxyAgentSearchToBackend(req, res) {
       } else if (skipSecondaryFallback && !bypassSkipSecondaryFallback) {
         fallbackStrategy.secondary_skipped_reason = 'resolver_miss_skip_secondary';
       }
+      fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
     }
 
     const { code, message, data } = extractUpstreamErrorCode(err);
