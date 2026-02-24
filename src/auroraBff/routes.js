@@ -52,6 +52,9 @@ const {
   recordAuroraTravelKbHit,
   recordAuroraTravelKbWrite,
   recordAuroraTravelResponseSource,
+  recordAuroraTravelWeatherSource,
+  recordAuroraTravelReplyMode,
+  recordAuroraTravelEnvCardEmitted,
   recordUpstreamCall,
   recordTemplateApplied,
   recordTemplateFallback,
@@ -14688,6 +14691,35 @@ function extractWeatherScenario(message) {
   return 'unknown';
 }
 
+function normalizeTravelWeatherReason({ weather, liveWeatherEnabled }) {
+  if (!liveWeatherEnabled) return 'live_disabled';
+  const source = String(weather && weather.source ? weather.source : '').trim().toLowerCase();
+  if (source === 'weather_api') return 'live_ok';
+  const reason = String(weather && weather.reason ? weather.reason : '').trim().toLowerCase();
+  if (reason.includes('timeout')) return 'live_timeout';
+  if (reason.includes('http_')) return 'live_http_error';
+  if (reason.startsWith('geocode_')) return 'geocode_failed';
+  return 'live_error';
+}
+
+function looksLikeTravelCardRequest(message) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  if (/\b(card|chart|radar|graph|show details|full details|full delta|all metrics)\b/i.test(lower)) return true;
+  if (/(卡片|图示|图表|雷达|完整差异|详细指标|全部指标|展开详情)/.test(text)) return true;
+  return false;
+}
+
+function buildTravelQuestionHash(message) {
+  const normalized = String(message || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  if (!normalized) return '';
+  return crypto.createHash('sha1').update(normalized).digest('hex').slice(0, 16);
+}
+
 function extractKnownActivesFromText(text, language = 'EN') {
   const t = String(text || '').trim();
   if (!t) return [];
@@ -26400,13 +26432,22 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null) ||
         parsed.data.action_id ||
         null;
-      const actionLabel = actionLabelFromPayload;
-      const clarificationId =
+      const actionData =
         normalizedActionPayload &&
         typeof normalizedActionPayload === 'object' &&
         normalizedActionPayload.data &&
         typeof normalizedActionPayload.data === 'object'
-          ? normalizedActionPayload.data.clarification_id || normalizedActionPayload.data.clarificationId || null
+          ? normalizedActionPayload.data
+          : null;
+      const actionForceRoute =
+        actionData && typeof actionData.force_route === 'string'
+          ? actionData.force_route.trim().toLowerCase()
+          : '';
+      const forceRecoRoute = actionForceRoute === 'reco_products';
+      const actionLabel = actionLabelFromPayload;
+      const clarificationId =
+        actionData
+          ? actionData.clarification_id || actionData.clarificationId || null
           : parsed.data.clarification_id || null;
       latestClarificationId = clarificationId || null;
       const includeAlternatives = extractIncludeAlternativesFromAction(normalizedActionPayload);
@@ -27378,7 +27419,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
+      const actionIdToken = String(actionId || '').trim().toLowerCase();
+      const bypassWeatherShortCircuitForReco =
+        actionIdToken === 'chip.start.reco_products' ||
+        actionIdToken === 'chip_get_recos' ||
+        forceRecoRoute;
       if (
+        !bypassWeatherShortCircuitForReco &&
         (
           looksLikeWeatherOrEnvironmentQuestion(message) ||
           canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
@@ -27408,6 +27455,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         const previousTravelReplySig = sessionStateRaw && typeof sessionStateRaw.travel_last_reply_sig === 'string'
           ? sessionStateRaw.travel_last_reply_sig.trim()
           : '';
+        const previousTravelQuestionHash = sessionStateRaw && typeof sessionStateRaw.travel_last_question_hash === 'string'
+          ? sessionStateRaw.travel_last_question_hash.trim()
+          : '';
+        const travelQuestionHash = buildTravelQuestionHash(message);
+        const isTravelFollowup = Boolean(
+          previousTravelFocus || previousTravelReplySig || previousTravelQuestionHash,
+        );
+        const explicitTravelCardRequest = looksLikeTravelCardRequest(message);
+        policyMeta.travel_followup = isTravelFollowup;
         let travelReplyFocus = '';
         let travelReplySig = '';
         if (activeTrip) {
@@ -27424,6 +27480,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         policyMeta.travel_home_baseline_available = false;
         policyMeta.travel_destination_source = null;
         policyMeta.travel_reply_mode = 'fallback';
+        policyMeta.travel_weather_source = null;
+        policyMeta.travel_weather_reason = null;
+        policyMeta.travel_followup = isTravelFollowup;
 
         const entityDestination =
           canonicalIntent.entities && typeof canonicalIntent.entities.destination === 'string'
@@ -27478,6 +27537,26 @@ function mountAuroraBffRoutes(app, { logger }) {
               endDate,
             })
             : climateFallback({ destination, startDate, endDate });
+          const weatherSource =
+            String(weather && weather.source ? weather.source : '').trim().toLowerCase() || 'climate_fallback';
+          const weatherReason = normalizeTravelWeatherReason({
+            weather,
+            liveWeatherEnabled: Boolean(effectiveChatFlags.travel_weather_live_v1),
+          });
+          policyMeta.travel_weather_source = weatherSource;
+          policyMeta.travel_weather_reason = weatherReason;
+          recordAuroraTravelWeatherSource({ source: weatherSource, reason: weatherReason });
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              destination,
+              home_region: homeRegion || null,
+              travel_weather_source: weatherSource,
+              travel_weather_reason: weatherReason,
+            },
+            'aurora bff: travel weather source',
+          );
           let homeWeather = null;
           if (homeRegion) {
             if (homeRegion.toLowerCase() === destination.toLowerCase()) {
@@ -27788,6 +27867,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             envSource: policyMeta.env_source || epiPayload.env_source || weather.source || null,
             previousFocus: previousTravelFocus,
             previousReplySig: previousTravelReplySig,
+            previousQuestionHash: previousTravelQuestionHash,
+            questionHash: travelQuestionHash,
           });
           if (composedReply && typeof composedReply.text === 'string' && composedReply.text.trim()) {
             advice = composedReply.text.trim();
@@ -27813,6 +27894,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           policyMeta.env_source = 'user_reported_conditions';
           policyMeta.degraded = true;
           policyMeta.travel_reply_mode = 'fallback';
+          policyMeta.travel_weather_source = 'climate_fallback';
+          policyMeta.travel_weather_reason = effectiveChatFlags.travel_weather_live_v1 ? 'live_error' : 'live_disabled';
+          recordAuroraTravelWeatherSource({
+            source: policyMeta.travel_weather_source,
+            reason: policyMeta.travel_weather_reason,
+          });
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
           const safetyText = buildSafetyNoticeText(safetyDecision);
@@ -27857,8 +27944,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             data: {
               reply_text:
                 lang === 'CN'
-                  ? `按${scenarioHint.cn}给我完整护肤产品推荐`
-                  : `Show me full skincare recommendations for ${scenarioHint.en}`,
+                  ? '请给我完整护肤产品推荐。'
+                  : 'Show full skincare product recommendations.',
+              force_route: 'reco_products',
             },
           },
         ];
@@ -27868,12 +27956,22 @@ function mountAuroraBffRoutes(app, { logger }) {
         const weatherStatePatch = {};
         if (travelReplyFocus) weatherStatePatch.travel_last_focus = travelReplyFocus;
         if (travelReplySig) weatherStatePatch.travel_last_reply_sig = travelReplySig;
+        if (travelQuestionHash) weatherStatePatch.travel_last_question_hash = travelQuestionHash;
         if (Object.keys(weatherStatePatch).length) weatherSessionPatch.state = weatherStatePatch;
+
+        const shouldEmitEnvStressCard = Boolean(envStressUi) && (!isTravelFollowup || explicitTravelCardRequest);
+        if (isTravelFollowup && !explicitTravelCardRequest) {
+          policyMeta.travel_reply_mode = 'followup_text_only';
+        }
+        recordAuroraTravelReplyMode({ mode: policyMeta.travel_reply_mode });
+        if (shouldEmitEnvStressCard) {
+          recordAuroraTravelEnvCardEmitted({ turn: isTravelFollowup ? 'followup' : 'first_turn' });
+        }
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
-          cards: envStressUi
+          cards: shouldEmitEnvStressCard
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
             : [],
           session_patch: weatherSessionPatch,

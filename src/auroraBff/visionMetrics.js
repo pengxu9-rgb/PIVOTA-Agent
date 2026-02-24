@@ -103,6 +103,9 @@ const auroraTravelLlmCallCounter = new Map();
 const auroraTravelKbHitCounter = new Map();
 const auroraTravelKbWriteCounter = new Map();
 const auroraTravelResponseSourceCounter = new Map();
+const auroraTravelWeatherSourceCounter = new Map();
+const auroraTravelReplyModeCounter = new Map();
+const auroraTravelEnvCardEmittedCounter = new Map();
 const prelabelRequestsCounter = new Map();
 const prelabelSuccessCounter = new Map();
 const prelabelInvalidJsonCounter = new Map();
@@ -596,6 +599,39 @@ function normalizeAuroraTravelResponseSource(source) {
   const token = cleanMetricToken(source, 'rules_only');
   if (token === 'llm_enriched' || token === 'rules_only') return token;
   return 'rules_only';
+}
+
+function normalizeAuroraTravelWeatherSource(source) {
+  const token = cleanMetricToken(source, 'climate_fallback');
+  if (token === 'weather_api' || token === 'climate_fallback') return token;
+  return 'climate_fallback';
+}
+
+function normalizeAuroraTravelWeatherReason(reason) {
+  const token = cleanMetricToken(reason, 'unknown');
+  if (
+    token === 'live_ok' ||
+    token === 'live_timeout' ||
+    token === 'live_http_error' ||
+    token === 'geocode_failed' ||
+    token === 'live_disabled' ||
+    token === 'live_error'
+  ) {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeAuroraTravelReplyMode(mode) {
+  const token = cleanMetricToken(mode, 'fallback');
+  if (token === 'focused' || token === 'fallback' || token === 'followup_text_only') return token;
+  return 'fallback';
+}
+
+function normalizeAuroraTravelEnvCardTurn(turn) {
+  const token = cleanMetricToken(turn, 'first_turn');
+  if (token === 'first_turn' || token === 'followup') return token;
+  return 'first_turn';
 }
 
 function geometryLabels({ issueType, qualityGrade, pipelineVersion, deviceClass } = {}) {
@@ -1098,6 +1134,39 @@ function recordAuroraTravelResponseSource({ source, delta } = {}) {
   incCounter(
     auroraTravelResponseSourceCounter,
     { source: normalizeAuroraTravelResponseSource(source) },
+    amount,
+  );
+}
+
+function recordAuroraTravelWeatherSource({ source, reason, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelWeatherSourceCounter,
+    {
+      source: normalizeAuroraTravelWeatherSource(source),
+      reason: normalizeAuroraTravelWeatherReason(reason),
+    },
+    amount,
+  );
+}
+
+function recordAuroraTravelReplyMode({ mode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelReplyModeCounter,
+    { mode: normalizeAuroraTravelReplyMode(mode) },
+    amount,
+  );
+}
+
+function recordAuroraTravelEnvCardEmitted({ turn, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraTravelEnvCardEmittedCounter,
+    { turn: normalizeAuroraTravelEnvCardTurn(turn) },
     amount,
   );
 }
@@ -2150,6 +2219,18 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_travel_response_source_total counter');
   renderCounter(lines, 'aurora_travel_response_source_total', auroraTravelResponseSourceCounter);
 
+  lines.push('# HELP aurora_travel_weather_source_total Travel weather source and fallback reasons.');
+  lines.push('# TYPE aurora_travel_weather_source_total counter');
+  renderCounter(lines, 'aurora_travel_weather_source_total', auroraTravelWeatherSourceCounter);
+
+  lines.push('# HELP aurora_travel_reply_mode_total Travel reply mode split.');
+  lines.push('# TYPE aurora_travel_reply_mode_total counter');
+  renderCounter(lines, 'aurora_travel_reply_mode_total', auroraTravelReplyModeCounter);
+
+  lines.push('# HELP aurora_travel_env_card_emitted_total Travel env card emission count by turn.');
+  lines.push('# TYPE aurora_travel_env_card_emitted_total counter');
+  renderCounter(lines, 'aurora_travel_env_card_emitted_total', auroraTravelEnvCardEmittedCounter);
+
   lines.push('# HELP reco_competitors_same_brand_rate Last observed same-brand rate in competitors block.');
   lines.push('# TYPE reco_competitors_same_brand_rate gauge');
   lines.push(`reco_competitors_same_brand_rate ${recoCompetitorsSameBrandRateGauge}`);
@@ -2538,6 +2619,9 @@ function resetVisionMetrics() {
   auroraTravelKbHitCounter.clear();
   auroraTravelKbWriteCounter.clear();
   auroraTravelResponseSourceCounter.clear();
+  auroraTravelWeatherSourceCounter.clear();
+  auroraTravelReplyModeCounter.clear();
+  auroraTravelEnvCardEmittedCounter.clear();
   prelabelRequestsCounter.clear();
   prelabelSuccessCounter.clear();
   prelabelInvalidJsonCounter.clear();
@@ -2671,6 +2755,9 @@ function snapshotVisionMetrics() {
     auroraTravelKbHit: Array.from(auroraTravelKbHitCounter.entries()),
     auroraTravelKbWrite: Array.from(auroraTravelKbWriteCounter.entries()),
     auroraTravelResponseSource: Array.from(auroraTravelResponseSourceCounter.entries()),
+    auroraTravelWeatherSource: Array.from(auroraTravelWeatherSourceCounter.entries()),
+    auroraTravelReplyMode: Array.from(auroraTravelReplyModeCounter.entries()),
+    auroraTravelEnvCardEmitted: Array.from(auroraTravelEnvCardEmittedCounter.entries()),
     prelabelRequests: Array.from(prelabelRequestsCounter.entries()),
     prelabelSuccess: Array.from(prelabelSuccessCounter.entries()),
     prelabelInvalidJson: Array.from(prelabelInvalidJsonCounter.entries()),
@@ -2767,6 +2854,9 @@ module.exports = {
   recordAuroraTravelKbHit,
   recordAuroraTravelKbWrite,
   recordAuroraTravelResponseSource,
+  recordAuroraTravelWeatherSource,
+  recordAuroraTravelReplyMode,
+  recordAuroraTravelEnvCardEmitted,
   setRecoGuardrailRates,
   recordPrelabelRequest,
   recordPrelabelSuccess,

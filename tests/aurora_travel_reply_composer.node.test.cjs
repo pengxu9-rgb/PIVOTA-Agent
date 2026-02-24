@@ -129,3 +129,18 @@ test('travelReplyComposer shifts focus for follow-up temperature question', () =
   assert.equal(result.focus, 'temperature');
   assert.match(result.text, /温度: 18C -> 11C \(变化 -7C\)/);
 });
+
+test('travelReplyComposer handles mixed humidity + product follow-up in one answer', () => {
+  const result = composeTravelReply({
+    message: '巴黎湿度有变化吗？有什么面霜或者面膜可以提前准备？',
+    language: 'CN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  assert.equal(result.focus, 'humidity+products');
+  assert.match(result.text, /湿度: 56% -> 76% \(变化 \+20%\)/);
+  assert.match(result.text, /(面霜|面膜|防晒档位|主推单品)/);
+});

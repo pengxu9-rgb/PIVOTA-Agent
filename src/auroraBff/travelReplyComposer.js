@@ -25,7 +25,7 @@ function t(language, cn, en) {
   return String(language || '').toUpperCase() === 'CN' ? cn : en;
 }
 
-function uniqueStrings(values, maxItems = 6) {
+function uniqueStrings(values, maxItems = 8) {
   const out = [];
   const seen = new Set();
   for (const raw of Array.isArray(values) ? values : []) {
@@ -74,18 +74,19 @@ function formatMetricPair({ labelCn, labelEn, metric, language }) {
   const delta = toNumber(metric.delta);
   const unit = normalizeUnit(metric.unit);
   const label = t(language, labelCn, labelEn);
+  const precision = unit === '%' || unit === 'C' ? 0 : 1;
 
   if (home != null && destination != null) {
-    const homeText = formatNumber(home, unit === '%' || unit === 'C' ? 0 : 1);
-    const destinationText = formatNumber(destination, unit === '%' || unit === 'C' ? 0 : 1);
-    const deltaText = formatSignedNumber(delta, unit === '%' || unit === 'C' ? 0 : 1);
+    const homeText = formatNumber(home, precision);
+    const destinationText = formatNumber(destination, precision);
+    const deltaText = formatSignedNumber(delta, precision);
     const unitSuffix = unit || '';
     const deltaLabel = t(language, '变化', 'Delta');
     return `${label}: ${homeText}${unitSuffix} -> ${destinationText}${unitSuffix} (${deltaLabel} ${deltaText}${unitSuffix})`;
   }
 
   if (destination != null) {
-    const destinationText = formatNumber(destination, unit === '%' || unit === 'C' ? 0 : 1);
+    const destinationText = formatNumber(destination, precision);
     const unitSuffix = unit || '';
     return `${label}: ${destinationText}${unitSuffix}`;
   }
@@ -100,43 +101,82 @@ const FOCUS_ENUM = Object.freeze({
   UV: 'uv',
   WIND: 'wind',
   PRECIP: 'precip',
-  SLEEP: 'sleep',
   PRODUCTS: 'products',
   BUYING_CHANNELS: 'buying_channels',
+  SLEEP: 'sleep',
 });
 
-function detectTravelFocus(message) {
+const FOCUS_PRIORITY = Object.freeze([
+  FOCUS_ENUM.TEMPERATURE,
+  FOCUS_ENUM.HUMIDITY,
+  FOCUS_ENUM.UV,
+  FOCUS_ENUM.WIND,
+  FOCUS_ENUM.PRECIP,
+  FOCUS_ENUM.PRODUCTS,
+  FOCUS_ENUM.BUYING_CHANNELS,
+  FOCUS_ENUM.SLEEP,
+]);
+
+function detectTravelFoci(message) {
   const text = String(message || '').trim();
   const lower = text.toLowerCase();
+  if (!text) return [FOCUS_ENUM.GENERAL];
 
-  if (/\b(where to buy|buying channel|buying channels|channel|pharmacy|department store|duty free|ecommerce|shop)\b/i.test(lower) || /(哪里买|在哪买|购买渠道|药房|免税店|百货|电商|渠道)/.test(text)) {
-    return FOCUS_ENUM.BUYING_CHANNELS;
+  const hit = new Set();
+  const add = (focus, yes) => {
+    if (yes) hit.add(focus);
+  };
+
+  add(
+    FOCUS_ENUM.TEMPERATURE,
+    /\b(temperature|temp|cold|hot|warmer|colder|degree)\b/i.test(lower) || /(温度|气温|冷|热)/.test(text),
+  );
+  add(
+    FOCUS_ENUM.HUMIDITY,
+    /\b(humidity|humid|moisture)\b/i.test(lower) || /(湿度|很湿|潮|闷)/.test(text),
+  );
+  add(
+    FOCUS_ENUM.UV,
+    /\b(uv|ultraviolet|sun|sunscreen|spf)\b/i.test(lower) || /(紫外线|日晒|防晒|spf)/i.test(text),
+  );
+  add(
+    FOCUS_ENUM.WIND,
+    /\b(wind|windy)\b/i.test(lower) || /(风|大风)/.test(text),
+  );
+  add(
+    FOCUS_ENUM.PRECIP,
+    /\b(precip|precipitation|rain|snow)\b/i.test(lower) || /(降水|下雨|雨|雪)/.test(text),
+  );
+  add(
+    FOCUS_ENUM.PRODUCTS,
+    /\b(product|products|recommend|recommendation|what to buy|cream|mask|serum)\b/i.test(lower) ||
+      /(面霜|面膜|产品|护肤品|推荐|买什么)/.test(text),
+  );
+  add(
+    FOCUS_ENUM.BUYING_CHANNELS,
+    /\b(where to buy|buying channel|channels|pharmacy|department store|duty free|ecommerce|shop)\b/i.test(lower) ||
+      /(哪里买|在哪买|购买渠道|药房|免税店|百货|电商|渠道)/.test(text),
+  );
+  add(
+    FOCUS_ENUM.SLEEP,
+    /\b(jet\s*lag|timezone|time zone|sleep|flight fatigue)\b/i.test(lower) ||
+      /(时差|时区|睡眠|飞行疲劳)/.test(text),
+  );
+
+  const ordered = [];
+  for (const focus of FOCUS_PRIORITY) {
+    if (!hit.has(focus)) continue;
+    ordered.push(focus);
+    if (ordered.length >= 2) break;
   }
-  if (/\b(product|products|recommend|recommendation|what to buy|skincare items?)\b/i.test(lower) || /(买什么|产品|护肤品|推荐什么)/.test(text)) {
-    return FOCUS_ENUM.PRODUCTS;
-  }
-  if (/\b(jet\s*lag|timezone|time zone|sleep|sleeping|flight fatigue)\b/i.test(lower) || /(时差|时区|睡眠|飞行疲劳)/.test(text)) {
-    return FOCUS_ENUM.SLEEP;
-  }
-  if (/\b(humidity|humid|moisture)\b/i.test(lower) || /(湿|湿度|潮)/.test(text)) {
-    return FOCUS_ENUM.HUMIDITY;
-  }
-  if (/\b(temperature|temp|cold|hot|warmer|colder)\b/i.test(lower) || /(温度|气温|冷|热)/.test(text)) {
-    return FOCUS_ENUM.TEMPERATURE;
-  }
-  if (/\b(uv|ultraviolet|sun|sunscreen|spf)\b/i.test(lower) || /(紫外线|日晒|防晒|晒)/.test(text)) {
-    return FOCUS_ENUM.UV;
-  }
-  if (/\b(wind|windy)\b/i.test(lower) || /(风|大风)/.test(text)) {
-    return FOCUS_ENUM.WIND;
-  }
-  if (/\b(precip|precipitation|rain|snow)\b/i.test(lower) || /(降水|下雨|雨|雪)/.test(text)) {
-    return FOCUS_ENUM.PRECIP;
-  }
-  return FOCUS_ENUM.GENERAL;
+  return ordered.length ? ordered : [FOCUS_ENUM.GENERAL];
 }
 
-function selectPrimaryMetric(deltaVsHome, focus) {
+function detectTravelFocus(message) {
+  return detectTravelFoci(message)[0] || FOCUS_ENUM.GENERAL;
+}
+
+function getMetricByFocus(deltaVsHome, focus) {
   if (!isPlainObject(deltaVsHome)) return null;
   if (focus === FOCUS_ENUM.TEMPERATURE) return deltaVsHome.temperature;
   if (focus === FOCUS_ENUM.HUMIDITY) return deltaVsHome.humidity;
@@ -146,132 +186,88 @@ function selectPrimaryMetric(deltaVsHome, focus) {
   return null;
 }
 
-function buildDirectAnswer({ language, focus, travelReadiness, repeated }) {
+function buildPrimaryAnswer({ language, primaryFocus, travelReadiness, destinationLabel, repeated }) {
   const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
     ? travelReadiness.delta_vs_home
     : {};
-  const destinationContext = isPlainObject(travelReadiness && travelReadiness.destination_context)
-    ? travelReadiness.destination_context
-    : {};
-  const destination = normalizeText(destinationContext.destination, 140) || t(language, '目的地', 'your destination');
   const repeatPrefix = repeated
     ? t(language, '更具体一点，', 'More specifically, ')
     : '';
 
-  if (focus === FOCUS_ENUM.HUMIDITY) {
-    const humidity = isPlainObject(delta.humidity) ? delta.humidity : {};
-    const humidityDelta = toNumber(humidity.delta);
-    const humidityDestination = toNumber(humidity.destination);
-    if (humidityDelta != null) {
-      if (humidityDelta >= 8) {
-        return `${repeatPrefix}${t(language, `会更湿。${destination} 的湿度预计高于常驻地。`, `Yes. ${destination} is likely more humid than your home baseline.`)}`;
+  if (primaryFocus === FOCUS_ENUM.HUMIDITY) {
+    const d = toNumber(delta?.humidity?.delta);
+    if (d != null) {
+      if (d >= 8) {
+        return `${repeatPrefix}${t(language, `${destinationLabel} 会更湿。`, `${destinationLabel} will be more humid than your home baseline.`)}`;
       }
-      if (humidityDelta <= -8) {
-        return `${repeatPrefix}${t(language, `不会更湿，反而更干一些。`, `Not really — it is likely drier than your home baseline.`)}`;
+      if (d <= -8) {
+        return `${repeatPrefix}${t(language, `${destinationLabel} 不会更湿，反而更干。`, `${destinationLabel} is likely drier than home.`)}`;
       }
-      return `${repeatPrefix}${t(language, `湿度大致接近，但会有小幅波动。`, 'Humidity looks broadly similar, with mild swings.')}`;
+      return `${repeatPrefix}${t(language, `${destinationLabel} 湿度和常驻地接近。`, `${destinationLabel} humidity is close to home.`)}`;
     }
-    if (humidityDestination != null) {
-      return `${repeatPrefix}${t(language, `当前看 ${destination} 湿度约 ${formatNumber(humidityDestination, 0)}%。`, `${destination} humidity is around ${formatNumber(humidityDestination, 0)}%.`)}`;
-    }
-    return `${repeatPrefix}${t(language, `我先给你按目的地可执行方案。`, 'I will give you a destination-first actionable plan.')}`;
+    return `${repeatPrefix}${t(language, '湿度对比基线不足，我按目的地给你可执行方案。', 'Home humidity baseline is missing, so I will give destination-first actions.')}`;
   }
 
-  if (focus === FOCUS_ENUM.TEMPERATURE) {
-    const temperature = isPlainObject(delta.temperature) ? delta.temperature : {};
-    const tempDelta = toNumber(temperature.delta);
-    const tempDestination = toNumber(temperature.destination);
-    if (tempDelta != null) {
-      if (tempDelta <= -3) {
-        return `${repeatPrefix}${t(language, `${destination} 会明显更冷。`, `${destination} will be noticeably colder than home.`)}`;
-      }
-      if (tempDelta >= 3) {
-        return `${repeatPrefix}${t(language, `${destination} 会更暖。`, `${destination} will be warmer than home.`)}`;
-      }
-      return `${repeatPrefix}${t(language, `${destination} 温度与常驻地接近。`, `${destination} temperature is close to home.`)}`;
+  if (primaryFocus === FOCUS_ENUM.TEMPERATURE) {
+    const d = toNumber(delta?.temperature?.delta);
+    if (d != null) {
+      if (d >= 3) return `${repeatPrefix}${t(language, `${destinationLabel} 会更暖。`, `${destinationLabel} will be warmer than home.`)}`;
+      if (d <= -3) return `${repeatPrefix}${t(language, `${destinationLabel} 会更冷。`, `${destinationLabel} will be colder than home.`)}`;
+      return `${repeatPrefix}${t(language, `${destinationLabel} 温度与常驻地接近。`, `${destinationLabel} temperature is close to home.`)}`;
     }
-    if (tempDestination != null) {
-      return `${repeatPrefix}${t(language, `${destination} 预计最高温约 ${formatNumber(tempDestination, 0)}C。`, `${destination} max temperature is around ${formatNumber(tempDestination, 0)}C.`)}`;
-    }
-    return `${repeatPrefix}${t(language, `温度会有波动，我先给你稳态方案。`, 'Temperature can swing; I will start with a stability-first plan.')}`;
+    return `${repeatPrefix}${t(language, '温度基线不完整，我先给稳态方案。', 'Temperature baseline is incomplete, so I will start with a stability-first plan.')}`;
   }
 
-  if (focus === FOCUS_ENUM.UV) {
-    const uv = isPlainObject(delta.uv) ? delta.uv : {};
-    const uvDelta = toNumber(uv.delta);
-    const uvDestination = toNumber(uv.destination);
+  if (primaryFocus === FOCUS_ENUM.UV) {
+    const uvDelta = toNumber(delta?.uv?.delta);
     if (uvDelta != null && uvDelta >= 1.5) {
-      return `${repeatPrefix}${t(language, `${destination} UV 压力更高，需要加强防晒。`, `${destination} has higher UV pressure, so strengthen sun protection.`)}`;
+      return `${repeatPrefix}${t(language, `${destinationLabel} UV 压力更高，要加强防晒。`, `${destinationLabel} has higher UV pressure, so increase protection.`)}`;
     }
-    if (uvDestination != null) {
-      return `${repeatPrefix}${t(language, `${destination} UV 峰值约 ${formatNumber(uvDestination, 1)}。`, `${destination} UV peak is around ${formatNumber(uvDestination, 1)}.`)}`;
-    }
-    return `${repeatPrefix}${t(language, `先按中高 UV 防护执行更稳妥。`, 'A medium-high UV protection setup is safer for now.')}`;
+    return `${repeatPrefix}${t(language, `我会给你明确的 SPF 档位和补涂频次。`, 'I will provide a concrete SPF tier and reapplication cadence.')}`;
   }
 
-  if (focus === FOCUS_ENUM.WIND) {
-    return `${repeatPrefix}${t(language, '风力变化会影响屏障，建议偏修护策略。', 'Wind changes can stress the barrier, so favor recovery-oriented care.')}`;
+  if (primaryFocus === FOCUS_ENUM.PRODUCTS || primaryFocus === FOCUS_ENUM.BUYING_CHANNELS) {
+    return `${repeatPrefix}${t(language, '可以，我直接给你可执行的产品清单和购买渠道。', 'Yes. I will give a practical product shortlist and buying channels.')}`;
   }
 
-  if (focus === FOCUS_ENUM.PRECIP) {
-    return `${repeatPrefix}${t(language, '降水/潮湿变化会增加闷痘波动，建议控叠加。', 'Precipitation and dampness swings can raise congestion variability, so avoid active stacking.')}`;
-  }
-
-  if (focus === FOCUS_ENUM.SLEEP) {
-    const jetlag = isPlainObject(travelReadiness && travelReadiness.jetlag_sleep)
-      ? travelReadiness.jetlag_sleep
-      : {};
-    const hoursDiff = toNumber(jetlag.hours_diff);
-    const risk = normalizeText(jetlag.risk_level, 20);
+  if (primaryFocus === FOCUS_ENUM.SLEEP) {
+    const hoursDiff = toNumber(travelReadiness && travelReadiness.jetlag_sleep && travelReadiness.jetlag_sleep.hours_diff);
     if (hoursDiff != null) {
-      return `${repeatPrefix}${t(language, `时差约 ${formatNumber(hoursDiff, 1)} 小时（风险：${risk || 'medium'}）。`, `Timezone gap is about ${formatNumber(hoursDiff, 1)}h (risk: ${risk || 'medium'}).`)}`;
+      return `${repeatPrefix}${t(language, `时差约 ${formatNumber(hoursDiff, 1)} 小时，我会按这个风险给护肤和作息建议。`, `Timezone gap is about ${formatNumber(hoursDiff, 1)}h, so I will tailor sleep and skincare prep.`)}`;
     }
-    return `${repeatPrefix}${t(language, '时差风险可控，我会给你简洁的作息建议。', 'Jet lag looks manageable; I will keep sleep guidance simple and practical.')}`;
+    return `${repeatPrefix}${t(language, '我会按旅行恢复优先级给你睡眠与修护建议。', 'I will prioritize recovery-focused sleep and skincare guidance.')}`;
   }
 
-  if (focus === FOCUS_ENUM.PRODUCTS) {
-    const products = Array.isArray(travelReadiness && travelReadiness.shopping_preview && travelReadiness.shopping_preview.products)
-      ? travelReadiness.shopping_preview.products
-      : [];
-    if (products.length) {
-      const names = products.slice(0, 3).map((row) => normalizeText(row && row.name, 80)).filter(Boolean);
-      if (names.length) {
-        return `${repeatPrefix}${t(language, `可以，先从这几类开始：${names.join(' / ')}。`, `Yes. Start with these options: ${names.join(' / ')}.`)}`;
-      }
-    }
-    return `${repeatPrefix}${t(language, '可以，我先给你旅行期的产品类型优先级。', 'Yes. I will give you travel-priority product types first.')}`;
+  if (primaryFocus === FOCUS_ENUM.WIND || primaryFocus === FOCUS_ENUM.PRECIP) {
+    return `${repeatPrefix}${t(language, '有明显环境变化，我会给你差异和准备动作。', 'There are meaningful environment shifts, and I will map them into prep actions.')}`;
   }
 
-  if (focus === FOCUS_ENUM.BUYING_CHANNELS) {
-    const channels = Array.isArray(travelReadiness && travelReadiness.shopping_preview && travelReadiness.shopping_preview.buying_channels)
-      ? travelReadiness.shopping_preview.buying_channels
-      : [];
-    if (channels.length) {
-      return `${repeatPrefix}${t(language, `可以买到，优先渠道是：${channels.join(' / ')}。`, `You can buy there. Priority channels: ${channels.join(' / ')}.`)}`;
-    }
-    return `${repeatPrefix}${t(language, '我先给你渠道级建议，不做门店坐标承诺。', 'I can provide channel-level guidance first (no nearest-store coordinates).')}`;
-  }
-
-  const summaryTags = Array.isArray(delta.summary_tags) ? delta.summary_tags : [];
-  if (summaryTags.includes('colder') || summaryTags.includes('more_humid') || summaryTags.includes('higher_uv')) {
-    return `${repeatPrefix}${t(language, `${destination} 和常驻地有明显环境差异，我给你按差异落地的方案。`, `${destination} differs meaningfully from home, so here is a delta-based plan.`)}`;
-  }
-  return `${repeatPrefix}${t(language, `我先回答你的重点，再给你可执行动作。`, 'I will answer your key point first, then list concrete actions.')}`;
+  return `${repeatPrefix}${t(language, '我先回答你的重点，再给你下一步该做什么。', 'I will answer your key point first, then give concrete next steps.')}`;
 }
 
-function buildComparisonLines({ language, focus, travelReadiness, repeated }) {
+function buildComparisonLines({ language, foci, travelReadiness }) {
   const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
     ? travelReadiness.delta_vs_home
     : {};
+  const keys = [];
+  const pushKey = (key) => {
+    if (!key || keys.includes(key)) return;
+    keys.push(key);
+  };
 
-  const orderedKeys = (() => {
-    if (focus === FOCUS_ENUM.TEMPERATURE) return ['temperature', 'humidity', 'uv'];
-    if (focus === FOCUS_ENUM.HUMIDITY) return ['humidity', 'temperature', 'uv'];
-    if (focus === FOCUS_ENUM.UV) return ['uv', 'humidity', 'temperature'];
-    if (focus === FOCUS_ENUM.WIND) return ['wind', 'humidity', 'temperature'];
-    if (focus === FOCUS_ENUM.PRECIP) return ['precip', 'humidity', 'temperature'];
-    return ['temperature', 'humidity', 'uv'];
-  })();
+  for (const focus of Array.isArray(foci) ? foci : []) {
+    if (focus === FOCUS_ENUM.TEMPERATURE) pushKey('temperature');
+    if (focus === FOCUS_ENUM.HUMIDITY) pushKey('humidity');
+    if (focus === FOCUS_ENUM.UV) pushKey('uv');
+    if (focus === FOCUS_ENUM.WIND) pushKey('wind');
+    if (focus === FOCUS_ENUM.PRECIP) pushKey('precip');
+  }
+
+  if (!keys.length) {
+    pushKey('temperature');
+    pushKey('humidity');
+    pushKey('uv');
+  }
 
   const mapping = {
     temperature: { labelCn: '温度', labelEn: 'Temperature' },
@@ -281,9 +277,8 @@ function buildComparisonLines({ language, focus, travelReadiness, repeated }) {
     precip: { labelCn: '降水', labelEn: 'Precip' },
   };
 
-  const limit = repeated ? 3 : 2;
   const lines = [];
-  for (const key of orderedKeys) {
+  for (const key of keys.slice(0, 3)) {
     const row = mapping[key];
     const line = formatMetricPair({
       labelCn: row.labelCn,
@@ -293,34 +288,67 @@ function buildComparisonLines({ language, focus, travelReadiness, repeated }) {
     });
     if (!line) continue;
     lines.push(line);
-    if (lines.length >= limit) break;
-  }
-
-  if (!lines.length) {
-    const primaryMetric = selectPrimaryMetric(delta, focus);
-    const genericLine = formatMetricPair({
-      labelCn: t(language, '目的地指标', 'Destination metric'),
-      labelEn: t(language, '目的地指标', 'Destination metric'),
-      metric: primaryMetric,
-      language,
-    });
-    if (genericLine) lines.push(genericLine);
   }
 
   return lines;
 }
 
-function collectActionLines({ language, focus, travelReadiness, repeated }) {
-  const out = [];
+function buildActionLines({ language, foci, travelReadiness }) {
+  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
+    ? travelReadiness.delta_vs_home
+    : {};
+  const lines = [];
 
-  if (focus === FOCUS_ENUM.SLEEP) {
-    const sleepTips = Array.isArray(travelReadiness && travelReadiness.jetlag_sleep && travelReadiness.jetlag_sleep.sleep_tips)
-      ? travelReadiness.jetlag_sleep.sleep_tips
-      : [];
-    for (const row of sleepTips.slice(0, 2)) {
-      const text = normalizeText(row, 240);
-      if (text) out.push(text);
+  if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.UV)) {
+    const uvDestination = toNumber(delta?.uv?.destination);
+    if (uvDestination != null && uvDestination >= 6) {
+      lines.push(
+        t(
+          language,
+          '白天选 SPF50+，户外每 2 小时补涂一次，出汗后立即补涂。',
+          'Use SPF50+ in daytime; reapply every 2 hours outdoors and immediately after heavy sweat.',
+        ),
+      );
+    } else {
+      lines.push(
+        t(
+          language,
+          '日常可用 SPF30-50，若连续户外超过 90 分钟改为 SPF50 并补涂。',
+          'Use SPF30-50 daily; if outdoors over 90 minutes continuously, switch to SPF50 and reapply.',
+        ),
+      );
     }
+  }
+
+  if (Array.isArray(foci) && (foci.includes(FOCUS_ENUM.HUMIDITY) || foci.includes(FOCUS_ENUM.TEMPERATURE))) {
+    const humidityDelta = toNumber(delta?.humidity?.delta);
+    if (humidityDelta != null && humidityDelta >= 8) {
+      lines.push(
+        t(
+          language,
+          '早上改轻薄保湿（凝胶/乳液），晚间用中等修护霜，避免同晚叠加多活性。',
+          'Switch AM to lighter hydration (gel/lotion), keep a medium repair cream at night, and avoid active stacking.',
+        ),
+      );
+    } else {
+      lines.push(
+        t(
+          language,
+          '温差偏大时，早晚都保留屏障修护霜；夜间可加一层封闭型保湿。',
+          'With larger temperature swings, keep barrier cream AM/PM and add a thin occlusive layer at night if needed.',
+        ),
+      );
+    }
+  }
+
+  if (Array.isArray(foci) && foci.includes(FOCUS_ENUM.SLEEP)) {
+    lines.push(
+      t(
+        language,
+        '飞行当天和落地第一晚优先补水修护面膜 1 次，第二晚按皮肤反应决定是否继续。',
+        'Use one hydrating recovery mask on flight day or first night after landing; continue second night only if needed.',
+      ),
+    );
   }
 
   const adaptive = Array.isArray(travelReadiness && travelReadiness.adaptive_actions)
@@ -328,50 +356,75 @@ function collectActionLines({ language, focus, travelReadiness, repeated }) {
     : [];
   for (const row of adaptive) {
     const text = normalizeText(row && row.what_to_do, 280);
-    if (text) out.push(text);
-    if (out.length >= (repeated ? 4 : 3)) break;
+    if (text) lines.push(text);
+    if (lines.length >= 4) break;
   }
 
-  if (out.length < 2) {
-    const focusRows = Array.isArray(travelReadiness && travelReadiness.personal_focus)
-      ? travelReadiness.personal_focus
-      : [];
-    for (const row of focusRows) {
-      const text = normalizeText(row && row.what_to_do, 280);
-      if (text) out.push(text);
-      if (out.length >= 3) break;
+  return uniqueStrings(lines, 3);
+}
+
+function buildProductLines({ language, foci, travelReadiness }) {
+  const shopping = isPlainObject(travelReadiness && travelReadiness.shopping_preview)
+    ? travelReadiness.shopping_preview
+    : {};
+  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
+    ? travelReadiness.delta_vs_home
+    : {};
+  const lines = [];
+
+  if (Array.isArray(foci) && (foci.includes(FOCUS_ENUM.PRODUCTS) || foci.includes(FOCUS_ENUM.UV) || foci.includes(FOCUS_ENUM.HUMIDITY))) {
+    const uvDestination = toNumber(delta?.uv?.destination);
+    if (uvDestination != null && uvDestination >= 6) {
+      lines.push(t(language, '防晒档位：SPF50+（户外为主）。', 'Sunscreen tier: SPF50+ (for outdoor-heavy days).'));
+    } else {
+      lines.push(t(language, '防晒档位：SPF30-50（通勤可用 SPF30，长户外升到 SPF50）。', 'Sunscreen tier: SPF30-50 (SPF30 for commuting, SPF50 for long outdoor exposure).'));
     }
-  }
 
-  if (out.length < 2 && focus === FOCUS_ENUM.BUYING_CHANNELS) {
-    const channels = Array.isArray(travelReadiness && travelReadiness.shopping_preview && travelReadiness.shopping_preview.buying_channels)
-      ? travelReadiness.shopping_preview.buying_channels
-      : [];
-    if (channels.length) {
-      out.push(
+    const humidityDelta = toNumber(delta?.humidity?.delta);
+    if (humidityDelta != null && humidityDelta >= 8) {
+      lines.push(
         t(
           language,
-          `优先渠道：${channels.join(' / ')}。`,
-          `Prioritize channels: ${channels.join(' / ')}.`,
+          '面霜类型：白天轻薄凝胶霜，夜间屏障修护霜；面膜优先补水修护型。',
+          'Moisturizer type: lighter gel-cream in AM, barrier-repair cream in PM; prioritize hydrating recovery masks.',
+        ),
+      );
+    } else {
+      lines.push(
+        t(
+          language,
+          '面霜类型：中等到滋润修护霜；面膜优先补水+舒缓型。',
+          'Moisturizer type: medium-to-rich barrier cream; choose hydrating and soothing mask types.',
         ),
       );
     }
   }
 
-  if (!out.length) {
-    out.push(
-      t(
-        language,
-        '先稳住清洁-保湿-防晒三件事，再按反应微调活性频率。',
-        'Stabilize cleanse-moisturize-sunscreen first, then tune active frequency by skin response.',
-      ),
+  const names = Array.isArray(shopping.products)
+    ? shopping.products
+        .map((row) => normalizeText(row && row.name, 80))
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  if (names.length) {
+    lines.push(
+      t(language, `主推单品：${names.join(' / ')}。`, `Suggested products: ${names.join(' / ')}.`),
     );
   }
 
-  return uniqueStrings(out, repeated ? 4 : 3);
+  const channels = Array.isArray(shopping.buying_channels)
+    ? shopping.buying_channels.map((v) => normalizeText(v, 48)).filter(Boolean).slice(0, 5)
+    : [];
+  if (channels.length) {
+    lines.push(
+      t(language, `购买渠道：${channels.join(' / ')}。`, `Buying channels: ${channels.join(' / ')}.`),
+    );
+  }
+
+  return uniqueStrings(lines, 4);
 }
 
-function buildReplySignature({ focus, travelReadiness, homeRegion }) {
+function buildReplySignature({ foci, travelReadiness, homeRegion }) {
   const destinationContext = isPlainObject(travelReadiness && travelReadiness.destination_context)
     ? travelReadiness.destination_context
     : {};
@@ -379,12 +432,13 @@ function buildReplySignature({ focus, travelReadiness, homeRegion }) {
     ? travelReadiness.delta_vs_home
     : {};
 
-  const primary = selectPrimaryMetric(delta, focus);
   const signatureParts = [
-    focus || FOCUS_ENUM.GENERAL,
+    Array.isArray(foci) && foci.length ? foci.join('+') : FOCUS_ENUM.GENERAL,
     normalizeText(destinationContext.destination, 120) || '',
     normalizeText(homeRegion, 120) || '',
-    formatSignedNumber(primary && primary.delta, 1) || '',
+    formatSignedNumber(delta?.temperature?.delta, 1) || '',
+    formatSignedNumber(delta?.humidity?.delta, 1) || '',
+    formatSignedNumber(delta?.uv?.delta, 1) || '',
     normalizeText(delta.baseline_status, 48) || '',
   ];
   return signatureParts.join('|').toLowerCase();
@@ -399,6 +453,8 @@ function composeTravelReply({
   envSource,
   previousFocus,
   previousReplySig,
+  previousQuestionHash,
+  questionHash,
 } = {}) {
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : null;
@@ -406,6 +462,7 @@ function composeTravelReply({
     return {
       text: t(lang, '我先按当前可得信息给你旅行护肤建议。', 'I will start with a practical travel skincare plan using currently available data.'),
       focus: FOCUS_ENUM.GENERAL,
+      foci: [FOCUS_ENUM.GENERAL],
       reply_mode: 'fallback',
       reply_sig: 'fallback',
     };
@@ -429,16 +486,23 @@ function composeTravelReply({
   const delta = isPlainObject(readiness.delta_vs_home) ? readiness.delta_vs_home : {};
   const homeBaselineAvailable = normalizeText(delta.baseline_status, 40) !== 'baseline_unavailable';
 
-  const focus = detectTravelFocus(message);
-  const replySig = buildReplySignature({ focus, travelReadiness: readiness, homeRegion: homeRegionText });
-  const repeated =
-    normalizeText(previousFocus, 40) === focus &&
-    normalizeText(previousReplySig, 260).toLowerCase() === replySig;
+  const foci = detectTravelFoci(message);
+  const focusToken = foci.join('+');
+  const replySig = buildReplySignature({ foci, travelReadiness: readiness, homeRegion: homeRegionText });
+  const normalizedPrevFocus = normalizeText(previousFocus, 60).toLowerCase();
+  const normalizedPrevSig = normalizeText(previousReplySig, 260).toLowerCase();
+  const normalizedPrevQuestionHash = normalizeText(previousQuestionHash, 40).toLowerCase();
+  const normalizedQuestionHash = normalizeText(questionHash, 40).toLowerCase();
+  const repeated = Boolean(
+    (normalizedPrevFocus === focusToken || normalizedPrevFocus === foci[0]) &&
+      (normalizedPrevSig === replySig || (normalizedPrevQuestionHash && normalizedPrevQuestionHash === normalizedQuestionHash)),
+  );
 
-  const directAnswer = buildDirectAnswer({
+  const directAnswer = buildPrimaryAnswer({
     language: lang,
-    focus,
+    primaryFocus: foci[0],
     travelReadiness: readiness,
+    destinationLabel,
     repeated,
   });
 
@@ -456,16 +520,20 @@ function composeTravelReply({
 
   const comparisonLines = buildComparisonLines({
     language: lang,
-    focus,
+    foci,
     travelReadiness: readiness,
-    repeated,
   });
 
-  const actionLines = collectActionLines({
+  const actionLines = buildActionLines({
     language: lang,
-    focus,
+    foci,
     travelReadiness: readiness,
-    repeated,
+  });
+
+  const productLines = buildProductLines({
+    language: lang,
+    foci,
+    travelReadiness: readiness,
   });
 
   const baselineGapLine = homeRegionText && !homeBaselineAvailable
@@ -480,26 +548,39 @@ function composeTravelReply({
     ? t(lang, `数据来源：${normalizeText(envSource, 60)}。`, `Source: ${normalizeText(envSource, 60)}.`)
     : '';
 
-  const actionHeader = t(lang, '建议动作：', 'What to do:');
-  const bulletActions = actionLines.map((line) => `- ${line}`);
-
   const text = [
     directAnswer,
     contextLine,
-    ...comparisonLines,
+    comparisonLines.length
+      ? [
+        t(lang, '关键差异：', 'Key deltas:'),
+        ...comparisonLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
     baselineGapLine,
-    actionHeader,
-    ...bulletActions,
+    actionLines.length
+      ? [
+        t(lang, '执行动作：', 'Actions:'),
+        ...actionLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
+    productLines.length
+      ? [
+        t(lang, '产品与准备：', 'Products and prep:'),
+        ...productLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
     envSourceLine,
   ]
     .filter(Boolean)
-    .join('\n');
+    .join('\n\n');
 
-  const mode = comparisonLines.length || actionLines.length ? 'focused' : 'fallback';
+  const mode = comparisonLines.length || actionLines.length || productLines.length ? 'focused' : 'fallback';
 
   return {
     text,
-    focus,
+    focus: focusToken || FOCUS_ENUM.GENERAL,
+    foci,
     reply_mode: mode,
     reply_sig: replySig,
     home_baseline_available: homeBaselineAvailable,
@@ -510,6 +591,7 @@ module.exports = {
   composeTravelReply,
   __internal: {
     detectTravelFocus,
+    detectTravelFoci,
     buildReplySignature,
     formatMetricPair,
   },

@@ -6051,6 +6051,76 @@ test('/v1/chat: weather question short-circuits to env_stress (trigger_source=te
   assert.equal(vm?.data?.scenario, 'snow');
 });
 
+test('/v1/chat: chip.start.reco_products with force_route bypasses weather short-circuit', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const uid = `test_uid_reco_force_route_${Date.now()}`;
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'test_trace',
+        'X-Brief-ID': 'test_brief',
+        'X-Lang': 'EN',
+      };
+
+      await supertest(app)
+        .post('/v1/profile/update')
+        .set(headers)
+        .send({
+          skinType: 'oily',
+          sensitivity: 'low',
+          barrierStatus: 'healthy',
+          goals: ['pores'],
+          region: 'San Francisco, CA',
+        })
+        .expect(200);
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set(headers)
+        .send({
+          action: {
+            action_id: 'chip.start.reco_products',
+            kind: 'chip',
+            data: {
+              reply_text: 'Show full skincare product recommendations.',
+              force_route: 'reco_products',
+            },
+          },
+          session: { state: 'idle' },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const hasEnvStress = cards.some((card) => card && card.type === 'env_stress');
+      assert.equal(hasEnvStress, false);
+
+      const weatherValueMoment = (resp.body?.events || []).find(
+        (evt) => evt && evt.event_name === 'value_moment' && evt.data && evt.data.kind === 'weather_advice',
+      );
+      assert.equal(Boolean(weatherValueMoment), false);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/chat: travel/weather response includes travel_readiness and internal decision provenance meta', async () => {
   await withEnv(
     {
@@ -6140,8 +6210,12 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       assert.equal(typeof topMeta.travel_home_baseline_available, 'boolean');
       assert.ok(['active_trip', 'entity', 'home_region', null].includes(topMeta.travel_destination_source || null));
       assert.equal(topMeta.travel_reply_mode, 'focused');
+      assert.equal(topMeta.travel_followup, false);
+      assert.ok(['weather_api', 'climate_fallback'].includes(String(topMeta.travel_weather_source || '')));
+      assert.ok(['live_ok', 'live_timeout', 'live_http_error', 'geocode_failed', 'live_disabled', 'live_error'].includes(String(topMeta.travel_weather_reason || '')));
       assert.equal(typeof resp.body?.session_patch?.state?.travel_last_focus, 'string');
       assert.equal(typeof resp.body?.session_patch?.state?.travel_last_reply_sig, 'string');
+      assert.equal(typeof resp.body?.session_patch?.state?.travel_last_question_hash, 'string');
       assert.ok(resp.body?.session_patch?.meta);
       assert.equal(resp.body.session_patch.meta.decision_engine, 'aurora_rules_weather_plus_llm_calibration');
 
@@ -6164,8 +6238,11 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       assert.match(secondAssistant, /Temperature/i);
       assert.notEqual(secondAssistant, firstAssistant);
       const followMeta = respFollow.body?.meta || {};
-      assert.equal(followMeta.travel_reply_mode, 'focused');
+      assert.equal(followMeta.travel_reply_mode, 'followup_text_only');
+      assert.equal(followMeta.travel_followup, true);
       assert.equal(respFollow.body?.session_patch?.state?.travel_last_focus, 'temperature');
+      const followCards = Array.isArray(respFollow.body?.cards) ? respFollow.body.cards : [];
+      assert.equal(followCards.some((c) => c && c.type === 'env_stress'), false);
 
       delete require.cache[moduleId];
     },
