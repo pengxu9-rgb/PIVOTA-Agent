@@ -4056,6 +4056,15 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     : Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
   const fragranceIntent = hasFragranceSearchSignal(queryText);
+
+  if (
+    fragranceIntent &&
+    options?.fragranceExternalSeedBypass === true &&
+    isExternalSeedProduct(product)
+  ) {
+    return inferCacheProductDomainKey(product) === 'beauty';
+  }
+
   const meaningfulTokens = ingredientIntent
     ? rawQueryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : rawQueryTokens;
@@ -7313,15 +7322,15 @@ function prioritizeFragranceProducts(products, enabled = false) {
   const list = Array.isArray(products) ? products : [];
   if (!enabled || list.length <= 1) return list;
 
-  const fragrance = [];
+  const fragranceOrSeed = [];
   const others = [];
   for (const product of list) {
     const text = buildFallbackCandidateText(product);
-    if (hasFragranceCatalogProductSignal(text)) fragrance.push(product);
+    if (hasFragranceCatalogProductSignal(text) || isExternalSeedProduct(product)) fragranceOrSeed.push(product);
     else others.push(product);
   }
-  if (fragrance.length === 0) return list;
-  return fragrance.concat(others);
+  if (fragranceOrSeed.length === 0) return list;
+  return fragranceOrSeed.concat(others);
 }
 
 function buildPetHarnessSignalSql(startIndex) {
@@ -14882,6 +14891,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                         normalizedQuery: normalizedLookupQuery,
                         anchorTokens: lookupAnchorTokens,
                         queryTokens: lookupQueryTokens,
+                        fragranceExternalSeedBypass: needsFragranceSupplement,
                       })
                     ) {
                       continue;
