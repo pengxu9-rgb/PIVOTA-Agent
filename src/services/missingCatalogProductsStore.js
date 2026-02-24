@@ -14,6 +14,34 @@ function normalizeLang(lang) {
   return raw === 'cn' || raw === 'zh' || raw === 'zh-cn' ? 'cn' : 'en';
 }
 
+function normalizeToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function parseIsoDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
+function parseDateRange(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return { from: null, to: null };
+  const parts = raw.includes('..')
+    ? raw.split('..')
+    : raw.split(',');
+  if (parts.length < 2) return { from: null, to: null };
+  const from = parseIsoDate(parts[0]);
+  const to = parseIsoDate(parts[1]);
+  return { from, to };
+}
+
 async function upsertMissingCatalogProduct(event) {
   if (!process.env.DATABASE_URL) {
     return { ok: false, reason: 'db_not_configured' };
@@ -77,16 +105,52 @@ async function listMissingCatalogProducts(options = {}) {
       ? 'seen_count DESC, last_seen_at DESC'
       : 'last_seen_at DESC, seen_count DESC';
 
-  const sinceRaw = options.since ? String(options.since).trim() : '';
-  const sinceMs = sinceRaw ? Date.parse(sinceRaw) : Number.NaN;
-  const sinceIso = Number.isNaN(sinceMs) ? null : new Date(sinceMs).toISOString();
+  const ingredient = String(options.ingredient || '').trim();
+  const source = normalizeToken(options.source);
+  const status = normalizeToken(options.status);
+  const captureMode = normalizeToken(options.capture_mode || options.captureMode);
+
+  const range = parseDateRange(options.date_range || options.dateRange);
+  const dateFrom = parseIsoDate(options.date_from || options.dateFrom || options.since || range.from);
+  const dateTo = parseIsoDate(options.date_to || options.dateTo || options.until || range.to);
 
   const params = [];
-  let where = 'TRUE';
-  if (sinceIso) {
-    params.push(sinceIso);
-    where = `last_seen_at >= $${params.length}`;
+  const whereClauses = [];
+  if (ingredient) {
+    const escaped = ingredient.replace(/[%_]/g, '\\$&');
+    params.push(`%${escaped}%`);
+    const token = `$${params.length}`;
+    whereClauses.push(
+      `(
+        normalized_query ILIKE ${token} ESCAPE '\\'
+        OR query_sample ILIKE ${token} ESCAPE '\\'
+        OR COALESCE(hints->>'ingredient_id','') ILIKE ${token} ESCAPE '\\'
+        OR COALESCE(hints->>'ingredient_name','') ILIKE ${token} ESCAPE '\\'
+      )`,
+    );
   }
+  if (source) {
+    params.push(source);
+    whereClauses.push(`LOWER(COALESCE(hints->>'source','')) = $${params.length}`);
+  }
+  if (status) {
+    params.push(status);
+    whereClauses.push(`LOWER(COALESCE(hints->>'status','unknown')) = $${params.length}`);
+  }
+  if (captureMode) {
+    params.push(captureMode);
+    whereClauses.push(`LOWER(COALESCE(hints->>'capture_mode','')) = $${params.length}`);
+  }
+  if (dateFrom) {
+    params.push(dateFrom);
+    whereClauses.push(`last_seen_at >= $${params.length}`);
+  }
+  if (dateTo) {
+    params.push(dateTo);
+    whereClauses.push(`last_seen_at <= $${params.length}`);
+  }
+  const where = whereClauses.length ? whereClauses.join(' AND ') : 'TRUE';
+
   params.push(limit);
   params.push(offset);
 
@@ -103,7 +167,14 @@ async function listMissingCatalogProducts(options = {}) {
           seen_count,
           last_caller,
           last_session_id,
-          last_reason
+          last_reason,
+          COALESCE(hints->>'ingredient_id','') AS ingredient_id,
+          COALESCE(hints->>'ingredient_name','') AS ingredient_name,
+          COALESCE(hints->>'source','') AS source,
+          COALESCE(hints->>'candidate_url','') AS candidate_url,
+          COALESCE(hints->>'capture_mode','') AS capture_mode,
+          COALESCE(hints->>'status','unknown') AS status,
+          COALESCE(hints->>'failure_reason','') AS failure_reason
         FROM missing_catalog_products
         WHERE ${where}
         ORDER BY ${orderBy}
@@ -112,7 +183,18 @@ async function listMissingCatalogProducts(options = {}) {
       `,
       params,
     );
-    return { ok: true, rows: res?.rows || [] };
+    return {
+      ok: true,
+      rows: res?.rows || [],
+      applied_filters: {
+        ingredient: ingredient || null,
+        source: source || null,
+        status: status || null,
+        capture_mode: captureMode || null,
+        date_from: dateFrom || null,
+        date_to: dateTo || null,
+      },
+    };
   } catch (err) {
     const code = String(err?.code || '');
     if (code === '42P01') return { ok: false, reason: 'table_missing', rows: [] };
@@ -123,6 +205,12 @@ async function listMissingCatalogProducts(options = {}) {
 function toCsv(rows) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const header = [
+    'ingredient_id',
+    'ingredient_name',
+    'source',
+    'status',
+    'capture_mode',
+    'candidate_url',
     'normalized_query',
     'query_sample',
     'lang',
@@ -145,6 +233,12 @@ function toCsv(rows) {
   for (const r of safeRows) {
     lines.push(
       [
+        escape(r.ingredient_id),
+        escape(r.ingredient_name),
+        escape(r.source),
+        escape(r.status),
+        escape(r.capture_mode),
+        escape(r.candidate_url),
         escape(r.normalized_query),
         escape(r.query_sample),
         escape(r.lang),
@@ -166,4 +260,3 @@ module.exports = {
   toCsv,
   _internals: { normalizeLang },
 };
-

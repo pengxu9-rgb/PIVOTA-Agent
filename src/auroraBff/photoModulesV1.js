@@ -17,10 +17,10 @@ const {
 
 const FACE_COORD_SPACE = 'face_crop_norm_v1';
 const HEATMAP_GRID_DEFAULT = Object.freeze({ w: 64, h: 64 });
-const HEATMAP_CONTOUR_MIN_THRESHOLD = 0.28;
+const HEATMAP_CONTOUR_MIN_THRESHOLD = 0.30;
 const HEATMAP_CONTOUR_MAX_THRESHOLD = 0.65;
 const HEATMAP_CONTOUR_EPSILON = 0.006;
-const HEATMAP_CONTOUR_MIN_AREA = 0.005;
+const HEATMAP_CONTOUR_MIN_AREA = 0.004;
 const HEATMAP_CONTOUR_MIN_POINTS = 6;
 const MODULE_MASK_GRID_SIZE = 64;
 const MODULE_BOXES = Object.freeze({
@@ -736,10 +736,11 @@ function contourPolygonFromHeatmap({ heatmap, severity0to4, confidence0to1 } = {
     return { ok: false, reason: 'heatmap_values_length_mismatch', polygon: null, bbox: null };
   }
 
+  const severityRaw = Math.max(0, Math.min(4, Number.isFinite(Number(severity0to4)) ? Number(severity0to4) : 0));
   const thresholdRaw =
-    0.18 +
-    (0.10 * clamp01(normalizeSeverity0to4(severity0to4) / 4)) +
-    (0.15 * clamp01(Number(confidence0to1)));
+    0.20 +
+    (0.12 * severityRaw) +
+    (0.12 * clamp01(Number(confidence0to1)));
   const threshold = clamp01(
     Math.max(HEATMAP_CONTOUR_MIN_THRESHOLD, Math.min(HEATMAP_CONTOUR_MAX_THRESHOLD, thresholdRaw)),
   );
@@ -1136,6 +1137,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
     }
 
     // 2) fallback to contour polygon derived from heatmap.
+    let contourFailureReason = 'no_polygon';
     if (heatmap && heatmap.ok && heatmap.heatmap) {
       if (heatmap.clipped) {
         const clipReason = heatmap.clip_reason || 'heatmap_clipped';
@@ -1147,7 +1149,7 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
         confidence0to1: confidence,
       });
       if (contour.ok && contour.polygon) {
-        const notes = [];
+        const notes = ['fallback:no_polygon', 'fallback:contour_from_heatmap'];
         if (contour.clip_reason) notes.push(contour.clip_reason);
         if (Number.isFinite(Number(contour.threshold))) notes.push(`contour_t=${Number(contour.threshold).toFixed(3)}`);
         pushRegion({
@@ -1163,12 +1165,13 @@ function buildRegionsFromFindings({ findings, qualityFlags } = {}) {
         });
         continue;
       }
-      drop(contour.reason || 'heatmap_contour_failed', 'polygon');
+      contourFailureReason = contour.reason || 'contour_fail';
+      drop(contourFailureReason, 'polygon');
     }
 
     // 3) last fallback: bbox.
     if (bbox && bbox.ok && bbox.bbox) {
-      const notes = [];
+      const notes = ['fallback:bbox_only', `fallback:${contourFailureReason || 'contour_fail'}`];
       if (bbox.clipped) {
         const clipReason = bbox.clip_reason || 'bbox_clipped';
         notes.push(clipReason);

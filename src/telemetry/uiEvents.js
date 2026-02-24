@@ -93,6 +93,7 @@ function shouldCollectBudgetSignal(eventName) {
   if (!token) return false;
   return (
     token.includes('product_tap') ||
+    token === 'ingredient_product_click' ||
     token === 'ui_pdp_opened' ||
     token === 'ui_outbound_opened' ||
     token === 'pdp_click'

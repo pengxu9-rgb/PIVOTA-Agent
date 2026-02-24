@@ -151,3 +151,60 @@ test('ingredient_plan_v2 diversifies tiers when budget is unknown', () => {
   }
 });
 
+test('ingredient_plan_v2 consumes realtime external candidates when provided', () => {
+  const { dir, file } = createTempCatalog([]);
+  try {
+    const plan = buildIngredientPlanV2({
+      plan: {
+        intensity: 'balanced',
+        targets: [{ ingredient_id: 'azelaic_acid', priority: 86 }],
+        avoid: [],
+        conflicts: [],
+      },
+      profile: { budgetTier: 'mid' },
+      catalogPath: file,
+      externalCandidatesByIngredient: {
+        azelaic_acid: [
+          {
+            product_id: 'amz_az_1',
+            name: 'Azelaic Serum 10%',
+            brand: 'Test Brand',
+            price: 24.99,
+            currency: 'USD',
+            price_tier: 'mid',
+            source: 'amazon',
+            source_confidence: 0.78,
+            rating_value: 4.5,
+            rating_count: 1280,
+            pdp_url: 'https://www.amazon.com/dp/B00TEST001',
+            thumb_url: 'https://images.example.com/azelaic.jpg',
+            fallback_type: 'external',
+            open_target: 'external',
+          },
+        ],
+      },
+      externalMetaByIngredient: {
+        azelaic_acid: {
+          query: 'azelaic acid skincare mid range',
+          normalized_query: 'azelaic_acid_skincare_mid_range',
+          capture_mode: 'sync_external_executor',
+          status: 'external_executor_returned',
+        },
+      },
+    });
+
+    assert.ok(plan);
+    const target = plan.targets.find((item) => item.ingredient_id === 'azelaic_acid');
+    assert.ok(target);
+    const merged = [...target.products.competitors, ...target.products.dupes];
+    assert.equal(merged.some((item) => item.product_id === 'amz_az_1'), true);
+    assert.equal(merged.some((item) => item.source === 'amazon'), true);
+    assert.equal(plan.external_fallback_used, true);
+    assert.equal(Array.isArray(plan.__missing_catalog_queries), true);
+    assert.equal(plan.__missing_catalog_queries.length >= 1, true);
+    assert.equal(plan.__missing_catalog_queries[0].capture_mode, 'sync_external_executor');
+    assert.equal(plan.__missing_catalog_queries[0].status, 'external_executor_returned');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

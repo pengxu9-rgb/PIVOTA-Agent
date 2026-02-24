@@ -11452,12 +11452,28 @@ app.get('/api/admin/missing-catalog-products', requireAdmin, async (req, res) =>
   const offset = req.query.offset;
   const sort = req.query.sort;
   const since = req.query.since;
+  const until = req.query.until;
+  const ingredient = req.query.ingredient;
+  const source = req.query.source;
+  const status = req.query.status;
+  const captureMode = req.query.capture_mode ?? req.query.captureMode;
+  const dateFrom = req.query.date_from ?? req.query.dateFrom;
+  const dateTo = req.query.date_to ?? req.query.dateTo;
+  const dateRange = req.query.date_range ?? req.query.dateRange;
 
   const out = await listMissingCatalogProducts({
     limit,
     offset,
     sort,
     since,
+    until,
+    ingredient,
+    source,
+    status,
+    capture_mode: captureMode,
+    date_from: dateFrom,
+    date_to: dateTo,
+    date_range: dateRange,
   });
 
   if (!out.ok) {
@@ -11478,7 +11494,7 @@ app.get('/api/admin/missing-catalog-products', requireAdmin, async (req, res) =>
     return res.status(200).send(csv);
   }
 
-  return res.json({ ok: true, rows: out.rows });
+  return res.json({ ok: true, rows: out.rows, filters: out.applied_filters || null });
 });
 
 app.get('/api/admin/search-diagnostics', requireAdmin, async (req, res) => {

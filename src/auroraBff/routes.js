@@ -281,6 +281,9 @@ const {
   buildIngredientPlanV2,
 } = require('./ingredientMapperV1');
 const {
+  upsertMissingCatalogProduct,
+} = require('../services/missingCatalogProductsStore');
+const {
   buildProductRecommendationsBundle,
   toLegacyRecommendationsPayload,
 } = require('./productMatcherV1');
@@ -977,6 +980,51 @@ const AURORA_INGREDIENT_PLAN_ENABLED = (() => {
   const raw = String(process.env.AURORA_INGREDIENT_PLAN_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_TIMEOUT_MS || 2000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2000;
+  return Math.max(600, Math.min(6000, v));
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_SEARCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_SEARCH_TIMEOUT_MS || 1200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  return Math.max(300, Math.min(4000, v));
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_FETCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_FETCH_TIMEOUT_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  return Math.max(250, Math.min(3000, v));
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_ENABLED = (() => {
+  const raw = String(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_TIMEOUT_MS || 800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 800;
+  return Math.max(250, Math.min(2500, v));
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_INGREDIENTS = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_INGREDIENTS || 6);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6;
+  return Math.max(1, Math.min(12, v));
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT = (() => {
+  const n = Number(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(6, v));
+})();
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_OPENAI_MODEL =
+  String(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_OPENAI_MODEL || SKIN_VISION_MODEL_OPENAI || 'gpt-4o-mini').trim() ||
+  'gpt-4o-mini';
+const AURORA_INGREDIENT_EXTERNAL_EXECUTOR_GEMINI_MODEL =
+  String(process.env.AURORA_INGREDIENT_EXTERNAL_EXECUTOR_GEMINI_MODEL || SKIN_VISION_MODEL_GEMINI || 'gemini-2.0-flash').trim() ||
+  'gemini-2.0-flash';
+const AURORA_INGREDIENT_EXTERNAL_ALLOWED_SOURCES = Object.freeze(['amazon', 'google', 'reddit', 'xiaohongshu']);
 const AURORA_PRODUCT_MATCHER_ENABLED = (() => {
   const raw = String(process.env.AURORA_PRODUCT_MATCHER_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1830,6 +1878,15 @@ function extractCandidateSocialReference(base) {
 
 function normalizeRecoCatalogProduct(raw) {
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const normalizeHttpUrl = (value) => {
+    const text = String(value || '').trim();
+    if (!/^https?:\/\//i.test(text)) return '';
+    try {
+      return new URL(text).toString();
+    } catch {
+      return '';
+    }
+  };
 
   const productId =
     (typeof base.product_id === 'string' && base.product_id) ||
@@ -1884,6 +1941,21 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.thumbnail_url === 'string' && base.thumbnail_url) ||
     (typeof base.thumbnailUrl === 'string' && base.thumbnailUrl) ||
     '';
+  const pdpUrl =
+    normalizeHttpUrl(base.pdp_url) ||
+    normalizeHttpUrl(base.pdpUrl) ||
+    normalizeHttpUrl(base.url) ||
+    normalizeHttpUrl(base.product_url) ||
+    normalizeHttpUrl(base.productUrl) ||
+    normalizeHttpUrl(base.link) ||
+    (base.subject && typeof base.subject === 'object' && !Array.isArray(base.subject)
+      ? (
+        normalizeHttpUrl(base.subject.url) ||
+        normalizeHttpUrl(base.subject.pdp_url) ||
+        normalizeHttpUrl(base.subject.product_url)
+      )
+      : '') ||
+    '';
 
   const category =
     (typeof base.category === 'string' && base.category) ||
@@ -1911,6 +1983,7 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(name || '').trim() ? { name: String(name).trim() } : {}),
     ...(String(displayName || '').trim() ? { display_name: String(displayName).trim() } : {}),
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
+    ...(pdpUrl ? { pdp_url: pdpUrl } : {}),
     ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
     ...(price ? { price } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
@@ -12554,6 +12627,765 @@ function buildIngredientPlanV2Card(planV2, requestId) {
     type: 'ingredient_plan_v2',
     payload: planV2 && typeof planV2 === 'object' ? planV2 : {},
   };
+}
+
+function normalizeIngredientExecutorKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function normalizeIngredientExecutorBudgetTier(rawTier) {
+  const token = String(rawTier || '').trim().toLowerCase();
+  if (!token) return 'unknown';
+  if (token === 'low' || token === 'budget' || token === 'entry') return 'low';
+  if (token === 'high' || token === 'premium' || token === 'lux' || token === 'luxury') return 'high';
+  if (token === 'mid' || token === 'middle' || token === 'medium') return 'mid';
+  return 'unknown';
+}
+
+function normalizeIngredientExternalSourceFromUrl(rawUrl) {
+  const text = String(rawUrl || '').trim();
+  if (!/^https?:\/\//i.test(text)) return 'google';
+  try {
+    const host = String(new URL(text).hostname || '').trim().toLowerCase().replace(/^www\./, '');
+    if (!host) return 'google';
+    if (host.includes('amazon.')) return 'amazon';
+    if (host === 'reddit.com' || host.endsWith('.reddit.com')) return 'reddit';
+    if (host === 'xiaohongshu.com' || host.endsWith('.xiaohongshu.com')) return 'xiaohongshu';
+    if (host === 'google.com' || host.endsWith('.google.com')) return 'google';
+    return 'google';
+  } catch {
+    return 'google';
+  }
+}
+
+function buildIngredientExternalSourceSearchUrl(source, queryText) {
+  const q = String(queryText || '').trim();
+  const encoded = encodeURIComponent(q);
+  const token = String(source || '').trim().toLowerCase();
+  if (token === 'amazon') return `https://www.amazon.com/s?k=${encoded}`;
+  if (token === 'reddit') return `https://www.reddit.com/search/?q=${encoded}`;
+  if (token === 'xiaohongshu') return `https://www.xiaohongshu.com/search_result?keyword=${encoded}`;
+  return buildExternalGoogleSearchUrl(q);
+}
+
+function buildIngredientExternalExecutorQuery({ ingredientId, ingredientName, budgetTier } = {}) {
+  const readableName = String(ingredientName || ingredientId || '')
+    .trim()
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ');
+  const tier = normalizeIngredientExecutorBudgetTier(budgetTier);
+  const budgetHint =
+    tier === 'low'
+      ? 'budget'
+      : tier === 'high'
+        ? 'premium'
+        : tier === 'mid'
+          ? 'mid range'
+          : 'best';
+  const query = `${readableName || 'skincare ingredient'} skincare ${budgetHint}`.trim();
+  return {
+    query,
+    normalized_query: normalizeMissingCatalogQuery(query),
+  };
+}
+
+function deriveIngredientExecutorPriceTier(priceTierRaw, amountRaw, budgetTier) {
+  const explicit = normalizeIngredientExecutorBudgetTier(priceTierRaw);
+  if (explicit !== 'unknown') return explicit;
+  const amount = toPositiveNumberOrNull(amountRaw);
+  if (amount != null) {
+    if (amount < 20) return 'low';
+    if (amount > 60) return 'high';
+    return 'mid';
+  }
+  const budget = normalizeIngredientExecutorBudgetTier(budgetTier);
+  return budget === 'unknown' ? 'mid' : budget;
+}
+
+function normalizeIngredientExecutorHttpUrl(value) {
+  const text = String(value || '').trim();
+  if (!/^https?:\/\//i.test(text)) return '';
+  try {
+    return new URL(text).toString();
+  } catch {
+    return '';
+  }
+}
+
+function extractFirstMetaImageUrlFromHtml(html, fallbackUrl = '') {
+  const source = String(html || '');
+  if (!source) return '';
+  const matched =
+    source.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+    source.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+    '';
+  if (!matched) return '';
+  const urlText = normalizeIngredientExecutorHttpUrl(matched);
+  if (urlText) return urlText;
+  const base = normalizeIngredientExecutorHttpUrl(fallbackUrl);
+  if (!base) return '';
+  try {
+    return new URL(matched, base).toString();
+  } catch {
+    return '';
+  }
+}
+
+function normalizeIngredientExecutorLlmExtraction(raw, { fallbackUrl = '', fallbackSource = 'google' } = {}) {
+  const obj = isPlainObject(raw) ? raw : null;
+  if (!obj) return null;
+  const name = pickFirstTrimmed(obj.name, obj.product_name, obj.productName, obj.title);
+  const brand = pickFirstTrimmed(obj.brand, obj.brand_name, obj.brandName);
+  const normalizedPrice = normalizePriceObject(
+    obj.price ??
+      obj.price_amount ??
+      obj.priceAmount ??
+      obj.amount ??
+      obj.offer_price ??
+      obj.offerPrice,
+  );
+  const price = normalizedPrice && Number.isFinite(Number(normalizedPrice.amount))
+    ? Number(normalizedPrice.amount)
+    : null;
+  const currency = normalizedPrice && normalizedPrice.currency ? String(normalizedPrice.currency).trim() : null;
+  const ratingValue = (() => {
+    const n = Number(obj.rating_value ?? obj.ratingValue ?? obj.rating ?? NaN);
+    if (!Number.isFinite(n) || n < 0 || n > 5) return null;
+    return Math.round(n * 100) / 100;
+  })();
+  const ratingCount = (() => {
+    const n = Number(obj.rating_count ?? obj.ratingCount ?? obj.review_count ?? obj.reviewCount ?? NaN);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.trunc(n);
+  })();
+  const pdpUrl = normalizeIngredientExecutorHttpUrl(
+    pickFirstTrimmed(obj.pdp_url, obj.pdpUrl, obj.url, obj.link, fallbackUrl),
+  );
+  const source = (() => {
+    const fromUrl = normalizeIngredientExternalSourceFromUrl(pdpUrl);
+    if (fromUrl) return fromUrl;
+    const token = normalizeIngredientExecutorKey(obj.source || fallbackSource);
+    return AURORA_INGREDIENT_EXTERNAL_ALLOWED_SOURCES.includes(token) ? token : fallbackSource;
+  })();
+  const thumbUrl = normalizeIngredientExecutorHttpUrl(
+    pickFirstTrimmed(obj.thumb_url, obj.thumbUrl, obj.image_url, obj.imageUrl, obj.image),
+  );
+  if (!name && !brand && price == null && ratingValue == null && !thumbUrl) return null;
+  return {
+    ...(name ? { name } : {}),
+    ...(brand ? { brand } : {}),
+    ...(price != null ? { price } : {}),
+    ...(currency ? { currency } : {}),
+    ...(ratingValue != null ? { rating_value: ratingValue } : {}),
+    ...(ratingCount != null ? { rating_count: ratingCount } : {}),
+    ...(thumbUrl ? { thumb_url: thumbUrl } : {}),
+    ...(pdpUrl ? { pdp_url: pdpUrl } : {}),
+    source,
+  };
+}
+
+async function extractIngredientExternalMetadataWithLlm({
+  html,
+  productUrl,
+  source = 'google',
+  timeoutMs = AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_TIMEOUT_MS,
+  logger,
+  llmExtractFn,
+} = {}) {
+  if (typeof llmExtractFn === 'function') {
+    try {
+      const out = await llmExtractFn({ html, productUrl, source, timeoutMs, logger });
+      const normalized = normalizeIngredientExecutorLlmExtraction(out, { fallbackUrl: productUrl, fallbackSource: source });
+      if (normalized) return normalized;
+    } catch (err) {
+      logger?.debug?.(
+        { err: err?.message || String(err) },
+        'aurora bff: ingredient external llm extractor (injected) failed',
+      );
+    }
+  }
+
+  if (!AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_ENABLED) return null;
+  const htmlText = String(html || '');
+  if (!htmlText) return null;
+  const condensed = stripHtmlToText(htmlText).replace(/\s+/g, ' ').trim();
+  if (!condensed) return null;
+  const snippet = condensed.slice(0, 7000);
+  const normalizedTimeoutMs = Math.max(200, Math.min(2500, Number(timeoutMs) || AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_TIMEOUT_MS));
+  const promptText = [
+    'Extract product metadata from the provided ecommerce/social page text.',
+    'Return strict JSON object only with optional keys:',
+    'name, brand, price, currency, rating_value, rating_count, thumb_url, pdp_url, source.',
+    'rating_value must be 0-5, rating_count integer, source in [amazon, google, reddit, xiaohongshu].',
+    `Source hint: ${source}`,
+    `URL hint: ${productUrl}`,
+    `Text:\n${snippet}`,
+  ].join('\n');
+
+  const openai = getOpenAIClient();
+  if (openai) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs);
+    try {
+      const resp = await openai.chat.completions.create(
+        {
+          model: AURORA_INGREDIENT_EXTERNAL_EXECUTOR_OPENAI_MODEL,
+          temperature: 0,
+          max_tokens: 220,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'You output strict JSON only.' },
+            { role: 'user', content: promptText },
+          ],
+        },
+        { signal: controller.signal },
+      );
+      const content = String(resp?.choices?.[0]?.message?.content || '').trim();
+      const parsed = parseJsonOnlyObject(unwrapCodeFence(content));
+      const normalized = normalizeIngredientExecutorLlmExtraction(parsed, {
+        fallbackUrl: productUrl,
+        fallbackSource: source,
+      });
+      if (normalized) return normalized;
+    } catch (err) {
+      logger?.debug?.(
+        { err: err?.message || String(err) },
+        'aurora bff: ingredient external llm extractor (openai) failed',
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const gemini = getGeminiClient();
+  if (gemini && gemini.client) {
+    try {
+      const resp = await withVisionTimeout(
+        gemini.client.models.generateContent({
+          model: AURORA_INGREDIENT_EXTERNAL_EXECUTOR_GEMINI_MODEL,
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: promptText }],
+            },
+          ],
+          config: {
+            temperature: 0,
+            responseMimeType: 'application/json',
+          },
+        }),
+        normalizedTimeoutMs,
+      );
+      const content = await extractTextFromGeminiResponse(resp);
+      const parsed = parseJsonOnlyObject(unwrapCodeFence(content));
+      const normalized = normalizeIngredientExecutorLlmExtraction(parsed, {
+        fallbackUrl: productUrl,
+        fallbackSource: source,
+      });
+      if (normalized) return normalized;
+    } catch (err) {
+      logger?.debug?.(
+        { err: err?.message || String(err) },
+        'aurora bff: ingredient external llm extractor (gemini) failed',
+      );
+    }
+  }
+  return null;
+}
+
+function mapSearchProductToIngredientExternalCandidate({
+  product,
+  ingredientId,
+  ingredientName,
+  budgetTier,
+  query,
+  index = 0,
+} = {}) {
+  const row = isPlainObject(product) ? product : null;
+  if (!row) return null;
+  const price = normalizePriceObject(
+    row.price ??
+      row.price_amount ??
+      row.priceAmount ??
+      row.amount ??
+      row.offer_price ??
+      row.offerPrice,
+  );
+  const amount = price && Number.isFinite(Number(price.amount)) ? Number(price.amount) : null;
+  const currency = price && price.currency ? String(price.currency).trim() : null;
+
+  const rawProductUrl = normalizeIngredientExecutorHttpUrl(
+    pickFirstTrimmed(
+      row.pdp_url,
+      row.pdpUrl,
+      row.url,
+      row.product_url,
+      row.productUrl,
+      row.link,
+    ),
+  );
+  const inferredSource = normalizeIngredientExternalSourceFromUrl(rawProductUrl);
+  const source = AURORA_INGREDIENT_EXTERNAL_ALLOWED_SOURCES.includes(inferredSource) ? inferredSource : 'google';
+  const name = pickFirstTrimmed(row.display_name, row.name) ||
+    `${String(ingredientName || ingredientId || 'Ingredient').replace(/_/g, ' ')} option ${index + 1}`;
+  const brand = pickFirstTrimmed(row.brand);
+  const fallbackQuery = `${brand ? `${brand} ` : ''}${name} skincare`;
+  const pdpUrl = source !== 'google' && rawProductUrl
+    ? rawProductUrl
+    : buildIngredientExternalSourceSearchUrl(source, fallbackQuery || query);
+  const productId = pickFirstTrimmed(
+    row.product_id,
+    row.sku_id,
+    row.id,
+  ) || `ext_exec_${source}_${normalizeIngredientExecutorKey(ingredientId)}_${index + 1}`;
+  const sourceConfidence = (() => {
+    if (source === 'amazon') return 0.78;
+    if (source === 'reddit') return 0.56;
+    if (source === 'xiaohongshu') return 0.56;
+    return 0.62;
+  })();
+  const ratingRaw = Number(row.rating_value ?? row.ratingValue ?? row.rating ?? NaN);
+  const ratingValue = Number.isFinite(ratingRaw) && ratingRaw >= 0 && ratingRaw <= 5 ? Number(ratingRaw.toFixed(2)) : null;
+  const ratingCountRaw = Number(row.rating_count ?? row.ratingCount ?? row.review_count ?? row.reviewCount ?? NaN);
+  const ratingCount = Number.isFinite(ratingCountRaw) && ratingCountRaw >= 0 ? Math.trunc(ratingCountRaw) : null;
+  const thumbUrl = normalizeIngredientExecutorHttpUrl(
+    pickFirstTrimmed(row.thumb_url, row.thumbUrl, row.image_url, row.imageUrl),
+  );
+  return {
+    product_id: productId,
+    name,
+    ...(brand ? { brand } : {}),
+    ...(amount != null ? { price: amount } : {}),
+    ...(currency ? { currency } : {}),
+    price_tier: deriveIngredientExecutorPriceTier(
+      row.price_tier ?? row.priceTier ?? row.price_band ?? row.priceBand ?? inferRecoPriceBand(row.price_band, row),
+      amount,
+      budgetTier,
+    ),
+    why_match: `Realtime external candidate for ${ingredientName || ingredientId}.`,
+    source_block: 'competitor',
+    ...(thumbUrl ? { thumb_url: thumbUrl } : {}),
+    ...(ratingValue != null ? { rating_value: ratingValue } : {}),
+    ...(ratingCount != null ? { rating_count: ratingCount } : {}),
+    pdp_url: pdpUrl,
+    source,
+    source_confidence: sourceConfidence,
+    fallback_type: source === 'google' ? 'search' : 'external',
+    open_target: 'external',
+  };
+}
+
+async function enrichIngredientExternalCandidateWithRealtimeFetch({
+  candidate,
+  deadlineMs,
+  logger,
+  fetchHtmlFn,
+  llmExtractFn,
+} = {}) {
+  const base = isPlainObject(candidate) ? { ...candidate } : null;
+  if (!base) return candidate;
+  const source = normalizeIngredientExternalSourceFromUrl(base.pdp_url);
+  if (!AURORA_INGREDIENT_EXTERNAL_ALLOWED_SOURCES.includes(source)) return base;
+  if (source === 'google') return base;
+  const remainingMs = Math.max(0, Number(deadlineMs || 0) - Date.now());
+  if (remainingMs < 250) return base;
+  const timeoutMs = Math.max(220, Math.min(AURORA_INGREDIENT_EXTERNAL_EXECUTOR_FETCH_TIMEOUT_MS, remainingMs - 80));
+  const fetchHtml = typeof fetchHtmlFn === 'function' ? fetchHtmlFn : fetchProductPageHtmlForReco;
+  let html = '';
+  try {
+    html = await fetchHtml({
+      productUrl: String(base.pdp_url || '').trim(),
+      timeoutMs,
+      logger,
+    });
+  } catch {
+    html = '';
+  }
+  if (!html) return base;
+
+  const parsedPrice = extractProductPriceFromHtml(html);
+  if (base.price == null && parsedPrice && Number.isFinite(Number(parsedPrice.amount))) {
+    base.price = Number(parsedPrice.amount);
+    if (!base.currency && parsedPrice.currency) base.currency = String(parsedPrice.currency).trim();
+    base.price_tier = deriveIngredientExecutorPriceTier(base.price_tier, base.price, 'unknown');
+  }
+  const rating = extractAggregateRatingFromHtml(html);
+  if (base.rating_value == null && Number.isFinite(Number(rating.rating_value))) {
+    base.rating_value = Number(Number(rating.rating_value).toFixed(2));
+  }
+  if (base.rating_count == null && Number.isFinite(Number(rating.review_count))) {
+    base.rating_count = Math.max(0, Math.trunc(Number(rating.review_count)));
+  }
+  if (!base.thumb_url) {
+    const fromMeta = extractFirstMetaImageUrlFromHtml(html, base.pdp_url);
+    if (fromMeta) base.thumb_url = fromMeta;
+  }
+
+  const llmRemainingMs = Math.max(0, Number(deadlineMs || 0) - Date.now());
+  const shouldUseLlm =
+    llmRemainingMs >= 220 &&
+    (!base.brand || !base.name || base.price == null || base.rating_value == null);
+  if (shouldUseLlm) {
+    const llmOut = await extractIngredientExternalMetadataWithLlm({
+      html,
+      productUrl: base.pdp_url,
+      source,
+      timeoutMs: Math.min(AURORA_INGREDIENT_EXTERNAL_EXECUTOR_LLM_TIMEOUT_MS, llmRemainingMs - 40),
+      logger,
+      llmExtractFn,
+    });
+    if (llmOut) {
+      if (!base.name && llmOut.name) base.name = llmOut.name;
+      if (!base.brand && llmOut.brand) base.brand = llmOut.brand;
+      if (base.price == null && llmOut.price != null) base.price = llmOut.price;
+      if (!base.currency && llmOut.currency) base.currency = llmOut.currency;
+      if (base.rating_value == null && llmOut.rating_value != null) base.rating_value = llmOut.rating_value;
+      if (base.rating_count == null && llmOut.rating_count != null) base.rating_count = llmOut.rating_count;
+      if (!base.thumb_url && llmOut.thumb_url) base.thumb_url = llmOut.thumb_url;
+      if ((!base.pdp_url || source === 'google') && llmOut.pdp_url) {
+        base.pdp_url = llmOut.pdp_url;
+        base.source = normalizeIngredientExternalSourceFromUrl(base.pdp_url);
+      }
+      if (llmOut.source) base.source = llmOut.source;
+    }
+  }
+  return base;
+}
+
+async function runIngredientExternalExecutorForIngredient({
+  ingredientId,
+  ingredientName,
+  budgetTier,
+  logger,
+  deadlineMs,
+  searchFn,
+  fetchHtmlFn,
+  llmExtractFn,
+} = {}) {
+  const key = normalizeIngredientExecutorKey(ingredientId || ingredientName || '');
+  if (!key) return null;
+  const { query, normalized_query } = buildIngredientExternalExecutorQuery({
+    ingredientId: key,
+    ingredientName,
+    budgetTier,
+  });
+  const endMs = Number.isFinite(Number(deadlineMs)) && Number(deadlineMs) > Date.now()
+    ? Number(deadlineMs)
+    : Date.now() + AURORA_INGREDIENT_EXTERNAL_EXECUTOR_TIMEOUT_MS;
+  const remainingMs = Math.max(0, endMs - Date.now());
+  if (remainingMs < 220) {
+    return {
+      ingredient_key: key,
+      query,
+      normalized_query,
+      candidates: [],
+      capture_mode: 'sync_external_executor',
+      status: 'external_executor_budget_exhausted',
+      failure_reason: 'budget_exhausted',
+      candidate_url: buildExternalGoogleSearchUrl(query),
+    };
+  }
+
+  const search = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+  let searched = null;
+  try {
+    searched = await search({
+      query,
+      limit: Math.max(3, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT * 2),
+      logger,
+      timeoutMs: Math.max(
+        240,
+        Math.min(AURORA_INGREDIENT_EXTERNAL_EXECUTOR_SEARCH_TIMEOUT_MS, remainingMs - 100),
+      ),
+      minTimeoutMs: 220,
+      searchAllMerchants: true,
+      deadlineMs: endMs,
+      allowExternalSeed: true,
+      externalSeedStrategy: 'parallel',
+      fastMode: true,
+    });
+  } catch (err) {
+    searched = {
+      ok: false,
+      products: [],
+      reason: err && err.message ? String(err.message) : 'search_failed',
+    };
+  }
+
+  const rawProducts = Array.isArray(searched?.products) ? searched.products : [];
+  const initialCandidates = rawProducts
+    .map((product, idx) =>
+      mapSearchProductToIngredientExternalCandidate({
+        product,
+        ingredientId: key,
+        ingredientName: ingredientName || key.replace(/_/g, ' '),
+        budgetTier,
+        query,
+        index: idx,
+      }))
+    .filter(Boolean)
+    .slice(0, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT);
+
+  const enrichedCandidates = [];
+  for (let idx = 0; idx < initialCandidates.length; idx += 1) {
+    const candidate = initialCandidates[idx];
+    const enriched = await enrichIngredientExternalCandidateWithRealtimeFetch({
+      candidate,
+      deadlineMs: endMs,
+      logger,
+      fetchHtmlFn,
+      llmExtractFn,
+    });
+    const row = isPlainObject(enriched) ? enriched : candidate;
+    row.source_block = idx >= Math.max(1, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT - 1) ? 'dupe' : 'competitor';
+    enrichedCandidates.push(row);
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const row of enrichedCandidates) {
+    const keyToken = normalizeMissingCatalogQuery(row.product_id || row.pdp_url || row.name);
+    if (!keyToken || seen.has(keyToken)) continue;
+    seen.add(keyToken);
+    unique.push(row);
+  }
+
+  const fallbackUrl = buildExternalGoogleSearchUrl(query);
+  const firstUrl = String(unique[0]?.pdp_url || '').trim() || fallbackUrl;
+  return {
+    ingredient_key: key,
+    query,
+    normalized_query,
+    candidates: unique,
+    capture_mode: 'sync_external_executor',
+    status: unique.length ? 'external_executor_returned' : 'external_executor_empty',
+    failure_reason: unique.length ? null : String(searched?.reason || '').trim() || 'executor_empty',
+    candidate_url: firstUrl,
+  };
+}
+
+async function buildIngredientExternalExecutorBundleForPlan({
+  plan,
+  profile,
+  logger,
+  timeoutMs = AURORA_INGREDIENT_EXTERNAL_EXECUTOR_TIMEOUT_MS,
+  externalExecutorFn,
+} = {}) {
+  if (!AURORA_INGREDIENT_PLAN_ENABLED || !AURORA_INGREDIENT_EXTERNAL_EXECUTOR_ENABLED) {
+    return {
+      externalCandidatesByIngredient: null,
+      externalMetaByIngredient: null,
+    };
+  }
+  const planObj = isPlainObject(plan) ? plan : null;
+  if (!planObj) {
+    return {
+      externalCandidatesByIngredient: null,
+      externalMetaByIngredient: null,
+    };
+  }
+  const targetsRaw = Array.isArray(planObj.targets) ? planObj.targets : [];
+  if (!targetsRaw.length) {
+    return {
+      externalCandidatesByIngredient: null,
+      externalMetaByIngredient: null,
+    };
+  }
+  const budgetTier = normalizeIngredientExecutorBudgetTier(profile && profile.budgetTier);
+  const seen = new Set();
+  const targets = [];
+  for (const raw of targetsRaw) {
+    const row = isPlainObject(raw) ? raw : null;
+    if (!row) continue;
+    const ingredientId = normalizeIngredientExecutorKey(row.ingredient_id || row.ingredientId);
+    if (!ingredientId || seen.has(ingredientId)) continue;
+    seen.add(ingredientId);
+    const ingredientName = pickFirstTrimmed(row.ingredient_name, row.ingredientName) || ingredientId.replace(/_/g, ' ');
+    targets.push({ ingredientId, ingredientName });
+    if (targets.length >= AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_INGREDIENTS) break;
+  }
+  if (!targets.length) {
+    return {
+      externalCandidatesByIngredient: null,
+      externalMetaByIngredient: null,
+    };
+  }
+
+  const endMs = Date.now() + Math.max(400, Number(timeoutMs) || AURORA_INGREDIENT_EXTERNAL_EXECUTOR_TIMEOUT_MS);
+  const externalCandidatesByIngredient = {};
+  const externalMetaByIngredient = {};
+  const executor = typeof externalExecutorFn === 'function' ? externalExecutorFn : runIngredientExternalExecutorForIngredient;
+
+  for (const target of targets) {
+    if (Date.now() >= endMs - 180) break;
+    let out = null;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      out = await executor({
+        ingredientId: target.ingredientId,
+        ingredientName: target.ingredientName,
+        budgetTier,
+        logger,
+        deadlineMs: endMs,
+      });
+    } catch (err) {
+      out = {
+        ingredient_key: target.ingredientId,
+        query: `${target.ingredientName} skincare`,
+        normalized_query: normalizeMissingCatalogQuery(`${target.ingredientName} skincare`),
+        candidates: [],
+        capture_mode: 'sync_external_executor',
+        status: 'external_executor_failed',
+        failure_reason: err && err.message ? String(err.message) : 'executor_failed',
+        candidate_url: buildExternalGoogleSearchUrl(`${target.ingredientName} skincare`),
+      };
+    }
+    if (!out || typeof out !== 'object') continue;
+    const ingredientKey = normalizeIngredientExecutorKey(out.ingredient_key || target.ingredientId);
+    if (!ingredientKey) continue;
+    if (Array.isArray(out.candidates) && out.candidates.length) {
+      externalCandidatesByIngredient[ingredientKey] = out.candidates.slice(0, AURORA_INGREDIENT_EXTERNAL_EXECUTOR_MAX_PRODUCTS_PER_INGREDIENT);
+    }
+    externalMetaByIngredient[ingredientKey] = {
+      query: String(out.query || '').trim(),
+      normalized_query: normalizeMissingCatalogQuery(out.normalized_query || out.query || ''),
+      source: out.status === 'external_executor_returned' ? 'catalog_partial' : 'catalog_miss',
+      candidate_url: String(out.candidate_url || '').trim() || buildExternalGoogleSearchUrl(out.query || ''),
+      capture_mode: String(out.capture_mode || 'sync_external_executor').trim() || 'sync_external_executor',
+      status: String(out.status || '').trim() || 'external_executor_empty',
+      ...(String(out.failure_reason || '').trim() ? { failure_reason: String(out.failure_reason).trim() } : {}),
+    };
+  }
+
+  return {
+    externalCandidatesByIngredient:
+      Object.keys(externalCandidatesByIngredient).length ? externalCandidatesByIngredient : null,
+    externalMetaByIngredient:
+      Object.keys(externalMetaByIngredient).length ? externalMetaByIngredient : null,
+  };
+}
+
+function normalizeMissingCatalogQuery(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 160);
+}
+
+function sanitizeIngredientPlanV2Payload(planV2) {
+  if (!planV2 || typeof planV2 !== 'object' || Array.isArray(planV2)) return null;
+  const out = { ...planV2 };
+  delete out.__missing_catalog_queries;
+  return out;
+}
+
+async function enqueueMissingCatalogSignalsForIngredientPlanV2({ planV2, ctx, logger, caller } = {}) {
+  if (!planV2 || typeof planV2 !== 'object' || Array.isArray(planV2)) return;
+  const rows = Array.isArray(planV2.__missing_catalog_queries) ? planV2.__missing_catalog_queries : [];
+  if (!rows.length) return;
+
+  const lang = String((ctx && ctx.lang) || 'EN').trim().toUpperCase() === 'CN' ? 'cn' : 'en';
+  const sessionId = String((ctx && ctx.brief_id) || '').trim() || null;
+  const unique = new Set();
+
+  for (const raw of rows) {
+    const item = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+    if (!item) continue;
+    const query = String(item.query || '').trim();
+    const ingredientKey = normalizeMissingCatalogQuery(item.ingredient_id || item.ingredient_name || '');
+    const candidateKey = normalizeMissingCatalogQuery(item.candidate_url || '');
+    const dedupeSeed =
+      ingredientKey && candidateKey
+        ? `${ingredientKey}_${candidateKey}`
+        : String(item.normalized_query || query);
+    const normalizedQuery = normalizeMissingCatalogQuery(dedupeSeed || query);
+    if (!query || !normalizedQuery) continue;
+    const uniqKey = `${lang}:${ingredientKey || 'na'}:${candidateKey || normalizedQuery}`;
+    if (unique.has(uniqKey)) continue;
+    unique.add(uniqKey);
+    try {
+      const sourceToken = String(item.source || '').trim() || null;
+      const candidateUrl = String(item.candidate_url || '').trim() || null;
+      const captureMode = String(item.capture_mode || 'sync_external_fallback').trim();
+      const statusToken = String(item.status || '').trim() || (sourceToken === 'catalog_partial' ? 'catalog_partial' : 'catalog_miss');
+      await upsertMissingCatalogProduct({
+        normalized_query: normalizedQuery,
+        query,
+        lang,
+        hints: {
+          ingredient_id: String(item.ingredient_id || '').trim() || null,
+          ingredient_name: String(item.ingredient_name || '').trim() || null,
+          source: sourceToken,
+          candidate_url: candidateUrl,
+          capture_mode: captureMode || null,
+          status: statusToken || null,
+          failure_reason: String(item.failure_reason || '').trim() || null,
+        },
+        caller: caller || 'aurora_bff_ingredient_plan_v2',
+        session_id: sessionId,
+        reason: 'ingredient_plan_v2_external_fallback',
+      });
+    } catch (err) {
+      logger?.warn?.(
+        { err: err && err.message ? err.message : String(err), query: normalizedQuery },
+        'aurora bff: enqueue missing-catalog from ingredient_plan_v2 failed',
+      );
+    }
+  }
+}
+
+async function buildIngredientPlanV2WithFallbackSync({
+  plan,
+  profile,
+  catalogPath,
+  ctx,
+  logger,
+  caller = 'aurora_bff_ingredient_plan_v2',
+  externalExecutorFn,
+} = {}) {
+  let externalBundle = {
+    externalCandidatesByIngredient: null,
+    externalMetaByIngredient: null,
+  };
+  try {
+    externalBundle = await buildIngredientExternalExecutorBundleForPlan({
+      plan,
+      profile,
+      logger,
+      timeoutMs: AURORA_INGREDIENT_EXTERNAL_EXECUTOR_TIMEOUT_MS,
+      externalExecutorFn,
+    });
+  } catch (err) {
+    logger?.warn?.(
+      { err: err && err.message ? err.message : String(err) },
+      'aurora bff: ingredient external executor failed, fallback to static search links',
+    );
+  }
+  const mapped = buildIngredientPlanV2({
+    plan,
+    profile,
+    catalogPath,
+    externalCandidatesByIngredient: externalBundle.externalCandidatesByIngredient,
+    externalMetaByIngredient: externalBundle.externalMetaByIngredient,
+  });
+  if (!mapped) return null;
+  if (Array.isArray(mapped.__missing_catalog_queries) && mapped.__missing_catalog_queries.length) {
+    setImmediate(() => {
+      enqueueMissingCatalogSignalsForIngredientPlanV2({ planV2: mapped, ctx, logger, caller }).catch((err) => {
+        logger?.warn?.(
+          { err: err && err.message ? err.message : String(err) },
+          'aurora bff: async missing-catalog enqueue failed',
+        );
+      });
+    });
+  }
+  return sanitizeIngredientPlanV2Payload(mapped);
 }
 
 function buildRecoEntryChips(language) {
@@ -24656,10 +25488,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
 
             if (ingredientPlan) {
-              ingredientPlanV2 = buildIngredientPlanV2({
+              ingredientPlanV2 = await buildIngredientPlanV2WithFallbackSync({
                 plan: ingredientPlan,
                 profile: profileSummary || profile || {},
                 catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                ctx,
+                logger,
+                caller: 'analysis_skin_ingredient_plan_v2',
               });
             }
 
@@ -28839,10 +29674,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
         if (mappedIngredientPlan) {
-          mappedIngredientPlanV2 = buildIngredientPlanV2({
+          mappedIngredientPlanV2 = await buildIngredientPlanV2WithFallbackSync({
             plan: mappedIngredientPlan,
             profile: profile || {},
             catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            ctx,
+            logger,
+            caller: 'chat_reco_ingredient_plan_v2',
           });
         }
 
@@ -28872,10 +29710,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
             if (!mappedIngredientPlan) {
               mappedIngredientPlan = planForMatcher;
-              mappedIngredientPlanV2 = buildIngredientPlanV2({
+              mappedIngredientPlanV2 = await buildIngredientPlanV2WithFallbackSync({
                 plan: mappedIngredientPlan,
                 profile: profile || {},
                 catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                ctx,
+                logger,
+                caller: 'chat_reco_matcher_ingredient_plan_v2',
               });
             }
 
@@ -30370,6 +31211,9 @@ const __internal = {
   resolveCatalogProductForProductInput,
   extractProductPriceFromHtml,
   normalizePriceObject,
+  runIngredientExternalExecutorForIngredient,
+  buildIngredientExternalExecutorBundleForPlan,
+  buildIngredientPlanV2WithFallbackSync,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,

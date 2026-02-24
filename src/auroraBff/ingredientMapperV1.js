@@ -12,6 +12,14 @@ const DEFAULT_PRODUCT_CATALOG_PATH = path.join(
   'products',
   'product_catalog_seed.json',
 );
+const EXTERNAL_SOURCE_PRIORITY = Object.freeze(['amazon', 'google', 'reddit', 'xiaohongshu']);
+const SOURCE_CONFIDENCE = Object.freeze({
+  kb: 0.95,
+  amazon: 0.78,
+  google: 0.62,
+  reddit: 0.56,
+  xiaohongshu: 0.56,
+});
 
 const INGREDIENT_ALIAS_TO_CANONICAL = Object.freeze({
   ceramide: 'ceramide_np',
@@ -453,6 +461,43 @@ function parseNumericPrice(value) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function parseRatingValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (n < 0 || n > 5) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function parseRatingCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.max(0, Math.trunc(n));
+}
+
+function normalizeUrl(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (!/^https?:\/\//i.test(text)) return null;
+  return text;
+}
+
+function normalizeSource(value) {
+  const token = normalizeToken(value);
+  if (!token) return 'kb';
+  if (token === 'xhs' || token === 'xiaohongshu') return 'xiaohongshu';
+  if (token === 'amazon' || token === 'google' || token === 'reddit' || token === 'kb') return token;
+  return 'kb';
+}
+
+function normalizeQueryKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 160);
+}
+
 function resolveCanonicalIngredientId(value) {
   const token = normalizeToken(value);
   if (!token) return null;
@@ -496,6 +541,16 @@ function parseCatalogProduct(raw) {
     price,
     currency,
     price_tier: priceTier,
+    thumb_url: normalizeUrl(obj.thumb_url || obj.thumbUrl || obj.image_url || obj.imageUrl || obj.image),
+    rating_value: parseRatingValue(obj.rating_value || obj.ratingValue || obj.rating),
+    rating_count: parseRatingCount(obj.rating_count || obj.ratingCount || obj.review_count || obj.reviewCount),
+    pdp_url: normalizeUrl(obj.pdp_url || obj.pdpUrl || obj.url || obj.link),
+    source: normalizeSource(obj.source || 'kb'),
+    source_confidence:
+      parseNumericPrice(obj.source_confidence || obj.sourceConfidence) ??
+      SOURCE_CONFIDENCE.kb,
+    fallback_type: String(obj.fallback_type || obj.fallbackType || 'catalog').trim().toLowerCase() || 'catalog',
+    open_target: String(obj.open_target || obj.openTarget || 'external').trim().toLowerCase() || 'external',
   };
 }
 
@@ -1008,7 +1063,182 @@ function scoreCatalogCandidateForIngredient(candidate, ingredientId, budgetTier)
   return score;
 }
 
-function selectIngredientProducts({ ingredientId, budgetTier, catalogRows, maxCompetitors = 2, maxDupes = 1 }) {
+function buildExternalSearchUrl(source, queryText) {
+  const q = String(queryText || '').trim();
+  if (!q) return null;
+  const encoded = encodeURIComponent(q);
+  if (source === 'amazon') return `https://www.amazon.com/s?k=${encoded}`;
+  if (source === 'reddit') return `https://www.reddit.com/search/?q=${encoded}`;
+  if (source === 'xiaohongshu') return `https://www.xiaohongshu.com/search_result?keyword=${encoded}`;
+  if (source === 'google') return `https://www.google.com/search?q=${encoded}`;
+  return null;
+}
+
+function buildExternalFallbackCandidates({ ingredientId, ingredientName, budgetTier }) {
+  const id = resolveCanonicalIngredientId(ingredientId) || normalizeToken(ingredientId) || 'ingredient';
+  const readableName = String(ingredientName || resolveIngredientName(id)).trim() || 'Ingredient';
+  const budgetHint =
+    budgetTier && budgetTier !== 'unknown'
+      ? budgetTier === 'low'
+        ? 'budget'
+        : budgetTier === 'high'
+          ? 'premium'
+          : 'mid-range'
+      : 'best';
+  const query = `${readableName} skincare product ${budgetHint}`;
+  const fallbackTiers = budgetTier === 'unknown'
+    ? ['mid', 'high', 'low', 'low']
+    : [budgetTier, budgetTier, 'low', 'mid'];
+  const hosts = {
+    amazon: 'amazon.com',
+    google: 'google.com',
+    reddit: 'reddit.com',
+    xiaohongshu: 'xiaohongshu.com',
+  };
+  const labels = {
+    amazon: 'Amazon',
+    google: 'Google',
+    reddit: 'Reddit',
+    xiaohongshu: 'Xiaohongshu',
+  };
+
+  const out = [];
+  for (let idx = 0; idx < EXTERNAL_SOURCE_PRIORITY.length; idx += 1) {
+    const source = EXTERNAL_SOURCE_PRIORITY[idx];
+    const pdpUrl = buildExternalSearchUrl(source, query);
+    if (!pdpUrl) continue;
+    const priceTier = fallbackTiers[idx] || fallbackTiers[fallbackTiers.length - 1] || 'mid';
+    out.push({
+      product_id: `ext_${source}_${id}`,
+      name: `${labels[source]}: ${readableName}`,
+      brand: labels[source],
+      price: null,
+      currency: null,
+      price_tier: normalizeBudgetTier(priceTier),
+      why_match: `Fallback search candidate for ${readableName}.`,
+      source_block: idx === 2 ? 'dupe' : 'competitor',
+      thumb_url: `https://www.google.com/s2/favicons?domain=${hosts[source]}&sz=64`,
+      rating_value: null,
+      rating_count: null,
+      pdp_url: pdpUrl,
+      source,
+      source_confidence: SOURCE_CONFIDENCE[source] || 0.5,
+      fallback_type: 'search',
+      open_target: 'external',
+    });
+  }
+  return {
+    query,
+    normalized_query: normalizeQueryKey(query),
+    candidates: out,
+  };
+}
+
+function normalizeExternalExecutorCandidate(rawCandidate, {
+  idx = 0,
+  ingredientId,
+  ingredientLabel,
+  budgetTier,
+} = {}) {
+  const candidate = normalizeObject(rawCandidate);
+  if (!candidate) return null;
+
+  const source = normalizeSource(candidate.source || candidate.source_type || candidate.sourceType || 'google');
+  const candidateName = String(candidate.name || candidate.title || '').trim();
+  const fallbackName = `${source.toUpperCase()} · ${ingredientLabel || resolveIngredientName(ingredientId)}`;
+  const name = candidateName || fallbackName;
+  const productId = String(candidate.product_id || candidate.productId || '').trim() ||
+    `ext_exec_${source}_${normalizeToken(ingredientId)}_${idx + 1}`;
+  if (!productId || !name) return null;
+
+  let price = parseNumericPrice(
+    candidate.price ??
+    candidate.price_amount ??
+    candidate.priceAmount ??
+    candidate.amount ??
+    candidate.price_usd ??
+    candidate.priceUsd,
+  );
+  const currency = String(candidate.currency || '').trim() || null;
+  const ratingValue = parseRatingValue(candidate.rating_value ?? candidate.ratingValue ?? candidate.rating);
+  const ratingCount = parseRatingCount(
+    candidate.rating_count ??
+    candidate.ratingCount ??
+    candidate.review_count ??
+    candidate.reviewCount,
+  );
+  let priceTier = normalizePriceTier(
+    candidate.price_tier ||
+    candidate.priceTier ||
+    candidate.price_band ||
+    candidate.priceBand,
+  );
+  if (!priceTier && price != null) {
+    if (price < 20) priceTier = 'low';
+    else if (price > 60) priceTier = 'high';
+    else priceTier = 'mid';
+  }
+  if (!priceTier) priceTier = budgetTier === 'unknown' ? 'mid' : normalizeBudgetTier(budgetTier);
+
+  const sourceConfidence =
+    parseNumericPrice(candidate.source_confidence || candidate.sourceConfidence) ??
+    SOURCE_CONFIDENCE[source] ??
+    SOURCE_CONFIDENCE.google;
+
+  return {
+    product_id: productId,
+    name,
+    brand: String(candidate.brand || '').trim() || null,
+    ...(price != null ? { price } : {}),
+    ...(currency ? { currency } : {}),
+    price_tier: priceTier,
+    why_match: String(candidate.why_match || candidate.whyMatch || '').trim() ||
+      `Realtime external executor candidate from ${source}.`,
+    source_block: String(candidate.source_block || candidate.sourceBlock || '').trim() || 'competitor',
+    ...(normalizeUrl(candidate.thumb_url || candidate.thumbUrl || candidate.image_url || candidate.imageUrl)
+      ? { thumb_url: normalizeUrl(candidate.thumb_url || candidate.thumbUrl || candidate.image_url || candidate.imageUrl) }
+      : {}),
+    ...(ratingValue != null ? { rating_value: ratingValue } : {}),
+    ...(ratingCount != null ? { rating_count: ratingCount } : {}),
+    ...(normalizeUrl(candidate.pdp_url || candidate.pdpUrl || candidate.url || candidate.link)
+      ? { pdp_url: normalizeUrl(candidate.pdp_url || candidate.pdpUrl || candidate.url || candidate.link) }
+      : {}),
+    source,
+    source_confidence: sourceConfidence,
+    fallback_type: String(candidate.fallback_type || candidate.fallbackType || 'external').trim().toLowerCase() || 'external',
+    open_target: String(candidate.open_target || candidate.openTarget || 'external').trim().toLowerCase() || 'external',
+    __executor: true,
+  };
+}
+
+function resolveExternalInputForIngredient(mapLike, ingredientId) {
+  const mapObj = normalizeObject(mapLike);
+  if (!mapObj) return null;
+  const canonicalId = resolveCanonicalIngredientId(ingredientId);
+  const keys = Array.from(new Set(
+    [
+      canonicalId,
+      normalizeToken(canonicalId),
+      ingredientId,
+      normalizeToken(ingredientId),
+    ].filter(Boolean),
+  ));
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(mapObj, key)) continue;
+    return mapObj[key];
+  }
+  return null;
+}
+
+function selectIngredientProducts({
+  ingredientId,
+  budgetTier,
+  catalogRows,
+  maxCompetitors = 2,
+  maxDupes = 1,
+  externalCandidates = null,
+  externalMeta = null,
+}) {
   const candidates = asArray(catalogRows)
     .map((row) => normalizeObject(row))
     .filter(Boolean)
@@ -1037,10 +1267,74 @@ function selectIngredientProducts({ ingredientId, budgetTier, catalogRows, maxCo
     price_tier: normalizeBudgetTier(product.price_tier),
     why_match: reasonText,
     source_block: sourceBlock,
+    ...(normalizeUrl(product.thumb_url) ? { thumb_url: normalizeUrl(product.thumb_url) } : {}),
+    ...(parseRatingValue(product.rating_value) != null ? { rating_value: parseRatingValue(product.rating_value) } : {}),
+    ...(parseRatingCount(product.rating_count) != null ? { rating_count: parseRatingCount(product.rating_count) } : {}),
+    ...(normalizeUrl(product.pdp_url) ? { pdp_url: normalizeUrl(product.pdp_url) } : {}),
+    source: normalizeSource(product.source || 'kb'),
+    source_confidence:
+      parseNumericPrice(product.source_confidence) ??
+      SOURCE_CONFIDENCE[normalizeSource(product.source || 'kb')] ??
+      SOURCE_CONFIDENCE.kb,
+    fallback_type: String(product.fallback_type || 'catalog').trim().toLowerCase() || 'catalog',
+    open_target: String(product.open_target || 'external').trim().toLowerCase() || 'external',
   });
 
-  if (!unique.length) {
-    return { competitors: [], dupes: [] };
+  const ingredientLabel = resolveIngredientName(ingredientId);
+  const fallbackPack = buildExternalFallbackCandidates({
+    ingredientId,
+    ingredientName: ingredientLabel,
+    budgetTier,
+  });
+  const externalExecutorCandidates = asArray(externalCandidates)
+    .map((candidate, idx) =>
+      normalizeExternalExecutorCandidate(candidate, {
+        idx,
+        ingredientId,
+        ingredientLabel,
+        budgetTier,
+      }))
+    .filter(Boolean);
+  const fallbackCandidates = Array.isArray(fallbackPack.candidates) ? fallbackPack.candidates : [];
+  const fallbackCandidateRows = [];
+  const seenFallback = new Set();
+  const pushFallback = (candidate) => {
+    const row = normalizeObject(candidate);
+    if (!row) return;
+    const key = String(row.product_id || row.pdp_url || '').trim().toLowerCase();
+    if (!key || seenFallback.has(key)) return;
+    seenFallback.add(key);
+    fallbackCandidateRows.push(row);
+  };
+  for (const row of externalExecutorCandidates) pushFallback(row);
+  for (const row of fallbackCandidates) pushFallback(row);
+  const fallbackGoogleUrl =
+    normalizeUrl(
+      fallbackCandidates.find((candidate) => normalizeSource(candidate.source) === 'google')?.pdp_url,
+    ) || normalizeUrl(buildExternalSearchUrl('google', `${ingredientLabel} skincare product`));
+  const fallbackPrimaryUrl =
+    normalizeUrl(fallbackCandidateRows[0]?.pdp_url) ||
+    fallbackGoogleUrl ||
+    null;
+  const localCatalogMissing = unique.length === 0;
+  const localCatalogInsufficient = unique.length < Math.max(1, maxCompetitors + maxDupes);
+
+  if (!unique.length && !fallbackCandidates.length) {
+    return {
+      competitors: [],
+      dupes: [],
+      external_fallback_used: false,
+      missing_catalog_signal: {
+        ingredient_id: ingredientId,
+        ingredient_name: ingredientLabel,
+        query: fallbackPack.query,
+        normalized_query: fallbackPack.normalized_query,
+        source: 'catalog_miss',
+        candidate_url: fallbackGoogleUrl,
+        capture_mode: 'sync_external_fallback',
+        status: 'catalog_miss_no_external_candidate',
+      },
+    };
   }
 
   const remaining = unique.slice();
@@ -1077,30 +1371,103 @@ function selectIngredientProducts({ ingredientId, budgetTier, catalogRows, maxCo
     competitors.push(remaining.shift());
   }
 
-  const ingredientLabel = resolveIngredientName(ingredientId);
-  return {
-    competitors: competitors
+  const selectedProductIds = new Set();
+  const competitorRows = competitors
       .slice(0, maxCompetitors)
-      .map((product) =>
-        toProductView(
+      .map((product) => {
+        selectedProductIds.add(String(product.product_id || ''));
+        return toProductView(
           product,
           'competitor',
           `Contains ${ingredientLabel} and fits the current tolerance strategy.`,
+        );
+      });
+
+  const dupeRows = dupe
+    ? [
+        toProductView(
+          dupe,
+          'dupe',
+          `Budget-friendly alternative featuring ${ingredientLabel}.`,
         ),
+      ].slice(0, maxDupes)
+    : [];
+  if (dupe) selectedProductIds.add(String(dupe.product_id || ''));
+
+  const fallbackQueue = fallbackCandidateRows.filter((candidate) => !selectedProductIds.has(String(candidate.product_id || '')));
+  let fallbackUsed = false;
+  let externalExecutorUsed = false;
+
+  while (competitorRows.length < maxCompetitors && fallbackQueue.length) {
+    const candidate = fallbackQueue.shift();
+    if (!candidate) break;
+    fallbackUsed = true;
+    if (candidate.__executor === true) externalExecutorUsed = true;
+    competitorRows.push(
+      toProductView(
+        candidate,
+        'competitor',
+        `Fallback from ${String(candidate.source || 'external')} while catalog coverage is incomplete.`,
       ),
-    dupes: dupe
-      ? [
-          toProductView(
-            dupe,
-            'dupe',
-            `Budget-friendly alternative featuring ${ingredientLabel}.`,
+    );
+  }
+  while (dupeRows.length < maxDupes && fallbackQueue.length) {
+    const candidate = fallbackQueue.shift();
+    if (!candidate) break;
+    fallbackUsed = true;
+    if (candidate.__executor === true) externalExecutorUsed = true;
+    dupeRows.push(
+      toProductView(
+        candidate,
+        'dupe',
+        `Fallback from ${String(candidate.source || 'external')} while catalog coverage is incomplete.`,
+      ),
+    );
+  }
+
+  const metaObj = normalizeObject(externalMeta);
+  const normalizedMetaQuery = normalizeQueryKey(metaObj?.query || metaObj?.normalized_query || fallbackPack.query);
+  const missingSignal = localCatalogMissing || localCatalogInsufficient || fallbackUsed
+    ? {
+        ingredient_id: ingredientId,
+        ingredient_name: ingredientLabel,
+        query: String(metaObj?.query || fallbackPack.query || '').trim() || fallbackPack.query,
+        normalized_query: normalizedMetaQuery || fallbackPack.normalized_query,
+        source: localCatalogMissing ? 'catalog_miss' : 'catalog_partial',
+        candidate_url: fallbackPrimaryUrl,
+        capture_mode: String(
+          metaObj?.capture_mode ||
+          (externalExecutorUsed ? 'sync_external_executor' : 'sync_external_fallback'),
+        ).trim() || 'sync_external_fallback',
+        status: String(
+          metaObj?.status ||
+          (
+            fallbackUsed
+              ? (externalExecutorUsed ? 'external_executor_returned' : 'external_fallback_returned')
+              : (localCatalogMissing ? 'catalog_miss' : 'catalog_partial')
           ),
-        ].slice(0, maxDupes)
-      : [],
+        ).trim() || (localCatalogMissing ? 'catalog_miss' : 'catalog_partial'),
+        ...(String(metaObj?.failure_reason || '').trim()
+          ? { failure_reason: String(metaObj.failure_reason).trim() }
+          : {}),
+      }
+    : null;
+
+  return {
+    competitors: competitorRows.slice(0, maxCompetitors),
+    dupes: dupeRows.slice(0, maxDupes),
+    external_fallback_used: fallbackUsed,
+    ...(missingSignal ? { missing_catalog_signal: missingSignal } : {}),
   };
 }
 
-function buildIngredientPlanV2({ plan, profile, catalogPath } = {}) {
+function buildIngredientPlanV2({
+  plan,
+  profile,
+  catalogPath,
+  externalCandidatesByIngredient = null,
+  externalMetaByIngredient = null,
+} = {}) {
   const base = normalizeObject(plan);
   if (!base) return null;
   const profileObj = normalizeObject(profile) || {};
@@ -1112,6 +1479,8 @@ function buildIngredientPlanV2({ plan, profile, catalogPath } = {}) {
 
   const targetsDeduped = dedupeTargetsByCanonicalId(base.targets);
   const filteredTargets = [];
+  const missingCatalogSignals = [];
+  let externalFallbackUsed = false;
   for (const target of targetsDeduped) {
     const avoid = avoidMap.get(target.ingredient_id);
     if (avoid) {
@@ -1125,13 +1494,31 @@ function buildIngredientPlanV2({ plan, profile, catalogPath } = {}) {
   }
 
   const targets = filteredTargets.slice(0, 10).map((target) => {
-    const products = selectIngredientProducts({
+    const externalCandidates = resolveExternalInputForIngredient(
+      externalCandidatesByIngredient,
+      target.ingredient_id,
+    );
+    const externalMeta = resolveExternalInputForIngredient(
+      externalMetaByIngredient,
+      target.ingredient_id,
+    );
+    const selection = selectIngredientProducts({
       ingredientId: target.ingredient_id,
       budgetTier,
       catalogRows: catalog,
       maxCompetitors: 2,
       maxDupes: 1,
+      externalCandidates,
+      externalMeta,
     });
+    if (selection.external_fallback_used) externalFallbackUsed = true;
+    if (selection.missing_catalog_signal) {
+      missingCatalogSignals.push({
+        ...selection.missing_catalog_signal,
+        ingredient_id: target.ingredient_id,
+        ingredient_name: resolveIngredientName(target.ingredient_id),
+      });
+    }
     const why = target.rationale.length
       ? target.rationale.map((entry) => `Rule signal: ${entry}`).slice(0, 4)
       : ['Matched by profile + concern signals.'];
@@ -1146,7 +1533,11 @@ function buildIngredientPlanV2({ plan, profile, catalogPath } = {}) {
       priority_level: priorityLevelFromScore(target.priority_score_0_100),
       why,
       usage_guidance: usageGuidance,
-      products,
+      products: {
+        competitors: Array.isArray(selection.competitors) ? selection.competitors : [],
+        dupes: Array.isArray(selection.dupes) ? selection.dupes : [],
+      },
+      external_fallback_used: Boolean(selection.external_fallback_used),
     };
   });
 
@@ -1164,7 +1555,7 @@ function buildIngredientPlanV2({ plan, profile, catalogPath } = {}) {
     description: String(row.description || row.message || '').trim() || 'Potential routine conflict detected.',
   }));
 
-  return {
+  const out = {
     schema_version: 'aurora.ingredient_plan.v2',
     created_at: new Date().toISOString(),
     intensity: mapIntensityV2(base.intensity),
@@ -1177,6 +1568,18 @@ function buildIngredientPlanV2({ plan, profile, catalogPath } = {}) {
       diversified_when_unknown: budgetTier === 'unknown',
     },
   };
+  if (externalFallbackUsed) out.external_fallback_used = true;
+  if (missingCatalogSignals.length) {
+    out.__missing_catalog_queries = Array.from(
+      new Map(
+        missingCatalogSignals
+          .map((item) => normalizeObject(item))
+          .filter(Boolean)
+          .map((item) => [String(item.normalized_query || ''), item]),
+      ).values(),
+    );
+  }
+  return out;
 }
 
 module.exports = {
