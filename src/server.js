@@ -2746,10 +2746,14 @@ function promoteHttpsVariant(url, candidates) {
   const normalized = toHttpImageUrl(url);
   if (!normalized) return '';
   if (isHttpsImageUrl(normalized)) return normalized;
+  const candidateList = Array.isArray(candidates) ? candidates : [];
   const key = imageCanonicalKey(normalized);
-  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+  for (const candidate of candidateList) {
     if (!isHttpsImageUrl(candidate)) continue;
     if (imageCanonicalKey(candidate) === key) return candidate;
+  }
+  for (const candidate of candidateList) {
+    if (isHttpsImageUrl(candidate)) return candidate;
   }
   return normalized;
 }
@@ -2802,7 +2806,8 @@ function normalizeProductImages(product) {
     promoteHttpsVariant(product.image_url, candidates) ||
     promoteHttpsVariant(product.imageUrl, candidates) ||
     promoteHttpsVariant(product.image, candidates);
-  const primaryImageUrl = explicitPrimary || candidates[0] || '';
+  const firstHttpsCandidate = candidates.find((candidate) => isHttpsImageUrl(candidate)) || '';
+  const primaryImageUrl = explicitPrimary || firstHttpsCandidate || candidates[0] || '';
 
   const existingImages = Array.isArray(product.images) ? product.images : [];
   const existingRenderableImageUrls = extractImageUrlsFromCollection(existingImages);

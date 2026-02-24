@@ -562,8 +562,8 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
                   image_url: null,
                   images: [],
                   image_urls: [
-                    'http://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
-                    'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
+                    'http://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png?width=2048',
+                    'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png?width=1200',
                     'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
                   ],
                   price: 168,
@@ -624,11 +624,11 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     );
     expect(externalSeedProduct).toBeTruthy();
     expect(String(externalSeedProduct.image_url || '')).toBe(
-      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
+      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png?width=1200',
     );
     expect(Array.isArray(externalSeedProduct.images)).toBe(true);
     expect(String(externalSeedProduct.images[0] || '')).toBe(
-      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
+      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png?width=1200',
     );
     nock.cleanAll();
     expect(upstreamScope.isDone()).toBe(true);
