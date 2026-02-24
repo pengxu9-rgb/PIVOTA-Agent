@@ -144,3 +144,33 @@ test('travelReplyComposer handles mixed humidity + product follow-up in one answ
   assert.match(result.text, /湿度: 56% -> 76% \(变化 \+20%\)/);
   assert.match(result.text, /(面霜|面膜|防晒档位|主推单品)/);
 });
+
+test('travelReplyComposer compacts repeated same-primary follow-up instead of replaying full template', () => {
+  const first = composeTravelReply({
+    message: '那边天气怎么样？会不会很湿？',
+    language: 'CN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  const second = composeTravelReply({
+    message: '湿度有变化吗？有什么面霜或者面膜可以提前准备？',
+    language: 'CN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+    previousFocus: first.focus,
+    previousReplySig: first.reply_sig,
+  });
+
+  assert.equal(first.focus, 'humidity');
+  assert.equal(second.focus, 'humidity+products');
+  assert.notEqual(first.text, second.text);
+  assert.match(second.text, /更具体一点/);
+  assert.match(second.text, /湿度: 56% -> 76% \(变化 \+20%\)/);
+  assert.match(second.text, /(面霜|面膜|防晒档位|主推单品)/);
+  assert.doesNotMatch(second.text, /逐日天气：/);
+});

@@ -115,12 +115,13 @@ function formatForecastLine({ language, row }) {
   return parts.join(' · ');
 }
 
-function buildForecastLines({ language, travelReadiness }) {
+function buildForecastLines({ language, travelReadiness, limit = 5 }) {
   const rows = Array.isArray(travelReadiness && travelReadiness.forecast_window)
     ? travelReadiness.forecast_window
     : [];
   const out = [];
-  for (const row of rows.slice(0, 5)) {
+  const maxItems = Number.isFinite(Number(limit)) ? Math.max(0, Math.trunc(Number(limit))) : 5;
+  for (const row of rows.slice(0, maxItems)) {
     const line = formatForecastLine({ language, row });
     if (!line) continue;
     out.push(line);
@@ -241,6 +242,33 @@ function detectTravelFocus(message) {
   return detectTravelFoci(message)[0] || FOCUS_ENUM.GENERAL;
 }
 
+function parseFocusTokenSet(focusRaw) {
+  const raw = normalizeText(focusRaw, 120).toLowerCase();
+  if (!raw) return [];
+  return raw
+    .split('+')
+    .map((token) => normalizeText(token, 40).toLowerCase())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function buildReplySigTail(replySigRaw) {
+  const sig = normalizeText(replySigRaw, 320).toLowerCase();
+  if (!sig) return '';
+  const parts = sig.split('|');
+  if (parts.length <= 1) return sig;
+  return parts.slice(1).join('|');
+}
+
+function asksForecastDetails(message) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  return (
+    /\b(forecast|daily|day[-\s]?by[-\s]?day|this week|next week|week ahead|weather)\b/i.test(text) ||
+    /(逐日|每天|本周|下周|天气|预报)/.test(text)
+  );
+}
+
 function getMetricByFocus(deltaVsHome, focus) {
   if (!isPlainObject(deltaVsHome)) return null;
   if (focus === FOCUS_ENUM.TEMPERATURE) return deltaVsHome.temperature;
@@ -358,7 +386,7 @@ function buildComparisonLines({ language, foci, travelReadiness }) {
   return lines;
 }
 
-function buildActionLines({ language, foci, travelReadiness }) {
+function buildActionLines({ language, foci, travelReadiness, concise = false }) {
   const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
     ? travelReadiness.delta_vs_home
     : {};
@@ -419,16 +447,19 @@ function buildActionLines({ language, foci, travelReadiness }) {
   const adaptive = Array.isArray(travelReadiness && travelReadiness.adaptive_actions)
     ? travelReadiness.adaptive_actions
     : [];
+  const adaptiveLimit = concise ? 1 : 3;
+  let adaptiveUsed = 0;
   for (const row of adaptive) {
     const text = normalizeText(row && row.what_to_do, 280);
     if (text) lines.push(text);
-    if (lines.length >= 4) break;
+    adaptiveUsed += text ? 1 : 0;
+    if (adaptiveUsed >= adaptiveLimit) break;
   }
 
-  return uniqueStrings(lines, 3);
+  return uniqueStrings(lines, concise ? 2 : 3);
 }
 
-function buildProductLines({ language, foci, travelReadiness }) {
+function buildProductLines({ language, foci, travelReadiness, concise = false }) {
   const shopping = isPlainObject(travelReadiness && travelReadiness.shopping_preview)
     ? travelReadiness.shopping_preview
     : {};
@@ -518,7 +549,7 @@ function buildProductLines({ language, foci, travelReadiness }) {
     }
   }
 
-  return uniqueStrings(lines, 4);
+  return uniqueStrings(lines, concise ? 3 : 4);
 }
 
 function buildReplySignature({ foci, travelReadiness, homeRegion }) {
@@ -587,13 +618,27 @@ function composeTravelReply({
   const focusToken = foci.join('+');
   const replySig = buildReplySignature({ foci, travelReadiness: readiness, homeRegion: homeRegionText });
   const normalizedPrevFocus = normalizeText(previousFocus, 60).toLowerCase();
-  const normalizedPrevSig = normalizeText(previousReplySig, 260).toLowerCase();
+  const currentReplySigTail = buildReplySigTail(replySig);
+  const previousReplySigTail = buildReplySigTail(previousReplySig);
+  const previousFocusTokens = parseFocusTokenSet(previousFocus);
+  const samePrimaryFocus = Boolean(
+    foci[0] &&
+      (normalizedPrevFocus === foci[0] || previousFocusTokens[0] === foci[0] || previousFocusTokens.includes(foci[0])),
+  );
   const normalizedPrevQuestionHash = normalizeText(previousQuestionHash, 40).toLowerCase();
   const normalizedQuestionHash = normalizeText(questionHash, 40).toLowerCase();
   const repeated = Boolean(
-    (normalizedPrevFocus === focusToken || normalizedPrevFocus === foci[0]) &&
-      (normalizedPrevSig === replySig || (normalizedPrevQuestionHash && normalizedPrevQuestionHash === normalizedQuestionHash)),
+    (normalizedPrevFocus === focusToken || samePrimaryFocus) &&
+      ((previousReplySigTail && previousReplySigTail === currentReplySigTail) ||
+        (normalizedPrevQuestionHash && normalizedPrevQuestionHash === normalizedQuestionHash)),
   );
+  const followupCompact = Boolean(
+    samePrimaryFocus &&
+      previousReplySigTail &&
+      previousReplySigTail === currentReplySigTail &&
+      normalizedPrevFocus !== focusToken,
+  );
+  const includeForecastSection = !followupCompact || asksForecastDetails(message);
 
   const directAnswer = buildPrimaryAnswer({
     language: lang,
@@ -625,12 +670,14 @@ function composeTravelReply({
     language: lang,
     foci,
     travelReadiness: readiness,
+    concise: followupCompact,
   });
 
   const productLines = buildProductLines({
     language: lang,
     foci,
     travelReadiness: readiness,
+    concise: followupCompact,
   });
 
   const baselineGapLine = homeRegionText && !homeBaselineAvailable
@@ -644,7 +691,13 @@ function composeTravelReply({
   const envSourceLine = normalizeText(envSource, 60)
     ? t(lang, `数据来源：${normalizeText(envSource, 60)}。`, `Source: ${normalizeText(envSource, 60)}.`)
     : '';
-  const forecastLines = buildForecastLines({ language: lang, travelReadiness: readiness });
+  const forecastLines = includeForecastSection
+    ? buildForecastLines({
+      language: lang,
+      travelReadiness: readiness,
+      limit: followupCompact ? 2 : 5,
+    })
+    : [];
   const alertsSection = buildAlertsSection({ language: lang, travelReadiness: readiness });
   const qualitySections = [];
   if (comparisonLines.length) qualitySections.push('answer_delta');
