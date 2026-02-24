@@ -2833,6 +2833,12 @@ function buildSearchTrace({
   queryClass = null,
   rewriteGate = null,
   associationPlan = null,
+  slotState = null,
+  rawQueryHasScenarioSignal = null,
+  intentScenarioName = null,
+  associationScenarioKey = null,
+  clarifyReasonBeforeDedup = null,
+  clarifyReasonAfterDedup = null,
   flagsSnapshot = null,
 }) {
   return {
@@ -2848,6 +2854,28 @@ function buildSearchTrace({
     association_plan:
       associationPlan && typeof associationPlan === 'object' && !Array.isArray(associationPlan)
         ? associationPlan
+        : null,
+    raw_query_has_scenario_signal:
+      typeof rawQueryHasScenarioSignal === 'boolean' ? rawQueryHasScenarioSignal : null,
+    intent_scenario_name:
+      typeof intentScenarioName === 'string' && intentScenarioName.trim()
+        ? intentScenarioName.trim()
+        : null,
+    association_scenario_key:
+      typeof associationScenarioKey === 'string' && associationScenarioKey.trim()
+        ? associationScenarioKey.trim()
+        : null,
+    clarify_reason_before_dedup:
+      typeof clarifyReasonBeforeDedup === 'string' && clarifyReasonBeforeDedup.trim()
+        ? clarifyReasonBeforeDedup.trim()
+        : null,
+    clarify_reason_after_dedup:
+      typeof clarifyReasonAfterDedup === 'string' && clarifyReasonAfterDedup.trim()
+        ? clarifyReasonAfterDedup.trim()
+        : null,
+    slot_state:
+      slotState && typeof slotState === 'object' && !Array.isArray(slotState)
+        ? slotState
         : null,
     flags_snapshot:
       flagsSnapshot && typeof flagsSnapshot === 'object' && !Array.isArray(flagsSnapshot)
@@ -17257,6 +17285,27 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           queryClass: searchDecision?.query_class || traceQueryClass,
           rewriteGate: traceRewriteGate,
           associationPlan: traceAssociationPlan,
+          slotState: searchDecision?.slot_state || null,
+          rawQueryHasScenarioSignal:
+            typeof searchDecision?.raw_query_has_scenario_signal === 'boolean'
+              ? searchDecision.raw_query_has_scenario_signal
+              : null,
+          intentScenarioName:
+            typeof searchDecision?.intent_scenario_name === 'string'
+              ? searchDecision.intent_scenario_name
+              : null,
+          associationScenarioKey:
+            typeof searchDecision?.association_scenario_key === 'string'
+              ? searchDecision.association_scenario_key
+              : null,
+          clarifyReasonBeforeDedup:
+            typeof searchDecision?.clarify_reason_before_dedup === 'string'
+              ? searchDecision.clarify_reason_before_dedup
+              : null,
+          clarifyReasonAfterDedup:
+            typeof searchDecision?.clarify_reason_after_dedup === 'string'
+              ? searchDecision.clarify_reason_after_dedup
+              : null,
           flagsSnapshot: traceFlagsSnapshot,
           intent: effectiveIntent,
           cacheStage,
@@ -17794,10 +17843,19 @@ const UI_CHAT_SCENARIO_OPTIONS = [
 const UI_CHAT_SHOPPING_INTENT_RE =
   /(推荐|商品|买|购买|清单|套装|口红|粉底|化妆|刷|护肤|品牌|预算|travel|hiking|leash|products?|recommend|buy|shopping|gift|skincare|makeup)/i;
 
-const UI_CHAT_SCENARIO_CLARIFY_REASON_CODES = new Set([
-  'CLARIFY_SCENARIO',
-  'CLARIFY_AMBIGUOUS_QUERY',
-]);
+const UI_CHAT_CLARIFY_SLOT_BY_REASON = {
+  CLARIFY_SCENARIO: 'scenario',
+  CLARIFY_CATEGORY_SCOPE: 'category',
+  CLARIFY_BEAUTY_CATEGORY: 'category',
+  CLARIFY_PET_CATEGORY: 'category',
+  CLARIFY_AMBIGUOUS_QUERY: 'category',
+  CLARIFY_SHOPPING_INTENT: 'category',
+  CLARIFY_GIFT_SCOPE: 'category',
+  CLARIFY_ATTRIBUTE: 'budget',
+  CLARIFY_BUDGET: 'budget',
+  CLARIFY_BRAND: 'brand',
+};
+const UI_CHAT_SCENARIO_CLARIFY_REASON_CODES = new Set(['CLARIFY_SCENARIO']);
 
 function uiChatNormalizeText(input) {
   return String(input || '')
@@ -17817,6 +17875,55 @@ function uiChatExtractText(message) {
       .trim();
   }
   return '';
+}
+
+function uiChatNormalizeSlot(slot) {
+  const normalized = String(slot || '')
+    .trim()
+    .toLowerCase();
+  return ['scenario', 'category', 'budget', 'brand'].includes(normalized) ? normalized : '';
+}
+
+function uiChatSlotFromReasonCode(reasonCode) {
+  const reason = String(reasonCode || '').trim();
+  return uiChatNormalizeSlot(UI_CHAT_CLARIFY_SLOT_BY_REASON[reason] || '');
+}
+
+function uiChatSafeParseJson(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return null;
+  }
+}
+
+function uiChatGetClarificationSlot(result) {
+  const explicit = uiChatNormalizeSlot(result?.clarification?.slot);
+  if (explicit) return explicit;
+  const fromReason = uiChatSlotFromReasonCode(result?.clarification?.reason_code);
+  if (fromReason) return fromReason;
+  const traceReasonCodes = result?.metadata?.search_trace?.reason_codes;
+  if (Array.isArray(traceReasonCodes)) {
+    for (const code of traceReasonCodes) {
+      const slot = uiChatSlotFromReasonCode(code);
+      if (slot) return slot;
+    }
+  }
+  return '';
+}
+
+function uiChatCollectAskedSlots(messages) {
+  const slots = new Set();
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message || message.role !== 'tool' || message.name !== 'pivota_shopping_tool') continue;
+    const parsed = uiChatSafeParseJson(uiChatExtractText(message) || message.content);
+    if (!parsed || typeof parsed !== 'object') continue;
+    const slot = uiChatGetClarificationSlot(parsed);
+    if (slot) slots.add(slot);
+  }
+  return Array.from(slots);
 }
 
 function uiChatParseScenarioSelection(text) {
@@ -17842,6 +17949,89 @@ function uiChatFindLatestScenarioSelection(messages) {
     const option = uiChatParseScenarioSelection(text);
     if (option) return { option, index, text };
   }
+  return null;
+}
+
+function uiChatFindLatestUserMessage(messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== 'user') continue;
+    const text = uiChatExtractText(message);
+    if (!text) continue;
+    return { text, index };
+  }
+  return null;
+}
+
+function uiChatSelectClarificationOptionByText(text, options) {
+  const message = String(text || '').trim();
+  if (!message || !Array.isArray(options) || options.length === 0) return null;
+  const idxMatch = message.match(/^([1-9])(?:[\).\s、]|$)/);
+  if (idxMatch) {
+    const idx = Number(idxMatch[1]) - 1;
+    if (idx >= 0 && idx < options.length) return String(options[idx]);
+  }
+  const normalizedMessage = uiChatNormalizeText(message);
+  for (const option of options) {
+    const candidate = String(option || '').trim();
+    if (!candidate) continue;
+    const normalizedOption = uiChatNormalizeText(candidate);
+    if (!normalizedOption) continue;
+    if (
+      normalizedMessage === normalizedOption ||
+      normalizedMessage.includes(normalizedOption) ||
+      normalizedOption.includes(normalizedMessage)
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function uiChatResolveClarificationSelection(toolResult, messages) {
+  const slot = uiChatGetClarificationSlot(toolResult);
+  if (!slot) return null;
+  const latestUser = uiChatFindLatestUserMessage(messages);
+  if (!latestUser?.text) return null;
+  const options = Array.isArray(toolResult?.clarification?.options)
+    ? toolResult.clarification.options
+    : [];
+  const optionSelection = uiChatSelectClarificationOptionByText(latestUser.text, options);
+
+  if (slot === 'scenario') {
+    const scenarioOption =
+      uiChatParseScenarioSelection(latestUser.text) ||
+      uiChatParseScenarioSelection(optionSelection || '');
+    if (!scenarioOption) return null;
+    return {
+      slot,
+      value: scenarioOption.key || scenarioOption.zh || scenarioOption.en,
+      option: scenarioOption,
+      source_text: latestUser.text,
+    };
+  }
+
+  if (optionSelection) {
+    return {
+      slot,
+      value: optionSelection,
+      source_text: latestUser.text,
+    };
+  }
+
+  if (slot === 'budget') {
+    const budgetLike =
+      latestUser.text.match(/(\$|¥|€|£)?\s*\d+\s*([\-~到至–—]|to)\s*(\$|¥|€|£)?\s*\d+/i) ||
+      latestUser.text.match(/(\$|¥|€|£)\s*\d+/i);
+    if (budgetLike) {
+      return {
+        slot,
+        value: budgetLike[0].trim(),
+        source_text: latestUser.text,
+      };
+    }
+  }
+
   return null;
 }
 
@@ -17879,7 +18069,7 @@ function uiChatGetClarificationReason(result) {
   if (typeof reason === 'string' && reason.trim()) return reason.trim();
   const reasonCodes = result?.metadata?.search_trace?.reason_codes;
   if (Array.isArray(reasonCodes)) {
-    const hit = reasonCodes.find((code) => UI_CHAT_SCENARIO_CLARIFY_REASON_CODES.has(String(code || '')));
+    const hit = reasonCodes.find((code) => uiChatSlotFromReasonCode(code));
     if (hit) return String(hit);
   }
   return '';
@@ -17888,11 +18078,97 @@ function uiChatGetClarificationReason(result) {
 function uiChatIsScenarioClarification(result) {
   const finalDecision = uiChatGetFinalDecision(result);
   if (finalDecision !== 'clarify') return false;
+  const slot = uiChatGetClarificationSlot(result);
+  if (slot === 'scenario') return true;
   const reason = uiChatGetClarificationReason(result);
   if (UI_CHAT_SCENARIO_CLARIFY_REASON_CODES.has(reason)) return true;
   const question = String(result?.clarification?.question || '').trim();
   if (!question) return false;
   return /场景|scenario|prioritize|哪一类|which/i.test(question);
+}
+
+function uiChatBuildFindProductsContext(args, messages) {
+  if (!uiChatIsFindProductsMultiOperation(args)) return null;
+  const askedSlots = uiChatCollectAskedSlots(messages);
+  const latestScenarioSelection = uiChatFindLatestScenarioSelection(messages);
+  const queryText = uiChatGetFindProductsQuery(args);
+  const queryScenarioSelection = uiChatParseScenarioSelection(queryText);
+  const scenarioSelection = latestScenarioSelection?.option || queryScenarioSelection;
+  const resolvedSlots = {
+    ...(scenarioSelection
+      ? {
+          scenario: scenarioSelection.key || scenarioSelection.zh || scenarioSelection.en,
+        }
+      : {}),
+  };
+  return {
+    resolved_slots: resolvedSlots,
+    asked_slots: askedSlots,
+    clarify_budget: {
+      max_rounds: 1,
+      used_rounds: askedSlots.length,
+    },
+  };
+}
+
+function uiChatMergeFindProductsContext(existingContext, computedContext) {
+  const source =
+    existingContext && typeof existingContext === 'object' && !Array.isArray(existingContext)
+      ? existingContext
+      : {};
+  const resolvedSource =
+    source.resolved_slots && typeof source.resolved_slots === 'object' && !Array.isArray(source.resolved_slots)
+      ? source.resolved_slots
+      : {};
+  const askedSource = Array.isArray(source.asked_slots) ? source.asked_slots : [];
+  const resolvedComputed =
+    computedContext?.resolved_slots &&
+    typeof computedContext.resolved_slots === 'object' &&
+    !Array.isArray(computedContext.resolved_slots)
+      ? computedContext.resolved_slots
+      : {};
+  const askedComputed = Array.isArray(computedContext?.asked_slots) ? computedContext.asked_slots : [];
+
+  const mergedAskedSlots = Array.from(
+    new Set(
+      [...askedSource, ...askedComputed]
+        .map((slot) => uiChatNormalizeSlot(slot))
+        .filter(Boolean),
+    ),
+  );
+
+  const maxRounds = Number.isFinite(Number(source?.clarify_budget?.max_rounds))
+    ? Math.max(0, Number(source.clarify_budget.max_rounds))
+    : Number(computedContext?.clarify_budget?.max_rounds || 1);
+  const usedRoundsSource = Number.isFinite(Number(source?.clarify_budget?.used_rounds))
+    ? Math.max(0, Number(source.clarify_budget.used_rounds))
+    : 0;
+  const usedRoundsComputed = Number.isFinite(Number(computedContext?.clarify_budget?.used_rounds))
+    ? Math.max(0, Number(computedContext.clarify_budget.used_rounds))
+    : mergedAskedSlots.length;
+
+  return {
+    ...source,
+    resolved_slots: {
+      ...resolvedComputed,
+      ...resolvedSource,
+    },
+    asked_slots: mergedAskedSlots,
+    clarify_budget: {
+      max_rounds: maxRounds,
+      used_rounds: Math.max(usedRoundsSource, usedRoundsComputed),
+    },
+  };
+}
+
+function uiChatApplyFindProductsContext(args, messages) {
+  if (!uiChatIsFindProductsMultiOperation(args)) return args;
+  const nextArgs = JSON.parse(JSON.stringify(args || {}));
+  if (!nextArgs.payload || typeof nextArgs.payload !== 'object') nextArgs.payload = {};
+  const computed = uiChatBuildFindProductsContext(nextArgs, messages);
+  if (!computed) return nextArgs;
+  nextArgs.payload.context = uiChatMergeFindProductsContext(nextArgs.payload.context, computed);
+  return nextArgs;
 }
 
 function uiChatBuildLoopBreakQuery({ shoppingText, scenarioOption }) {
@@ -17912,32 +18188,55 @@ function uiChatBuildLoopBreakQuery({ shoppingText, scenarioOption }) {
 
 function uiChatBuildLoopBreakRetryArgs(args, messages, toolResult) {
   if (!uiChatIsFindProductsMultiOperation(args)) return null;
-  if (!uiChatIsScenarioClarification(toolResult)) return null;
-  const scenarioSelection = uiChatFindLatestScenarioSelection(messages);
-  if (!scenarioSelection) return null;
-  const shoppingIntent = uiChatFindLatestShoppingIntent(messages);
-  if (!shoppingIntent) return null;
+  if (uiChatGetFinalDecision(toolResult) !== 'clarify') return null;
+  const slot = uiChatGetClarificationSlot(toolResult);
+  if (!slot) return null;
+  const selection = uiChatResolveClarificationSelection(toolResult, messages);
+  if (!selection?.value) return null;
+
   const currentQuery = uiChatGetFindProductsQuery(args);
-  const nextQuery = uiChatBuildLoopBreakQuery({
-    shoppingText: shoppingIntent.text,
-    scenarioOption: scenarioSelection.option,
-  });
-  if (!nextQuery) return null;
-  if (uiChatNormalizeText(nextQuery) === uiChatNormalizeText(currentQuery)) return null;
+  const shoppingIntent = uiChatFindLatestShoppingIntent(messages);
+  let nextQuery = currentQuery;
+  let scenarioKey = null;
+  if (slot === 'scenario') {
+    scenarioKey = selection.option?.key || null;
+    const baseShoppingText = shoppingIntent?.text || currentQuery;
+    const builtQuery = uiChatBuildLoopBreakQuery({
+      shoppingText: baseShoppingText,
+      scenarioOption: selection.option,
+    });
+    if (builtQuery) nextQuery = builtQuery;
+  }
+
   const nextArgs = JSON.parse(JSON.stringify(args || {}));
   if (!nextArgs.payload || typeof nextArgs.payload !== 'object') nextArgs.payload = {};
   if (!nextArgs.payload.search || typeof nextArgs.payload.search !== 'object') nextArgs.payload.search = {};
-  nextArgs.payload.search.query = nextQuery;
+  if (nextQuery) nextArgs.payload.search.query = nextQuery;
+  if (!nextArgs.payload.context || typeof nextArgs.payload.context !== 'object') {
+    nextArgs.payload.context = {};
+  }
+  const resolvedSlotValue =
+    slot === 'scenario'
+      ? selection.option?.key || selection.option?.zh || selection.option?.en || selection.value
+      : selection.value;
+  nextArgs.payload.context = uiChatMergeFindProductsContext(nextArgs.payload.context, {
+    resolved_slots: { [slot]: resolvedSlotValue },
+    asked_slots: slot ? [slot] : [],
+    clarify_budget: { max_rounds: 1, used_rounds: slot ? 1 : 0 },
+  });
   nextArgs.metadata = {
     ...(nextArgs.metadata && typeof nextArgs.metadata === 'object' ? nextArgs.metadata : {}),
-    ui_chat_loop_break: 'scenario_selection_retry',
-    ui_chat_loop_break_scenario: scenarioSelection.option.key,
+    ui_chat_loop_break: 'slot_selection_retry',
+    ui_chat_loop_break_slot: slot,
+    ...(scenarioKey ? { ui_chat_loop_break_scenario: scenarioKey } : {}),
   };
   return {
     nextArgs,
     nextQuery,
-    scenario: scenarioSelection.option.key,
-    baseQuery: shoppingIntent.text,
+    slot,
+    scenario: scenarioKey,
+    selectedValue: resolvedSlotValue,
+    baseQuery: shoppingIntent?.text || currentQuery || selection.source_text,
   };
 }
 
@@ -18033,6 +18332,8 @@ async function runAgentWithTools(messages) {
           throw e;
         }
 
+        args = uiChatApplyFindProductsContext(args, messages);
+
         logger.info({ tool: name, args }, 'Calling Pivota tool via gateway');
 
          // Loop detection: same tool + args repeated too many times.
@@ -18061,14 +18362,17 @@ async function runAgentWithTools(messages) {
         if (loopBreakRetry) {
           logger.info(
             {
+              slot: loopBreakRetry.slot,
               scenario: loopBreakRetry.scenario,
+              selectedValue: loopBreakRetry.selectedValue,
               baseQuery: loopBreakRetry.baseQuery,
               nextQuery: loopBreakRetry.nextQuery,
             },
             'Applying UI chat clarify loop-break retry'
           );
           try {
-            const retried = await callPivotaToolViaGateway(loopBreakRetry.nextArgs);
+            const retryArgsWithContext = uiChatApplyFindProductsContext(loopBreakRetry.nextArgs, messages);
+            const retried = await callPivotaToolViaGateway(retryArgsWithContext);
             if (uiChatShouldUseRetryResult(toolResult, retried)) {
               toolResult = retried;
               if (toolResult && typeof toolResult === 'object') {
@@ -18078,7 +18382,9 @@ async function runAgentWithTools(messages) {
                     : {}),
                   ui_chat_loop_break: {
                     applied: true,
+                    slot: loopBreakRetry.slot,
                     scenario: loopBreakRetry.scenario,
+                    selected_value: loopBreakRetry.selectedValue,
                     base_query: loopBreakRetry.baseQuery,
                     enriched_query: loopBreakRetry.nextQuery,
                   },
@@ -18089,6 +18395,7 @@ async function runAgentWithTools(messages) {
             logger.warn(
               {
                 err: retryError?.message || String(retryError),
+                slot: loopBreakRetry.slot,
                 scenario: loopBreakRetry.scenario,
                 nextQuery: loopBreakRetry.nextQuery,
               },

@@ -172,6 +172,7 @@ describe('find_products_multi intent + filtering', () => {
         SEARCH_CLARIFY_MIN_RECALL_CANDIDATES: '6',
         SEARCH_CLARIFY_MIN_ANCHOR_RATIO: '0.2',
         SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY: '0.45',
+        SEARCH_CONTEXT_FAIL_OPEN_ENABLED: 'false',
       },
       ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
         const intent = extractIntentRuleBased('出差买什么', [], []);

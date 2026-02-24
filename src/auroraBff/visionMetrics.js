@@ -155,6 +155,13 @@ const auroraKbV0LoaderErrorCounter = new Map();
 const auroraKbV0RuleMatchCounter = new Map();
 const auroraKbV0LegacyFallbackCounter = new Map();
 const auroraKbV0ClimateFallbackCounter = new Map();
+const fpmClarifyReasonCounter = new Map();
+const fpmRepeatedSlotClarifyCounter = new Map();
+const fpmContextFailOpenCounter = new Map();
+const fpmProductsAfterClarifyCounter = new Map();
+let fpmProductsAfterClarifySeen = 0;
+let fpmProductsAfterClarifyHit = 0;
+let fpmProductsAfterClarifyRateGauge = 0;
 const VERIFY_FAIL_REASON_ALLOWLIST = new Set([
   'TIMEOUT',
   'RATE_LIMIT',
@@ -537,6 +544,23 @@ function normalizeSchemaViolationReason(reason) {
 
 function normalizeSchemaViolationPath(path) {
   return cleanMetricToken(path, 'unknown_path');
+}
+
+function normalizeFpmClarifyReason(reasonCode) {
+  const token = cleanMetricToken(reasonCode, 'unknown').toUpperCase();
+  return token || 'UNKNOWN';
+}
+
+function normalizeFpmSlot(slot) {
+  const token = cleanMetricToken(slot, 'unknown');
+  if (token === 'scenario' || token === 'category' || token === 'budget' || token === 'brand') {
+    return token;
+  }
+  return 'unknown';
+}
+
+function normalizeFpmProductsAfterClarifyOutcome(hasProducts) {
+  return hasProducts ? 'hit' : 'miss';
 }
 
 function normalizeAuroraKbV0Reason(reason) {
@@ -1811,6 +1835,61 @@ function recordAuroraRecoContextUsed({ signal, delta } = {}) {
   );
 }
 
+function recordFpmClarifyReason({ reasonCode, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    fpmClarifyReasonCounter,
+    {
+      reason_code: normalizeFpmClarifyReason(reasonCode),
+    },
+    amount,
+  );
+}
+
+function recordFpmRepeatedSlotClarify({ slot, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    fpmRepeatedSlotClarifyCounter,
+    {
+      slot: normalizeFpmSlot(slot),
+    },
+    amount,
+  );
+}
+
+function recordFpmContextFailOpen({ delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    fpmContextFailOpenCounter,
+    {
+      mode: 'enabled',
+    },
+    amount,
+  );
+}
+
+function recordFpmProductsAfterClarify({ hasProducts, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  const outcome = normalizeFpmProductsAfterClarifyOutcome(Boolean(hasProducts));
+  incCounter(
+    fpmProductsAfterClarifyCounter,
+    {
+      outcome,
+    },
+    amount,
+  );
+  fpmProductsAfterClarifySeen += amount;
+  if (outcome === 'hit') fpmProductsAfterClarifyHit += amount;
+  fpmProductsAfterClarifyRateGauge =
+    fpmProductsAfterClarifySeen > 0
+      ? fpmProductsAfterClarifyHit / fpmProductsAfterClarifySeen
+      : 0;
+}
+
 function recordResponseSchemaViolation({ reason, path, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -2459,6 +2538,26 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_schema_violation_total counter');
   renderCounter(lines, 'aurora_schema_violation_total', responseSchemaViolationCounter);
 
+  lines.push('# HELP fpm_clarify_reason_total Total find_products_multi clarification reason counts.');
+  lines.push('# TYPE fpm_clarify_reason_total counter');
+  renderCounter(lines, 'fpm_clarify_reason_total', fpmClarifyReasonCounter);
+
+  lines.push('# HELP fpm_repeated_slot_clarify_total Total blocked repeated slot clarifications for find_products_multi.');
+  lines.push('# TYPE fpm_repeated_slot_clarify_total counter');
+  renderCounter(lines, 'fpm_repeated_slot_clarify_total', fpmRepeatedSlotClarifyCounter);
+
+  lines.push('# HELP fpm_context_fail_open_total Total context fail-open activations for find_products_multi.');
+  lines.push('# TYPE fpm_context_fail_open_total counter');
+  renderCounter(lines, 'fpm_context_fail_open_total', fpmContextFailOpenCounter);
+
+  lines.push('# HELP fpm_products_after_clarify_total Total find_products_multi outcomes after prior clarify turns.');
+  lines.push('# TYPE fpm_products_after_clarify_total counter');
+  renderCounter(lines, 'fpm_products_after_clarify_total', fpmProductsAfterClarifyCounter);
+
+  lines.push('# HELP fpm_products_after_clarify_rate Ratio of product-returned outcomes after prior clarify turns.');
+  lines.push('# TYPE fpm_products_after_clarify_rate gauge');
+  lines.push(`fpm_products_after_clarify_rate ${fpmProductsAfterClarifyRateGauge}`);
+
   lines.push('# HELP aurora_kb_v0_loader_error_total Total KB v0 loader errors by reason.');
   lines.push('# TYPE aurora_kb_v0_loader_error_total counter');
   renderCounter(lines, 'aurora_kb_v0_loader_error_total', auroraKbV0LoaderErrorCounter);
@@ -2665,6 +2764,13 @@ function resetVisionMetrics() {
   auroraSkinLlmCallCounter.clear();
   auroraRecoContextUsedCounter.clear();
   responseSchemaViolationCounter.clear();
+  fpmClarifyReasonCounter.clear();
+  fpmRepeatedSlotClarifyCounter.clear();
+  fpmContextFailOpenCounter.clear();
+  fpmProductsAfterClarifyCounter.clear();
+  fpmProductsAfterClarifySeen = 0;
+  fpmProductsAfterClarifyHit = 0;
+  fpmProductsAfterClarifyRateGauge = 0;
   auroraKbV0LoaderErrorCounter.clear();
   auroraKbV0RuleMatchCounter.clear();
   auroraKbV0LegacyFallbackCounter.clear();
@@ -2803,6 +2909,11 @@ function snapshotVisionMetrics() {
     auroraSkinLlmCall: Array.from(auroraSkinLlmCallCounter.entries()),
     auroraRecoContextUsed: Array.from(auroraRecoContextUsedCounter.entries()),
     responseSchemaViolations: Array.from(responseSchemaViolationCounter.entries()),
+    fpmClarifyReason: Array.from(fpmClarifyReasonCounter.entries()),
+    fpmRepeatedSlotClarify: Array.from(fpmRepeatedSlotClarifyCounter.entries()),
+    fpmContextFailOpen: Array.from(fpmContextFailOpenCounter.entries()),
+    fpmProductsAfterClarify: Array.from(fpmProductsAfterClarifyCounter.entries()),
+    fpmProductsAfterClarifyRateGauge,
     auroraKbV0LoaderError: Array.from(auroraKbV0LoaderErrorCounter.entries()),
     auroraKbV0RuleMatch: Array.from(auroraKbV0RuleMatchCounter.entries()),
     auroraKbV0LegacyFallback: Array.from(auroraKbV0LegacyFallbackCounter.entries()),
@@ -2908,6 +3019,10 @@ module.exports = {
   recordAuroraSkinLlmCall,
   recordAuroraRecoContextUsed,
   recordResponseSchemaViolation,
+  recordFpmClarifyReason,
+  recordFpmRepeatedSlotClarify,
+  recordFpmContextFailOpen,
+  recordFpmProductsAfterClarify,
   recordAuroraKbV0LoaderError,
   recordAuroraKbV0RuleMatch,
   recordAuroraKbV0LegacyFallback,

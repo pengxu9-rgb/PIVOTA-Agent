@@ -113,4 +113,47 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     expect(resp.body.metadata?.search_trace?.final_decision).toBe('clarify');
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
   });
+
+  test('explicit scenario query does not ask scenario again', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async () => ({ rows: [] }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '今晚要出去约会，有什么推荐用的',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
+        slot: 'category',
+        dedup_key: expect.stringMatching(/^category:/),
+      }),
+    );
+    expect(resp.body.clarification.reason_code).not.toBe('CLARIFY_SCENARIO');
+    const slotState =
+      resp.body.metadata?.search_trace?.slot_state ||
+      resp.body.metadata?.search_decision?.slot_state;
+    expect(slotState).toEqual(
+      expect.objectContaining({
+        asked_slots: expect.arrayContaining(['category']),
+      }),
+    );
+  });
 });
