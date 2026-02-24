@@ -26288,11 +26288,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               reportAvailable,
               degradedMode: SKIN_DEGRADED_MODE,
             });
+        const allSubmittedPhotosRejectedByQc = Boolean(
+          photosProvided &&
+          photosSubmittedCount > 0 &&
+          failedPhotos.length === photosSubmittedCount,
+        );
         const forceReportOnPhotoFetchFailure = Boolean(
             !rollout.llmKillSwitch &&
             userRequestedPhoto &&
             photosProvided &&
-            photoQuality.grade !== 'fail' &&
+            !allSubmittedPhotosRejectedByQc &&
             hasLlmPrimaryInput &&
             reportAvailable &&
             photoFailureCodes.length > 0 &&
@@ -26316,7 +26321,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             !rollout.llmKillSwitch &&
             userRequestedPhoto &&
             photosProvided &&
-            photoQuality.grade !== 'fail' &&
+            !allSubmittedPhotosRejectedByQc &&
             hasLlmPrimaryInput &&
             reportAvailable &&
             !forceReportOnPhotoFetchFailure &&
