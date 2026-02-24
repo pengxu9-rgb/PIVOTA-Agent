@@ -621,22 +621,26 @@ function composeTravelReply({
   const currentReplySigTail = buildReplySigTail(replySig);
   const previousReplySigTail = buildReplySigTail(previousReplySig);
   const previousFocusTokens = parseFocusTokenSet(previousFocus);
+  const hasPriorTravelTurn = Boolean(
+    normalizedPrevFocus || previousReplySigTail || normalizeText(previousQuestionHash, 40).toLowerCase(),
+  );
   const samePrimaryFocus = Boolean(
     foci[0] &&
       (normalizedPrevFocus === foci[0] || previousFocusTokens[0] === foci[0] || previousFocusTokens.includes(foci[0])),
   );
   const normalizedPrevQuestionHash = normalizeText(previousQuestionHash, 40).toLowerCase();
   const normalizedQuestionHash = normalizeText(questionHash, 40).toLowerCase();
-  const repeated = Boolean(
-    (normalizedPrevFocus === focusToken || samePrimaryFocus) &&
-      ((previousReplySigTail && previousReplySigTail === currentReplySigTail) ||
-        (normalizedPrevQuestionHash && normalizedPrevQuestionHash === normalizedQuestionHash)),
-  );
   const followupCompact = Boolean(
+    hasPriorTravelTurn &&
     samePrimaryFocus &&
-      previousReplySigTail &&
-      previousReplySigTail === currentReplySigTail &&
       normalizedPrevFocus !== focusToken,
+  );
+  const repeated = Boolean(
+    followupCompact ||
+      (hasPriorTravelTurn &&
+        samePrimaryFocus &&
+        ((previousReplySigTail && previousReplySigTail === currentReplySigTail) ||
+          (normalizedPrevQuestionHash && normalizedPrevQuestionHash === normalizedQuestionHash))),
   );
   const includeForecastSection = !followupCompact || asksForecastDetails(message);
 

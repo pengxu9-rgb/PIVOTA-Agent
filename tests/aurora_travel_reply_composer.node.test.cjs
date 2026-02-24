@@ -174,3 +174,30 @@ test('travelReplyComposer compacts repeated same-primary follow-up instead of re
   assert.match(second.text, /(面霜|面膜|防晒档位|主推单品)/);
   assert.doesNotMatch(second.text, /逐日天气：/);
 });
+
+test('travelReplyComposer keeps compact follow-up even when signature tail changes', () => {
+  const first = composeTravelReply({
+    message: '那边天气怎么样？会不会很湿？',
+    language: 'CN',
+    travelReadiness: buildReadiness({ baselineStatus: 'ok' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+  });
+
+  const second = composeTravelReply({
+    message: '湿度有变化吗？有什么面霜或者面膜可以提前准备？',
+    language: 'CN',
+    travelReadiness: buildReadiness({ baselineStatus: 'baseline_unavailable' }),
+    destination: 'Paris',
+    homeRegion: 'San Francisco, CA',
+    envSource: 'weather_api',
+    previousFocus: first.focus,
+    previousReplySig: first.reply_sig,
+  });
+
+  assert.equal(first.focus, 'humidity');
+  assert.equal(second.focus, 'humidity+products');
+  assert.match(second.text, /更具体一点/);
+  assert.doesNotMatch(second.text, /逐日天气：/);
+});
