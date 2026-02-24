@@ -2714,6 +2714,46 @@ function toHttpImageUrl(value) {
   return /^https?:\/\//i.test(url) ? url : '';
 }
 
+function imageCanonicalKey(url) {
+  return String(url || '')
+    .trim()
+    .replace(/^https?:\/\//i, '');
+}
+
+function isHttpsImageUrl(url) {
+  return /^https:\/\//i.test(String(url || '').trim());
+}
+
+function dedupeImageUrlsPreferHttps(urls) {
+  const byKey = new Map();
+  for (const rawUrl of Array.isArray(urls) ? urls : []) {
+    const normalized = toHttpImageUrl(rawUrl);
+    if (!normalized) continue;
+    const key = imageCanonicalKey(normalized);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, normalized);
+      continue;
+    }
+    if (!isHttpsImageUrl(existing) && isHttpsImageUrl(normalized)) {
+      byKey.set(key, normalized);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+function promoteHttpsVariant(url, candidates) {
+  const normalized = toHttpImageUrl(url);
+  if (!normalized) return '';
+  if (isHttpsImageUrl(normalized)) return normalized;
+  const key = imageCanonicalKey(normalized);
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    if (!isHttpsImageUrl(candidate)) continue;
+    if (imageCanonicalKey(candidate) === key) return candidate;
+  }
+  return normalized;
+}
+
 function extractImageUrlsFromCollection(collection) {
   if (!Array.isArray(collection)) return [];
   const urls = [];
@@ -2756,18 +2796,12 @@ function normalizeProductImages(product) {
   if (!product || typeof product !== 'object') {
     return { primaryImageUrl: '', normalizedImages: [] };
   }
-  const candidates = [];
-  const seen = new Set();
-  for (const candidate of extractProductImageCandidates(product)) {
-    if (seen.has(candidate)) continue;
-    seen.add(candidate);
-    candidates.push(candidate);
-  }
+  const candidates = dedupeImageUrlsPreferHttps(extractProductImageCandidates(product));
 
   const explicitPrimary =
-    toHttpImageUrl(product.image_url) ||
-    toHttpImageUrl(product.imageUrl) ||
-    toHttpImageUrl(product.image);
+    promoteHttpsVariant(product.image_url, candidates) ||
+    promoteHttpsVariant(product.imageUrl, candidates) ||
+    promoteHttpsVariant(product.image, candidates);
   const primaryImageUrl = explicitPrimary || candidates[0] || '';
 
   const existingImages = Array.isArray(product.images) ? product.images : [];

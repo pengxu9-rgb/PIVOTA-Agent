@@ -530,7 +530,7 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     expect(upstreamScope.isDone()).toBe(true);
   });
 
-  test('external-seed fragrance result backfills image_url from image_urls', async () => {
+  test('external-seed fragrance result backfills image_url from image_urls and prefers https', async () => {
     jest.doMock('../../src/db', () => ({
       query: async () => ({ rows: [] }),
     }));
@@ -562,6 +562,7 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
                   image_url: null,
                   images: [],
                   image_urls: [
+                    'http://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
                     'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
                     'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
                   ],
