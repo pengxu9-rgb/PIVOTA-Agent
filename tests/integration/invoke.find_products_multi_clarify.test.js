@@ -301,6 +301,107 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
     nock.cleanAll();
   });
 
+  test('fragrance category with irrelevant primary results backfills external-seed perfumes', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async () => ({ rows: [] }),
+    }));
+
+    let primaryCalled = false;
+    let externalSeedCalled = false;
+    const upstreamScope = nock('http://pivota.test')
+      .persist()
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply((uri) => {
+        const query = new URLSearchParams(String(uri || '').split('?')[1] || '');
+        const merchantId = String(query.get('merchant_id') || '');
+        if (merchantId === 'external_seed') {
+          externalSeedCalled = true;
+          return [
+            200,
+            {
+              status: 'success',
+              success: true,
+              total: 1,
+              page: 1,
+              page_size: 1,
+              products: [
+                {
+                  id: 'tom_ford_2',
+                  product_id: 'tom_ford_2',
+                  merchant_id: 'external_seed',
+                  source: 'external_seed',
+                  title: 'Tom Ford Black Orchid Eau de Parfum',
+                  description: 'fragrance perfume',
+                  price: 172,
+                  currency: 'USD',
+                  inventory_quantity: 6,
+                  status: 'published',
+                },
+              ],
+            },
+          ];
+        }
+        primaryCalled = true;
+        return [
+          200,
+          {
+            status: 'success',
+            success: true,
+            total: 2,
+            page: 1,
+            page_size: 2,
+            products: [
+              {
+                id: 'brush_1',
+                product_id: 'brush_1',
+                merchant_id: 'merch_efbc46b4619cfbdf',
+                title: 'Contour Brush',
+                description: 'makeup contour brush',
+                price: 19,
+                currency: 'USD',
+                inventory_quantity: 12,
+                status: 'published',
+              },
+            ],
+          },
+        ];
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '香水',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'agent_sdk_fixed_delegate',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.clarification).toBeUndefined();
+    expect(primaryCalled || externalSeedCalled).toBe(true);
+    expect(externalSeedCalled).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(
+      (resp.body.products || []).some(
+        (product) =>
+          String(product.merchant_id || '') === 'external_seed' &&
+          /tom ford/i.test(String(product.title || '')),
+      ),
+    ).toBe(true);
+    nock.cleanAll();
+    expect(upstreamScope.isDone()).toBe(true);
+  });
+
   test('fragrance query can recover products from beauty fallback without extra clarify', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql, params) => {

@@ -16818,6 +16818,126 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const requestedLimit = Math.min(
+        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+        100,
+      );
+      let fragranceExternalSupplementMeta = null;
+
+      if (
+        operation === 'find_products_multi' &&
+        queryText &&
+        hasFragranceSearchSignal(queryText) &&
+        isCatalogGuardSource(metadata?.source)
+      ) {
+        const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+        const primaryExternalCount = primaryProducts.filter((product) => isExternalSeedProduct(product)).length;
+        const primaryHasFragranceSignal = primaryProducts
+          .slice(0, Math.max(8, Math.min(20, requestedLimit)))
+          .some((product) => hasFragranceBackfillSignal(buildFallbackCandidateText(product)));
+
+        if (!primaryHasFragranceSignal || primaryExternalCount === 0) {
+          const neededCount = Math.max(1, requestedLimit - primaryExternalCount);
+          fragranceExternalSupplementMeta = {
+            attempted: true,
+            applied: false,
+            added_count: 0,
+            reason: 'supplement_pending',
+          };
+          try {
+            const supplement = await fetchExternalSeedSupplementFromBackend({
+              queryParams: {
+                query: queryText,
+                ...(queryParams?.category ? { category: queryParams.category } : {}),
+                ...(queryParams?.min_price != null ? { min_price: queryParams.min_price } : {}),
+                ...(queryParams?.max_price != null ? { max_price: queryParams.max_price } : {}),
+                in_stock_only: queryParams?.in_stock_only !== false,
+              },
+              checkoutToken,
+              neededCount,
+              source: metadata?.source,
+            });
+
+            const supplementProducts = Array.isArray(supplement?.products)
+              ? supplement.products.filter((product) => isExternalSeedProduct(product))
+              : [];
+
+            const seen = new Set(primaryProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
+            const toPrepend = [];
+            for (const product of supplementProducts) {
+              const key = buildSearchProductKey(product);
+              if (!key || seen.has(key)) continue;
+              seen.add(key);
+              toPrepend.push(product);
+              if (toPrepend.length >= neededCount) break;
+            }
+
+            if (toPrepend.length > 0) {
+              const mergedProducts = prioritizeFragranceProducts(toPrepend.concat(primaryProducts), true).slice(
+                0,
+                Math.max(requestedLimit, primaryProducts.length),
+              );
+              const normalizedMerged = normalizeAgentProductsListResponse(
+                {
+                  ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                    ? upstreamData
+                    : {}),
+                  products: mergedProducts,
+                  total: Math.max(Number(upstreamData?.total || 0) || 0, mergedProducts.length),
+                },
+                {
+                  limit: queryParams?.limit,
+                  offset: queryParams?.offset,
+                },
+              );
+              const mergedExternalCount = mergedProducts.filter((product) => isExternalSeedProduct(product)).length;
+              const mergedInternalCount = Math.max(0, mergedProducts.length - mergedExternalCount);
+              upstreamData = {
+                ...normalizedMerged,
+                metadata: {
+                  ...(normalizedMerged?.metadata &&
+                  typeof normalizedMerged.metadata === 'object' &&
+                  !Array.isArray(normalizedMerged.metadata)
+                    ? normalizedMerged.metadata
+                    : {}),
+                  source_breakdown: {
+                    ...((normalizedMerged?.metadata?.source_breakdown &&
+                    typeof normalizedMerged.metadata.source_breakdown === 'object' &&
+                    !Array.isArray(normalizedMerged.metadata.source_breakdown)
+                      ? normalizedMerged.metadata.source_breakdown
+                      : {})),
+                    internal_count: mergedInternalCount,
+                    external_seed_count: mergedExternalCount,
+                    stale_cache_used: false,
+                    strategy_applied: 'supplement_internal_first',
+                  },
+                },
+              };
+            }
+
+            fragranceExternalSupplementMeta = {
+              ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
+              attempted: true,
+              applied: toPrepend.length > 0,
+              added_count: toPrepend.length,
+              reason: toPrepend.length > 0 ? 'supplemented_external_seed_fragrance' : 'no_external_candidates',
+            };
+          } catch (supplementErr) {
+            fragranceExternalSupplementMeta = {
+              attempted: true,
+              applied: false,
+              added_count: 0,
+              reason: 'supplement_error',
+              error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
+            };
+            logger.warn(
+              { err: supplementErr?.message || String(supplementErr), query: queryText },
+              `${operation} fragrance supplement after upstream failed`,
+            );
+          }
+        }
+      }
+
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryProductCount = Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0;
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
@@ -16831,10 +16951,6 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
       const primaryIrrelevant =
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
       const shouldFallback = primaryUnusable || primaryIrrelevant;
-      const requestedLimit = Math.min(
-        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
-        100,
-      );
       const skipSecondaryFallback = shouldSkipSecondaryFallbackAfterResolverMiss(
         resolverFirstResult,
         queryText,
@@ -17106,7 +17222,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
 
       if (
         operation === 'find_products_multi' &&
-        secondarySupplementMeta &&
+        (secondarySupplementMeta || fragranceExternalSupplementMeta) &&
         upstreamData &&
         typeof upstreamData === 'object' &&
         !Array.isArray(upstreamData)
@@ -17115,7 +17231,8 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           ...upstreamData,
           metadata: {
             ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
-            search_stage_b: secondarySupplementMeta,
+            ...(fragranceExternalSupplementMeta ? { pre_policy_fragrance_supplement: fragranceExternalSupplementMeta } : {}),
+            ...(secondarySupplementMeta ? { search_stage_b: secondarySupplementMeta } : {}),
           },
         };
       }
