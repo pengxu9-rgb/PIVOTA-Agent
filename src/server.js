@@ -3825,16 +3825,54 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   return Array.from(out);
 }
 
+function buildFragranceIntentTokens(queryText, queryTokens = []) {
+  if (!hasFragranceSearchSignal(queryText)) return [];
+
+  const out = new Set();
+  const pushToken = (token) => {
+    const value = normalizeSearchTextForMatch(token);
+    if (!value || value.length < 2) return;
+    out.add(value);
+  };
+
+  for (const token of Array.isArray(queryTokens) ? queryTokens : []) {
+    pushToken(token);
+  }
+
+  [
+    'perfume',
+    'fragrance',
+    'cologne',
+    'parfum',
+    'body mist',
+    'eau de parfum',
+    'eau de toilette',
+    '香水',
+    '香氛',
+    '古龙',
+    '古龍',
+    'フレグランス',
+    'コロン',
+  ].forEach(pushToken);
+
+  return Array.from(out);
+}
+
 function buildFallbackOverlapPreview(products, queryText, maxItems = 3) {
   const rows = [];
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const baseTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
+  const fragranceIntent = hasFragranceSearchSignal(queryText);
   const meaningfulTokens = ingredientIntent
     ? baseTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : baseTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens])).slice(0, 12);
+  const fragranceTokens = fragranceIntent ? buildFragranceIntentTokens(queryText, meaningfulTokens) : [];
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens, ...fragranceTokens])).slice(
+    0,
+    12,
+  );
 
   for (const product of Array.isArray(products) ? products : []) {
     if (rows.length >= maxItems) break;
@@ -3925,6 +3963,16 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
     return false;
   }
 
+  if (hasFragranceSearchSignal(queryText)) {
+    for (const product of products.slice(0, 8)) {
+      if (!hasUsableSearchProduct(product)) continue;
+      const candidateText = buildFallbackCandidateText(product);
+      if (!candidateText) continue;
+      if (hasFragranceCatalogProductSignal(candidateText)) return true;
+    }
+    return false;
+  }
+
   if (hasBeautyMakeupSearchSignal(queryText)) {
     for (const product of products.slice(0, 8)) {
       if (!hasUsableSearchProduct(product)) continue;
@@ -3949,11 +3997,13 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
 
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
+  const fragranceIntent = hasFragranceSearchSignal(queryText);
   const meaningfulTokens = ingredientIntent
     ? queryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : queryTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
+  const fragranceTokens = fragranceIntent ? buildFragranceIntentTokens(queryText, meaningfulTokens) : [];
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens, ...fragranceTokens]));
   const longQuery = effectiveTokens.length >= 2;
   const requiredOverlap = ingredientIntent ? 1 : 2;
 
@@ -4005,17 +4055,19 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     ? options.queryTokens
     : Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
+  const fragranceIntent = hasFragranceSearchSignal(queryText);
   const meaningfulTokens = ingredientIntent
     ? rawQueryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : rawQueryTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
+  const fragranceTokens = fragranceIntent ? buildFragranceIntentTokens(queryText, meaningfulTokens) : [];
+  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens, ...fragranceTokens]));
   if (!effectiveTokens.length) return true;
   if (effectiveTokens.length === 1) {
     return candidateText.includes(effectiveTokens[0]);
   }
   const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
-  return overlapCount >= (ingredientIntent ? 1 : 2);
+  return overlapCount >= (ingredientIntent || fragranceIntent ? 1 : 2);
 }
 
 function inferCacheProductDomainKey(product) {
@@ -7142,6 +7194,10 @@ function classifyBeautyBucketFromProduct(product) {
   const text = buildFallbackCandidateText(product);
   if (!text) return 'other';
 
+  if (hasFragranceCatalogProductSignal(text)) {
+    return 'fragrance';
+  }
+
   if (
     /\b(brush|brushes|blender|sponge|puff|applicator|tool|tools|brush\s*set)\b/i.test(text) ||
     /化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|工具|刷子|パフ|ブラシ/.test(text)
@@ -7181,6 +7237,7 @@ function computeBeautyBucketMix(products, topN = 10) {
     eye_makeup: 0,
     lip_makeup: 0,
     skincare: 0,
+    fragrance: 0,
     tools: 0,
     other: 0,
   };
@@ -7198,7 +7255,7 @@ function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit) {
   if (scenario === 'beauty_tools' || scenario === 'eye_shadow_brush') return false;
   const topN = Math.max(1, Number(limit || 10));
   const mix = computeBeautyBucketMix(products, topN);
-  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare'];
+  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'fragrance'];
   const distinctCore = coreBuckets.filter((bucket) => Number(mix[bucket] || 0) > 0).length;
   const toolsCount = Number(mix.tools || 0);
   return distinctCore < 2 && toolsCount >= Math.ceil(topN * 0.6);
@@ -7206,7 +7263,7 @@ function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit) {
 
 function blendBeautyDiversitySupplement(internalProducts, supplementProducts, limit) {
   const targetLimit = Math.max(1, Number(limit || 10));
-  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'tools', 'other'];
+  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'fragrance', 'tools', 'other'];
   const seen = new Set();
   const merged = [];
   const internal = Array.isArray(internalProducts) ? internalProducts : [];
@@ -7243,6 +7300,21 @@ function blendBeautyDiversitySupplement(internalProducts, supplementProducts, li
   }
 
   return output;
+}
+
+function prioritizeFragranceProducts(products, enabled = false) {
+  const list = Array.isArray(products) ? products : [];
+  if (!enabled || list.length <= 1) return list;
+
+  const fragrance = [];
+  const others = [];
+  for (const product of list) {
+    const text = buildFallbackCandidateText(product);
+    if (hasFragranceCatalogProductSignal(text)) fragrance.push(product);
+    else others.push(product);
+  }
+  if (fragrance.length === 0) return list;
+  return fragrance.concat(others);
 }
 
 function buildPetHarnessSignalSql(startIndex) {
@@ -14633,10 +14705,23 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
           const safeResultLimit = Math.max(1, Number(limit || 20));
+          const fragranceQuery = hasFragranceSearchSignal(cacheQueryText);
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
             hasPetHarnessSearchSignal(cacheQueryText) &&
             internalProductsAfterAnchor.length >= 3;
+          const fragranceInternalCount = fragranceQuery
+            ? internalProductsAfterAnchor
+                .slice(0, Math.max(3, Math.min(10, safeResultLimit)))
+                .filter((product) =>
+                  hasFragranceCatalogProductSignal(buildFallbackCandidateText(product)),
+                ).length
+            : 0;
+          const needsFragranceSupplement =
+            isCatalogGuardSource(source) &&
+            Number(page) === 1 &&
+            fragranceQuery &&
+            fragranceInternalCount === 0;
           const needsBeautyDiversitySupplement =
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
@@ -14656,7 +14741,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
           if (
             isCatalogGuardSource(source) &&
             Number(page) === 1 &&
-            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement)
+            (needsPrimaryFillSupplement || needsBeautyDiversitySupplement || needsFragranceSupplement)
           ) {
             const neededCount = needsPrimaryFillSupplement
               ? Math.max(0, safeResultLimit - internalProductsAfterAnchor.length)
@@ -14667,6 +14752,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
               const externalFillMinInternal = Math.min(3, safeResultLimit);
               const canApplyExternalFillGate =
                 !SEARCH_EXTERNAL_FILL_GATED ||
+                needsFragranceSupplement ||
                 (internalProductsAfterAnchor.length >= externalFillMinInternal &&
                   (confidenceOverall >= 0.7 || isLookupQuery) &&
                   ambiguityScorePre <= 0.45);
@@ -14703,6 +14789,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                   added_count: 0,
                   reason: 'supplement_pending',
                   diversity_targeted: needsBeautyDiversitySupplement,
+                  fragrance_targeted: needsFragranceSupplement,
                 };
                 try {
                   const supplement = await fetchExternalSeedSupplementFromBackend({
@@ -14761,11 +14848,16 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     reason: toAppend.length > 0
                       ? needsBeautyDiversitySupplement
                         ? 'supplemented_external_seed_diversity'
+                        : needsFragranceSupplement
+                          ? 'supplemented_external_seed_fragrance'
                         : 'supplemented_external_seed'
                       : needsBeautyDiversitySupplement
                         ? 'no_external_candidates_for_diversity'
+                        : needsFragranceSupplement
+                          ? 'no_external_candidates_for_fragrance'
                         : 'no_external_candidates',
                     diversity_targeted: needsBeautyDiversitySupplement,
+                    fragrance_targeted: needsFragranceSupplement,
                   };
                 } catch (supplementErr) {
                   supplementMeta = {
@@ -14775,6 +14867,7 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
                     reason: 'supplement_error',
                     error: String(supplementErr && supplementErr.message ? supplementErr.message : supplementErr),
                     diversity_targeted: needsBeautyDiversitySupplement,
+                    fragrance_targeted: needsFragranceSupplement,
                   };
                   logger.warn(
                     { err: supplementErr?.message || String(supplementErr), query: cacheQueryText },
@@ -14789,15 +14882,17 @@ app.post('/agent/shop/v1/invoke', async (req, res) => {
             intent: effectiveIntent,
             queryClass: findProductsExpansionMeta?.query_class || effectiveIntent?.query_class || null,
           });
-          const effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
+          let effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
             perTitleLimit: dedupePerTitleLimit,
           });
+          effectiveProducts = prioritizeFragranceProducts(effectiveProducts, fragranceQuery);
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
             : true;
           const relaxCacheRelevanceGate =
             hasPetSearchSignal(cacheQueryText) ||
-            (hasBeautyMakeupSearchSignal(cacheQueryText) &&
+            (!fragranceQuery &&
+              hasBeautyMakeupSearchSignal(cacheQueryText) &&
               effectiveProducts.some((product) =>
                 hasBeautyCatalogProductSignal(buildFallbackCandidateText(product)),
               ));
